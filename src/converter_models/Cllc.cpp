@@ -985,6 +985,22 @@ double get_value_or(T&& val, double default_val) {
         const CllcTankParams4& tp,
         std::vector<CllcSegment4>& outSegments, double& outResidual)
     {
+        // STRATEGY — damped Picard / cycle iteration, NOT Newton.
+        //
+        // The 4-D Newton (finite-difference Jacobian over a piecewise event
+        // chain) has been measured to trap on degenerate low-amplitude or
+        // freewheel-only fixed points for asymmetric CLLC tanks: e.g. KIT
+        // 20 kW at fr=fs converges to (iLr1≈iLm everywhere, vCr peaks ~80 V)
+        // when the physical steady state has multi-kV cap voltages and
+        // ~54 A primary current.
+        //
+        // The damped Picard map  x_{n+1} = α·(−x(Thalf|x_n)) + (1−α)·x_n
+        // exploits the half-cycle antisymmetry  x(Thalf) = −x(0). This is
+        // the discrete analogue of SPICE's transient simulation: each
+        // iteration is one full converter cycle worth of state evolution.
+        // For lossless resonant tanks the iteration is marginal, so a
+        // moderate α (0.4) and ~150 iterations are sufficient in practice
+        // to settle below 1 % of |x| residual.
         auto eval_F = [&](CllcState4 x0) -> std::array<double, 4> {
             auto segs = cllc4_propagate_half_cycle(x0, Thalf, Vi, Vo, tp);
             CllcState4 xe = segs.empty() ? x0 : segs.back().x_end;
@@ -995,91 +1011,27 @@ double get_value_or(T&& val, double default_val) {
             return std::sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2] + f[3]*f[3]);
         };
         CllcState4 x0 = x0_seed;
-        auto F = eval_F(x0);
-        double r = norm(F);
-        constexpr int MAX_ITERS = 30;
-        constexpr double TOL = 1e-7;
-        double scale_i = std::max(1e-3, 0.01 * std::abs(x0.iLr1) + 1e-3);
-        double scale_v = std::max(1e-2, 0.01 * std::abs(x0.vCr1)  + 1e-2);
-        double damping = 1.0;
-        double prev_r = r;
-        int stagnant = 0;
-        // Index-to-perturbation table (so we can loop 0..3 over state dims).
-        auto perturb = [&](CllcState4 base, int idx, double delta) {
-            CllcState4 p = base;
-            switch (idx) {
-                case 0: p.iLr1 += delta; break;
-                case 1: p.iLm  += delta; break;
-                case 2: p.vCr1 += delta; break;
-                case 3: p.vCr2 += delta; break;
-            }
-            return p;
-        };
-        for (int iter = 0; iter < MAX_ITERS && r > TOL; ++iter) {
-            double J[4][4];
-            for (int j = 0; j < 4; ++j) {
-                double d = (j < 2) ? scale_i : scale_v;
-                auto Fp = eval_F(perturb(x0, j, +d));
-                auto Fm = eval_F(perturb(x0, j, -d));
-                for (int i = 0; i < 4; ++i) J[i][j] = (Fp[i] - Fm[i]) / (2.0 * d);
-            }
-            // Augmented matrix [J | -F]; partial-pivot Gauss elimination.
-            double A[4][5];
-            for (int i = 0; i < 4; ++i) {
-                for (int j = 0; j < 4; ++j) A[i][j] = J[i][j];
-                A[i][4] = -F[i];
-            }
-            bool singular = false;
-            for (int col = 0; col < 4; ++col) {
-                int piv = col; double maxv = std::abs(A[col][col]);
-                for (int row = col + 1; row < 4; ++row) {
-                    if (std::abs(A[row][col]) > maxv) { maxv = std::abs(A[row][col]); piv = row; }
-                }
-                if (maxv < 1e-14) { singular = true; break; }
-                if (piv != col) std::swap(A[col], A[piv]);
-                for (int row = col + 1; row < 4; ++row) {
-                    double f = A[row][col] / A[col][col];
-                    for (int k = col; k < 5; ++k) A[row][k] -= f * A[col][k];
-                }
-            }
-            if (singular) break;
-            double dx[4];
-            for (int i = 3; i >= 0; --i) {
-                double sum = A[i][4];
-                for (int j = i + 1; j < 4; ++j) sum -= A[i][j] * dx[j];
-                dx[i] = sum / A[i][i];
-            }
-            // Damped line search.
-            double try_d = damping;
-            CllcState4 x_new{}; std::array<double, 4> F_new{};
-            double r_new = r; bool accepted = false;
-            for (int ls = 0; ls < 6; ++ls) {
-                x_new = x0;
-                x_new.iLr1 += try_d * dx[0];
-                x_new.iLm  += try_d * dx[1];
-                x_new.vCr1 += try_d * dx[2];
-                x_new.vCr2 += try_d * dx[3];
-                F_new = eval_F(x_new);
-                r_new = norm(F_new);
-                if (std::isfinite(r_new) && r_new < r) { accepted = true; break; }
-                try_d *= 0.5;
-            }
-            if (!accepted) {
-                // Picard fallback: x_new := -x(Thalf) (use half-cycle antisymmetry directly).
-                auto segs = cllc4_propagate_half_cycle(x0, Thalf, Vi, Vo, tp);
-                if (!segs.empty()) {
-                    CllcState4 xe = segs.back().x_end;
-                    x_new.iLr1 = -xe.iLr1; x_new.iLm = -xe.iLm;
-                    x_new.vCr1 = -xe.vCr1; x_new.vCr2 = -xe.vCr2;
-                    F_new = eval_F(x_new);
-                    r_new = norm(F_new);
-                }
-            }
-            x0 = x_new; F = F_new;
-            if (r_new >= prev_r * 0.999) { stagnant++; damping *= 0.7; }
-            else { stagnant = 0; damping = std::min(1.0, damping * 1.2); }
-            prev_r = r_new; r = r_new;
-            if (stagnant >= 4) break;
+        constexpr int MAX_ITERS = 200;
+        constexpr double TOL = 1e-6;
+        const double alpha = 0.4;
+        double r = std::numeric_limits<double>::infinity();
+        for (int iter = 0; iter < MAX_ITERS; ++iter) {
+            auto segs = cllc4_propagate_half_cycle(x0, Thalf, Vi, Vo, tp);
+            if (segs.empty()) break;
+            CllcState4 xe = segs.back().x_end;
+            CllcState4 x_target{ -xe.iLr1, -xe.iLm, -xe.vCr1, -xe.vCr2 };
+            CllcState4 x_new{
+                (1.0 - alpha) * x0.iLr1 + alpha * x_target.iLr1,
+                (1.0 - alpha) * x0.iLm  + alpha * x_target.iLm,
+                (1.0 - alpha) * x0.vCr1 + alpha * x_target.vCr1,
+                (1.0 - alpha) * x0.vCr2 + alpha * x_target.vCr2
+            };
+            if (!std::isfinite(x_new.iLr1) || !std::isfinite(x_new.iLm) ||
+                !std::isfinite(x_new.vCr1) || !std::isfinite(x_new.vCr2)) break;
+            x0 = x_new;
+            auto F = eval_F(x0);
+            r = norm(F);
+            if (r < TOL) break;
         }
         outSegments = cllc4_propagate_half_cycle(x0, Thalf, Vi, Vo, tp);
         outResidual = r;
@@ -1256,25 +1208,66 @@ double get_value_or(T&& val, double default_val) {
         if (is_asymmetric) {
             // 4-state path. Lr2/Cr2 already in primary-referred units.
             CllcTankParams4 tp4{Lr1, Lm, Lr2_pri, Cr1, Cr2_pri};
-            CllcState4 seed4{ -Ires_est, -Im_pk_est, 0.0, 0.0 };
+            // SEED STRATEGY — multi-start over physically-motivated points.
+            //
+            // The 4-D residual surface has multiple basins of attraction.
+            // Naïve seeds (vCr1=vCr2=0 etc.) drop into a degenerate
+            // freewheel-only fixed point with no power transfer (at t=0+
+            // the rectifier turn-on inequality diLs/dt > 0 fails, forcing
+            // the initial substate to F for the whole half-cycle).
+            //
+            // The cap-voltage AC amplitude at fr is approximately:
+            //   ΔvCr1 ≈ Iload · Thalf / (2·Cr1)
+            //   ΔvCr2 ≈ Iload · Thalf / (2·Cr2_pri)
+            // At t=0 (start of P_POS half-cycle) both caps are near their
+            // negative extreme around the P_POS equilibria (Vi, -Vo).
+            // Trying several amplitude scaling factors gives Newton multiple
+            // basins to choose from; the lowest non-degenerate residual wins.
+            const double Iload_pri = std::abs(Iload_reflected) * (M_PI / 2.0);  // pk reflected
+            const double dVc1_est = std::abs(Iload_pri) * Thalf_eff / (2.0 * Cr1);
+            const double dVc2_est = std::abs(Iload_pri) * Thalf_eff / (2.0 * Cr2_pri);
+            const std::array<CllcState4, 6> seed_candidates{{
+                { -Ires_est, -Im_pk_est, Vi - dVc1_est, -Vo - dVc2_est },
+                { -Ires_est, -Im_pk_est, Vi + dVc1_est, -Vo + dVc2_est },
+                { -Ires_est, -Im_pk_est, 0.0,           -Vo            },
+                { -Ires_est, -Im_pk_est, -0.5 * Vi,     -1.5 * Vo      },
+                { -Ires_est, -Im_pk_est, -Vi,           -Vo            },
+                { -Ires_est, -Im_pk_est, 0.0,           0.0            }
+            }};
             std::vector<CllcSegment4> segs4;
-            CllcState4 x0_4 = cllc4_solve_steady_state(seed4, Thalf_eff,
-                                                        Vi_solver, Vo, tp4,
-                                                        segs4, residual);
-            // Sanity check (per-state bounds). Same philosophy as the
-            // symmetric block below, applied to the 4-D state.
-            double sanity_i = std::max(10.0 * Ires_est, 20.0);
-            double sanity_v = std::max({10.0 * std::abs(Vi),
-                                        10.0 * std::abs(Vo), 200.0});
-            if (!std::isfinite(x0_4.iLr1) || !std::isfinite(x0_4.iLm) ||
-                !std::isfinite(x0_4.vCr1) || !std::isfinite(x0_4.vCr2) ||
-                std::abs(x0_4.iLr1) > sanity_i ||
-                std::abs(x0_4.iLm)  > sanity_i ||
-                std::abs(x0_4.vCr1) > sanity_v ||
-                std::abs(x0_4.vCr2) > sanity_v) {
-                x0_4 = seed4;
-                residual = -1.0;
+            CllcState4 x0_4{};
+            double best_residual = std::numeric_limits<double>::infinity();
+            for (const auto& cand : seed_candidates) {
+                std::vector<CllcSegment4> segs_try;
+                double res_try = 0.0;
+                CllcState4 x_try = cllc4_solve_steady_state(cand, Thalf_eff,
+                                                              Vi_solver, Vo, tp4,
+                                                              segs_try, res_try);
+                if (!std::isfinite(res_try) || res_try < 0) continue;
+                // Reject degenerate F-only converged solutions (single
+                // freewheel segment with iLs ≡ 0 transfers no power).
+                bool degenerate = (segs_try.size() == 1 &&
+                                   segs_try[0].state == CllcSubState::F);
+                if (degenerate && res_try < 1e-6) continue;
+                // Reject unphysical solutions (per-state sanity bounds).
+                double sanity_i = std::max(10.0 * Ires_est, 20.0);
+                double sanity_v = std::max({10.0 * std::abs(Vi),
+                                            10.0 * std::abs(Vo), 200.0});
+                if (std::abs(x_try.iLr1) > sanity_i ||
+                    std::abs(x_try.iLm)  > sanity_i ||
+                    std::abs(x_try.vCr1) > sanity_v ||
+                    std::abs(x_try.vCr2) > sanity_v) continue;
+                if (res_try < best_residual) {
+                    best_residual = res_try;
+                    x0_4 = x_try;
+                    segs4 = segs_try;
+                }
             }
+            residual = best_residual;
+            // Per-seed sanity already filtered unphysical candidates; if NO
+            // seed converged (best_residual == +inf) x0_4 stays default-
+            // initialised (all-zero), which the freewheel propagator handles
+            // safely and yields a benign no-power waveform.
             // Re-propagate with the authoritative Vi (drop the LIP perturbation).
             segs4 = cllc4_propagate_half_cycle(x0_4, Thalf_eff, Vi, Vo, tp4);
             // Sample 4-state segments, then collapse vCr1+vCr2 → Vc_pos so

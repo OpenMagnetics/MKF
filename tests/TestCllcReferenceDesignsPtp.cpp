@@ -405,7 +405,7 @@ TEST_CASE("CLLC reference design PtP — KIT 20 kW asymmetric "
           "[converter-model][cllc-topology][refdesign][ptp][asymmetric][p7][slow]") {
     RefDesignSpec s{"KIT-20kW-Asymmetric", 800.0, 700.0, 900.0, 800.0, 25.0,
                     100e3, 50e3, 300e3,
-                    60.0, 2.0, 0.20, 0.60, 0.16};
+                    60.0, 2.0, 0.20, 0.60, 0.15};
     run_ptp_gates_asymmetric(s, 0.95, 1.052);
 }
 
