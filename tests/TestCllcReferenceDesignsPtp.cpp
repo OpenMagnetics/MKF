@@ -22,6 +22,26 @@
 // shape entirely.
 //
 // Tags: [converter-model][cllc-topology][refdesign][ptp][slow]
+//
+// FIXME-item1 (analytical-solver gain mismatch, not a test bug):
+// All forward designs ship a SPICE primary current peak ~1.35-1.39×
+// the analytical (FHA) peak. ptp_nrmse — which is both mean-subtracted
+// AND RMS-normalized — masks this as 4-7 % NRMSE because the shapes
+// agree. The amplitude gap is *systematic* across every design (Telecom
+// at-fr, below-fr, above-fr, Infineon 11 kW, KIT 20 kW asymmetric)
+// which rules out a SPICE artifact. Confirming experiment (May-2026):
+// replacing Cout+Rload with a stiff Vout voltage clamp drops the KIT
+// primary peak from ±53.8 A → ±33.5 A (within 13 % of analytical
+// ±38.7 A) but collapses Pin from 21.5 kW → 1.34 kW. That means: at
+// the design switching frequency, with Vin=Vnom and Vout=Vnom, the
+// tank can only naturally deliver ~7 % of Pnom. The Cout+Rload sim
+// hides this by letting Vout drift to satisfy V²/R = P_tank_actual,
+// which forces the tank to overdrive to maintain that current.
+// Conclusion: process_operating_point_for_input_voltage (or its
+// upstream CllcResonantParameters derivation) picks an fsw whose
+// gain*Vin ≠ Vout_nom under Pnom load. Fix belongs in the solver,
+// not the testbench. Until then, the peak-ratio gate added below
+// catches regressions at the 50 %/+70 % band.
 
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>
@@ -52,6 +72,16 @@ struct RefDesignSpec {
     double tol_walltime, tol_vin_pct;
     double tol_loss_neg, tol_loss_max;
     double tol_nrmse;
+    // Peak-amplitude gate (SPICE iPri peak-to-peak / analytical iPri pk-pk).
+    // ptp_nrmse is mean-subtracted AND scale-normalized, so a uniform 30 %
+    // amplitude scaling gives only ~4-5 % NRMSE: shape-only. This gate
+    // catches AMPLITUDE regressions independently. Current state across
+    // all 6 designs sits at ~1.35-1.39× (systematic analytical undercount,
+    // FIXME-item1 in HANDOFF) so we set [0.5, 1.7] as a regression-detector
+    // band, not a quality gate. Tighten once the solver gain-mismatch in
+    // process_operating_point_for_input_voltage is fixed.
+    double tol_peak_ratio_min = 0.5;
+    double tol_peak_ratio_max = 1.7;
 };
 
 nlohmann::json build_fixture(const RefDesignSpec& s) {
@@ -217,6 +247,20 @@ void run_ptp_gates_impl(const RefDesignSpec& s, const nlohmann::json& fixture) {
     std::cout << "  iPri NRMSE = " << 100.0*nrmse << " %   (gate "
               << 100.0*s.tol_nrmse << " %)\n";
     CHECK(nrmse < s.tol_nrmse);
+
+    // Gate 5 — peak-amplitude ratio (regression detector).
+    // ptp_nrmse is mean-subtracted AND RMS-normalized so amplitude errors
+    // up to ~40 % register as only 5-7 % NRMSE. This separate gate makes
+    // amplitude regressions visible. Current band [0.5, 1.7] is loose
+    // (live state ≈ 1.35-1.39×); tighten alongside FIXME-item1.
+    const double a_pkpk = a_max - a_min;
+    const double s_pkpk = s_max - s_min;
+    const double peak_ratio = (a_pkpk > 1e-12) ? s_pkpk / a_pkpk : 0.0;
+    std::cout << "  iPri peak ratio (spice/anal) = " << peak_ratio
+              << "   (gate " << s.tol_peak_ratio_min << ".."
+              << s.tol_peak_ratio_max << ")\n";
+    CHECK(peak_ratio > s.tol_peak_ratio_min);
+    CHECK(peak_ratio < s.tol_peak_ratio_max);
     // Env-gated CSV dump (MKF_DUMP_WAVEFORMS=1) for shape-gap diagnosis.
     dump_waveforms_csv(std::string("cllc_") + s.name,
                        analyticalOps[0], simOps[0]);
