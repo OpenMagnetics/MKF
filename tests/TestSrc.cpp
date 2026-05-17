@@ -281,9 +281,9 @@ TEST_CASE("SRC: centerTappedDiode tank waveforms match fullBridgeDiode", "[src-t
 }
 
 
-TEST_CASE("SRC: centerTappedDiode SPICE codegen still throws (pending)", "[src-topology]") {
+TEST_CASE("SRC: currentDoubler SPICE codegen still throws (pending)", "[src-topology]") {
     auto j = make_src_json(400, 48, 10, 100e3, 100e3);
-    j["rectifierType"] = "centerTappedDiode";
+    j["rectifierType"] = "currentDoubler";
     Src src(j);
     REQUIRE_THROWS_AS(
         src.generate_ngspice_circuit(std::vector<double>{4.17}, 0),

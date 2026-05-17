@@ -54,6 +54,7 @@ struct RefDesignSpec {
     double fr;                  // resonant frequency (Λ = Fs/fr)
     double Q;                   // quality factor (FHA)
     const char* bridge;         // "halfBridge" or "fullBridge"
+    const char* rectifier = "fullBridgeDiode";  // "fullBridgeDiode" | "centerTappedDiode"
     double tol_walltime;
     double tol_vin_pct;
     double tol_loss_neg;
@@ -75,7 +76,7 @@ nlohmann::json build_fixture(const RefDesignSpec& s) {
         {"bridgeType",            s.bridge},
         {"isolated",              true},
         {"efficiency",            0.95},
-        {"rectifierType",         "fullBridgeDiode"},
+        {"rectifierType",         s.rectifier},
         {"operatingPoints", nlohmann::json::array({
             nlohmann::json{
                 {"outputVoltages",     {s.Vout}},
@@ -227,6 +228,7 @@ TEST_CASE("SRC reference design PtP — Telecom 500 W FB above-fr "
                     100e3,                       // fr
                     1.0,                         // Q
                     "fullBridge",
+                    "fullBridgeDiode",
                     60.0,                        // tol_walltime  s
                     2.0,                         // tol_vin_pct
                     0.20, 0.60,                  // tol_loss_neg, tol_loss_max
@@ -249,6 +251,7 @@ TEST_CASE("SRC reference design PtP — Telecom 250 W HB above-fr "
                     100e3,
                     1.0,
                     "halfBridge",
+                    "fullBridgeDiode",
                     60.0, 2.0, 0.20, 0.60, 0.15};
     run_ptp_gates(s);
 }
@@ -269,6 +272,33 @@ TEST_CASE("SRC reference design PtP — Telecom 1.4 kW FB above-fr "
                     100e3,
                     0.5,
                     "fullBridge",
+                    "fullBridgeDiode",
+                    60.0, 2.0, 0.20, 0.60, 0.15};
+    run_ptp_gates(s);
+}
+
+
+// Fourth design: Center-Tapped FB-SRC, 400 V → 24 V / 20 A (480 W).
+// Mirrors SRC_PLAN.md §6's CT class (plasma / X-ray HV brackets scaled to
+// the analytical regime where FHA stays accurate: Λ ≈ 1.1, Q = 1.0).
+// CT halves each carry only their conducting half-cycle of the reflected
+// tank current, so the PtP primary-current waveform is unchanged from the
+// FB case at the same operating point — but the SPICE netlist now emits 2
+// secondaries per output (Lsec1/Lsec2) and a 2-diode CT rectifier with
+// snubbers, exercising the new ct branches in generate_ngspice_circuit and
+// simulate_and_extract_operating_points. Lower Vout (24 V) is typical for
+// CT designs (single-diode forward drop vs FB's two diodes).
+TEST_CASE("SRC reference design PtP — CT 480 W above-fr "
+          "(400V→24V/20A, fr=100 kHz, fs=110 kHz, Q=1.0)",
+          "[converter-model][src-topology][refdesign][ptp][slow]") {
+    RefDesignSpec s{"CT-480W-FB-AboveFr",
+                    400.0, 360.0, 420.0,
+                    24.0, 20.0,
+                    110e3, 80e3, 200e3,
+                    100e3,
+                    1.0,
+                    "fullBridge",
+                    "centerTappedDiode",
                     60.0, 2.0, 0.20, 0.60, 0.15};
     run_ptp_gates(s);
 }

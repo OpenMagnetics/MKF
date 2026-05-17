@@ -584,16 +584,18 @@ std::string Src::generate_ngspice_circuit(
     size_t inputVoltageIndex,
     size_t operatingPointIndex)
 {
-    // SPICE codegen currently covers only the FULL_BRIDGE_DIODE rectifier.
-    // CT/CD analytical paths are supported (process_operating_points) but the
-    // matching SPICE netlists are pending. Throw loudly rather than silently
-    // produce an FB-shaped netlist that misrepresents the topology.
-    if (get_effective_rectifier_type() != SrcRectifierType::FULL_BRIDGE_DIODE) {
+    // SPICE codegen covers FULL_BRIDGE_DIODE and CENTER_TAPPED_DIODE.
+    // CURRENT_DOUBLER is pending in both analytical and SPICE paths
+    // (process_operating_point throws first). Mirror that here with a
+    // dedicated guard so the SPICE entry-point is self-describing.
+    SrcRectifierType rectType = get_effective_rectifier_type();
+    if (rectType == SrcRectifierType::CURRENT_DOUBLER) {
         throw std::runtime_error(
-            "SRC SPICE codegen: only fullBridgeDiode rectifier is supported in "
-            "the current build (centerTappedDiode / currentDoubler are pending "
-            "— analytical process_operating_points handles them).");
+            "SRC SPICE codegen: currentDoubler rectifier is pending "
+            "(both analytical and SPICE paths). Use fullBridgeDiode or "
+            "centerTappedDiode.");
     }
+    const bool ct = (rectType == SrcRectifierType::CENTER_TAPPED_DIODE);
 
     auto& inputVoltageSpec = get_input_voltage();
     auto& ops              = get_operating_points();
@@ -695,18 +697,38 @@ std::string Src::generate_ngspice_circuit(
     c << "Lr cr_lr pri_top " << std::scientific << Lr << "\n\n";
 
     // Transformer primary (loosely coupled to per-output secondaries).
+    // Secondary windings per output depend on rectifier type:
+    //   FB → 1 secondary (Lsec)              — feeds 4-diode bridge
+    //   CT → 2 half-windings (Lsec1/Lsec2)   — share a center tap, feed 2 diodes
     c << "Lpri pri_top pri_bot " << std::scientific << Lpri << "\n";
     for (size_t i = 0; i < numOutputs; ++i) {
         double n_i  = nPerOutput[i];
         double Lsec = Lpri / (n_i * n_i);
         std::string si = std::to_string(i + 1);
-        c << "Lsec_o" << si << " sec_pos_sec_o" << si << " sec_neg_sec_o" << si
-          << " " << std::scientific << Lsec << "\n";
+        if (ct) {
+            c << "Lsec1_o" << si << " sec_top_sec_o" << si << " sec_ct_o" << si
+              << " " << std::scientific << Lsec << "\n";
+            c << "Lsec2_o" << si << " sec_ct_o" << si << " sec_bot_sec_o" << si
+              << " " << std::scientific << Lsec << "\n";
+        }
+        else {
+            c << "Lsec_o" << si << " sec_pos_sec_o" << si << " sec_neg_sec_o" << si
+              << " " << std::scientific << Lsec << "\n";
+        }
     }
     // Pairwise K matrix (positive-definite requirement of ngspice).
     std::vector<std::string> coupled = {"Lpri"};
-    for (size_t i = 0; i < numOutputs; ++i)
-        coupled.push_back("Lsec_o" + std::to_string(i + 1));
+    coupled.reserve(1 + windings_per_output() * numOutputs);
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        if (ct) {
+            coupled.push_back("Lsec1_o" + si);
+            coupled.push_back("Lsec2_o" + si);
+        }
+        else {
+            coupled.push_back("Lsec_o" + si);
+        }
+    }
     int kIdx = 0;
     for (size_t a = 0; a < coupled.size(); ++a)
         for (size_t b = a + 1; b < coupled.size(); ++b)
@@ -717,28 +739,46 @@ std::string Src::generate_ngspice_circuit(
     if (isFullBridge) c << "Rpri_ret pri_bot bridge_b 0.001\n\n";
     else              c << "Rpri_ret pri_bot mid_point 0.001\n\n";
 
-    // Secondary full-bridge diode rectifier per output.
+    // Secondary rectifier per output (branches by rectifier type).
     c << ".model DRECT D(Is=1e-8 N=0.01 RS=0.01)\n";
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
         double Vout_i = srcOp.get_output_voltages()[i];
         double Iout_i = srcOp.get_output_currents()[i];
         double Rload_i = (Iout_i > 0) ? (Vout_i / Iout_i) : 100.0;
-        c << "* Output " << si << " (FB diode rectifier, Vout=" << Vout_i << "V Rload=" << Rload_i << ")\n";
-        c << "Dh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " DRECT\n";
-        c << "Dh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " DRECT\n";
-        c << "Dl1_o" << si << " vout_neg_o" << si << " sec_pos_o" << si << " DRECT\n";
-        c << "Dl2_o" << si << " vout_neg_o" << si << " sec_neg_o" << si << " DRECT\n";
-        c << "Rsnh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100\n";
-        c << "Csnh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100p\n";
-        c << "Rsnh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100\n";
-        c << "Csnh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100p\n";
-        c << "Vsec_sense_o" << si << " sec_pos_sec_o" << si << " sec_pos_o" << si << " 0\n";
-        c << "Vsec_ret_o"   << si << " sec_neg_o"    << si << " sec_neg_sec_o" << si << " 0\n";
-        c << "Vgnd_o"       << si << " vout_neg_o"   << si << " 0 0\n";
-        c << "Resr_o"       << si << " vout_pos_o"   << si << " vout_cap_o" << si << " 0.05\n";
-        c << "Cout_o"       << si << " vout_cap_o"   << si << " vout_neg_o" << si << " " << std::scientific << 47e-6 << "\n";
-        c << "Rload_o"      << si << " vout_cap_o"   << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";
+        c << "* Output " << si << " (" << (ct ? "CT" : "FB")
+          << " diode rectifier, Vout=" << Vout_i << "V Rload=" << Rload_i << ")\n";
+        if (ct) {
+            // 2 diodes (anodes on each half-secondary endpoint, cathodes
+            // commoned on vout_pos); center-tap returns through Vsec_sense.
+            c << "D1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " DRECT\n";
+            c << "D2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " DRECT\n";
+            c << "Rsn1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " 100\n";
+            c << "Csn1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " 100p\n";
+            c << "Rsn2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " 100\n";
+            c << "Csn2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " 100p\n";
+            // Per-half-winding current sense + common center-tap return sense.
+            c << "Vsec1_sense_o" << si << " sec_top_sec_o" << si << " sec_top_o" << si << " 0\n";
+            c << "Vsec2_sense_o" << si << " sec_bot_sec_o" << si << " sec_bot_o" << si << " 0\n";
+            c << "Vsec_sense_o"  << si << " sec_ct_o"      << si << " vout_neg_o" << si << " 0\n";
+        }
+        else {
+            // 4-diode bridge
+            c << "Dh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " DRECT\n";
+            c << "Dh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " DRECT\n";
+            c << "Dl1_o" << si << " vout_neg_o" << si << " sec_pos_o" << si << " DRECT\n";
+            c << "Dl2_o" << si << " vout_neg_o" << si << " sec_neg_o" << si << " DRECT\n";
+            c << "Rsnh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100\n";
+            c << "Csnh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100p\n";
+            c << "Rsnh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100\n";
+            c << "Csnh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100p\n";
+            c << "Vsec_sense_o" << si << " sec_pos_sec_o" << si << " sec_pos_o" << si << " 0\n";
+            c << "Vsec_ret_o"   << si << " sec_neg_o"    << si << " sec_neg_sec_o" << si << " 0\n";
+        }
+        c << "Vgnd_o"  << si << " vout_neg_o" << si << " 0 0\n";
+        c << "Resr_o"  << si << " vout_pos_o" << si << " vout_cap_o" << si << " 0.05\n";
+        c << "Cout_o"  << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << std::scientific << 47e-6 << "\n";
+        c << "Rload_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";
     }
 
     // Initial conditions
@@ -759,9 +799,17 @@ std::string Src::generate_ngspice_circuit(
     else              c << " v(sw_node) v(mid_point)";
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
-        c << " v(sec_pos_o" << si << ") v(sec_neg_o" << si << ")"
-          << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
-          << " i(Vsec_sense_o" << si << ")";
+        if (ct) {
+            c << " v(sec_top_o" << si << ") v(sec_bot_o" << si << ")"
+              << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
+              << " i(Vsec1_sense_o" << si << ") i(Vsec2_sense_o" << si << ")"
+              << " i(Vsec_sense_o" << si << ")";
+        }
+        else {
+            c << " v(sec_pos_o" << si << ") v(sec_neg_o" << si << ")"
+              << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
+              << " i(Vsec_sense_o" << si << ")";
+        }
     }
     c << "\n\n.end\n";
     return c.str();
@@ -827,12 +875,25 @@ std::vector<OperatingPoint> Src::simulate_and_extract_operating_points(
 
             size_t numOutputs = ops[opIdx].get_output_voltages().size();
             if (numOutputs == 0) numOutputs = 1;
+            SrcRectifierType rectTypeSim = get_effective_rectifier_type();
             for (size_t outIdx = 0; outIdx < numOutputs; ++outIdx) {
                 std::string si = std::to_string(outIdx + 1);
-                waveformMapping.push_back({{"voltage", "sec_pos_o" + si},
-                                           {"current", "vsec_sense_o" + si + "#branch"}});
-                windingNames.push_back("Secondary " + std::to_string(outIdx));
-                flipCurrentSign.push_back(true);
+                if (rectTypeSim == SrcRectifierType::CENTER_TAPPED_DIODE) {
+                    waveformMapping.push_back({{"voltage", "sec_top_o" + si},
+                                               {"current", "vsec1_sense_o" + si + "#branch"}});
+                    windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 1");
+                    flipCurrentSign.push_back(true);
+                    waveformMapping.push_back({{"voltage", "sec_bot_o" + si},
+                                               {"current", "vsec2_sense_o" + si + "#branch"}});
+                    windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 2");
+                    flipCurrentSign.push_back(true);
+                }
+                else {
+                    waveformMapping.push_back({{"voltage", "sec_pos_o" + si},
+                                               {"current", "vsec_sense_o" + si + "#branch"}});
+                    windingNames.push_back("Secondary " + std::to_string(outIdx));
+                    flipCurrentSign.push_back(true);
+                }
             }
 
             OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
