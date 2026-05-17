@@ -340,13 +340,27 @@ TEST_CASE("SRC: centerTappedDiode tank waveforms match fullBridgeDiode", "[src-t
 }
 
 
-TEST_CASE("SRC: currentDoubler SPICE codegen still throws (pending)", "[src-topology]") {
+TEST_CASE("SRC: currentDoubler SPICE codegen succeeds (CD branch lands)",
+          "[src-topology]") {
+    // CD is now fully supported in both analytical and SPICE paths.
+    // Sanity-check that the netlist contains the canonical CD signatures
+    // (Lo1/Lo2 returning to vout_neg, per-Lo current sense, no freewheel
+    // diodes). A full PtP regression lives in
+    // tests/TestSrcReferenceDesignsPtp.cpp.
     auto j = make_src_json(400, 48, 10, 100e3, 100e3);
     j["rectifierType"] = "currentDoubler";
     Src src(j);
-    REQUIRE_THROWS_AS(
-        src.generate_ngspice_circuit(std::vector<double>{4.17}, 0),
-        std::runtime_error);
+    src.process_design_requirements();   // populate Lr/Cr before codegen
+    std::string netlist = src.generate_ngspice_circuit(std::vector<double>{4.17}, 0);
+    REQUIRE(netlist.find("CD diode rectifier") != std::string::npos);
+    REQUIRE(netlist.find("Lo1_o1 ") != std::string::npos);
+    REQUIRE(netlist.find("Lo2_o1 ") != std::string::npos);
+    REQUIRE(netlist.find("VLo1_sense_o1") != std::string::npos);
+    REQUIRE(netlist.find("VLo2_sense_o1") != std::string::npos);
+    // Canonical CD topology: no freewheel diodes (each Lo freewheels through
+    // the opposite diode + load), and Lo terminates at vout_neg, not vout_pos.
+    REQUIRE(netlist.find("Dfw") == std::string::npos);
+    REQUIRE(netlist.find(" vout_neg_o1 ") != std::string::npos);
 }
 
 

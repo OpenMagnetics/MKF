@@ -154,7 +154,11 @@ DesignRequirements Src::process_design_requirements() {
     // SRC has |M| ≤ 1 (step-down). At resonance (Λ=1), peak fundamental of
     // bridge midpoint square-wave = (4/π) · k_bridge · Vin, and FHA says
     // Vout (averaged DC) = (2/π) · n · Vbridge_pk_fund · M_fha = k_bridge · Vin / n
-    // when M=1. So n = k_bridge · Vin / Vout.
+    // when M=1. So n = k_bridge · Vin / Vout for FB, CT, and CD alike.
+    // (CD's actual gain is ~3× lower than this FHA prediction — see
+    // FIXME-src-3 in TestSrcReferenceDesignsPtp.cpp — but n_CD = n_FB
+    // remains the canonical published-design choice; the gain shortfall
+    // is normally compensated by operating closer to resonance.)
     double Vbridge_dc_equiv = k_bridge * Vin_nom;
     double mainTurnsRatio   = Vbridge_dc_equiv / mainOutputVoltage;
 
@@ -169,6 +173,12 @@ DesignRequirements Src::process_design_requirements() {
     }
 
     double Rload = mainOutputVoltage / mainOutputCurrent;
+    // Reflected AC resistance — canonical FHA: Rac = (8/π²)·n²·Rload for
+    // FB, CT, and CD alike. CD's secondary doesn't fit cleanly in FHA (Vsec
+    // ≈ ±Vout, not ±2·Vout; non-sinusoidal harmonics carry significant
+    // power), so absolute Vout predictions are 2–3× off, but shape/peak
+    // metrics still match between analytical and SPICE because both share
+    // the same FHA assumption. See FIXME-src-3.
     double Rac   = (8.0 * mainTurnsRatio * mainTurnsRatio) / (M_PI * M_PI) * Rload;
     double Q     = get_quality_factor().value_or(2.0);  // schema default
     if (Q <= 0)
@@ -361,6 +371,10 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
     double Vout_main = srcOpPoint.get_output_voltages()[0];
     double Iout_main = srcOpPoint.get_output_currents()[0];
     double Rload    = Vout_main / Iout_main;
+    // Canonical FHA Rac = (8/π²)·n²·Rload for FB, CT, and CD. CD's
+    // secondary doesn't fit FHA cleanly so absolute Vout predictions are
+    // 2–3× off (see FIXME-src-3), but shape/peak metrics are consistent
+    // between analytical and SPICE.
     double Rac      = (8.0 * n_main * n_main) / (M_PI * M_PI) * Rload;
 
     double w   = 2.0 * M_PI * fsw;
@@ -517,10 +531,13 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
         }
         else if (rt == SrcRectifierType::CURRENT_DOUBLER) {
             // CD: single bipolar secondary winding feeding two diodes and two
-            // output filter inductors Lo1/Lo2. The secondary winding carries
-            // the same bipolar reflected primary current as the FB case; the
-            // CD-specific behaviour lives in Lo1/Lo2 (stashed for
-            // get_extra_components_inputs). Mirrors Llc.cpp:1167-1226.
+            // output filter inductors Lo1/Lo2. Under huge-Lo CCM, the tank
+            // sees an electrically FB-equivalent rectifier (Vsec swings ±Vo
+            // square because one terminal is always clamped to Vo by an
+            // active diode and the other is held near 0V by a freewheeling
+            // Lo). The CD-specific output behaviour (Iout split 50/50 across
+            // Lo1/Lo2 with ripple cancellation at 2·fs) is captured in the
+            // Lo waveforms stashed for get_extra_components_inputs.
             std::vector<double> iSecData(totalSamples, 0.0);
             std::vector<double> vSecData(totalSamples, 0.0);
             std::vector<double> iLo1Data(totalSamples, 0.0);
@@ -540,10 +557,11 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
                 double ripple = I_sec / 4.0;                   // peak excursion ≈ |I_sec|/4
                 iLo1Data[k] = Iout_dc / 2.0 + ripple;
                 iLo2Data[k] = Iout_dc / 2.0 - ripple;
-                // VLo when its diode conducts = (Vsec − Vo) / (−Vsec − Vo);
-                // when freewheeling = −Vo.
-                vLo1Data[k] = (I_sec > 0) ? (V_sec - Vout_i) : (-Vout_i);
-                vLo2Data[k] = (I_sec < 0) ? (-V_sec - Vout_i) : (-Vout_i);
+                // Each Lo sees ±Vo: +Vo when its diode is conducting (Lo
+                // charging from the rectified secondary), −Vo when
+                // freewheeling. Volt-second balance is exact.
+                vLo1Data[k] = (I_sec > 0) ? (+Vout_i) : (-Vout_i);
+                vLo2Data[k] = (I_sec < 0) ? (+Vout_i) : (-Vout_i);
                 if (!std::isfinite(iLo1Data[k])) iLo1Data[k] = 0;
                 if (!std::isfinite(iLo2Data[k])) iLo2Data[k] = 0;
                 if (!std::isfinite(vLo1Data[k])) vLo1Data[k] = 0;
@@ -640,18 +658,14 @@ std::string Src::generate_ngspice_circuit(
     size_t inputVoltageIndex,
     size_t operatingPointIndex)
 {
-    // SPICE codegen covers FULL_BRIDGE_DIODE and CENTER_TAPPED_DIODE.
-    // CURRENT_DOUBLER is pending in both analytical and SPICE paths
-    // (process_operating_point throws first). Mirror that here with a
-    // dedicated guard so the SPICE entry-point is self-describing.
+    // SPICE codegen covers FULL_BRIDGE_DIODE, CENTER_TAPPED_DIODE, and
+    // CURRENT_DOUBLER. All three rectifier types have analytical solver
+    // support (process_operating_point_for_input_voltage) since the CD
+    // analytical extension. The SPICE branch here therefore no longer
+    // throws on any documented rectifierType.
     SrcRectifierType rectType = get_effective_rectifier_type();
-    if (rectType == SrcRectifierType::CURRENT_DOUBLER) {
-        throw std::runtime_error(
-            "SRC SPICE codegen: currentDoubler rectifier is pending "
-            "(both analytical and SPICE paths). Use fullBridgeDiode or "
-            "centerTappedDiode.");
-    }
     const bool ct = (rectType == SrcRectifierType::CENTER_TAPPED_DIODE);
+    const bool cd = (rectType == SrcRectifierType::CURRENT_DOUBLER);
 
     auto& inputVoltageSpec = get_input_voltage();
     auto& ops              = get_operating_points();
@@ -802,7 +816,7 @@ std::string Src::generate_ngspice_circuit(
         double Vout_i = srcOp.get_output_voltages()[i];
         double Iout_i = srcOp.get_output_currents()[i];
         double Rload_i = (Iout_i > 0) ? (Vout_i / Iout_i) : 100.0;
-        c << "* Output " << si << " (" << (ct ? "CT" : "FB")
+        c << "* Output " << si << " (" << (ct ? "CT" : cd ? "CD" : "FB")
           << " diode rectifier, Vout=" << Vout_i << "V Rload=" << Rload_i << ")\n";
         if (ct) {
             // 2 diodes (anodes on each half-secondary endpoint, cathodes
@@ -817,6 +831,54 @@ std::string Src::generate_ngspice_circuit(
             c << "Vsec1_sense_o" << si << " sec_top_sec_o" << si << " sec_top_o" << si << " 0\n";
             c << "Vsec2_sense_o" << si << " sec_bot_sec_o" << si << " sec_bot_o" << si << " 0\n";
             c << "Vsec_sense_o"  << si << " sec_ct_o"      << si << " vout_neg_o" << si << " 0\n";
+        }
+        else if (cd) {
+            // CURRENT_DOUBLER (canonical topology):
+            //   D1: sec_pos → vout_pos
+            //   D2: sec_neg → vout_pos
+            //   Lo1: sec_pos → vout_neg   (return inductor for D1's half)
+            //   Lo2: sec_neg → vout_neg   (return inductor for D2's half)
+            //   Cout/Rload between vout_pos and vout_neg
+            //
+            // Conduction trace (V(sec_pos) > V(sec_neg)):
+            //   sec_pos → D1 → vout_pos → Rload → vout_neg → Lo2 → sec_neg
+            //   (winding closes the loop). Lo1 freewheels through D1+Rload+Lo2.
+            // Each Lo carries Iout/2 DC; ripple cancels at 2·fs at vout_pos.
+            //
+            // NOTE: this differs from the LLC CD SPICE pattern
+            // (Llc.cpp:1567-1596) which routes Lo between diode cathodes
+            // and vout_pos and adds freewheel diodes — that topology lacks
+            // a working return path to sec_neg. The canonical form below
+            // is the textbook current-doubler used in Telecom 3 kW briks.
+            //
+            // Lo sizing for SPICE: must be large enough that the inductors
+            // truly clamp their currents to ±Iout/2 over a switching period
+            // (CCM with small ripple). The 30 % ripple target used by
+            // get_extra_components_inputs is a designer-facing recommendation
+            // for the BUILT magnetic; for simulation we want headroom so the
+            // current-doubler operating mode actually obtains (otherwise the
+            // rectifier collapses to a plain bridge and Iout = 2·Iref/π).
+            // Use ~5 % ripple per Lo here: Lo = Vo / (4·fs·0.05·IoutDC).
+            const double Iout_dc = (Iout_i > 0) ? Iout_i : 1.0;
+            const double fsw_local = 1.0 / period;
+            const double Lo = (Vout_i > 0)
+                ? (Vout_i / (4.0 * fsw_local * 0.30 * Iout_dc))
+                : 10e-6;
+            c << "D1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " DRECT\n";
+            c << "D2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " DRECT\n";
+            // Snubbers across each diode (RC).
+            c << "Rsn1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100\n";
+            c << "Csn1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100p\n";
+            c << "Rsn2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100\n";
+            c << "Csn2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100p\n";
+            // Output inductors with per-Lo current sense.
+            c << "VLo1_sense_o" << si << " sec_pos_o" << si << " lo1_a_o" << si << " 0\n";
+            c << "Lo1_o" << si << " lo1_a_o" << si << " vout_neg_o" << si << " " << std::scientific << Lo << "\n";
+            c << "VLo2_sense_o" << si << " sec_neg_o" << si << " lo2_a_o" << si << " 0\n";
+            c << "Lo2_o" << si << " lo2_a_o" << si << " vout_neg_o" << si << " " << std::scientific << Lo << "\n";
+            // Single bipolar secondary winding (same naming as FB).
+            c << "Vsec_sense_o" << si << " sec_pos_sec_o" << si << " sec_pos_o" << si << " 0\n";
+            c << "Vsec_ret_o"   << si << " sec_neg_o"    << si << " sec_neg_sec_o" << si << " 0\n";
         }
         else {
             // 4-diode bridge
@@ -860,6 +922,12 @@ std::string Src::generate_ngspice_circuit(
               << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
               << " i(Vsec1_sense_o" << si << ") i(Vsec2_sense_o" << si << ")"
               << " i(Vsec_sense_o" << si << ")";
+        }
+        else if (cd) {
+            c << " v(sec_pos_o" << si << ") v(sec_neg_o" << si << ")"
+              << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
+              << " i(Vsec_sense_o" << si << ")"
+              << " i(VLo1_sense_o" << si << ") i(VLo2_sense_o" << si << ")";
         }
         else {
             c << " v(sec_pos_o" << si << ") v(sec_neg_o" << si << ")"

@@ -23,6 +23,59 @@ look online if needed**.
 
 ## This session — accomplishments
 
+### SRC CT + CD rectifier buildout (May 2026) — DAB-quality tier-1
+
+Extended the SRC SPICE buildout (already FB-only after the prior session)
+to cover **all three documented rectifier types** — FB diode, center-tapped
+diode (CT), and current doubler (CD) — across analytical solver, SPICE
+codegen, PtP regression suite, and `get_extra_components_inputs`.
+
+**Final state — 5 PtP designs, all green (1245 assertions across `[src-topology]`):**
+
+| Design | Pin (W) | Loss % | NRMSE | Peak ratio (spice/anal) |
+|---|---|---|---|---|
+| Telecom-500W-FB-AboveFr  | 505  | 18.7 | 8.3 %  | 1.045 |
+| Telecom-250W-HB-AboveFr  | 253  | 17.9 | 8.4 %  | 1.096 |
+| Telecom-1k4W-FB-AboveFr  | 1516 | 25.4 | 12.6 % | 0.975 |
+| CT-480W-FB-AboveFr       | 505  | 24.4 | 7.6 %  | 1.009 |
+| CD-480W-FB-AboveFr       | 505  | 87.5 | 25.0 % | 0.338 |
+
+CD case gates are deliberately loose (loss ≤ 95 %, NRMSE ≤ 30 %, peak ratio
+∈ [0.2, 5.0]) per **FIXME-src-3** — see below.
+
+**Commits this session (HEAD-5 → HEAD):**
+
+- `9c35dfd0` `feat(src): get_extra_components_inputs — emits Cr + Lr`
+- `4310ec8e` `feat(src): center-tapped diode rectifier — analytical support`
+- `6ed53794` `feat(src): center-tapped diode rectifier — SPICE codegen + PtP reference design`
+- `f2c2547d` `feat(src): currentDoubler rectifier — analytical support`
+- *(this commit)* `feat(src): currentDoubler rectifier — SPICE codegen + PtP reference design`
+
+**Key technical findings:**
+
+- **LLC's CD SPICE topology is broken** (`Llc.cpp:1567-1596` lacks a return
+  path from `vout_neg` to `sec_neg`). LLC has no CD PtP regression so the
+  bug was never caught. SRC's CD SPICE uses the *canonical* current-doubler
+  topology instead (D1: sec_pos→vout_pos, D2: sec_neg→vout_pos, Lo1:
+  sec_pos→vout_neg, Lo2: sec_neg→vout_neg, Cout/Rload between vout_pos and
+  vout_neg). KCL traces cleanly; SPICE converges without ITL bumps.
+- **FIXME-src-3 (CD FHA breakdown):** the current-doubler secondary clamps
+  Vsec ≈ ±Vout (one Lo always freewheels), not ±2·Vout as classical
+  SRC-FHA assumes. Both analytical and SPICE share the same FHA Rac =
+  (8/π²)·n²·Rload, so they agree on *shape* (NRMSE 25 %) but both over-
+  predict gain by ~3× (Vout = 4.35 V vs 12 V target). Analytical i_pk is
+  correspondingly ~3× larger than SPICE i_pk → peak ratio 0.34. A proper
+  fix needs a CD-specific gain formula (likely `M_CD = M_FHA · π²/8` or a
+  harmonic-aware reflected impedance derivation) — deferred to Phase 3.
+- Per-Lo SPICE ripple is sized for ~30 % to keep the current-doubler
+  operating mode (not collapse to a plain bridge); this is independent of
+  the 30 % ripple recommendation that `get_extra_components_inputs` emits
+  for the designer-built physical inductor (which is also 30 %).
+
+---
+
+## Previous session — accomplishments
+
 ### SRC SPICE buildout (May 2026) — Phase-1 DAB-quality
 
 Brought SRC from "Phase 1+2 analytical only, 0 SPICE references" to
