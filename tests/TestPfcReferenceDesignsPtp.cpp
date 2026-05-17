@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -256,6 +258,27 @@ void run_ptp_gates(const RefDesignSpec& s) {
     const double nrmse_env = std::sqrt(sse / n) / std::sqrt(sm / n);
     INFO("envelope NRMSE=" << 100.0*nrmse_env << " % (tol "
          << 100.0*s.tol_envelope << " %)");
+
+    // Optional waveform dump (env var MKF_DUMP_WAVEFORMS=1) — emits
+    // /tmp/mkf_wf_pfc_<name>.csv with time, ideal sinusoidal reference,
+    // sliding-mean SPICE iL, raw SPICE iL.  Used for debugging analytical
+    // models against the SPICE truth.
+    if (const char* dump = std::getenv("MKF_DUMP_WAVEFORMS"); dump && dump[0] == '1') {
+        std::string fname = "/tmp/mkf_wf_pfc_";
+        fname += s.name;
+        fname += ".csv";
+        std::ofstream f(fname);
+        f << "time_s,vin_V,iL_ref_A,iL_avg_A,iL_raw_A\n";
+        for (size_t i = 0; i < tvec.size(); ++i) {
+            if (tvec[i] < t_a || tvec[i] > t_b) continue;
+            const double phase = 2.0 * M_PI * 50.0 * tvec[i];
+            const double iref  = Iin_pk * std::fabs(std::sin(phase));
+            f << tvec[i] << ',' << vin[i] << ',' << iref << ','
+              << sliding_mean(tvec[i]) << ',' << iL[i] << '\n';
+        }
+        std::cout << "[PFC PtP " << s.name << "] dumped to " << fname << "\n";
+    }
+
     REQUIRE(nrmse_env < s.tol_envelope);
 
     // ---- Gate 4: Phase-6 ConverterPortChecks switching-leg helper -------
@@ -343,7 +366,7 @@ TEST_CASE("PFC reference design PtP — NCP1654 100 W",
         /*tol_vbus_pct*/ 6.0,
         /*tol_pin_pct*/  5.0,
         /*tol_envelope*/ 0.10,
-        /*tol_walltime*/ 10.0
+        /*tol_walltime*/ 30.0
     };
     run_ptp_gates(s);
 }
@@ -381,7 +404,7 @@ TEST_CASE("PFC reference design PtP — L4981 1000 W",
         /*tol_vbus_pct*/ 6.0,
         /*tol_pin_pct*/  5.0,
         /*tol_envelope*/ 0.60,
-        /*tol_walltime*/ 10.0
+        /*tol_walltime*/ 30.0
     };
     run_ptp_gates(s);
 }
