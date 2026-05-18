@@ -303,6 +303,32 @@ auto run_ngspice_simulation_helper(ConverterType& converter,
 }
 
 /**
+ * @brief Helper for converters whose simulate_and_extract_operating_points
+ * takes (double scalarTurnsRatio, double magnetizingInductance) — e.g.
+ * Weinberg, Flyback, IsolatedBuck, single-output forward-derived models.
+ *
+ * Some converter models predate the vector<double>-per-output convention used
+ * by LLC/SRC/DAB. Rather than churn every model, we route them here using the
+ * first element of the turnsRatios vector. process_design_requirements
+ * already emits exactly one turns ratio for single-output topologies, so
+ * turnsRatios.size() == 1 is the invariant we rely on. SFINAE rank-3
+ * (ellipsis ".") is lower priority than the long and int overloads above so
+ * the vector and one-arg paths still win when available.
+ */
+template<typename ConverterType>
+auto run_ngspice_simulation_helper(ConverterType& converter,
+                                   const std::vector<double>& turnsRatios,
+                                   double inductance, ...)
+    -> decltype(converter.simulate_and_extract_operating_points(turnsRatios.front(), inductance)) {
+    if (turnsRatios.empty()) {
+        throw std::runtime_error(
+            "run_ngspice_simulation_helper: converter expects a scalar turns "
+            "ratio but design requirements emitted zero turns ratios");
+    }
+    return converter.simulate_and_extract_operating_points(turnsRatios.front(), inductance);
+}
+
+/**
  * @brief Run ngspice simulation with proper method dispatch
  */
 template<typename ConverterType>

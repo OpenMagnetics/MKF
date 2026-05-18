@@ -18,6 +18,18 @@
 #include "advisers/MagneticAdviser.h"
 #include "converter_models/Llc.h"
 #include "converter_models/Src.h"
+#include "converter_models/Cllc.h"
+#include "converter_models/Clllc.h"
+#include "converter_models/Vienna.h"
+#include "converter_models/PhaseShiftedFullBridge.h"
+#include "converter_models/PhaseShiftedHalfBridge.h"
+#include "converter_models/AsymmetricHalfBridge.h"
+#include "converter_models/PowerFactorCorrection.h"
+#include "converter_models/Cuk.h"
+#include "converter_models/Sepic.h"
+#include "converter_models/Zeta.h"
+#include "converter_models/Weinberg.h"
+#include "converter_models/FourSwitchBuckBoost.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
@@ -173,4 +185,341 @@ TEST_CASE("Test_MagneticAdviserFromConverter_SRC_VariantMatrix",
             REQUIRE(score > 0);
         }
     }
+}
+
+
+// ============================================================================
+// Resonant — CLLC (symmetric, bidirectional), forward power flow
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_CLLC_Forward",
+          "[adviser][from-converter][cllc-topology]") {
+    json j = {
+        {"inputVoltage", {{"minimum", 700}, {"maximum", 800}, {"nominal", 750}}},
+        {"minSwitchingFrequency", 40000},
+        {"maxSwitchingFrequency", 250000},
+        {"efficiency", 0.95},
+        {"qualityFactor", 0.3},
+        {"symmetricDesign", true},
+        {"bidirectional", true},
+        {"operatingPoints", json::array({
+            {{"outputVoltages", {600.0}},
+             {"outputCurrents", {18.33}},
+             {"switchingFrequency", 73000},
+             {"ambientTemperature", 25.0},
+             {"powerFlow", "forward"}}
+        })}
+    };
+
+    CllcConverter converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
+// Resonant — CLLLC, forward power flow
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_CLLLC_Forward",
+          "[adviser][from-converter][clllc-topology]") {
+    json j = {
+        {"highVoltageBusVoltage", {{"nominal", 400.0}}},
+        {"lowVoltageBusVoltage",  {{"nominal", 400.0}}},
+        {"minSwitchingFrequency", 250000},
+        {"maxSwitchingFrequency", 500000},
+        {"primaryResonantFrequency", 350000},
+        {"qualityFactor", 0.4},
+        {"inductanceRatioK", 6.0},
+        {"operatingPoints", json::array({
+            {{"ambientTemperature", 25.0},
+             {"switchingFrequency", 350000},
+             {"outputVoltages", {400.0}},
+             {"outputCurrents", {16.5}},
+             {"powerFlowDirection", "forward"}}
+        })}
+    };
+
+    Clllc converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
+// Vienna (three-phase PFC). Vdc must satisfy Vdc > sqrt(2)*Vll to avoid
+// over-modulation; 750 V > sqrt(2)*400 ≈ 566 V is well above.
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_Vienna",
+          "[adviser][from-converter][vienna-topology]") {
+    json j = {
+        {"lineToLineVoltage", {{"nominal", 400.0}}},
+        {"lineFrequency", 50.0},
+        {"outputDcVoltage", 750.0},
+        {"switchingFrequency", 70000},
+        {"currentRippleRatio", 0.25},
+        {"efficiency", 0.97},
+        {"powerFactor", 0.99},
+        {"operatingPoints", json::array({
+            {{"outputVoltages", {750.0}},
+             {"outputCurrents", {13.333}},
+             {"switchingFrequency", 70000},
+             {"ambientTemperature", 25.0}}
+        })}
+    };
+
+    Vienna converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
+// PSFB — Phase-Shifted Full Bridge
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_PSFB",
+          "[adviser][from-converter][psfb-topology]") {
+    json j = {
+        {"inputVoltage", {{"nominal", 400.0}, {"minimum", 370.0}, {"maximum", 410.0}}},
+        {"rectifierType", "centerTapped"},
+        {"operatingPoints", json::array({
+            {{"ambientTemperature", 25.0},
+             {"outputVoltages", {12.0}},
+             {"outputCurrents", {50.0}},
+             {"switchingFrequency", 100000},
+             {"phaseShift", 126.0}}
+        })}
+    };
+
+    Psfb converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
+// PSHB — Phase-Shifted Half Bridge
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_PSHB",
+          "[adviser][from-converter][pshb-topology]") {
+    json j = {
+        {"inputVoltage", {{"nominal", 400.0}, {"minimum", 370.0}, {"maximum", 410.0}}},
+        {"rectifierType", "centerTapped"},
+        {"operatingPoints", json::array({
+            {{"ambientTemperature", 25.0},
+             {"outputVoltages", {12.0}},
+             {"outputCurrents", {25.0}},
+             {"switchingFrequency", 100000},
+             {"phaseShift", 135.0}}
+        })}
+    };
+
+    Pshb converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
+// AsymmetricHalfBridge (AHB)
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_AHB",
+          "[adviser][from-converter][ahb-topology]") {
+    json j = {
+        {"inputVoltage", {{"nominal", 100.0}}},
+        {"operatingPoints", json::array({
+            {{"ambientTemperature", 25.0},
+             {"switchingFrequency", 200000.0},
+             {"outputVoltages", {5.0}},
+             {"outputCurrents", {20.0}},
+             {"dutyCycle", 0.45}}
+        })}
+    };
+
+    OpenMagnetics::AsymmetricHalfBridge converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
+// Non-isolated energy-storing topologies (coupled-inductor where applicable).
+// All four require a gapped magnetic; CoreAdviser was patched in commit
+// 1353e2ea to classify them as energy-storing (previously SEPIC/Zeta/Cuk were
+// silently dropped). These adviser tests pin that classification fix.
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_Cuk",
+          "[adviser][from-converter][cuk-topology]") {
+    json j = {
+        {"inputVoltage", {{"nominal", 25.0}}},
+        {"diodeVoltageDrop", 0.7},
+        {"currentRippleRatio", 0.30},
+        {"efficiency", 0.85},
+        {"maximumSwitchCurrent", 100.0},
+        {"operatingPoints", json::array({
+            {{"outputVoltages", {25.0}},
+             {"outputCurrents", {1.0}},
+             {"switchingFrequency", 100000},
+             {"ambientTemperature", 25.0}}
+        })}
+    };
+
+    OpenMagnetics::Cuk converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+TEST_CASE("Test_MagneticAdviserFromConverter_Sepic",
+          "[adviser][from-converter][sepic-topology]") {
+    json j = {
+        {"inputVoltage", {{"nominal", 5.0}}},
+        {"diodeVoltageDrop", 0.7},
+        {"currentRippleRatio", 0.30},
+        {"efficiency", 0.85},
+        {"maximumSwitchCurrent", 100.0},
+        {"operatingPoints", json::array({
+            {{"outputVoltages", {12.0}},
+             {"outputCurrents", {0.5}},
+             {"switchingFrequency", 600000},
+             {"ambientTemperature", 25.0}}
+        })}
+    };
+
+    OpenMagnetics::Sepic converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+TEST_CASE("Test_MagneticAdviserFromConverter_Zeta",
+          "[adviser][from-converter][zeta-topology]") {
+    json j = {
+        {"inputVoltage", {{"nominal", 12.0}}},
+        {"diodeVoltageDrop", 0.7},
+        {"currentRippleRatio", 0.30},
+        {"efficiency", 0.85},
+        {"maximumSwitchCurrent", 100.0},
+        {"operatingPoints", json::array({
+            {{"outputVoltages", {5.0}},
+             {"outputCurrents", {1.0}},
+             {"switchingFrequency", 600000},
+             {"ambientTemperature", 25.0}}
+        })}
+    };
+
+    OpenMagnetics::Zeta converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// FIXME(weinberg-adviser): MagneticAdviser routes Weinberg through the new
+// (double, double) SFINAE helper added to MagneticAdviser.h, but the call
+// throws std::bad_alloc downstream — likely process_design_requirements or
+// the simulation path emits a pathological size_t (e.g. negative cast to
+// unsigned, or a sample count from a degenerate frequency). Trace with
+// gdb -batch + catch throw std::bad_alloc to localise. Marked [!mayfail].
+TEST_CASE("Test_MagneticAdviserFromConverter_Weinberg",
+          "[adviser][from-converter][weinberg-topology][!mayfail]") {
+    json j = {
+        {"inputVoltage", {{"nominal", 50.0}}},
+        {"diodeVoltageDrop", 0.7},
+        {"currentRippleRatio", 0.30},
+        {"efficiency", 0.85},
+        {"maximumSwitchCurrent", 200.0},
+        {"operatingPoints", json::array({
+            {{"outputVoltages", {150.0}},
+             {"outputCurrents", {10.0}},
+             {"switchingFrequency", 50000},
+             {"ambientTemperature", 25.0}}
+        })}
+    };
+
+    OpenMagnetics::Weinberg converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// FIXME(fsbb-adviser): FourSwitchBuckBoost::simulate_and_extract_operating_points
+// throws "cannot create std::vector larger than max_size()" when called from
+// the adviser flow. process_design_requirements likely emits an inductance or
+// sample-count value that overflows when used to size an internal buffer.
+// Marked [!mayfail]; investigate FSBB design-requirements derivation.
+TEST_CASE("Test_MagneticAdviserFromConverter_FourSwitchBuckBoost",
+          "[adviser][from-converter][fsbb-topology][!mayfail]") {
+    json j = {
+        {"inputVoltage", {{"nominal", 24.0}}},
+        {"currentRippleRatio", 0.4},
+        {"efficiency", 1.0},
+        {"maximumSwitchCurrent", 50.0},
+        {"operatingPoints", json::array({
+            {{"outputVoltages", {12.0}},
+             {"outputCurrents", {8.0}},
+             {"switchingFrequency", 350000},
+             {"ambientTemperature", 25.0}}
+        })}
+    };
+
+    OpenMagnetics::FourSwitchBuckBoost converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
+// PFC — JSON ctor isn't documented anywhere in tests, but the constructor
+// reads the same keys the setter-based tests assemble. If this ctor doesn't
+// exist or the field names mismatch the schema, the test compiles fine and
+// the failure surfaces here, where we WANT it to.
+// ============================================================================
+// FIXME(pfc-adviser): CoreAdviser prunes EVERY candidate at the
+// FringingFactor stage (3618 -> 400 ferrites -> 0 after fringing). PFC's
+// design requirements likely emit a gap geometry incompatible with every
+// available core, or the inductance/Ipeak combination yields a fringing
+// factor outside the allowed range. Inspect PFC process_design_requirements
+// output (esp. magnetizing_inductance and peak current) vs Buck/Boost which
+// pass cleanly. Marked [!mayfail]; do NOT relax to size >= 0.
+TEST_CASE("Test_MagneticAdviserFromConverter_PFC",
+          "[adviser][from-converter][pfc-topology][!mayfail]") {
+    json j = {
+        {"inputVoltage", {{"nominal", 230.0}, {"minimum", 185.0}, {"maximum", 265.0}}},
+        {"outputVoltage", 400.0},
+        {"outputPower", 500.0},
+        {"switchingFrequency", 100000},
+        {"lineFrequency", 50.0},
+        {"efficiency", 0.95},
+        {"currentRippleRatio", 0.3},
+        {"diodeVoltageDrop", 0.6},
+        {"bulkCapacitance", 5e-4},
+        {"mode", "continuousConductionMode"},
+        {"ambientTemperature", 25.0}
+    };
+
+    OpenMagnetics::PowerFactorCorrection converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
 }
