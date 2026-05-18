@@ -1630,9 +1630,17 @@ std::string Llc::generate_ngspice_circuit(
             // n_i has been doubled at design time so Vsec_pk = Vo/2.
             circuit << "Dh_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " DRECT\n";
             circuit << "Dl_o" << si << " vout_mid_o" << si << " sec_pos_o" << si << " DRECT\n";
-            // Snubbers
+            // Snubbers on BOTH diodes — at startup, with caps pre-charged via
+            // .ic to Vout/2 on vout_mid and 0 on sec_pos, Dl is fully forward-
+            // biased (Vmid > Vsecpos) through the near-ideal DRECT (N=0.01),
+            // collapsing the solver timestep. The Csnh on Dl provides a
+            // millivolt-scale RC at the diode terminals during the first
+            // microsecond so the operating point can be found without
+            // Dl turning fully on. Mirrors what FB does on all 4 diodes.
             circuit << "Rsnh_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100\n";
             circuit << "Csnh_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100p\n";
+            circuit << "Rsnl_o" << si << " vout_mid_o" << si << " sec_pos_o" << si << " 100\n";
+            circuit << "Csnl_o" << si << " vout_mid_o" << si << " sec_pos_o" << si << " 100p\n";
             // Sense + winding return
             circuit << "Vsec_sense_o" << si << " sec_pos_sec_o" << si << " sec_pos_o" << si << " 0\n";
             circuit << "Vsec_ret_o" << si << " vout_mid_o" << si << " sec_neg_sec_o" << si << " 0\n";
@@ -1665,8 +1673,20 @@ std::string Llc::generate_ngspice_circuit(
 
     circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
     circuit << ".options METHOD=GEAR TRTOL=7\n\n";
+    // UIC tells ngspice to skip the DC operating-point solve and start the
+    // transient straight from .ic values (with inductor currents = 0). That
+    // works for CT/FB/CD where the output node has a single cap charged to
+    // Vout. For VOLTAGE_DOUBLER the .ic constrains two stacked caps (vout_pos
+    // and vout_mid) but leaves the floating sec_pos node ambiguous — combined
+    // with the near-ideal DRECT model (N=0.01), the first timestep collapses
+    // ("trouble with drect-instance dh_o1"). Dropping UIC for VD lets ngspice
+    // solve a consistent DC operating point first; the .ic still seeds the
+    // caps so settling is fast.
+    bool useUic = (rectType != LlcRectifierType::VOLTAGE_DOUBLER);
     circuit << ".tran " << std::scientific << maxStep << " " << simTime
-            << " " << startTime << " " << maxStep << " UIC\n\n";
+            << " " << startTime << " " << maxStep;
+    if (useUic) circuit << " UIC";
+    circuit << "\n\n";
     circuit << ".save v(vdc_supply) i(Vdc_supply) v(pri_top) v(pri_bot) i(Vpri_sense)";
     if (isFullBridge) circuit << " v(bridge_a) v(bridge_b)";
     else              circuit << " v(sw_node) v(mid_point)";
