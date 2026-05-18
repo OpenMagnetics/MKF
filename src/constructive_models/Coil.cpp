@@ -2904,6 +2904,33 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
             }
         }
 
+        // wound_with grouping (e.g. AHB / Push-Pull / forward-derived center-tap
+        // halves "Sec a" + "Sec b"): the partner winding shares the
+        // representative's section, so the pattern legitimately omits its
+        // index — leaving its slot count at zero, which then trips
+        // wind_by_consecutive_turns's "Number of slots cannot be less than 1"
+        // guard. Inherit the representative's slot count for grouped windings
+        // so the wire-layout planner sees the same section count its sibling
+        // has. Without this, every Path-B-Load → re-wind cycle on a
+        // center-tapped magnetic throws an exception.
+        for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
+            if (numberSectionsPerWinding[wIdx] != 0) continue;
+            const auto& wwOpt = get_functional_description()[wIdx].get_wound_with();
+            if (!wwOpt || wwOpt->empty()) continue;
+            for (const auto& partnerName : wwOpt.value()) {
+                bool found = false;
+                for (size_t pIdx = 0; pIdx < numberWindings; ++pIdx) {
+                    if (get_functional_description()[pIdx].get_name() == partnerName &&
+                        numberSectionsPerWinding[pIdx] > 0) {
+                        numberSectionsPerWinding[wIdx] = numberSectionsPerWinding[pIdx];
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) break;
+            }
+        }
+
         auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
        
         auto wirePerWinding = get_wires();
@@ -3239,6 +3266,28 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
             if (orderedSection.first == ElectricalType::CONDUCTION) {
                 auto windingIndex = orderedSection.second.first;
                 numberSectionsPerWinding[windingIndex]++;
+            }
+        }
+        // wound_with grouping (see rectangular sibling for full rationale):
+        // center-tap partner winding shares its representative's section, so
+        // the pattern omits its index — inherit the representative's count to
+        // avoid the "Number of slots cannot be less than 1" throw on Path-B
+        // rewind of toroidal center-tapped coils.
+        for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
+            if (numberSectionsPerWinding[wIdx] != 0) continue;
+            const auto& wwOpt = get_functional_description()[wIdx].get_wound_with();
+            if (!wwOpt || wwOpt->empty()) continue;
+            for (const auto& partnerName : wwOpt.value()) {
+                bool found = false;
+                for (size_t pIdx = 0; pIdx < numberWindings; ++pIdx) {
+                    if (get_functional_description()[pIdx].get_name() == partnerName &&
+                        numberSectionsPerWinding[pIdx] > 0) {
+                        numberSectionsPerWinding[wIdx] = numberSectionsPerWinding[pIdx];
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) break;
             }
         }
         auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
