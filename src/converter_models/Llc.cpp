@@ -797,6 +797,15 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     // output. Multi-output secondaries are scaled per-output below.
     double n_main = get_n_for_output(0);
     double Vo = n_main * llcOpPoint.get_output_voltages()[0];
+    // For voltage-doubler, the cap stack provides 2·Vsec_pk to the load and
+    // n_main was doubled at design time (see process_design_requirements). The
+    // *reflected* output voltage seen at the magnetizing inductor is therefore
+    // n_main · Vout / 2, not n_main · Vout. Without this correction, the
+    // steady-state solver sees Vo = 2·Vi → no power transfer → ILs == IL and
+    // the analytical secondary current collapses to zero.
+    if (get_effective_rectifier_type() == LlcRectifierType::VOLTAGE_DOUBLER) {
+        Vo *= 0.5;
+    }
 
     if (magnetizingInductance <= 0) magnetizingInductance = 200e-6;
 
