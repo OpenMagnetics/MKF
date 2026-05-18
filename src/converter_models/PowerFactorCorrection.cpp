@@ -425,6 +425,15 @@ namespace OpenMagnetics {
         excitation.set_current(current);
         excitation.set_frequency(lineFrequency);
         excitation.set_voltage(voltage);
+        // PFC is a single-winding inductor: the inductor current IS the
+        // magnetizing current. Set it explicitly so downstream code does
+        // not try to re-derive it by integrating the switched voltage
+        // waveform — that integration is sampled at only 4 points per
+        // switching cycle over ~80k samples (line × switching scales),
+        // which accumulates enough numerical drift to produce a
+        // ~1000× overestimate of peak magnetizing current and breaks
+        // every gap / energy calculation downstream.
+        excitation.set_magnetizing_current(current);
 
         OperatingPoint operatingPoint;
         operatingPoint.set_excitations_per_winding({excitation});
@@ -680,6 +689,12 @@ namespace OpenMagnetics {
         excitation.set_current(current);
         excitation.set_frequency(lineFrequency);
         excitation.set_voltage(voltage);
+        // See note in process_operating_points (analytical path): PFC is a
+        // single-winding inductor, so the inductor current IS the
+        // magnetizing current. Setting it explicitly avoids the integrate-
+        // voltage fallback in pre_process_inputs producing a wildly wrong
+        // peak from the sparsely-sampled switched waveform.
+        excitation.set_magnetizing_current(current);
 
         OperatingPoint operatingPoint;
         operatingPoint.set_excitations_per_winding({excitation});

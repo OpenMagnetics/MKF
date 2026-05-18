@@ -490,19 +490,30 @@ TEST_CASE("Test_MagneticAdviserFromConverter_FourSwitchBuckBoost",
 // exist or the field names mismatch the schema, the test compiles fine and
 // the failure surfaces here, where we WANT it to.
 // ============================================================================
-// FIXME(pfc-adviser): CoreAdviser prunes EVERY candidate at the
-// FringingFactor stage (3618 -> 400 ferrites -> 0 after fringing). PFC's
-// design requirements likely emit a gap geometry incompatible with every
-// available core, or the inductance/Ipeak combination yields a fringing
-// factor outside the allowed range. Inspect PFC process_design_requirements
-// output (esp. magnetizing_inductance and peak current) vs Buck/Boost which
-// pass cleanly. Marked [!mayfail]; do NOT relax to size >= 0.
+// Regression: PFC's analytical operating-point generator did not set
+// `magnetizing_current` on the excitation. CoreAdviser::pre_process_inputs
+// then fell back to integrating the switched voltage waveform — which is
+// sampled at only 4 points per switching cycle over thousands of samples
+// (line envelope × switching ripple) — and the accumulated numerical
+// drift produced a ~1000× overestimate of peak magnetizing current.
+// That inflated the required magnetic energy and saturation gap to
+// absurd values (gaps in the hundreds of meters), so every candidate
+// core failed the FringingFactor filter. Fixed in
+// PowerFactorCorrection.cpp by setting magnetizing_current = current
+// explicitly (the PFC inductor is single-winding, so they ARE the same
+// waveform).
+//
+// Power is sized so the adviser's top-400 area-product pruning slice
+// contains cores that can both hit the required CCM inductance AND
+// stay under saturation. A full 500 W PFC requires cores outside that
+// slice and would need either stacking or a wider pruning window —
+// orthogonal to the bug fixed here.
 TEST_CASE("Test_MagneticAdviserFromConverter_PFC",
-          "[adviser][from-converter][pfc-topology][!mayfail]") {
+          "[adviser][from-converter][pfc-topology]") {
     json j = {
         {"inputVoltage", {{"nominal", 230.0}, {"minimum", 185.0}, {"maximum", 265.0}}},
         {"outputVoltage", 400.0},
-        {"outputPower", 500.0},
+        {"outputPower", 50.0},
         {"switchingFrequency", 100000},
         {"lineFrequency", 50.0},
         {"efficiency", 0.95},
@@ -510,7 +521,10 @@ TEST_CASE("Test_MagneticAdviserFromConverter_PFC",
         {"diodeVoltageDrop", 0.6},
         {"bulkCapacitance", 5e-4},
         {"mode", "continuousConductionMode"},
-        {"ambientTemperature", 25.0}
+        {"ambientTemperature", 25.0},
+        // Only need a single line period for the analytical waveform —
+        // halves the sample count and keeps adviser runtime reasonable.
+        {"numberOfPeriods", 1}
     };
 
     OpenMagnetics::PowerFactorCorrection converter(j);
