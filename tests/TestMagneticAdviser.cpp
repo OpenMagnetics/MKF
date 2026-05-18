@@ -754,6 +754,7 @@ namespace {
             try {
                 MagneticAdviser MagneticAdviser;
                 auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+                REQUIRE(masMagnetics.size() > 0);
                 count--;
             }
             catch (...) {
@@ -803,7 +804,8 @@ namespace {
         MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
 
-        if (masMagnetics.size() > 0) {
+        REQUIRE(masMagnetics.size() > 0);
+        {
             auto masMagnetic = masMagnetics[0].first;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
@@ -859,7 +861,8 @@ namespace {
         MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
 
-        if (masMagnetics.size() > 0) {
+        REQUIRE(masMagnetics.size() > 0);
+        {
             auto masMagnetic = masMagnetics[0].first;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
@@ -915,7 +918,8 @@ namespace {
         MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
 
-        if (masMagnetics.size() > 0) {
+        REQUIRE(masMagnetics.size() > 0);
+        {
             auto masMagnetic = masMagnetics[0].first;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
@@ -976,7 +980,8 @@ namespace {
         MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
 
-        if (masMagnetics.size() > 0) {
+        REQUIRE(masMagnetics.size() > 0);
+        {
             auto masMagnetic = masMagnetics[0].first;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
@@ -1008,6 +1013,7 @@ namespace {
         MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 2);
 
+        REQUIRE(masMagnetics.size() > 0);
         for (auto [mas, scoring] : masMagnetics) {
             std::string name = mas.get_magnetic().get_manufacturer_info().value().get_reference().value();
             auto masMagnetic = mas;
@@ -1243,7 +1249,8 @@ namespace {
         
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, weights, 6);
 
-        if (plot && masMagnetics.size() > 0) {
+        REQUIRE(masMagnetics.size() > 0);
+        if (plot) {
             auto masMagnetic = masMagnetics[0].first;
             // MagneticAdviser::preview_magnetic(masMagnetic);
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
@@ -1294,7 +1301,8 @@ namespace {
         MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
 
-        if (plot && masMagnetics.size() > 0) {
+        REQUIRE(masMagnetics.size() > 0);
+        if (plot) {
             auto masMagnetic = masMagnetics[0].first;
             // MagneticAdviser::preview_magnetic(masMagnetic);
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
@@ -2119,6 +2127,7 @@ namespace {
         MagneticAdviser magneticAdviser;
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 50);
 
+        REQUIRE(masMagnetics.size() > 0);
 
         // REQUIRE(masMagnetics.size() == 1);
         // double bestScoring = masMagnetics[0].second;
@@ -2170,11 +2179,10 @@ namespace {
             painter.paint_coil_turns(masMagnetics[0].first.get_magnetic());
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            REQUIRE(std::filesystem::exists(outFile));
             #else
                 INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
-
-            REQUIRE(std::filesystem::exists(outFile));
 
         }
 
@@ -2742,6 +2750,7 @@ namespace {
 
         MagneticAdviser magneticAdviser(false);
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, magneticsCache.get(), filterFlow, 9);
+        REQUIRE(masMagnetics.size() > 0);
     }
 
     TEST_CASE("Test_CatalogueAdviser_Web_6", "[adviser][magnetic-adviser][catalogue][bug]") {
@@ -2765,6 +2774,7 @@ namespace {
 
         MagneticAdviser magneticAdviser(false);
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, magneticsCache.get(), filterFlow, 9);
+        REQUIRE(masMagnetics.size() > 0);
     }
 
     TEST_CASE("Test_CatalogueAdviser_Web_7", "[adviser][magnetic-adviser][catalogue][bug]") {
@@ -2788,6 +2798,7 @@ namespace {
 
         MagneticAdviser magneticAdviser(false);
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, magneticsCache.get(), filterFlow, 9);
+        REQUIRE(masMagnetics.size() > 0);
     }
 
     TEST_CASE("Test_CatalogueAdviser_Web_8", "[adviser][magnetic-adviser][catalogue][bug]") {
@@ -2811,6 +2822,7 @@ namespace {
 
         MagneticAdviser magneticAdviser(false);
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, magneticsCache.get(), filterFlow, 9);
+        REQUIRE(masMagnetics.size() > 0);
     }
 
     TEST_CASE("Test_CatalogueAdviser_Power_Found", "[adviser][magnetic-adviser][catalogue]") { 
@@ -4975,11 +4987,10 @@ TEST_CASE("Test_PushPull_Simulated_MagneticAdviser", "[adviser][topology-matrix]
     
     // Get simulated inputs
     auto inputs = get_inputs_from_converter_simulated(converter);
-    
-    // Just test CoreAdviser since full MagneticAdviser is too slow
-    CoreAdviser coreAdviser;
-    auto coreResults = coreAdviser.get_advised_core(inputs, 3);
-    REQUIRE(coreResults.size() > 0);
+
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(inputs, 1);
+    REQUIRE(results.size() > 0);
 }
 
 TEST_CASE("Test_PushPull_Simulated_SeparateAdvisers", "[adviser][topology-matrix][push-pull-topology][simulated][separate-advisers]") {
@@ -5159,11 +5170,10 @@ TEST_CASE("Test_IsolatedBuckBoost_Simulated_MagneticAdviser", "[adviser][topolog
     
     // Get simulated inputs
     auto inputs = get_inputs_from_converter_simulated(converter);
-    
-    // For simulated tests, just verify CoreAdviser works (full MagneticAdviser is too slow)
-    CoreAdviser coreAdviser;
-    auto coreResults = coreAdviser.get_advised_core(inputs, 3);
-    REQUIRE(coreResults.size() > 0);
+
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(inputs, 1);
+    REQUIRE(results.size() > 0);
 }
 
 TEST_CASE("Test_IsolatedBuckBoost_Simulated_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck-boost-topology][simulated][separate-advisers]") {

@@ -605,7 +605,8 @@ TEST_CASE("Test_Dab_MagneticAdviser_LightLoad",
 
     SECTION("MagneticAdviser runs without throwing at reduced load") {
         MagneticAdviser adviser;
-        REQUIRE_NOTHROW(adviser.get_advised_magnetic(inputs, 2));
+        auto results = adviser.get_advised_magnetic(inputs, 2);
+        REQUIRE(results.size() >= 1);
     }
 }
 
@@ -794,8 +795,8 @@ TEST_CASE("Test_Dab_MagneticAdviser_AfterSimulation_SPS",
         inputs.set_design_requirements(req);
         inputs.set_operating_points(simOPs);
         MagneticAdviser adviser;
-        // Simulated OPs may lack processed metadata CoilAdviser expects; best-effort.
-        try { adviser.get_advised_magnetic(inputs, 2); } catch (...) { /* ok */ }
+        auto results = adviser.get_advised_magnetic(inputs, 2);
+        REQUIRE(results.size() >= 1);
     }
 }
 
@@ -874,13 +875,12 @@ TEST_CASE("Test_Dab_MagneticAdviser_Simulated_AllModes",
         auto ops = dab.simulate_and_extract_operating_points(trs, Lm);
         REQUIRE(ops.size() >= 1);
         REQUIRE(ops[0].get_excitations_per_winding().size() >= 2);
-        // Simulated OPs may lack some processed metadata that CoilAdviser needs.
-        // The important check here is that simulation succeeded; adviser is best-effort.
         OpenMagnetics::Inputs inputs;
         inputs.set_design_requirements(req);
         inputs.set_operating_points(ops);
         MagneticAdviser adviser;
-        try { adviser.get_advised_magnetic(inputs, 1); } catch (...) { /* optional adviser run */ }
+        auto results = adviser.get_advised_magnetic(inputs, 1);
+        REQUIRE(results.size() >= 1);
     };
 
     SECTION("SPS → Simulated → MagneticAdviser") { run(make_adv_dab_json()); }

@@ -50,6 +50,7 @@ namespace {
         MagneticAdviser MagneticAdviser;
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+        REQUIRE(masMagnetics.size() > 0);
     }
 
     TEST_CASE("MagneticSimulatorJsonHV", "[processor][magnetic-simulator][smoke-test]") {
@@ -70,6 +71,7 @@ namespace {
         MagneticAdviser MagneticAdviser;
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+        REQUIRE(masMagnetics.size() > 0);
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
             auto simulatedMas = masMagnetics[i].first;
@@ -114,6 +116,7 @@ namespace {
         MagneticAdviser MagneticAdviser;
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+        REQUIRE(masMagnetics.size() > 0);
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
             auto simulatedMas = masMagnetics[i].first;
