@@ -138,7 +138,11 @@ class Inputs : public MAS::Inputs {
 
     static WaveformLabel try_guess_waveform_label(Waveform waveform);
     static Waveform create_waveform(Processed processed, double frequency);
-    static Waveform create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle=0.5, double offset=0, double deadTime=0, double skew=0);
+    // phase: radians, applied to SINUSOIDAL waveforms only (positive phase
+    // advances the waveform — e.g. phase=pi/2 turns sin(wt) into sin(wt+pi/2)=cos(wt),
+    // so the resulting signal leads the same-frequency sine by 90 degrees).
+    // Ignored for non-sinusoidal labels (use `skew` for those).
+    static Waveform create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle=0.5, double offset=0, double deadTime=0, double skew=0, double phase=0);
     static Processed calculate_basic_processed_data(Waveform waveform);
     static Waveform compress_waveform(const Waveform& waveform);
 

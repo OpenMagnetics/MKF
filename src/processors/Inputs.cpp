@@ -561,7 +561,7 @@ Waveform Inputs::create_waveform(Processed processed, double frequency) {
 }
 
 
-Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle, double offset, double deadTime, double skew) {
+Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle, double offset, double deadTime, double skew, double phase) {
     Waveform waveform;
     std::vector<double> data;
     std::vector<double> time;
@@ -690,7 +690,7 @@ Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double 
             for (size_t i = 0; i < settings.get_inputs_number_points_sampled_waveforms(); ++i) {
                 double angle = i * 2 * std::numbers::pi / (settings.get_inputs_number_points_sampled_waveforms() - 1);
                 time.push_back(i * period / (settings.get_inputs_number_points_sampled_waveforms() - 1));
-                data.push_back((sin(angle) * peakToPeak / 2) + offset);
+                data.push_back((sin(angle + phase) * peakToPeak / 2) + offset);
             }
             break;
         }

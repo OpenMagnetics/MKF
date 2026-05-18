@@ -69,6 +69,29 @@ double CommonModeChoke::noiseParamsToImpedance(double parasiticCap_pF,
     return Zcm;
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// V_mains → CM excitation scaling
+//
+// The switch-node dV/dt of an off-line converter scales linearly with the
+// bus voltage for a fixed device rise time:
+//     dV/dt = V_bus / t_rise,  V_bus ≈ √2 · V_mains
+// and the CM noise current the chassis parasitic injects is I_cm = C·dV/dt.
+// So when the user sweeps V_mains while leaving `parasiticCap_pF` and the
+// reference `dvdt_V_ns` alone, both the analytical and simulated waveforms
+// should scale linearly with V_mains.
+//
+// We calibrate against V_REF = 230 V (the wizard's nominal mains default),
+// so the historical behaviour at V_mains = 230 V is unchanged. Users who
+// supply dvdt_V_ns for a specific bus voltage are implicitly declaring that
+// the figure is correct at V_REF; the model then extrapolates linearly to
+// any other mains voltage. At V_mains = 0 the scaling vanishes — physically
+// correct: no bus, no switch-node swing, no CM noise.
+static constexpr double CMC_VREF_VMAINS = 230.0;
+static double cmExcitationScaling(double operatingVoltage_V) {
+    if (operatingVoltage_V <= 0.0) return 0.0;
+    return operatingVoltage_V / CMC_VREF_VMAINS;
+}
+
 double CommonModeChoke::limitForRegulatoryStandard(const std::string& name) {
     // Quasi-peak conducted-emissions limits at 150 kHz (dBµV).
     // CISPR 32 Class A / FCC Part 15 Class A (industrial): 79 dBµV
@@ -328,6 +351,10 @@ std::vector<OperatingPoint> CommonModeChoke::process_operating_points(
     } else {
         iCmPeak = 0.1;
     }
+    // Scale the CM ripple with the user's mains voltage (see cmExcitationScaling).
+    // Calibrated so V_mains = 230 V is a no-op; halving the mains halves I_cm
+    // (and therefore the analytical V across the choke), doubling doubles it.
+    iCmPeak *= cmExcitationScaling(resolve_dimensional_values(get_operating_voltage()));
 
     // CM voltage across the inductance: V = L · ω · I_cm_peak
     double omega      = 2.0 * M_PI * excFreq;
@@ -354,18 +381,28 @@ std::vector<OperatingPoint> CommonModeChoke::process_operating_points(
             excFreq,
             0.5,                         // duty cycle (unused for sinusoidal)
             get_operating_current(),     // DC offset = nominal line current
-            0                            // phase
+            0,                           // deadTime (unused for sinusoidal)
+            0,                           // skew
+            0                            // phase (radians) — I = I_peak * sin(wt)
         );
 
         // ── Voltage waveform ───────────────────────────────────────
-        // Sinusoidal CM voltage induced by the CM inductance
+        // Sinusoidal CM voltage induced by the CM inductance.
+        // For an ideal inductor V = L*dI/dt, so when I = I_peak*sin(wt)
+        // the voltage is V = L*w*I_peak*cos(wt), i.e. it LEADS the
+        // current by exactly 90 degrees (pi/2 rad). Without this phase
+        // shift the analytical path produces V and I in phase, which
+        // disagrees with the simulated (ngspice) path and is unphysical
+        // for a pure inductor.
         Waveform voltageWaveform = Inputs::create_waveform(
             WaveformLabel::SINUSOIDAL,
             vCmPeak * 2.0,
             excFreq,
             0.5,
-            0.0,  // no DC voltage offset across the CM inductance
-            0
+            0.0,                         // no DC voltage offset across the CM inductance
+            0,                           // deadTime
+            0,                           // skew
+            M_PI / 2.0                   // phase — V leads I by 90 degrees
         );
 
         auto excitation = complete_excitation(
@@ -737,8 +774,11 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
     // CMC design wizards (Würth REDEXPERT, Coilcraft Analyzer).
     double excitationFreq = (dominantFrequency > 0.0) ? dominantFrequency : 150e3;
 
-    // CM noise current amplitude: I_cm = C_parasitic · dV/dt
-    double cmNoiseCurrent = (parasiticCap_pF_param * 1e-12) * (dvdt_V_ns_param * 1e9);
+    // CM noise current amplitude: I_cm = C_parasitic · dV/dt, scaled by the
+    // user's mains voltage relative to the V_REF calibration point so both
+    // simulated and analytical paths respond identically to V_mains changes.
+    double cmNoiseCurrent = (parasiticCap_pF_param * 1e-12) * (dvdt_V_ns_param * 1e9)
+                          * cmExcitationScaling(resolve_dimensional_values(get_operating_voltage()));
 
     // Simulation timing. We integrate over (steady + measurement) periods of
     // the excitation frequency and ask ngspice (via the 4th `.tran` argument

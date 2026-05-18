@@ -938,7 +938,8 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     }
 
     SECTION("3-winding CMC produces identical CM waveforms on all three windings") {
-        json j = makeCmcJson(400.0, 5.0, 50.0, 3, 1000.0, 150e3);
+        const double vMains = 400.0;
+        json j = makeCmcJson(vMains, 5.0, 50.0, 3, 1000.0, 150e3);
         j["parasiticCap_pF"] = cap_pF;
         j["dvdt_V_ns"]       = dvdt;
         OpenMagnetics::CommonModeChoke cmc(j);
@@ -950,10 +951,17 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
         double p0 = peakACOf(excs[0].get_current()->get_waveform()->get_data());
         double p1 = peakACOf(excs[1].get_current()->get_waveform()->get_data());
         double p2 = peakACOf(excs[2].get_current()->get_waveform()->get_data());
-        INFO("3-wire I peaks: " << p0 << ", " << p1 << ", " << p2);
-        CHECK_THAT(p0, Catch::Matchers::WithinRel(iCmPeak, 0.05));
-        CHECK_THAT(p1, Catch::Matchers::WithinRel(iCmPeak, 0.05));
-        CHECK_THAT(p2, Catch::Matchers::WithinRel(iCmPeak, 0.05));
+        // cmExcitationScaling (CommonModeChoke.cpp:90) linearly scales the
+        // CM noise current by V_mains / 230 V (the calibration reference).
+        // This 3-winding section drives at 400 V so we must scale iCmPeak
+        // by the same factor; the wizard-default sections above run at 230
+        // V and use the unscaled iCmPeak directly.
+        const double iCmPeakScaled = iCmPeak * (vMains / 230.0);
+        INFO("3-wire I peaks: " << p0 << ", " << p1 << ", " << p2
+             << " (expected " << iCmPeakScaled << " A at V_mains=" << vMains << ")");
+        CHECK_THAT(p0, Catch::Matchers::WithinRel(iCmPeakScaled, 0.05));
+        CHECK_THAT(p1, Catch::Matchers::WithinRel(iCmPeakScaled, 0.05));
+        CHECK_THAT(p2, Catch::Matchers::WithinRel(iCmPeakScaled, 0.05));
     }
 
     SECTION("analytical and simulated frequencies agree") {
@@ -1070,6 +1078,44 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_WaveformShapeEquality",
         INFO("crossings: analytical=" << aC << ", simulated=" << sC);
         CHECK(aC >= 1);
         CHECK(sC >= 3);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Physics: for an ideal inductor V = L·dI/dt, so V leads I by 90°.
+    // The analytical path used to emit both V and I as pure sin(ωt)
+    // (no phase offset on the voltage), giving V and I in phase —
+    // unphysical, and inconsistent with the simulated path where ngspice
+    // integrates dI/dt and naturally produces the 90° lead.
+    // create_waveform now accepts a `phase` (radians) for SINUSOIDAL;
+    // CommonModeChoke passes π/2 for the voltage. This section locks
+    // that in: on the analytical samples, the index of peak V must
+    // precede the index of peak I by ≈ N_samples/4 (= T/4 = 90°).
+    // ─────────────────────────────────────────────────────────────────────
+    SECTION("analytical V leads I by ~90 degrees (inductor physics)") {
+        auto argmaxAC = [](const std::vector<double>& d) {
+            double m = std::accumulate(d.begin(), d.end(), 0.0) / d.size();
+            size_t idx = 0;
+            double best = -std::numeric_limits<double>::infinity();
+            for (size_t i = 0; i < d.size(); ++i) {
+                double v = d[i] - m;  // strip DC bias before peak hunting
+                if (v > best) { best = v; idx = i; }
+            }
+            return idx;
+        };
+        REQUIRE(aI.size() == aV.size());
+        REQUIRE(aI.size() > 8);
+        size_t iI  = argmaxAC(aI);
+        size_t iV  = argmaxAC(aV);
+        size_t N   = aI.size();
+        // Positive lead: V peaks BEFORE I (smaller index). Compute lead
+        // as (iI − iV) mod N to handle the wraparound at sample 0 / N−1.
+        long long Nl   = static_cast<long long>(N);
+        long long lead = ((static_cast<long long>(iI) - static_cast<long long>(iV)) % Nl + Nl) % Nl;
+        double leadFraction = static_cast<double>(lead) / static_cast<double>(N);
+        INFO("analytical peak indices: V=" << iV << " I=" << iI << " N=" << N
+             << " → V leads I by " << (leadFraction * 360.0) << " degrees");
+        // Expect ≈ 0.25 (90°); allow ±10% of a period (~36°) for sampling slack.
+        CHECK_THAT(leadFraction, Catch::Matchers::WithinAbs(0.25, 0.10));
     }
 }
 
