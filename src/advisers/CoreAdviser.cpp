@@ -111,8 +111,25 @@ bool is_energy_storing_topology(std::optional<Topologies> topology) {
         case Topologies::BUCK_CONVERTER:
         case Topologies::BOOST_CONVERTER:
         case Topologies::ISOLATED_BUCK_BOOST_CONVERTER:
+        // Isolated Buck (Fly-Buck) is a synchronous buck with a coupled-inductor
+        // secondary harvesting auxiliary outputs. The primary side stores energy
+        // in the gap each switching cycle (buck inductor behavior). Industry
+        // convention (TI AN-2292, Coilcraft) classifies the magnetic as a
+        // "Fly-Buck coupled inductor", not a transformer -> needs a gapped core.
+        case Topologies::ISOLATED_BUCK_CONVERTER:
         case Topologies::POWER_FACTOR_CORRECTION:
         case Topologies::DIFFERENTIAL_MODE_CHOKE:
+        // SEPIC primary inductor L1 carries the full input DC current and stores
+        // energy in the gap each switching cycle (buck-like). Even in the coupled-
+        // inductor variant the magnetic returned by process_design_requirements is
+        // L1 (see MAS schema sepic.json) — still energy-storing. Needs a gap.
+        case Topologies::SEPIC_CONVERTER:
+        // Zeta is the dual of SEPIC: L1 is again a magnetizing/energy-storing
+        // inductor (TI SLYT411 / SLVA721). Same classification as SEPIC.
+        case Topologies::ZETA_CONVERTER:
+        // Cuk: the input inductor L1 stores energy in the gap; the magnetic
+        // produced by the wizard is L1 (or the coupled L1-L2 inductor).
+        case Topologies::CUK_CONVERTER:
             return true;
             
         // Transformer topologies (forward-derived)
@@ -124,7 +141,6 @@ bool is_energy_storing_topology(std::optional<Topologies> topology) {
         case Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
         case Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER:
         case Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER:
-        case Topologies::ISOLATED_BUCK_CONVERTER:
         case Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER:
         case Topologies::LLC_RESONANT_CONVERTER:
         case Topologies::CLLC_RESONANT_CONVERTER:
