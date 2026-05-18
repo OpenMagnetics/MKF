@@ -495,7 +495,9 @@ TEST_CASE("Test_Weinberg_AdvancedWeinberg_Process_RoundTrip",
     REQUIRE(Nnom.has_value());
     REQUIRE_THAT(Nnom.value(), WithinRel(n, 1e-3));
     REQUIRE(inputs.get_operating_points().size() == 1);
-    REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding().size() == 1);
+    // process_design_requirements declares 2 isolation sides (combined Pri +
+    // combined Sec), so process_operating_points emits 2 excitations.
+    REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding().size() == 2);
 }
 
 // =====================================================================
@@ -608,7 +610,7 @@ TEST_CASE("Test_Weinberg_VoltSecondBalance_AllWindings_V1",
 
     SECTION("analytical path") {
         auto ops = w.process_operating_points(std::vector<double>{1.0/3.0}, 200e-6);
-        weinberg_check_all_windings(ops, "analytical(V1)", 0.02, /*windings*/ 1);
+        weinberg_check_all_windings(ops, "analytical(V1)", 0.02, /*windings*/ 2);
     }
     SECTION("SPICE path") {
         NgspiceRunner runner;
@@ -616,7 +618,7 @@ TEST_CASE("Test_Weinberg_VoltSecondBalance_AllWindings_V1",
         w.set_num_steady_state_periods(400);
         w.set_num_periods_to_extract(1);
         auto ops = w.simulate_and_extract_operating_points(1.0/3.0, 200e-6);
-        weinberg_check_all_windings(ops, "SPICE(V1)", 0.05, /*windings*/ 1);
+        weinberg_check_all_windings(ops, "SPICE(V1)", 0.05, /*windings*/ 2);
     }
 }
 
@@ -628,7 +630,7 @@ TEST_CASE("Test_Weinberg_VoltSecondBalance_AllWindings_V2_Bridge",
 
     SECTION("analytical path") {
         auto ops = w.process_operating_points(std::vector<double>{1.0/3.0}, 200e-6);
-        weinberg_check_all_windings(ops, "analytical(V2)", 0.02, /*windings*/ 1);
+        weinberg_check_all_windings(ops, "analytical(V2)", 0.02, /*windings*/ 2);
     }
     SECTION("SPICE path") {
         NgspiceRunner runner;
@@ -636,7 +638,7 @@ TEST_CASE("Test_Weinberg_VoltSecondBalance_AllWindings_V2_Bridge",
         w.set_num_steady_state_periods(400);
         w.set_num_periods_to_extract(1);
         auto ops = w.simulate_and_extract_operating_points(1.0/3.0, 200e-6);
-        weinberg_check_all_windings(ops, "SPICE(V2)", 0.05, /*windings*/ 1);
+        weinberg_check_all_windings(ops, "SPICE(V2)", 0.05, /*windings*/ 2);
     }
 }
 

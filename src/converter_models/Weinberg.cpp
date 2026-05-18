@@ -302,6 +302,30 @@ namespace OpenMagnetics {
                 switchingFrequency, 0.5, 0.0, 0);
             auto excitation = complete_excitation(iPri, vPri, switchingFrequency, "Primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+
+            // ---- Combined Secondary excitation ----
+            // process_design_requirements declares 2 isolation sides (combined
+            // primary + combined secondary), so the magnetic has a secondary
+            // winding that MUST get an excitation — CoilAdviser indexes into
+            // excitations_per_winding[i] for every i in [0, num_windings).
+            // Reflect the primary by the turns ratio n = Np/Ns:
+            //   V_sec(t) = V_pri(t) / n,   I_sec(t) = I_pri(t) * n
+            // For the bipolar-rectangular primary voltage the secondary is
+            // also bipolar-rectangular with amplitude 2·Vin/n. The secondary
+            // current shape mirrors the primary current shape, scaled by n.
+            const double nInv = (turnsRatio > 1e-9) ? (1.0 / turnsRatio) : 0.0;
+            Waveform iSec;
+            std::vector<double> iSecData;
+            iSecData.reserve(iData.size());
+            for (double v : iData) iSecData.push_back(v * turnsRatio);
+            iSec.set_ancillary_label(WaveformLabel::CUSTOM);
+            iSec.set_data(iSecData);
+            iSec.set_time(iTime);
+            Waveform vSec = Inputs::create_waveform(
+                WaveformLabel::BIPOLAR_RECTANGULAR, 2.0 * inputVoltage * nInv,
+                switchingFrequency, 0.5, 0.0, 0);
+            auto excitationSec = complete_excitation(iSec, vSec, switchingFrequency, "Secondary");
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitationSec);
         }
 
         // ---- L1 input coupled-L (per winding) waveforms ----
@@ -849,7 +873,19 @@ namespace OpenMagnetics {
 
         // Probes
         circuit << "* Probes\n";
-        circuit << "Bvpri_diff vpri_diff 0 V=V(vab)\n\n";
+        circuit << "Bvpri_diff vpri_diff 0 V=V(vab)\n";
+        // Combined secondary probes (synthesized for MAS waveform extraction).
+        // The magnetic declares 2 windings (combined Pri + combined Sec), so
+        // CoilAdviser needs an excitation for the secondary winding too. We
+        // synthesize:
+        //   v_sec_combined(t) = V(secCT_a_mid) - V(secCT_b_mid)
+        //                       end-to-end voltage across the combined CT sec
+        //   i_sec_combined(t) = I(Vsec_pos_sense) - I(Vsec_neg_sense)
+        //                       bipolar AC view of the rectified secondary
+        //                       current (opposite-dot halves contribute with
+        //                       opposite signs in the combined winding).
+        circuit << "Bvsec_combined vsec_combined 0 V=V(secCT_a_mid)-V(secCT_b_mid)\n";
+        circuit << "Bisec_combined isec_combined 0 V=I(Vsec_pos_sense)-I(Vsec_neg_sense)\n\n";
 
         circuit << "* Transient analysis (UIC enables .ic)\n";
         circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime
@@ -857,6 +893,7 @@ namespace OpenMagnetics {
 
         circuit << "* Output signals\n";
         circuit << ".save v(vpri_diff) v(vin_dc) v(vab) v(out_node) "
+                << "v(vsec_combined) v(isec_combined) "
                 << "i(Vin_sense) i(Vout_sense)";
         if (isBridge) {
             circuit << " i(Vpri_sense)";
@@ -911,10 +948,11 @@ namespace OpenMagnetics {
                 }
 
                 NgspiceRunner::WaveformNameMapping waveformMapping = {
-                    {{"voltage", "vpri_diff"}, {"current", priCurrentBranch}}
+                    {{"voltage", "vpri_diff"},      {"current", priCurrentBranch}},
+                    {{"voltage", "vsec_combined"},  {"current", "isec_combined"}}
                 };
-                std::vector<std::string> windingNames = {"Primary"};
-                std::vector<bool> flipCurrentSign = {false};
+                std::vector<std::string> windingNames = {"Primary", "Secondary"};
+                std::vector<bool> flipCurrentSign = {false, false};
 
                 OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
                     simResult, waveformMapping, switchingFrequency, windingNames,

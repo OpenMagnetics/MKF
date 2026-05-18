@@ -423,14 +423,13 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Zeta",
 }
 
 
-// FIXME(weinberg-adviser): MagneticAdviser routes Weinberg through the new
-// (double, double) SFINAE helper added to MagneticAdviser.h, but the call
-// throws std::bad_alloc downstream — likely process_design_requirements or
-// the simulation path emits a pathological size_t (e.g. negative cast to
-// unsigned, or a sample count from a degenerate frequency). Trace with
-// gdb -batch + catch throw std::bad_alloc to localise. Marked [!mayfail].
+// Weinberg through MagneticAdviser: process_design_requirements declares
+// 2 isolation sides (combined Pri + combined Sec), so the simulated
+// operating points must emit excitations for BOTH windings. The SPICE
+// netlist synthesizes combined-secondary V and I via B-sources from the
+// CT-half probes (see Weinberg::generate_ngspice_circuit).
 TEST_CASE("Test_MagneticAdviserFromConverter_Weinberg",
-          "[adviser][from-converter][weinberg-topology][!mayfail]") {
+          "[adviser][from-converter][weinberg-topology]") {
     json j = {
         {"inputVoltage", {{"nominal", 50.0}}},
         {"diodeVoltageDrop", 0.7},
