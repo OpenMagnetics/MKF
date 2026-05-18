@@ -2130,6 +2130,11 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
                 // Calculate processed data for current
                 auto currentProcessed = Inputs::calculate_processed_data(waveform, frequency, true);
                 current.set_processed(currentProcessed);
+                // Harmonics: downstream consumers (Inputs::prune_harmonics, core/copper
+                // loss models) require .harmonics() to be set on every SignalDescriptor
+                // returned from a simulation. Skipping this caused bad_optional_access
+                // in DAB / resonant simulated operating-point flows.
+                current.set_harmonics(Inputs::calculate_harmonics_data(waveform, frequency));
                 excitation.set_current(current);
             }
             if (column.windingIndex == windingIndex && column.type == DataType::MAGNETIZING_CURRENT) {
@@ -2139,6 +2144,7 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
                 // Calculate processed data for magnetizing current
                 auto currentProcessed = Inputs::calculate_processed_data(waveform, frequency, true);
                 current.set_processed(currentProcessed);
+                current.set_harmonics(Inputs::calculate_harmonics_data(waveform, frequency));
                 excitation.set_magnetizing_current(current);
             }
             if (column.windingIndex == windingIndex && column.type == DataType::VOLTAGE) {
@@ -2148,6 +2154,7 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
                 // Calculate processed data for voltage
                 auto voltageProcessed = Inputs::calculate_processed_data(waveform, frequency, true);
                 voltage.set_processed(voltageProcessed);
+                voltage.set_harmonics(Inputs::calculate_harmonics_data(waveform, frequency));
                 excitation.set_voltage(voltage);
             }
         }

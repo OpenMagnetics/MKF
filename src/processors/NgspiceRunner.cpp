@@ -968,6 +968,12 @@ OperatingPoint NgspiceRunner::extract_operating_point(
                 // Calculate processed data for voltage
                 auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, frequency, true);
                 voltage.set_processed(voltageProcessed);
+                // Harmonics: downstream consumers (Inputs::prune_harmonics, core-loss
+                // models, proximity-effect analyzers) require .harmonics() to be
+                // populated on every SignalDescriptor produced by a simulation.
+                // Skipping this here caused bad_optional_access in DAB simulated
+                // operating-point flows (Inputs.cpp:1868). Populate as a contract.
+                voltage.set_harmonics(Inputs::calculate_harmonics_data(voltageWaveform, frequency));
                 excitation.set_voltage(voltage);
             }
         }
@@ -999,6 +1005,8 @@ OperatingPoint NgspiceRunner::extract_operating_point(
                 // Calculate processed data for current
                 auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, frequency, true);
                 current.set_processed(currentProcessed);
+                // Harmonics required by downstream consumers (see voltage path above).
+                current.set_harmonics(Inputs::calculate_harmonics_data(currentWaveform, frequency));
                 excitation.set_current(current);
             }
         }
