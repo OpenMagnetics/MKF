@@ -30,6 +30,8 @@
 #include "converter_models/Zeta.h"
 #include "converter_models/Weinberg.h"
 #include "converter_models/FourSwitchBuckBoost.h"
+#include "converter_models/CurrentTransformer.h"
+#include "converter_models/DifferentialModeChoke.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
@@ -520,6 +522,62 @@ TEST_CASE("Test_MagneticAdviserFromConverter_PFC",
     OpenMagnetics::PowerFactorCorrection converter(j);
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
+// CurrentTransformer and DifferentialModeChoke don't inherit from Topology
+// (no process_design_requirements, no get_advised_magnetic_from_converter
+// SFINAE path). They expose process() → Inputs directly, so the adviser
+// contract is exercised through the lower-level get_advised_magnetic(inputs)
+// entry point. Same end-to-end semantics: wizard must return >=1 candidate.
+// ============================================================================
+TEST_CASE("Test_MagneticAdviser_CurrentTransformer",
+          "[adviser][from-inputs][current-transformer-topology]") {
+    json j;
+    j["diodeVoltageDrop"] = 0.7;
+    j["frequency"] = 150000;
+    j["burdenResistor"] = 2;
+    j["maximumDutyCycle"] = 0.9;
+    j["maximumPrimaryCurrentPeak"] = 120;
+    j["waveformLabel"] = "sinusoidal";
+    j["ambientTemperature"] = 25;
+
+    OpenMagnetics::CurrentTransformer ct(j);
+    auto inputs = ct.process(/*turnsRatio*/ 0.01);
+
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(inputs, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// DifferentialModeChoke.process() → Inputs → get_advised_magnetic. This is
+// the WebFrontend wizard path; pins the contract that DMC wizard inputs
+// produce >=1 advised magnetic. Distinct from
+// Test_MagneticAdviser_DMC_Default (TestMagneticAdviser.cpp:1125) which
+// constructs a raw CoreAdviser and exercises only the core-pruning half.
+TEST_CASE("Test_MagneticAdviser_DifferentialModeChoke",
+          "[adviser][from-inputs][dmc-topology]") {
+    json j;
+    j["configuration"] = "singlePhaseBalanced";
+    j["inputVoltage"] = {{"nominal", 230}};
+    j["operatingCurrent"] = 10;
+    j["lineFrequency"] = 50;
+    j["switchingFrequency"] = 100000;
+    j["ambientTemperature"] = 25;
+    j["minimumImpedance"] = json::array({
+        {{"frequency", 150000}, {"impedance", {{"magnitude", 50}}}}
+    });
+
+    OpenMagnetics::DifferentialModeChoke dmc(j);
+    auto inputs = dmc.process();
+
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(inputs, 1);
     REQUIRE(results.size() >= 1);
     REQUIRE(results[0].second > 0);
 }
