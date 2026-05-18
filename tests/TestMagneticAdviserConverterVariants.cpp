@@ -452,13 +452,17 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Weinberg",
 }
 
 
-// FIXME(fsbb-adviser): FourSwitchBuckBoost::simulate_and_extract_operating_points
-// throws "cannot create std::vector larger than max_size()" when called from
-// the adviser flow. process_design_requirements likely emits an inductance or
-// sample-count value that overflows when used to size an internal buffer.
-// Marked [!mayfail]; investigate FSBB design-requirements derivation.
+// FSBB through MagneticAdviser: the SPICE-extracted window must include
+// at least one extra period of padding before the formal extract window,
+// otherwise CircuitSimulationReader::get_one_period's zero-crossing align-
+// ment back-walk can pull periodStart so far back that periodStart+period
+// exceeds the last sample timestamp, leaving periodStopIndex unset and
+// triggering a length_error in libstdc++'s vector range-init.
+// FSBB::generate_ngspice_circuit now subtracts one paddingPeriods from
+// startTime to provide that pre-roll, and get_one_period now throws a
+// diagnostic if the extraction window is still insufficient.
 TEST_CASE("Test_MagneticAdviserFromConverter_FourSwitchBuckBoost",
-          "[adviser][from-converter][fsbb-topology][!mayfail]") {
+          "[adviser][from-converter][fsbb-topology]") {
     json j = {
         {"inputVoltage", {{"nominal", 24.0}}},
         {"currentRippleRatio", 0.4},

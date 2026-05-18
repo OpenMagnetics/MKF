@@ -801,7 +801,15 @@ namespace OpenMagnetics {
         const int settlingPeriods  = get_num_steady_state_periods();
         const int numPeriodsTotal  = settlingPeriods + periodsToExtract;
         const double simTime = numPeriodsTotal * period;
-        const double startTime = settlingPeriods * period;
+        // Save one extra period before the formal extract window so that
+        // CircuitSimulationReader::get_one_period has padding for its
+        // zero-crossing alignment back-walk. Without this, the extracted
+        // data window equals exactly N·Tsw and the alignment can pull
+        // periodStart back to a point where periodStart+period > time.back(),
+        // failing to find a complete period.
+        const int paddingPeriods = 1;
+        const double startTime = std::max(0.0,
+            (settlingPeriods - paddingPeriods) * period);
         const double stepTime = period / cfg.samplesPerPeriod;
         const double tOnBuck  = D_buck  * period;
         const double tOnBoost = D_boost * period;

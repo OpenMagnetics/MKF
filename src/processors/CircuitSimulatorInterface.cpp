@@ -1756,6 +1756,21 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
 
             }
         }
+        // If the alignment back-walk pulled periodStart so far back that
+        // periodStart + period > time.back(), the forward loop above never
+        // assigns periodStopIndex (still SIZE_MAX from -1 init). Constructing
+        // a vector with [begin+startIdx, begin+SIZE_MAX) trips length_error
+        // deep in libstdc++. Surface a meaningful diagnostic at the source.
+        if (periodStopIndex == static_cast<size_t>(-1)) {
+            throw std::runtime_error(
+                "CircuitSimulationReader::get_one_period: insufficient simulation "
+                "data — could not find a complete period of " + std::to_string(period) +
+                " s starting at t=" + std::to_string(periodStart) +
+                " s (last sample at t=" + std::to_string(time.back()) +
+                " s). Increase the converter's numSteadyStatePeriods or "
+                "numPeriodsToExtract so the SPICE output covers at least one "
+                "more switching period than the requested extraction window.");
+        }
         _periodStartIndex = periodStartIndex;
         _periodStopIndex = periodStopIndex;
     }
