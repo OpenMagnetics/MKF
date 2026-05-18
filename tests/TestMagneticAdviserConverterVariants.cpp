@@ -212,6 +212,56 @@ TEST_CASE("Test_MagneticAdviserFromConverter_CLLC_Forward",
 
 
 // ============================================================================
+// Resonant — CLLC, reverse power flow. Same symmetric tank, same Vin/Vout
+// (1:1 turns ratio), only the powerFlowDirection on the operating point
+// flips. Reverse must produce >=1 magnetic candidate just like forward —
+// any divergence would mean the reverse path is mis-routing through
+// CoilAdviser / MagneticFilter.
+//
+// FIXME(cllc-reverse-coil): currently throws
+// CALCULATION_INVALID_INPUT "Parallel proportion in layer cannot be all
+// be 0" from Coil::wind_by_round_layers (Coil.cpp:4226) when CoilAdviser
+// picks a toroidal core (HF 14 T 58/25/47, 37 turns, order 01). Forward
+// CLLC and forward+reverse CLLLC do not trigger this — so the reverse
+// CLLC analytical operating point must produce a winding-current
+// signature that nudges CoilAdviser into a toroid-layer geometry the
+// round-layer winder cannot resolve (some layer gets zero parallels
+// assigned). Root-cause must live either in (a) CllcConverter's reverse
+// operating-point generation (currents/voltages with a different
+// harmonic profile than forward) or (b) a toroid layer-assignment bug
+// in Coil::wind_by_round_layers that surfaces for specific turns counts.
+// Marked [!mayfail] until either path is fixed; do NOT relax the
+// REQUIRE(size >= 1) — the whole point is the adviser must return a
+// magnetic in both directions.
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_CLLC_Reverse",
+          "[adviser][from-converter][cllc-topology][!mayfail]") {
+    json j = {
+        {"inputVoltage", {{"minimum", 700}, {"maximum", 800}, {"nominal", 750}}},
+        {"minSwitchingFrequency", 40000},
+        {"maxSwitchingFrequency", 250000},
+        {"efficiency", 0.95},
+        {"qualityFactor", 0.3},
+        {"symmetricDesign", true},
+        {"bidirectional", true},
+        {"operatingPoints", json::array({
+            {{"outputVoltages", {600.0}},
+             {"outputCurrents", {18.33}},
+             {"switchingFrequency", 73000},
+             {"ambientTemperature", 25.0},
+             {"powerFlow", "reverse"}}
+        })}
+    };
+
+    CllcConverter converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
 // Resonant — CLLLC, forward power flow
 // ============================================================================
 TEST_CASE("Test_MagneticAdviserFromConverter_CLLLC_Forward",
@@ -230,6 +280,39 @@ TEST_CASE("Test_MagneticAdviserFromConverter_CLLLC_Forward",
              {"outputVoltages", {400.0}},
              {"outputCurrents", {16.5}},
              {"powerFlowDirection", "forward"}}
+        })}
+    };
+
+    Clllc converter(j);
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+    REQUIRE(results.size() >= 1);
+    REQUIRE(results[0].second > 0);
+}
+
+
+// ============================================================================
+// Resonant — CLLLC, reverse power flow. CLLLC's claim to be a separate
+// model from CLLC is the symmetric tank under forward/reverse (see
+// TestTopologyClllc.cpp "Phase A: forward/reverse symmetry"). The adviser
+// pipeline must therefore also produce a magnetic for the reverse case.
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_CLLLC_Reverse",
+          "[adviser][from-converter][clllc-topology]") {
+    json j = {
+        {"highVoltageBusVoltage", {{"nominal", 400.0}}},
+        {"lowVoltageBusVoltage",  {{"nominal", 400.0}}},
+        {"minSwitchingFrequency", 250000},
+        {"maxSwitchingFrequency", 500000},
+        {"primaryResonantFrequency", 350000},
+        {"qualityFactor", 0.4},
+        {"inductanceRatioK", 6.0},
+        {"operatingPoints", json::array({
+            {{"ambientTemperature", 25.0},
+             {"switchingFrequency", 350000},
+             {"outputVoltages", {400.0}},
+             {"outputCurrents", {16.5}},
+             {"powerFlowDirection", "reverse"}}
         })}
     };
 
