@@ -4194,7 +4194,15 @@ bool Coil::wind_by_round_layers() {
                 windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers);
             }
 
-            if (sections[sectionIndex].get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS && maximumNumberPhysicalTurnsPerLayer < get_number_parallels(windingIndex)) {
+            // For toroidal sections, layer capacity varies with radius (outer layers fit more
+            // turns than inner ones). WIND_BY_CONSECUTIVE_PARALLELS places one turn per parallel
+            // per layer and ignores per-layer capacity, so when any layer cannot fit one turn for
+            // each parallel we must fall back to WIND_BY_CONSECUTIVE_TURNS, which honors the
+            // per-layer turn count.
+            int64_t minimumLayerPhysicalTurns = layerPhysicalTurns.empty() ? 0 : *std::min_element(layerPhysicalTurns.begin(), layerPhysicalTurns.end());
+            if (sections[sectionIndex].get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS &&
+                (maximumNumberPhysicalTurnsPerLayer < get_number_parallels(windingIndex) ||
+                 (minimumLayerPhysicalTurns > 0 && uint64_t(minimumLayerPhysicalTurns) < get_number_parallels(windingIndex)))) {
                 windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
             }
 

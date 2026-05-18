@@ -218,24 +218,9 @@ TEST_CASE("Test_MagneticAdviserFromConverter_CLLC_Forward",
 // any divergence would mean the reverse path is mis-routing through
 // CoilAdviser / MagneticFilter.
 //
-// FIXME(cllc-reverse-coil): currently throws
-// CALCULATION_INVALID_INPUT "Parallel proportion in layer cannot be all
-// be 0" from Coil::wind_by_round_layers (Coil.cpp:4226) when CoilAdviser
-// picks a toroidal core (HF 14 T 58/25/47, 37 turns, order 01). Forward
-// CLLC and forward+reverse CLLLC do not trigger this — so the reverse
-// CLLC analytical operating point must produce a winding-current
-// signature that nudges CoilAdviser into a toroid-layer geometry the
-// round-layer winder cannot resolve (some layer gets zero parallels
-// assigned). Root-cause must live either in (a) CllcConverter's reverse
-// operating-point generation (currents/voltages with a different
-// harmonic profile than forward) or (b) a toroid layer-assignment bug
-// in Coil::wind_by_round_layers that surfaces for specific turns counts.
-// Marked [!mayfail] until either path is fixed; do NOT relax the
-// REQUIRE(size >= 1) — the whole point is the adviser must return a
-// magnetic in both directions.
 // ============================================================================
 TEST_CASE("Test_MagneticAdviserFromConverter_CLLC_Reverse",
-          "[adviser][from-converter][cllc-topology][!mayfail]") {
+          "[adviser][from-converter][cllc-topology]") {
     json j = {
         {"inputVoltage", {{"minimum", 700}, {"maximum", 800}, {"nominal", 750}}},
         {"minSwitchingFrequency", 40000},
