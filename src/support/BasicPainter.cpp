@@ -766,6 +766,17 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginA
                 double angleProportion = layers[i].get_dimensions()[1] / 360;
                 std::string termination = angleProportion < 1? "butt" : "round";
 
+                // Wedge-at-origin collapse: when the insulation layer's radial
+                // thickness spans the full winding window, stroking the circle
+                // produces a pie-slice from origin to bobbin wall. This is the
+                // visualization artifact of an inter-winding gap (the spacer is
+                // already drawn by paint_toroidal_margin), not a physical part.
+                // Same pattern fixed in paint_toroidal_coil_sections / _layers
+                // by 385d2ba2; the turns view needs the same guard.
+                if (strokeWidth >= circleDiameter - 1e-12) {
+                    continue;
+                }
+
                 std::string cssClassName = generate_random_string();
                 _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
                 paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
