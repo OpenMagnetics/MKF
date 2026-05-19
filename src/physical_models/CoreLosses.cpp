@@ -176,6 +176,20 @@ CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExci
         }
     }
 
+    // Per the "no silent fallbacks" policy: refuse to return a malformed
+    // output. NaN/Inf core losses propagate as JSON null (nlohmann), which
+    // strips the required field and trips the frontend MAS sentry deep in
+    // the simulate path. Throw here so the adviser (or simulate caller)
+    // can either skip this candidate or surface the failure cleanly.
+    const double cl = coreLossesOutput.get_core_losses();
+    if (!std::isfinite(cl)) {
+        throw InvalidInputException(ErrorCode::CALCULATION_NAN_RESULT,
+            "Core losses model '" + coreLossesOutput.get_method_used() +
+            "' produced non-finite result (" + std::to_string(cl) +
+            ") for material '" + core.get_material_name() +
+            "' at temperature " + std::to_string(temperature) + " K");
+    }
+
     return coreLossesOutput;
 }
 double CoreLosses::get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature){
