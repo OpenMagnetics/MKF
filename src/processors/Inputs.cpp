@@ -2278,8 +2278,24 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
         sampledMagnetizingCurrentWaveform = calculate_sampled_waveform(newWaveform, excitation.get_frequency());            
     }
     else {
-        bool subtractAverage = is_continuously_conducting_power(excitation);
-        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform, subtractAverage);
+        // Always subtract the integration constant: in steady state, a pure
+        // inductor driven by a symmetric AC voltage has zero net DC in the
+        // magnetizing current. The integration of V(t) produces an arbitrary
+        // constant of integration that depends on where the numerical
+        // integration starts within the cycle — for asymmetric / harmonic-rich
+        // waveforms (e.g. distorted "sinusoidal" with high THD) this constant
+        // is non-zero and lopsides the resulting current into a unipolar
+        // [0, +Imax] shape. Any intentional DC bias is supplied separately
+        // via `dcCurrent` and added back below; the integration constant
+        // itself is physically meaningless and must always be removed.
+        //
+        // The previous `is_continuously_conducting_power(excitation)` heuristic
+        // was wrong for inductor mode: a pure inductor has V and I in ~90°
+        // quadrature, so V·I ≈ sin(2ωt) crosses zero often and the heuristic
+        // misclassified the load as discontinuous, leaving the spurious DC in
+        // place. The result was Bpeak = peakToPeak (instead of peakToPeak/2)
+        // for harmonic-rich AC excitations.
+        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform, true);
         SignalDescriptor magnetizingCurrentExcitation;
 
 

@@ -3205,7 +3205,7 @@ namespace {
     TEST_CASE("Test_PlanarAdvise_Flow", "[adviser][planar][integration]") {
         try {
             // Load inputs from JSON file
-            std::ifstream file("tests/testData/planar_advise.json");
+            std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "planar_advise.json"));
             REQUIRE(file.is_open());
             
             json j;
@@ -3354,7 +3354,7 @@ namespace {
 TEST_CASE("Test_Planar_CoilAdviser_From_Full_MAS", "[adviser][planar][coil][full-mas]") {
     try {
         // Load inputs from extracted JSON file (cleaned from full MAS)
-        std::ifstream file("tests/testData/planar_advise_from_mas_inputs.json");
+        std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "planar_advise_from_mas_inputs.json"));
         REQUIRE(file.is_open());
         
         json j;

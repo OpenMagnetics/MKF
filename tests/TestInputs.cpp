@@ -1258,6 +1258,66 @@ TEST_CASE("Test_Magnetizing_Current_Sinusoidal_Dc_Bias_Processed", "[processor][
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_peak().value(), Catch::Matchers::WithinAbs(expectedValue, max_error * expectedValue));
 }
 
+// Regression: pure-inductor AC excitation with V *and* I both supplied (e.g. a
+// measured / pre-populated current waveform) must still produce a bipolar
+// centered magnetizing current. The previous behaviour fed the excitation into
+// `is_continuously_conducting_power`, which classifies V·I ≈ sin(2ωt) (V & I
+// in ~90° quadrature) as discontinuous because the product spends >10% of the
+// cycle near zero, then suppressed the average-subtraction of the integrated
+// voltage. The integration constant of V(t) was therefore left in place,
+// producing a unipolar [0, +Imax] magnetizing current and an asymmetric flux
+// density whose `processed.peak` was equal to its peak-to-peak (Bpeak =
+// 2 × BACpeak in the UI). See WebFrontend OP3 "HARMONICS" reproducer.
+TEST_CASE("Test_Magnetizing_Current_Pure_Inductor_With_Measured_Current_Is_Bipolar", "[processor][inputs][smoke-test]") {
+    json inputsJson;
+    inputsJson["operatingPoints"] = json::array();
+    json operatingPoint = json();
+    operatingPoint["name"] = "Nominal";
+    operatingPoint["conditions"] = json();
+    operatingPoint["conditions"]["ambientTemperature"] = 42;
+
+    // Sinusoidal AC voltage, zero DC, no DC bias requested.
+    json windingExcitation = json();
+    windingExcitation["frequency"] = 200000;
+    windingExcitation["voltage"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    windingExcitation["voltage"]["processed"]["offset"] = 0;
+    windingExcitation["voltage"]["processed"]["peakToPeak"] = 2000;
+    // Pre-populated inductor current with zero DC component. This is what
+    // turns on the V+I path through is_continuously_conducting_power in the
+    // bug scenario.
+    windingExcitation["current"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    windingExcitation["current"]["processed"]["offset"] = 0;
+    windingExcitation["current"]["processed"]["peakToPeak"] = 2;
+    operatingPoint["excitationsPerWinding"] = json::array();
+    operatingPoint["excitationsPerWinding"].push_back(windingExcitation);
+    inputsJson["operatingPoints"].push_back(operatingPoint);
+
+    inputsJson["designRequirements"] = json();
+    inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+    inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+    OpenMagnetics::Inputs inputs(inputsJson);
+    auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_magnetizing_current().has_value());
+    auto mcProcessed = excitation.get_magnetizing_current().value().get_processed().value();
+
+    double positivePeak = mcProcessed.get_positive_peak().value();
+    double negativePeak = mcProcessed.get_negative_peak().value();
+    double peak = mcProcessed.get_peak().value();
+    double peakToPeak = mcProcessed.get_peak_to_peak().value();
+    double offset = mcProcessed.get_offset();
+
+    // Bipolar centered: |+peak| ≈ |-peak|, midpoint ≈ 0.
+    double midpoint = (positivePeak + negativePeak) / 2;
+    double tolerance = 0.01 * peakToPeak;  // 1% of swing
+    REQUIRE_THAT(midpoint, Catch::Matchers::WithinAbs(0.0, tolerance));
+    REQUIRE_THAT(offset, Catch::Matchers::WithinAbs(0.0, tolerance));
+    REQUIRE(positivePeak > 0);
+    REQUIRE(negativePeak < 0);
+    // peak must be the half-swing (max of |+peak|, |-peak|), not the full PP.
+    REQUIRE_THAT(peak, Catch::Matchers::WithinRel(peakToPeak / 2, 0.02));
+}
+
 TEST_CASE("Test_Waveform_Coefficient_Sinusoidal", "[processor][inputs][smoke-test]") {
     json inputsJson;
 
