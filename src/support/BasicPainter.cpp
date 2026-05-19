@@ -1115,6 +1115,8 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                         double strokeWidth = sections[i].get_dimensions()[0];
                         double circleDiameter = (windingWindowRadialHeight - sections[i].get_coordinates()[0]) * 2;
 
+                        if (strokeWidth >= circleDiameter - 1e-12) continue;
+
                         double angle = wound_distance_to_angle(margins[0], circleDiameter / 2 - strokeWidth / 2);
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                             std::string cssClassName = generate_random_string();
@@ -1126,6 +1128,8 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     if (margins[1] > 0) {
                         double strokeWidth = sections[i].get_dimensions()[0];
                         double circleDiameter = (windingWindowRadialHeight - sections[i].get_coordinates()[0]) * 2;
+
+                        if (strokeWidth >= circleDiameter - 1e-12) continue;
 
                         double angle = wound_distance_to_angle(margins[1], circleDiameter / 2 - strokeWidth / 2);
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
@@ -1141,6 +1145,8 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     double strokeWidth = margins[0];
                     double circleDiameter = (windingWindowRadialHeight - (sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2) + margins[0] / 2) * 2;
 
+                    if (strokeWidth >= circleDiameter - 1e-12) continue;
+
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                         std::string cssClassName = generate_random_string();
@@ -1152,6 +1158,8 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
 
                     double strokeWidth = margins[1];
                     double circleDiameter = (windingWindowRadialHeight - (sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2) - margins[1] / 2) * 2;
+
+                    if (strokeWidth >= circleDiameter - 1e-12) continue;
 
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
