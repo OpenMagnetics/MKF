@@ -111,7 +111,6 @@ namespace OpenMagnetics {
         }
         for (const auto& filterConfiguration : filterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
-            
             std::vector<double> scorings;
             for (size_t masIndex = 0; masIndex < masMagnetics.size(); ++masIndex) {
                 auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&masMagnetics[masIndex].get_mutable_magnetic(), &masMagnetics[masIndex].get_mutable_inputs());

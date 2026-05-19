@@ -125,7 +125,12 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
         case MagneticFilters::SKIN_LOSSES_DENSITY:
             return std::make_shared<MagneticFilterSkinLossesDensity>();
         case MagneticFilters::FRINGING_FACTOR:
-            return std::make_shared<MagneticFilterFringingFactor>();
+            // Phase 1 fix: previously used default ctor, leaving
+            // _reluctanceModel null → SIGSEGV in evaluate_magnetic.
+            if (!inputs) {
+                throw InvalidInputException("Inputs needed for filter FRINGING_FACTOR");
+            }
+            return std::make_shared<MagneticFilterFringingFactor>(inputs.value());
         case MagneticFilters::VOLUME:
             return std::make_shared<MagneticFilterVolume>();
         case MagneticFilters::AREA:
@@ -155,7 +160,13 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
         case MagneticFilters::LEAKAGE_INDUCTANCE:
             return std::make_shared<MagneticFilterLeakageInductance>();
         case MagneticFilters::TEMPERATURE:
-            return std::make_shared<MagneticFilterTemperature>();
+            // Phase 1 fix: previously used default ctor, leaving
+            // _coreLossesModel null → NPE in evaluate_magnetic.
+            // _maximumTemperature defaults to 130 °C as before.
+            if (!inputs) {
+                throw InvalidInputException("Inputs needed for filter TEMPERATURE");
+            }
+            return std::make_shared<MagneticFilterTemperature>(inputs.value(), 130.0);
         case MagneticFilters::TURN_COUNT:
             return std::make_shared<MagneticFilterTurnCount>();
         default:
@@ -309,37 +320,57 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
         double wireAirFillingFactor = Wire::get_filling_factor_round(2 * skinDepth);
         double windingWindowUtilizationFactor = wireAirFillingFactor * bobbinFillingFactor;
         double magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
-        try {
-            if (!_materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
-                auto coreLossesMethods = core.get_available_core_losses_methods();
+        if (core.get_material_name() == "Dummy") {
+            // Phase 1 fix: explicit branch for the shape-only pre-filter stage.
+            // CoreAdviser uses the sentinel material name "Dummy" before material
+            // fan-out (see CoreAdviser.cpp:2344, 2407): the actual material is
+            // chosen later from the ferrite catalogue. During this stage, no real
+            // loss model can be queried, so we sieve on shape using a reference
+            // flux density. This is a *named-sentinel* contract, not a silent
+            // catch-all fallback.
+            magneticFluxDensityPeakAtFrequencyOfReferenceLosses = _magneticFluxDensityReference;
+        }
+        else {
+            try {
+                if (!_materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
+                    auto coreLossesMethods = core.get_available_core_losses_methods();
 
-                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-                    double referenceCoreLosses = _coreLossesModelSteinmetz->get_core_losses(core, _operatingPointExcitation, temperature).get_core_losses();
-                    auto aux = _coreLossesModelSteinmetz->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
-                    magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
+                    if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
+                        double referenceCoreLosses = _coreLossesModelSteinmetz->get_core_losses(core, _operatingPointExcitation, temperature).get_core_losses();
+                        auto aux = _coreLossesModelSteinmetz->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
+                        magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
+                    }
+                    else {
+                        double referenceCoreLosses = _coreLossesModelProprietary->get_core_losses(core, _operatingPointExcitation, temperature).get_core_losses();
+
+                        auto aux = _coreLossesModelProprietary->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
+                        magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
+                    }
+                    _materialScaledMagneticFluxDensities[core.get_material_name()] = magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
                 }
                 else {
-                    double referenceCoreLosses = _coreLossesModelProprietary->get_core_losses(core, _operatingPointExcitation, temperature).get_core_losses();
-
-                    auto aux = _coreLossesModelProprietary->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
-                    magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
+                    magneticFluxDensityPeakAtFrequencyOfReferenceLosses = _materialScaledMagneticFluxDensities[core.get_material_name()];
                 }
-                _materialScaledMagneticFluxDensities[core.get_material_name()] = magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
             }
-            else {
-                magneticFluxDensityPeakAtFrequencyOfReferenceLosses = _materialScaledMagneticFluxDensities[core.get_material_name()];
+            catch (...) {
+                // Phase 1 fix: previously silently substituted _magneticFluxDensityReference
+                // here, hiding loss-model failures for real materials and letting
+                // unsuitable candidates pass area-product check with a fake B. Per the
+                // no-silent-fallbacks policy, reject the candidate explicitly when its
+                // real-material loss model cannot produce a peak B.
+                return {false, 0.0};
             }
-        }
-        catch (...) {
-            magneticFluxDensityPeakAtFrequencyOfReferenceLosses = _magneticFluxDensityReference;
         }
         double areaProductRequired = _areaProductRequiredPreCalculations[operatingPointIndex] / (windingWindowUtilizationFactor * magneticFluxDensityPeakAtFrequencyOfReferenceLosses);
         if (std::isnan(magneticFluxDensityPeakAtFrequencyOfReferenceLosses) || magneticFluxDensityPeakAtFrequencyOfReferenceLosses == 0) {
             throw NaNResultException("magneticFluxDensityPeakAtFrequencyOfReferenceLosses cannot be 0 or NaN");
-            break;
         }
         if (std::isnan(areaProductRequired)) {
-            break;
+            // Phase 1 fix: was a silent `break` that exited the operating-point loop
+            // and let whatever maximumAreaProductRequired had accumulated decide
+            // validity. NaN here means at least one operating point cannot be
+            // characterised for this candidate → reject the candidate.
+            return {false, 0.0};
         }
         if (std::isinf(areaProductRequired) || areaProductRequired == 0) {
             throw NaNResultException("areaProductRequired cannot be 0 or NaN");
@@ -657,8 +688,14 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
 
             if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
                 if (!coil.get_turns_description()) {
-                    newTotalLosses = coreLosses;
-                    break;
+                    // Phase 1 fix: previously this silently set
+                    // newTotalLosses = coreLosses (still DBL_MAX on the
+                    // first iteration) and broke out, relying on the
+                    // OP-count mismatch later to fail the magnetic. Make
+                    // the rejection explicit: fast_wind() could not lay
+                    // out the coil, so this candidate is genuinely
+                    // unusable (not a "core losses only" fallback).
+                    return {false, 0.0};
                 }
             }
 
@@ -672,7 +709,15 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                 coreLossesOutput = _coreLossesModelProprietary->get_core_losses(core, excitation, temperature);
                 coreLosses = coreLossesOutput.get_core_losses();
                 if (coreLosses < 0) {
-                    break;
+                    // Phase 1 fix: was a silent `break` that left
+                    // coreLosses negative and relied on the downstream
+                    // `coreLosses > 0` guard to drop the OP. Proprietary
+                    // models occasionally return tiny negatives (~µW)
+                    // from interpolation noise at low excitation, which
+                    // is not malformed data and should not throw. Make
+                    // the rejection explicit so it isn't camouflaged as
+                    // a do-while exit condition.
+                    return {false, 0.0};
                 }
             }
 
@@ -681,8 +726,9 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
             }
 
             if (!coil.get_turns_description()) {
-                newTotalLosses = coreLosses;
-                break;
+                // Phase 1 fix: same rationale as above — explicit reject
+                // rather than the silent break + DBL_MAX leak.
+                return {false, 0.0};
             }
 
             if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
@@ -694,6 +740,10 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                 }
             }
             else {
+                // PQI / UI shapes: integrated-winding layouts that fast_wind()
+                // doesn't materialise, so ohmic losses can't be computed here.
+                // Use core-only losses and stop sweeping turns. Explicit
+                // per-shape policy — not a silent fallback.
                 newTotalLosses = coreLosses;
                 break;
             }
@@ -900,8 +950,11 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
 
             if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
                 if (!coil.get_turns_description()) {
-                    newTotalLosses = coreLosses;
-                    break;
+                    // Phase 1 fix: previously silently broke with
+                    // newTotalLosses = coreLosses (DBL_MAX initial),
+                    // relying on later checks to drop the OP. fast_wind()
+                    // failed to lay out the coil — reject explicitly.
+                    return {false, 0.0};
                 }
             }
 
@@ -915,7 +968,13 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 coreLossesOutput = _coreLossesModelProprietary->get_core_losses(core, excitation, temperature);
                 coreLosses = coreLossesOutput.get_core_losses();
                 if (coreLosses < 0) {
-                    break;
+                    // Phase 1 fix: was a silent `break`. Proprietary
+                    // models can return tiny negatives (~µW) from
+                    // interpolation noise at low excitation — not bad
+                    // data, but still an invalid candidate result.
+                    // Reject explicitly so the rejection isn't disguised
+                    // as a do-while exit.
+                    return {false, 0.0};
                 }
             }
 
@@ -924,8 +983,8 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
             }
 
             if (!coil.get_turns_description()) {
-                newTotalLosses = coreLosses;
-                break;
+                // Phase 1 fix: explicit reject rather than silent break.
+                return {false, 0.0};
             }
 
             if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
@@ -939,6 +998,12 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 }
             }
             else {
+                // PQI / UI shapes: winding losses can't be computed without a
+                // resolved coil turns_description here (these shapes use
+                // integrated windings whose layout isn't produced by
+                // fast_wind()). Use core-only losses for filtering and stop
+                // sweeping turn counts — there's nothing to optimise against.
+                // Not a silent fallback: explicit per-shape policy.
                 newTotalLosses = coreLosses;
                 break;
             }
@@ -1067,7 +1132,8 @@ std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magne
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
         auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
         auto windingLosses = _windingOhmicLosses.calculate_ohmic_losses(magnetic->get_coil(), operatingPoint, temperature);
-        windingLosses = _windingSkinEffectLosses.calculate_skin_effect_losses(magnetic->get_coil(), temperature, windingLosses, 0.5);
+        // Phase 1 fix: was previously called twice on the same windingLosses
+        // (double-counting the skin-effect contribution). One call is correct.
         windingLosses = _windingSkinEffectLosses.calculate_skin_effect_losses(magnetic->get_coil(), temperature, windingLosses, 0.5);
         // windingLosses = WindingLosses::combine_turn_losses(windingLosses, magnetic->get_coil());
         double windingLossesValue = windingLosses.get_winding_losses();
@@ -2306,9 +2372,11 @@ std::pair<bool, double> MagnetomotiveForce::evaluate_magnetic(Magnetic* magnetic
                     magnetomotiveForceThisLayer -= numberPhysicalTurnsInLayer * currentRmsPerParallelPerWinding[windingIndex];
                 }
             }
-            else {
-                magnetomotiveForcePerLayer.push_back(magnetomotiveForceThisLayer);
-            }
+            // Phase 1 fix: previously push_back happened only in the
+            // INSULATION (else) branch, so the CONDUCTION branch's update
+            // to magnetomotiveForceThisLayer was dropped (dead local) and
+            // the per-layer MMF trace was always zero for conductors.
+            magnetomotiveForcePerLayer.push_back(magnetomotiveForceThisLayer);
         }
 
         double maximumMagnetomotiveForceThisOperatingPoint = *max_element(magnetomotiveForcePerLayer.begin(), magnetomotiveForcePerLayer.end());
@@ -2326,9 +2394,6 @@ std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_magnetic(Magne
     // Coupling coefficient k = 1 - (Lk / Lm), where Lk is leakage and Lm is magnetizing inductance
     // Lower leakage means higher coupling, which means better common mode rejection
     
-    bool valid = true;
-    double scoring = 0;
-
     if (magnetic->get_coil().get_functional_description().size() < 2) {
         // Single winding - no leakage calculation possible
         return {true, 0.0};
@@ -2340,54 +2405,53 @@ std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_magnetic(Magne
         frequency = inputs->get_operating_points()[0].get_excitations_per_winding()[0].get_frequency();
     }
 
-    try {
-        LeakageInductance leakageModel;
-        auto leakageOutput = leakageModel.calculate_leakage_inductance(*magnetic, frequency, 0, 1);
-        double leakageInductance = resolve_dimensional_values(leakageOutput.get_leakage_inductance_per_winding()[0]);
+    // Phase 1 fix: previously this method swallowed every exception and
+    // returned {false, DBL_MAX} as an in-band sentinel, and used the same
+    // sentinel when magnetizingInductance was zero. Both hid real bugs
+    // (the DBL_MAX value also poisoned any downstream normalization).
+    // Let exceptions propagate and throw explicitly on zero Lm.
+    LeakageInductance leakageModel;
+    auto leakageOutput = leakageModel.calculate_leakage_inductance(*magnetic, frequency, 0, 1);
+    double leakageInductance = resolve_dimensional_values(leakageOutput.get_leakage_inductance_per_winding()[0]);
 
-        // Get magnetizing inductance for normalization
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
-        OperatingPoint* operatingPoint = nullptr;
-        if (inputs->get_operating_points().size() > 0) {
-            operatingPoint = &inputs->get_mutable_operating_points()[0];
-        }
-        auto magnetizingOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-            magnetic->get_mutable_core(), 
-            magnetic->get_mutable_coil(), 
-            operatingPoint
-        );
-        double magnetizingInductance = resolve_dimensional_values(magnetizingOutput.get_magnetizing_inductance());
+    // Get magnetizing inductance for normalization
+    OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    OperatingPoint* operatingPoint = nullptr;
+    if (inputs->get_operating_points().size() > 0) {
+        operatingPoint = &inputs->get_mutable_operating_points()[0];
+    }
+    auto magnetizingOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+        magnetic->get_mutable_core(),
+        magnetic->get_mutable_coil(),
+        operatingPoint
+    );
+    double magnetizingInductance = resolve_dimensional_values(magnetizingOutput.get_magnetizing_inductance());
 
-        if (magnetizingInductance > 0) {
-            // Score is leakage ratio Lk/Lm - lower is better for CMC
-            // A perfect CMC has k ≈ 1, meaning Lk/Lm ≈ 0
-            scoring = leakageInductance / magnetizingInductance;
-        }
-        else {
-            scoring = std::numeric_limits<double>::max();
-            valid = false;
-        }
+    if (magnetizingInductance <= 0) {
+        throw InvalidInputException(
+            "MagneticFilterLeakageInductance: magnetizing inductance is non-positive ("
+            + std::to_string(magnetizingInductance) + " H), cannot compute leakage ratio");
+    }
 
-        if (outputs != nullptr && inputs->get_operating_points().size() > 0) {
-            for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-                while (outputs->size() < operatingPointIndex + 1) {
-                    outputs->push_back(Outputs());
-                }
-                InductanceOutput inductanceOutput;
-                if ((*outputs)[operatingPointIndex].get_inductance()) {
-                    inductanceOutput = *(*outputs)[operatingPointIndex].get_inductance();
-                }
-                inductanceOutput.set_leakage_inductance(leakageOutput);
-                (*outputs)[operatingPointIndex].set_inductance(inductanceOutput);
+    // Score is leakage ratio Lk/Lm - lower is better for CMC.
+    // A perfect CMC has k ≈ 1, meaning Lk/Lm ≈ 0.
+    double scoring = leakageInductance / magnetizingInductance;
+
+    if (outputs != nullptr && inputs->get_operating_points().size() > 0) {
+        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
+            while (outputs->size() < operatingPointIndex + 1) {
+                outputs->push_back(Outputs());
             }
+            InductanceOutput inductanceOutput;
+            if ((*outputs)[operatingPointIndex].get_inductance()) {
+                inductanceOutput = *(*outputs)[operatingPointIndex].get_inductance();
+            }
+            inductanceOutput.set_leakage_inductance(leakageOutput);
+            (*outputs)[operatingPointIndex].set_inductance(inductanceOutput);
         }
     }
-    catch (const std::exception& e) {
-        // If leakage calculation fails, return a high score to deprioritize
-        return {false, std::numeric_limits<double>::max()};
-    }
 
-    return {valid, scoring};
+    return {true, scoring};
 }
 
 MagneticFilterTemperature::MagneticFilterTemperature(Inputs inputs, double maximumTemperature)
@@ -2400,52 +2464,52 @@ MagneticFilterTemperature::MagneticFilterTemperature(Inputs inputs, double maxim
 std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs)
 {
-    try {
-        auto core = magnetic->get_core();
-        double coreLosses = 0.0;
-        double ambientTemperature = 25.0;
+    // Phase 1 fix: previously wrapped in `try {} catch (...) { return {true,
+    // _maximumTemperature}; }` which silently treated EVERY failure as a
+    // pass at the threshold. That hid model bugs (e.g. null _coreLossesModel)
+    // and produced "always-acceptable" temperature scores. Let exceptions
+    // propagate so callers can either handle them or fail loudly.
+    auto core = magnetic->get_core();
+    double coreLosses = 0.0;
+    double ambientTemperature = 25.0;
 
-        auto coil = magnetic->get_coil();
-        for (auto& op : inputs->get_operating_points()) {
-            ambientTemperature = op.get_conditions().get_ambient_temperature();
-            auto excitation = op.get_excitations_per_winding()[0];
-            auto opCopy = op;
-            auto [magnetizingInductance, magneticFluxDensity] =
-                _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &opCopy);
-            excitation.set_magnetic_flux_density(magneticFluxDensity);
-            auto coreLossesMethods = core.get_available_core_losses_methods();
-            CoreLossesOutput cl;
-            if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(),
-                          VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-                cl = _coreLossesModel->get_core_losses(core, excitation, ambientTemperature);
-            } else {
-                auto proprietaryModel = CoreLossesModel::factory(
-                    std::map<std::string, std::string>{{"coreLosses", "Proprietary"}});
-                cl = proprietaryModel->get_core_losses(core, excitation, ambientTemperature);
-            }
-            coreLosses += cl.get_core_losses();
+    auto coil = magnetic->get_coil();
+    for (auto& op : inputs->get_operating_points()) {
+        ambientTemperature = op.get_conditions().get_ambient_temperature();
+        auto excitation = op.get_excitations_per_winding()[0];
+        auto opCopy = op;
+        auto [magnetizingInductance, magneticFluxDensity] =
+            _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &opCopy);
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        auto coreLossesMethods = core.get_available_core_losses_methods();
+        CoreLossesOutput cl;
+        if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(),
+                      VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
+            cl = _coreLossesModel->get_core_losses(core, excitation, ambientTemperature);
+        } else {
+            auto proprietaryModel = CoreLossesModel::factory(
+                std::map<std::string, std::string>{{"coreLosses", "Proprietary"}});
+            cl = proprietaryModel->get_core_losses(core, excitation, ambientTemperature);
         }
-        if (!inputs->get_operating_points().empty())
-            coreLosses /= inputs->get_operating_points().size();
-
-        TemperatureConfig config;
-        config.coreOnly = true;
-        config.coreLosses = coreLosses;
-        config.ambientTemperature = ambientTemperature;
-        config.plotSchematic = false;
-        if (!inputs->get_operating_points().empty()) {
-            auto& cond = inputs->get_operating_points()[0].get_conditions();
-            if (cond.get_cooling()) config.masCooling = cond.get_cooling();
-        }
-
-        Temperature temp(*magnetic, config);
-        auto result = temp.calculateTemperatures();
-
-        return {result.maximumTemperature <= _maximumTemperature, result.maximumTemperature};
+        coreLosses += cl.get_core_losses();
     }
-    catch (...) {
-        return {true, _maximumTemperature};
+    if (!inputs->get_operating_points().empty())
+        coreLosses /= inputs->get_operating_points().size();
+
+    TemperatureConfig config;
+    config.coreOnly = true;
+    config.coreLosses = coreLosses;
+    config.ambientTemperature = ambientTemperature;
+    config.plotSchematic = false;
+    if (!inputs->get_operating_points().empty()) {
+        auto& cond = inputs->get_operating_points()[0].get_conditions();
+        if (cond.get_cooling()) config.masCooling = cond.get_cooling();
     }
+
+    Temperature temp(*magnetic, config);
+    auto result = temp.calculateTemperatures();
+
+    return {result.maximumTemperature <= _maximumTemperature, result.maximumTemperature};
 }
 
 } // namespace OpenMagnetics

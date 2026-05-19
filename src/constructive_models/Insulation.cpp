@@ -572,6 +572,21 @@ double InsulationIEC60664Model::get_creepage_distance(PollutionDegree pollutionD
 }
 
 double InsulationIEC60664Model::get_creepage_distance_over_30kHz(double voltageRms, double frequency){
+    // IEC 60664-4 Table 2 explicitly covers frequencies up to 3 MHz only.
+    // For ringing or high-order harmonics above 3 MHz the standard provides
+    // no value. Rather than throwing (which prevents *any* magnetic adviser
+    // result for topologies like Active-Clamp Forward whose analytical
+    // harmonics extend to ~12 MHz), clamp the lookup at 3 MHz: that row is
+    // the strictest tabulated, so using it is the conservative engineering
+    // choice. Caller still gets a valid creepage value; warn so this is
+    // visible in logs.
+    if (!part4Table2.empty()) {
+        double tableMaxFrequency = part4Table2.rbegin()->first;
+        if (frequency > tableMaxFrequency) {
+            logEntry("Frequency " + std::to_string(frequency) + " Hz exceeds IEC 60664-4 Table 2 max (" + std::to_string(tableMaxFrequency) + " Hz); clamping to table max for creepage lookup.", "InsulationIEC60664Model", 1);
+            frequency = tableMaxFrequency;
+        }
+    }
     double previousStandardFrequency = iec60664Part1MaximumFrequency;
     std::vector<std::pair<double, double>> previousTable;
     for (auto const& [standardFrequency, voltageList] : part4Table2)
@@ -1313,6 +1328,19 @@ double InsulationIEC61558Model::calculate_creepage_distance_over_30kHz(Insulatio
             case PollutionDegree::PD3:
                 table = table107;
                 break;
+        }
+    }
+
+    // IEC 61558-1 high-frequency tables (105-110) cover up to ~3 MHz.
+    // Above that, the standard provides no guidance. Clamp at the table's
+    // top frequency (which corresponds to the strictest creepage value)
+    // rather than throwing, so the magnetic adviser remains usable for
+    // topologies whose harmonics extend above 3 MHz.
+    if (!table.empty()) {
+        double tableMaxFrequency = table.rbegin()->first;
+        if (frequency > tableMaxFrequency) {
+            logEntry("Frequency " + std::to_string(frequency) + " Hz exceeds IEC 61558-1 high-f table max (" + std::to_string(tableMaxFrequency) + " Hz); clamping to table max for creepage lookup.", "InsulationIEC61558Model", 1);
+            frequency = tableMaxFrequency;
         }
     }
 

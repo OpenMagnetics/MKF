@@ -295,6 +295,7 @@ inline void from_json(const json& j, AdvancedLlc& x) {
     x.set_operating_points(j.at("operatingPoints").get<std::vector<LlcOperatingPoint>>());
     x.set_quality_factor(get_stack_optional<double>(j, "qualityFactor"));
     x.set_resonant_frequency(get_stack_optional<double>(j, "resonantFrequency"));
+    x.set_rectifier_type(get_stack_optional<LlcRectifierType>(j, "rectifierType"));
 
     // AdvancedLlc extra fields - use get_stack_optional or check if keys exist
     auto desiredTurnsRatios = get_stack_optional<std::vector<double>>(j, "desiredTurnsRatios");
@@ -320,6 +321,7 @@ inline void to_json(json& j, const AdvancedLlc& x) {
     j["operatingPoints"] = x.get_operating_points();
     j["qualityFactor"] = x.get_quality_factor();
     j["resonantFrequency"] = x.get_resonant_frequency();
+    j["rectifierType"] = x.get_rectifier_type();
     j["desiredTurnsRatios"] = x.get_desired_turns_ratios();
     j["desiredMagnetizingInductance"] = x.get_desired_magnetizing_inductance();
     j["desiredResonantInductance"] = x.get_desired_resonant_inductance();

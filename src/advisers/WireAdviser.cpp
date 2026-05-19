@@ -14,9 +14,42 @@
 
 namespace OpenMagnetics {
 
-// F41 NOTE: This is one of 4 separate normalize_scoring implementations in the codebase.
-// They should be unified into a single templated utility function.
-// This version (WireAdviser) is the most complete with B7+B8+O24 fixes.
+// Phase 1 tie-break: when two candidates end up with strictly-equal final
+// scores (e.g. "Round 16.5 - Single Build" vs "Round 16.5 - Heavy Build"
+// have identical conductor geometry and so identical resistance/skin/
+// proximity contributions), break the tie by preferring the wire with the
+// SMALLER outer dimension. That biases toward thinner insulation /
+// unserved litz, which is the right default (better packing factor, less
+// material cost). Strictly stable for non-tied pairs.
+static double wire_outer_metric(const Winding& winding) {
+    auto wire = OpenMagnetics::Coil::resolve_wire(winding);
+    if (wire.get_outer_diameter()) {
+        return resolve_dimensional_values(wire.get_outer_diameter().value());
+    }
+    if (wire.get_outer_width() && wire.get_outer_height()) {
+        return resolve_dimensional_values(wire.get_outer_width().value())
+             + resolve_dimensional_values(wire.get_outer_height().value());
+    }
+    if (wire.get_outer_width()) {
+        return resolve_dimensional_values(wire.get_outer_width().value());
+    }
+    if (wire.get_outer_height()) {
+        return resolve_dimensional_values(wire.get_outer_height().value());
+    }
+    // No outer dimension known — return +inf so this candidate is deprioritised
+    // among ties (i.e., a candidate WITH a known outer dim wins).
+    return std::numeric_limits<double>::infinity();
+}
+
+static void break_score_ties(std::vector<std::pair<Winding, double>>* coilsWithScoring) {
+    if (coilsWithScoring->size() < 2) return;
+    std::stable_sort(coilsWithScoring->begin(), coilsWithScoring->end(),
+        [](const std::pair<Winding, double>& a, const std::pair<Winding, double>& b) {
+            if (a.second != b.second) return a.second > b.second;
+            return wire_outer_metric(a.first) < wire_outer_metric(b.first);
+        });
+}
+
 void normalize_scoring(std::vector<std::pair<Winding, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true, const std::string& filterName="") {
     // Debug: Check for NaN values before normalization
     for (size_t i = 0; i < newScoring->size(); ++i) {
@@ -447,6 +480,10 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Windi
         size_t maximumNumberParallels = _maximumNumberParallels;
 
         for (auto wire : planarWires) {
+            // Capture catalogue display name BEFORE any per-variant mutation,
+            // so each (parallels) variant gets a unique name suffix (see fix
+            // for "Planar X µm appears twice in top-N" bug).
+            std::string baseName = wire.get_name().value_or("Planar");
             double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
             if (conductingHeight < section.get_dimensions()[1]) {
                 wire.set_nominal_value_outer_height(conductingHeight);
@@ -458,9 +495,15 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Windi
                     wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
                     wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
                     wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * conductingHeight);
+                    // Phase 1 fix: same planar catalogue entry was emitted at
+                    // multiple parallel counts with identical display names
+                    // and DIFFERENT downstream scores, so the top-N showed
+                    // e.g. "Planar 243.59 µm" twice with no way to tell them
+                    // apart. Encode parallels into the display name.
+                    wire.set_name(baseName + " x" + std::to_string(numberParallels) + " parallels");
                     winding.set_wire(wire);
                     winding.set_number_parallels(numberParallels);
-                    
+
                     // Apply thickness penalty (negative because higher score = better)
                     double thicknessPenalty = -calculate_planar_thickness_penalty(conductingHeight);
                     windings.push_back(std::pair<Winding, double>{winding, thicknessPenalty});
@@ -605,6 +648,8 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_planar_wire(Win
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by proximity factor.");
 
+    break_score_ties(&coilsWithScoring);
+
     if (coilsWithScoring.size() > maximumNumberResults) {
         auto finalCoilsWithScoring = std::vector<std::pair<Winding, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));
         set_maximum_area_proportion(&finalCoilsWithScoring, section, numberSections);
@@ -659,6 +704,8 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_wire(std::vecto
 
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.");
+
+    break_score_ties(&coilsWithScoring);
 
     if (coilsWithScoring.size() > maximumNumberResults) {
         auto finalCoilsWithScoring = std::vector<std::pair<Winding, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));

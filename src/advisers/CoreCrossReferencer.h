@@ -163,7 +163,7 @@ class CoreCrossReferencer {
                     _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
                 }
             }
-            std::vector<std::pair<Core, double>> filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<std::string, std::string> models, double weight=1, double limit=0.25);
+            std::vector<std::pair<Core, double>> filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<std::string, std::string> models, double weight=1, double limit=0.25, double saturationWeight=0.5);
             std::pair<double, double> calculate_average_core_losses_and_magnetic_flux_density(Core core, int64_t numberTurns, Inputs inputs, std::map<std::string, std::string> models);
     };
 };

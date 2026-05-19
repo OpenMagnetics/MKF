@@ -371,10 +371,14 @@ double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculat
     }
     catch(const ModelNotAvailableException& re)
     {
+        // Phase 1: NaN sentinel for "uncomputable" — caller in filter_core_materials
+        // (line ~403) explicitly std::isnan-checks and converts to DBL_MAX score.
+        // Narrow exception type so unexpected throws still surface.
         return std::numeric_limits<double>::quiet_NaN();
     }
     catch(const InvalidInputException& re)
     {
+        // Same as above — explicit NaN-as-uncomputable contract.
         return std::numeric_limits<double>::quiet_NaN();
     }
 }
@@ -387,6 +391,17 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
 
     try {
         double referenceVolumetricLossesWithTemperature = calculate_average_volumetric_losses(referenceCoreMaterial, temperature, models);
+        if (std::isnan(referenceVolumetricLossesWithTemperature)) {
+            // Phase 1: explicit, named diagnostic rather than a generic
+            // "scoring cannot be nan" from deep inside normalize_scoring.
+            // NaN comes from calculate_average_volumetric_losses's documented
+            // "uncomputable" sentinel (ModelNotAvailable / InvalidInput).
+            throw std::invalid_argument(
+                "CoreMaterialCrossReferencer: reference material '"
+                + referenceCoreMaterial.get_name()
+                + "' has uncomputable volumetric losses at "
+                + std::to_string(temperature) + " degC — cross-reference cannot proceed");
+        }
         add_scored_value("Reference", CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, referenceVolumetricLossesWithTemperature);
 
 
@@ -429,7 +444,13 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
     catch(const std::invalid_argument& re)
     {
-        return *unfilteredCoreMaterials;
+        // Phase 1 fix: previously silently `return *unfilteredCoreMaterials;` —
+        // an exception here meant the entire filter became a no-op pass-through,
+        // disabling the volumetric-losses cross-reference ranking with no
+        // signal to the caller. That's a textbook silent shortcut. Per
+        // policy: propagate. If the reference material's losses can't be
+        // computed, the whole cross-reference can't proceed honestly.
+        throw;
     }
 }
 

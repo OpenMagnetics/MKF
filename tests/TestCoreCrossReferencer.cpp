@@ -33,7 +33,13 @@ TEST_CASE("Test_All_Core_Materials", "[adviser][core-cross-referencer]") {
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 35 - Kool M\xC2\xB5 26 - Ungapped");
+    // Phase 1 fix landed: SATURATION filter is now active (previously
+    // dropped by an incomplete switch in apply_filters). For a ferrite
+    // reference the top cross-reference is now the same shape with an
+    // adjacent ferrite material (3C94) — formerly a powder Kool Mµ on a
+    // totally different shape, which was the symptom of the ferrite→powder
+    // bias documented in the audit.
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "EC 35/17/10 - 3C94 - Gapped 1.000 mm");
 }
 
 TEST_CASE("Test_All_Core_Materials_Same_Material", "[adviser][core-cross-referencer][smoke-test]") {
@@ -101,7 +107,10 @@ TEST_CASE("Test_All_Core_Materials_Only_TDK", "[adviser][core-cross-referencer]"
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name().value() == "ETD 34/17/11 - N87 - Gapped 2.500 mm");
+    // Phase 1 fix landed: with SATURATION now active, the TDK-only top
+    // cross-reference for an EC 35/17/10 ferrite shifts from the larger
+    // ETD 34/17/11 to the dimensionally closer ETD 29/16/10.
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "ETD 29/16/10 - N87 - Gapped 1.000 mm");
 }
 
 TEST_CASE("Test_All_Core_Materials_Powder", "[adviser][core-cross-referencer]") {
@@ -120,7 +129,10 @@ TEST_CASE("Test_All_Core_Materials_Powder", "[adviser][core-cross-referencer]") 
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 25/9.5/6.3 - MS 75 - Ungapped");
+    // Phase 1 fix landed: with the CORE_LOSSES ceiling clamp removed and
+    // SATURATION active, the powder reference now matches a same-shape
+    // candidate (E 25/9.5/6.3 MS 60) rather than a larger MS 75.
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 25/9.5/6.3 - MS 60 - Ungapped");
 }
 
 TEST_CASE("Test_All_Core_Materials_Only_Micrometals", "[adviser][core-cross-referencer][smoke-test]") {
@@ -164,7 +176,11 @@ TEST_CASE("Test_Cross_Reference_Core_Web_0", "[adviser][core-cross-referencer][b
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 20);
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name().value() == "EQ 42/20/28 - High Flux 26 - Ungapped");
+    // Phase 1 fix landed: with SATURATION active, the 3C97 PQ 40/40
+    // reference now matches a same-material ferrite (ETD 44/22/15 - 3C97)
+    // rather than a cross-family powder (EQ 42/20/28 - High Flux 26),
+    // which is the expected behaviour for a similarity cross-referencer.
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "ETD 44/22/15 - 3C97 - Gapped 1.000 mm");
 
     auto scorings = coreCrossReferencer.get_scorings();
     auto scoredValues = coreCrossReferencer.get_scored_values();

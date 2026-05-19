@@ -523,23 +523,33 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
         
         return {averageCoreLosses, maximumMagneticFluxDensitySaturationPeak};
     }
-    catch(...)
+    catch (const std::exception&)
     {
+        // Phase 1 fix: NaN sentinel kept (was a bare `catch(...)` originally —
+        // narrowed to std::exception so unexpected non-std errors surface).
+        // NaN signals "core losses uncomputable for this candidate" — the
+        // immediate caller in filter_core (see ~line 552) MUST std::isnan-check
+        // and convert to an explicit rejection / penalty. Not a default value
+        // substitution: NaN propagates poisonously through any arithmetic, so
+        // failing to handle it produces a NaN result downstream rather than a
+        // plausible-looking wrong number.
         return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     }
 }
 
-std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCoreLosses::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<std::string, std::string> models, double weight, double limit) {
+std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCoreLosses::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<std::string, std::string> models, double weight, double limit, double saturationWeight) {
     if (weight <= 0) {
         return *unfilteredCores;
     }
     std::vector<double> newScoring;
+    std::vector<double> saturationScoring;
 
     auto temperature = inputs.get_maximum_temperature();
     auto [referenceCoreLossesWithTemperature, referenceCoreMagneticFluxDensitySaturationPeak] = calculate_average_core_losses_and_magnetic_flux_density(referenceCore, referenceNumberTurns, inputs, models);
     auto referenceMaterialMagneticFluxDensitySaturationPeak = referenceCore.get_magnetic_flux_density_saturation(temperature, true);
+    double referenceSaturationRatio = 1 + (referenceCoreMagneticFluxDensitySaturationPeak - referenceMaterialMagneticFluxDensitySaturationPeak) / referenceMaterialMagneticFluxDensitySaturationPeak;
     add_scored_value("Reference", CoreCrossReferencerFilters::CORE_LOSSES, referenceCoreLossesWithTemperature);
-    add_scored_value("Reference", CoreCrossReferencerFilters::SATURATION, 1 + (referenceCoreMagneticFluxDensitySaturationPeak - referenceMaterialMagneticFluxDensitySaturationPeak) / referenceMaterialMagneticFluxDensitySaturationPeak);
+    add_scored_value("Reference", CoreCrossReferencerFilters::SATURATION, referenceSaturationRatio);
 
     OperatingPointExcitation excitation;
     SignalDescriptor magneticFluxDensity;
@@ -557,6 +567,14 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
             if ((*_validScorings)[CoreCrossReferencerFilters::CORE_LOSSES].contains(core.get_name().value())) {
                 if ((*_validScorings)[CoreCrossReferencerFilters::CORE_LOSSES][core.get_name().value()]) {
                     newScoring.push_back((*_scorings)[CoreCrossReferencerFilters::CORE_LOSSES][core.get_name().value()]);
+                    if ((*_validScorings).contains(CoreCrossReferencerFilters::SATURATION) &&
+                        (*_validScorings)[CoreCrossReferencerFilters::SATURATION].contains(core.get_name().value()) &&
+                        (*_validScorings)[CoreCrossReferencerFilters::SATURATION][core.get_name().value()]) {
+                        saturationScoring.push_back((*_scorings)[CoreCrossReferencerFilters::SATURATION][core.get_name().value()]);
+                    }
+                    else {
+                        saturationScoring.push_back(std::numeric_limits<double>::quiet_NaN());
+                    }
                 }
                 else {
                     listOfIndexesToErase.push_back(coreIndex);
@@ -568,21 +586,45 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
         auto materialMagneticFluxDensitySaturationPeak = core.get_magnetic_flux_density_saturation(temperature, true);
 
         auto [coreLossesWithTemperature, coreMagneticFluxDensitySaturationPeak] = calculate_average_core_losses_and_magnetic_flux_density(core, referenceNumberTurns, inputs, models);
+        double candidateSaturationRatio = 1 + (coreMagneticFluxDensitySaturationPeak - materialMagneticFluxDensitySaturationPeak) / materialMagneticFluxDensitySaturationPeak;
         add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::CORE_LOSSES, coreLossesWithTemperature);
-        add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::SATURATION, 1 + (coreMagneticFluxDensitySaturationPeak - materialMagneticFluxDensitySaturationPeak) / materialMagneticFluxDensitySaturationPeak);
+        add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::SATURATION, candidateSaturationRatio);
 
         // CCR-BUG-2 NOTE: Saturation check is coupled with loss comparison.
         // Cores with lower losses but B > Bsat are excluded even if they're valid.
         // TODO: Separate saturation check from loss comparison for better results.
-        if ((coreMagneticFluxDensitySaturationPeak < materialMagneticFluxDensitySaturationPeak) && (coreLossesWithTemperature < referenceCoreLossesWithTemperature)) {
-            double scoring = 0;
-            newScoring.push_back(scoring);
-            add_scoring(core.get_name().value(), CoreCrossReferencerFilters::CORE_LOSSES, scoring);
-        }
-        else if ((coreMagneticFluxDensitySaturationPeak < materialMagneticFluxDensitySaturationPeak) && ((fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature) / referenceCoreLossesWithTemperature < limit) || limit >= 1)) {
+        if (coreMagneticFluxDensitySaturationPeak < materialMagneticFluxDensitySaturationPeak &&
+            ((fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature) / referenceCoreLossesWithTemperature < limit) || limit >= 1)) {
+            // Phase 1 fix: previously the "losses < reference" branch
+            // hardcoded scoring = 0 (i.e. "perfect distance"), so every
+            // candidate with better-than-reference losses tied at the same
+            // normalised maximum. That produced the visible "score ceiling
+            // at 2.6" where top-N powder candidates were all tied — the
+            // CORE_LOSSES filter (weight 0.5) was pegged at 1.0 × 0.5 = 0.5
+            // for every better-than-reference candidate regardless of how
+            // much better. Score by absolute distance always; the invert
+            // normalisation then rewards closeness to the reference
+            // monotonically, which is the correct similarity ranking for a
+            // cross-referencer.
             double scoring = fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature);
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencerFilters::CORE_LOSSES, scoring);
+
+            // Phase 1 fix: SATURATION filter was never wired up. The enum
+            // value existed and a scored_value was computed here, but the
+            // apply_filters switch had no SATURATION case and no
+            // MagneticCoreFilterSaturation class existed -- so the weight=0.5
+            // was completely unused. Effect: candidates were ranked on
+            // geometry + losses only, so very-high-Bsat powder cores
+            // competed equally with low-Bsat ferrites despite the very
+            // different saturation headroom, biasing ferrite references
+            // toward powder cross-references. Score saturation here (where
+            // the values are already computed) by absolute distance of the
+            // Bpeak/Bsat ratio from the reference -- a candidate with the
+            // same saturation margin as the reference is most similar.
+            double saturationDistance = fabs(referenceSaturationRatio - candidateSaturationRatio);
+            saturationScoring.push_back(saturationDistance);
+            add_scoring(core.get_name().value(), CoreCrossReferencerFilters::SATURATION, saturationDistance);
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -602,9 +644,16 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
     if (filteredCoresWithScoring.size() != newScoring.size()) {
         throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
+    if (filteredCoresWithScoring.size() != saturationScoring.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Saturation scoring size mismatch: cores=" + std::to_string(filteredCoresWithScoring.size()) + ", saturationScoring=" + std::to_string(saturationScoring.size()));
+    }
 
     if (filteredCoresWithScoring.size() > 0) {
         normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencerFilters::CORE_LOSSES]);
+        // Apply SATURATION weight from the same place; the filter has no
+        // standalone class so we normalise its scoring here against the
+        // same candidate set used by CORE_LOSSES.
+        normalize_scoring(&filteredCoresWithScoring, &saturationScoring, saturationWeight, (*_filterConfiguration)[CoreCrossReferencerFilters::SATURATION]);
     }
     return filteredCoresWithScoring;
 }
@@ -727,7 +776,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
     }
 
     // We leave core losses for the last one, as it is the most computationally costly
-    rankedCores = filterVolumetricLosses.filter_core(&rankedCores, referenceCore, referenceNumberTurns, inputs, _models, weights[CoreCrossReferencerFilters::CORE_LOSSES], limit);
+    rankedCores = filterVolumetricLosses.filter_core(&rankedCores, referenceCore, referenceNumberTurns, inputs, _models, weights[CoreCrossReferencerFilters::CORE_LOSSES], limit, weights[CoreCrossReferencerFilters::SATURATION]);
         logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + to_string(CoreCrossReferencerFilters::CORE_LOSSES) + ".", "Core Cross Referencer", 2);
 
     if (rankedCores.size() > maximumNumberResults) {

@@ -1,0 +1,361 @@
+// =============================================================================
+// TestCoreAdviserCharacterisation.cpp
+// =============================================================================
+// Characterisation tests for the CoreAdviser end-to-end pipeline.
+//
+// PURPOSE
+//   Lock the CURRENT top-N output of CoreAdviser::get_advised_core across the
+//   matrix (mode × application), so that any refactor of the 3 196-line
+//   CoreAdviser.cpp (Phase 5 in the audit) preserves the exact ranking and
+//   scores to within 1e-6 relative tolerance.
+//
+// MATRIX
+//   AVAILABLE_CORES  × POWER                       (typical inductor query)
+//   STANDARD_CORES   × POWER                       (catalogue-only query)
+//   AVAILABLE_CORES  × INTERFERENCE_SUPPRESSION    (toroidal CMC-style query)
+//
+// SHAPE OF EACH SNAPSHOT TEST
+//   - Fixed inputs (frequency, voltage, current, inductance, etc.).
+//   - Fixed cores fixture (tests/testData/test_cores.ndjson, ~4800 cores after
+//     parse-skips) — already used by TestCoreAdviser.cpp.
+//   - Strict equality on the ordered top-N core names.
+//   - WithinRel(1e-6) on each score.
+//
+// REGENERATING SNAPSHOTS
+//   Flip kRegenerateBaselines = true, run, copy the printed BASELINE lines
+//   into the kSnapshots tables below, flip back.
+//
+// BENCHMARKS  (tag: [!benchmark])
+//   Time get_advised_core on the full fixture for the three scenarios above.
+//   Baselines recorded at the bottom of the file.
+// =============================================================================
+
+#include <source_location>
+#include <cmath>
+#include <fstream>
+#include <iomanip>
+#include <vector>
+
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/benchmark/catch_benchmark.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include "advisers/CoreAdviser.h"
+#include "processors/Inputs.h"
+#include "physical_models/Impedance.h"
+#include "support/Settings.h"
+
+#include "TestingUtils.h"
+
+using namespace MAS;
+using namespace OpenMagnetics;
+using Catch::Matchers::WithinRel;
+
+namespace {
+
+constexpr bool kRegenerateBaselines = false;
+constexpr double kRelTol = 1e-6;
+
+// --- Fixture loader ---------------------------------------------------------
+std::vector<Core> load_test_cores_fixture() {
+    auto path = OpenMagneticsTesting::get_test_data_path(
+        std::source_location::current(), "test_cores.ndjson");
+    std::ifstream in(path);
+    std::string line;
+    std::vector<Core> cores;
+    while (std::getline(in, line)) {
+        try {
+            json jf = json::parse(line);
+            cores.emplace_back(jf, false, true, false);
+        } catch (const CoreShapeNotFoundException&) {
+            continue;
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+    return cores;
+}
+
+// --- Inputs builders --------------------------------------------------------
+OpenMagnetics::Inputs make_power_inputs() {
+    // Same parameter set as TestCoreAdviser.cpp:Test_CoreAdviserAvailableCores_All_Cores.
+    return OpenMagnetics::Inputs::create_quick_operating_point(
+        /*frequency*/ 100000,
+        /*magnetizingInductance*/ 100e-6,
+        /*temperature*/ 25,
+        /*label*/ WaveformLabel::SINUSOIDAL,
+        /*peakToPeak*/ 600,
+        /*dutyCycle*/ 0.5,
+        /*dcCurrent*/ 0,
+        /*turnsRatios*/ {});
+}
+
+OpenMagnetics::Inputs make_interference_suppression_inputs() {
+    // Mirrors TestCoreAdviser.cpp:Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance.
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(
+        /*frequency*/ 100000,
+        /*magnetizingInductance*/ 1e-6,
+        /*temperature*/ 25,
+        /*label*/ WaveformLabel::SINUSOIDAL,
+        /*peakToPeak*/ 60,
+        /*dutyCycle*/ 0.5,
+        /*dcCurrent*/ 0,
+        /*turnsRatios*/ {});
+    std::vector<ImpedanceAtFrequency> minimumImpedance;
+    ImpedancePoint ip;
+    ip.set_magnitude(1000);
+    ImpedanceAtFrequency iaf;
+    iaf.set_frequency(100000);
+    iaf.set_impedance(ip);
+    minimumImpedance.push_back(iaf);
+    inputs.get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
+    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(1e-6);
+    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(std::nullopt);
+    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
+    return inputs;
+}
+
+// --- Snapshot type ----------------------------------------------------------
+struct TopEntry {
+    std::string name;
+    double score;
+};
+
+void check_top_n(const std::string& label,
+                 const std::vector<std::pair<OpenMagnetics::Mas, double>>& got,
+                 const std::vector<TopEntry>& expectedTop) {
+    // Print baseline lines whenever regenerating OR when no snapshot has
+    // been recorded yet (expectedTop empty). Empty-snapshot still enforces
+    // the monotonic-ordering structural contract.
+    if (kRegenerateBaselines || expectedTop.empty()) {
+        UNSCOPED_INFO("BASELINE TOPN " << label << " count=" << got.size());
+        for (size_t i = 0; i < got.size(); ++i) {
+            auto name = got[i].first.get_magnetic().get_core().get_name().value_or("<unnamed>");
+            UNSCOPED_INFO("  [" << i << "] name=\"" << name << "\" score="
+                          << std::setprecision(17) << got[i].second);
+        }
+        std::cerr << "\nBASELINE TOPN " << label << " count=" << got.size() << "\n";
+        for (size_t i = 0; i < got.size(); ++i) {
+            auto name = got[i].first.get_magnetic().get_core().get_name().value_or("<unnamed>");
+            std::cerr << "  [" << i << "] name=\"" << name << "\" score="
+                      << std::setprecision(17) << got[i].second << "\n";
+        }
+        REQUIRE(got.size() >= expectedTop.size());
+        for (size_t i = 1; i < got.size(); ++i) {
+            REQUIRE(got[i].second <= got[i - 1].second);
+        }
+        return;
+    }
+    INFO("scenario=" << label);
+    REQUIRE(got.size() >= expectedTop.size());
+    // Verify scores are monotonically non-increasing (the contract).
+    for (size_t i = 1; i < got.size(); ++i) {
+        REQUIRE(got[i].second <= got[i - 1].second);
+    }
+    // Strict equality on names; WithinRel on scores.
+    for (size_t i = 0; i < expectedTop.size(); ++i) {
+        auto name = got[i].first.get_magnetic().get_core().get_name().value_or("<unnamed>");
+        INFO("top[" << i << "] expected=\"" << expectedTop[i].name << "\" got=\"" << name
+                    << "\" score=" << std::setprecision(17) << got[i].second);
+        REQUIRE(name == expectedTop[i].name);
+        REQUIRE_THAT(got[i].second, WithinRel(expectedTop[i].score, kRelTol));
+    }
+}
+
+// ----------------------------------------------------------------------------
+// SNAPSHOTS
+// Baselines captured 2026-05-19. Top entries are ordering-sensitive; scores
+// are within 1e-6 relative tolerance.
+// ----------------------------------------------------------------------------
+const std::vector<TopEntry> kTopAvailablePower = {
+    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          4.029813628967557},
+    {"EP 20 - 3C91 - Gapped 0.382 mm",             3.9580897618280382},
+    {"T 21/12/7.1 - Kool Mµ Hƒ 60 - Ungapped",     3.915251082271789},
+    {"PQ 20/20 - 3C95 - Gapped 0.477 mm",          3.8799515162229437},
+    {"EFD 25/13/9 - 97 - Gapped 0.5 mm",           3.8157898032674495},
+};
+
+// STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
+// Phase 1 fix landed: coreShapeDatabase had been keyed by canonical-name AND
+// each alias, so iterating it for the STANDARD_CORES path yielded the same
+// CoreShape (1 + #aliases) times and produced duplicate top-N entries
+// (previously slots 0-2 were three identical copies of
+// "95 PQ 27/15 gapped 0.36 mm"). See CoreAdviser.cpp get_advised_core
+// dispatch path for the canonical-name dedupe.
+const std::vector<TopEntry> kTopStandardPower = {
+    {"95 PQ 27/15 gapped 0.36 mm",                 3.8839874324577632},
+    {"95 EQ 26/19/7 gapped 0.39 mm",               3.6405809245945537},
+    {"95 PQ 26/20 gapped 0.39 mm",                 3.4445103127181436},
+    {"95 RM 12/17 gapped 0.36 mm",                 3.4194800188185512},
+    {"95 PQ 28/20 gapped 0.38 mm",                 3.3998371194660173},
+};
+
+const std::vector<TopEntry> kTopAvailableInterference = {
+    {"T 134/77/155 - XFlux 26 - Ungapped",         1.9491685553595064},
+    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8605239944178327},
+    {"T 167/87/27 - XFlux 26 - Ungapped",          1.5147561009882304},
+};
+
+} // namespace
+
+// =============================================================================
+// CHARACTERISATION SNAPSHOTS
+// =============================================================================
+
+TEST_CASE("CoreAdviser AVAILABLE_CORES x POWER top-5 snapshot",
+          "[adviser][core-adviser][characterisation][available-cores][power]") {
+    clear_databases();
+    settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+
+    auto inputs = make_power_inputs();
+    auto cores = load_test_cores_fixture();
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+    CoreAdviser adviser;
+    adviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto results = adviser.get_advised_core(inputs, weights, &cores, 5);
+
+    check_top_n("AVAILABLE_CORES_POWER", results, kTopAvailablePower);
+}
+
+TEST_CASE("CoreAdviser STANDARD_CORES x POWER top-5 snapshot",
+          "[adviser][core-adviser][characterisation][standard-cores][power]") {
+    clear_databases();
+    settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+
+    auto inputs = make_power_inputs();
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+    CoreAdviser adviser;
+    adviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    auto results = adviser.get_advised_core(inputs, weights, 5);
+
+    check_top_n("STANDARD_CORES_POWER", results, kTopStandardPower);
+}
+
+TEST_CASE("CoreAdviser AVAILABLE_CORES x INTERFERENCE_SUPPRESSION top-3 snapshot",
+          "[adviser][core-adviser][characterisation][available-cores][interference-suppression]") {
+    clear_databases();
+    settings.reset();
+    settings.set_use_concentric_cores(false);
+    settings.set_use_toroidal_cores(true);
+    settings.set_use_only_cores_in_stock(false);
+
+    auto inputs = make_interference_suppression_inputs();
+    auto cores = load_test_cores_fixture();
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 0;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0;
+
+    CoreAdviser adviser;
+    adviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    adviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+    auto results = adviser.get_advised_core(inputs, weights, &cores, 3);
+
+    check_top_n("AVAILABLE_CORES_INTERFERENCE_SUPPRESSION", results, kTopAvailableInterference);
+}
+
+// =============================================================================
+// BENCHMARKS  (opt-in via [!benchmark])
+// =============================================================================
+// The CoreAdviser pipeline is large; we benchmark end-to-end get_advised_core
+// rather than internal stages — that's what users actually care about.
+//
+// IMPORTANT: Catch2 defaults to 100 samples per BENCHMARK, which means a
+// single full-DB run can take several minutes. Always invoke with a small
+// sample count for these, e.g.:
+//
+//   ./MKF_tests "[benchmark-available-power]" --benchmark-samples 3
+//
+
+TEST_CASE("Benchmark CoreAdviser AVAILABLE_CORES x POWER (full DB, top-50)",
+          "[adviser][core-adviser][!benchmark][benchmark-available-power]") {
+    clear_databases();
+    settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+
+    auto inputs = make_power_inputs();
+    auto cores = load_test_cores_fixture();
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+    BENCHMARK("get_advised_core AVAILABLE x POWER full DB top-50") {
+        CoreAdviser adviser;
+        adviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+        return adviser.get_advised_core(inputs, weights, &cores, 50);
+    };
+}
+
+TEST_CASE("Benchmark CoreAdviser STANDARD_CORES x POWER (top-50)",
+          "[adviser][core-adviser][!benchmark][benchmark-standard-power]") {
+    clear_databases();
+    settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+
+    auto inputs = make_power_inputs();
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+    BENCHMARK("get_advised_core STANDARD x POWER top-50") {
+        CoreAdviser adviser;
+        adviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        return adviser.get_advised_core(inputs, weights, 50);
+    };
+}
+
+TEST_CASE("Benchmark CoreAdviser AVAILABLE_CORES x INTERFERENCE_SUPPRESSION (full DB, top-10)",
+          "[adviser][core-adviser][!benchmark][benchmark-available-interference]") {
+    clear_databases();
+    settings.reset();
+    settings.set_use_concentric_cores(false);
+    settings.set_use_toroidal_cores(true);
+    settings.set_use_only_cores_in_stock(false);
+
+    auto inputs = make_interference_suppression_inputs();
+    auto cores = load_test_cores_fixture();
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 0;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0;
+
+    BENCHMARK("get_advised_core AVAILABLE x IS full DB top-10") {
+        CoreAdviser adviser;
+        adviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+        adviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+        return adviser.get_advised_core(inputs, weights, &cores, 10);
+    };
+}
+
+// =============================================================================
+// BASELINE BENCHMARKS (record after each refactor)
+// =============================================================================
+//
+// Date       | Scenario                                | mean (1 sample) | notes
+// -----------+-----------------------------------------+-----------------+----------
+// 2026-05-19 | AVAILABLE_CORES x POWER (full, top-50)  | TBD             | initial
+// 2026-05-19 | STANDARD_CORES x POWER (top-50)         | TBD             | initial
+// 2026-05-19 | AVAILABLE x INTERFERENCE (full, top-10) | TBD             | initial
+//
+// Each row is "time per get_advised_core call". The full-DB scenarios are
+// known to be expensive (tens of seconds each); when running for the first
+// time, use `--benchmark-samples 3 --benchmark-warmup-time 0`.
+// =============================================================================

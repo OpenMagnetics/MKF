@@ -806,7 +806,22 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
             load_core_shapes();
         }
         std::vector<MAS::CoreShape> shapes;
-        for (auto [name, shape] : coreShapeDatabase) {
+        // Phase 1 fix: coreShapeDatabase is keyed by canonical-name AND by
+        // each alias (see Utils.cpp:255-260), so a naive iteration yields the
+        // same CoreShape (1 + #aliases) times. That was the root cause of
+        // CoreAdviser STANDARD_CORES × POWER returning duplicate top-N
+        // entries with identical names and scores (e.g. three copies of
+        // "95 PQ 27/15 gapped 0.36 mm" in slots 0-2). Dedupe by canonical
+        // shape.get_name() before feeding the dataset builder.
+        std::set<std::string> seenShapeNames;
+        for (auto& [key, shape] : coreShapeDatabase) {
+            auto canonical = shape.get_name().value_or("");
+            if (canonical.empty()) {
+                throw std::runtime_error("CoreShape in coreShapeDatabase has no name");
+            }
+            if (!seenShapeNames.insert(canonical).second) {
+                continue;
+            }
             shapes.push_back(shape);
         }
         return get_advised_core(inputs, &shapes, maximumNumberResults);
@@ -1116,19 +1131,29 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         }
 
         if (includeStacks && globalIncludeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U || core.get_shape_family() == CoreShapeFamily::C)) {
+            // Capture the un-stacked base name once so stack variants don't
+            // accumulate suffixes across loop iterations.
+            std::string baseName = core.get_name().value_or("unnamed");
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i) {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
                 // process_data() resets processed description to base values, then calls scale_to_stacks internally
                 core.process_data();
                 core.process_gap(); // CA-OPT-2 FIX: reprocess gap data after stacking (was commented out)
+                // Phase 1 fix: previously only manufacturer_info.reference got
+                // the " N stacks" suffix; core.name stayed identical across
+                // stack variants. add_gapping_standard_cores then produced
+                // identical display names (e.g. three copies of
+                // "95 PQ 27/15 gapped 0.36 mm") for 1/2/3-stack variants.
+                // Put the stack suffix in the core name too so downstream
+                // names stay unique.
+                std::string variantName = baseName;
+                if (i != 0) {
+                    variantName += " " + std::to_string(1 + i) + " stacks";
+                }
+                core.set_name(variantName);
                 magnetic.set_core(core);
                 MagneticManufacturerInfo magneticManufacturerInfo;
-                if (i!=0) {
-                    magneticManufacturerInfo.set_reference(core.get_name().value_or("unnamed") + " " + std::to_string(1 + i) + " stacks" );
-                }
-                else{
-                    magneticManufacturerInfo.set_reference(core.get_name().value_or("unnamed"));
-                }
+                magneticManufacturerInfo.set_reference(variantName);
                 magnetic.set_manufacturer_info(magneticManufacturerInfo);
                 magnetics.push_back(std::pair<Magnetic, double>{magnetic, 0});
             }
@@ -1356,10 +1381,22 @@ void add_alternative_materials(std::vector<std::pair<Magnetic, double>> *magneti
         Core core = (*magneticsWithScoring)[i].first.get_core();
         auto coreMaterial = core.resolve_material();
 
-        auto alternatives = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, temperature);
+        // Phase 1: per-candidate alternatives lookup is annotational metadata.
+        // If the cross-reference can't proceed (e.g. this candidate's material
+        // has no Steinmetz coefficients at this temperature, so it can't be
+        // used as a reference for ranking others), record an empty
+        // alternatives list and continue. Named, logged, bounded scope.
         std::vector<std::string> coreMaterialAlternatives;
-        for (auto [alternativeCoreMaterial, scoring] : alternatives) {
-            coreMaterialAlternatives.push_back(alternativeCoreMaterial.get_name());
+        try {
+            auto alternatives = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, temperature);
+            for (auto [alternativeCoreMaterial, scoring] : alternatives) {
+                coreMaterialAlternatives.push_back(alternativeCoreMaterial.get_name());
+            }
+        }
+        catch (const std::exception& e) {
+            logEntry(std::string("Skipping alternative-materials lookup for candidate with material '")
+                         + coreMaterial.get_name() + "': " + e.what(),
+                     "CoreAdviser", 2);
         }
         coreMaterial.set_alternatives(coreMaterialAlternatives);
         core.set_material(coreMaterial);
@@ -1409,16 +1446,41 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
         if (core.get_shape_family() != CoreShapeFamily::T) {
             // Use realistic ferrite Bsat (~350 mT) instead of dummy material's 500 mT
 // CA-LOGIC-3 FIX: Use actual material Bsat instead of hardcoded ferrite default
-            double realisticBsat = defaults.ferriteSaturationFluxDensity; // fallback
-            try {
-                auto coreMat = core.resolve_material();
-                double opTemp = 25.0;
-                for (auto& op : inputs.get_operating_points()) {
-                    opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
+            // Phase 1 fix: split named-sentinel (Dummy material from
+            // shape-only pre-filter stage) from real-material lookup. Previously
+            // both shared a silent `catch (...)` that swallowed real-material
+            // failures and contaminated the gap calc with a generic ferrite
+            // default Bsat — letting unsuitable candidates pass.
+            double realisticBsat;
+            if (core.get_material_name() == "Dummy") {
+                // Shape-only pre-filter stage (see CoreAdviser.cpp:2344 fan-out):
+                // material isn't bound yet, use the ferrite reference Bsat as
+                // the documented contract of this stage.
+                realisticBsat = defaults.ferriteSaturationFluxDensity;
+            }
+            else {
+                try {
+                    auto coreMat = core.resolve_material();
+                    double opTemp = 25.0;
+                    for (auto& op : inputs.get_operating_points()) {
+                        opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
+                    }
+                    realisticBsat = Core::get_magnetic_flux_density_saturation(coreMat, opTemp);
                 }
-                realisticBsat = Core::get_magnetic_flux_density_saturation(coreMat, opTemp);
-            } catch (...) { // XC-3 NOTE: consider catching std::exception for diagnostics
-                // CA-LOGIC-3: fallback to ferrite default if material data unavailable
+                catch (const std::exception& e) {
+                    // Real material's Bsat lookup failed → cannot compute a
+                    // valid gap for this candidate. Skip the gap mutation; the
+                    // core stays in its incoming (likely ungapped) state and
+                    // downstream Bsat / energy filters reject it on its own
+                    // merits. Logged so the underlying material-data gap is
+                    // visible (loud).
+                    logEntry(std::string("Bsat lookup failed for material '")
+                             + core.get_material_name() + "' on core "
+                             + core.get_name().value_or("unnamed") + ": "
+                             + e.what() + " — leaving core ungapped (downstream filters will reject)",
+                             "CoreAdviser");
+                    continue;
+                }
             }
             double bSatTarget = realisticBsat * defaults.maximumProportionMagneticFluxDensitySaturation; // Use configured proportion of Bsat for safety margin
             
@@ -1548,8 +1610,23 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
     
     // 5. Find optimal gap
     if (settings.get_gapping_strategy() == GappingOptimizationStrategy::GOLDEN_SECTION) {
-        constraints.optimalGap = optimize_gap_golden_section(
-            effectiveMinGap, constraints.maxGap, inputs, core);
+        try {
+            constraints.optimalGap = optimize_gap_golden_section(
+                effectiveMinGap, constraints.maxGap, inputs, core);
+        }
+        catch (const std::exception& e) {
+            // Phase 1 fix: golden-section needs computable losses across the
+            // bracket. If the loss model fails for this core (e.g. missing
+            // Steinmetz coefficients at the operating frequency), fall back
+            // explicitly to the SIMPLE strategy rather than letting the
+            // optimizer work on DBL_MAX poison values (which it used to
+            // silently receive from calculate_core_losses_for_gap). This
+            // fallback is named, logged, and bounded — not a hidden default.
+            logEntry(std::string("Golden-section gap optimization failed (")
+                     + e.what() + "), falling back to SIMPLE strategy for core "
+                     + core.get_name().value_or("unnamed"), "CoreAdviser");
+            constraints.optimalGap = effectiveMinGap;
+        }
     } else {
         // SIMPLE strategy: use effective minimum gap
         constraints.optimalGap = effectiveMinGap;
@@ -1611,30 +1688,29 @@ double CoreAdviser::get_peak_current(Inputs inputs) {
 }
 
 double CoreAdviser::calculate_core_losses_for_gap(double gap, Inputs inputs, Core core) {
-    try {
-        // Set the gap temporarily
-        core.set_ground_gapping(gap);
-        core.process_gap();
+    // Phase 1 fix: previously wrapped in `try { ... } catch (const std::exception&)
+    // { return DBL_MAX; }`, which silently turned uncomputable losses into a
+    // "very high loss" signal that contaminated the golden-section optimizer
+    // with no way for it to know the optimum was meaningless. Per the
+    // no-silent-fallbacks policy, let the exception propagate; the single
+    // caller in add_gapping_standard_cores wraps the optimizer call and
+    // falls back to the SIMPLE gap strategy with an explicit logEntry on
+    // failure (named fallback, not a hidden default).
+    core.set_ground_gapping(gap);
+    core.process_gap();
 
-        // Create Steinmetz model
-        auto coreLossesModel = CoreLossesModel::factory(
-            std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
+    auto coreLossesModel = CoreLossesModel::factory(
+        std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
 
-        // Calculate losses for each operating point
-        double totalLosses = 0.0;
-        for (auto& op : inputs.get_operating_points()) {
-            auto excitation = Inputs::get_primary_excitation(op);
-            double temperature = op.get_conditions().get_ambient_temperature();
-            auto losses = coreLossesModel->get_core_losses(core, excitation, temperature);
-            totalLosses += losses.get_core_losses();
-        }
-
-        return totalLosses;
-    } catch (const std::exception& e) {
-        // If we can't calculate losses (e.g., missing Steinmetz data), return a large value
-        // This will make this gap less attractive during optimization
-        return std::numeric_limits<double>::max();
+    double totalLosses = 0.0;
+    for (auto& op : inputs.get_operating_points()) {
+        auto excitation = Inputs::get_primary_excitation(op);
+        double temperature = op.get_conditions().get_ambient_temperature();
+        auto losses = coreLossesModel->get_core_losses(core, excitation, temperature);
+        totalLosses += losses.get_core_losses();
     }
+
+    return totalLosses;
 }
 
 double CoreAdviser::optimize_gap_golden_section(double minGap, double maxGap, Inputs inputs, Core core) {
@@ -1851,7 +1927,19 @@ void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, dou
                     }
                 }
             } catch (const std::exception& e) {
-                converged = true;
+                // Phase 1 fix: previously silently set `converged = true`
+                // (mislabelled an unhandled exception as convergence with no
+                // logging). We cannot certify this candidate's Bpeak stays
+                // below Bsat for the iterated gap — the conservative response
+                // is to drop the candidate rather than ship an unverified
+                // design. Logged so the underlying simulator failure is
+                // visible.
+                logEntry(std::string("Gap-iteration simulator failed for core ")
+                         + core.get_name().value_or("unnamed") + ": " + e.what()
+                         + " — removing candidate (Bsat could not be verified)",
+                         "CoreAdviser");
+                shouldRemove = true;
+                break;
             }
             
             if (!gotBpeak) {
@@ -2306,20 +2394,27 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
     });
 
     for (size_t magneticIndex = 0; magneticIndex < (*magneticsWithScoring).size(); ++magneticIndex) {
-        for (size_t i = 0; i < numberCoreMaterialsTouse; ++i){
-            auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
-            if (magnetic.get_mutable_core().get_material_name() != "Dummy") {
-                magneticsWithMaterials.push_back({magnetic, scoring});
-                continue;
-            }
-            magnetic.get_mutable_core().set_material(evaluations[i].first);
-            magnetic.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + (magnetic.get_core().get_name().value_or("unnamed")));
-            if (magnetic.get_manufacturer_info()) {
-                auto manufacturerInfo = magnetic.get_manufacturer_info().value();
-                manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magnetic.get_reference());
-                magnetic.set_manufacturer_info(manufacturerInfo);
-            }
+        auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
+        if (magnetic.get_mutable_core().get_material_name() != "Dummy") {
+            // Already has a concrete material — pass through ONCE.
+            // Phase 1 fix: previously the inner i-loop also ran in this branch
+            // (with `continue`), so non-Dummy magnetics were pushed
+            // numberCoreMaterialsTouse (=2) times, producing the duplicate
+            // entries in CoreAdviser STANDARD_CORES × POWER top-N output.
             magneticsWithMaterials.push_back({magnetic, scoring});
+            continue;
+        }
+        // Dummy material — fan out into the top-N candidate ferrite materials.
+        for (size_t i = 0; i < numberCoreMaterialsTouse; ++i){
+            auto magneticCopy = magnetic;
+            magneticCopy.get_mutable_core().set_material(evaluations[i].first);
+            magneticCopy.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + (magnetic.get_core().get_name().value_or("unnamed")));
+            if (magneticCopy.get_manufacturer_info()) {
+                auto manufacturerInfo = magneticCopy.get_manufacturer_info().value();
+                manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magneticCopy.get_reference());
+                magneticCopy.set_manufacturer_info(manufacturerInfo);
+            }
+            magneticsWithMaterials.push_back({magneticCopy, scoring});
         }
     }
 
@@ -2358,30 +2453,31 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
     }
 
     stable_sort((evaluations).begin(), (evaluations).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
-        return b1.second > b2.second;
+        return b1.second < b2.second;
     });
 
     for (size_t magneticIndex = 0; magneticIndex < (*magneticsWithScoring).size(); ++magneticIndex) {
-        for (size_t i = 0; i < numberCoreMaterialsTouse; ++i){
-            auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
-            // if (magnetic.get_mutable_core().get_shape_name() != "T 90/57/23") {
-            //     continue;
-            // }
-            // if (magnetic.get_mutable_core().get_number_stacks() > 1) {
-            //     continue;
-            // }
-            if (magnetic.get_mutable_core().get_material_name() != "Dummy") {
-                magneticsWithMaterials.push_back({magnetic, scoring});
-                continue;
-            }
-            magnetic.get_mutable_core().set_material(evaluations[i].first);
-            magnetic.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + magnetic.get_core().get_name().value_or("unnamed"));
-            if (magnetic.get_manufacturer_info()) {
-                auto manufacturerInfo = magnetic.get_manufacturer_info().value();
-                manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magnetic.get_reference());
-                magnetic.set_manufacturer_info(manufacturerInfo);
-            }
+        auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
+        if (magnetic.get_mutable_core().get_material_name() != "Dummy") {
+            // Already has a concrete material — pass through ONCE.
+            // Phase 1 fix: previously the inner i-loop also ran in this
+            // branch, pushing non-Dummy magnetics numberCoreMaterialsTouse
+            // (=2) times. See add_ferrite_materials_by_losses for the
+            // parallel fix.
             magneticsWithMaterials.push_back({magnetic, scoring});
+            continue;
+        }
+        // Dummy material — fan out into the top-N candidate ferrite materials.
+        for (size_t i = 0; i < numberCoreMaterialsTouse; ++i){
+            auto magneticCopy = magnetic;
+            magneticCopy.get_mutable_core().set_material(evaluations[i].first);
+            magneticCopy.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + magneticCopy.get_core().get_name().value_or("unnamed"));
+            if (magneticCopy.get_manufacturer_info()) {
+                auto manufacturerInfo = magneticCopy.get_manufacturer_info().value();
+                manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magneticCopy.get_reference());
+                magneticCopy.set_manufacturer_info(manufacturerInfo);
+            }
+            magneticsWithMaterials.push_back({magneticCopy, scoring});
         }
     }
     return magneticsWithMaterials;
