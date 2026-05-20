@@ -127,7 +127,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
                 results.push_back({mas, totalLosses});
             }
         }
-        catch (...) {
+        catch (const std::exception& e) {
+            logEntry(std::string("MagneticAdviser::get_advised_magnetic_fast: skipping candidate, scoring failed: ") + e.what(), "MagneticAdviser", 2);
             continue;
         }
     }
@@ -344,7 +345,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                     mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
                     settings.set_coil_include_additional_coordinates(false);
                 }
-                mas = magneticSimulator.simulate(mas);
+                try {
+                    mas = magneticSimulator.simulate(mas);
+                } catch (const std::exception& e) {
+                    logEntry(std::string("MagneticAdviser: skipping candidate, simulate failed: ") + e.what(), "MagneticAdviser", 2);
+                    continue;
+                }
 
                 processedCoils++;
 
@@ -576,7 +582,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                     }
                 }
             }
-            catch (...) {
+            catch (const std::exception& e) {
+                logEntry(std::string("MagneticAdviser: strict filter ") + std::string(magic_enum::enum_name(filterEnum)) + " threw, rejecting magnetic: " + e.what(), "MagneticAdviser", 2);
                 validMagnetic = false;
                 break;
             }
@@ -617,7 +624,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                 (void)filterValid;
                 add_scoring(magnetic.get_reference(), filterEnum, scoring);
             }
-            catch (...) {
+            catch (const std::exception& e) {
+                logEntry(std::string("MagneticAdviser: non-strict filter ") + std::string(magic_enum::enum_name(filterEnum)) + " threw, rejecting magnetic: " + e.what(), "MagneticAdviser", 2);
                 valid = false;
                 break;
             }
@@ -672,7 +680,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         if (_simulateResults) {
             std::vector<std::pair<Mas, double>> masMagneticsWithScoringSimulated;
             for (auto [mas, scoring] : masMagneticsWithScoring) {
-                mas = magneticSimulator.simulate(mas, true);
+                try {
+                    mas = magneticSimulator.simulate(mas, true);
+                } catch (const std::exception& e) {
+                    logEntry(std::string("MagneticAdviser: skipping final-simulate candidate: ") + e.what(), "MagneticAdviser", 2);
+                    continue;
+                }
                 masMagneticsWithScoringSimulated.push_back({mas, scoring});
             }
 
