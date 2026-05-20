@@ -17,6 +17,14 @@
 
 namespace OpenMagnetics {
 
+// Phase 3 (F6): PQI / UI shapes use integrated windings whose layout is
+// not produced by fast_wind(), so the loss / impedance filters take a
+// per-shape policy branch. Centralised here so every site uses the same
+// predicate.
+inline bool is_pqi_or_ui_shape(const std::string& shapeName) {
+    return shapeName.rfind("PQI", 0) == 0 || shapeName.rfind("UI ", 0) == 0;
+}
+
 // Helper function to determine if a topology stores energy in the magnetic field
 // Energy-storing topologies need gapped cores for DC bias handling
 // Non-energy-storing (transformer) topologies transfer energy without storage
@@ -481,7 +489,7 @@ std::pair<bool, double> MagneticFilterEstimatedCost::evaluate_magnetic(Magnetic*
     WindingWindowElement windingWindow;
 
     std::string shapeName = core.get_shape_name();
-    if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+    if (!is_pqi_or_ui_shape(shapeName)) {
         auto bobbin = Bobbin::create_quick_bobbin(core);
         windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
     }
@@ -563,9 +571,8 @@ namespace {
 
 // PQI / UI shapes use integrated windings whose layout is not produced
 // by fast_wind(), so the loss filters take a per-shape policy branch.
-inline bool is_pqi_or_ui_shape(const std::string& shapeName) {
-    return shapeName.rfind("PQI", 0) == 0 || shapeName.rfind("UI ", 0) == 0;
-}
+// (is_pqi_or_ui_shape is defined at file scope above so call sites
+// before this namespace can also use it.)
 
 inline std::map<std::string, std::string> default_loss_filter_models() {
     std::map<std::string, std::string> models;
@@ -1206,20 +1213,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
     }
 
     std::string shapeName = core.get_shape_name();
-    if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
-        auto bobbin = Bobbin::create_quick_bobbin(core);
-        magnetic->get_mutable_coil().set_bobbin(bobbin);
-        auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
-
-        if (windingWindows[0].get_width()) {
-            if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
-                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
-                                         " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) + 
-                                         " shapeName: " + shapeName
-                                         );
-            }
-        }
-    }
+    prepare_bobbin_for_non_pqi(magnetic, shapeName);
 
     // For impedance filter, start searching from 1 turn rather than from inductance-based
     // initial value. In interference suppression applications, impedance is the primary
