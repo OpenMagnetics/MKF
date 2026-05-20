@@ -22,10 +22,58 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <optional>
 #include <utility>
 #include <vector>
 
 namespace OpenMagnetics {
+
+// Phase 5: promoted from a static function inside MagneticFilter.cpp so the
+// extracted filter translation units (MagneticFilterPhysical.cpp etc.) can
+// share the topology classification without duplicating the switch.
+// Returns true for energy-storing topologies (inductors, flyback-derived);
+// false for transformer-style topologies and for unknown / unspecified
+// values (treated as transformer, the safer no-gap default).
+inline bool is_energy_storing_topology(std::optional<Topologies> topology) {
+    if (!topology.has_value()) {
+        return false; // Unknown topology, caller should use other heuristics
+    }
+
+    switch (topology.value()) {
+        // Energy-storing topologies (inductors, flyback-derived)
+        case Topologies::FLYBACK_CONVERTER:
+        case Topologies::BUCK_CONVERTER:
+        case Topologies::BOOST_CONVERTER:
+        case Topologies::ISOLATED_BUCK_BOOST_CONVERTER:
+        case Topologies::POWER_FACTOR_CORRECTION:
+        // DMC is a single-winding (or balanced two-winding) inductor on the
+        // line carrying the full DC line current as bias. Routing it through
+        // the inductor B-from-current path lets MagnetizingInductance derate
+        // permeability via the material's DC-bias polynomial; the transformer
+        // path (B from voltage) misses the DC bias entirely.
+        case Topologies::DIFFERENTIAL_MODE_CHOKE:
+            return true;
+
+        // Transformer topologies (forward-derived)
+        case Topologies::SINGLE_SWITCH_FORWARD_CONVERTER:
+        case Topologies::TWO_SWITCH_FORWARD_CONVERTER:
+        case Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER:
+        case Topologies::PUSH_PULL_CONVERTER:
+        case Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
+        case Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER:
+        case Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER:
+        case Topologies::ISOLATED_BUCK_CONVERTER:
+        case Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER:
+        case Topologies::LLC_RESONANT_CONVERTER:
+        case Topologies::CLLC_RESONANT_CONVERTER:
+        case Topologies::CURRENT_TRANSFORMER:
+        case Topologies::COMMON_MODE_CHOKE:
+            return false;
+
+        default:
+            return false; // Unknown, treat as transformer (safer - no gap)
+    }
+}
 
 // Phase 3 (F6): PQI / UI shapes use integrated windings whose layout is
 // not produced by fast_wind(), so the loss / impedance filters take a
