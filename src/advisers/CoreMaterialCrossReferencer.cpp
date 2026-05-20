@@ -42,7 +42,7 @@ std::map<std::string, std::map<CoreMaterialCrossReferencerFilters, double>> Core
                                      {
                                          return p1.second < p2.second;
                                      })).second; 
-        minimumScoring = std::max(1e-10, minimumScoring); // B8 FIX
+        minimumScoring = std::max(defaults.crossReferencerScoringAbsoluteFloor, minimumScoring); // B8 FIX
 
         for (auto& [name, scoring] : aux) {
             if (std::isnan(scoring)) {

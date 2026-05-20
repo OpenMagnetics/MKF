@@ -43,12 +43,12 @@ std::map<std::string, std::map<CoreCrossReferencerFilters, double>> CoreCrossRef
                                      {
                                          return p1.second < p2.second;
                                      })).second; 
-        minimumScoring = std::max(1e-10, std::max(minimumScoring, maximumScoring * 1e-6)); // F4 FIX: data-relative floor (was hardcoded 0.0001)
+        minimumScoring = std::max(defaults.crossReferencerScoringAbsoluteFloor, std::max(minimumScoring, maximumScoring * defaults.crossReferencerScoringDataRelativeFloorRatio)); // F4 FIX: data-relative floor (was hardcoded 0.0001)
 
         for (auto& [name, scoring] : aux) {
             // F7 FIX: Handle equal scores consistently (give full credit)
-            if (std::abs(minimumScoring - maximumScoring) < 1e-10) {
-                swappedScorings[name][filter] = weighted ? _weights[filter] * 0.5 : 0.5; // XC-6 FIX: neutral when equal
+            if (std::abs(minimumScoring - maximumScoring) < defaults.crossReferencerScoringAbsoluteFloor) {
+                swappedScorings[name][filter] = weighted ? _weights[filter] * defaults.crossReferencerNeutralScoreWhenEqual : defaults.crossReferencerNeutralScoreWhenEqual; // XC-6 FIX: neutral when equal
                 continue;
             }
             if (filterConfiguration["log"]){

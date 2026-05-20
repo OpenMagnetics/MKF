@@ -66,7 +66,7 @@ void normalize_scoring(std::vector<std::pair<Item, double>>* rankedItems,
         return;
     }
 
-    double dataRelativeFloor = std::max(1e-10, maximumScoring * 1e-6); // B8 FIX: data-relative floor
+    double dataRelativeFloor = std::max(defaults.crossReferencerScoringAbsoluteFloor, maximumScoring * defaults.crossReferencerScoringDataRelativeFloorRatio); // B8 FIX: data-relative floor
 
     // O24 FIX: NaN/Inf protection
     for (size_t idx = 0; idx < newScoring->size(); ++idx) {
@@ -103,7 +103,7 @@ void normalize_scoring(std::vector<std::pair<Item, double>>* rankedItems,
             }
         }
         else {
-            (*rankedItems)[i].second = (*rankedItems)[i].second + weight * 0.5; // XC-6 FIX: neutral score when all equal (was full weight)
+            (*rankedItems)[i].second = (*rankedItems)[i].second + weight * defaults.crossReferencerNeutralScoreWhenEqual; // XC-6 FIX: neutral score when all equal (was full weight)
         }
     }
     std::stable_sort((*rankedItems).begin(), (*rankedItems).end(),

@@ -102,6 +102,29 @@ struct Defaults {
     // penalised in the analytical cost function.
     const double coreAdviserMaxPracticalGapColumnWidthFraction = 0.5;
     const double coreAdviserMaxFringingFactor = 0.25;
+
+    // Phase 4 (Group B): cross-referencer scoring-normalisation floors.
+    //
+    // crossReferencerScoringAbsoluteFloor:
+    //   Hard lower bound on the per-filter "minimum scoring" used for
+    //   log-/linear-normalising. Prevents log10(0) and division by ~0 when
+    //   a filter genuinely scores some candidate at 0 or below the noise
+    //   floor. Was the hardcoded literal 1e-10 throughout.
+    //
+    // crossReferencerScoringDataRelativeFloorRatio:
+    //   Floor on the minimum scoring expressed as a fraction of the maximum
+    //   scoring in the same filter. Acts as a dynamic-range cap: if the
+    //   spread between min and max is wider than 1/ratio, the minimum is
+    //   raised so normalisation doesn't compress everything into ~1.0.
+    //   Was the hardcoded literal 1e-6.
+    //
+    // crossReferencerNeutralScoreWhenEqual:
+    //   Neutral mid-range score awarded when min==max (every candidate
+    //   scored identically on this filter, so the filter carries no
+    //   discriminating information). Was the hardcoded literal 0.5.
+    const double crossReferencerScoringAbsoluteFloor = 1e-10;
+    const double crossReferencerScoringDataRelativeFloorRatio = 1e-6;
+    const double crossReferencerNeutralScoreWhenEqual = 0.5;
 };
 
 // Phase 3 (F7): canonical name for the "shape-only pre-filter" sentinel used
