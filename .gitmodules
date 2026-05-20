@@ -7,6 +7,6 @@
 [submodule "CAS"]
 	path = CAS
 	url = https://github.com/Power-Supply-Manufacturers-Association/CAS.git
-[submodule "EAS"]
-	path = EAS
-	url = https://github.com/Power-Supply-Manufacturers-Association/EAS.git
+[submodule "PEAS"]
+	path = PEAS
+	url = git@github.com:Power-Supply-Manufacturers-Association/PEAS.git

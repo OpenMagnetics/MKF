@@ -437,8 +437,8 @@ if(NOT DEFINED CAS_DIR)
     set(CAS_DIR "${PROJECT_SOURCE_DIR}/CAS")
 endif()
 
-if(NOT DEFINED EAS_DIR)
-    set(EAS_DIR "${PROJECT_SOURCE_DIR}/EAS")
+if(NOT DEFINED PEAS_DIR)
+    set(PEAS_DIR "${PROJECT_SOURCE_DIR}/PEAS")
 endif()
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/CAS")
@@ -447,10 +447,10 @@ add_custom_command(
   OUTPUT "${CAS_DIRECTORY}/CAS.hpp"
   COMMAND quicktype -l c++ -s schema ${CAS_DIR}/schemas/inputs.json
     -S ${CAS_DIR}/schemas/inputs/designRequirements.json
-    -S ${EAS_DIR}/schemas/utils.json
-    -S ${EAS_DIR}/schemas/inputs/twoTerminalOperatingPoint.json
-    -S ${EAS_DIR}/schemas/inputs/operatingConditions.json
-    -S ${EAS_DIR}/schemas/inputs/operatingPointExcitation.json
+    -S ${PEAS_DIR}/schemas/utils.json
+    -S ${PEAS_DIR}/schemas/inputs/twoTerminalOperatingPoint.json
+    -S ${PEAS_DIR}/schemas/inputs/operatingConditions.json
+    -S ${PEAS_DIR}/schemas/inputs/operatingPointExcitation.json
     -o ${CAS_DIRECTORY}/CAS.hpp --namespace CAS --source-style single-source
     --type-style pascal-case --member-style underscore-case
     --enumerator-style upper-underscore-case --no-boost
@@ -458,10 +458,10 @@ add_custom_command(
   DEPENDS
     "${CAS_DIR}/schemas/inputs.json"
     "${CAS_DIR}/schemas/inputs/designRequirements.json"
-    "${EAS_DIR}/schemas/utils.json"
-    "${EAS_DIR}/schemas/inputs/twoTerminalOperatingPoint.json"
-    "${EAS_DIR}/schemas/inputs/operatingConditions.json"
-    "${EAS_DIR}/schemas/inputs/operatingPointExcitation.json"
+    "${PEAS_DIR}/schemas/utils.json"
+    "${PEAS_DIR}/schemas/inputs/twoTerminalOperatingPoint.json"
+    "${PEAS_DIR}/schemas/inputs/operatingConditions.json"
+    "${PEAS_DIR}/schemas/inputs/operatingPointExcitation.json"
   USES_TERMINAL)
 
 add_custom_target(CAS ALL DEPENDS "${CAS_DIRECTORY}/CAS.hpp")
