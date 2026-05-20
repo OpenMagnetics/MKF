@@ -2213,17 +2213,24 @@ std::pair<bool, double> MagneticFilterHeight::evaluate_magnetic(Magnetic* magnet
     return {true, height};
 }
 
-std::pair<bool, double> MagneticFilterTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES_NO_PROXIMITY);
-    double losses = 0;
+namespace {
+// Phase 3 (F5): used by the LossesTimes*/VolumeTimes* combinator filters
+// to fetch a previously-computed scoring out of the global scoring cache,
+// or fall back to running the sub-filter inline if no cache hit. Replaces
+// the seven-line "previousX = get_scoring(...); if (previousX) {...} else
+// {compute}" block that appeared verbatim 7 times.
+inline double cached_or_compute_scoring(Magnetic* magnetic, Inputs* inputs,
+                                        std::vector<Outputs>* outputs,
+                                        MagneticFilters cacheKey,
+                                        MagneticFilter& fallbackFilter) {
+    auto cached = get_scoring(magnetic->get_reference(), cacheKey);
+    if (cached) return cached.value();
+    return fallbackFilter.evaluate_magnetic(magnetic, inputs, outputs).second;
+}
+} // namespace
 
-    if (previousLosses) {
-        losses = previousLosses.value();
-    }
-    else {
-        auto aux = _magneticFilterLossesNoProximity.evaluate_magnetic(magnetic, inputs, outputs);
-        losses = aux.second;
-    }
+std::pair<bool, double> MagneticFilterTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    double losses = cached_or_compute_scoring(magnetic, inputs, outputs, MagneticFilters::LOSSES_NO_PROXIMITY, _magneticFilterLossesNoProximity);
 
     auto coreTemperatureModel = CoreTemperatureModel::factory(defaults.coreTemperatureModelDefault);
 
@@ -2234,92 +2241,35 @@ std::pair<bool, double> MagneticFilterTemperatureRise::evaluate_magnetic(Magneti
 }
 
 std::pair<bool, double> MagneticFilterLossesTimesVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES);
-    double losses = 0;
-    if (previousLosses) {
-        losses = previousLosses.value();
-    }
-    else {
-        auto aux = MagneticFilterLosses().evaluate_magnetic(magnetic, inputs, outputs);
-        losses = aux.second;
-    }
+    MagneticFilterLosses fallback;
+    double losses = cached_or_compute_scoring(magnetic, inputs, outputs, MagneticFilters::LOSSES, fallback);
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs, outputs);
     return {true, losses * volumeScoring};
 }
- 
-std::pair<bool, double> MagneticFilterVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto previousTemperatureRise = get_scoring(magnetic->get_reference(), MagneticFilters::TEMPERATURE_RISE);
-    double temperature = 0;
-    if (previousTemperatureRise) {
-        temperature = previousTemperatureRise.value();
-    }
-    else {
-        auto aux = _magneticFilterTemperatureRise.evaluate_magnetic(magnetic, inputs, outputs);
-        temperature = aux.second;
-    }
 
+std::pair<bool, double> MagneticFilterVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    double temperature = cached_or_compute_scoring(magnetic, inputs, outputs, MagneticFilters::TEMPERATURE_RISE, _magneticFilterTemperatureRise);
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs, outputs);
     return {true, volumeScoring * temperature};
 }
 
 std::pair<bool, double> MagneticFilterLossesTimesVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES);
-    double losses = 0;
-    if (previousLosses) {
-        losses = previousLosses.value();
-    }
-    else {
-        auto aux = MagneticFilterLosses().evaluate_magnetic(magnetic, inputs, outputs);
-        losses = aux.second;
-    }
-    auto previousTemperatureRise = get_scoring(magnetic->get_reference(), MagneticFilters::TEMPERATURE_RISE);
-    double temperature = 0;
-    if (previousTemperatureRise) {
-        temperature = previousTemperatureRise.value();
-    }
-    else {
-        auto aux = _magneticFilterTemperatureRise.evaluate_magnetic(magnetic, inputs, outputs);
-        temperature = aux.second;
-    }
-
+    MagneticFilterLosses lossesFallback;
+    double losses = cached_or_compute_scoring(magnetic, inputs, outputs, MagneticFilters::LOSSES, lossesFallback);
+    double temperature = cached_or_compute_scoring(magnetic, inputs, outputs, MagneticFilters::TEMPERATURE_RISE, _magneticFilterTemperatureRise);
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs, outputs);
     return {true, losses * volumeScoring * temperature};
 }
 
 std::pair<bool, double> MagneticFilterLossesNoProximityTimesVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES_NO_PROXIMITY);
-    double losses = 0;
-    if (previousLosses) {
-        losses = previousLosses.value();
-    }
-    else {
-        auto aux = _magneticFilterLossesNoProximity.evaluate_magnetic(magnetic, inputs, outputs);
-        losses = aux.second;
-    }
+    double losses = cached_or_compute_scoring(magnetic, inputs, outputs, MagneticFilters::LOSSES_NO_PROXIMITY, _magneticFilterLossesNoProximity);
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs, outputs);
     return {true, losses * volumeScoring};
 }
 
 std::pair<bool, double> MagneticFilterLossesNoProximityTimesVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES_NO_PROXIMITY);
-    double losses = 0;
-    if (previousLosses) {
-        losses = previousLosses.value();
-    }
-    else {
-        auto aux = _magneticFilterLossesNoProximity.evaluate_magnetic(magnetic, inputs, outputs);
-        losses = aux.second;
-    }
-    auto previousTemperatureRise = get_scoring(magnetic->get_reference(), MagneticFilters::TEMPERATURE_RISE);
-    double temperature = 0;
-    if (previousTemperatureRise) {
-        temperature = previousTemperatureRise.value();
-    }
-    else {
-        auto aux = _magneticFilterTemperatureRise.evaluate_magnetic(magnetic, inputs, outputs);
-        temperature = aux.second;
-    }
-
+    double losses = cached_or_compute_scoring(magnetic, inputs, outputs, MagneticFilters::LOSSES_NO_PROXIMITY, _magneticFilterLossesNoProximity);
+    double temperature = cached_or_compute_scoring(magnetic, inputs, outputs, MagneticFilters::TEMPERATURE_RISE, _magneticFilterTemperatureRise);
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs, outputs);
     return {true, losses * volumeScoring * temperature};
 }
