@@ -1,6 +1,8 @@
 #include "processors/Inputs.h"
 #include <source_location>
 #include <cfloat>
+#include <cmath>
+#include <limits>
 #include "advisers/MagneticAdviser.h"
 #include "advisers/CoreAdviser.h"
 #include "physical_models/Impedance.h"
@@ -123,7 +125,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
                 }
             }
 
-            if (totalLosses > 0 && totalLosses < DBL_MAX / 2) {
+            if (totalLosses > 0 && std::isfinite(totalLosses)) {
                 results.push_back({mas, totalLosses});
             }
         }

@@ -11,6 +11,7 @@
 
 #include <cfloat>
 #include <cmath>
+#include <limits>
 #include <algorithm>
 #include "support/Exceptions.h"
 #include "support/Logger.h"
@@ -683,7 +684,7 @@ inline std::pair<bool, double> finalize_losses_scoring(
     for (size_t opi = 0; opi < inputs->get_operating_points().size(); ++opi) {
         meanTotalLosses += totalLossesPerOP[opi];
     }
-    if (meanTotalLosses > DBL_MAX / 2) {
+    if (!std::isfinite(meanTotalLosses)) {
         throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happend in core losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value());
     }
     meanTotalLosses /= inputs->get_operating_points().size();
@@ -736,13 +737,13 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
     std::vector<double> totalLossesPerOperatingPoint;
     std::vector<CoreLossesOutput> coreLossesPerOperatingPoint;
     std::vector<WindingLossesOutput> windingLossesPerOperatingPoint;
-    double currentTotalLosses = DBL_MAX;
-    double coreLosses = DBL_MAX;
+    double currentTotalLosses = std::numeric_limits<double>::infinity();
+    double coreLosses = std::numeric_limits<double>::infinity();
     CoreLossesOutput coreLossesOutput;
-    double ohmicLosses = DBL_MAX;
+    double ohmicLosses = std::numeric_limits<double>::infinity();
     WindingLossesOutput windingLossesOutput;
     windingLossesOutput.set_origin(ResultOrigin::SIMULATION);
-    double newTotalLosses = DBL_MAX;
+    double newTotalLosses = std::numeric_limits<double>::infinity();
     auto previousNumberTurnsPrimary = currentNumberTurns;
 
     size_t iteration = defaults.coreAdviserSkinEffectMaxIterations;
@@ -831,7 +832,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                 break;
             }
 
-            if (newTotalLosses == DBL_MAX) {
+            if (!std::isfinite(newTotalLosses)) {
                 throw CalculationException(ErrorCode::CALCULATION_DIVERGED, "Too large losses");
             }
 
@@ -844,7 +845,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
         while(newTotalLosses < currentTotalLosses * defaults.coreAdviserThresholdValidity);
 
 
-        if (coreLosses < DBL_MAX && coreLosses > 0) {
+        if (std::isfinite(coreLosses) && coreLosses > 0) {
             magnetic->set_coil(coil);
 
             currentTotalLosses = newTotalLosses;
@@ -901,13 +902,13 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
     std::vector<double> totalLossesPerOperatingPoint;
     std::vector<CoreLossesOutput> coreLossesPerOperatingPoint;
     std::vector<WindingLossesOutput> windingLossesPerOperatingPoint;
-    double currentTotalLosses = DBL_MAX;
-    double coreLosses = DBL_MAX;
+    double currentTotalLosses = std::numeric_limits<double>::infinity();
+    double coreLosses = std::numeric_limits<double>::infinity();
     CoreLossesOutput coreLossesOutput;
-    double ohmicAndSkinEffectLosses = DBL_MAX;
+    double ohmicAndSkinEffectLosses = std::numeric_limits<double>::infinity();
     WindingLossesOutput windingLossesOutput;
     windingLossesOutput.set_origin(ResultOrigin::SIMULATION);
-    double newTotalLosses = DBL_MAX;
+    double newTotalLosses = std::numeric_limits<double>::infinity();
     auto previousNumberTurnsPrimary = currentNumberTurns;
 
     size_t iteration = defaults.coreAdviserSkinEffectMaxIterations;
@@ -923,7 +924,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
         // Track the loss-minimum across the sweep. The do-while only gates progress;
         // the coil state at break time may be worse than an earlier iteration, so we
         // remember the best and restore it after the loop.
-        double bestTotalLosses = DBL_MAX;
+        double bestTotalLosses = std::numeric_limits<double>::infinity();
         uint64_t bestNumberTurnsPrimary = currentNumberTurns;
         CoreLossesOutput bestCoreLossesOutput;
         WindingLossesOutput bestWindingLossesOutput;
@@ -1003,7 +1004,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 break;
             }
 
-            if (newTotalLosses == DBL_MAX) {
+            if (!std::isfinite(newTotalLosses)) {
                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Too large losses");
             }
 
@@ -1024,21 +1025,21 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
         while(newTotalLosses < currentTotalLosses * defaults.coreAdviserThresholdValidity);
 
         // Restore the best N from the sweep so downstream code sees the loss-optimal coil.
-        if (bestTotalLosses < DBL_MAX &&
+        if (std::isfinite(bestTotalLosses) &&
             coil.get_functional_description()[0].get_number_turns() != static_cast<double>(bestNumberTurnsPrimary)) {
             coil.get_mutable_functional_description()[0].set_number_turns(bestNumberTurnsPrimary);
             settings.set_coil_delimit_and_compact(false);
             coil.fast_wind();
         }
 
-        if (bestTotalLosses < DBL_MAX) {
+        if (std::isfinite(bestTotalLosses)) {
             magnetic->set_coil(coil);
             totalLossesPerOperatingPoint.push_back(bestTotalLosses);
             coreLossesPerOperatingPoint.push_back(bestCoreLossesOutput);
             windingLossesPerOperatingPoint.push_back(bestWindingLossesOutput);
         }
-        else if (coreLosses < DBL_MAX && coreLosses > 0) {
-            // Fallback: no point ever beat DBL_MAX (e.g. PQI/UI shortcut path with only core losses).
+        else if (std::isfinite(coreLosses) && coreLosses > 0) {
+            // Fallback: no point ever became finite (e.g. PQI/UI shortcut path with only core losses).
             magnetic->set_coil(coil);
             currentTotalLosses = newTotalLosses;
             totalLossesPerOperatingPoint.push_back(currentTotalLosses);
