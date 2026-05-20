@@ -1,0 +1,183 @@
+// Phase 5: private helpers shared between MagneticFilter.cpp and any
+// future split-out filter implementation files. Header-only / inline so
+// each .cpp gets its own copy without ODR collisions, and so static-
+// initialisation order vs. the `defaults` / `settings` globals in
+// support/Utils.h is well-defined (those are inline globals, fine to
+// reference from inline helpers).
+//
+// Nothing here is part of the public MagneticFilter API; do not include
+// from outside src/advisers/.
+#pragma once
+
+#include "advisers/MagneticFilter.h"
+#include "constructive_models/Bobbin.h"
+#include "physical_models/CoreLosses.h"
+#include "Defaults.h"
+#include "support/Exceptions.h"
+#include "support/Utils.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace OpenMagnetics {
+
+// Phase 3 (F6): PQI / UI shapes use integrated windings whose layout is
+// not produced by fast_wind(), so the loss / impedance filters take a
+// per-shape policy branch. Centralised here so every site uses the same
+// predicate.
+inline bool is_pqi_or_ui_shape(const std::string& shapeName) {
+    return shapeName.rfind("PQI", 0) == 0 || shapeName.rfind("UI ", 0) == 0;
+}
+
+// Phase 3 (F1): helpers shared between MagneticFilterCoreAndDcLosses and
+// MagneticFilterCoreDcAndSkinLosses. These two classes are near-clones
+// (same members, same constructors, same shaped evaluate_magnetic with
+// minor sweep-step + skin-effect differences). Pulling the verbatim
+// chunks out lets the two classes focus on what genuinely differs.
+
+inline std::map<std::string, std::string> default_loss_filter_models() {
+    std::map<std::string, std::string> models;
+    models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
+    models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
+    models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
+    return models;
+}
+
+// Compute the max-over-operating-points of the time-averaged |v·i|
+// "power mean" used to scale the loss-budget threshold. If any
+// operating point has a waveform longer than 2× the configured sampled
+// width, switch the core-losses model to Steinmetz (mutates `models`).
+inline double compute_maximum_power_mean_and_maybe_force_steinmetz(
+    Inputs& inputs, std::map<std::string, std::string>& models)
+{
+    bool largeWaveform = false;
+    std::vector<double> powerMeans(inputs.get_operating_points().size(), 0);
+    for (size_t opi = 0; opi < inputs.get_operating_points().size(); ++opi) {
+        auto voltageWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(opi)).get_voltage().value().get_waveform().value();
+        auto currentWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(opi)).get_current().value().get_waveform().value();
+        double frequency = Inputs::get_primary_excitation(inputs.get_operating_point(opi)).get_frequency();
+
+        if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
+            voltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
+            currentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
+        }
+        std::vector<double> voltageWaveformData = voltageWaveform.get_data();
+        std::vector<double> currentWaveformData = currentWaveform.get_data();
+        if (currentWaveformData.size() > settings.get_inputs_number_points_sampled_waveforms() * 2) {
+            largeWaveform = true;
+        }
+        for (size_t i = 0; i < voltageWaveformData.size(); ++i) {
+            powerMeans[opi] += std::fabs(voltageWaveformData[i] * currentWaveformData[i]);
+        }
+        powerMeans[opi] /= voltageWaveformData.size();
+    }
+    if (largeWaveform) {
+        models["coreLosses"] = to_string(CoreLossesModels::STEINMETZ);
+    }
+    return *std::max_element(powerMeans.begin(), powerMeans.end());
+}
+
+// Attach a quick bobbin to the magnetic and validate its window width.
+// No-op for PQI / UI shapes (integrated-winding designs that don't take
+// a separate bobbin).
+inline void prepare_bobbin_for_non_pqi(Magnetic* magnetic, const std::string& shapeName) {
+    if (is_pqi_or_ui_shape(shapeName)) return;
+    auto core = magnetic->get_core();
+    auto bobbin = Bobbin::create_quick_bobbin(core);
+    magnetic->get_mutable_coil().set_bobbin(bobbin);
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    if (windingWindows[0].get_width()) {
+        if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
+                                     " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) +
+                                     " shapeName: " + shapeName);
+        }
+    }
+}
+
+// Pick Steinmetz vs Proprietary based on what the core advertises, then
+// compute core losses. Returns {ok, output, value}:
+//   ok=false  → tiny negative from Proprietary interpolation noise;
+//              the caller should explicitly reject this candidate
+//              (Phase 1 fix: was previously a silent `break`).
+//   ok=true   → value is the non-negative loss; output is the full result.
+// A genuinely negative Steinmetz result still throws via the caller's
+// own `coreLosses < 0` check.
+struct CoreLossesPick {
+    bool ok;
+    CoreLossesOutput output;
+    double value;
+};
+inline CoreLossesPick compute_core_losses_with_negative_guard(
+    Core& core, OperatingPointExcitation& excitation, double temperature,
+    const std::shared_ptr<CoreLossesModel>& steinmetz,
+    const std::shared_ptr<CoreLossesModel>& proprietary)
+{
+    auto methods = core.get_available_core_losses_methods();
+    CoreLossesPick pick{};
+    if (std::find(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != methods.end()) {
+        pick.output = steinmetz->get_core_losses(core, excitation, temperature);
+        pick.value = pick.output.get_core_losses();
+        pick.ok = true;
+    } else {
+        pick.output = proprietary->get_core_losses(core, excitation, temperature);
+        pick.value = pick.output.get_core_losses();
+        pick.ok = pick.value >= 0;
+    }
+    return pick;
+}
+
+// Final scoring/emission block: compute the mean total loss across all
+// operating points, compare against the maximum power mean budget,
+// optionally emit per-OP outputs.
+inline std::pair<bool, double> finalize_losses_scoring(
+    const std::vector<double>& totalLossesPerOP,
+    const std::vector<CoreLossesOutput>& coreLossesPerOP,
+    const std::vector<WindingLossesOutput>& windingLossesPerOP,
+    Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs,
+    double maximumPowerMean)
+{
+    if (totalLossesPerOP.size() < inputs->get_operating_points().size()) {
+        return {false, 0.0};
+    }
+    double meanTotalLosses = 0;
+    for (size_t opi = 0; opi < inputs->get_operating_points().size(); ++opi) {
+        meanTotalLosses += totalLossesPerOP[opi];
+    }
+    if (!std::isfinite(meanTotalLosses)) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happend in core losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value());
+    }
+    meanTotalLosses /= inputs->get_operating_points().size();
+    bool valid = meanTotalLosses < maximumPowerMean * defaults.coreAdviserMaximumPercentagePowerCoreLosses / defaults.coreAdviserThresholdValidity;
+
+    if (outputs != nullptr) {
+        for (size_t opi = 0; opi < inputs->get_operating_points().size(); ++opi) {
+            while (outputs->size() < opi + 1) outputs->push_back(Outputs());
+            (*outputs)[opi].set_core_losses(coreLossesPerOP[opi]);
+            (*outputs)[opi].set_winding_losses(windingLossesPerOP[opi]);
+        }
+    }
+    return {valid, meanTotalLosses};
+}
+
+// Phase 3 (F5): used by the LossesTimes*/VolumeTimes* combinator filters
+// to fetch a previously-computed scoring out of the global scoring cache,
+// or fall back to running the sub-filter inline if no cache hit. Replaces
+// the seven-line "previousX = get_scoring(...); if (previousX) {...} else
+// {compute}" block that appeared verbatim 7 times.
+inline double cached_or_compute_scoring(Magnetic* magnetic, Inputs* inputs,
+                                        std::vector<Outputs>* outputs,
+                                        MagneticFilters cacheKey,
+                                        MagneticFilter& fallbackFilter) {
+    auto cached = get_scoring(magnetic->get_reference(), cacheKey);
+    if (cached) return cached.value();
+    return fallbackFilter.evaluate_magnetic(magnetic, inputs, outputs).second;
+}
+
+} // namespace OpenMagnetics
