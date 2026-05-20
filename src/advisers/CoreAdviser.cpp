@@ -719,11 +719,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterTemperat
 }
 
 Coil get_dummy_coil(Inputs inputs) {
-    double frequency = 0; 
-    double temperature = 0; 
+    double temperature = inputs.get_maximum_temperature();
+    double frequency = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         frequency = std::max(frequency, Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency());
-        temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
     }
 
     // Set round wire with diameter to two times the skin depth 
@@ -1388,10 +1387,7 @@ std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vec
 
 void add_alternative_materials(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     CoreMaterialCrossReferencer coreMaterialCrossReferencer(std::map<std::string, std::string>{{"coreLosses", "Steinmetz"}});
-    double temperature = 0; 
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
-    }
+    double temperature = inputs.get_maximum_temperature();
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
         Core core = (*magneticsWithScoring)[i].first.get_core();
         auto coreMaterial = core.resolve_material();
@@ -2291,10 +2287,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     std::vector<CoreMaterial> coreMaterialsToUse;
     std::vector<std::pair<CoreMaterial, double>> evaluations;
 
-    double temperature = 0;
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
-    }
+    double temperature = inputs.get_maximum_temperature();
     double maximumCurrentDcBias = inputs.get_maximum_current_dc_bias();
 
     SignalDescriptor magneticFluxDensity;
@@ -2365,10 +2358,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
     std::vector<CoreMaterial> coreMaterialsToUse;
     std::vector<std::pair<CoreMaterial, double>> evaluations;
 
-    double temperature = 0;
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
-    }
+    double temperature = inputs.get_maximum_temperature();
 
 
     SignalDescriptor magneticFluxDensity;
@@ -2645,10 +2635,7 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
     MagneticEnergy magneticEnergy;
     Mas mas;
     mas.set_magnetic(magnetic);
-    double temperature = 0;
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
-    }
+    double temperature = inputs.get_maximum_temperature();
 
     magnetic.get_reference();
     if (magnetic.get_manufacturer_info()) {

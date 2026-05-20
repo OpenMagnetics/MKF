@@ -453,11 +453,10 @@ std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* 
 MagneticFilterEstimatedCost::MagneticFilterEstimatedCost(Inputs inputs) {
     double primaryCurrentRms = 0;
     double frequency = 0;
-    double temperature = 0;
+    double temperature = inputs.get_maximum_temperature();
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         primaryCurrentRms = std::max(primaryCurrentRms, Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_current().value().get_processed().value().get_rms().value());
         frequency = std::max(frequency, Inputs::get_switching_frequency(Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex))));
-        temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
     }
 
     auto windingSkinEffectLossesModel = WindingSkinEffectLosses();
