@@ -47,6 +47,34 @@ inline void log_stage(const std::string& stage, size_t count) {
 inline void log_pruned(const std::string& stage, size_t count) {
     logEntry("Pruned to " + std::to_string(count) + " before " + stage, "CoreAdviser");
 }
+
+// Phase 3 (F8): the sinusoidal-excitation builder + Steinmetz/Proprietary
+// model-pair factory pattern appeared verbatim in add_ferrite_materials_by_losses
+// and add_ferrite_materials_by_impedance. Centralised here.
+inline OperatingPointExcitation make_sinusoidal_excitation(double peak, double offset, double frequency) {
+    SignalDescriptor magneticFluxDensity;
+    Processed processed;
+    processed.set_label(WaveformLabel::SINUSOIDAL);
+    processed.set_offset(offset);
+    processed.set_peak(peak);
+    processed.set_peak_to_peak(2 * peak);
+    magneticFluxDensity.set_processed(processed);
+    OperatingPointExcitation excitation;
+    excitation.set_magnetic_flux_density(magneticFluxDensity);
+    excitation.set_frequency(frequency);
+    return excitation;
+}
+
+struct CoreLossesModelPair {
+    std::shared_ptr<CoreLossesModel> steinmetz;
+    std::shared_ptr<CoreLossesModel> proprietary;
+};
+inline CoreLossesModelPair make_default_core_losses_model_pair() {
+    return {
+        CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}})),
+        CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}))
+    };
+}
 } // namespace
 
 void CoreAdviser::set_unique_core_shapes(bool value) {
@@ -2290,19 +2318,11 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     double temperature = inputs.get_maximum_temperature();
     double maximumCurrentDcBias = inputs.get_maximum_current_dc_bias();
 
-    SignalDescriptor magneticFluxDensity;
-    Processed processed;
-    processed.set_label(WaveformLabel::SINUSOIDAL);
-    processed.set_offset(maximumCurrentDcBias);
-    processed.set_peak(magneticFluxDensityReference);
-    processed.set_peak_to_peak(2 * magneticFluxDensityReference);
-    magneticFluxDensity.set_processed(processed);
-    OperatingPointExcitation operatingPointExcitation;
-    operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
-    operatingPointExcitation.set_frequency(1);
-
-    auto coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
-    auto coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
+    // Phase 3 (F8): sinusoidal excitation + loss-model pair are shared
+    // with add_ferrite_materials_by_impedance.
+    OperatingPointExcitation operatingPointExcitation = make_sinusoidal_excitation(
+        magneticFluxDensityReference, maximumCurrentDcBias, 1);
+    auto [coreLossesModelSteinmetz, coreLossesModelProprietary] = make_default_core_losses_model_pair();
     for (auto coreMaterial : coreMaterialsToEvaluate) {
         double averageVolumetricCoreLosses = 0;
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
@@ -2404,19 +2424,11 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
     double temperature = inputs.get_maximum_temperature();
 
 
-    SignalDescriptor magneticFluxDensity;
-    Processed processed;
-    processed.set_label(WaveformLabel::SINUSOIDAL);
-    processed.set_offset(0);
-    processed.set_peak(magneticFluxDensityReference);
-    processed.set_peak_to_peak(2 * magneticFluxDensityReference);
-    magneticFluxDensity.set_processed(processed);
-    OperatingPointExcitation operatingPointExcitation;
-    operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
-    operatingPointExcitation.set_frequency(1);
-
-    auto coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
-    auto coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
+    // Phase 3 (F8): sinusoidal excitation + loss-model pair are shared
+    // with add_ferrite_materials_by_losses.
+    OperatingPointExcitation operatingPointExcitation = make_sinusoidal_excitation(
+        magneticFluxDensityReference, 0, 1);
+    auto [coreLossesModelSteinmetz, coreLossesModelProprietary] = make_default_core_losses_model_pair();
     for (auto coreMaterial : coreMaterialsToEvaluate) {
         double averageVolumetricCoreLosses = 0;
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
