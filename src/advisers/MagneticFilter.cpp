@@ -554,37 +554,40 @@ std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Magnetic* magnetic
     return {true, scoring};
 }
 
-MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs) {
+namespace {
+// Phase 3 (F1): helpers shared between MagneticFilterCoreAndDcLosses and
+// MagneticFilterCoreDcAndSkinLosses. These two classes are near-clones
+// (same members, same constructors, same shaped evaluate_magnetic with
+// minor sweep-step + skin-effect differences). Pulling the verbatim
+// chunks out lets the two classes focus on what genuinely differs.
+
+// PQI / UI shapes use integrated windings whose layout is not produced
+// by fast_wind(), so the loss filters take a per-shape policy branch.
+inline bool is_pqi_or_ui_shape(const std::string& shapeName) {
+    return shapeName.rfind("PQI", 0) == 0 || shapeName.rfind("UI ", 0) == 0;
+}
+
+inline std::map<std::string, std::string> default_loss_filter_models() {
     std::map<std::string, std::string> models;
     models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
     models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
     models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
-    MagneticFilterCoreAndDcLosses(inputs, models);
+    return models;
 }
 
-MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses() {
-    std::map<std::string, std::string> models;
-    models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
-    models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
-    models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
-
-    _maximumPowerMean = 0;
-
-    _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
-    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
-
-    _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
-    _models = models;
-}
-
-MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std::map<std::string, std::string> models) {
+// Compute the max-over-operating-points of the time-averaged |v·i|
+// "power mean" used to scale the loss-budget threshold. If any
+// operating point has a waveform longer than 2× the configured sampled
+// width, switch the core-losses model to Steinmetz (mutates `models`).
+inline double compute_maximum_power_mean_and_maybe_force_steinmetz(
+    Inputs& inputs, std::map<std::string, std::string>& models)
+{
     bool largeWaveform = false;
-
     std::vector<double> powerMeans(inputs.get_operating_points().size(), 0);
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        auto voltageWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_voltage().value().get_waveform().value();
-        auto currentWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_current().value().get_waveform().value();
-        double frequency = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency();
+    for (size_t opi = 0; opi < inputs.get_operating_points().size(); ++opi) {
+        auto voltageWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(opi)).get_voltage().value().get_waveform().value();
+        auto currentWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(opi)).get_current().value().get_waveform().value();
+        double frequency = Inputs::get_primary_excitation(inputs.get_operating_point(opi)).get_frequency();
 
         if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
             voltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
@@ -595,23 +598,118 @@ MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std:
         if (currentWaveformData.size() > settings.get_inputs_number_points_sampled_waveforms() * 2) {
             largeWaveform = true;
         }
-        for (size_t i = 0; i < voltageWaveformData.size(); ++i)
-        {
-            powerMeans[operatingPointIndex] += fabs(voltageWaveformData[i] * currentWaveformData[i]);
+        for (size_t i = 0; i < voltageWaveformData.size(); ++i) {
+            powerMeans[opi] += fabs(voltageWaveformData[i] * currentWaveformData[i]);
         }
-        powerMeans[operatingPointIndex] /= voltageWaveformData.size();
+        powerMeans[opi] /= voltageWaveformData.size();
     }
-
-
     if (largeWaveform) {
         models["coreLosses"] = to_string(CoreLossesModels::STEINMETZ);
     }
+    return *max_element(powerMeans.begin(), powerMeans.end());
+}
 
-    _maximumPowerMean = *max_element(powerMeans.begin(), powerMeans.end());
+// Attach a quick bobbin to the magnetic and validate its window width.
+// No-op for PQI / UI shapes (integrated-winding designs that don't take
+// a separate bobbin).
+inline void prepare_bobbin_for_non_pqi(Magnetic* magnetic, const std::string& shapeName) {
+    if (is_pqi_or_ui_shape(shapeName)) return;
+    auto core = magnetic->get_core();
+    auto bobbin = Bobbin::create_quick_bobbin(core);
+    magnetic->get_mutable_coil().set_bobbin(bobbin);
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    if (windingWindows[0].get_width()) {
+        if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
+                                     " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) +
+                                     " shapeName: " + shapeName);
+        }
+    }
+}
 
+// Pick Steinmetz vs Proprietary based on what the core advertises, then
+// compute core losses. Returns {ok, output, value}:
+//   ok=false  → tiny negative from Proprietary interpolation noise;
+//              the caller should explicitly reject this candidate
+//              (Phase 1 fix: was previously a silent `break`).
+//   ok=true   → value is the non-negative loss; output is the full result.
+// A genuinely negative Steinmetz result still throws via the caller's
+// own `coreLosses < 0` check.
+struct CoreLossesPick {
+    bool ok;
+    CoreLossesOutput output;
+    double value;
+};
+inline CoreLossesPick compute_core_losses_with_negative_guard(
+    Core& core, OperatingPointExcitation& excitation, double temperature,
+    const std::shared_ptr<CoreLossesModel>& steinmetz,
+    const std::shared_ptr<CoreLossesModel>& proprietary)
+{
+    auto methods = core.get_available_core_losses_methods();
+    CoreLossesPick pick{};
+    if (std::find(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != methods.end()) {
+        pick.output = steinmetz->get_core_losses(core, excitation, temperature);
+        pick.value = pick.output.get_core_losses();
+        pick.ok = true;
+    } else {
+        pick.output = proprietary->get_core_losses(core, excitation, temperature);
+        pick.value = pick.output.get_core_losses();
+        pick.ok = pick.value >= 0;
+    }
+    return pick;
+}
+
+// Final scoring/emission block: compute the mean total loss across all
+// operating points, compare against the maximum power mean budget,
+// optionally emit per-OP outputs.
+inline std::pair<bool, double> finalize_losses_scoring(
+    const std::vector<double>& totalLossesPerOP,
+    const std::vector<CoreLossesOutput>& coreLossesPerOP,
+    const std::vector<WindingLossesOutput>& windingLossesPerOP,
+    Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs,
+    double maximumPowerMean)
+{
+    if (totalLossesPerOP.size() < inputs->get_operating_points().size()) {
+        return {false, 0.0};
+    }
+    double meanTotalLosses = 0;
+    for (size_t opi = 0; opi < inputs->get_operating_points().size(); ++opi) {
+        meanTotalLosses += totalLossesPerOP[opi];
+    }
+    if (meanTotalLosses > DBL_MAX / 2) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happend in core losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value());
+    }
+    meanTotalLosses /= inputs->get_operating_points().size();
+    bool valid = meanTotalLosses < maximumPowerMean * defaults.coreAdviserMaximumPercentagePowerCoreLosses / defaults.coreAdviserThresholdValidity;
+
+    if (outputs != nullptr) {
+        for (size_t opi = 0; opi < inputs->get_operating_points().size(); ++opi) {
+            while (outputs->size() < opi + 1) outputs->push_back(Outputs());
+            (*outputs)[opi].set_core_losses(coreLossesPerOP[opi]);
+            (*outputs)[opi].set_winding_losses(windingLossesPerOP[opi]);
+        }
+    }
+    return {valid, meanTotalLosses};
+}
+} // namespace
+
+MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs) {
+    MagneticFilterCoreAndDcLosses(inputs, default_loss_filter_models());
+}
+
+MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses() {
+    auto models = default_loss_filter_models();
+    _maximumPowerMean = 0;
     _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
     _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
+    _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
+    _models = models;
+}
 
+MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std::map<std::string, std::string> models) {
+    _maximumPowerMean = compute_maximum_power_mean_and_maybe_force_steinmetz(inputs, models);
+    _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
+    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
     _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
     _models = models;
 }
@@ -624,20 +722,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
     }
 
     std::string shapeName = core.get_shape_name();
-    if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
-        auto bobbin = Bobbin::create_quick_bobbin(core);
-        magnetic->get_mutable_coil().set_bobbin(bobbin);
-        auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
-
-        if (windingWindows[0].get_width()) {
-            if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
-                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
-                                         " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) + 
-                                         " shapeName: " + shapeName
-                                         );
-            }
-        }
-    }
+    prepare_bobbin_for_non_pqi(magnetic, shapeName);
 
     auto currentNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
     NumberTurns numberTurns(currentNumberTurns);
@@ -685,7 +770,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                 previousNumberTurnsPrimary = numberTurnsCombination[0];
             }
 
-            if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+            if (!is_pqi_or_ui_shape(shapeName)) {
                 if (!coil.get_turns_description()) {
                     // Phase 1 fix: previously this silently set
                     // newTotalLosses = coreLosses (still DBL_MAX on the
@@ -699,25 +784,17 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
             }
 
             excitation.set_magnetic_flux_density(magneticFluxDensity);
-            auto coreLossesMethods = core.get_available_core_losses_methods(); 
-            if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-                coreLossesOutput = _coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature);
-                coreLosses = coreLossesOutput.get_core_losses();
-            }
-            else {
-                coreLossesOutput = _coreLossesModelProprietary->get_core_losses(core, excitation, temperature);
-                coreLosses = coreLossesOutput.get_core_losses();
-                if (coreLosses < 0) {
-                    // Phase 1 fix: was a silent `break` that left
-                    // coreLosses negative and relied on the downstream
-                    // `coreLosses > 0` guard to drop the OP. Proprietary
-                    // models occasionally return tiny negatives (~µW)
-                    // from interpolation noise at low excitation, which
-                    // is not malformed data and should not throw. Make
-                    // the rejection explicit so it isn't camouflaged as
-                    // a do-while exit condition.
+            {
+                auto pick = compute_core_losses_with_negative_guard(core, excitation, temperature, _coreLossesModelSteinmetz, _coreLossesModelProprietary);
+                if (!pick.ok) {
+                    // Phase 1 fix: was a silent `break` that left coreLosses
+                    // negative and relied on a downstream guard. Proprietary
+                    // models occasionally return tiny negatives (~µW) from
+                    // interpolation noise at low excitation.
                     return {false, 0.0};
                 }
+                coreLossesOutput = pick.output;
+                coreLosses = pick.value;
             }
 
             if (coreLosses < 0) {
@@ -730,7 +807,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                 return {false, 0.0};
             }
 
-            if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+            if (!is_pqi_or_ui_shape(shapeName)) {
                 windingLossesOutput = _windingOhmicLosses.calculate_ohmic_losses(coil, operatingPoint, temperature);
                 ohmicLosses = windingLossesOutput.get_winding_losses();
                 newTotalLosses = coreLosses + ohmicLosses;
@@ -770,95 +847,27 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
         }
     }
 
-    bool valid = false;
-    double meanTotalLosses = 0;
-    if (totalLossesPerOperatingPoint.size() < inputs->get_operating_points().size()) {
-        return {false, 0.0};
-    }
-    else {
-
-        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-            meanTotalLosses += totalLossesPerOperatingPoint[operatingPointIndex];
-        }
-        if (meanTotalLosses > DBL_MAX / 2) {
-            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happend in core losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value());
-        }
-        meanTotalLosses /= inputs->get_operating_points().size();
-
-        valid = meanTotalLosses < _maximumPowerMean * defaults.coreAdviserMaximumPercentagePowerCoreLosses / defaults.coreAdviserThresholdValidity;
-    }
-
-    if (outputs != nullptr) {
-        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-            while (outputs->size() < operatingPointIndex + 1) {
-                outputs->push_back(Outputs());
-            }
-            (*outputs)[operatingPointIndex].set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
-            (*outputs)[operatingPointIndex].set_winding_losses(windingLossesPerOperatingPoint[operatingPointIndex]);
-        }
-    }
-
-    return {valid, meanTotalLosses};
+    return finalize_losses_scoring(totalLossesPerOperatingPoint, coreLossesPerOperatingPoint, windingLossesPerOperatingPoint,
+                                    magnetic, inputs, outputs, _maximumPowerMean);
 }
 
 MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inputs) {
-    std::map<std::string, std::string> models;
-    models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
-    models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
-    models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
-    MagneticFilterCoreDcAndSkinLosses(inputs, models);
+    MagneticFilterCoreDcAndSkinLosses(inputs, default_loss_filter_models());
 }
 
 MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses() {
-    std::map<std::string, std::string> models;
-    models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
-    models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
-    models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
-
+    auto models = default_loss_filter_models();
     _maximumPowerMean = 0;
-
     _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
     _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
-
     _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
     _models = models;
 }
 
 MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inputs, std::map<std::string, std::string> models) {
-    bool largeWaveform = false;
-
-    std::vector<double> powerMeans(inputs.get_operating_points().size(), 0);
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        auto voltageWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_voltage().value().get_waveform().value();
-        auto currentWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_current().value().get_waveform().value();
-        double frequency = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency();
-
-        if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
-            voltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
-            currentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
-        }
-        std::vector<double> voltageWaveformData = voltageWaveform.get_data();
-        std::vector<double> currentWaveformData = currentWaveform.get_data();
-        if (currentWaveformData.size() > settings.get_inputs_number_points_sampled_waveforms() * 2) {
-            largeWaveform = true;
-        }
-        for (size_t i = 0; i < voltageWaveformData.size(); ++i)
-        {
-            powerMeans[operatingPointIndex] += fabs(voltageWaveformData[i] * currentWaveformData[i]);
-        }
-        powerMeans[operatingPointIndex] /= voltageWaveformData.size();
-    }
-
-
-    if (largeWaveform) {
-        models["coreLosses"] = to_string(CoreLossesModels::STEINMETZ);
-    }
-
-    _maximumPowerMean = *max_element(powerMeans.begin(), powerMeans.end());
-
+    _maximumPowerMean = compute_maximum_power_mean_and_maybe_force_steinmetz(inputs, models);
     _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
     _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
-
     _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
     _models = models;
 }
@@ -871,20 +880,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
     }
 
     std::string shapeName = core.get_shape_name();
-    if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
-        auto bobbin = Bobbin::create_quick_bobbin(core);
-        magnetic->get_mutable_coil().set_bobbin(bobbin);
-        auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
-
-        if (windingWindows[0].get_width()) {
-            if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
-                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
-                                         " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) + 
-                                         " shapeName: " + shapeName
-                                         );
-            }
-        }
-    }
+    prepare_bobbin_for_non_pqi(magnetic, shapeName);
 
     auto currentNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
     NumberTurns numberTurns(currentNumberTurns);
@@ -947,7 +943,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 previousNumberTurnsPrimary = numberTurnsCombination[0];
             }
 
-            if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+            if (!is_pqi_or_ui_shape(shapeName)) {
                 if (!coil.get_turns_description()) {
                     // Phase 1 fix: previously silently broke with
                     // newTotalLosses = coreLosses (DBL_MAX initial),
@@ -958,23 +954,16 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
             }
 
             excitation.set_magnetic_flux_density(magneticFluxDensity);
-            auto coreLossesMethods = core.get_available_core_losses_methods();
-            if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-                coreLossesOutput = _coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature);
-                coreLosses = coreLossesOutput.get_core_losses();
-            }
-            else {
-                coreLossesOutput = _coreLossesModelProprietary->get_core_losses(core, excitation, temperature);
-                coreLosses = coreLossesOutput.get_core_losses();
-                if (coreLosses < 0) {
-                    // Phase 1 fix: was a silent `break`. Proprietary
-                    // models can return tiny negatives (~µW) from
-                    // interpolation noise at low excitation — not bad
-                    // data, but still an invalid candidate result.
-                    // Reject explicitly so the rejection isn't disguised
-                    // as a do-while exit.
+            {
+                auto pick = compute_core_losses_with_negative_guard(core, excitation, temperature, _coreLossesModelSteinmetz, _coreLossesModelProprietary);
+                if (!pick.ok) {
+                    // Phase 1 fix: was a silent `break`. Proprietary models
+                    // can return tiny negatives (~µW) from interpolation
+                    // noise at low excitation.
                     return {false, 0.0};
                 }
+                coreLossesOutput = pick.output;
+                coreLosses = pick.value;
             }
 
             if (coreLosses < 0) {
@@ -986,7 +975,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 return {false, 0.0};
             }
 
-            if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+            if (!is_pqi_or_ui_shape(shapeName)) {
                 windingLossesOutput = _windingOhmicLosses.calculate_ohmic_losses(coil, operatingPoint, temperature);
                 windingLossesOutput = _windingSkinEffectLosses.calculate_skin_effect_losses(coil, temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold());
 
@@ -1051,35 +1040,8 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
         }
     }
 
-    bool valid = false;
-    double meanTotalLosses = 0;
-    if (totalLossesPerOperatingPoint.size() < inputs->get_operating_points().size()) {
-        return {false, 0.0};
-    }
-    else {
-
-        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-            meanTotalLosses += totalLossesPerOperatingPoint[operatingPointIndex];
-        }
-        if (meanTotalLosses > DBL_MAX / 2) {
-            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happend in core losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value());
-        }
-        meanTotalLosses /= inputs->get_operating_points().size();
-
-        valid = meanTotalLosses < _maximumPowerMean * defaults.coreAdviserMaximumPercentagePowerCoreLosses / defaults.coreAdviserThresholdValidity;
-    }
-
-    if (outputs != nullptr) {
-        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-            while (outputs->size() < operatingPointIndex + 1) {
-                outputs->push_back(Outputs());
-            }
-            (*outputs)[operatingPointIndex].set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
-            (*outputs)[operatingPointIndex].set_winding_losses(windingLossesPerOperatingPoint[operatingPointIndex]);
-        }
-    }
-
-    return {valid, meanTotalLosses};
+    return finalize_losses_scoring(totalLossesPerOperatingPoint, coreLossesPerOperatingPoint, windingLossesPerOperatingPoint,
+                                    magnetic, inputs, outputs, _maximumPowerMean);
 }
 
 MagneticFilterLosses::MagneticFilterLosses(std::map<std::string, std::string> models) {
