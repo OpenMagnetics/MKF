@@ -2343,10 +2343,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     return magneticsWithMaterials;
 }
 
-std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_losses(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
-    size_t numberCoreMaterialsTouse = 2;
-    double magneticFluxDensityReference = 0.18;
-    std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
+// Phase 3 (F4): shared by add_ferrite_materials_by_losses /
+// add_ferrite_materials_by_impedance — gather ferrite candidates filtered
+// by current application; small but called twice.
+std::vector<CoreMaterial> CoreAdviser::gather_ferrite_materials_for_application() const {
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
     auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_ferrite_manufacturer());
     for (auto coreMaterial : coreMaterials) {
@@ -2355,6 +2355,49 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
             coreMaterialsToEvaluate.push_back(resolved);
         }
     }
+    return coreMaterialsToEvaluate;
+}
+
+// Phase 3 (F4): the dummy-material fan-out block was duplicated verbatim
+// between add_ferrite_materials_by_losses and add_ferrite_materials_by_impedance
+// (24 lines × 2). Pass-through for non-Dummy candidates (the Phase 1 fix
+// for the duplicate-entries bug) is preserved here.
+std::vector<std::pair<Magnetic, double>> CoreAdviser::fan_out_dummy_into_top_materials(
+    std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
+    const std::vector<std::pair<CoreMaterial, double>>& sortedMaterialEvaluations,
+    size_t numberCoreMaterialsTouse) {
+    std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
+    for (size_t magneticIndex = 0; magneticIndex < (*magneticsWithScoring).size(); ++magneticIndex) {
+        auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
+        if (magnetic.get_mutable_core().get_material_name() != DUMMY_SENTINEL_NAME) {
+            // Already has a concrete material — pass through ONCE.
+            // Phase 1 fix: previously the inner i-loop also ran in this branch
+            // (with `continue`), so non-Dummy magnetics were pushed
+            // numberCoreMaterialsTouse (=2) times, producing the duplicate
+            // entries in CoreAdviser STANDARD_CORES × POWER top-N output.
+            magneticsWithMaterials.push_back({magnetic, scoring});
+            continue;
+        }
+        // Dummy material — fan out into the top-N candidate ferrite materials.
+        for (size_t i = 0; i < numberCoreMaterialsTouse; ++i){
+            auto magneticCopy = magnetic;
+            magneticCopy.get_mutable_core().set_material(sortedMaterialEvaluations[i].first);
+            magneticCopy.get_mutable_core().set_name(sortedMaterialEvaluations[i].first.get_name() + " " + magneticCopy.get_core().get_name().value_or("unnamed"));
+            if (magneticCopy.get_manufacturer_info()) {
+                auto manufacturerInfo = magneticCopy.get_manufacturer_info().value();
+                manufacturerInfo.set_reference(sortedMaterialEvaluations[i].first.get_name() + " " + magneticCopy.get_reference());
+                magneticCopy.set_manufacturer_info(manufacturerInfo);
+            }
+            magneticsWithMaterials.push_back({magneticCopy, scoring});
+        }
+    }
+    return magneticsWithMaterials;
+}
+
+std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_losses(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
+    size_t numberCoreMaterialsTouse = 2;
+    double magneticFluxDensityReference = 0.18;
+    auto coreMaterialsToEvaluate = gather_ferrite_materials_for_application();
     std::vector<CoreMaterial> coreMaterialsToUse;
     std::vector<std::pair<CoreMaterial, double>> evaluations;
 
@@ -2398,45 +2441,12 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
         return b1.second < b2.second;
     });
 
-    for (size_t magneticIndex = 0; magneticIndex < (*magneticsWithScoring).size(); ++magneticIndex) {
-        auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
-        if (magnetic.get_mutable_core().get_material_name() != DUMMY_SENTINEL_NAME) {
-            // Already has a concrete material — pass through ONCE.
-            // Phase 1 fix: previously the inner i-loop also ran in this branch
-            // (with `continue`), so non-Dummy magnetics were pushed
-            // numberCoreMaterialsTouse (=2) times, producing the duplicate
-            // entries in CoreAdviser STANDARD_CORES × POWER top-N output.
-            magneticsWithMaterials.push_back({magnetic, scoring});
-            continue;
-        }
-        // Dummy material — fan out into the top-N candidate ferrite materials.
-        for (size_t i = 0; i < numberCoreMaterialsTouse; ++i){
-            auto magneticCopy = magnetic;
-            magneticCopy.get_mutable_core().set_material(evaluations[i].first);
-            magneticCopy.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + (magnetic.get_core().get_name().value_or("unnamed")));
-            if (magneticCopy.get_manufacturer_info()) {
-                auto manufacturerInfo = magneticCopy.get_manufacturer_info().value();
-                manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magneticCopy.get_reference());
-                magneticCopy.set_manufacturer_info(manufacturerInfo);
-            }
-            magneticsWithMaterials.push_back({magneticCopy, scoring});
-        }
-    }
-
-    return magneticsWithMaterials;
+    return fan_out_dummy_into_top_materials(magneticsWithScoring, evaluations, numberCoreMaterialsTouse);
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_impedance(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     size_t numberCoreMaterialsTouse = 2;
-    std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
-    std::vector<CoreMaterial> coreMaterialsToEvaluate;
-    auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_ferrite_manufacturer());
-    for (auto coreMaterial : coreMaterials) {
-        auto resolved = Core::resolve_material(coreMaterial);
-        if (Core::check_material_application(resolved, _application)) {
-            coreMaterialsToEvaluate.push_back(resolved);
-        }
-    }
+    auto coreMaterialsToEvaluate = gather_ferrite_materials_for_application();
     std::vector<CoreMaterial> coreMaterialsToUse;
     std::vector<std::pair<CoreMaterial, double>> evaluations;
 
@@ -2461,31 +2471,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
         return b1.second < b2.second;
     });
 
-    for (size_t magneticIndex = 0; magneticIndex < (*magneticsWithScoring).size(); ++magneticIndex) {
-        auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
-        if (magnetic.get_mutable_core().get_material_name() != DUMMY_SENTINEL_NAME) {
-            // Already has a concrete material — pass through ONCE.
-            // Phase 1 fix: previously the inner i-loop also ran in this
-            // branch, pushing non-Dummy magnetics numberCoreMaterialsTouse
-            // (=2) times. See add_ferrite_materials_by_losses for the
-            // parallel fix.
-            magneticsWithMaterials.push_back({magnetic, scoring});
-            continue;
-        }
-        // Dummy material — fan out into the top-N candidate ferrite materials.
-        for (size_t i = 0; i < numberCoreMaterialsTouse; ++i){
-            auto magneticCopy = magnetic;
-            magneticCopy.get_mutable_core().set_material(evaluations[i].first);
-            magneticCopy.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + magneticCopy.get_core().get_name().value_or("unnamed"));
-            if (magneticCopy.get_manufacturer_info()) {
-                auto manufacturerInfo = magneticCopy.get_manufacturer_info().value();
-                manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magneticCopy.get_reference());
-                magneticCopy.set_manufacturer_info(manufacturerInfo);
-            }
-            magneticsWithMaterials.push_back({magneticCopy, scoring});
-        }
-    }
-    return magneticsWithMaterials;
+    return fan_out_dummy_into_top_materials(magneticsWithScoring, evaluations, numberCoreMaterialsTouse);
 }
 
 void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {

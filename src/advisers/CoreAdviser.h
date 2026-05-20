@@ -355,6 +355,14 @@ class CoreAdviser {
         std::vector<std::pair<Magnetic, double>> add_powder_materials(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs);
         std::vector<std::pair<Magnetic, double>> add_ferrite_materials_by_losses(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs);
         std::vector<std::pair<Magnetic, double>> add_ferrite_materials_by_impedance(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs);
+        // Phase 3 (F4): helpers shared by add_ferrite_materials_by_losses /
+        // add_ferrite_materials_by_impedance to remove duplicated gathering +
+        // fan-out blocks.
+        std::vector<CoreMaterial> gather_ferrite_materials_for_application() const;
+        std::vector<std::pair<Magnetic, double>> fan_out_dummy_into_top_materials(
+            std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
+            const std::vector<std::pair<CoreMaterial, double>>& sortedMaterialEvaluations,
+            size_t numberCoreMaterialsTouse);
         bool should_include_powder(Inputs inputs);
     
     class MagneticCoreFilter {
