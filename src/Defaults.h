@@ -61,6 +61,18 @@ struct Defaults {
     const double minimumBorderToWireDistance = 90e-6;
     const double coreToLayerDistance = 250e-6;
 };
+
+// Phase 3 (F7): canonical name for the "shape-only pre-filter" sentinel used
+// by CoreAdviser. A Core/Bobbin/Wire whose name is exactly this string is a
+// placeholder that has been materialised at the shape level but does NOT yet
+// have a real material/bobbin/wire bound. Real material is bound later at
+// the fan-out (see CoreAdviser.cpp::add_ferrite_materials_by_*).
+// Some filters need to treat the Dummy sentinel specially to avoid attempting
+// material-dependent calculations on an unbound placeholder.
+// Bare string literal "Dummy" must not be reintroduced - use this constant so
+// a future rename can land in one place.
+inline constexpr const char* DUMMY_SENTINEL_NAME = "Dummy";
+
 } // namespace OpenMagnetics
 
 #endif

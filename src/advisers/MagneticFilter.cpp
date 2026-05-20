@@ -320,7 +320,7 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
         double wireAirFillingFactor = Wire::get_filling_factor_round(2 * skinDepth);
         double windingWindowUtilizationFactor = wireAirFillingFactor * bobbinFillingFactor;
         double magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
-        if (core.get_material_name() == "Dummy") {
+        if (core.get_material_name() == DUMMY_SENTINEL_NAME) {
             // Phase 1 fix: explicit branch for the shape-only pre-filter stage.
             // CoreAdviser uses the sentinel material name "Dummy" before material
             // fan-out (see CoreAdviser.cpp:2344, 2407): the actual material is

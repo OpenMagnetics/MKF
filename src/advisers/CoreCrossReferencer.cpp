@@ -491,10 +491,10 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
             Magnetic magnetic;
             magnetic.set_core(core);
             Coil coil;
-            coil.set_bobbin("Dummy");
+            coil.set_bobbin(DUMMY_SENTINEL_NAME);
             Winding winding;
             winding.set_number_turns(numberTurns);
-            winding.set_wire("Dummy");
+            winding.set_wire(DUMMY_SENTINEL_NAME);
             coil.set_functional_description({winding});
             magnetic.set_coil(coil);
             for (auto operatingPoint : inputs.get_operating_points()) {

@@ -736,7 +736,7 @@ Coil get_dummy_coil(Inputs inputs) {
     primaryWinding.set_wire(wire);
 
     Coil coil;
-    coil.set_bobbin("Dummy");
+    coil.set_bobbin(DUMMY_SENTINEL_NAME);
     coil.set_functional_description({primaryWinding});
     return coil;
 }
@@ -1452,7 +1452,7 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i) {
         Core core = (*magneticsWithScoring)[i].first.get_core();
 
-        if (core.get_material_name() == "Dummy") {
+        if (core.get_material_name() == DUMMY_SENTINEL_NAME) {
             core.set_material_initial_permeability(defaults.ferriteInitialPermeability);
         }
         if (!core.get_processed_description()) {
@@ -1467,7 +1467,7 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
             // failures and contaminated the gap calc with a generic ferrite
             // default Bsat — letting unsuitable candidates pass.
             double realisticBsat;
-            if (core.get_material_name() == "Dummy") {
+            if (core.get_material_name() == DUMMY_SENTINEL_NAME) {
                 // Shape-only pre-filter stage (see CoreAdviser.cpp:2344 fan-out):
                 // material isn't bound yet, use the ferrite reference Bsat as
                 // the documented contract of this stage.
@@ -2410,7 +2410,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
 
     for (size_t magneticIndex = 0; magneticIndex < (*magneticsWithScoring).size(); ++magneticIndex) {
         auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
-        if (magnetic.get_mutable_core().get_material_name() != "Dummy") {
+        if (magnetic.get_mutable_core().get_material_name() != DUMMY_SENTINEL_NAME) {
             // Already has a concrete material — pass through ONCE.
             // Phase 1 fix: previously the inner i-loop also ran in this branch
             // (with `continue`), so non-Dummy magnetics were pushed
@@ -2473,7 +2473,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
 
     for (size_t magneticIndex = 0; magneticIndex < (*magneticsWithScoring).size(); ++magneticIndex) {
         auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
-        if (magnetic.get_mutable_core().get_material_name() != "Dummy") {
+        if (magnetic.get_mutable_core().get_material_name() != DUMMY_SENTINEL_NAME) {
             // Already has a concrete material — pass through ONCE.
             // Phase 1 fix: previously the inner i-loop also ran in this
             // branch, pushing non-Dummy magnetics numberCoreMaterialsTouse
