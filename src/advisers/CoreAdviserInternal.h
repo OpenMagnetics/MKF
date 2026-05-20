@@ -58,8 +58,10 @@ inline CoreLossesModelPair make_default_core_losses_model_pair() {
 }
 
 // Forward declarations for free helpers that still live in CoreAdviser.cpp
-// but are called from sibling TUs (CoreAdviserPipeline.cpp).
+// but are called from sibling TUs (CoreAdviserPipeline.cpp, CoreAdviserFilters.cpp).
 void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
 void add_alternative_materials(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
+std::vector<double> normalize_scoring(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, std::vector<double> newScoring, double weight, std::map<std::string, bool> filterConfiguration);
+void sort_magnetics_by_scoring(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring);
 
 } // namespace OpenMagnetics
