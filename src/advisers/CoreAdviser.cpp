@@ -981,7 +981,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
     auto includeConcentricCores = settings.get_use_concentric_cores();
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
     auto globalIncludeDistributedGaps = settings.get_core_adviser_include_distributed_gaps();
-    double maximumHeight = DBL_MAX;
+    double maximumHeight = std::numeric_limits<double>::infinity();
     if (inputs.get_design_requirements().get_maximum_dimensions()) {
         if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
             maximumHeight = inputs.get_design_requirements().get_maximum_dimensions()->get_height().value();
@@ -1098,7 +1098,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
     auto includeConcentricCores = settings.get_use_concentric_cores();
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
     auto globalIncludeDistributedGaps = settings.get_core_adviser_include_distributed_gaps();
-    double maximumHeight = DBL_MAX;
+    double maximumHeight = std::numeric_limits<double>::infinity();
     if (inputs.get_design_requirements().get_maximum_dimensions()) {
         if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
             maximumHeight = inputs.get_design_requirements().get_maximum_dimensions()->get_height().value();
@@ -1215,7 +1215,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
 void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector<Core>* cores, std::vector<std::pair<Magnetic, double>>* magnetics) {
     Coil coil = get_dummy_coil(inputs);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
-    double maximumHeight = DBL_MAX;
+    double maximumHeight = std::numeric_limits<double>::infinity();
     if (inputs.get_design_requirements().get_maximum_dimensions()) {
         if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
             maximumHeight = inputs.get_design_requirements().get_maximum_dimensions()->get_height().value();
