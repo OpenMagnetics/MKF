@@ -1614,7 +1614,7 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
     double maxGapByColumn = 0.30 * columnWidth;
 
     // 2b. Maximum gap based on fringing factor (25%)
-    double maxGapByFringing = calculate_gap_for_fringing_factor(0.25, core);
+    double maxGapByFringing = calculate_gap_for_fringing_factor(defaults.coreAdviserMaxFringingFactor, core);
 
     // Use the more restrictive limit
     constraints.maxGap = std::min(maxGapByColumn, maxGapByFringing);
@@ -1995,7 +1995,7 @@ void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, dou
                 
                 // Check practical limits
                 double columnWidth = core.get_columns()[0].get_width();
-                double maxPracticalGap = columnWidth * 0.5;  // 50% of column width
+                double maxPracticalGap = columnWidth * defaults.coreAdviserMaxPracticalGapColumnWidthFraction;  // fraction of column width
                 
                 if (newGap > maxPracticalGap) {
                     shouldRemove = true;
@@ -2102,10 +2102,10 @@ double CoreAdviser::calculate_gap_cost_analytical(double gap, Inputs& inputs, Co
     double lossProxy = coreVolume * frequency * bPeak * bPeak;  // Simplified Steinmetz-like estimate
     
     // Cost function: minimize losses while penalizing high fringing
-    // Fringing factor > 0.25 is considered excessive
+    // Fringing factor above defaults.coreAdviserMaxFringingFactor is considered excessive
     double fringingPenalty = 0.0;
-    if (fringingFactor > 0.25) {
-        fringingPenalty = pow((fringingFactor - 0.25) * 10, 2);  // Quadratic penalty
+    if (fringingFactor > defaults.coreAdviserMaxFringingFactor) {
+        fringingPenalty = pow((fringingFactor - defaults.coreAdviserMaxFringingFactor) * 10, 2);  // Quadratic penalty
     }
     
     return lossProxy + fringingPenalty;
@@ -2301,8 +2301,8 @@ bool CoreAdviser::should_include_powder(Inputs inputs) {
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
-    size_t numberCoreMaterialsTouse = 10;
-    double magneticFluxDensityReference = 0.18;
+    size_t numberCoreMaterialsTouse = defaults.coreAdviserAlternativeMaterialsNumberToUse;
+    double magneticFluxDensityReference = defaults.coreAdviserMagneticFluxDensityReferenceAlternative;
     std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
     auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_powder_manufacturer());
@@ -2415,8 +2415,8 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::fan_out_dummy_into_top_mat
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_losses(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
-    size_t numberCoreMaterialsTouse = 2;
-    double magneticFluxDensityReference = 0.18;
+    size_t numberCoreMaterialsTouse = defaults.coreAdviserFanOutMaterialsNumberToUse;
+    double magneticFluxDensityReference = defaults.coreAdviserMagneticFluxDensityReferenceAlternative;
     auto coreMaterialsToEvaluate = gather_ferrite_materials_for_application();
     std::vector<CoreMaterial> coreMaterialsToUse;
     std::vector<std::pair<CoreMaterial, double>> evaluations;

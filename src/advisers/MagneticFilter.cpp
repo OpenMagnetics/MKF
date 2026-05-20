@@ -745,7 +745,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
     double newTotalLosses = DBL_MAX;
     auto previousNumberTurnsPrimary = currentNumberTurns;
 
-    size_t iteration = 10;
+    size_t iteration = defaults.coreAdviserSkinEffectMaxIterations;
 
     Coil coil = magnetic->get_coil();
 
@@ -896,7 +896,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
     // N..N+10 (too narrow to find the loss minimum for larger designs). Using ~10% of
     // the starting N gives geometric-ish coverage out to ~2× N_start, spanning both
     // sides of the typical loss optimum.
-    size_t numberTurnsStep = std::max<size_t>(1, static_cast<size_t>(std::ceil(currentNumberTurns * 0.1)));
+    size_t numberTurnsStep = std::max<size_t>(1, static_cast<size_t>(std::ceil(currentNumberTurns * defaults.coreAdviserSkinEffectTurnsStepFactor)));
 
     std::vector<double> totalLossesPerOperatingPoint;
     std::vector<CoreLossesOutput> coreLossesPerOperatingPoint;
@@ -910,7 +910,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
     double newTotalLosses = DBL_MAX;
     auto previousNumberTurnsPrimary = currentNumberTurns;
 
-    size_t iteration = 10;
+    size_t iteration = defaults.coreAdviserSkinEffectMaxIterations;
 
     Coil coil = magnetic->get_coil();
 
@@ -1256,7 +1256,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
     bool validDesign = true;
     bool validMaterial = true;
     double totalImpedanceExtra = 0;
-    int timeout = 100;
+    int timeout = defaults.coilAdviserCmcImpedanceMaxIterations;
     bool jumpDefinitive = false;
     int64_t jumpedRequiredN = 0;
 

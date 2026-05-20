@@ -60,6 +60,48 @@ struct Defaults {
     const double minimumWireToWireDistance = 90e-6;
     const double minimumBorderToWireDistance = 90e-6;
     const double coreToLayerDistance = 250e-6;
+
+    // Phase 4 (Group A): adviser sweep/optimization iteration budgets and step
+    // factors. Previously magic-numbered in-line at the call sites; collected
+    // here so they can be re-tuned (or eventually exposed via settings) in one
+    // place.
+    //
+    // MagneticFilter skin-effect-aware sweep: how many turn-count iterations
+    // the "increase N, recompute losses" loop will explore before giving up.
+    // Used in MagneticCoreFilterMinimumLosses and the equivalent in
+    // MagneticCoreFilterMinimumImpedance.
+    const size_t coreAdviserSkinEffectMaxIterations = 10;
+    // Step size for the N sweep, expressed as a fraction of the starting
+    // turn count. With ~10 iterations a step of 1 only covers N..N+10, which
+    // is too narrow for larger designs; ~10% of N_start gives geometric-ish
+    // coverage out to ~2× N_start.
+    const double coreAdviserSkinEffectTurnsStepFactor = 0.1;
+    // Maximum iterations for the CMC impedance-fit "jump N" loop in
+    // MagneticCoreFilterMinimumImpedance. Distinct from the skin-effect
+    // sweep above; kept generous (100) because it's the *outer* fit loop.
+    const int coilAdviserCmcImpedanceMaxIterations = 100;
+
+    // CoreAdviser material-evaluation fan-out: how many top candidates from
+    // the sorted material list to evaluate per magnetic. Different defaults
+    // for the two code paths preserved:
+    //  - add_powder_materials / alternative-material rank uses 10 (broader
+    //    exploration, since powder lookups are cheap).
+    //  - add_ferrite_materials_by_losses / by_impedance use 2 (each candidate
+    //    materialises into a full advisory run, so cost is quadratic).
+    const size_t coreAdviserAlternativeMaterialsNumberToUse = 10;
+    const size_t coreAdviserFanOutMaterialsNumberToUse = 2;
+    // Reference B used when building the synthetic sinusoidal excitation for
+    // material *ranking* (NOT for the design itself). Lower than the design
+    // reference because we want to compare materials at a B where Steinmetz
+    // and proprietary loss models tend to agree.
+    const double coreAdviserMagneticFluxDensityReferenceAlternative = 0.18;
+    // Geometric / physical limits during gap optimisation. The "max practical
+    // gap as a fraction of column width" rejects designs whose gap would
+    // require an unphysical core geometry. The "max fringing factor" is the
+    // threshold beyond which gap-fringing flux is considered excessive and
+    // penalised in the analytical cost function.
+    const double coreAdviserMaxPracticalGapColumnWidthFraction = 0.5;
+    const double coreAdviserMaxFringingFactor = 0.25;
 };
 
 // Phase 3 (F7): canonical name for the "shape-only pre-filter" sentinel used
