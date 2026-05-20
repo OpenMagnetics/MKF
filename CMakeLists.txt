@@ -449,6 +449,8 @@ add_custom_command(
     -S ${CAS_DIR}/schemas/inputs/designRequirements.json
     -S ${EAS_DIR}/schemas/utils.json
     -S ${EAS_DIR}/schemas/inputs/twoTerminalOperatingPoint.json
+    -S ${EAS_DIR}/schemas/inputs/operatingConditions.json
+    -S ${EAS_DIR}/schemas/inputs/operatingPointExcitation.json
     -o ${CAS_DIRECTORY}/CAS.hpp --namespace CAS --source-style single-source
     --type-style pascal-case --member-style underscore-case
     --enumerator-style upper-underscore-case --no-boost
@@ -458,6 +460,8 @@ add_custom_command(
     "${CAS_DIR}/schemas/inputs/designRequirements.json"
     "${EAS_DIR}/schemas/utils.json"
     "${EAS_DIR}/schemas/inputs/twoTerminalOperatingPoint.json"
+    "${EAS_DIR}/schemas/inputs/operatingConditions.json"
+    "${EAS_DIR}/schemas/inputs/operatingPointExcitation.json"
   USES_TERMINAL)
 
 add_custom_target(CAS ALL DEPENDS "${CAS_DIRECTORY}/CAS.hpp")
