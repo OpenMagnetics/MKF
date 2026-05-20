@@ -3,6 +3,7 @@
 #include "physical_models/CoreLosses.h"
 #include "Defaults.h"
 #include "constructive_models/Core.h"
+#include "advisers/CrossReferencerCommon.h"
 #include <cmath>
 #include <MAS.hpp>
 
@@ -33,17 +34,8 @@ class CoreCrossReferencer {
         std::map<CoreCrossReferencerFilters, std::map<std::string, bool>> _validScorings;
         std::map<CoreCrossReferencerFilters, std::map<std::string, double>> _scoredValues;
         CoreCrossReferencer(std::map<std::string, std::string> models) {
-            auto defaults = OpenMagnetics::Defaults();
             _models = models;
-            if (models.find("gapReluctance") == models.end()) {
-                _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
-            }
-            if (models.find("coreLosses") == models.end()) {
-                _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
-            }
-            if (models.find("coreTemperature") == models.end()) {
-                _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
-            }
+            init_default_cross_referencer_models(_models);
 
             _weights[CoreCrossReferencerFilters::PERMEANCE] = 1;
             _weights[CoreCrossReferencerFilters::SATURATION] = 0.5;
@@ -52,19 +44,7 @@ class CoreCrossReferencer {
             _weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA] = 0.5;
             _weights[CoreCrossReferencerFilters::ENVELOPING_VOLUME] = 0.1;
         }
-        CoreCrossReferencer() {
-            auto defaults = OpenMagnetics::Defaults();
-            _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
-            _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
-            _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
-
-            _weights[CoreCrossReferencerFilters::PERMEANCE] = 1;
-            _weights[CoreCrossReferencerFilters::SATURATION] = 0.5;
-            _weights[CoreCrossReferencerFilters::CORE_LOSSES] = 0.5;
-            _weights[CoreCrossReferencerFilters::EFFECTIVE_AREA] = 0.5;
-            _weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA] = 0.5;
-            _weights[CoreCrossReferencerFilters::ENVELOPING_VOLUME] = 0.1;
-        }
+        CoreCrossReferencer() : CoreCrossReferencer(std::map<std::string, std::string>{}) {}
         std::string read_log() {
             return _log;
         }

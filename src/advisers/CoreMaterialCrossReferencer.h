@@ -3,6 +3,7 @@
 #include "physical_models/CoreLosses.h"
 #include "Defaults.h"
 #include "constructive_models/Core.h"
+#include "advisers/CrossReferencerCommon.h"
 #include <cmath>
 #include <MAS.hpp>
 
@@ -32,18 +33,8 @@ class CoreMaterialCrossReferencer {
         std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>> _scorings;
         std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>> _scoredValues;
         CoreMaterialCrossReferencer(std::map<std::string, std::string> models) {
-            auto defaults = OpenMagnetics::Defaults();
             _models = models;
-
-            if (models.find("gapReluctance") == models.end()) {
-                _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
-            }
-            if (models.find("coreLosses") == models.end()) {
-                _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
-            }
-            if (models.find("coreTemperature") == models.end()) {
-                _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
-            }
+            init_default_cross_referencer_models(_models);
 
             // CMCR-LOGIC-1 NOTE: These weights are optimized for power applications.
             // For interference suppression, permeability and high-freq losses matter more.
@@ -56,20 +47,7 @@ class CoreMaterialCrossReferencer {
             _weights[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 1;
             _weights[CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0.2;
         }
-        CoreMaterialCrossReferencer() {
-            auto defaults = OpenMagnetics::Defaults();
-            _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
-            _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
-            _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
-
-            _weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0.5;
-            _weights[CoreMaterialCrossReferencerFilters::REMANENCE] = 0.01;
-            _weights[CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0.01;
-            _weights[CoreMaterialCrossReferencerFilters::SATURATION] = 1;
-            _weights[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0.01;
-            _weights[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 1;
-            _weights[CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0.2;
-        }
+        CoreMaterialCrossReferencer() : CoreMaterialCrossReferencer(std::map<std::string, std::string>{}) {}
         std::string read_log() {
             return _log;
         }

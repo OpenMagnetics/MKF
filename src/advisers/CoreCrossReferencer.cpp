@@ -1,6 +1,7 @@
 #include "constructive_models/Core.h"
 #include "physical_models/InitialPermeability.h"
 #include "advisers/CoreCrossReferencer.h"
+#include "advisers/CrossReferencerCommon.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/Reluctance.h"
 #include <algorithm>
@@ -103,64 +104,11 @@ std::map<std::string, std::map<CoreCrossReferencerFilters, double>> CoreCrossRef
 }
 
 void normalize_scoring(std::vector<std::pair<Core, double>>* rankedCores, std::vector<double>* newScoring, double weight, std::map<std::string, bool> filterConfiguration) {
-    double maximumScoring = *std::max_element(newScoring->begin(), newScoring->end());
-    double minimumScoring = *std::min_element(newScoring->begin(), newScoring->end());
-
-    // F5 FIX: Guard against all-NaN/Inf scores
-    if (std::isnan(maximumScoring) || std::isinf(maximumScoring)) {
-        for (size_t i = 0; i < rankedCores->size(); ++i) {
-            (*rankedCores)[i].second += weight;
-        }
-        std::stable_sort(rankedCores->begin(), rankedCores->end(),
-            [](const std::pair<Core, double>& a, const std::pair<Core, double>& b) { return a.second > b.second; });
-        return;
-    }
-
-    double dataRelativeFloor = std::max(1e-10, maximumScoring * 1e-6); // B8 FIX: data-relative floor
-
-    // O24 FIX: NaN/Inf protection
-    for (size_t idx = 0; idx < newScoring->size(); ++idx) {
-        if (std::isnan((*newScoring)[idx]) || std::isinf((*newScoring)[idx])) {
-            (*newScoring)[idx] = maximumScoring;
-        }
-    }
-
-    for (size_t i = 0; i < (*rankedCores).size(); ++i) {
-        auto mas = (*rankedCores)[i].first;
-        auto scoring = (*newScoring)[i];
-        if (std::isnan(scoring)) {
-            scoring = maximumScoring;
-        }
-        else {
-            scoring = std::max(dataRelativeFloor, scoring); // B8 FIX
-        }
-        minimumScoring = std::max(dataRelativeFloor, minimumScoring); // B8 FIX
-        if (maximumScoring != minimumScoring) {
-
-            if (filterConfiguration["log"]){
-                if (filterConfiguration["invert"]) {
-                    (*rankedCores)[i].second = (*rankedCores)[i].second + weight * (1 - (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
-                }
-                else {
-                    (*rankedCores)[i].second = (*rankedCores)[i].second + weight * (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                }
-            }
-            else {
-                if (filterConfiguration["invert"]) {
-                    (*rankedCores)[i].second = (*rankedCores)[i].second + weight * (1 - (scoring - minimumScoring) / (maximumScoring - minimumScoring));
-                }
-                else {
-                    (*rankedCores)[i].second = (*rankedCores)[i].second + weight * (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                }
-            }
-        }
-        else {
-            (*rankedCores)[i].second = (*rankedCores)[i].second + weight * 0.5; // XC-6 FIX: neutral score when all equal (was full weight)
-        }
-    }
-    std::stable_sort((*rankedCores).begin(), (*rankedCores).end(), [](const std::pair<Core, double>& b1, const std::pair<Core, double>& b2) {
-        return b1.second > b2.second;
-    }); // F12 FIX: stable_sort for reproducible results
+    // Phase 3 (F2+F3): forwards to the shared templated implementation
+    // in CrossReferencerCommon.h. CoreMaterialCrossReferencer carried a
+    // byte-identical second copy; both fix histories (F5/B8/XC-6/F12)
+    // now live in one place.
+    normalize_scoring<Core>(rankedCores, newScoring, weight, filterConfiguration);
 }
 
 std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPermeance::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, Inputs inputs, std::map<std::string, std::string> models, double weight, double limit) {

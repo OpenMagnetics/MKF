@@ -1,6 +1,7 @@
 #include "constructive_models/Core.h"
 #include "physical_models/InitialPermeability.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
+#include "advisers/CrossReferencerCommon.h"
 #include "Defaults.h"
 #include "support/Settings.h"
 #include <algorithm>
@@ -96,64 +97,11 @@ std::map<std::string, std::map<CoreMaterialCrossReferencerFilters, double>> Core
 }
 
 void normalize_scoring(std::vector<std::pair<CoreMaterial, double>>* rankedCoreMaterials, std::vector<double>* newScoring, double weight, std::map<std::string, bool> filterConfiguration) {
-    double maximumScoring = *std::max_element(newScoring->begin(), newScoring->end());
-    double minimumScoring = *std::min_element(newScoring->begin(), newScoring->end());
-
-    // F5 FIX: Guard against all-NaN/Inf scores
-    if (std::isnan(maximumScoring) || std::isinf(maximumScoring)) {
-        for (size_t i = 0; i < rankedCoreMaterials->size(); ++i) {
-            (*rankedCoreMaterials)[i].second += weight;
-        }
-        std::stable_sort(rankedCoreMaterials->begin(), rankedCoreMaterials->end(),
-            [](const std::pair<CoreMaterial, double>& a, const std::pair<CoreMaterial, double>& b) { return a.second > b.second; });
-        return;
-    }
-
-    double dataRelativeFloor = std::max(1e-10, maximumScoring * 1e-6); // B8 FIX: data-relative floor
-
-    // O24 FIX: NaN/Inf protection
-    for (size_t idx = 0; idx < newScoring->size(); ++idx) {
-        if (std::isnan((*newScoring)[idx]) || std::isinf((*newScoring)[idx])) {
-            (*newScoring)[idx] = maximumScoring;
-        }
-    }
-
-    for (size_t i = 0; i < (*rankedCoreMaterials).size(); ++i) {
-        auto mas = (*rankedCoreMaterials)[i].first;
-        auto scoring = (*newScoring)[i];
-        if (std::isnan(scoring)) {
-            scoring = maximumScoring;
-        }
-        else {
-            scoring = std::max(dataRelativeFloor, scoring); // B8 FIX
-        }
-        minimumScoring = std::max(dataRelativeFloor, minimumScoring); // B8 FIX
-        if (maximumScoring != minimumScoring) {
-
-            if (filterConfiguration["log"]){
-                if (filterConfiguration["invert"]) {
-                    (*rankedCoreMaterials)[i].second = (*rankedCoreMaterials)[i].second + weight * (1 - (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
-                }
-                else {
-                    (*rankedCoreMaterials)[i].second = (*rankedCoreMaterials)[i].second + weight * (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                }
-            }
-            else {
-                if (filterConfiguration["invert"]) {
-                    (*rankedCoreMaterials)[i].second = (*rankedCoreMaterials)[i].second + weight * (1 - (scoring - minimumScoring) / (maximumScoring - minimumScoring));
-                }
-                else {
-                    (*rankedCoreMaterials)[i].second = (*rankedCoreMaterials)[i].second + weight * (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                }
-            }
-        }
-        else {
-            (*rankedCoreMaterials)[i].second = (*rankedCoreMaterials)[i].second + weight * 0.5; // XC-6 FIX: neutral score when all equal
-        }
-    }
-    std::stable_sort((*rankedCoreMaterials).begin(), (*rankedCoreMaterials).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
-        return b1.second > b2.second;
-    }); // F12 FIX: stable_sort for reproducible results
+    // Phase 3 (F2+F3): forwards to the shared templated implementation
+    // in CrossReferencerCommon.h. CoreCrossReferencer carried a
+    // byte-identical second copy; both fix histories (F5/B8/XC-6/F12)
+    // now live in one place.
+    normalize_scoring<CoreMaterial>(rankedCoreMaterials, newScoring, weight, filterConfiguration);
 }
 
 std::map<std::string, std::map<CoreMaterialCrossReferencerFilters, double>> CoreMaterialCrossReferencer::get_scored_values(){
