@@ -147,7 +147,7 @@ std::pair<bool, double> MagneticFilterDcCurrentDensity::evaluate_magnetic(Magnet
         return {false, 0.0};        
     }
 
-    for (auto operatingPoint : inputs->get_operating_points()) {
+    for (const auto& operatingPoint : inputs->get_operating_points()) {
         for (size_t windingIndex = 0; windingIndex < magnetic->get_mutable_coil().get_functional_description().size(); ++windingIndex) {
             auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
             if (!excitation.get_current()) { 
@@ -180,7 +180,7 @@ std::pair<bool, double> MagneticFilterEffectiveCurrentDensity::evaluate_magnetic
         return {false, 0.0};        
     }
 
-    for (auto operatingPoint : inputs->get_operating_points()) {
+    for (const auto& operatingPoint : inputs->get_operating_points()) {
         for (size_t windingIndex = 0; windingIndex < magnetic->get_mutable_coil().get_functional_description().size(); ++windingIndex) {
             auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
             if (!excitation.get_current()) {
