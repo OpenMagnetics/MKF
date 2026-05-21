@@ -73,9 +73,12 @@ class Inputs : public MAS::Inputs {
     static SignalDescriptor standardize_waveform(SignalDescriptor parameter, double frequency);
     static Waveform reconstruct_signal(Harmonics harmonics, double frequency);
     OperatingPoint get_operating_point(size_t index);
+    const OperatingPoint& get_operating_point_ref(size_t index) const { return get_operating_points()[index]; }
     OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex=0, size_t windingIndex=0);
     OperatingPointExcitation get_primary_excitation(size_t operatingPointIndex=0);
-    static OperatingPointExcitation get_primary_excitation(OperatingPoint operatingPoint);
+    // Perf (Phase 6): const-ref overload avoids deep-copying the OperatingPoint
+    // just to read a single excitation. Hot in AreaProduct and Loss filters.
+    static OperatingPointExcitation get_primary_excitation(const OperatingPoint& operatingPoint);
 
     static SignalDescriptor calculate_induced_voltage(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress=true);
     static bool include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios);
@@ -181,7 +184,7 @@ class Inputs : public MAS::Inputs {
     }
     static void set_current_as_magnetizing_current(OperatingPoint* operatingPoint);
 
-    static double get_switching_frequency(OperatingPointExcitation excitation);
+    static double get_switching_frequency(const OperatingPointExcitation& excitation);
     static double get_magnetic_flux_density_peak(OperatingPointExcitation excitation, double switchingFrequency);
     static double get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency);
     static SignalDescriptor get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint);

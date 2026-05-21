@@ -123,11 +123,14 @@ inline double compute_maximum_power_mean_and_maybe_force_steinmetz(
     Inputs& inputs, std::map<std::string, std::string>& models)
 {
     bool largeWaveform = false;
-    std::vector<double> powerMeans(inputs.get_operating_points().size(), 0);
-    for (size_t opi = 0; opi < inputs.get_operating_points().size(); ++opi) {
-        auto voltageWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(opi)).get_voltage().value().get_waveform().value();
-        auto currentWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(opi)).get_current().value().get_waveform().value();
-        double frequency = Inputs::get_primary_excitation(inputs.get_operating_point(opi)).get_frequency();
+    // Phase 6 (perf): cache operating-points by const-ref to avoid OperatingPoint deep copies.
+    const auto& operatingPoints = inputs.get_operating_points();
+    std::vector<double> powerMeans(operatingPoints.size(), 0);
+    for (size_t opi = 0; opi < operatingPoints.size(); ++opi) {
+        auto excitation = Inputs::get_primary_excitation(operatingPoints[opi]);
+        auto voltageWaveform = excitation.get_voltage().value().get_waveform().value();
+        auto currentWaveform = excitation.get_current().value().get_waveform().value();
+        double frequency = excitation.get_frequency();
 
         if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
             voltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));

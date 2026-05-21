@@ -3023,8 +3023,8 @@ OperatingPointExcitation Inputs::get_primary_excitation(size_t operatingPointInd
     return get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0];
 }
 
-OperatingPointExcitation Inputs::get_primary_excitation(OperatingPoint operatingPoint) {
-    return operatingPoint.get_mutable_excitations_per_winding()[0];
+OperatingPointExcitation Inputs::get_primary_excitation(const OperatingPoint& operatingPoint) {
+    return operatingPoint.get_excitations_per_winding()[0];
 }
 
 void Inputs::make_waveform_size_power_of_two(OperatingPoint* operatingPoint) {
@@ -3740,7 +3740,7 @@ void Inputs::set_current_as_magnetizing_current(OperatingPoint* operatingPoint) 
     operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
 }
 
-double Inputs::get_switching_frequency(OperatingPointExcitation excitation) {
+double Inputs::get_switching_frequency(const OperatingPointExcitation& excitation) {
     if (excitation.get_frequency() < 400) {
         if (excitation.get_current()) {
             if (excitation.get_current()->get_waveform()) {

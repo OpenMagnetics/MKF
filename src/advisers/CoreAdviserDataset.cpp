@@ -45,8 +45,10 @@ namespace OpenMagnetics {
 Coil get_dummy_coil(Inputs inputs) {
     double temperature = inputs.get_maximum_temperature();
     double frequency = 0;
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        frequency = std::max(frequency, Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency());
+    // Phase 6 (perf): cache operating-points by const-ref.
+    const auto& operatingPoints = inputs.get_operating_points();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+        frequency = std::max(frequency, Inputs::get_primary_excitation(operatingPoints[operatingPointIndex]).get_frequency());
     }
 
     // Set round wire with diameter to two times the skin depth 
@@ -456,8 +458,10 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     double transformerTemperature = 25.0;
     double maxVoltSeconds = 0.0;
     if (isTransformer) {
-        for (size_t opIdx = 0; opIdx < inputs.get_operating_points().size(); ++opIdx) {
-            auto op = inputs.get_operating_point(opIdx);
+        // Phase 6 (perf): cache operating-points by const-ref.
+        const auto& transformerOperatingPoints = inputs.get_operating_points();
+        for (size_t opIdx = 0; opIdx < transformerOperatingPoints.size(); ++opIdx) {
+            const auto& op = transformerOperatingPoints[opIdx];
             transformerTemperature = std::max(transformerTemperature, op.get_conditions().get_ambient_temperature());
             auto excitation = Inputs::get_primary_excitation(op);
 

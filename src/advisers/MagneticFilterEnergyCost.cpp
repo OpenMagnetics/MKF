@@ -31,8 +31,10 @@ std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* 
 
     bool valid = true;
     double totalStorableMagneticEnergy = 0;
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-        auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
+    // Phase 6 (perf): cache operating-points by const-ref.
+    const auto& operatingPoints = inputs->get_operating_points();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+        const auto& operatingPoint = operatingPoints[operatingPointIndex];
         double storableEnergy = _magneticEnergy.calculate_core_maximum_magnetic_energy(magnetic->get_core(), operatingPoint);
         totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, storableEnergy);
 
@@ -66,9 +68,13 @@ MagneticFilterEstimatedCost::MagneticFilterEstimatedCost(Inputs inputs) {
     double primaryCurrentRms = 0;
     double frequency = 0;
     double temperature = inputs.get_maximum_temperature();
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        primaryCurrentRms = std::max(primaryCurrentRms, Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_current().value().get_processed().value().get_rms().value());
-        frequency = std::max(frequency, Inputs::get_switching_frequency(Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex))));
+    // Phase 6 (perf): cache operating-points by const-ref.
+    const auto& operatingPoints = inputs.get_operating_points();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+        const auto& operatingPoint = operatingPoints[operatingPointIndex];
+        auto excitation = Inputs::get_primary_excitation(operatingPoint);
+        primaryCurrentRms = std::max(primaryCurrentRms, excitation.get_current().value().get_processed().value().get_rms().value());
+        frequency = std::max(frequency, Inputs::get_switching_frequency(excitation));
     }
 
     auto windingSkinEffectLossesModel = WindingSkinEffectLosses();

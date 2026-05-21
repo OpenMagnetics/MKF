@@ -26,8 +26,10 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
     auto core = magnetic->get_core();
 
     double primaryCurrentRms = 0;
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-        primaryCurrentRms = std::max(primaryCurrentRms, Inputs::get_primary_excitation(inputs->get_operating_point(operatingPointIndex)).get_current().value().get_processed().value().get_rms().value());
+    // Phase 6 (perf): cache operating-points by const-ref to avoid OperatingPoint deep copies.
+    const auto& operatingPoints = inputs->get_operating_points();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+        primaryCurrentRms = std::max(primaryCurrentRms, Inputs::get_primary_excitation(operatingPoints[operatingPointIndex]).get_current().value().get_processed().value().get_rms().value());
     }
 
     std::string shapeName = core.get_shape_name();

@@ -48,8 +48,10 @@ MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
     }
 
     _areaProductRequiredPreCalculations.clear();
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        auto excitation = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex));
+    // Phase 6 (perf): cache by const-ref to avoid OperatingPoint deep copies.
+    const auto& operatingPoints = inputs.get_operating_points();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+        auto excitation = Inputs::get_primary_excitation(operatingPoints[operatingPointIndex]);
         auto voltageWaveform = excitation.get_voltage().value().get_waveform().value();
         auto currentWaveform = excitation.get_current().value().get_waveform().value();
         double frequency = excitation.get_frequency();
@@ -159,10 +161,15 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
     double maximumAreaProductRequired = 0;
 
 
-    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-        double temperature = inputs->get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature();
-        // double frequency = Inputs::get_primary_excitation(inputs->get_operating_point(operatingPointIndex)).get_frequency();
-        double frequency = Inputs::get_switching_frequency(Inputs::get_primary_excitation(inputs->get_operating_point(operatingPointIndex)));
+    // Phase 6 (perf): cache operating-points reference; get_operating_point(i)
+    // returns by value (deep copy of OperatingPoint). Hot path: this loop is
+    // executed once per candidate magnetic (>2000 cores) during AreaProduct
+    // filtering.
+    const auto& operatingPoints = inputs->get_operating_points();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+        const auto& operatingPoint = operatingPoints[operatingPointIndex];
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        double frequency = Inputs::get_switching_frequency(Inputs::get_primary_excitation(operatingPoint));
         // double switchingFrequency = Inputs::get_switching_frequency(excitation);
 
         auto skinDepth = _windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
@@ -239,10 +246,11 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
 
 double MagneticFilterAreaProduct::get_estimated_area_product_required(Inputs inputs) {
     double maxAp = 0;
-    for (size_t i = 0; i < inputs.get_operating_points().size(); ++i) {
-        double temperature = inputs.get_operating_point(i).get_conditions().get_ambient_temperature();
-        double frequency = Inputs::get_switching_frequency(
-            Inputs::get_primary_excitation(inputs.get_operating_point(i)));
+    const auto& operatingPoints = inputs.get_operating_points();
+    for (size_t i = 0; i < operatingPoints.size(); ++i) {
+        const auto& operatingPoint = operatingPoints[i];
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        double frequency = Inputs::get_switching_frequency(Inputs::get_primary_excitation(operatingPoint));
         auto skinDepth = _windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);
         double wireAirFillingFactor = Wire::get_filling_factor_round(2 * skinDepth);
         double bobbinFillingFactor = 0.45;
