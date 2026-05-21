@@ -744,6 +744,9 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     double frequency = Inputs::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
+    // AC peak amplitude must be non-negative; see CoreLossesProprietaryModel for rationale.
+    mainHarmonicMagneticFluxDensityAcPeak = std::fabs(mainHarmonicMagneticFluxDensityAcPeak);
+    magneticFluxDensityAcPeak = std::fabs(magneticFluxDensityAcPeak);
 
     magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
 
@@ -1269,6 +1272,7 @@ double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMateri
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
     double magneticFluxDensityPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
+    magneticFluxDensityAcPeak = std::fabs(magneticFluxDensityAcPeak);
 
     magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -1367,6 +1371,7 @@ double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
     double magneticFluxDensityPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
+    magneticFluxDensityAcPeak = std::fabs(magneticFluxDensityAcPeak);
 
 
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -1575,6 +1580,7 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
+    magneticFluxDensityAcPeak = std::fabs(magneticFluxDensityAcPeak);
 
 
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -2140,6 +2146,10 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
 
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
+    // AC peak is an amplitude (magnitude); harmonic-path of get_magnetic_flux_density_peak
+    // may return the AC harmonic amplitude directly, which when offset is subtracted can
+    // yield a negative number. pow(neg, 2.3) returns NaN. Use magnitude.
+    magneticFluxDensityAcPeak = std::fabs(magneticFluxDensityAcPeak);
 
     CoreLossesOutput result;
     double volumetricLosses = -1;

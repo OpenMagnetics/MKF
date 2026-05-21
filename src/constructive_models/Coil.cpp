@@ -2931,6 +2931,28 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
             }
         }
 
+        // Fallback inheritance via _virtualizationMap. When a magnetic comes
+        // in via the MagneticAdviser auto-wind path (AHB/Push-Pull CT),
+        // `wound_with` is sometimes empty even though the coil's virtual map
+        // already groups the center-tap halves under the same virtual index.
+        // In that case, inherit the slot count from any sibling within the
+        // same virtual group that has nonzero sections.
+        if (!_virtualizationMap.empty()) {
+            for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
+                if (numberSectionsPerWinding[wIdx] != 0) continue;
+                for (const auto& [virtualIdx, members] : _virtualizationMap) {
+                    if (std::find(members.begin(), members.end(), wIdx) == members.end()) continue;
+                    for (auto pIdx : members) {
+                        if (pIdx < numberWindings && numberSectionsPerWinding[pIdx] > 0) {
+                            numberSectionsPerWinding[wIdx] = numberSectionsPerWinding[pIdx];
+                            break;
+                        }
+                    }
+                    if (numberSectionsPerWinding[wIdx] != 0) break;
+                }
+            }
+        }
+
         auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
        
         auto wirePerWinding = get_wires();
@@ -3288,6 +3310,22 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                     }
                 }
                 if (found) break;
+            }
+        }
+        // Fallback inheritance via _virtualizationMap (see rectangular sibling).
+        if (!_virtualizationMap.empty()) {
+            for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
+                if (numberSectionsPerWinding[wIdx] != 0) continue;
+                for (const auto& [virtualIdx, members] : _virtualizationMap) {
+                    if (std::find(members.begin(), members.end(), wIdx) == members.end()) continue;
+                    for (auto pIdx : members) {
+                        if (pIdx < numberWindings && numberSectionsPerWinding[pIdx] > 0) {
+                            numberSectionsPerWinding[wIdx] = numberSectionsPerWinding[pIdx];
+                            break;
+                        }
+                    }
+                    if (numberSectionsPerWinding[wIdx] != 0) break;
+                }
             }
         }
         auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
