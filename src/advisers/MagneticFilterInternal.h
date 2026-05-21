@@ -157,8 +157,7 @@ inline double compute_maximum_power_mean_and_maybe_force_steinmetz(
 // a separate bobbin).
 inline void prepare_bobbin_for_non_pqi(Magnetic* magnetic, const std::string& shapeName) {
     if (is_pqi_or_ui_shape(shapeName)) return;
-    auto core = magnetic->get_core();
-    auto bobbin = Bobbin::create_quick_bobbin(core);
+    auto bobbin = Bobbin::create_quick_bobbin(magnetic->get_core());
     magnetic->get_mutable_coil().set_bobbin(bobbin);
     auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
     if (windingWindows[0].get_width()) {

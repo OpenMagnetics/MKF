@@ -87,21 +87,21 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
     }
 }
 
-double Core::get_depth() {
+double Core::get_depth() const {
     if (!get_processed_description()) {
         throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_depth();
 }
 
-double Core::get_height() {
+double Core::get_height() const {
     if (!get_processed_description()) {
         throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_height();
 }
 
-double Core::get_width() {
+double Core::get_width() const {
     if (!get_processed_description()) {
         throw CoreNotProcessedException("Core is not processed");
     }
@@ -130,28 +130,28 @@ double Core::get_mass() {
     return get_effective_volume() * density;
 }
 
-double Core::get_effective_length() {
+double Core::get_effective_length() const {
     if (!get_processed_description()) {
         throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_effective_length();
 }
 
-double Core::get_effective_area() {
+double Core::get_effective_area() const {
     if (!get_processed_description()) {
         throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_effective_area();
 }
 
-double Core::get_minimum_area() {
+double Core::get_minimum_area() const {
     if (!get_processed_description()) {
         throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_minimum_area();
 }
 
-double Core::get_effective_volume() {
+double Core::get_effective_volume() const {
     if (!get_processed_description()) {
         throw CoreNotProcessedException("Core is not processed");
     }
@@ -1359,7 +1359,7 @@ double Core::get_density() {
     return get_density(coreMaterial);
 }
 
-std::vector<ColumnElement> Core::get_columns() {
+std::vector<ColumnElement> Core::get_columns() const {
     if (get_processed_description()) {
         return get_processed_description().value().get_columns();
     }
@@ -1368,7 +1368,7 @@ std::vector<ColumnElement> Core::get_columns() {
     }
 }
 
-WindingWindowElement Core::get_winding_window(size_t windingWindowIndex) {
+WindingWindowElement Core::get_winding_window(size_t windingWindowIndex) const {
     if (get_processed_description()) {
         return get_processed_description().value().get_winding_windows()[windingWindowIndex];
     }
@@ -1377,7 +1377,7 @@ WindingWindowElement Core::get_winding_window(size_t windingWindowIndex) {
     }
 }
 
-std::vector<WindingWindowElement> Core::get_winding_windows() {
+std::vector<WindingWindowElement> Core::get_winding_windows() const {
     if (get_processed_description()) {
         return get_processed_description().value().get_winding_windows();
     }
@@ -1404,7 +1404,7 @@ std::string Core::get_shape_name() {
         return "Custom";
 }
 
-int64_t Core::get_number_stacks() {
+int64_t Core::get_number_stacks() const {
     if (get_functional_description().get_number_stacks()) {
         return get_functional_description().get_number_stacks().value();
     }

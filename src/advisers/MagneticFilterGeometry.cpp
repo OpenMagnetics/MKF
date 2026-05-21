@@ -9,7 +9,7 @@
 namespace OpenMagnetics {
 
 std::pair<bool, double> MagneticFilterDimensions::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto core = magnetic->get_core();
+    const auto& core = magnetic->get_core();
 
     auto depth = core.get_depth();
 

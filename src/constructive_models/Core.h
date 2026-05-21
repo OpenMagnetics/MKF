@@ -44,19 +44,19 @@ class Core : public MAS::MagneticCore {
     static CoreMaterial resolve_material(CoreMaterialDataOrNameUnion coreMaterial);
     CoreShape resolve_shape();
     static CoreShape resolve_shape(CoreShapeDataOrNameUnion coreShape);
-    std::vector<ColumnElement> get_columns();
-    std::vector<WindingWindowElement> get_winding_windows();
-    WindingWindowElement get_winding_window(size_t windingWindowIndex = 0);
-    double get_depth();
-    double get_height();
-    double get_width();
+    std::vector<ColumnElement> get_columns() const;
+    std::vector<WindingWindowElement> get_winding_windows() const;
+    WindingWindowElement get_winding_window(size_t windingWindowIndex = 0) const;
+    double get_depth() const;
+    double get_height() const;
+    double get_width() const;
     
     double get_mass();
 
-    double get_effective_length();
-    double get_effective_area();
-    double get_minimum_area();
-    double get_effective_volume();
+    double get_effective_length() const;
+    double get_effective_area() const;
+    double get_minimum_area() const;
+    double get_effective_volume() const;
     std::string get_reference() const;
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
@@ -91,7 +91,7 @@ class Core : public MAS::MagneticCore {
     static Application guess_material_application(std::string coreMaterialName);
     bool check_material_application(Application application);
     static bool check_material_application(CoreMaterial coreMaterial, Application application);
-    int64_t get_number_stacks();
+    int64_t get_number_stacks() const;
     std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods();
     static std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods(CoreMaterial coreMaterial);
     CoreType get_type() const;

@@ -154,8 +154,7 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
 std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = false;
     double scoring = 0;
-    auto core = magnetic->get_core();
-    auto coreType = core.get_functional_description().get_type();
+    auto coreType = magnetic->get_core().get_functional_description().get_type();
     auto patterns = Coil::get_patterns(*inputs, coreType);
     auto repetitions = Coil::get_repetitions(*inputs, coreType);
 
