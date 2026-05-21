@@ -27,8 +27,6 @@ MagneticFilterEnergyStored::MagneticFilterEnergyStored(Inputs inputs) {
 }
 
 std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto core = magnetic->get_core();
-
     bool valid = true;
     double totalStorableMagneticEnergy = 0;
     // Phase 6 (perf): cache operating-points by const-ref.

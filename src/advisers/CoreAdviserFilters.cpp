@@ -195,7 +195,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterCost::fi
     std::list<size_t> listOfIndexesToErase;
     for (size_t magneticIndex = 0; magneticIndex < (*unfilteredMagnetics).size(); ++magneticIndex){
         Magnetic magnetic = (*unfilteredMagnetics)[magneticIndex].first;
-        auto core = magnetic.get_core();
 
         auto [valid, scoring] = _filter.evaluate_magnetic(&magnetic, &inputs);
 
@@ -247,7 +246,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
     std::list<size_t> listOfIndexesToErase;
     for (size_t magneticIndex = 0; magneticIndex < (*unfilteredMagnetics).size(); ++magneticIndex){
         Magnetic magnetic = (*unfilteredMagnetics)[magneticIndex].first;
-        auto core = magnetic.get_core();
 
         auto [valid, scoring] = _filter.evaluate_magnetic(&magnetic, &inputs);
         if (valid) {
@@ -385,7 +383,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMinimumI
     std::list<size_t> listOfIndexesToErase;
     for (size_t magneticIndex = 0; magneticIndex < (*unfilteredMagnetics).size(); ++magneticIndex){
         Magnetic magnetic = (*unfilteredMagnetics)[magneticIndex].first;
-        auto core = magnetic.get_core();
 
         auto [valid, scoring] = _filter.evaluate_magnetic(&magnetic, &inputs);
 
@@ -436,7 +433,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMagnetic
     std::list<size_t> listOfIndexesToErase;
     for (size_t magneticIndex = 0; magneticIndex < (*unfilteredMagnetics).size(); ++magneticIndex){
         Magnetic magnetic = (*unfilteredMagnetics)[magneticIndex].first;
-        auto core = magnetic.get_core();
 
         auto [valid, scoring] = _filter.evaluate_magnetic(&magnetic, &inputs);
 
