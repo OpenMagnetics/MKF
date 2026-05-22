@@ -43,7 +43,7 @@ std::pair<bool, double> MagneticFilterDimensions::evaluate_magnetic(Magnetic* ma
 }
 
 std::pair<bool, double> MagneticFilterTurnCount::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto coil = magnetic->get_coil();
+    const auto& coil = magnetic->get_coil();
 
     // Sum N across all windings. For a CMC the windings are equal so this
     // is 2 × N; for a single inductor it's just N.

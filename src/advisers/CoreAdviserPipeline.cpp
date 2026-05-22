@@ -100,7 +100,7 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
 
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
 
-        Coil coil = Coil((*magneticsWithScoring)[i].first.get_coil());
+        const auto& coil = (*magneticsWithScoring)[i].first.get_coil();
         NumberTurns numberTurns(coil.get_number_turns(0), inputs.get_design_requirements());
         auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
 

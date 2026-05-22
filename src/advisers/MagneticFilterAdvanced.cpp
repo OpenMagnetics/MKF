@@ -163,7 +163,7 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     double coreLosses = 0.0;
     double ambientTemperature = 25.0;
 
-    auto coil = magnetic->get_coil();
+    const auto& coil = magnetic->get_coil();
     for (auto& op : inputs->get_operating_points()) {
         ambientTemperature = op.get_conditions().get_ambient_temperature();
         auto excitation = op.get_excitations_per_winding()[0];
