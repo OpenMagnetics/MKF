@@ -224,78 +224,78 @@ class Coil : public MAS::Coil {
         void set_interleaving_level(uint8_t interleavingLevel);
         void reset_margins_per_section();
         void reset_insulation();
-        size_t get_interleaving_level();
+        size_t get_interleaving_level() const;
         void set_winding_orientation(WindingOrientation windingOrientation);
         void set_layers_orientation(WindingOrientation layersOrientation, std::optional<std::string> sectionName = std::nullopt);
         void set_turns_alignment(CoilAlignment turnsAlignment, std::optional<std::string> sectionName = std::nullopt);
         void set_section_alignment(CoilAlignment sectionAlignment);
 
         WindingOrientation get_winding_orientation();
-        WindingOrientation get_layers_orientation();
-        CoilAlignment get_turns_alignment(std::optional<std::string> sectionName = std::nullopt);
+        WindingOrientation get_layers_orientation() const;
+        CoilAlignment get_turns_alignment(std::optional<std::string> sectionName = std::nullopt) const;
         CoilAlignment get_section_alignment();
 
-        std::vector<Section> get_sections_description_conduction();
-        std::vector<Layer> get_layers_description_conduction();
-        std::vector<Section> get_sections_description_insulation();
-        std::vector<Layer> get_layers_description_insulation();
+        std::vector<Section> get_sections_description_conduction() const;
+        std::vector<Layer> get_layers_description_conduction() const;
+        std::vector<Section> get_sections_description_insulation() const;
+        std::vector<Layer> get_layers_description_insulation() const;
 
-        std::string get_name(size_t windingIndex);
+        std::string get_name(size_t windingIndex) const;
 
-        WiringTechnology get_coil_type(size_t groupIndex = 0);
+        WiringTechnology get_coil_type(size_t groupIndex = 0) const;
 
-        std::vector<uint64_t> get_number_turns();
-        uint64_t get_number_turns(size_t windingIndex);
+        std::vector<uint64_t> get_number_turns() const;
+        uint64_t get_number_turns(size_t windingIndex) const;
         uint64_t get_number_turns(Section section);
         uint64_t get_number_turns(Layer layer);
         void set_number_turns(std::vector<uint64_t> numberTurns);
-        std::vector<IsolationSide> get_isolation_sides();
+        std::vector<IsolationSide> get_isolation_sides() const;
         void set_isolation_sides(std::vector<IsolationSide> isolationSides);
-        std::vector<uint64_t> get_number_parallels();
-        uint64_t get_number_parallels(size_t windingIndex);
+        std::vector<uint64_t> get_number_parallels() const;
+        uint64_t get_number_parallels(size_t windingIndex) const;
         void set_number_parallels(std::vector<uint64_t> numberParallels);
 
         void set_interlayer_insulation(double layerThickness, std::optional<std::string> material = std::nullopt, std::optional<std::string> windingName = std::nullopt, bool autowind=true);
         void set_intersection_insulation(double layerThickness, size_t numberInsulationLayers, std::optional<std::string> material = std::nullopt, std::optional<std::pair<std::string, std::string>> windingNames = std::nullopt, bool autowind=true);
 
-        std::vector<Section> get_sections_by_group(std::string groupName);
+        std::vector<Section> get_sections_by_group(std::string groupName) const;
         const std::vector<Section> get_sections_by_type(ElectricalType electricalType) const;
         const Section get_section_by_name(std::string name) const;
         Turn get_turn_by_name(std::string name);
         const std::vector<Section> get_sections_by_winding(std::string windingName) const;
 
-        std::vector<Layer> get_layers_by_section(std::string sectionName);
+        std::vector<Layer> get_layers_by_section(std::string sectionName) const;
         const std::vector<Layer> get_layers_by_type(ElectricalType electricalType) const;
         std::vector<Layer> get_layers_by_winding_index(size_t windingIndex);
         const Layer get_layer_by_name(std::string name) const;
 
-        std::vector<Turn> get_turns_by_layer(std::string layerName);
-        std::vector<Turn> get_turns_by_section(std::string sectionName);
-        std::vector<Turn> get_turns_by_winding(std::string windingName);
+        std::vector<Turn> get_turns_by_layer(std::string layerName) const;
+        std::vector<Turn> get_turns_by_section(std::string sectionName) const;
+        std::vector<Turn> get_turns_by_winding(std::string windingName) const;
 
-        std::vector<std::string> get_layers_names_by_winding(std::string windingName);
-        std::vector<std::string> get_layers_names_by_section(std::string sectionName);
-        std::vector<std::string> get_turns_names_by_layer(std::string layerName);
-        std::vector<std::string> get_turns_names_by_section(std::string sectionName);
-        std::vector<std::string> get_turns_names_by_winding(std::string windingName);
+        std::vector<std::string> get_layers_names_by_winding(std::string windingName) const;
+        std::vector<std::string> get_layers_names_by_section(std::string sectionName) const;
+        std::vector<std::string> get_turns_names_by_layer(std::string layerName) const;
+        std::vector<std::string> get_turns_names_by_section(std::string sectionName) const;
+        std::vector<std::string> get_turns_names_by_winding(std::string windingName) const;
 
-        std::vector<size_t> get_turns_indexes_by_layer(std::string layerName);
-        std::vector<size_t> get_turns_indexes_by_section(std::string sectionName);
-        std::vector<size_t> get_turns_indexes_by_winding(std::string windingName);
+        std::vector<size_t> get_turns_indexes_by_layer(std::string layerName) const;
+        std::vector<size_t> get_turns_indexes_by_section(std::string sectionName) const;
+        std::vector<size_t> get_turns_indexes_by_winding(std::string windingName) const;
 
-        Winding get_winding_by_name(std::string name);
+        Winding get_winding_by_name(std::string name) const;
 
 
         size_t get_winding_index_by_name(const std::string& name);
         static size_t get_winding_index_by_name(const std::vector<Winding>& functionalDescription, const std::string& name);
         size_t get_turn_index_by_name(std::string name);
-        size_t get_layer_index_by_name(std::string name);
-        size_t get_section_index_by_name(std::string name);
+        size_t get_layer_index_by_name(std::string name) const;
+        size_t get_section_index_by_name(std::string name) const;
 
         std::vector<Wire> get_wires();
         void set_wires(std::vector<Wire> wires);
         WireType get_wire_type(size_t windingIndex);
-        std::vector<double> get_wires_length();
+        std::vector<double> get_wires_length() const;
         static WireType get_wire_type(Winding winding);
         std::string get_wire_name(size_t windingIndex);
         static std::string get_wire_name(Winding winding);
@@ -338,7 +338,7 @@ class Coil : public MAS::Coil {
         double get_insulation_section_relative_permittivity(std::string sectionName);
         static double get_insulation_section_relative_permittivity(Coil coil, std::string sectionName);
 
-        std::vector<double> get_turns_ratios();
+        std::vector<double> get_turns_ratios() const;
         std::vector<double> get_maximum_dimensions();
 
         static std::vector<std::vector<size_t>> get_patterns(Inputs& inputs, CoreType coreType);

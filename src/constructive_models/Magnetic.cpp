@@ -16,8 +16,8 @@ std::vector<Wire> Magnetic::get_wires() {
     return get_mutable_coil().get_wires();
 }
 
-std::vector<double> Magnetic::get_turns_ratios() {
-    return get_mutable_coil().get_turns_ratios();
+std::vector<double> Magnetic::get_turns_ratios() const {
+    return get_coil().get_turns_ratios();
 }
 
 std::vector<double> Magnetic::get_turns_ratios(MAS::Magnetic magnetic) {
@@ -32,7 +32,7 @@ Wire Magnetic::get_wire(size_t windingIndex) {
     return get_mutable_coil().resolve_wire(windingIndex);
 }
 
-std::string Magnetic::get_reference() {
+std::string Magnetic::get_reference() const {
     if (get_manufacturer_info()) {
         if (get_manufacturer_info()->get_reference()) {
             return get_manufacturer_info()->get_reference().value();

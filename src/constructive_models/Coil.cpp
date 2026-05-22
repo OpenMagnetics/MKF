@@ -269,7 +269,7 @@ void Coil::reset_insulation() {
     _insulationSections.clear();
 }
 
-size_t Coil::get_interleaving_level() {
+size_t Coil::get_interleaving_level() const {
     return _currentRepetitions;
 }
 
@@ -317,14 +317,14 @@ WindingOrientation Coil::get_winding_orientation() {
     }
 }
 
-WindingOrientation Coil::get_layers_orientation() {
+WindingOrientation Coil::get_layers_orientation() const {
     return _layersOrientation;
 }
 
-CoilAlignment Coil::get_turns_alignment(std::optional<std::string> sectionName) {
+CoilAlignment Coil::get_turns_alignment(std::optional<std::string> sectionName) const {
     if (sectionName) {
         if (_turnsAlignmentPerSection.find(sectionName.value()) != _turnsAlignmentPerSection.end()) {
-            return _turnsAlignmentPerSection[sectionName.value()];
+            return _turnsAlignmentPerSection.at(sectionName.value());
         }
         else {
             return _turnsAlignment;
@@ -713,11 +713,11 @@ WindingStyle Coil::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numb
 }
 
 
-uint64_t Coil::get_number_turns(size_t windingIndex) {
+uint64_t Coil::get_number_turns(size_t windingIndex) const {
     return get_functional_description()[windingIndex].get_number_turns();
 }
 
-uint64_t Coil::get_number_parallels(size_t windingIndex) {
+uint64_t Coil::get_number_parallels(size_t windingIndex) const {
     return get_functional_description()[windingIndex].get_number_parallels();
 }
 
@@ -743,11 +743,11 @@ uint64_t Coil::get_number_turns(Layer layer) {
     return physicalTurnsInLayer;
 }
 
-std::string Coil::get_name(size_t windingIndex) {
+std::string Coil::get_name(size_t windingIndex) const {
     return get_functional_description()[windingIndex].get_name();
 }
 
-std::vector<uint64_t> Coil::get_number_turns() {
+std::vector<uint64_t> Coil::get_number_turns() const {
     std::vector<uint64_t> numberTurns;
     for (auto & winding : get_functional_description()) {
         numberTurns.push_back(winding.get_number_turns());
@@ -761,7 +761,7 @@ void Coil::set_number_turns(std::vector<uint64_t> numberTurns) {
     }
 }
 
-std::vector<IsolationSide> Coil::get_isolation_sides() {
+std::vector<IsolationSide> Coil::get_isolation_sides() const {
     std::vector<IsolationSide> isolationSides;
     for (auto & winding : get_functional_description()) {
         isolationSides.push_back(winding.get_isolation_side());
@@ -775,7 +775,7 @@ void Coil::set_isolation_sides(std::vector<IsolationSide> isolationSides) {
     }
 }
 
-std::vector<Layer> Coil::get_layers_by_section(std::string sectionName) {
+std::vector<Layer> Coil::get_layers_by_section(std::string sectionName) const {
     auto layers = get_layers_description().value();
     std::vector<Layer> foundLayers;
     for (auto & layer : layers) {
@@ -787,7 +787,7 @@ std::vector<Layer> Coil::get_layers_by_section(std::string sectionName) {
     return foundLayers;
 }
 
-std::vector<Turn> Coil::get_turns_by_layer(std::string layerName) {
+std::vector<Turn> Coil::get_turns_by_layer(std::string layerName) const {
     auto turns = get_turns_description().value();
     std::vector<Turn> foundTurns;
     for (auto & turn : turns) {
@@ -799,7 +799,7 @@ std::vector<Turn> Coil::get_turns_by_layer(std::string layerName) {
     return foundTurns;
 }
 
-std::vector<Turn> Coil::get_turns_by_winding(std::string windingName) {
+std::vector<Turn> Coil::get_turns_by_winding(std::string windingName) const {
     auto turns = get_turns_description().value();
     std::vector<Turn> foundTurns;
     for (auto & turn : turns) {
@@ -811,7 +811,7 @@ std::vector<Turn> Coil::get_turns_by_winding(std::string windingName) {
     return foundTurns;
 }
 
-std::vector<Turn> Coil::get_turns_by_section(std::string sectionName) {
+std::vector<Turn> Coil::get_turns_by_section(std::string sectionName) const {
     auto turns = get_turns_description().value();
     std::vector<Turn> foundTurns;
     for (auto & turn : turns) {
@@ -823,7 +823,7 @@ std::vector<Turn> Coil::get_turns_by_section(std::string sectionName) {
     return foundTurns;
 }
 
-std::vector<std::string> Coil::get_layers_names_by_winding(std::string windingName) {
+std::vector<std::string> Coil::get_layers_names_by_winding(std::string windingName) const {
     auto layers = get_layers_description().value();
     std::vector<std::string> foundLayers;
     for (auto & layer : layers) {
@@ -838,7 +838,7 @@ std::vector<std::string> Coil::get_layers_names_by_winding(std::string windingNa
     return foundLayers;
 }
 
-std::vector<std::string> Coil::get_layers_names_by_section(std::string sectionName) {
+std::vector<std::string> Coil::get_layers_names_by_section(std::string sectionName) const {
     auto layers = get_layers_description().value();
     std::vector<std::string> foundLayers;
     for (auto & layer : layers) {
@@ -850,7 +850,7 @@ std::vector<std::string> Coil::get_layers_names_by_section(std::string sectionNa
     return foundLayers;
 }
 
-std::vector<std::string> Coil::get_turns_names_by_layer(std::string layerName) {
+std::vector<std::string> Coil::get_turns_names_by_layer(std::string layerName) const {
     auto turns = get_turns_description().value();
     std::vector<std::string> foundTurns;
     for (auto & turn : turns) {
@@ -862,7 +862,7 @@ std::vector<std::string> Coil::get_turns_names_by_layer(std::string layerName) {
     return foundTurns;
 }
 
-std::vector<std::string> Coil::get_turns_names_by_winding(std::string windingName) {
+std::vector<std::string> Coil::get_turns_names_by_winding(std::string windingName) const {
     auto turns = get_turns_description().value();
     std::vector<std::string> foundTurns;
     for (auto & turn : turns) {
@@ -874,7 +874,7 @@ std::vector<std::string> Coil::get_turns_names_by_winding(std::string windingNam
     return foundTurns;
 }
 
-std::vector<std::string> Coil::get_turns_names_by_section(std::string sectionName) {
+std::vector<std::string> Coil::get_turns_names_by_section(std::string sectionName) const {
     auto turns = get_turns_description().value();
     std::vector<std::string> foundTurns;
     for (auto & turn : turns) {
@@ -886,7 +886,7 @@ std::vector<std::string> Coil::get_turns_names_by_section(std::string sectionNam
     return foundTurns;
 }
     
-std::vector<size_t> Coil::get_turns_indexes_by_layer(std::string layerName) {
+std::vector<size_t> Coil::get_turns_indexes_by_layer(std::string layerName) const {
     auto turns = get_turns_description().value();
     std::vector<size_t> foundTurns;
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
@@ -898,7 +898,7 @@ std::vector<size_t> Coil::get_turns_indexes_by_layer(std::string layerName) {
     return foundTurns;
 }
 
-std::vector<size_t> Coil::get_turns_indexes_by_winding(std::string windingName) {
+std::vector<size_t> Coil::get_turns_indexes_by_winding(std::string windingName) const {
     auto turns = get_turns_description().value();
     std::vector<size_t> foundTurns;
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
@@ -910,7 +910,7 @@ std::vector<size_t> Coil::get_turns_indexes_by_winding(std::string windingName) 
     return foundTurns;
 }
 
-std::vector<size_t> Coil::get_turns_indexes_by_section(std::string sectionName) {
+std::vector<size_t> Coil::get_turns_indexes_by_section(std::string sectionName) const {
     auto turns = get_turns_description().value();
     std::vector<size_t> foundTurns;
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
@@ -922,7 +922,7 @@ std::vector<size_t> Coil::get_turns_indexes_by_section(std::string sectionName) 
     return foundTurns;
 }
 
-std::vector<Section> Coil::get_sections_by_group(std::string groupName) {
+std::vector<Section> Coil::get_sections_by_group(std::string groupName) const {
     auto sections = get_sections_description().value();
     std::vector<Section> foundSections;
     for (auto & section : sections) {
@@ -1034,7 +1034,7 @@ std::vector<Layer> Coil::get_layers_by_winding_index(size_t windingIndex) {
     return foundLayers;
 }
 
-std::vector<uint64_t> Coil::get_number_parallels() {
+std::vector<uint64_t> Coil::get_number_parallels() const {
     std::vector<uint64_t> numberParallels;
     for (auto & winding : get_functional_description()) {
         numberParallels.push_back(winding.get_number_parallels());
@@ -1048,7 +1048,7 @@ void Coil::set_number_parallels(std::vector<uint64_t> numberParallels){
     }
 }
 
-Winding Coil::get_winding_by_name(std::string name) {
+Winding Coil::get_winding_by_name(std::string name) const {
     for (auto& Winding : get_functional_description()) {
         if (Winding.get_name() == name) {
             return Winding;
@@ -1105,7 +1105,7 @@ size_t Coil::get_turn_index_by_name(std::string name) {
     throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a turn name: " + name);
 }
 
-size_t Coil::get_layer_index_by_name(std::string name) {
+size_t Coil::get_layer_index_by_name(std::string name) const {
     if (!get_layers_description()) {
         throw CoilNotProcessedException("Layers description not set, did you forget to wind?");
     }
@@ -1118,7 +1118,7 @@ size_t Coil::get_layer_index_by_name(std::string name) {
     throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a layer name: " + name);
 }
 
-size_t Coil::get_section_index_by_name(std::string name) {
+size_t Coil::get_section_index_by_name(std::string name) const {
     if (!get_sections_description()) {
         throw CoilNotProcessedException("Sections description not set, did you forget to wind?");
     }
@@ -5970,7 +5970,7 @@ bool Coil::delimit_and_compact() {
     }
 }
 
-WiringTechnology Coil::get_coil_type(size_t groupIndex) {
+WiringTechnology Coil::get_coil_type(size_t groupIndex) const {
     if (!get_groups_description()) {
         return WiringTechnology::WOUND;
     }
@@ -6628,7 +6628,7 @@ Wire Coil::resolve_wire(Winding winding) {
     return winding.resolve_wire();
 }
 
-std::vector<double> Coil::get_wires_length() {
+std::vector<double> Coil::get_wires_length() const {
     std::vector<double> wiresLength;
     if (!get_turns_description()) {
         throw CoilNotProcessedException("Missing turns");
@@ -7009,7 +7009,7 @@ void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<doubl
     }
 }
 
-std::vector<Section> Coil::get_sections_description_conduction() {
+std::vector<Section> Coil::get_sections_description_conduction() const {
     std::vector<Section> sectionsConduction;
     if (!get_sections_description()) {
         throw CoilNotProcessedException("Not wound by sections");
@@ -7024,7 +7024,7 @@ std::vector<Section> Coil::get_sections_description_conduction() {
     return sectionsConduction;
 }
 
-std::vector<Layer> Coil::get_layers_description_conduction() {
+std::vector<Layer> Coil::get_layers_description_conduction() const {
     std::vector<Layer> layersConduction;
     if (!get_layers_description()) {
         throw CoilNotProcessedException("Not wound by layers");
@@ -7039,7 +7039,7 @@ std::vector<Layer> Coil::get_layers_description_conduction() {
     return layersConduction;
 }
 
-std::vector<Section> Coil::get_sections_description_insulation() {
+std::vector<Section> Coil::get_sections_description_insulation() const {
     std::vector<Section> sectionsInsulation;
     if (!get_sections_description()) {
         throw CoilNotProcessedException("Not wound by sections");
@@ -7054,7 +7054,7 @@ std::vector<Section> Coil::get_sections_description_insulation() {
     return sectionsInsulation;
 }
 
-std::vector<Layer> Coil::get_layers_description_insulation() {
+std::vector<Layer> Coil::get_layers_description_insulation() const {
     std::vector<Layer> layersInsulation;
     if (!get_layers_description()) {
         throw CoilNotProcessedException("Not wound by layers");
@@ -7237,7 +7237,7 @@ double Coil::get_insulation_section_relative_permittivity(Coil coil, std::string
     return averagerelativePermittivity / layers.size();
 }
 
-std::vector<double> Coil::get_turns_ratios() {
+std::vector<double> Coil::get_turns_ratios() const {
     std::vector<double>  turnsRatios;
     for (size_t windingIndex = 1; windingIndex < get_functional_description().size(); ++windingIndex) {
         turnsRatios.push_back(double(get_functional_description()[0].get_number_turns()) / get_functional_description()[windingIndex].get_number_turns());

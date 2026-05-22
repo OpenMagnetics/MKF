@@ -51,10 +51,10 @@ class Magnetic : public MAS::Magnetic {
 
         Bobbin get_bobbin();
         std::vector<Wire> get_wires();
-        std::vector<double> get_turns_ratios();
+        std::vector<double> get_turns_ratios() const;
         static std::vector<double> get_turns_ratios(MAS::Magnetic magnetic);
         Wire get_wire(size_t windingIndex=0);
-        std::string get_reference();
+        std::string get_reference() const;
         std::vector<double> get_maximum_dimensions();
         bool fits(MaximumDimensions maximumDimensions, bool allowRotation);
 
