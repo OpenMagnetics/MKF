@@ -743,22 +743,95 @@ std::string Src::generate_ngspice_circuit(
     c << "Vdc_supply vdc_supply 0 " << inputVoltage << "\n";
     c << "Rdc_supply_dummy vdc_supply 0 1Meg\n\n";
 
-    // Behavioural bridge: ±Vin for FB, ±Vin/2 for HB.
-    if (isFullBridge) {
-        c << "Vbridge bridge_a bridge_b PULSE("
-          << -inputVoltage << " " << inputVoltage << " 0 "
-          << std::scientific << deadTime << " " << deadTime << " "
-          << tOn << " " << period << std::fixed << ")\n";
-        c << "Vpri_sense bridge_a cr_in 0\n";
-        c << "Vbus_gnd  bridge_b 0 0\n\n";
+    const auto bridgeMode = get_bridge_simulation_mode();
+
+    if (bridgeMode == BridgeSimulationMode::BEHAVIORAL_PULSE) {
+        // Behavioural bridge: ±Vin for FB, ±Vin/2 for HB. Fast path; no
+        // SW1/body diodes/snubbers. Adequate for FHA/PtP regression where
+        // the tank shape matters, not switching detail.
+        if (isFullBridge) {
+            c << "Vbridge bridge_a bridge_b PULSE("
+              << -inputVoltage << " " << inputVoltage << " 0 "
+              << std::scientific << deadTime << " " << deadTime << " "
+              << tOn << " " << period << std::fixed << ")\n";
+            c << "Vpri_sense bridge_a cr_in 0\n";
+            c << "Vbus_gnd  bridge_b 0 0\n\n";
+        }
+        else {
+            c << "Vbridge sw_node mid_point PULSE("
+              << -(inputVoltage / 2.0) << " " << (inputVoltage / 2.0) << " 0 "
+              << std::scientific << deadTime << " " << deadTime << " "
+              << tOn << " " << period << std::fixed << ")\n";
+            c << "Vmid       mid_point 0 0\n";
+            c << "Vpri_sense sw_node   cr_in 0\n\n";
+        }
     }
     else {
-        c << "Vbridge sw_node mid_point PULSE("
-          << -(inputVoltage / 2.0) << " " << (inputVoltage / 2.0) << " 0 "
-          << std::scientific << deadTime << " " << deadTime << " "
-          << tOn << " " << period << std::fixed << ")\n";
-        c << "Vmid       mid_point 0 0\n";
-        c << "Vpri_sense sw_node   cr_in 0\n\n";
+        // Voltage-controlled-switch bridge — high-fidelity path. Models
+        // MOSFETs as SW1 + antiparallel ideal-diode + RC snubber, mirrors
+        // Llc.cpp's VOLTAGE_CONTROLLED_SWITCH branch. Required by downstream
+        // tooling that needs real MOSFETs to anchor (e.g. Heaviside TAS
+        // decomposer: Q1..Q4 sized from the deck).
+        if (deadTime <= 0.0) {
+            throw std::runtime_error(
+                "SRC VOLTAGE_CONTROLLED_SWITCH bridge: deadTime must be > 0. "
+                "Got " + std::to_string(deadTime));
+        }
+        if (2.0 * deadTime >= halfPeriod) {
+            throw std::runtime_error(
+                "SRC VOLTAGE_CONTROLLED_SWITCH bridge: deadTime ("
+                + std::to_string(deadTime) + " s) is too large for halfPeriod ("
+                + std::to_string(halfPeriod) + " s) — tOn would be non-positive.");
+        }
+
+        c << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
+        c << ".model DIDEAL D(IS=1e-12 RS=0.05)\n\n";
+
+        if (isFullBridge) {
+            // Diagonal QA+QD on first half, QB+QC on second half.
+            c << "Vpwm_QA pwm_QA 0 PULSE(0 5 0 10n 10n "
+              << std::scientific << tOn << " " << period << std::fixed << ")\n";
+            c << "Vpwm_QB pwm_QB 0 PULSE(0 5 "
+              << std::scientific << halfPeriod << " 10n 10n "
+              << tOn << " " << period << std::fixed << ")\n";
+            c << "Vpwm_QC pwm_QC 0 PULSE(0 5 "
+              << std::scientific << halfPeriod << " 10n 10n "
+              << tOn << " " << period << std::fixed << ")\n";
+            c << "Vpwm_QD pwm_QD 0 PULSE(0 5 0 10n 10n "
+              << std::scientific << tOn << " " << period << std::fixed << ")\n";
+            c << "SQA vdc_supply bridge_a pwm_QA 0 SW1\n";
+            c << "DQA 0 bridge_a DIDEAL\n";
+            c << "SQB bridge_a 0 pwm_QB 0 SW1\n";
+            c << "DQB bridge_a vdc_supply DIDEAL\n";
+            c << "Rsnub_QA vdc_supply bridge_a 1k\nCsnub_QA vdc_supply bridge_a 1n\n";
+            c << "Rsnub_QB bridge_a 0 1k\nCsnub_QB bridge_a 0 1n\n";
+            c << "SQC vdc_supply bridge_b pwm_QC 0 SW1\n";
+            c << "DQC 0 bridge_b DIDEAL\n";
+            c << "SQD bridge_b 0 pwm_QD 0 SW1\n";
+            c << "DQD bridge_b vdc_supply DIDEAL\n";
+            c << "Rsnub_QC vdc_supply bridge_b 1k\nCsnub_QC vdc_supply bridge_b 1n\n";
+            c << "Rsnub_QD bridge_b 0 1k\nCsnub_QD bridge_b 0 1n\n";
+            c << "Vpri_sense bridge_a cr_in 0\n";
+            c << "Vbus_gnd  bridge_b 0 0\n\n";
+        } else {
+            // Half-bridge: split caps form mid_point at Vin/2.
+            c << "Cbus_hi vdc_supply mid_point 1u IC=" << (inputVoltage / 2.0) << "\n";
+            c << "Cbus_lo mid_point 0 1u IC=" << (inputVoltage / 2.0) << "\n";
+            c << "Rbal_hi vdc_supply mid_point 100k\n";
+            c << "Rbal_lo mid_point 0 100k\n";
+            c << "Vpwm_HI pwm_HI 0 PULSE(0 5 0 10n 10n "
+              << std::scientific << tOn << " " << period << std::fixed << ")\n";
+            c << "Vpwm_LO pwm_LO 0 PULSE(0 5 "
+              << std::scientific << halfPeriod << " 10n 10n "
+              << tOn << " " << period << std::fixed << ")\n";
+            c << "SHI vdc_supply sw_node pwm_HI 0 SW1\n";
+            c << "DHI 0 sw_node DIDEAL\n";
+            c << "SLO sw_node 0 pwm_LO 0 SW1\n";
+            c << "DLO sw_node vdc_supply DIDEAL\n";
+            c << "Rsnub_HI vdc_supply sw_node 1k\nCsnub_HI vdc_supply sw_node 1n\n";
+            c << "Rsnub_LO sw_node 0 1k\nCsnub_LO sw_node 0 1n\n";
+            c << "Vpri_sense sw_node cr_in 0\n\n";
+        }
     }
 
     // Resonant tank: separate Cr then Lr, feeding Lpri.
