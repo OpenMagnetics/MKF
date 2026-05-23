@@ -588,26 +588,8 @@ target_include_directories(MKF PUBLIC
 if(INCLUDE_MKF_TESTS)
     file(GLOB ALL_TEST_SOURCES "tests/*.cpp")
     
-    # Exclude TestingUtils.cpp as it's not a test file
+    # TestingUtils.cpp holds shared fixtures; explicitly added below.
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestingUtils\\.cpp$")
-    # Exclude standalone test files with their own main() (not Catch2 tests)
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestAlbach2DFull\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestAlbach2DSimple\\.cpp$")
-    # Exclude old LLC test files - merged into TestTopologyLlc.cpp
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestLlcClasses\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestLlcNaNDebug\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestLlcWizard\\.cpp$")
-    # Exclude files merged into other test files or deleted
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestCoilAdviserDebug\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestMagneticAdviserFromConverter\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestDumpDmcThermalSchematic\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestFlybackCoreAdviser\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestCoreAdviserCmcBug\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestCoreAdviserDmcHang\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestTopologyDabAdvanced\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestTopologyWaveforms\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestCircuitSimulatorPlecs\\.cpp$")
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestPlanarModelSweep\\.cpp$")
     
     add_executable(MKF_tests ${ALL_TEST_SOURCES} "tests/TestingUtils.cpp")
     target_link_libraries(MKF_tests PRIVATE Catch2::Catch2WithMain)
