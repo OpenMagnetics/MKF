@@ -112,6 +112,8 @@ public:
     Clllc(const json& j);
     Clllc() {}
 
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::CLLLC_RESONANT_CONVERTER; }
+
     // Tuning ─────────────────────────────────────────────────
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int v) { this->numPeriodsToExtract = v; }

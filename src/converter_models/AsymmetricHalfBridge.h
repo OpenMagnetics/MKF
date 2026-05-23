@@ -228,6 +228,7 @@ public:
     AsymmetricHalfBridge(const json& j);
     AsymmetricHalfBridge() = default;
 
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER; }
     bool is_bridge_topology() const override { return true; }
 
     // ---- Boilerplate accessors (Guide §2) ----

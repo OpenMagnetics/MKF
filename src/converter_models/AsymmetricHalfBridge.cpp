@@ -132,22 +132,6 @@ bool AsymmetricHalfBridge::run_checks(bool assertErrors) {
 }
 
 
-// =========================================================================
-// EVERYTHING BELOW IS A P2-P12 STUB. Throws std::runtime_error with a
-// pointer to the implementation plan so callers do not silently get
-// zero-initialised garbage. Per project rule: no defaults, no silent
-// shortcuts, throw loud.
-// =========================================================================
-
-namespace {
-[[noreturn, maybe_unused]] void not_implemented(const char* method, const char* phase) {
-    throw std::runtime_error(
-        std::string("AsymmetricHalfBridge: ") + method +
-        " not implemented yet (see ASYMMETRIC_HALF_BRIDGE_PLAN.md " +
-        phase + ")");
-}
-}
-
 DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
     // -------------------------------------------------------------------------
     // P6 deliverable. Sizes, in order:

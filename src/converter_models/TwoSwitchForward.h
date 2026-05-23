@@ -25,7 +25,9 @@ public:
     TwoSwitchForward(const json& j);
     TwoSwitchForward() {
     };
-    
+
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::TWO_SWITCH_FORWARD_CONVERTER; }
+
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
     

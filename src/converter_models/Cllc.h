@@ -280,6 +280,7 @@ public:
     CllcConverter(const json& j);
     CllcConverter() {};
 
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::CLLC_RESONANT_CONVERTER; }
     bool is_bridge_topology() const override { return true; }
 
     // --- Accessors for simulation tuning --------------------------------

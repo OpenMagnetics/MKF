@@ -29,6 +29,7 @@ public:
     ActiveClampForward() {
     };
 
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER; }
     bool is_bridge_topology() const override { return true; }
     
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }

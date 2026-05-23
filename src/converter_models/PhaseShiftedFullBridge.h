@@ -122,6 +122,7 @@ public:
     Psfb(const json& j);
     Psfb() {};
 
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER; }
     bool is_bridge_topology() const override { return true; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }

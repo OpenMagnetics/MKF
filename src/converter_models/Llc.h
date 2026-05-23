@@ -129,6 +129,7 @@ public:
     Llc(const json& j);
     Llc() {};
 
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::LLC_RESONANT_CONVERTER; }
     bool is_bridge_topology() const override { return true; }
 
     // Simulation tuning ──────────────────────────────────────
