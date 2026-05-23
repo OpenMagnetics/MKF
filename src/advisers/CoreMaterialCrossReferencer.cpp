@@ -26,74 +26,14 @@ namespace OpenMagnetics {
 
 
 std::map<std::string, std::map<CoreMaterialCrossReferencerFilters, double>> CoreMaterialCrossReferencer::get_scorings(bool weighted){
-    std::map<std::string, std::map<CoreMaterialCrossReferencerFilters, double>> swappedScorings;
-    for (auto& [filter, aux] : _scorings) {
-        auto filterConfiguration = _filterConfiguration[filter];
-
-        double maximumScoring = (*std::max_element(aux.begin(), aux.end(),
-                                     [](const std::pair<std::string, double> &p1,
-                                        const std::pair<std::string, double> &p2)
-                                     {
-                                         return p1.second < p2.second;
-                                     })).second; 
-        double minimumScoring = (*std::min_element(aux.begin(), aux.end(),
-                                     [](const std::pair<std::string, double> &p1,
-                                        const std::pair<std::string, double> &p2)
-                                     {
-                                         return p1.second < p2.second;
-                                     })).second; 
-        minimumScoring = std::max(defaults.crossReferencerScoringAbsoluteFloor, minimumScoring); // B8 FIX
-
-        for (auto& [name, scoring] : aux) {
-            if (std::isnan(scoring)) {
-                throw std::invalid_argument("scoring cannot be nan in get_scorings");
-            }
-            if (minimumScoring == maximumScoring) {
-                swappedScorings[name][filter] = weighted ? _weights[filter] * 0.5 : 0.5; // XC-6 FIX: neutral when equal // B7 FIX: respect weight when equal
-            }
-            else if (filterConfiguration["log"]){
-                if (filterConfiguration["invert"]) {
-                    if (weighted) {
-                        swappedScorings[name][filter] = _weights[filter] * (1 - (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
-                    }
-                    else {
-                        swappedScorings[name][filter] = 1 - (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                    }
-                }
-                else {
-                    if (weighted) {
-                        swappedScorings[name][filter] = _weights[filter] * (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                    }
-                    else {
-                        swappedScorings[name][filter] = (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                    }
-                }
-            }
-            else {
-                if (filterConfiguration["invert"]) {
-                    if (weighted) {
-                        swappedScorings[name][filter] = _weights[filter] * (1 - (scoring - minimumScoring) / (maximumScoring - minimumScoring));
-                    }
-                    else {
-                        swappedScorings[name][filter] = 1 - (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                    }
-                }
-                else {
-                    if (weighted) {
-                        swappedScorings[name][filter] = _weights[filter] * (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                    }
-                    else {
-                        swappedScorings[name][filter] = (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                    }
-                }
-            }
-            if (std::isnan(swappedScorings[name][filter])) {
-                throw std::invalid_argument("swappedScorings[name][filter] cannot be nan in get_scorings");
-            }
-
-        }
-    }
-    return swappedScorings;
+    // Phase 7 (Option D): same inline log-normalisation as CoreCross
+    // Referencer::get_scorings was duplicated here. Both bodies now
+    // forward to CrossReferencerCommon.h::compute_normalized_scorings.
+    // The new common path includes this file's NaN-guard fixes plus
+    // CCR's data-relative floor (B8/F4) and named-constant neutral
+    // score (was 0.5 hardcoded here).
+    return compute_normalized_scorings<CoreMaterialCrossReferencerFilters>(
+        _scorings, _filterConfiguration, _weights, weighted);
 }
 
 void normalize_scoring(std::vector<std::pair<CoreMaterial, double>>* rankedCoreMaterials, std::vector<double>* newScoring, double weight, std::map<std::string, bool> filterConfiguration) {

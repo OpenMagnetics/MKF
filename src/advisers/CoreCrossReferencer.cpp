@@ -26,70 +26,13 @@ namespace OpenMagnetics {
 
 
 std::map<std::string, std::map<CoreCrossReferencerFilters, double>> CoreCrossReferencer::get_scorings(bool weighted){
-    std::map<std::string, std::map<CoreCrossReferencerFilters, double>> swappedScorings;
-    for (auto& [filter, aux] : _scorings) {
-        if (aux.empty()) continue;
-        auto& filterConfiguration = _filterConfiguration[filter];
-
-        double maximumScoring = (*std::max_element(aux.begin(), aux.end(),
-                                     [](const std::pair<std::string, double> &p1,
-                                        const std::pair<std::string, double> &p2)
-                                     {
-                                         return p1.second < p2.second;
-                                     })).second; 
-        double minimumScoring = (*std::min_element(aux.begin(), aux.end(),
-                                     [](const std::pair<std::string, double> &p1,
-                                        const std::pair<std::string, double> &p2)
-                                     {
-                                         return p1.second < p2.second;
-                                     })).second; 
-        minimumScoring = std::max(defaults.crossReferencerScoringAbsoluteFloor, std::max(minimumScoring, maximumScoring * defaults.crossReferencerScoringDataRelativeFloorRatio)); // F4 FIX: data-relative floor (was hardcoded 0.0001)
-
-        for (auto& [name, scoring] : aux) {
-            // F7 FIX: Handle equal scores consistently (give full credit)
-            if (std::abs(minimumScoring - maximumScoring) < defaults.crossReferencerScoringAbsoluteFloor) {
-                swappedScorings[name][filter] = weighted ? _weights[filter] * defaults.crossReferencerNeutralScoreWhenEqual : defaults.crossReferencerNeutralScoreWhenEqual; // XC-6 FIX: neutral when equal
-                continue;
-            }
-            if (filterConfiguration["log"]){
-                if (filterConfiguration["invert"]) {
-                    if (weighted) {
-                        swappedScorings[name][filter] = _weights[filter] * (1 - (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
-                    }
-                    else {
-                        swappedScorings[name][filter] = 1 - (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                    }
-                }
-                else {
-                    if (weighted) {
-                        swappedScorings[name][filter] = _weights[filter] * (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                    }
-                    else {
-                        swappedScorings[name][filter] = (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                    }
-                }
-            }
-            else {
-                if (filterConfiguration["invert"]) {
-                    if (weighted) {
-                        swappedScorings[name][filter] = _weights[filter] * (1 - (scoring - minimumScoring) / (maximumScoring - minimumScoring));
-                    }
-                    else {
-                        swappedScorings[name][filter] = 1 - (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                    }
-                }
-                else {
-                    if (weighted) {
-                        swappedScorings[name][filter] = _weights[filter] * (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                    }
-                    else {
-                        swappedScorings[name][filter] = (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                    }
-                }
-            }
-        }
-    }
-    return swappedScorings;
+    // Phase 7 (Option D): the ~65 LOC inline log-normalisation that lived
+    // here and in CoreMaterialCrossReferencer::get_scorings is now in
+    // CrossReferencerCommon.h::compute_normalized_scorings. The CCR-side
+    // behaviour is preserved verbatim (F4/B8/F7/XC-6 FIX history), with
+    // the additional NaN guards CMCR carried independently.
+    return compute_normalized_scorings<CoreCrossReferencerFilters>(
+        _scorings, _filterConfiguration, _weights, weighted);
 }
 std::map<std::string, std::map<CoreCrossReferencerFilters, double>> CoreCrossReferencer::get_scored_values(){
     std::map<std::string, std::map<CoreCrossReferencerFilters, double>> swappedScoredValues;

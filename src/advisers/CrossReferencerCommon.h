@@ -112,4 +112,96 @@ void normalize_scoring(std::vector<std::pair<Item, double>>* rankedItems,
         }); // F12 FIX: stable_sort for reproducible results
 }
 
+// Build the per-name, per-filter [0, 1]-normalised scoring table that
+// CoreCrossReferencer::get_scorings and CoreMaterialCrossReferencer::
+// get_scorings each produced via near-identical inline code (~65 LOC
+// each, drifted in trivial ways — CMCR used a hardcoded 0.5 where CCR
+// used the named constant, CMCR had NaN guards CCR didn't, CCR had
+// the data-relative floor CMCR didn't).
+//
+// Inputs: the cross-referencer's _scorings map (per filter, per item),
+// the per-filter configuration (log / invert flags), the per-filter
+// weights, and whether the caller wants weighted output.
+//
+// Behaviour preserved (union of both prior implementations):
+//   * Data-relative floor on minimumScoring (was CCR-only, B8/F4 FIX).
+//   * Neutral score from defaults.crossReferencerNeutralScoreWhenEqual
+//     (was CCR-only, XC-6 FIX) — replaces CMCR's hardcoded 0.5.
+//   * NaN check on input scoring + output (was CMCR-only).
+//   * Strict min==max check from CMCR (more conservative than CCR's
+//     std::abs < absoluteFloor; CCR's variant would treat values
+//     differing by less than 1e-10 as "equal" and assign neutral).
+//
+// Templated on the cross-referencer's FilterEnum (CoreCrossReferencer-
+// Filters or CoreMaterialCrossReferencerFilters).
+template <typename FilterEnum>
+std::map<std::string, std::map<FilterEnum, double>> compute_normalized_scorings(
+    const std::map<FilterEnum, std::map<std::string, double>>& scorings,
+    std::map<FilterEnum, std::map<std::string, bool>>& filterConfiguration,
+    std::map<FilterEnum, double>& weights,
+    bool weighted)
+{
+    auto defaults = OpenMagnetics::Defaults();
+    std::map<std::string, std::map<FilterEnum, double>> swappedScorings;
+
+    for (const auto& [filter, aux] : scorings) {
+        if (aux.empty()) continue;
+        auto& fc = filterConfiguration[filter];
+
+        double maximumScoring = (*std::max_element(aux.begin(), aux.end(),
+                                     [](const std::pair<std::string, double>& p1,
+                                        const std::pair<std::string, double>& p2)
+                                     { return p1.second < p2.second; })).second;
+        double minimumScoring = (*std::min_element(aux.begin(), aux.end(),
+                                     [](const std::pair<std::string, double>& p1,
+                                        const std::pair<std::string, double>& p2)
+                                     { return p1.second < p2.second; })).second;
+
+        // CCR's F4/B8 FIX: floor minimumScoring at max(absoluteFloor,
+        // maximumScoring * dataRelativeFloorRatio) so log-normalisation
+        // doesn't produce wildly skewed scores when the spread is huge.
+        minimumScoring = std::max(
+            defaults.crossReferencerScoringAbsoluteFloor,
+            std::max(minimumScoring,
+                     maximumScoring * defaults.crossReferencerScoringDataRelativeFloorRatio));
+
+        for (const auto& [name, rawScoring] : aux) {
+            // CMCR-style NaN guard on input.
+            if (std::isnan(rawScoring)) {
+                throw std::invalid_argument(
+                    "scoring cannot be nan in compute_normalized_scorings");
+            }
+
+            double out;
+            if (minimumScoring == maximumScoring) {
+                // XC-6 FIX: neutral score (defaults.crossReferencerNeutral
+                // ScoreWhenEqual = 0.5) when the population is degenerate.
+                out = weighted
+                    ? weights[filter] * defaults.crossReferencerNeutralScoreWhenEqual
+                    : defaults.crossReferencerNeutralScoreWhenEqual;
+            }
+            else if (fc["log"]) {
+                double n = (std::log10(rawScoring) - std::log10(minimumScoring))
+                         / (std::log10(maximumScoring) - std::log10(minimumScoring));
+                if (fc["invert"]) n = 1.0 - n;
+                out = weighted ? weights[filter] * n : n;
+            }
+            else {
+                double n = (rawScoring - minimumScoring)
+                         / (maximumScoring - minimumScoring);
+                if (fc["invert"]) n = 1.0 - n;
+                out = weighted ? weights[filter] * n : n;
+            }
+
+            // CMCR-style NaN guard on output.
+            if (std::isnan(out)) {
+                throw std::invalid_argument(
+                    "swappedScorings[name][filter] cannot be nan in compute_normalized_scorings");
+            }
+            swappedScorings[name][filter] = out;
+        }
+    }
+    return swappedScorings;
+}
+
 } // namespace OpenMagnetics
