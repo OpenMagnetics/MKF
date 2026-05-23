@@ -829,17 +829,30 @@ OpenMagnetics::Mas mas_loader(const std::filesystem::path& path) {
 
     if (magnetizingInductancePerPoint.size() > 0) {
         inputs = OpenMagnetics::Inputs(inputsJson, true, magnetizingInductancePerPoint);
-
     }
     else {
+        // Three-tier inductance recovery, documented loudly:
+        //  1. If outputs already carry a per-OP magnetizing inductance, use that (handled above).
+        //  2. Otherwise, try to compute it from turns + gapping at load time.
+        //  3. If the geometry can't yield an inductance (e.g. degapped/dummy
+        //     core, missing turns), fall back to default-construct Inputs but
+        //     log the path and exception so downstream test failures have a
+        //     breadcrumb. The previous (void)e suppression silently produced
+        //     an unconfigured Inputs that propagated as "mysterious" failures
+        //     several tests downstream.
         try {
             MagnetizingInductance magnetizingInductanceModel;
             double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance().get_nominal().value();
             inputs = OpenMagnetics::Inputs(inputsJson, true, magnetizingInductance);
         }
-        catch (const std::exception &e)
+        catch (const std::exception& e)
         {
-            (void)e; // Suppress unused variable warning
+            std::cerr << "[mas_loader] " << path.string()
+                      << ": couldn't recover magnetizing inductance from "
+                         "turns+gapping (" << e.what()
+                      << ") — falling back to default-construct Inputs. "
+                         "If downstream tests using this fixture fail or "
+                         "produce unexpected values, this is the cause.\n";
             inputs = OpenMagnetics::Inputs(inputsJson, true);
         }
     }
