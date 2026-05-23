@@ -1348,11 +1348,14 @@ std::string Llc::generate_ngspice_circuit(
     }
     circuit << "\n";
 
-    // DC bus source: lets the topology-waveforms extractor read a meaningful
-    // input voltage. The actual bridge is a behavioural PULSE source, but the
-    // DC supply is referenced here so callers can probe v(vdc_supply).
-    circuit << "Vdc_supply vdc_supply 0 " << inputVoltage << "\n";
-    circuit << "Rdc_supply_dummy vdc_supply 0 1Meg\n\n";
+    // §8a.5: Real DC rail. The previous design emitted a synthetic
+    // Vdc_supply with a 1MEG dummy resistor (Vdc_supply is otherwise
+    // disconnected in BEHAVIORAL_PULSE mode), so i(Vdc_supply) only
+    // saw the dummy load — useless for input-current extraction. The
+    // rail is now wired through the bridge switches (SW1 mode) so
+    // i(Vin) reads the true DC bus current via dedicated zero-V sense
+    // sources upstream of each high-side switch.
+    circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
 
     const auto bridgeMode = get_bridge_simulation_mode();
 
@@ -1421,35 +1424,42 @@ std::string Llc::generate_ngspice_circuit(
                     << tOn << " " << period << std::fixed << ")\n";
             circuit << "Vpwm_QD pwm_QD 0 PULSE(0 5 0 10n 10n "
                     << std::scientific << tOn << " " << period << std::fixed << ")\n";
-            circuit << "SQA vdc_supply bridge_a pwm_QA 0 SW1\n";
+            // §8a.5 input-current sense: zero-V sources upstream of each
+            // high-side switch drain. i(Vq1_sense)+i(Vq3_sense) gives the
+            // true DC-bus current sourced from vin_dc.
+            circuit << "Vq1_sense vin_dc qa_drain 0\n";
+            circuit << "Vq3_sense vin_dc qc_drain 0\n";
+            circuit << "SQA qa_drain bridge_a pwm_QA 0 SW1\n";
             circuit << "DQA 0 bridge_a DIDEAL\n";
             circuit << "SQB bridge_a 0 pwm_QB 0 SW1\n";
-            circuit << "DQB bridge_a vdc_supply DIDEAL\n";
-            circuit << "Rsnub_QA vdc_supply bridge_a 1k\nCsnub_QA vdc_supply bridge_a 1n\n";
+            circuit << "DQB bridge_a qa_drain DIDEAL\n";
+            circuit << "Rsnub_QA qa_drain bridge_a 1k\nCsnub_QA qa_drain bridge_a 1n\n";
             circuit << "Rsnub_QB bridge_a 0 1k\nCsnub_QB bridge_a 0 1n\n";
-            circuit << "SQC vdc_supply bridge_b pwm_QC 0 SW1\n";
+            circuit << "SQC qc_drain bridge_b pwm_QC 0 SW1\n";
             circuit << "DQC 0 bridge_b DIDEAL\n";
             circuit << "SQD bridge_b 0 pwm_QD 0 SW1\n";
-            circuit << "DQD bridge_b vdc_supply DIDEAL\n";
-            circuit << "Rsnub_QC vdc_supply bridge_b 1k\nCsnub_QC vdc_supply bridge_b 1n\n";
+            circuit << "DQD bridge_b qc_drain DIDEAL\n";
+            circuit << "Rsnub_QC qc_drain bridge_b 1k\nCsnub_QC qc_drain bridge_b 1n\n";
             circuit << "Rsnub_QD bridge_b 0 1k\nCsnub_QD bridge_b 0 1n\n";
             circuit << "Vpri_sense bridge_a lr_in 0\n\n";
         } else {
             // Half-bridge: split caps form mid_point at Vin/2.
-            circuit << "Cbus_hi vdc_supply mid_point 1u IC=" << (inputVoltage / 2.0) << "\n";
+            circuit << "Cbus_hi vin_dc mid_point 1u IC=" << (inputVoltage / 2.0) << "\n";
             circuit << "Cbus_lo mid_point 0 1u IC=" << (inputVoltage / 2.0) << "\n";
-            circuit << "Rbal_hi vdc_supply mid_point 100k\n";
+            circuit << "Rbal_hi vin_dc mid_point 100k\n";
             circuit << "Rbal_lo mid_point 0 100k\n";
             circuit << "Vpwm_HI pwm_HI 0 PULSE(0 5 0 10n 10n "
                     << std::scientific << tOn << " " << period << std::fixed << ")\n";
             circuit << "Vpwm_LO pwm_LO 0 PULSE(0 5 "
                     << std::scientific << halfPeriod << " 10n 10n "
                     << tOn << " " << period << std::fixed << ")\n";
-            circuit << "SHI vdc_supply sw_node pwm_HI 0 SW1\n";
+            // §8a.5 input-current sense upstream of the high-side switch.
+            circuit << "Vq1_sense vin_dc qhi_drain 0\n";
+            circuit << "SHI qhi_drain sw_node pwm_HI 0 SW1\n";
             circuit << "DHI 0 sw_node DIDEAL\n";
             circuit << "SLO sw_node 0 pwm_LO 0 SW1\n";
-            circuit << "DLO sw_node vdc_supply DIDEAL\n";
-            circuit << "Rsnub_HI vdc_supply sw_node 1k\nCsnub_HI vdc_supply sw_node 1n\n";
+            circuit << "DLO sw_node qhi_drain DIDEAL\n";
+            circuit << "Rsnub_HI qhi_drain sw_node 1k\nCsnub_HI qhi_drain sw_node 1n\n";
             circuit << "Rsnub_LO sw_node 0 1k\nCsnub_LO sw_node 0 1n\n";
             circuit << "Vpri_sense sw_node lr_in 0\n\n";
         }
@@ -1521,6 +1531,27 @@ std::string Llc::generate_ngspice_circuit(
 
     if (isFullBridge) circuit << "Rpri_ret pri_bot bridge_b 0.001\n\n";
     else              circuit << "Rpri_ret pri_bot mid_point 0.001\n\n";
+
+    // §8a.5 differential winding-voltage probes — the bare-node v(pri_top)
+    // probe used previously lumped Lpri + the bridge-return offset
+    // (pri_bot = mid_point @ Vin/2 in HB SW1 mode); the secondary
+    // bare-node probes likewise read post-sense-source nodes instead of
+    // the winding-only differential. These E-sources expose
+    // v(vpri_w)/v(vsec*_w_o<i>) as pure winding voltages.
+    circuit << "Evpri_w vpri_w 0 pri_top pri_bot 1\n";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        if (ct) {
+            circuit << "Evsec1_w_o" << si << " vsec1_w_o" << si
+                    << " 0 sec_top_sec_o" << si << " sec_ct_o" << si << " 1\n";
+            circuit << "Evsec2_w_o" << si << " vsec2_w_o" << si
+                    << " 0 sec_ct_o" << si << " sec_bot_sec_o" << si << " 1\n";
+        } else {
+            circuit << "Evsec_w_o" << si << " vsec_w_o" << si
+                    << " 0 sec_pos_sec_o" << si << " sec_neg_sec_o" << si << " 1\n";
+        }
+    }
+    circuit << "\n";
 
     circuit << ".model DRECT D(Is=1e-8 N=0.01 RS=0.01)\n";
     for (size_t i = 0; i < numOutputs; ++i) {
@@ -1687,7 +1718,11 @@ std::string Llc::generate_ngspice_circuit(
             << " " << startTime << " " << maxStep;
     if (useUic) circuit << " UIC";
     circuit << "\n\n";
-    circuit << ".save v(vdc_supply) i(Vdc_supply) v(pri_top) v(pri_bot) i(Vpri_sense)";
+    circuit << ".save v(vin_dc) i(Vin) v(vpri_w) v(pri_top) v(pri_bot) i(Vpri_sense)";
+    if (bridgeMode != BridgeSimulationMode::BEHAVIORAL_PULSE) {
+        if (isFullBridge) circuit << " i(Vq1_sense) i(Vq3_sense)";
+        else              circuit << " i(Vq1_sense)";
+    }
     if (isFullBridge) circuit << " v(bridge_a) v(bridge_b)";
     else              circuit << " v(sw_node) v(mid_point)";
     for (size_t i = 0; i < numOutputs; ++i) {
@@ -1695,23 +1730,27 @@ std::string Llc::generate_ngspice_circuit(
         switch (rectType) {
         case LlcRectifierType::CENTER_TAPPED:
             circuit << " v(sec_top_o" << si << ") v(sec_bot_o" << si << ")"
+                    << " v(vsec1_w_o" << si << ") v(vsec2_w_o" << si << ")"
                     << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
                     << " i(Vsec1_sense_o" << si << ") i(Vsec2_sense_o" << si << ")"
                     << " i(Vsec_sense_o" << si << ")";
             break;
         case LlcRectifierType::FULL_BRIDGE:
             circuit << " v(sec_pos_o" << si << ") v(sec_neg_o" << si << ")"
+                    << " v(vsec_w_o" << si << ")"
                     << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
                     << " i(Vsec_sense_o" << si << ")";
             break;
         case LlcRectifierType::CURRENT_DOUBLER:
             circuit << " v(sec_pos_o" << si << ") v(sec_neg_o" << si << ")"
+                    << " v(vsec_w_o" << si << ")"
                     << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
                     << " i(Vsec_sense_o" << si << ")"
                     << " i(VLo1_sense_o" << si << ") i(VLo2_sense_o" << si << ")";
             break;
         case LlcRectifierType::VOLTAGE_DOUBLER:
             circuit << " v(sec_pos_o" << si << ")"
+                    << " v(vsec_w_o" << si << ")"
                     << " v(vout_pos_o" << si << ") v(vout_mid_o" << si << ")"
                     << " i(Vsec_sense_o" << si << ")";
             break;
@@ -1768,8 +1807,13 @@ std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
                 return process_operating_points(turnsRatios, magnetizingInductance);
             }
 
+            // §8a.5: read differential winding voltages from the E-source
+            // probes (v(vpri_w), v(vsec*_w_o<i>)) instead of bare nodes —
+            // pri_bot / sec_*_o<i> sit at a non-zero reference (bridge
+            // return / sense-source ladder), so bare-node voltages lump
+            // the winding with an offset.
             NgspiceRunner::WaveformNameMapping waveformMapping;
-            waveformMapping.push_back({{"voltage", "pri_top"}, {"current", "vpri_sense#branch"}});
+            waveformMapping.push_back({{"voltage", "vpri_w"}, {"current", "vpri_sense#branch"}});
 
             std::vector<std::string> windingNames = {"Primary"};
             std::vector<bool> flipCurrentSign = {false};
@@ -1781,11 +1825,11 @@ std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
                 std::string si = std::to_string(outIdx + 1);
                 switch (rectTypeSim) {
                 case LlcRectifierType::CENTER_TAPPED:
-                    waveformMapping.push_back({{"voltage", "sec_top_o" + si},
+                    waveformMapping.push_back({{"voltage", "vsec1_w_o" + si},
                                                {"current", "vsec1_sense_o" + si + "#branch"}});
                     windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 1");
                     flipCurrentSign.push_back(true);
-                    waveformMapping.push_back({{"voltage", "sec_bot_o" + si},
+                    waveformMapping.push_back({{"voltage", "vsec2_w_o" + si},
                                                {"current", "vsec2_sense_o" + si + "#branch"}});
                     windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 2");
                     flipCurrentSign.push_back(true);
@@ -1793,7 +1837,7 @@ std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
                 case LlcRectifierType::FULL_BRIDGE:
                 case LlcRectifierType::CURRENT_DOUBLER:
                 case LlcRectifierType::VOLTAGE_DOUBLER:
-                    waveformMapping.push_back({{"voltage", "sec_pos_o" + si},
+                    waveformMapping.push_back({{"voltage", "vsec_w_o" + si},
                                                {"current", "vsec_sense_o" + si + "#branch"}});
                     windingNames.push_back("Secondary " + std::to_string(outIdx));
                     flipCurrentSign.push_back(true);
@@ -1861,40 +1905,87 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
         wf.set_switching_frequency(switchingFrequency);
         wf.set_operating_point_name("LLC op. point " + std::to_string(opIdx));
 
-        // §5.1 converter-port stream: input_voltage = v(vdc_supply) (the
-        // DC source rail, constant Vin in steady state).
-        Waveform vdc = getWf("vdc_supply");
+        // §5.1 / §8a.5 converter-port stream:
+        //   input_voltage = v(vin_dc)  (real DC rail, constant Vin)
+        //   input_current = i(Vq*_sense) summed across high-side switches
+        //                   (SW1 mode), or power-balance reconstruction
+        //                   (BEHAVIORAL_PULSE mode, where no real switch
+        //                   draws current from vin_dc).
+        Waveform vdc = getWf("vin_dc");
         if (!vdc.get_data().empty()) wf.set_input_voltage(vdc);
 
-        // §5.1 input_current: power-balance reconstruction. The LLC
-        // netlist uses a behavioural Vbridge PULSE source (not driven
-        // from a real half-bridge with switches), so i(Vdc_supply) only
-        // sees the 1MEG dummy probe load (~tens of µA — not the actual
-        // converter draw). i(Vpri_sense) is the resonant-tank current
-        // (bipolar AC, mean ≈ 0 — a cap can't carry DC), so it is NOT
-        // the converter's input-port DC current either. The physical
-        // DC bus current is sum(Vo·Io)/(η·Vin); broadcast as a flat
-        // waveform to honour the §5.1 "DC stream" contract.
-        double Vin_local = 0.0;
-        if (!vdc.get_data().empty()) {
-            for (double v : vdc.get_data()) Vin_local += v;
-            Vin_local /= vdc.get_data().size();
-        } else if (get_input_voltage().get_nominal().has_value()) {
-            Vin_local = get_input_voltage().get_nominal().value();
+        const auto bridgeModeExtract = get_bridge_simulation_mode();
+        const bool isFullBridgeExtract = (get_bridge_type().has_value() &&
+                                          get_bridge_type().value() == LlcBridgeType::FULL_BRIDGE);
+
+        bool inputCurrentSet = false;
+        if (bridgeModeExtract != BridgeSimulationMode::BEHAVIORAL_PULSE) {
+            // SW1 mode: dedicated zero-V sense source(s) upstream of the
+            // high-side switch(es). i(Vq*_sense) sign convention:
+            // ngspice integrates current from the + terminal to the −
+            // terminal through the source — here + is vin_dc and − is
+            // the switch drain, so positive i(Vq*_sense) corresponds to
+            // current flowing *out* of vin_dc into the bridge, i.e. the
+            // converter's input draw.
+            Waveform iQ1 = getWf("vq1_sense#branch");
+            Waveform iQ3 = isFullBridgeExtract ? getWf("vq3_sense#branch") : Waveform();
+            if (!iQ1.get_data().empty() &&
+                (!isFullBridgeExtract || !iQ3.get_data().empty())) {
+                Waveform iInWf = iQ1;
+                auto& iInData = iInWf.get_mutable_data();
+                if (isFullBridgeExtract) {
+                    const auto& iQ3Data = iQ3.get_data();
+                    const size_t N = std::min(iInData.size(), iQ3Data.size());
+                    for (size_t k = 0; k < N; ++k) iInData[k] += iQ3Data[k];
+                }
+                // ngspice SW1 model produces narrow di/dt spikes (~10^5 A)
+                // around switching edges that are a numerical artefact of
+                // the discontinuous RON/ROFF transition, not a physical
+                // bound. Clamp samples to ±2·max|i(Vpri_sense)| —
+                // generous enough to retain all real conduction current
+                // (which is bounded by the tank current) but small
+                // enough to discard the spikes that would poison the
+                // DC mean used downstream by §5.1.
+                Waveform iPri = getWf("vpri_sense#branch");
+                double iPriMax = 0.0;
+                for (double v : iPri.get_data()) iPriMax = std::max(iPriMax, std::abs(v));
+                if (iPriMax > 0.0) {
+                    const double clamp = 2.0 * iPriMax;
+                    for (auto& v : iInData) {
+                        if (v >  clamp) v =  clamp;
+                        if (v < -clamp) v = -clamp;
+                    }
+                }
+                wf.set_input_current(iInWf);
+                inputCurrentSet = true;
+            }
         }
-        double Pout_total = 0.0;
-        for (size_t i = 0; i < ops[opIdx].get_output_voltages().size(); ++i) {
-            Pout_total += ops[opIdx].get_output_voltages()[i] *
-                          ops[opIdx].get_output_currents()[i];
+        if (!inputCurrentSet) {
+            // BEHAVIORAL_PULSE: no real switch routes through vin_dc, so
+            // i(Vin) is ~0. Reconstruct DC bus current from power balance:
+            // Iin_dc = Σ(Vo·Io) / (η · Vin), broadcast as a flat waveform
+            // to honour the §5.1 "DC stream" contract.
+            double Vin_local = 0.0;
+            if (!vdc.get_data().empty()) {
+                for (double v : vdc.get_data()) Vin_local += v;
+                Vin_local /= vdc.get_data().size();
+            } else if (get_input_voltage().get_nominal().has_value()) {
+                Vin_local = get_input_voltage().get_nominal().value();
+            }
+            double Pout_total = 0.0;
+            for (size_t i = 0; i < ops[opIdx].get_output_voltages().size(); ++i) {
+                Pout_total += ops[opIdx].get_output_voltages()[i] *
+                              ops[opIdx].get_output_currents()[i];
+            }
+            double effLlc = 1.0;
+            if (get_efficiency().has_value() && get_efficiency().value() > 0.0)
+                effLlc = get_efficiency().value();
+            const double Iin_dc = (Vin_local > 0.0) ? Pout_total / (effLlc * Vin_local) : 0.0;
+            Waveform iInWf = vdc;  // borrow time grid / length
+            auto& iInData = iInWf.get_mutable_data();
+            for (auto& v : iInData) v = Iin_dc;
+            wf.set_input_current(iInWf);
         }
-        double effLlc = 1.0;
-        if (get_efficiency().has_value() && get_efficiency().value() > 0.0)
-            effLlc = get_efficiency().value();
-        const double Iin_dc = (Vin_local > 0.0) ? Pout_total / (effLlc * Vin_local) : 0.0;
-        Waveform iInWf = vdc;  // borrow the same time grid / length
-        auto& iInData = iInWf.get_mutable_data();
-        for (auto& v : iInData) v = Iin_dc;
-        wf.set_input_current(iInWf);
 
         // Per-output rectified voltage (cap node is the DC output rail)
         // and current reconstructed as Vout(t)/Rload (matches Buck /

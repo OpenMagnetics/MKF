@@ -356,7 +356,10 @@ TEST_CASE("Test_Pshb_Spice_Netlist", "[converter-model][pshb-topology][spice]") 
         // Single 3-level NPC leg: 4 stacked S-switches (S1..S4) with body diodes
         CHECK(netlist.find(".model SW1 SW") != std::string::npos);
         CHECK(netlist.find(".model DIDEAL D") != std::string::npos);
-        CHECK(netlist.find("S1 vin_dc nH pwm_S1") != std::string::npos);
+        // §8a.5: S1 now drains from qa_drain (downstream of the Vq1_sense
+        // 0-V ammeter) rather than directly from vin_dc.
+        CHECK(netlist.find("Vq1_sense vin_dc qa_drain") != std::string::npos);
+        CHECK(netlist.find("S1 qa_drain nH pwm_S1") != std::string::npos);
         CHECK(netlist.find("S2 nH bridge_a pwm_S2") != std::string::npos);
         CHECK(netlist.find("S3 bridge_a nL pwm_S3") != std::string::npos);
         CHECK(netlist.find("S4 nL 0 pwm_S4") != std::string::npos);

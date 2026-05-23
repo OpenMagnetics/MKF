@@ -1816,10 +1816,26 @@ double get_value_or(T&& val, double default_val) {
                 << " 10n 10n " << tOn << " " << period << ")\n\n";
 
         // Primary full bridge — 4 active switches.
+        //
+        // §8a.5 input-current probe — Vq1_sense / Vq3_sense are 0-V
+        // ammeters inserted upstream of the high-side switches S1 and
+        // S3. i(Vq1_sense)+i(Vq3_sense) reports the clean high-side
+        // switch current draw from vin_p, free of the snubber RC spikes
+        // (~10^5 A) that contaminate i(Vin). The body diodes DS1/DS3
+        // and the high-side snubbers (Rsn_S1/Rsn_S3) stay on the
+        // original vin_p node so they do not feed the ammeters — only
+        // the S1/S3 channel currents are measured. Used in extractors
+        // as the converter's input current in FORWARD mode. In REVERSE
+        // mode i(Vq1_sense)+i(Vq3_sense) becomes the synchronous-
+        // rectifier high-side draw that returns power to vin_p; the
+        // clean input-port current there is i(Vin_sense), measured
+        // downstream of Cin_pri (snubber-filtered by the bulk cap).
         circuit << "* Primary Full Bridge (4 active switches)\n";
-        circuit << "S1 vin_p node_a pwm1 0 SW1\n";
+        circuit << "Vq1_sense vin_p qa_drain 0\n";
+        circuit << "Vq3_sense vin_p qc_drain 0\n";
+        circuit << "S1 qa_drain node_a pwm1 0 SW1\n";
         circuit << "S2 node_a 0     pwm2 0 SW1\n";
-        circuit << "S3 vin_p node_b pwm2 0 SW1\n";
+        circuit << "S3 qc_drain node_b pwm2 0 SW1\n";
         circuit << "S4 node_b 0     pwm1 0 SW1\n";
         // Antiparallel body diodes — high-side: anode=drain, cathode=source(=vin_p).
         // Low-side: anode=source(=0), cathode=drain. Provides freewheel
@@ -1866,6 +1882,32 @@ double get_value_or(T&& val, double default_val) {
         circuit << "* Secondary bridge reference node\n";
         circuit << "Vd_ref sec_trafo_n node_d 0\n";
         circuit << "Rdc_sec sec_trafo_n 0 1G\n\n";
+
+        // ---- Differential winding-voltage probes (§8a.5 fix) ----
+        //
+        // The magnetic-view operating-point excitations require the
+        // voltage ACROSS each transformer winding (the EMF that drives
+        // core flux), NOT the converter-side terminal voltage. The
+        // legacy waveform mapping used `pri_trafo_in` and `sec_trafo_p`
+        // as bare node references, which the extractor interprets as
+        // `v(pri_trafo_in) - 0` and `v(sec_trafo_p) - 0` — both of
+        // those float relative to ground because Lpri / Lsec have no
+        // ground reference, so the resulting "winding voltage" lumps
+        // the resonant tank capacitor offsets (C_res1, C_res2) and the
+        // floating bias on top of the actual winding EMF.
+        //
+        // E-source probes here expose the actual L_pri / L_sec
+        // terminal voltages with the correct dot-convention sign.
+        // Polarity: the primary winding is `Lpri pri_trafo_in node_b`
+        // (dot at pri_trafo_in), so v_pri_w = v(pri_trafo_in)-v(node_b).
+        // The secondary winding is `Lsec sec_trafo_p sec_trafo_n` (dot
+        // at sec_trafo_p), so v_sec_w = v(sec_trafo_p)-v(sec_trafo_n).
+        // Same probes work in both FORWARD and REVERSE — the E-source
+        // is a passive measurement, not a directional element; sign
+        // reflects whichever side is currently sourcing.
+        circuit << "* Differential winding-voltage probes (§8a.5)\n";
+        circuit << "Evpri_w vpri_w 0 pri_trafo_in node_b 1\n";
+        circuit << "Evsec_w vsec_w 0 sec_trafo_p sec_trafo_n 1\n\n";
 
         // ---- Active synchronous-rectifier full bridge on secondary ----
         // Per plan §6.1: in forward mode the SR is gated synchronously with
@@ -1943,11 +1985,14 @@ double get_value_or(T&& val, double default_val) {
         circuit << ".save v(vab) v(vin_p) v(pri_trafo_in) v(node_a) v(node_b)\n";
         circuit << "+ v(node_c) v(node_d) v(sec_trafo_p) v(sec_trafo_n)\n";
         circuit << "+ v(vout_p) v(vout_n) v(pri_c1_in) v(sec_c2_in)\n";
+        circuit << "+ v(vpri_w) v(vsec_w)\n";
         if (isReverse) {
-            circuit << "+ i(Vin_sense) i(Vpri_sense) i(Vsec_sense) i(Vsec_src)\n\n";
+            circuit << "+ i(Vin_sense) i(Vpri_sense) i(Vsec_sense) i(Vsec_src)\n";
+            circuit << "+ i(Vq1_sense) i(Vq3_sense)\n\n";
         }
         else {
-            circuit << "+ i(Vin) i(Vpri_sense) i(Vsec_sense) i(Vout_sense)\n\n";
+            circuit << "+ i(Vin) i(Vpri_sense) i(Vsec_sense) i(Vout_sense)\n";
+            circuit << "+ i(Vq1_sense) i(Vq3_sense)\n\n";
         }
 
         // Solver options — verbatim from plan §6.2
@@ -2044,17 +2089,25 @@ double get_value_or(T&& val, double default_val) {
                 // Map waveform names to winding excitations
                 NgspiceRunner::WaveformNameMapping waveformMapping;
 
-                // Primary winding: voltage across transformer primary = v(pri_trafo_in) - v(node_b)
-                // Current through primary = i(Vpri_sense)
+                // §8a.5 — use the differential winding-voltage probes
+                // (vpri_w, vsec_w) emitted by generate_ngspice_circuit.
+                // These expose the actual EMF across each transformer
+                // winding. The legacy mapping referenced `pri_trafo_in`
+                // and `sec_trafo_p` as bare node names, which the
+                // extractor reads as `v(node) - 0` — but Lpri and Lsec
+                // are floating relative to ground, so that mapping
+                // lumped the resonant-cap DC bias (C_res1, C_res2) and
+                // the floating tank offset into the displayed winding
+                // voltage. The E-source probes capture v(pri_trafo_in)
+                // - v(node_b) and v(sec_trafo_p) - v(sec_trafo_n)
+                // directly with the correct dot-convention sign.
                 waveformMapping.push_back({
-                    {"voltage", "pri_trafo_in"},
+                    {"voltage", "vpri_w"},
                     {"current", "vpri_sense#branch"}
                 });
 
-                // Secondary winding: voltage = v(sec_trafo_p) - v(sec_trafo_n)
-                // Current = i(Vsec_sense)
                 waveformMapping.push_back({
-                    {"voltage", "sec_trafo_p"},
+                    {"voltage", "vsec_w"},
                     {"current", "vsec_sense#branch"}
                 });
 
@@ -2155,26 +2208,84 @@ double get_value_or(T&& val, double default_val) {
                 }
                 wf.set_operating_point_name(name);
 
-                // §5.1 converter-port stream. The "input" port is the
-                // primary rail (vin_p) regardless of direction:
-                //   FORWARD: vin_p is held by Vin source. i(Vin) flows
-                //     OUT of source's + terminal → into the converter.
-                //     Convention: converter draw = -i(Vin).
-                //   REVERSE (P8b): vin_p is held by Cin_pri+Rload_pri.
-                //     i(Vin_sense) flows from vin_p → vin_load (positive
-                //     when load absorbs, i.e., reverse power flow). To
-                //     keep the SAME sign convention "input current =
-                //     current flowing INTO the converter from the input
-                //     port", reverse mode emits -i(Vin_sense). The mean
-                //     becomes negative, signalling power LEAVING the
-                //     primary side — which is what reverse means.
+                // §8a.5 converter-port stream — input voltage is the
+                // primary rail v(vin_p) (held by Vin in FORWARD, by
+                // Cin_pri+Rload_pri in REVERSE).
+                //
+                // Input current:
+                //   FORWARD: sum of high-side switch ammeter currents
+                //     i(Vq1_sense)+i(Vq3_sense). The full-bridge primary
+                //     draws from vin_p through S1 (during pwm1) and S3
+                //     (during pwm2), diagonally. Summing both ammeters
+                //     gives the total instantaneous bus draw, with the
+                //     snubber RC spikes excluded (the snubbers stay on
+                //     vin_p, upstream of the ammeters). Positive when
+                //     current flows from vin_p into the primary tank.
+                //   REVERSE: i(Vin_sense), the 0-V ammeter between
+                //     vin_p and vin_load (the primary-side resistive
+                //     load). Cin_pri filters snubber spikes, so this is
+                //     clean. Sign: positive when current flows out of
+                //     vin_p into the load, i.e., the converter is
+                //     RETURNING power on the primary side. We negate
+                //     to keep the "input current = current INTO the
+                //     converter from the input port" convention, so the
+                //     mean becomes negative in REVERSE — signalling
+                //     power LEAVING the primary side.
+                //
+                // Why not i(Vin) in FORWARD? The 1k+1nF convergence-aid
+                // snubbers between vin_p and node_a/node_b inject huge
+                // dV/dt-driven spikes at every switch transition that
+                // contaminate i(Vin) and dwarf the real bus current.
+                // Why not i(Vpri_sense)? Vpri_sense sits inside the
+                // primary tank (between node_a and Cr1), so it measures
+                // the bipolar tank current that averages to zero — not
+                // the converter's actual input-port draw.
+                //
+                // Numerical-artifact clamp: ngspice's SW model
+                // transitions instantaneously between Roff and Ron, so
+                // when S1/S3 close the di/dt is unbounded and the
+                // resampled trace can hold transient spikes ~10^5 A
+                // that are pure simulation noise (NOT measured
+                // current). Physically, |i(S1)|+|i(S3)| <= 2·|i(L_pri)|
+                // because each switch only conducts the primary tank
+                // current while ON. We clamp the combined trace to
+                // ±2·max|i(Vpri_sense)| (2× headroom for the
+                // switching-instant overshoot we want to keep visible).
+                // This is a numerical guard against the ngspice
+                // idealised-switch di/dt artifact, not a physical bound.
                 bool isReverse = (opPoint.get_power_flow() == CllcPowerFlow::REVERSE);
                 wf.set_input_voltage(getWaveform("vin_p"));
-                Waveform iInWf = isReverse
-                    ? getWaveform("vin_sense#branch")
-                    : getWaveform("vin#branch");
-                auto& iInData = iInWf.get_mutable_data();
-                for (auto& v : iInData) v = -v;
+
+                Waveform iInWf;
+                if (isReverse) {
+                    iInWf = getWaveform("vin_sense#branch");
+                    auto& iInData = iInWf.get_mutable_data();
+                    for (auto& v : iInData) v = -v;
+                }
+                else {
+                    Waveform iQ1 = getWaveform("vq1_sense#branch");
+                    Waveform iQ3 = getWaveform("vq3_sense#branch");
+                    auto& iQ1Data = iQ1.get_mutable_data();
+                    const auto& iQ3Data = iQ3.get_data();
+                    if (!iQ3Data.empty() && iQ1Data.size() == iQ3Data.size()) {
+                        for (size_t k = 0; k < iQ1Data.size(); ++k) {
+                            iQ1Data[k] += iQ3Data[k];
+                        }
+                    }
+                    iInWf = iQ1;
+                }
+                Waveform iPri = getWaveform("vpri_sense#branch");
+                const std::vector<double>& iPriData = iPri.get_data();
+                double iPriMax = 0.0;
+                for (double v : iPriData) iPriMax = std::max(iPriMax, std::abs(v));
+                const double clampLimit = 2.0 * iPriMax;
+                auto& iInDataC = iInWf.get_mutable_data();
+                if (clampLimit > 0.0) {
+                    for (auto& v : iInDataC) {
+                        if (v >  clampLimit) v =  clampLimit;
+                        if (v < -clampLimit) v = -clampLimit;
+                    }
+                }
                 wf.set_input_current(iInWf);
 
                 wf.get_mutable_output_voltages().push_back(getWaveform("vout_p"));

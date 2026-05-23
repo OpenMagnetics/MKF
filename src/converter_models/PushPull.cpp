@@ -1338,13 +1338,26 @@ namespace OpenMagnetics {
         
         circuit << "* Center-Tapped Primary (center tap = Vin, low-side switches)\n";
 
-        // Top half: vin_dc → Lpri_top → pri_top → sense → S1 → GND
-        circuit << "Lpri_top pri_top vin_dc " << std::scientific << magnetizingInductance << std::fixed << "\n";
+        // §8a.5 input-current sense: a single zero-V source on the
+        // center-tap line. Push-Pull has two low-side switches (S1 driving
+        // the top half-winding, S2 driving the bottom half-winding) that
+        // conduct on alternating half-cycles; both half-windings share the
+        // center tap, so the bus current sourced from vin_dc is the SUM of
+        // the two switch-path currents and equals i(Vct_sense). Previously
+        // i(Vin) was used (which carries the same physical sum), but it
+        // also includes the microamp leakage of the 1MEG convergence
+        // helpers on pri_top/pri_bot. A dedicated center-tap ammeter
+        // matches the DAB/LLC §8a.5 pattern and isolates the true
+        // half-winding draw from convergence-helper artefacts.
+        circuit << "Vct_sense vin_dc center_tap 0\n";
+
+        // Top half: center_tap → Lpri_top → pri_top → sense → S1 → GND
+        circuit << "Lpri_top pri_top center_tap " << std::scientific << magnetizingInductance << std::fixed << "\n";
         circuit << "Vpri_top_sense pri_top sw1_node 0\n";
         circuit << "S1 sw1_node 0 pwm_ctrl1 0 SW1\n";
 
-        // Bottom half: vin_dc → Lpri_bot → pri_bot → sense → S2 → GND
-        circuit << "Lpri_bot vin_dc pri_bot " << std::scientific << magnetizingInductance << std::fixed << "\n";
+        // Bottom half: center_tap → Lpri_bot → pri_bot → sense → S2 → GND
+        circuit << "Lpri_bot center_tap pri_bot " << std::scientific << magnetizingInductance << std::fixed << "\n";
         circuit << "Vpri_bot_sense pri_bot sw2_node 0\n";
         circuit << "S2 sw2_node 0 pwm_ctrl2 0 SW1\n\n";
 
@@ -1462,7 +1475,7 @@ namespace OpenMagnetics {
         circuit << "* Output signals\n";
         circuit << ".save v(vpri_top_diff) v(vpri_bot_diff) i(Vpri_top_sense) i(Vpri_bot_sense)";
         circuit << " v(sec_top) v(sec_bot) i(Vsec_top_sense) i(Vsec_bot_sense) i(Vsec_sense) v(vout)";
-        circuit << " v(vin_dc) i(Vin)\n\n";
+        circuit << " v(vin_dc) i(Vin) i(Vct_sense)\n\n";
 
         // Solver options for convergence in switching circuits.
         // METHOD=GEAR + larger TRTOL handles the simultaneous
@@ -1612,21 +1625,59 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            // §5.1 — converter-port stream is DC source / DC filtered output.
-            // Vin source is `Vin vin_dc 0 <V>` so v(vin_dc) is the DC rail and
-            // i(Vin) is the (negated) source current. Vout is the filtered cap
-            // node; output current = i(Vsec_sense) which is the inductor /
-            // load current after the LC filter.
+            // §5.1 / §8a.5 converter-port stream:
+            //   input_voltage = v(vin_dc)  (real DC rail, constant Vin).
+            //   input_current = i(Vct_sense) — zero-V sense source on the
+            //     center-tap line. Push-Pull has two low-side switches
+            //     (S1/S2) driving the top/bottom half-windings on
+            //     alternating half-cycles; both half-windings share the
+            //     center tap, so i(Vct_sense) captures the SUM of both
+            //     half-winding currents (the previous code used i(Vin),
+            //     which carries the same physical sum but also picks up
+            //     the µA leakage of the 1MEG convergence helpers on
+            //     pri_top/pri_bot — §8a.5's dedicated ammeter avoids
+            //     that bias). Sign convention: + terminal of Vct_sense
+            //     is vin_dc, − is center_tap, so positive i(Vct_sense)
+            //     means current flowing OUT of vin_dc INTO the
+            //     center-tap (i.e. the converter draw — non-negative in
+            //     CCM/DCM).
             wf.set_input_voltage(getWaveform("vin_dc"));
-            // i(Vin) follows ngspice's convention: positive current flows from
-            // + terminal through the source, so source-supplied current is
-            // -i(Vin). Reconstruct as Pin/Vin via the negated branch.
-            {
-                Waveform vinI = getWaveform("vin#branch");
-                auto& d = vinI.get_mutable_data();
-                for (auto& x : d) x = -x;
-                wf.set_input_current(vinI);
+
+            Waveform iCt = getWaveform("vct_sense#branch");
+            if (iCt.get_data().empty()) {
+                throw std::runtime_error(
+                    "PushPull simulate_and_extract_topology_waveforms: "
+                    "missing i(Vct_sense) — netlist/save mismatch");
             }
+
+            // ngspice SW1 model produces narrow di/dt spikes (~10^5 A)
+            // around switching edges that are a numerical artefact of
+            // the discontinuous RON/ROFF transition, not a physical
+            // bound. Clamp samples to ±2·max(|i(Vpri_top_sense)|,
+            // |i(Vpri_bot_sense)|) — generous enough to retain all
+            // real conduction current (which is bounded by the
+            // half-winding currents on alternating cycles) but small
+            // enough to discard the spikes that would poison the DC
+            // mean used downstream by §5.1.
+            //
+            // numerical guard against ngspice SW-model di/dt spikes
+            // (~10^5 A), not a physical bound.
+            {
+                auto& d = iCt.get_mutable_data();
+                Waveform iTop = getWaveform("vpri_top_sense#branch");
+                Waveform iBot = getWaveform("vpri_bot_sense#branch");
+                double iHalfMax = 0.0;
+                for (double v : iTop.get_data()) iHalfMax = std::max(iHalfMax, std::abs(v));
+                for (double v : iBot.get_data()) iHalfMax = std::max(iHalfMax, std::abs(v));
+                if (iHalfMax > 0.0) {
+                    const double clamp = 2.0 * iHalfMax;
+                    for (auto& v : d) {
+                        if (v >  clamp) v =  clamp;
+                        if (v < -clamp) v = -clamp;
+                    }
+                }
+            }
+            wf.set_input_current(iCt);
 
             wf.get_mutable_output_voltages().push_back(getWaveform("vout"));
             wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense#branch"));

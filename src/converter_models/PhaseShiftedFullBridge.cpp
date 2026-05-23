@@ -777,9 +777,18 @@ std::string Psfb::generate_ngspice_circuit(
                 + std::to_string(pulseWidth) + " s. "
                 "Reduce dead time or increase switching period.");
         }
-        circuit << "Vleg_A mid_A 0 PULSE(0 " << Vin << " 0 "
+        // Vq1_sense is a 0-V ammeter inserted between the behavioral
+        // leading-leg source and the bridge midpoint, so i(Vq1_sense)
+        // reports the leading leg's current draw (analogue of the
+        // high-side switch current in SW1 mode). It is the closest
+        // proxy to converter input current in the BEHAVIORAL_PULSE
+        // bridge because Vdc itself is decoupled from the bridge
+        // (the leg sources are independent PULSE voltage sources, so
+        // i(Vdc) = 0 by construction).
+        circuit << "Vleg_A leg_a_src 0 PULSE(0 " << Vin << " 0 "
                 << std::scientific << slew << " " << slew
                 << " " << pulseWidth << " " << period << std::fixed << ")\n";
+        circuit << "Vq1_sense leg_a_src mid_A 0\n";
         circuit << "Vleg_C mid_C 0 PULSE(0 " << Vin << " "
                 << std::scientific << phaseDelay << " " << slew << " " << slew
                 << " " << pulseWidth << " " << period << std::fixed << ")\n\n";
@@ -800,7 +809,16 @@ std::string Psfb::generate_ngspice_circuit(
                 << std::scientific << halfPeriod << std::fixed
                 << " 10n 10n "
                 << std::scientific << tOn << " " << period << std::fixed << ")\n";
-        circuit << "SA vin_dc mid_A pwm_A 0 SW1\n";
+        // Vq1_sense is a 0-V ammeter inserted between vin_dc and the
+        // leading-leg high-side switch SA's drain. i(Vq1_sense) reports
+        // the clean high-side switch current, free of the snubber RC
+        // spikes that contaminate i(Vdc). The body diode DB and the
+        // snubber stay on the original vin_dc node so they don't
+        // contribute to the ammeter reading — only the SA channel
+        // current is measured. Used in extractors as the converter's
+        // input current.
+        circuit << "Vq1_sense vin_dc qa_drain 0\n";
+        circuit << "SA qa_drain mid_A pwm_A 0 SW1\n";
         circuit << "DA 0 mid_A DIDEAL\n";
         circuit << "SB mid_A 0 pwm_B 0 SW1\n";
         circuit << "DB mid_A vin_dc DIDEAL\n";
@@ -856,6 +874,29 @@ std::string Psfb::generate_ngspice_circuit(
                     << " L_sec_o" << (j + 1)
                     << " " << K_COUPLING << "\n";
         }
+    }
+    circuit << "\n";
+
+    // ---- Differential winding-voltage probes (§8a.5 fix) ----
+    //
+    // The magnetic-view operating-point excitations require the voltage
+    // ACROSS each transformer winding (the EMF that drives core flux),
+    // not the converter-side terminal voltage. `vab` lumps together
+    // L_series + L_pri (and any DC offset in the tank) and is the wrong
+    // signal for the primary winding view. `out_node_o*` is the post-
+    // rectifier DC bus and is even more wrong for the secondary winding
+    // view (it shows ≈Vo instead of a bipolar ±Vin/n square).
+    //
+    // E-source probes here expose the actual L_pri / L_sec_o* terminal
+    // voltages with the correct dot-convention sign. Polarity: the
+    // primary winding is `L_pri trafo_pri mid_C` (dot at trafo_pri), so
+    // v_pri_w = v(trafo_pri) - v(mid_C). Each secondary winding is
+    // `L_sec_o<i> sec_a_o<i> sec_b_o<i>` with the dot at sec_a_o<i>.
+    circuit << "Evpri_w vpri_w 0 trafo_pri mid_C 1\n";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        circuit << "Evsec_w_o" << si << " vsec_w_o" << si
+                << " 0 sec_a_o" << si << " sec_b_o" << si << " 1\n";
     }
     circuit << "\n";
 
@@ -927,10 +968,12 @@ std::string Psfb::generate_ngspice_circuit(
 
     // Saved signals: bridge voltage, primary current, per-output rectifier
     // current and voltage.
-    circuit << ".save v(vab) v(mid_A) v(mid_C) v(vin_dc) i(Vpri_sense) i(Vdc)";
+    circuit << ".save v(vab) v(mid_A) v(mid_C) v(vin_dc) v(vpri_w)"
+            << " i(Vpri_sense) i(Vdc) i(Vq1_sense)";
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
         circuit << " v(out_node_o" << si << ")"
+                << " v(vsec_w_o" << si << ")"
                 << " i(Vsec1_sense_o" << si << ")"
                 << " i(Vsec2_sense_o" << si << ")"
                 << " i(Vout_sense_o" << si << ")";
@@ -1011,14 +1054,22 @@ std::vector<OperatingPoint> Psfb::simulate_and_extract_operating_points(
             std::vector<std::string> windingNames;
             std::vector<bool> flipCurrentSign;
 
-            waveformMapping.push_back({{"voltage", "vab"},
+            // Use the differential winding-voltage probes (vpri_w,
+            // vsec_w_o*) added in generate_ngspice_circuit. These
+            // expose the actual EMF across each transformer winding —
+            // NOT vab (which lumps L_series + L_pri) and NOT
+            // out_node_o* (which is the post-rectifier DC rail).
+            // Using those wrong probes here produced a primary trace
+            // with a series-inductor ramp and secondary traces stuck
+            // at ≈Vo, neither of which is a physical winding voltage.
+            waveformMapping.push_back({{"voltage", "vpri_w"},
                                        {"current", "vpri_sense#branch"}});
             windingNames.push_back("Primary");
             flipCurrentSign.push_back(false);
 
             for (size_t outIdx = 0; outIdx < numOutputs; ++outIdx) {
                 std::string si = std::to_string(outIdx + 1);
-                waveformMapping.push_back({{"voltage", "out_node_o" + si},
+                waveformMapping.push_back({{"voltage", "vsec_w_o" + si},
                                            {"current", "vsec1_sense_o" + si + "#branch"}});
                 windingNames.push_back("Secondary " + std::to_string(outIdx));
                 flipCurrentSign.push_back(false);
@@ -1097,17 +1148,54 @@ std::vector<ConverterWaveforms> Psfb::simulate_and_extract_topology_waveforms(
             }
             wf.set_operating_point_name(name);
             
-            // §5.1 converter-port stream — vin_dc / -i(Vdc) (DC source
-            // rail and bus current), NOT vab (bridge-midpoint AC node)
-            // / i(Vpri_sense) (primary winding current = bipolar AC).
-            // ngspice sign convention: i(Vdc) is positive when current
-            // flows into Vdc's + terminal, i.e. *back into* the source —
-            // so the converter's input draw is -i(Vdc).
+            // §8a.5 converter-port stream — input voltage is the DC
+            // source rail v(vin_dc) (the converter's external supply,
+            // constant in steady state), NOT vab (bridge-midpoint AC
+            // node, lumps the bridge + L_series + L_pri tank).
+            //
+            // Input current is the leading-leg high-side switch
+            // current i(Vq1_sense), measured by the in-series 0-V
+            // ammeter inserted upstream of SA (SW1 mode) or upstream
+            // of Vleg_A's bridge midpoint (BEHAVIORAL_PULSE mode).
+            // It is positive when current flows from vin_dc into the
+            // primary tank, i.e. the converter is drawing from the bus.
+            //
+            // Why not i(Vdc)? Because the convergence-aid RC snubbers
+            // between vin_dc and mid_* inject huge dV/dt-driven spikes
+            // (~10^5 A peaks) at every switch transition that swamp the
+            // real bus current — and in BEHAVIORAL_PULSE mode i(Vdc) is
+            // identically zero (Vdc is decoupled from the leg sources).
+            // Why not i(Vpri_sense)? Because Vpri_sense sits inside the
+            // primary tank (between mid_A and L_series), so it measures
+            // the bipolar tank current that averages to zero — not the
+            // converter's actual input-port draw.
+            //
+            // Numerical-artifact clamp: ngspice's SW model transitions
+            // instantaneously between Roff and Ron, so when SA closes
+            // the di/dt is unbounded and the resampled trace can hold
+            // transient spikes ~10^5 A that are pure simulation noise
+            // (NOT measured current). Physically, |i(SA)| <= |i(L_pri)|
+            // because SA only conducts the primary tank current while
+            // ON. So we clamp the raw SA trace to ±2·max|i(Vpri_sense)|
+            // (2× headroom for the switching-instant overshoot we want
+            // to keep visible). This is a numerical guard against the
+            // ngspice idealised-switch di/dt artifact, not a physical
+            // bound on the current.
             wf.set_input_voltage(getWaveform("vin_dc"));
-            Waveform iInWf = getWaveform("vdc#branch");
-            auto& iInData = iInWf.get_mutable_data();
-            for (auto& v : iInData) v = -v;
-            wf.set_input_current(iInWf);
+            Waveform iQ1 = getWaveform("vq1_sense#branch");
+            Waveform iPri = getWaveform("vpri_sense#branch");
+            std::vector<double>& iQ1Data = iQ1.get_mutable_data();
+            const std::vector<double>& iPriData = iPri.get_data();
+            double iPriMax = 0.0;
+            for (double v : iPriData) iPriMax = std::max(iPriMax, std::abs(v));
+            const double clampLimit = 2.0 * iPriMax;
+            if (clampLimit > 0.0) {
+                for (auto& v : iQ1Data) {
+                    if (v >  clampLimit) v =  clampLimit;
+                    if (v < -clampLimit) v = -clampLimit;
+                }
+            }
+            wf.set_input_current(iQ1);
 
             size_t numOutputs = std::min(turnsRatios.size(), opPoint.get_output_voltages().size());
             if (numOutputs == 0) numOutputs = 1;

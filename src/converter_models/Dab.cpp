@@ -1060,18 +1060,26 @@ std::string Dab::generate_ngspice_circuit(
     pulse("pwm_p_l2", priBaseDelay + t_D1 + halfPeriod);      // Q2: bridge_a1 → 0
     circuit << "\n";
 
+    // §8a.5 input-current sense: zero-V sources upstream of each primary
+    // high-side switch drain (Q1, Q3). i(Vq1_sense)+i(Vq3_sense) gives the
+    // true DC-bus current sourced from vin_dc1 — bipolar in reverse power
+    // flow (signs flip naturally because the sense sources are passive).
+    // Previously the extractor used i(Vpri_sense), which is the bipolar
+    // tank current with mean ≈ 0 — useless as a DC input-current stream.
+    circuit << "Vq1_sense vin_dc1 q1_drain 0\n";
+    circuit << "Vq3_sense vin_dc1 q3_drain 0\n";
     // Q1: top of left leg
-    circuit << "S1 vin_dc1 bridge_a1 pwm_p_l1 0 SW1\n";
+    circuit << "S1 q1_drain bridge_a1 pwm_p_l1 0 SW1\n";
     circuit << "D1 0 bridge_a1 DIDEAL\n";
     // Q2: bottom of left leg
     circuit << "S2 bridge_a1 0 pwm_p_l2 0 SW1\n";
-    circuit << "D2 bridge_a1 vin_dc1 DIDEAL\n";
+    circuit << "D2 bridge_a1 q1_drain DIDEAL\n";
     // Q3: top of right leg
-    circuit << "S3 vin_dc1 bridge_b1 pwm_p_r2 0 SW1\n";
+    circuit << "S3 q3_drain bridge_b1 pwm_p_r2 0 SW1\n";
     circuit << "D3 0 bridge_b1 DIDEAL\n";
     // Q4: bottom of right leg
     circuit << "S4 bridge_b1 0 pwm_p_r1 0 SW1\n";
-    circuit << "D4 bridge_b1 vin_dc1 DIDEAL\n";
+    circuit << "D4 bridge_b1 q3_drain DIDEAL\n";
     // Snubber RC across each switch — absorbs di/dt at switching events,
     // critical for ngspice convergence with 4-position switching (EPS/DPS/TPS).
     {
@@ -1080,9 +1088,9 @@ std::string Dab::generate_ngspice_circuit(
         cs << std::scientific << cfg.snubC;
         const std::string R = rs.str();
         const std::string C = cs.str();
-        circuit << "Rsnub_q1 vin_dc1 bridge_a1 " << R << "\nCsnub_q1 vin_dc1 bridge_a1 " << C << "\n";
+        circuit << "Rsnub_q1 q1_drain bridge_a1 " << R << "\nCsnub_q1 q1_drain bridge_a1 " << C << "\n";
         circuit << "Rsnub_q2 bridge_a1 0 " << R << "\nCsnub_q2 bridge_a1 0 " << C << "\n";
-        circuit << "Rsnub_q3 vin_dc1 bridge_b1 " << R << "\nCsnub_q3 vin_dc1 bridge_b1 " << C << "\n";
+        circuit << "Rsnub_q3 q3_drain bridge_b1 " << R << "\nCsnub_q3 q3_drain bridge_b1 " << C << "\n";
         circuit << "Rsnub_q4 bridge_b1 0 " << R << "\nCsnub_q4 bridge_b1 0 " << C << "\n\n";
     }
 
@@ -1208,7 +1216,7 @@ std::string Dab::generate_ngspice_circuit(
 
     // Saved signals
     circuit << ".save v(vab) v(trafo_pri) v(bridge_b1) v(vin_dc1)"
-               " i(Vpri_sense) i(Vdc1)";
+               " i(Vpri_sense) i(Vdc1) i(Vq1_sense) i(Vq3_sense)";
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
         circuit << " v(sec_a_o" << si << ") v(sec_b_o" << si << ")"
@@ -1400,15 +1408,55 @@ std::vector<ConverterWaveforms> Dab::simulate_and_extract_topology_waveforms(
             }
             wf.set_operating_point_name(name);
             
-            // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §5.0/§5.1: ConverterWaveforms
-            // is the converter-port stream. input_voltage MUST be the DC
-            // primary supply v(vin_dc1) — NOT the bipolar bridge AC output
-            // v(vab), which belongs in excitations_per_winding[primary].
-            // input_current is the AC tank current via Vpri_sense (still
-            // bipolar; the actual DC supply current is also exposed as
-            // i(Vdc1) for callers that need it).
+            // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §5.0/§5.1 + §8a.5:
+            // ConverterWaveforms is the converter-port stream.
+            //   input_voltage = v(vin_dc1)  (real DC rail).
+            //   input_current = i(Vq1_sense) + i(Vq3_sense)  — the two
+            //     zero-V sense sources upstream of the primary-bridge
+            //     high-side switch drains carry the full DC-bus current
+            //     sourced from vin_dc1. Previously this was set to
+            //     i(Vpri_sense), which is the bipolar tank current with
+            //     mean ≈ 0 — meaningless as a DC input stream.
+            //   Sign convention: + terminal of Vq*_sense is vin_dc1 and
+            //     − is the switch drain, so positive i(Vq*_sense) means
+            //     current flowing OUT of vin_dc1 INTO the bridge (i.e.,
+            //     the converter draw). DAB is bidirectional — in
+            //     reverse power flow the sign flips naturally, which is
+            //     the correct semantics for "input port current".
             wf.set_input_voltage(getWaveform("vin_dc1"));
-            wf.set_input_current(getWaveform("vpri_sense#branch"));
+
+            Waveform iQ1 = getWaveform("vq1_sense#branch");
+            Waveform iQ3 = getWaveform("vq3_sense#branch");
+            if (iQ1.get_data().empty() || iQ3.get_data().empty()) {
+                throw std::runtime_error(
+                    "DAB simulate_and_extract_topology_waveforms: missing "
+                    "i(Vq1_sense) or i(Vq3_sense) — netlist/save mismatch");
+            }
+            Waveform iInWf = iQ1;
+            auto& iInData = iInWf.get_mutable_data();
+            const auto& iQ3Data = iQ3.get_data();
+            const size_t N = std::min(iInData.size(), iQ3Data.size());
+            for (size_t k = 0; k < N; ++k) iInData[k] += iQ3Data[k];
+
+            // ngspice SW1 model produces narrow di/dt spikes (~10^5 A)
+            // around switching edges that are a numerical artefact of
+            // the discontinuous RON/ROFF transition, not a physical
+            // bound. Clamp samples to ±2·max|i(Vpri_sense)| — generous
+            // enough to retain all real conduction current (which is
+            // bounded by the tank current) but small enough to discard
+            // the spikes that would poison the DC mean used downstream
+            // by §5.1.
+            Waveform iPri = getWaveform("vpri_sense#branch");
+            double iPriMax = 0.0;
+            for (double v : iPri.get_data()) iPriMax = std::max(iPriMax, std::abs(v));
+            if (iPriMax > 0.0) {
+                const double clamp = 2.0 * iPriMax;
+                for (auto& v : iInData) {
+                    if (v >  clamp) v =  clamp;
+                    if (v < -clamp) v = -clamp;
+                }
+            }
+            wf.set_input_current(iInWf);
 
             // Multi-secondary output: each output has its own vout_cap_oN and
             // vsec_sense_oN.

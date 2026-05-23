@@ -917,7 +917,11 @@ namespace {
         SECTION("Half-bridge netlist contains required elements") {
             std::string netlist = llc.generate_ngspice_circuit(turnsRatios, Lm, 0, 0);
 
-            CHECK(netlist.find("Vdc_supply") != std::string::npos);
+            // §8a.5: renamed the DC rail from vdc_supply to vin_dc and
+            // removed the 1MEG dummy resistor; the rail is now wired
+            // through the SW1 bridge with dedicated zero-V sense sources
+            // upstream of each high-side switch.
+            CHECK(netlist.find("Vin vin_dc 0") != std::string::npos);
             CHECK(netlist.find("Lr") != std::string::npos);
             CHECK(netlist.find("Cr") != std::string::npos);
             CHECK(netlist.find("Lpri") != std::string::npos);

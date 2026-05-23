@@ -1006,19 +1006,28 @@ namespace {
             REQUIRE_THAT(spiceRms, Catch::Matchers::WithinRel(analRms, 0.15));
         }
 
-        SECTION("Waveform shape: half-wave antisymmetry holds in simulation") {
+        SECTION("Converter-port input current is a positive-mean DC stream (§5.1/§8a.5)") {
+            // Per §8a.5: input_current is now the DC bus current measured
+            // via i(Vq1_sense)+i(Vq3_sense) — the current sourced from
+            // vin_dc1 into the primary bridge high-side switches. Forward
+            // power flow ⇒ positive mean ≈ Pout/(η·Vin). The previous test
+            // expected half-wave antisymmetry, which held for the bipolar
+            // tank current i(Vpri_sense) used before the §8a.5 fix but is
+            // physically wrong as a "DC input port" stream (mean ≈ 0 ⇒
+            // implies zero average power draw, which is false).
             auto waveforms = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm, 2);
             REQUIRE(!waveforms.empty());
             auto spiceI = waveforms[0].get_input_current().get_data();
             REQUIRE(spiceI.size() > 4);
 
-            // SPICE waveform should have both positive and negative portions
-            double iMax = *std::max_element(spiceI.begin(), spiceI.end());
-            double iMin = *std::min_element(spiceI.begin(), spiceI.end());
-            CHECK(iMax > 5.0);   // Peak > 5A (nominal ~16A)
-            CHECK(iMin < -5.0);  // Also negative (antisymmetric)
-            // Symmetry: |max| ≈ |min| within 20%
-            REQUIRE_THAT(std::abs(iMax), Catch::Matchers::WithinRel(std::abs(iMin), 0.20));
+            double mean = 0.0;
+            for (double v : spiceI) mean += v;
+            mean /= spiceI.size();
+            INFO("DC bus current mean: " << mean << " A (expected ~Pout/Vin)");
+            // 500 V × 20 A = 10 kW output, Vin = 800 V ⇒ Iin ≈ 12.5 A
+            // before losses (a bit more accounting for η<1).
+            CHECK(mean > 5.0);
+            CHECK(mean < 25.0);
         }
 
         SECTION("Waveform shape: save CSV for visual inspection") {
