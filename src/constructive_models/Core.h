@@ -73,7 +73,7 @@ class Core : public MAS::MagneticCore {
     double get_effective_volume() const;
     std::string get_reference() const;
 
-    std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
+    const std::vector<CoreGap>& get_gapping() const { return get_functional_description().get_gapping(); }
     double get_initial_permeability(double temperature = Defaults().ambientTemperature);
     static double get_initial_permeability(CoreMaterial coreMaterial, double temperature = Defaults().ambientTemperature);
     double get_effective_permeability(double temperature);

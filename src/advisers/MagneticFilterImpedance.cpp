@@ -23,7 +23,7 @@ namespace OpenMagnetics {
 // advisers/MagneticFilterInternal.h.
 
 std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto core = magnetic->get_core();
+    const auto& core = magnetic->get_core();
 
     double primaryCurrentRms = 0;
     // Phase 6 (perf): cache operating-points by const-ref to avoid OperatingPoint deep copies.

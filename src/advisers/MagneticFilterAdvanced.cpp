@@ -159,7 +159,7 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     // pass at the threshold. That hid model bugs (e.g. null _coreLossesModel)
     // and produced "always-acceptable" temperature scores. Let exceptions
     // propagate so callers can either handle them or fail loudly.
-    auto core = magnetic->get_core();
+    const auto& core = magnetic->get_core();
     double coreLosses = 0.0;
     double ambientTemperature = 25.0;
 

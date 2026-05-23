@@ -90,7 +90,7 @@ MagneticFilterEstimatedCost::MagneticFilterEstimatedCost(Inputs inputs) {
 }
 
 std::pair<bool, double> MagneticFilterEstimatedCost::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto core = magnetic->get_core();
+    const auto& core = magnetic->get_core();
 
     double primaryNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
     double estimatedNeededWindingArea = primaryNumberTurns * _estimatedParallels * _estimatedWireTotalArea * (inputs->get_design_requirements().get_turns_ratios().size() + 1);

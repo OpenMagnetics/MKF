@@ -338,7 +338,7 @@ MagneticFilterFringingFactor::MagneticFilterFringingFactor(Inputs inputs) {
 }
 
 std::pair<bool, double> MagneticFilterFringingFactor::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto core = magnetic->get_core();
+    const auto& core = magnetic->get_core();
 
     if (core.get_shape_family() == CoreShapeFamily::T) {
         return {true, 1};

@@ -99,7 +99,7 @@ MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
 }
 
 std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto core = magnetic->get_core();
+    const auto& core = magnetic->get_core();
 
     double bobbinFillingFactor;
     if (core.get_winding_windows().size() == 0)
