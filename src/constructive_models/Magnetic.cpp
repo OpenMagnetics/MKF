@@ -164,7 +164,12 @@ bool Magnetic::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
 }
 
 double Magnetic::calculate_saturation_current(double temperature) {
-    auto magneticFluxDensitySaturation = get_mutable_core().get_magnetic_flux_density_saturation();
+    // Forward the caller's `temperature` to both B_sat and permeability
+    // lookups. Previously only permeability was temperature-corrected,
+    // leaving B_sat at the material's default-temp value (~25 °C) — for
+    // typical ferrite that over-reports isat at hot operating points by
+    // ~20 % (B_sat: 0.50 T @ 25 °C → 0.39 T @ 100 °C).
+    auto magneticFluxDensitySaturation = get_mutable_core().get_magnetic_flux_density_saturation(temperature);
     auto numberTurns = get_mutable_coil().get_number_turns(0);
     auto effectiveArea = get_mutable_core().get_effective_area();
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
