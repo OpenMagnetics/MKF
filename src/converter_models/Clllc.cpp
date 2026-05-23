@@ -30,7 +30,6 @@
 //  * `get_extra_components_inputs` — STILL throws (needs Cr1/Cr2 RMS + peak
 //    waveforms; the analytical solver here populates extraCr*VoltageWaveforms,
 //    but the CAS-Inputs builder is left for the next phase).
-//  * AdvancedClllc::process — STILL throws.
 //  * Below-resonance operation: v1 assumes both bridges flip synchronously at
 //    the period boundary, which is exact at and above the primary resonant
 //    frequency. Below resonance, i_Lr2 zero-crosses inside the half period and
@@ -1566,12 +1565,33 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Clllc::get_extra_components_input
 }
 
 // =====================================================================
-// AdvancedClllc::process — TODO(clllc-v1)
+// AdvancedClllc::process
 // =====================================================================
+// Mirrors AdvancedLlc::process(): assemble DesignRequirements via the
+// inherited process_design_requirements() (which applies the
+// `desired*` overrides), pull the resolved turnsRatios + Lm out of the
+// merged DR, then feed those to process_operating_points() to get the
+// per-OP excitations. Package both into Inputs and return.
 Inputs AdvancedClllc::process() {
-    throw std::logic_error(
-        "AdvancedClllc::process not yet implemented. "
-        "Depends on Clllc::process_operating_points.");
+    auto designRequirements = process_design_requirements();
+
+    // Reuse the merged DR's turns ratios and magnetizing inductance for
+    // operating-point calculation (process_design_requirements() has
+    // already applied the desired* overrides).
+    std::vector<double> turnsRatios;
+    for (const auto& tr : designRequirements.get_turns_ratios()) {
+        turnsRatios.push_back(resolve_dimensional_values(tr));
+    }
+    if (turnsRatios.empty()) {
+        throw std::runtime_error("CLLLC: no turns ratios available (neither desired nor computed)");
+    }
+    double Lm = resolve_dimensional_values(designRequirements.get_magnetizing_inductance());
+
+    auto ops = process_operating_points(turnsRatios, Lm);
+    Inputs inputs;
+    inputs.set_design_requirements(designRequirements);
+    inputs.set_operating_points(ops);
+    return inputs;
 }
 
 } // namespace OpenMagnetics
