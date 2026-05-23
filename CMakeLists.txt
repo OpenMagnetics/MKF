@@ -604,12 +604,6 @@ if(INCLUDE_MKF_TESTS)
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestFlybackCoreAdviser\\.cpp$")
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestCoreAdviserCmcBug\\.cpp$")
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestCoreAdviserDmcHang\\.cpp$")
-    # TestCmcBugRepro.cpp: 5 frontend-agent bug repros for CMC. Stale against
-    # current MKF API (create_magnetic_dataset now takes 3 args; needs explicit
-    # OpenMagnetics:: qualifier on Magnetic/Inputs). Excluded until task #17
-    # folds these test cases into TestCoreAdviser.cpp + TestCmc.cpp using
-    # Catch2 SECTION + tags, at which point the bugs themselves get fixed.
-    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestCmcBugRepro\\.cpp$")
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestTopologyDabAdvanced\\.cpp$")
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestTopologyWaveforms\\.cpp$")
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestCircuitSimulatorPlecs\\.cpp$")
