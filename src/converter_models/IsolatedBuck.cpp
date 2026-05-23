@@ -539,17 +539,66 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
 
-            // §5.1 — converter-port stream is DC source / DC filtered outputs.
+            // §5.1 / §8a.5 converter-port stream:
+            //   input_voltage = v(vin_dc) (real DC rail, constant Vin).
+            //     NOT v(sw_node) (the switch node swings between vin_dc
+            //     during S1 on-time and 0 during S2 on-time / synchronous
+            //     freewheel; using it would be a square wave). Bug A
+            //     doesn't apply — we were already on vin_dc.
+            //   input_current = i(Vq1_sense) — zero-V sense source
+            //     upstream of S1's drain. S2 (sync rectifier) sits
+            //     between sw_node and GND, never sourcing from vin_dc,
+            //     so Vq1_sense captures the full converter draw.
+            //     i(Vin) (prior probe) was equivalent in the ideal case,
+            //     but the §8a.5 template inserts a dedicated sense
+            //     source so future snubber / bypass additions don't
+            //     silently pollute the input-current reading. Sign:
+            //     + terminal of Vq1_sense is vin_dc, so positive
+            //     i(Vq1_sense) is current flowing OUT of vin_dc INTO
+            //     S1 (non-negative in CCM/DCM).
+            //   Bug C: primary winding voltage probe is Bvpri_diff =
+            //     v(pri_in)-v(vpri_out) — a true differential winding
+            //     voltage. Secondary windings: each Lsec<i> is wired
+            //     `0 sec<i>_in`, so v(sec<i>_in) is already referenced
+            //     to GND = the other Lsec terminal, hence already
+            //     winding-only (no E-source needed). The post-rectifier
+            //     v(sec<i>_rect)/v(vout<i>) nodes are NOT used for
+            //     winding-voltage extraction (per
+            //     simulate_and_extract_operating_points mapping above).
             wf.set_input_voltage(getWaveform("vin_dc"));
-            // ngspice convention: i(Vsource) is positive when current flows
-            // from + terminal INTO the source; source-supplied current is
-            // therefore -i(Vin).
-            {
-                Waveform vinI = getWaveform("vin#branch");
-                auto& d = vinI.get_mutable_data();
-                for (auto& x : d) x = -x;
-                wf.set_input_current(vinI);
+
+            Waveform iIn = getWaveform("vq1_sense#branch");
+            if (iIn.get_data().empty()) {
+                throw std::runtime_error(
+                    "IsolatedBuck simulate_and_extract_topology_waveforms: "
+                    "missing i(Vq1_sense) — netlist/save mismatch");
             }
+
+            // ngspice SW1 model produces narrow di/dt spikes (~10^5 A)
+            // around switching edges that are a numerical artefact of
+            // the discontinuous RON/ROFF transition, not a physical
+            // bound. Clamp samples to ±2·max(|i(Vpri_sense)|) — the
+            // primary current sets the actual conduction-current
+            // scale; this preserves all real samples while discarding
+            // the artefact spikes that would poison the DC mean used
+            // downstream by §5.1.
+            //
+            // numerical guard against ngspice SW-model di/dt spikes
+            // (~10^5 A), not a physical bound.
+            {
+                auto& d = iIn.get_mutable_data();
+                Waveform iPri = getWaveform("vpri_sense#branch");
+                double iMax = 0.0;
+                for (double v : iPri.get_data()) iMax = std::max(iMax, std::abs(v));
+                if (iMax > 0.0) {
+                    const double clamp = 2.0 * iMax;
+                    for (auto& v : d) {
+                        if (v >  clamp) v =  clamp;
+                        if (v < -clamp) v = -clamp;
+                    }
+                }
+            }
+            wf.set_input_current(iIn);
 
             // Output[0] = primary buck output (non-isolated, across Cpri).
             // Reconstruct Iout = Vout/Rload (DC by design).
@@ -655,11 +704,22 @@ namespace OpenMagnetics {
         circuit << "* DC Input\n";
         circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
 
+        // §8a.5 input-current sense: a zero-V source upstream of S1's
+        // drain isolates the true switch-channel current. The
+        // synchronous-rectifier S2 sits sw_node -> 0 and does NOT draw
+        // from vin_dc, so the only path from vin_dc is through S1; a
+        // single ammeter there captures the converter draw. Sign:
+        // + terminal is vin_dc, - is q1_drain, so positive i(Vq1_sense)
+        // means current flowing OUT of vin_dc INTO S1 (non-negative in
+        // CCM/DCM).
+        circuit << "* §8a.5 input-current sense\n";
+        circuit << "Vq1_sense vin_dc q1_drain 0\n\n";
+
         // High-side switch (synchronous buck)
         circuit << "* High-side Switch\n";
         circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
         circuit << ".model SW1 SW VT=2.5 VH=0.5 RON=0.01 ROFF=1e6\n";
-        circuit << "S1 vin_dc sw_node pwm_ctrl 0 SW1\n\n";
+        circuit << "S1 q1_drain sw_node pwm_ctrl 0 SW1\n\n";
 
         // Low-side switch (synchronous rectification)
         circuit << "* Low-side Switch (Synchronous Rectifier)\n";
@@ -781,7 +841,7 @@ namespace OpenMagnetics {
         // - secX_in: secondary winding inputs
         // - secX_rect: secondary rectified node (before output cap)
         circuit << "* Output signals\n";
-        circuit << ".save v(sw_node) v(pri_in) v(vpri_out) v(vpri_diff) i(Vpri_sense) v(vin_dc) i(Vin)";
+        circuit << ".save v(sw_node) v(pri_in) v(vpri_out) v(vpri_diff) i(Vpri_sense) v(vin_dc) i(Vin) i(Vq1_sense)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) v(sec" << secIdx << "_rect) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }

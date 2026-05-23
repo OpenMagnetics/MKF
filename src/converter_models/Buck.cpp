@@ -334,7 +334,23 @@ namespace OpenMagnetics {
         circuit << "* DC Input\n";
         circuit << "Vin vin_src 0 " << inputVoltage << "\n";
         circuit << "Vin_sense vin_src vin_dc 0\n\n";
-        
+
+        // §8a.5 input-current sense: a zero-V source upstream of S1's
+        // drain isolates the true switch-channel current. Buck has no
+        // return path from elsewhere into vin_dc (D1 freewheels to GND,
+        // not back to vin_dc), so i(Vin_sense) and the switch current
+        // are equal in the ideal case — but the snubber is wired
+        // vin_dc <-> sw and DOES carry small charge/discharge current
+        // through Vin_sense. Per the §8a.5 template, the snubber and
+        // any future bypass branches stay on vin_dc and are excluded
+        // from the converter input-draw measurement by routing S1 from
+        // a separate q1_drain node and inserting Vq1_sense between
+        // vin_dc and q1_drain. Sign: + terminal is vin_dc, - is
+        // q1_drain, so positive i(Vq1_sense) means current flowing OUT
+        // of vin_dc INTO S1 (non-negative in CCM/DCM).
+        circuit << "* §8a.5 input-current sense\n";
+        circuit << "Vq1_sense vin_dc q1_drain 0\n\n";
+
         // PWM High-side Switch (ideal). PULSE timing emitted in scientific
         // notation so sub-µs values aren't silently rounded by std::fixed
         // (precision 6) to the wrong duty cycle / Fs (cf. Boost.cpp PWM
@@ -345,9 +361,11 @@ namespace OpenMagnetics {
                 << tOn << " " << period << std::fixed
                 << ")\n";
         circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH << "\n";
-        circuit << "S1 vin_dc sw pwm_ctrl 0 SW1\n";
+        circuit << "S1 q1_drain sw pwm_ctrl 0 SW1\n";
         // Snubber RC across the switch — absorbs di/dt at hard-switching
-        // events, improves convergence in CCM/DCM transitions.
+        // events, improves convergence in CCM/DCM transitions. Stays on
+        // vin_dc (NOT q1_drain) so its current is excluded from
+        // i(Vq1_sense) per §8a.5.
         circuit << "Rsnub_s1 vin_dc sw " << cfg.snubR << "\n"
                 << "Csnub_s1 vin_dc sw " << std::scientific << cfg.snubC << std::fixed << "\n\n";
         
@@ -391,7 +409,7 @@ namespace OpenMagnetics {
         //   - Winding-port: v(vpri_diff) i(Vl_sense)
         //   - Converter-port: v(vin_dc) v(sw) v(vout) i(Vl_sense)
         circuit << "* Output signals\n";
-        circuit << ".save v(vpri_diff) v(vin_dc) v(sw) v(vout) i(Vl_sense) i(Vin_sense)\n\n";
+        circuit << ".save v(vpri_diff) v(vin_dc) v(sw) v(vout) i(Vl_sense) i(Vin_sense) i(Vq1_sense)\n\n";
         
         // Solver options for convergence in switching circuits.
         // METHOD=GEAR + larger TRTOL handles the hard-switching event at
@@ -535,12 +553,63 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            // §5.0 converter-port stream — Vin (DC source), Iin (= switch
-            // current = inductor current during ON; for the converter
-            // input we report the average inductor current, which equals
-            // Iout for an ideal Buck), Vout / Iout (DC by design).
+            // §5.1 / §8a.5 converter-port stream:
+            //   input_voltage = v(vin_dc) (real DC rail, constant Vin).
+            //     NOT v(sw) — the switch-node is a square wave between
+            //     0 and Vin within a switching period and would be a
+            //     wrong "Input V" reading; bug A doesn't apply here
+            //     because we were already on vin_dc, but the §8a.5
+            //     audit confirms the choice.
+            //   input_current = i(Vq1_sense) — zero-V sense source
+            //     upstream of S1's drain. Captures only the on-time
+            //     switch-channel current. i(Vin_sense) (the prior probe)
+            //     ALSO includes the snubber Rsnub/Csnub charge-discharge
+            //     current (the snubber stays on vin_dc by design), so
+            //     it overstates the converter input draw by the snubber
+            //     contribution at each switching edge. Sign: + terminal
+            //     of Vq1_sense is vin_dc, so positive i(Vq1_sense) is
+            //     current flowing OUT of vin_dc INTO S1 (non-negative
+            //     in CCM/DCM).
+            //   Bug C: n/a — Buck is non-isolated, only one winding
+            //     (Lpri = L1 wired sw->l_in via Vl_sense -> vout). The
+            //     across-winding probe Bvpri_diff = v(l_in)-v(vout)
+            //     already provides the true winding-only differential
+            //     voltage for the winding-port stream.
             wf.set_input_voltage(getWaveform("vin_dc"));
-            wf.set_input_current(getWaveform("vin_sense#branch"));
+
+            Waveform iIn = getWaveform("vq1_sense#branch");
+            if (iIn.get_data().empty()) {
+                throw std::runtime_error(
+                    "Buck simulate_and_extract_topology_waveforms: "
+                    "missing i(Vq1_sense) — netlist/save mismatch");
+            }
+
+            // ngspice SW1 model produces narrow di/dt spikes (~10^5 A)
+            // around switching edges that are a numerical artefact of
+            // the discontinuous RON/ROFF transition, not a physical
+            // bound. Clamp samples to ±2·max(|i(Vl_sense)|) — the
+            // inductor current sets the actual conduction-current
+            // scale (during ON it IS the switch current); this
+            // preserves all real samples while discarding the artefact
+            // spikes that would poison the DC mean used downstream by
+            // §5.1.
+            //
+            // numerical guard against ngspice SW-model di/dt spikes
+            // (~10^5 A), not a physical bound.
+            {
+                auto& d = iIn.get_mutable_data();
+                Waveform iL = getWaveform("vl_sense#branch");
+                double iMax = 0.0;
+                for (double v : iL.get_data()) iMax = std::max(iMax, std::abs(v));
+                if (iMax > 0.0) {
+                    const double clamp = 2.0 * iMax;
+                    for (auto& v : d) {
+                        if (v >  clamp) v =  clamp;
+                        if (v < -clamp) v = -clamp;
+                    }
+                }
+            }
+            wf.set_input_current(iIn);
 
             wf.get_mutable_output_voltages().push_back(getWaveform("vout"));
             // Reconstruct Iout(t) = Vout(t) / Rload (DC by design).

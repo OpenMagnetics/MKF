@@ -539,12 +539,23 @@ namespace OpenMagnetics {
         // DC Input
         circuit << "* DC Input\n";
         circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
-        
+
+        // §8a.5 input-current sense: a zero-V source on the high-side
+        // of S1's drain isolates the true switch-channel current from
+        // the demag return current (which flows back into vin_dc via
+        // Ddemag) and any future snubber currents. i(Vin) would
+        // sum all of those, so it is NOT the converter's input draw.
+        // Sign convention: + terminal is vin_dc, - is q1_drain, so
+        // positive i(Vq1_sense) means current flowing OUT of vin_dc
+        // INTO S1 (the converter's on-time draw).
+        circuit << "* §8a.5 input-current sense\n";
+        circuit << "Vq1_sense vin_dc q1_drain 0\n\n";
+
         // PWM Main Switch
         circuit << "* PWM Main Switch\n";
         circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
         circuit << ".model SW1 SW VT=2.5 VH=0.5\n";
-        circuit << "S1 vin_dc pri_p pwm_ctrl 0 SW1\n\n";
+        circuit << "S1 q1_drain pri_p pwm_ctrl 0 SW1\n\n";
         
         // Primary current sense
         circuit << "* Primary current sense\n";
@@ -625,7 +636,7 @@ namespace OpenMagnetics {
         
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_in) i(Vpri_sense) v(demag_in) i(Vdemag_sense) v(vin_dc) i(Vin)";
+        circuit << ".save v(pri_in) i(Vpri_sense) v(demag_in) i(Vdemag_sense) v(vin_dc) i(Vin) i(Vq1_sense)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
@@ -787,15 +798,57 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            // §5.1 converter-port stream — vin_dc / -i(Vin) (DC source
-            // rail), NOT pri_in (primary winding top — bipolar AC,
-            // alternates between vin_dc when ON and reflected demag node
-            // when OFF) / i(Vpri_sense) (primary winding current, AC).
+            // §5.1 / §8a.5 converter-port stream:
+            //   input_voltage = v(vin_dc) (real DC rail, constant Vin).
+            //   input_current = i(Vq1_sense) — zero-V sense source on
+            //     S1's drain. Captures only the on-time switch-channel
+            //     current. i(Vin) (the prior probe) sums Vq1_sense PLUS
+            //     the demag-diode return current (Ddemag dumps energy
+            //     back into vin_dc during off-time) PLUS any future
+            //     snubber currents — not the converter's input draw.
+            //     Sign: + terminal of Vq1_sense is vin_dc, so positive
+            //     i(Vq1_sense) is current flowing OUT of vin_dc INTO
+            //     the switch (non-negative in CCM/DCM).
+            //   Bug C: the bare-node v(pri_in) probe used by the
+            //     per-winding extractor is already a true winding-only
+            //     voltage (Lpri is wired pri_in -> 0 — winding bottom
+            //     is the netlist reference), so no Evpri_w E-source
+            //     differential probe is needed. Likewise each secondary
+            //     Lsec<i> is wired sec<i>_in -> 0.
             wf.set_input_voltage(getWaveform("vin_dc"));
-            Waveform iInWf = getWaveform("vin#branch");
-            auto& iInData = iInWf.get_mutable_data();
-            for (auto& v : iInData) v = -v;
-            wf.set_input_current(iInWf);
+
+            Waveform iIn = getWaveform("vq1_sense#branch");
+            if (iIn.get_data().empty()) {
+                throw std::runtime_error(
+                    "SingleSwitchForward simulate_and_extract_topology_waveforms: "
+                    "missing i(Vq1_sense) — netlist/save mismatch");
+            }
+
+            // ngspice SW1 model produces narrow di/dt spikes (~10^5 A)
+            // around switching edges that are a numerical artefact of
+            // the discontinuous RON/ROFF transition, not a physical
+            // bound. Clamp samples to ±2·max(|i(Vpri_sense)|) — the
+            // primary current sets the actual conduction-current
+            // scale; this preserves all real samples while discarding
+            // the artefact spikes that would poison the DC mean used
+            // downstream by §5.1.
+            //
+            // numerical guard against ngspice SW-model di/dt spikes
+            // (~10^5 A), not a physical bound.
+            {
+                auto& d = iIn.get_mutable_data();
+                Waveform iPri = getWaveform("vpri_sense#branch");
+                double iMax = 0.0;
+                for (double v : iPri.get_data()) iMax = std::max(iMax, std::abs(v));
+                if (iMax > 0.0) {
+                    const double clamp = 2.0 * iMax;
+                    for (auto& v : d) {
+                        if (v >  clamp) v =  clamp;
+                        if (v < -clamp) v = -clamp;
+                    }
+                }
+            }
+            wf.set_input_current(iIn);
 
             for (size_t secIdx = 0; secIdx + 1 < turnsRatios.size(); ++secIdx) {
                 // turnsRatios[0] is the demagnetization-winding ratio;

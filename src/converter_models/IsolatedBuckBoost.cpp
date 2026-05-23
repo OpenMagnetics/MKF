@@ -459,12 +459,23 @@ namespace OpenMagnetics {
         // DC Input
         circuit << "* DC Input\n";
         circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
-        
+
+        // §8a.5 input-current sense: a zero-V source upstream of S1's
+        // drain isolates the true switch-channel current. IsolatedBuck-
+        // Boost is flyback-like: only S1 connects vin_dc to the
+        // primary; the primary diode Dpri returns to a NEGATIVE rail
+        // (vpri_out < 0), not to vin_dc, so no return path pollutes the
+        // input-current measurement. Sign: + terminal is vin_dc, - is
+        // q1_drain, so positive i(Vq1_sense) means current flowing OUT
+        // of vin_dc INTO S1 (non-negative in CCM/DCM).
+        circuit << "* §8a.5 input-current sense\n";
+        circuit << "Vq1_sense vin_dc q1_drain 0\n\n";
+
         // PWM Switch
         circuit << "* PWM Switch\n";
         circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
         circuit << ".model SW1 SW VT=2.5 VH=0.5 RON=0.01 ROFF=1e6\n";
-        circuit << "S1 vin_dc pri_p pwm_ctrl 0 SW1\n\n";
+        circuit << "S1 q1_drain pri_p pwm_ctrl 0 SW1\n\n";
         
         // Primary current sense - Vpri_sense only needed for switch node connectivity
         circuit << "* Primary current sense\n";
@@ -552,7 +563,7 @@ namespace OpenMagnetics {
 
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(vin_dc) i(Vin) v(pri_in) i(Vpri_sense) i(Vimag_sense) i(Lpri)"
+        circuit << ".save v(vin_dc) i(Vin) i(Vq1_sense) v(pri_in) i(Vpri_sense) i(Vimag_sense) i(Lpri)"
                 << " v(vpri_out) i(Vpri_out_sense)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
@@ -734,18 +745,68 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            // §5.1 converter-port stream — vin_dc / -i(Vin) (DC source
-            // rail and bus current). Earlier code reported v(pri_in)
-            // (post-switch node, pulses to 0 during OFF) and the
-            // magnetizing-current probe — those are winding-port
-            // quantities and belong to simulate_and_extract_operating_points.
-            // ngspice convention: i(Vin) is positive into Vin's + node,
-            // so converter draw is -i(Vin).
+            // §5.1 / §8a.5 converter-port stream:
+            //   input_voltage = v(vin_dc) (real DC rail, constant Vin).
+            //     NOT v(pri_in) — that's the post-switch / winding-top
+            //     node which pulses to ~Vin during ON and to ≈−|Vout|
+            //     during OFF (Dpri clamps to vpri_out). v(pri_in) is a
+            //     winding-port quantity. Bug A doesn't apply — we were
+            //     already on vin_dc.
+            //   input_current = i(Vq1_sense) — zero-V sense source
+            //     upstream of S1's drain. Only S1 connects vin_dc to
+            //     the primary winding; Dpri returns to the negative
+            //     vpri_out rail (not vin_dc), so i(Vq1_sense) captures
+            //     the full converter draw with no contamination from
+            //     the primary diode loop. i(Vin) (the prior probe,
+            //     sign-flipped) is numerically equivalent in the ideal
+            //     case, but the §8a.5 template inserts a dedicated
+            //     ammeter so future snubbers/bypass branches don't
+            //     silently pollute the input-current reading. Sign:
+            //     + terminal of Vq1_sense is vin_dc, so positive
+            //     i(Vq1_sense) is current flowing OUT of vin_dc INTO
+            //     S1 (non-negative in CCM/DCM).
+            //   Bug C: Lpri is wired `Lpri pri_in 0` — far terminal IS
+            //     GND, so v(pri_in) is a true differential winding-only
+            //     voltage (used by simulate_and_extract_operating_points
+            //     for the winding-port stream). Each Lsec<i> is wired
+            //     `Lsec<i> 0 sec<i>_in` — dot at GND, so v(sec<i>_in)
+            //     is also winding-only. No E-source needed on either
+            //     side. (The post-rectifier vout<i> nodes are NEVER
+            //     used as a winding-voltage probe.)
             wf.set_input_voltage(getWaveform("vin_dc"));
-            Waveform iInWf = getWaveform("vin#branch");
-            auto& iInData = iInWf.get_mutable_data();
-            for (auto& v : iInData) v = -v;
-            wf.set_input_current(iInWf);
+
+            Waveform iIn = getWaveform("vq1_sense#branch");
+            if (iIn.get_data().empty()) {
+                throw std::runtime_error(
+                    "IsolatedBuckBoost simulate_and_extract_topology_waveforms: "
+                    "missing i(Vq1_sense) — netlist/save mismatch");
+            }
+
+            // ngspice SW1 model produces narrow di/dt spikes (~10^5 A)
+            // around switching edges that are a numerical artefact of
+            // the discontinuous RON/ROFF transition, not a physical
+            // bound. Clamp samples to ±2·max(|i(Vpri_sense)|) — the
+            // primary current sets the actual conduction-current
+            // scale; this preserves all real samples while discarding
+            // the artefact spikes that would poison the DC mean used
+            // downstream by §5.1.
+            //
+            // numerical guard against ngspice SW-model di/dt spikes
+            // (~10^5 A), not a physical bound.
+            {
+                auto& d = iIn.get_mutable_data();
+                Waveform iPri = getWaveform("vpri_sense#branch");
+                double iMax = 0.0;
+                for (double v : iPri.get_data()) iMax = std::max(iMax, std::abs(v));
+                if (iMax > 0.0) {
+                    const double clamp = 2.0 * iMax;
+                    for (auto& v : d) {
+                        if (v >  clamp) v =  clamp;
+                        if (v < -clamp) v = -clamp;
+                    }
+                }
+            }
+            wf.set_input_current(iIn);
             
             // Output port: index 0 = primary buck-boost output (vpri_out,
             // ~Vin·D/(1-D)), indices 1..N = transformer secondaries

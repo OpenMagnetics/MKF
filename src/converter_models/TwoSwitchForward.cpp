@@ -577,7 +577,23 @@ namespace OpenMagnetics {
         // DC Input
         circuit << "* DC Input\n";
         circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
-        
+
+        // §8a.5 input-current sense: a zero-V source upstream of S1's
+        // drain isolates the true switch-channel current. The
+        // Two-Switch Forward has S1 high-side and S2 low-side switching
+        // together; the entire on-time bus current flows through S1, so
+        // a single ammeter there captures the converter's draw. D2
+        // (low-side clamp) returns demag current back to vin_dc during
+        // off-time and is intentionally left on vin_dc so it does NOT
+        // appear in i(Vq1_sense). D1 (high-side clamp 0 -> sw1_out)
+        // is across S1's output, so it also does not flow through
+        // Vq1_sense.
+        // Sign convention: + terminal is vin_dc, - is q1_drain, so
+        // positive i(Vq1_sense) means current flowing OUT of vin_dc
+        // INTO S1 (non-negative in CCM/DCM).
+        circuit << "* §8a.5 input-current sense\n";
+        circuit << "Vq1_sense vin_dc q1_drain 0\n\n";
+
         // Two-Switch Forward uses two switches: S1 (high-side) and S2 (low-side)
         // Both switches turn on and off together
         circuit << "* PWM Switches (both controlled together)\n";
@@ -585,10 +601,10 @@ namespace OpenMagnetics {
         circuit << ".model SW1 SW VT=2.5 VH=0.5 RON=0.1 ROFF=1MEG\n";
         // Use simple diode model without junction capacitance for better convergence
         circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n\n";
-        
+
         // High-side switch S1 with clamping diode D1
         circuit << "* High-side switch S1 and clamp diode D1\n";
-        circuit << "S1 vin_dc sw1_out pwm_ctrl 0 SW1\n";
+        circuit << "S1 q1_drain sw1_out pwm_ctrl 0 SW1\n";
         circuit << "D1 0 sw1_out DIDEAL\n\n";
         
         // Primary current sense
@@ -621,6 +637,20 @@ namespace OpenMagnetics {
         circuit << "* Low-side switch S2 and clamp diode D2\n";
         circuit << "S2 pri_gnd 0 pwm_ctrl 0 SW1\n";
         circuit << "D2 pri_gnd vin_dc DIDEAL\n\n";
+
+        // §8a.5 differential winding-voltage probes. The Two-Switch
+        // primary winding sits between pri_in (top of S1/Vpri_sense
+        // stack) and pri_gnd (top of S2) — NEITHER endpoint is the
+        // netlist reference (ground), so the bare-node v(pri_in) probe
+        // used previously lumped the winding voltage with the variable
+        // pri_gnd offset (= 0 during on-time when S2 conducts, = Vin
+        // during off-time when D2 clamps). The E-source Evpri_w exposes
+        // v(pri_in) - v(pri_gnd) as a pure winding-only differential.
+        // The secondary windings Lsec<i> are wired sec<i>_in -> 0 so
+        // their bare-node probes are already winding-only — Bug C does
+        // not require secondary E-sources here.
+        circuit << "* §8a.5 differential primary winding probe\n";
+        circuit << "Evpri_w vpri_w 0 pri_in pri_gnd 1\n\n";
         
         // Output stages for each secondary
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
@@ -656,7 +686,7 @@ namespace OpenMagnetics {
         
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_in) i(Vpri_sense) v(vin_dc) i(Vin)";
+        circuit << ".save v(pri_in) v(pri_gnd) v(vpri_w) i(Vpri_sense) v(vin_dc) i(Vin) i(Vq1_sense)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
@@ -712,9 +742,14 @@ namespace OpenMagnetics {
                 }
                 
                 NgspiceRunner::WaveformNameMapping waveformMapping;
-                
-                // Primary winding
-                waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vpri_sense#branch"}});
+
+                // Primary winding — §8a.5 Bug C: read differential
+                // v(vpri_w) (Evpri_w exposes pri_in - pri_gnd) instead
+                // of bare v(pri_in), because pri_gnd is at a non-zero
+                // reference (0 during S2 on-time, Vin during off-time
+                // via D2 clamp), so v(pri_in) lumps the winding with
+                // that offset.
+                waveformMapping.push_back({{"voltage", "vpri_w"}, {"current", "vpri_sense#branch"}});
                 
                 // Secondary windings
                 for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
@@ -810,13 +845,53 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            // §5.1 converter-port stream — vin_dc / -i(Vin) (DC source
-            // rail), NOT pri_in / i(Vpri_sense) (primary winding, AC).
+            // §5.1 / §8a.5 converter-port stream:
+            //   input_voltage = v(vin_dc) (real DC rail, constant Vin).
+            //   input_current = i(Vq1_sense) — zero-V sense source
+            //     upstream of S1's drain. Two-Switch Forward has S1
+            //     high-side + S2 low-side switching together; the full
+            //     on-time bus current flows through S1, so a single
+            //     ammeter captures the converter's draw. i(Vin) (the
+            //     prior probe) sums Vq1_sense PLUS the D2-clamp return
+            //     current (D2 dumps demag energy back into vin_dc
+            //     during off-time) — not the converter's input draw.
+            //     Sign: + terminal of Vq1_sense is vin_dc, so positive
+            //     i(Vq1_sense) is current flowing OUT of vin_dc INTO
+            //     S1 (non-negative in CCM/DCM).
             wf.set_input_voltage(getWaveform("vin_dc"));
-            Waveform iInWf = getWaveform("vin#branch");
-            auto& iInData = iInWf.get_mutable_data();
-            for (auto& v : iInData) v = -v;
-            wf.set_input_current(iInWf);
+
+            Waveform iIn = getWaveform("vq1_sense#branch");
+            if (iIn.get_data().empty()) {
+                throw std::runtime_error(
+                    "TwoSwitchForward simulate_and_extract_topology_waveforms: "
+                    "missing i(Vq1_sense) — netlist/save mismatch");
+            }
+
+            // ngspice SW1 model produces narrow di/dt spikes (~10^5 A)
+            // around switching edges that are a numerical artefact of
+            // the discontinuous RON/ROFF transition, not a physical
+            // bound. Clamp samples to ±2·max(|i(Vpri_sense)|) — the
+            // primary current sets the actual conduction-current
+            // scale; this preserves all real samples while discarding
+            // the artefact spikes that would poison the DC mean used
+            // downstream by §5.1.
+            //
+            // numerical guard against ngspice SW-model di/dt spikes
+            // (~10^5 A), not a physical bound.
+            {
+                auto& d = iIn.get_mutable_data();
+                Waveform iPri = getWaveform("vpri_sense#branch");
+                double iMax = 0.0;
+                for (double v : iPri.get_data()) iMax = std::max(iMax, std::abs(v));
+                if (iMax > 0.0) {
+                    const double clamp = 2.0 * iMax;
+                    for (auto& v : d) {
+                        if (v >  clamp) v =  clamp;
+                        if (v < -clamp) v = -clamp;
+                    }
+                }
+            }
+            wf.set_input_current(iIn);
 
             // TwoSwitchForward has no demag winding — every entry in
             // turnsRatios is a physical secondary (numSec = size()).
