@@ -1432,4 +1432,29 @@ TEST_CASE("Test_Cmc_AdviserMustNotPickOversizedToroid_WizardDefaults",
     }
 }
 
+TEST_CASE("Test_Cmc_LibMkfWrapperPath",
+          "[converter-model][cmc-topology][adviser][regression]") {
+
+    SECTION("libMKF.cpp custom filter flow returns results for wizard defaults") {
+        OpenMagnetics::CommonModeChoke cmc(makeCmcJson(230.0, 5.0, 50.0, 2,
+                                                       1000.0, 150e3));
+        auto inputs = cmc.process();
+
+        // Mimic the libMKF.cpp custom filter flow for suppression applications
+        std::vector<OpenMagnetics::MagneticFilterOperation> cmcFilterFlow{
+            OpenMagnetics::MagneticFilterOperation(OpenMagnetics::MagneticFilters::CORE_MINIMUM_IMPEDANCE, true, true, true, 2.0),
+            OpenMagnetics::MagneticFilterOperation(OpenMagnetics::MagneticFilters::COST,       true, true, 1.0),
+            OpenMagnetics::MagneticFilterOperation(OpenMagnetics::MagneticFilters::LOSSES,     true, true, 1.0),
+            OpenMagnetics::MagneticFilterOperation(OpenMagnetics::MagneticFilters::DIMENSIONS, true, true, 1.0),
+            OpenMagnetics::MagneticFilterOperation(OpenMagnetics::MagneticFilters::LEAKAGE_INDUCTANCE, true, true, 1.0),
+            OpenMagnetics::MagneticFilterOperation(OpenMagnetics::MagneticFilters::TURN_COUNT, true, false, 1.0),
+        };
+
+        MagneticAdviser adviser;
+        auto results = adviser.get_advised_magnetic(inputs, cmcFilterFlow, 6);
+        REQUIRE(!results.empty());
+        std::cout << "[libMKF-path] returned " << results.size() << " result(s)\n";
+    }
+}
+
 } // anonymous namespace

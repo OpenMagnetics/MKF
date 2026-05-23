@@ -53,16 +53,60 @@ Coil get_dummy_coil(Inputs inputs) {
 
     // Set round wire with diameter to two times the skin depth 
     auto wire = Wire::get_wire_for_frequency(frequency, temperature, true);
-    Winding primaryWinding;
-    primaryWinding.set_isolation_side(IsolationSide::PRIMARY);
-    primaryWinding.set_name("primary");
-    primaryWinding.set_number_parallels(1);
-    primaryWinding.set_number_turns(1);
-    primaryWinding.set_wire(wire);
+
+    // Determine the dummy-coil winding count from the operating point.
+    //
+    // Default = 1 winding (the historical behaviour). Char tests for
+    // flyback/forward/push-pull/etc. were recorded against this shape;
+    // widening the dummy coil for those topologies pushes new core/
+    // material combos through MagnetizingInductance + CoreLosses and
+    // exposes NaN-handling bugs (visible as "Too large losses" thrown
+    // out of MagneticAdviser).
+    //
+    // Exception: for CMCs the single-winding dummy is wrong — Magnetizing
+    // Inductance routes through the single-winding path, treats the full
+    // line current as magnetising current, and rejects every candidate
+    // for false saturation. CMCs need an N-winding dummy so the
+    // can_be_common_mode_choke path is taken and the differential
+    // magnetising current (tiny) is what feeds saturation.
+    //
+    // Use Inputs::can_be_common_mode_choke as the discriminator — it's
+    // the same check MagnetizingInductance uses downstream, so the
+    // two stay in sync by construction.
+    size_t numberOfWindings = 1;
+    if (!operatingPoints.empty() &&
+        Inputs::can_be_common_mode_choke(operatingPoints[0])) {
+        numberOfWindings = operatingPoints[0].get_excitations_per_winding().size();
+        if (numberOfWindings < 1) numberOfWindings = 1;
+    }
+
+    // First winding is the primary; any additional windings are secondaries
+    // with distinct names and SECONDARY isolation side. The original draft
+    // of this loop made every winding identical ("primary"/PRIMARY), which
+    // caused downstream code that looks up windings by name to either
+    // collide on the duplicated key or fail to find the "secondary" the
+    // CMC path expects — observed as a SEGV inside MagnetizingInductance
+    // when called on a Mas built from this dummy coil.
+    std::vector<Winding> windings;
+    for (size_t w = 0; w < numberOfWindings; ++w) {
+        Winding winding;
+        if (w == 0) {
+            winding.set_isolation_side(IsolationSide::PRIMARY);
+            winding.set_name("primary");
+        } else {
+            winding.set_isolation_side(IsolationSide::SECONDARY);
+            winding.set_name(numberOfWindings == 2 ? "secondary"
+                                                   : "secondary_" + std::to_string(w));
+        }
+        winding.set_number_parallels(1);
+        winding.set_number_turns(1);
+        winding.set_wire(wire);
+        windings.push_back(winding);
+    }
 
     Coil coil;
     coil.set_bobbin(DUMMY_SENTINEL_NAME);
-    coil.set_functional_description({primaryWinding});
+    coil.set_functional_description(windings);
     return coil;
 }
 
@@ -485,6 +529,29 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
         }
     }
 
+    // For suppression applications (CMC/DMC), the impedance requirement is the
+    // primary constraint. Convert the most stringent |Z|≥Z_min@f into an
+    // equivalent inductance L_eq = Z_min / (2πf) and use that to size turns.
+    // Without this, a CMC with L=100µH and Z_req=100Ω@100kHz gets N turns
+    // for 100µH (Z≈63Ω) and is then rejected by the impedance filter.
+    double suppressionEquivalentInductance = 0.0;
+    auto minimumImpedanceOpt = inputs.get_design_requirements().get_minimum_impedance();
+    if (minimumImpedanceOpt && !minimumImpedanceOpt->empty()) {
+        for (const auto& zSpec : minimumImpedanceOpt.value()) {
+            double f = zSpec.get_frequency();
+            double z = zSpec.get_impedance().get_magnitude();
+            if (f > 0) {
+                double l_eq = z / (2.0 * std::numbers::pi * f);
+                suppressionEquivalentInductance = std::max(suppressionEquivalentInductance, l_eq);
+            }
+        }
+    }
+    auto reqAppOpt = inputs.get_design_requirements().get_application();
+    bool isSuppression = reqAppOpt.has_value() && reqAppOpt.value() == Application::INTERFERENCE_SUPPRESSION;
+    std::cerr << "[CMC-DEBUG] add_initial_turns_by_inductance: isSuppression=" << isSuppression
+              << " L_eq=" << suppressionEquivalentInductance
+              << " magnetics=" << (*magneticsWithScoring).size() << "\n";
+
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
 
         Core core = (*magneticsWithScoring)[i].first.get_core();
@@ -506,6 +573,18 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 } else {
                     initialNumberTurns = 5;
                 }
+            } else if (isSuppression && suppressionEquivalentInductance > 0.0) {
+                // Use impedance-derived inductance for suppression apps
+                auto reqCopy = inputs.get_design_requirements();
+                DimensionWithTolerance lmSpec;
+                lmSpec.set_minimum(suppressionEquivalentInductance);
+                reqCopy.set_magnetizing_inductance(lmSpec);
+                Inputs tempInputs(inputs);
+                tempInputs.set_design_requirements(reqCopy);
+                initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &tempInputs, DimensionalValues::MINIMUM);
+                std::cerr << "[CMC-DEBUG] suppression path: core=" << core.get_name().value_or("?") 
+                          << " L_eq=" << suppressionEquivalentInductance 
+                          << " turns=" << initialNumberTurns << "\n";
             } else {
                 // For inductors/flybacks, calculate from inductance requirement
                 initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
@@ -545,10 +624,16 @@ std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vec
         try {
             initialNumberTurns = impedance.calculate_minimum_number_turns(magnetic, inputs);
             if (initialNumberTurns < 1) {
+                logEntry("add_initial_turns_by_impedance: core " + core.get_name().value_or("?") + " returned turns=" + std::to_string(initialNumberTurns) + ", skipping", "CoreAdviser", 2);
                 continue;
             }
         }
-        catch (...) { // XC-3 NOTE: consider catching std::exception for diagnostics
+        catch (const std::exception& e) {
+            logEntry(std::string("add_initial_turns_by_impedance: core ") + core.get_name().value_or("?") + " threw: " + e.what(), "CoreAdviser", 2);
+            continue;
+        }
+        catch (...) {
+            logEntry("add_initial_turns_by_impedance: core " + core.get_name().value_or("?") + " threw unknown exception", "CoreAdviser", 2);
             continue;
         }
         if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {

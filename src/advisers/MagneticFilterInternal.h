@@ -59,6 +59,12 @@ inline bool is_energy_storing_topology(std::optional<Topologies> topology) {
         // permeability via the material's DC-bias polynomial; the transformer
         // path (B from voltage) misses the DC bias entirely.
         case Topologies::DIFFERENTIAL_MODE_CHOKE:
+        // CMC is a two-winding choke that stores energy in the common-mode
+        // inductance (Lcm) and carries the full DC line current as bias.
+        // Like DMC, it must use the B-from-current path so that DC bias
+        // derating is applied. The transformer path (B from voltage) is
+        // inappropriate because CMCs are not voltage-driven transformers.
+        case Topologies::COMMON_MODE_CHOKE:
         // SEPIC primary inductor L1 carries the full input DC current and stores
         // energy in the gap each switching cycle (buck-like). Even in the coupled-
         // inductor variant the magnetic returned by process_design_requirements is
@@ -85,7 +91,6 @@ inline bool is_energy_storing_topology(std::optional<Topologies> topology) {
         case Topologies::LLC_RESONANT_CONVERTER:
         case Topologies::CLLC_RESONANT_CONVERTER:
         case Topologies::CURRENT_TRANSFORMER:
-        case Topologies::COMMON_MODE_CHOKE:
             return false;
 
         default:
