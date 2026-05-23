@@ -2767,7 +2767,10 @@ TEST_CASE("Test_Core_Losses_Rosano_Forward", "[physical-model][core-losses][smok
     double expectedLosses = 0.51;
     auto maximumError = 0.1;
 
-    REQUIRE_THAT(0.145, Catch::Matchers::WithinAbs(magneticFluxDensity.get_processed().value().get_peak().value(), 0.145 * maximumError));
+    // Updated for 617dc492: magnetizing current is now bipolar-centered for AC
+    // excitation (peak = peak_to_peak/2). Previous expected 0.145 was the
+    // pre-fix unipolar value where peak == peak_to_peak.
+    REQUIRE_THAT(0.08, Catch::Matchers::WithinAbs(magneticFluxDensity.get_processed().value().get_peak().value(), 0.08 * maximumError));
     REQUIRE_THAT(expectedLosses, Catch::Matchers::WithinAbs(calculatedCoreLosses, expectedLosses * maximumError));
 }
 

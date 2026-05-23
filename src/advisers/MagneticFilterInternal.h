@@ -188,7 +188,7 @@ struct CoreLossesPick {
     double value;
 };
 inline CoreLossesPick compute_core_losses_with_negative_guard(
-    Core& core, OperatingPointExcitation& excitation, double temperature,
+    const Core& core, OperatingPointExcitation& excitation, double temperature,
     const std::shared_ptr<CoreLossesModel>& steinmetz,
     const std::shared_ptr<CoreLossesModel>& proprietary)
 {
