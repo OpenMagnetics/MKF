@@ -7,15 +7,37 @@ loader implementation.
 
 ## Why this exists
 
-The MKF test binary is ~1 GB. Most of that is .rodata from huge inline
-JSON literals — Magnetic, Inputs, Mas — pasted as `R"({...})"` raw
-strings inside .cpp files. Each such literal:
+Inline JSON literals — Magnetic, Inputs, Mas — pasted as `R"({...})"`
+raw strings inside .cpp files obscure the test logic by overwhelming
+it with data. Moving them into NDJSON keeps the data separate from
+the code.
 
-  * is parsed at compile time (slow on heavy test TUs),
-  * is embedded in the binary (bloats disk / debug info),
-  * obscures the actual test logic by overwhelming it with data.
+## What it doesn't buy (measured)
 
-Moving the big literals into NDJSON keeps them as data, not code.
+The original framing of this work claimed PCH + fixture migration
+together would shrink test compile time 5-10x. POC migration of
+TestPainter.cpp's 15 KB literal (commit `78f41dd8`) measured:
+
+| | TestPainter.cpp.o | MKF_tests binary |
+|---|---:|---:|
+| Pre (inline literal) | 73.4 s | 25,506,048 B |
+| Post (fixture lookup) | 71.5 s | 25,489,448 B |
+| Delta | −1.9 s (~2.6 %) | −16,600 B |
+
+**PCH was doing the heavy lifting** — MAS.hpp / Catch2 / json are PCH'd,
+so a long string literal is just .rodata, not template machinery. The
+binary-size win is real but modest (~150 B per JSON line moved out).
+
+The remaining good reasons to migrate a fixture are:
+
+  * **Readability** — the test logic surfaces in a sea of inline JSON.
+  * **Reuse across test files** — the same fixture used by multiple
+    tests deduplicates.
+  * **Diff-friendliness** — JSON in `.ndjson` diffs cleanly; raw
+    strings in `.cpp` don't.
+
+Migrate on a case-by-case basis when one of those is real; don't bulk
+migrate.
 
 ## On-disk layout
 
