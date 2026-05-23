@@ -69,42 +69,14 @@ class CoreCrossReferencer {
             _limit = value;
         }
 
-    class MagneticCoreFilter {
+    // Phase 7 C: data members + add/set boilerplate moved to the
+    // templated CrossReferencerFilterBase<FilterEnum> in
+    // CrossReferencerCommon.h. Inheriting publicly preserves the
+    // `MagneticCoreFilter::*` access pattern that concrete filters and
+    // apply_filters() rely on.
+    class MagneticCoreFilter : public CrossReferencerFilterBase<CoreCrossReferencerFilters> {
         public:
-            std::map<CoreCrossReferencerFilters, std::map<std::string, double>>* _scorings;
-            std::map<CoreCrossReferencerFilters, std::map<std::string, bool>>* _validScorings;
-            std::map<CoreCrossReferencerFilters, std::map<std::string, double>>* _scoredValues;
-            std::map<CoreCrossReferencerFilters, std::map<std::string, bool>>* _filterConfiguration;
-
-            void add_scoring(std::string name, CoreCrossReferencerFilters filter, double scoring) {
-                if (std::isnan(scoring)) {
-                    throw std::invalid_argument("scoring cannot be nan");
-                }
-
-                if (scoring != -1) {
-                    (*_validScorings)[filter][name] = true;
-                    (*_scorings)[filter][name] = scoring;
-                }
-            }
-            void add_scored_value(std::string name, CoreCrossReferencerFilters filter, double scoredValues) {
-                if (scoredValues != -1) {
-                    (*_scoredValues)[filter][name] = scoredValues;
-                }
-            }
-            void set_scorings(std::map<CoreCrossReferencerFilters, std::map<std::string, double>>* scorings) {
-                _scorings = scorings;
-            }
-            void set_valid_scorings(std::map<CoreCrossReferencerFilters, std::map<std::string, bool>>* validScorings) {
-                _validScorings = validScorings;
-            }
-            void set_scored_value(std::map<CoreCrossReferencerFilters, std::map<std::string, double>>* scoredValues) {
-                _scoredValues = scoredValues;
-            }
-            void set_filter_configuration(std::map<CoreCrossReferencerFilters, std::map<std::string, bool>>* filterConfiguration) {
-                _filterConfiguration = filterConfiguration;
-            }
-            MagneticCoreFilter(){
-            }
+            MagneticCoreFilter() = default;
             std::vector<std::pair<Core, double>> filter_core(std::vector<Core> unfilteredCores, Core referenceCore, Inputs inputs, double weight=1);
     };
     

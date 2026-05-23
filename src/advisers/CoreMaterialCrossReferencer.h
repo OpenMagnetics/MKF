@@ -66,37 +66,14 @@ class CoreMaterialCrossReferencer {
             _onlyManufacturer = onlyManufacturer;
         }
 
-    class MagneticCoreFilter {
+    // Phase 7 C: data members + add/set boilerplate moved to the
+    // templated CrossReferencerFilterBase<FilterEnum> in
+    // CrossReferencerCommon.h. The base carries an extra `_validScorings`
+    // pointer that CMCR doesn't use — left as nullptr, which add_scoring()
+    // skips, so behaviour is byte-identical to the old CMCR inline body.
+    class MagneticCoreFilter : public CrossReferencerFilterBase<CoreMaterialCrossReferencerFilters> {
         public:
-            std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>>* _scorings;
-            std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>>* _scoredValues;
-            std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, bool>>* _filterConfiguration;
-
-            void add_scoring(std::string name, CoreMaterialCrossReferencerFilters filter, double scoring) {
-                if (std::isnan(scoring)) {
-                    throw std::invalid_argument("scoring cannot be nan");
-                }
-
-                if (scoring != -1) {
-                    (*_scorings)[filter][name] = scoring;
-                }
-            }
-            void add_scored_value(std::string name, CoreMaterialCrossReferencerFilters filter, double scoredValues) {
-                if (scoredValues != -1) {
-                    (*_scoredValues)[filter][name] = scoredValues;
-                }
-            }
-            void set_scorings(std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>>* scorings) {
-                _scorings = scorings;
-            }
-            void set_scored_value(std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>>* scoredValues) {
-                _scoredValues = scoredValues;
-            }
-            void set_filter_configuration(std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, bool>>* filterConfiguration) {
-                _filterConfiguration = filterConfiguration;
-            }
-            MagneticCoreFilter(){
-            }
+            MagneticCoreFilter() = default;
             std::vector<std::pair<CoreMaterial, double>> filter_core_materials(std::vector<CoreMaterial> unfilteredCoreMaterials, CoreMaterial referenceCoreMaterial, double temperature, double weight=1);
     };
     

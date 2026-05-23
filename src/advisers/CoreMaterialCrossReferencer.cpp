@@ -412,27 +412,10 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
     MagneticCoreFilterVolumetricLosses filterVolumetricLosses(coreLossesModel);
     MagneticCoreFilterResistivity filterResistivity;
 
-    filterInitialPermeability.set_scorings(&_scorings);
-    filterInitialPermeability.set_scored_value(&_scoredValues);
-    filterInitialPermeability.set_filter_configuration(&_filterConfiguration);
-    filterRemanence.set_scorings(&_scorings);
-    filterRemanence.set_scored_value(&_scoredValues);
-    filterRemanence.set_filter_configuration(&_filterConfiguration);
-    filterCoerciveForce.set_scorings(&_scorings);
-    filterCoerciveForce.set_scored_value(&_scoredValues);
-    filterCoerciveForce.set_filter_configuration(&_filterConfiguration);
-    filterSaturation.set_scorings(&_scorings);
-    filterSaturation.set_scored_value(&_scoredValues);
-    filterSaturation.set_filter_configuration(&_filterConfiguration);
-    filterCurieTemperature.set_scorings(&_scorings);
-    filterCurieTemperature.set_scored_value(&_scoredValues);
-    filterCurieTemperature.set_filter_configuration(&_filterConfiguration);
-    filterVolumetricLosses.set_scorings(&_scorings);
-    filterVolumetricLosses.set_scored_value(&_scoredValues);
-    filterVolumetricLosses.set_filter_configuration(&_filterConfiguration);
-    filterResistivity.set_scorings(&_scorings);
-    filterResistivity.set_scored_value(&_scoredValues);
-    filterResistivity.set_filter_configuration(&_filterConfiguration);
+    wire_cross_referencer_filters<CoreMaterialCrossReferencerFilters>(
+        {&filterInitialPermeability, &filterRemanence, &filterCoerciveForce, &filterSaturation,
+         &filterCurieTemperature, &filterVolumetricLosses, &filterResistivity},
+        &_scorings, /*validScorings=*/nullptr, &_scoredValues, &_filterConfiguration);
 
     std::vector<std::pair<CoreMaterial, double>> rankedCoreMaterials;
 

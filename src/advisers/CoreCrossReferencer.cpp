@@ -619,26 +619,9 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
     MagneticCoreFilterEffectiveArea filterEffectiveArea; // CCR-BUG-1 FIX: names now match types
     MagneticCoreFilterEnvelopingVolume filterEnvelopingVolume;
 
-    filterPermeance.set_scorings(&_scorings);
-    filterPermeance.set_valid_scorings(&_validScorings);
-    filterPermeance.set_scored_value(&_scoredValues);
-    filterPermeance.set_filter_configuration(&_filterConfiguration);
-    filterVolumetricLosses.set_scorings(&_scorings);
-    filterVolumetricLosses.set_valid_scorings(&_validScorings);
-    filterVolumetricLosses.set_scored_value(&_scoredValues);
-    filterVolumetricLosses.set_filter_configuration(&_filterConfiguration);
-    filterWindingWindowArea.set_scorings(&_scorings);
-    filterWindingWindowArea.set_valid_scorings(&_validScorings);
-    filterWindingWindowArea.set_scored_value(&_scoredValues);
-    filterWindingWindowArea.set_filter_configuration(&_filterConfiguration);
-    filterEffectiveArea.set_scorings(&_scorings);
-    filterEffectiveArea.set_valid_scorings(&_validScorings);
-    filterEffectiveArea.set_scored_value(&_scoredValues);
-    filterEffectiveArea.set_filter_configuration(&_filterConfiguration);
-    filterEnvelopingVolume.set_scorings(&_scorings);
-    filterEnvelopingVolume.set_valid_scorings(&_validScorings);
-    filterEnvelopingVolume.set_scored_value(&_scoredValues);
-    filterEnvelopingVolume.set_filter_configuration(&_filterConfiguration);
+    wire_cross_referencer_filters<CoreCrossReferencerFilters>(
+        {&filterPermeance, &filterVolumetricLosses, &filterWindingWindowArea, &filterEffectiveArea, &filterEnvelopingVolume},
+        &_scorings, &_validScorings, &_scoredValues, &_filterConfiguration);
 
     std::vector<std::pair<Core, double>> rankedCores = *cores;
 

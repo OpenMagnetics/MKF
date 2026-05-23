@@ -204,4 +204,74 @@ std::map<std::string, std::map<FilterEnum, double>> compute_normalized_scorings(
     return swappedScorings;
 }
 
+// Phase 7 (Option C): templated skeleton of the per-filter base class
+// that both CoreCrossReferencer::MagneticCoreFilter and CoreMaterialCross
+// Referencer::MagneticCoreFilter open-code. They differ only in
+// (a) the FilterEnum keyed on (CoreCrossReferencerFilters vs
+//     CoreMaterialCrossReferencerFilters), and
+// (b) whether `_validScorings` exists (CCR has it; CMCR doesn't, and
+//     its add_scoring() is a single-write to `_scorings`).
+//
+// We unify on the CCR shape (carries `_validScorings`); CMCR-derived
+// filters can ignore it — the map stays empty, no behavioural change.
+// The two existing inner MagneticCoreFilter classes become thin
+// derivations so that concrete filter classes don't need their
+// inheritance edited.
+template <typename FilterEnum>
+class CrossReferencerFilterBase {
+  public:
+    std::map<FilterEnum, std::map<std::string, double>>* _scorings = nullptr;
+    std::map<FilterEnum, std::map<std::string, bool>>*   _validScorings = nullptr;
+    std::map<FilterEnum, std::map<std::string, double>>* _scoredValues = nullptr;
+    std::map<FilterEnum, std::map<std::string, bool>>*   _filterConfiguration = nullptr;
+
+    void add_scoring(std::string name, FilterEnum filter, double scoring) {
+        if (std::isnan(scoring)) {
+            throw std::invalid_argument("scoring cannot be nan");
+        }
+        if (scoring != -1) {
+            if (_validScorings) (*_validScorings)[filter][name] = true;
+            (*_scorings)[filter][name] = scoring;
+        }
+    }
+    void add_scored_value(std::string name, FilterEnum filter, double scoredValues) {
+        if (scoredValues != -1) {
+            (*_scoredValues)[filter][name] = scoredValues;
+        }
+    }
+    void set_scorings(std::map<FilterEnum, std::map<std::string, double>>* scorings) {
+        _scorings = scorings;
+    }
+    void set_valid_scorings(std::map<FilterEnum, std::map<std::string, bool>>* validScorings) {
+        _validScorings = validScorings;
+    }
+    void set_scored_value(std::map<FilterEnum, std::map<std::string, double>>* scoredValues) {
+        _scoredValues = scoredValues;
+    }
+    void set_filter_configuration(std::map<FilterEnum, std::map<std::string, bool>>* filterConfiguration) {
+        _filterConfiguration = filterConfiguration;
+    }
+};
+
+// Phase 7 (Option C, chunk ii): wire the four shared scoring maps onto
+// each filter instance in one call. Replaces the 4-call boilerplate per
+// filter (×5-6 filters) at the head of each apply_filters() body.
+// `validScorings` is nullable — passing nullptr matches the CMCR shape
+// (where add_scoring() skips the valid-scorings write).
+template <typename FilterEnum>
+void wire_cross_referencer_filters(
+    std::initializer_list<CrossReferencerFilterBase<FilterEnum>*> filters,
+    std::map<FilterEnum, std::map<std::string, double>>* scorings,
+    std::map<FilterEnum, std::map<std::string, bool>>*   validScorings,
+    std::map<FilterEnum, std::map<std::string, double>>* scoredValues,
+    std::map<FilterEnum, std::map<std::string, bool>>*   filterConfiguration)
+{
+    for (auto* f : filters) {
+        f->set_scorings(scorings);
+        if (validScorings) f->set_valid_scorings(validScorings);
+        f->set_scored_value(scoredValues);
+        f->set_filter_configuration(filterConfiguration);
+    }
+}
+
 } // namespace OpenMagnetics
