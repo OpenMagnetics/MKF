@@ -3635,12 +3635,12 @@ double Inputs::get_maximum_frequency() {
     return maximumFrequency;
 }
 
-double Inputs::get_maximum_temperature() {
+double Inputs::get_maximum_temperature() const {
     if (get_operating_points().size() == 0)
         throw std::invalid_argument("There are no operating points");
 
     double maximumTemperature = 0;
-    for (auto& operatingPoint : get_operating_points()) {
+    for (const auto& operatingPoint : get_operating_points()) {
         maximumTemperature = std::max(maximumTemperature, operatingPoint.get_conditions().get_ambient_temperature());
     }
 
@@ -3710,7 +3710,7 @@ std::vector<InsulationStandards> Inputs::get_standards() {
     return get_design_requirements().get_insulation()->get_standards().value();
 }
 
-WiringTechnology Inputs::get_wiring_technology() {
+WiringTechnology Inputs::get_wiring_technology() const {
     if (!get_design_requirements().get_wiring_technology()) {
         return defaults.wiringTechnology;
     }

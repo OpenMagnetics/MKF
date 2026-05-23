@@ -42,7 +42,7 @@
 
 namespace OpenMagnetics {
 
-Coil get_dummy_coil(Inputs inputs) {
+Coil get_dummy_coil(const Inputs& inputs) {
     double temperature = inputs.get_maximum_temperature();
     double frequency = 0;
     // Phase 6 (perf): cache operating-points by const-ref.
@@ -458,7 +458,7 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
     }
 }
 
-void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
+void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs) {
     MagnetizingInductance magnetizingInductance;
     
     // Transformer vs Inductor/Energy-Storing Detection
@@ -586,8 +586,12 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                           << " L_eq=" << suppressionEquivalentInductance 
                           << " turns=" << initialNumberTurns << "\n";
             } else {
-                // For inductors/flybacks, calculate from inductance requirement
-                initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+                // For inductors/flybacks, calculate from inductance requirement.
+                // calculate_number_turns_from_gapping_and_inductance takes Inputs*
+                // (legacy signature); pass a local mutable alias so the outer
+                // signature can stay const-ref.
+                Inputs inputsCopy(inputs);
+                initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputsCopy, DimensionalValues::MINIMUM);
             }
         }
         if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
@@ -600,7 +604,7 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     }
 }
 
-std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vector<std::pair<Magnetic, double>> magneticsWithScoring, Inputs inputs) {
+std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vector<std::pair<Magnetic, double>> magneticsWithScoring, const Inputs& inputs) {
     Impedance impedance;
     std::vector<std::pair<Magnetic, double>> magneticsWithScoringAndTurns;
     for (size_t i = 0; i < magneticsWithScoring.size(); ++i){

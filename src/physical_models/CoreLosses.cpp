@@ -677,7 +677,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
     return {steinmetzCoefficientsPerRange, bestErrorPerRange};
 };
 
-CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(Core core,
+CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(const Core& core,
                                                   OperatingPointExcitation excitation,
                                                   double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -1655,7 +1655,7 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
  * @param temperature Core temperature [°C]
  * @return CoreLossesOutput with total, hysteresis, and eddy current losses
  */
-CoreLossesOutput CoreLossesRoshenModel::get_core_losses(Core core,
+CoreLossesOutput CoreLossesRoshenModel::get_core_losses(const Core& core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -2330,7 +2330,7 @@ double CoreLossesLossFactorModel::calculate_magnetizing_inductance_from_excitati
     return magnetizingInductance;
 }
 
-CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(Core core,
+CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(const Core& core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
     if (!excitation.get_magnetizing_current()) {

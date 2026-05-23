@@ -198,14 +198,14 @@ class Inputs : public MAS::Inputs {
     OvervoltageCategory get_overvoltage_category();
     PollutionDegree get_pollution_degree();
     std::vector<InsulationStandards> get_standards();
-    WiringTechnology get_wiring_technology();
+    WiringTechnology get_wiring_technology() const;
     double get_maximum_voltage_peak();
     double get_maximum_voltage_rms();
     double get_maximum_current_effective_frequency();
     double get_maximum_current_peak();
     double get_maximum_current_rms();
     double get_maximum_frequency();
-    double get_maximum_temperature();
+    double get_maximum_temperature() const;
     double get_maximum_voltage_peak(size_t windingIndex);
     double get_maximum_voltage_rms(size_t windingIndex);
     double get_maximum_current_peak(size_t windingIndex);

@@ -325,7 +325,7 @@ class CoreLossesModel {
     CoreLossesModel() = default;
     virtual ~CoreLossesModel() = default;
     std::string get_model_name() const { return _modelName; }
-    virtual CoreLossesOutput get_core_losses(Core core,
+    virtual CoreLossesOutput get_core_losses(const Core& core,
                                              OperatingPointExcitation excitation,
                                              double temperature) = 0;
     virtual double get_core_volumetric_losses(CoreMaterial coreMaterial,
@@ -480,7 +480,7 @@ class CoreLossesModel {
 class CoreLossesSteinmetzModel : public CoreLossesModel {
   public:
     CoreLossesSteinmetzModel() { _modelName = "Steinmetz"; }
-    CoreLossesOutput get_core_losses(Core core,
+    CoreLossesOutput get_core_losses(const Core& core,
                                      OperatingPointExcitation excitation,
                                      double temperature);
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
@@ -636,7 +636,7 @@ class CoreLossesBargModel : public CoreLossesSteinmetzModel {
 class CoreLossesRoshenModel : public CoreLossesModel {
   public:
     CoreLossesRoshenModel() { _modelName = "Roshen"; }
-    CoreLossesOutput get_core_losses(Core core,
+    CoreLossesOutput get_core_losses(const Core& core,
                                      OperatingPointExcitation excitation,
                                      double temperature);
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
@@ -809,7 +809,7 @@ class CoreLossesProprietaryModel : public CoreLossesSteinmetzModel {
 class CoreLossesLossFactorModel : public CoreLossesModel {
   public:
     CoreLossesLossFactorModel() { _modelName = "Loss Factor"; }
-    CoreLossesOutput get_core_losses(Core core,
+    CoreLossesOutput get_core_losses(const Core& core,
                                      OperatingPointExcitation excitation,
                                      double temperature);
     double get_core_volumetric_losses(CoreMaterial coreMaterial,

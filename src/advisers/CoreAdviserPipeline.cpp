@@ -38,7 +38,7 @@
 
 namespace OpenMagnetics {
 
-void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
+void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs) {
     MagnetizingInductance magnetizingInductance;
 
     // If the wizard supplied per-winding excitation names (e.g. LLC center-tap
