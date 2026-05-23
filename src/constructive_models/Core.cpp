@@ -1008,6 +1008,25 @@ bool Core::process_gap() {
 CoreMaterial Core::resolve_material() {
     auto material = resolve_material(get_functional_description().get_material());
     get_mutable_functional_description().set_material(material);
+    _cachedResolvedMaterial = material;
+    return material;
+}
+
+// Const overload: caches into `_cachedResolvedMaterial` AND also
+// preserves the legacy memoization side-effect — writes the resolved
+// CoreMaterial back into the functional description so subsequent
+// reads of `get_functional_description().get_material()` (anywhere in
+// the codebase) see the resolved object, not the original name string.
+// The const_cast on `this` is contained and documented: this is a
+// pure memoization operation — same input always yields the same
+// observable output — but the caching is observable through the
+// std::variant alternative held by FunctionalDescription, so we honour
+// what the rest of MKF was already relying on.
+CoreMaterial Core::resolve_material() const {
+    if (_cachedResolvedMaterial) return *_cachedResolvedMaterial;
+    auto material = resolve_material(get_functional_description().get_material());
+    _cachedResolvedMaterial = material;
+    const_cast<Core*>(this)->get_mutable_functional_description().set_material(material);
     return material;
 }
 
@@ -1043,10 +1062,12 @@ void Core::set_gapping(std::vector<CoreGap> coreGapping) {
 
 void Core::set_shape(CoreShape coreShape) {
     get_mutable_functional_description().set_shape(coreShape);
+    _cachedResolvedShape.reset();
 }
 
 void Core::set_material(CoreMaterial coreMaterial) {
     get_mutable_functional_description().set_material(coreMaterial);
+    _cachedResolvedMaterial.reset();
 }
 
 void Core::set_material_initial_permeability(double value) {
@@ -1061,6 +1082,18 @@ void Core::set_material_initial_permeability(double value) {
 CoreShape Core::resolve_shape() {
     auto shape = resolve_shape(get_functional_description().get_shape());
     get_mutable_functional_description().set_shape(shape);
+    _cachedResolvedShape = shape;
+    return shape;
+}
+
+// Const overload: caches into `_cachedResolvedShape` AND preserves
+// the legacy memoization side-effect on FunctionalDescription.
+// See resolve_material() const for the const_cast rationale.
+CoreShape Core::resolve_shape() const {
+    if (_cachedResolvedShape) return *_cachedResolvedShape;
+    auto shape = resolve_shape(get_functional_description().get_shape());
+    _cachedResolvedShape = shape;
+    const_cast<Core*>(this)->get_mutable_functional_description().set_shape(shape);
     return shape;
 }
 
@@ -1386,18 +1419,18 @@ std::vector<WindingWindowElement> Core::get_winding_windows() const {
     }
 }
 
-std::string Core::get_material_family() {
+std::string Core::get_material_family() const {
     if (resolve_material().get_family())
         return resolve_material().get_family().value();
-    else 
-        return ""; 
+    else
+        return "";
 }
 
-CoreShapeFamily Core::get_shape_family() {
+CoreShapeFamily Core::get_shape_family() const {
     return resolve_shape().get_family();
 }
 
-std::string Core::get_shape_name() {
+std::string Core::get_shape_name() const {
     if (resolve_shape().get_name())
         return resolve_shape().get_name().value();
     else
@@ -1413,11 +1446,11 @@ int64_t Core::get_number_stacks() const {
     }
 }
 
-std::string Core::get_material_name() {
+std::string Core::get_material_name() const {
     return resolve_material().get_name();
 }
 
-std::vector<VolumetricCoreLossesMethodType> Core::get_available_core_losses_methods(){
+std::vector<VolumetricCoreLossesMethodType> Core::get_available_core_losses_methods() const {
     auto coreMaterial = resolve_material();
     return get_available_core_losses_methods(coreMaterial);
 }

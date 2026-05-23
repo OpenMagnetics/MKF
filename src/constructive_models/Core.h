@@ -19,6 +19,18 @@ class Core : public MAS::MagneticCore {
   private:
     bool _includeMaterialData = false;
 
+    // Internal cache used by the const overloads of resolve_material() /
+    // resolve_shape(). The non-const overloads continue to memoise into
+    // get_mutable_functional_description() (preserving the legacy
+    // side-effect that many callers rely on, e.g.
+    // `std::get<CoreShape>(get_functional_description().get_shape())`).
+    // The const overloads populate this cache only — they do not mutate
+    // MAS state — which is what lets read-only adviser code accept a
+    // `const Core&` and still resolve material/shape names cheaply.
+    // Mutators that change the underlying material/shape must invalidate.
+    mutable std::optional<CoreMaterial> _cachedResolvedMaterial;
+    mutable std::optional<CoreShape>    _cachedResolvedShape;
+
   public:
     Core(json j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true);
     Core(const MagneticCore core);
@@ -41,8 +53,10 @@ class Core : public MAS::MagneticCore {
     void set_gap_length(double gapLength);
     void process_data();
     CoreMaterial resolve_material();
+    CoreMaterial resolve_material() const;
     static CoreMaterial resolve_material(CoreMaterialDataOrNameUnion coreMaterial);
     CoreShape resolve_shape();
+    CoreShape resolve_shape() const;
     static CoreShape resolve_shape(CoreShapeDataOrNameUnion coreShape);
     std::vector<ColumnElement> get_columns() const;
     std::vector<WindingWindowElement> get_winding_windows() const;
@@ -80,10 +94,10 @@ class Core : public MAS::MagneticCore {
     static double get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, double temperature, bool proportion = true);
     double get_magnetic_field_strength_saturation(double temperature);
     static double get_magnetic_field_strength_saturation(CoreMaterial coreMaterial, double temperature);
-    CoreShapeFamily get_shape_family();
-    std::string get_material_family();
-    std::string get_shape_name();
-    std::string get_material_name();
+    CoreShapeFamily get_shape_family() const;
+    std::string get_material_family() const;
+    std::string get_shape_name() const;
+    std::string get_material_name() const;
     Application resolve_material_application();
     static Application resolve_material_application(CoreMaterial& coreMaterial);
     Application guess_material_application();
@@ -92,7 +106,7 @@ class Core : public MAS::MagneticCore {
     bool check_material_application(Application application);
     static bool check_material_application(CoreMaterial coreMaterial, Application application);
     int64_t get_number_stacks() const;
-    std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods();
+    std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods() const;
     static std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods(CoreMaterial coreMaterial);
     CoreType get_type() const;
     bool fits(MaximumDimensions maximumDimensions, bool allowRotation=false);
