@@ -44,11 +44,52 @@ namespace OpenMagnetics {
 // =====================================================================
 // Constructors
 // =====================================================================
+// Validate the spec shape up-front. Without these guards, mis-shaped specs
+// (e.g. a DimensionWithTolerance object passed where the schema requires a
+// bare number) escape from deep inside the quicktype-generated from_json
+// machinery as `[json.exception.type_error.302] type must be number, but
+// is object` with no indication of which field is at fault. Field types
+// per MAS/schemas/inputs/topologies/vienna.json.
+static void validate_vienna_spec_shape(const json& j) {
+    if (!j.contains("lineToLineVoltage")) {
+        throw std::runtime_error("Vienna: 'lineToLineVoltage' is required");
+    }
+    if (!j.at("lineToLineVoltage").is_object()) {
+        throw std::runtime_error(
+            "Vienna: 'lineToLineVoltage' must be a DimensionWithTolerance "
+            "object (e.g. {\"nominal\": 400.0}), not a bare number");
+    }
+    if (!j.contains("outputDcVoltage")) {
+        throw std::runtime_error("Vienna: 'outputDcVoltage' is required");
+    }
+    if (!j.at("outputDcVoltage").is_number()) {
+        throw std::runtime_error(
+            "Vienna: 'outputDcVoltage' must be a bare number (e.g. 800.0), "
+            "not a DimensionWithTolerance object");
+    }
+    if (!j.contains("switchingFrequency")) {
+        throw std::runtime_error("Vienna: 'switchingFrequency' is required");
+    }
+    if (!j.at("switchingFrequency").is_number()) {
+        throw std::runtime_error(
+            "Vienna: 'switchingFrequency' must be a bare number");
+    }
+    if (!j.contains("operatingPoints")) {
+        throw std::runtime_error("Vienna: 'operatingPoints' is required");
+    }
+    if (!j.at("operatingPoints").is_array() || j.at("operatingPoints").empty()) {
+        throw std::runtime_error(
+            "Vienna: 'operatingPoints' must be a non-empty array");
+    }
+}
+
 Vienna::Vienna(const json& j) {
+    validate_vienna_spec_shape(j);
     from_json(j, *static_cast<ViennaRectifier*>(this));
 }
 
 AdvancedVienna::AdvancedVienna(const json& j) {
+    validate_vienna_spec_shape(j);
     from_json(j, *this);
 }
 
