@@ -3028,35 +3028,38 @@ OperatingPointExcitation Inputs::get_primary_excitation(const OperatingPoint& op
 }
 
 void Inputs::make_waveform_size_power_of_two(OperatingPoint* operatingPoint) {
-    OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
     double frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
 
-    // TODO: iterate over windings here in the future
+    // Phase 5 fix: iterate over ALL windings, not just the primary.
+    // CMCs (and any multi-winding design where can_be_common_mode_choke
+    // matters) require every winding's current to carry identical harmonics
+    // after standardization.  Only touching winding 0 left the secondary
+    // with its original (possibly different) harmonics, causing
+    // can_be_common_mode_choke to return false and routing the CMC
+    // through the single-winding path that uses the full line current as
+    // magnetizing current — producing false saturation.
+    for (size_t w = 0; w < operatingPoint->get_mutable_excitations_per_winding().size(); ++w) {
+        OperatingPointExcitation excitation = operatingPoint->get_excitations_per_winding()[w];
 
-    if (excitation.get_current()) {
-        auto current = operatingPoint->get_excitations_per_winding()[0].get_current().value();
-        auto currentWaveform = current.get_waveform().value();
-        if (!is_size_power_of_2(currentWaveform.get_data())) {
-
-            auto currentSampledWaveform = Inputs::calculate_sampled_waveform(currentWaveform, frequency);
-            current.set_waveform(currentSampledWaveform);
-            current.set_harmonics(calculate_harmonics_data(currentSampledWaveform, frequency));
-            current.set_processed(calculate_processed_data(current, currentSampledWaveform, true, current.get_processed()));
-            operatingPoint->get_mutable_excitations_per_winding()[0].set_current(current);
-
-
-            currentWaveform = current.get_waveform().value();
-
-            currentWaveform = operatingPoint->get_excitations_per_winding()[0].get_current()->get_waveform().value();
+        if (excitation.get_current()) {
+            auto current = operatingPoint->get_mutable_excitations_per_winding()[w].get_current().value();
+            auto currentWaveform = current.get_waveform().value();
+            if (!is_size_power_of_2(currentWaveform.get_data())) {
+                auto currentSampledWaveform = Inputs::calculate_sampled_waveform(currentWaveform, frequency);
+                current.set_waveform(currentSampledWaveform);
+                current.set_harmonics(calculate_harmonics_data(currentSampledWaveform, frequency));
+                current.set_processed(calculate_processed_data(current, currentSampledWaveform, true, current.get_processed()));
+                operatingPoint->get_mutable_excitations_per_winding()[w].set_current(current);
+            }
         }
-    }
-    if (excitation.get_voltage()) {
-        auto voltage = operatingPoint->get_excitations_per_winding()[0].get_voltage().value();
-        auto voltageWaveform = voltage.get_waveform().value();
-        if (!is_size_power_of_2(voltageWaveform.get_data())) {
-            auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, frequency);
-            voltage.set_waveform(voltageSampledWaveform);
-            operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(voltage);
+        if (excitation.get_voltage()) {
+            auto voltage = operatingPoint->get_mutable_excitations_per_winding()[w].get_voltage().value();
+            auto voltageWaveform = voltage.get_waveform().value();
+            if (!is_size_power_of_2(voltageWaveform.get_data())) {
+                auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, frequency);
+                voltage.set_waveform(voltageSampledWaveform);
+                operatingPoint->get_mutable_excitations_per_winding()[w].set_voltage(voltage);
+            }
         }
     }
 }
