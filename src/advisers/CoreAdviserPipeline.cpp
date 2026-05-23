@@ -104,6 +104,18 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
         NumberTurns numberTurns(coil.get_number_turns(0), inputs.get_design_requirements());
         auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
 
+        // If a previous step (e.g. the CMC path in get_dummy_coil) already
+        // populated secondaries, drop them so the loop below repopulates from
+        // the design-requirements turnsRatios. Without this we'd accumulate
+        // (dummy secondaries) + (turnsRatios-derived secondaries), producing
+        // a coil with too many windings.
+        {
+            auto& fds = (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description();
+            if (fds.size() > 1) {
+                fds.resize(1);
+            }
+        }
+
         Bobbin bobbin;
         if (inputs.get_wiring_technology() == WiringTechnology::PRINTED) {
             bobbin = Bobbin::create_quick_bobbin((*magneticsWithScoring)[i].first.get_core(), true);
