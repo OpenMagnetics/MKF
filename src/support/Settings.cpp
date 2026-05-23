@@ -114,6 +114,11 @@ namespace OpenMagnetics {
         _coreAdviserIncludeMargin = false;
         _coreAdviserEnableIntermediatePruning = true;
         _coreAdviserMaximumMagneticsAfterFiltering = Defaults().coreAdviserMaximumMagneticsAfterFiltering;
+        // NB: _coreAdviserEnableTemperatureFilter and _coreAdviserMaximumTemperature
+        // are intentionally NOT reset here — preserving the pre-existing behavior
+        // that those fields persist across reset() calls. Out of scope for the
+        // saturation-margin change.
+        _coreAdviserSaturationMargin = 1.0;
 
         _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;
@@ -622,6 +627,19 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_adviser_maximum_temperature(double value) {
         _coreAdviserMaximumTemperature = value;
+    }
+    double Settings::get_core_adviser_saturation_margin() const {
+        return _coreAdviserSaturationMargin;
+    }
+    void Settings::set_core_adviser_saturation_margin(double value) {
+        if (value < 1.0) {
+            throw std::invalid_argument(
+                "core_adviser_saturation_margin must be >= 1.0 (got " +
+                std::to_string(value) +
+                "). A margin < 1 would *accept* cores already past Bsat — "
+                "use 1.0 to disable, 1.2-1.5 for engineering headroom.");
+        }
+        _coreAdviserSaturationMargin = value;
     }
 
     GappingOptimizationStrategy Settings::get_gapping_strategy() const {

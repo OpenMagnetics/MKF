@@ -105,6 +105,13 @@ class Settings
         size_t _coreAdviserMaximumMagneticsAfterFiltering;
         bool   _coreAdviserEnableTemperatureFilter = false;
         double _coreAdviserMaximumTemperature = 130.0;
+        // Multiplicative derating applied to the operating peak flux density
+        // before comparing against B_sat in MagneticFilterSaturation. 1.0 (the
+        // default) reproduces the historical "reject only if Bpeak > Bsat"
+        // behaviour. Engineering practice (Maniktala Ch.5) recommends ≥1.2 so
+        // a core with Bpeak·1.2 > Bsat is rejected — leaves headroom for
+        // tolerance, temperature, and DC-bias swing.
+        double _coreAdviserSaturationMargin = 1.0;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
@@ -366,6 +373,8 @@ class Settings
         void   set_core_adviser_enable_temperature_filter(bool value);
         double get_core_adviser_maximum_temperature() const;
         void   set_core_adviser_maximum_temperature(double value);
+        double get_core_adviser_saturation_margin() const;
+        void   set_core_adviser_saturation_margin(double value);
 
         GappingOptimizationStrategy get_gapping_strategy() const;
         void set_gapping_strategy(GappingOptimizationStrategy value);
