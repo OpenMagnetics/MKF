@@ -2084,13 +2084,25 @@ void Coil::equalize_margins(std::vector<std::pair<ElectricalType, std::pair<size
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
 
+    // Mirror apply_margin_tape's sizing guard: _marginsPerSection is sized
+    // lazily by wind_by_*; equalize_margins can be reached on paths where it
+    // was never grown to the section count (e.g. PSFB / multi-section bridge
+    // topologies). Reading past the end here used to SEGV in CoilAdviser.
+    if (_marginsPerSection.size() < orderedSectionsWithInsulation.size()) {
+        _marginsPerSection.resize(orderedSectionsWithInsulation.size(), {0, 0});
+    }
+
     for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
         if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
             if (!_coilSectionInterfaces.empty()) {
 
                 size_t indexForMarginLeftSection = sectionIndex;
                 size_t indexForMarginRightSection;
-                if (sectionIndex != (orderedSectionsWithInsulation.size() - 2)) {
+                // The "right" section is two ahead (conduction → insulation →
+                // conduction). When near the end, wrap to the first section.
+                // The original `!= size()-2` test missed the size()-1 case,
+                // letting sectionIndex+2 read past the end.
+                if (sectionIndex + 2 < orderedSectionsWithInsulation.size()) {
                     indexForMarginRightSection = sectionIndex + 2;
                 }
                 else {
