@@ -115,17 +115,6 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             // For inductors/energy-storing converters, use the standard calculation
             OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
             
-            // Debug: Check if CMC path will be taken
-            auto primaryExcitation = Inputs::get_primary_excitation(operatingPoint);
-            bool hasHarmonics = primaryExcitation.get_current() && primaryExcitation.get_current()->get_harmonics().has_value();
-            bool isToroidal = magnetic->get_core().get_type() == CoreType::TOROIDAL;
-            bool canBeCmc = Inputs::can_be_common_mode_choke(operatingPoint);
-            std::cerr << "[SAT-DEBUG] CMC check: hasHarmonics=" << hasHarmonics 
-                      << " isToroidal=" << isToroidal 
-                      << " canBeCmc=" << canBeCmc 
-                      << " numWindings=" << operatingPoint.get_excitations_per_winding().size()
-                      << std::endl;
-            
             auto result = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(
                 magnetic->get_core(), magnetic->get_coil(), &operatingPoint);
             auto magneticFluxDensity = result.second;
@@ -142,25 +131,7 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
                     magneticFluxDensity);
             }
             
-            // Debug: print magnetizing current details after calculation
-            auto primaryExcitationAfter = Inputs::get_primary_excitation(operatingPoint);
-            if (primaryExcitationAfter.get_magnetizing_current() && primaryExcitationAfter.get_magnetizing_current()->get_processed()) {
-                auto mcProc = primaryExcitationAfter.get_magnetizing_current()->get_processed().value();
-                std::cerr << "[SAT-DEBUG] CMC MC after: peak=" << mcProc.get_peak().value_or(-999) 
-                          << " pp=" << mcProc.get_peak_to_peak().value_or(-999)
-                          << " offset=" << mcProc.get_offset() << std::endl;
-            }
-            
-            std::cerr << "[SAT-DEBUG] CMC inductor path: core=" 
-                      << magnetic->get_core().get_name().value_or("unnamed")
-                      << " turns=" << magnetic->get_coil().get_functional_description()[0].get_number_turns()
-                      << " Bpeak=" << (magneticFluxDensity.get_processed() ? magneticFluxDensity.get_processed()->get_peak().value_or(-999) : -888)
-                      << " Bsat=" << magneticFluxDensitySaturation
-                      << " L=" << (result.first.get_magnetizing_inductance().get_nominal() ? result.first.get_magnetizing_inductance().get_nominal().value() : -777)
-                      << std::endl;
-            
             if (!magneticFluxDensity.get_processed() || !magneticFluxDensity.get_processed()->get_peak()) {
-                std::cerr << "[SAT-DEBUG] CMC: invalid Bpeak, rejecting" << std::endl;
                 return {false, 0.0};
             }
             magneticFluxDensityPeak = magneticFluxDensity.get_processed()->get_peak().value();
@@ -186,11 +157,6 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
         const double margin = Settings::GetInstance().get_core_adviser_saturation_margin();
         bool isSaturated = magneticFluxDensityPeak * margin > magneticFluxDensitySaturation;
 
-        std::cerr << "[SAT-DEBUG] CMC saturation check: Bpeak=" << magneticFluxDensityPeak
-                  << " Bsat=" << magneticFluxDensitySaturation
-                  << " margin=" << margin
-                  << " ratio=" << bRatio
-                  << " isSaturated=" << isSaturated << std::endl;
         ++opIndex;
 
         if (isSaturated) {

@@ -548,10 +548,6 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     }
     auto reqAppOpt = inputs.get_design_requirements().get_application();
     bool isSuppression = reqAppOpt.has_value() && reqAppOpt.value() == Application::INTERFERENCE_SUPPRESSION;
-    std::cerr << "[CMC-DEBUG] add_initial_turns_by_inductance: isSuppression=" << isSuppression
-              << " L_eq=" << suppressionEquivalentInductance
-              << " magnetics=" << (*magneticsWithScoring).size() << "\n";
-
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
 
         Core core = (*magneticsWithScoring)[i].first.get_core();
@@ -573,6 +569,31 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 } else {
                     initialNumberTurns = 5;
                 }
+
+                // For resonant transformers with a specific Lm target (e.g. CLLLC, CLLC):
+                // the core has no gap, so N must be large enough to achieve the required Lm.
+                // Voltage-seconds gives the saturation floor; inductance gives the Lm floor.
+                // Use the larger of the two so both constraints are satisfied.
+                {
+                    auto lmDim = inputs.get_design_requirements().get_magnetizing_inductance();
+                    bool hasNominalLm = lmDim.get_nominal().has_value();
+                    bool hasMaxLm = lmDim.get_maximum().has_value();
+                    if (hasNominalLm || hasMaxLm) {
+                        // Pass an Inputs with only design requirements (no operating points)
+                        // to avoid the magnetizing-current lookup inside
+                        // calculate_number_turns_from_gapping_and_inductance, which throws
+                        // when the excitation has voltage but no magnetizing_current waveform
+                        // (e.g. CLLLC/CLLC). Without operating points the function falls back
+                        // to N = round(sqrt(Lm * reluctance)) — accurate for ungapped
+                        // transformer cores with no DC bias.
+                        Inputs lmInputs;
+                        lmInputs.set_design_requirements(inputs.get_design_requirements());
+                        DimensionalValues dimVal = hasNominalLm ? DimensionalValues::NOMINAL : DimensionalValues::MAXIMUM;
+                        double nForInductance = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
+                            core, &lmInputs, dimVal);
+                        initialNumberTurns = std::max(initialNumberTurns, nForInductance);
+                    }
+                }
             } else if (isSuppression && suppressionEquivalentInductance > 0.0) {
                 // Use impedance-derived inductance for suppression apps
                 auto reqCopy = inputs.get_design_requirements();
@@ -582,9 +603,6 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 Inputs tempInputs(inputs);
                 tempInputs.set_design_requirements(reqCopy);
                 initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &tempInputs, DimensionalValues::MINIMUM);
-                std::cerr << "[CMC-DEBUG] suppression path: core=" << core.get_name().value_or("?") 
-                          << " L_eq=" << suppressionEquivalentInductance 
-                          << " turns=" << initialNumberTurns << "\n";
             } else {
                 // For inductors/flybacks, calculate from inductance requirement.
                 // calculate_number_turns_from_gapping_and_inductance takes Inputs*

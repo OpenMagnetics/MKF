@@ -370,6 +370,12 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
         totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
         numberTurnsPrimary = std::round(sqrt(desiredMagnetizingInductance * totalReluctance));
 
+        if (inputs->get_operating_points().size() == 0) {
+            // No operating points: no H-bias refinement needed.
+            // N = round(sqrt(Lm * reluctance)) is the exact answer — exit.
+            break;
+        }
+
         if (inputs->get_operating_points().size() > 0) {
             // PERF: only the magnetic-field-strength DC offset is needed below to
             // refine the H-biased initial permeability. The full waveform pipeline

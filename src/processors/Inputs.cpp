@@ -806,31 +806,61 @@ bool Inputs::can_be_common_mode_choke(OperatingPoint operatingPoint) {
     if (excitations.size() < 2 || excitations.size() > 4) {
         return false;
     }
-    else {
-        if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
-            throw std::invalid_argument("Current is missing");
-        }
-        auto primaryCurrent = operatingPoint.get_excitations_per_winding()[0].get_current().value();
-        if (primaryCurrent.get_harmonics()) {
-            for (size_t windingIndexIndex = 1; windingIndexIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndexIndex) {
-                auto secondaryCurrent = operatingPoint.get_excitations_per_winding()[windingIndexIndex].get_current().value();
 
-                if (primaryCurrent.get_harmonics() && secondaryCurrent.get_harmonics()) {
-                    auto primaryHarmonics = primaryCurrent.get_harmonics().value();
-                    auto secondaryHarmonics = secondaryCurrent.get_harmonics().value();
-                    for (size_t harmonicIndex = 0; harmonicIndex < primaryHarmonics.get_frequencies().size(); ++harmonicIndex) {
-                        if (!is_close_enough(primaryHarmonics.get_frequencies()[harmonicIndex], secondaryHarmonics.get_frequencies()[harmonicIndex], 0.0001)) {
-                            return false;
-                        }
-                        if (!is_close_enough(primaryHarmonics.get_amplitudes()[harmonicIndex], secondaryHarmonics.get_amplitudes()[harmonicIndex], 0.0001)) {
-                            return false;
-                        }
+    if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
+        throw std::invalid_argument("Current is missing");
+    }
+    auto primaryCurrent = operatingPoint.get_excitations_per_winding()[0].get_current().value();
+
+    if (primaryCurrent.get_harmonics()) {
+        // Harmonics path: all winding harmonics must match (same CM source seen by every winding).
+        // Analytical CMC produces exact matches; simulated CMC may have tiny numerical discrepancies
+        // from the ngspice circuit (parasitic-cap asymmetry). If all harmonics match exactly, return
+        // true immediately. If any harmonic mismatches, fall through to the processed-data RMS check
+        // below — which handles simulation-derived operating points where harmonics differ slightly
+        // but the underlying physical current is the same CM noise signal.
+        bool harmonicsMatch = true;
+        for (size_t windingIndexIndex = 1; windingIndexIndex < excitations.size() && harmonicsMatch; ++windingIndexIndex) {
+            auto secondaryCurrent = excitations[windingIndexIndex].get_current().value();
+
+            if (primaryCurrent.get_harmonics() && secondaryCurrent.get_harmonics()) {
+                auto primaryHarmonics = primaryCurrent.get_harmonics().value();
+                auto secondaryHarmonics = secondaryCurrent.get_harmonics().value();
+                for (size_t harmonicIndex = 0; harmonicIndex < primaryHarmonics.get_frequencies().size(); ++harmonicIndex) {
+                    if (!is_close_enough(primaryHarmonics.get_frequencies()[harmonicIndex], secondaryHarmonics.get_frequencies()[harmonicIndex], 0.0001)) {
+                        harmonicsMatch = false;
+                        break;
+                    }
+                    if (!is_close_enough(primaryHarmonics.get_amplitudes()[harmonicIndex], secondaryHarmonics.get_amplitudes()[harmonicIndex], 0.0001)) {
+                        harmonicsMatch = false;
+                        break;
                     }
                 }
             }
-            return true;
         }
+        if (harmonicsMatch) return true;
+        // Fall through to processed-data check for simulation-derived operating points.
     }
+
+    // Time-domain / simulation path: simulate_realistic_cmc sets both harmonics and processed data.
+    // The harmonics may not match exactly due to numerical simulation noise (parasitic capacitance
+    // asymmetry in the ngspice model). Check instead that all winding RMS amplitudes agree within
+    // 5%, which is sufficient to distinguish a symmetric CM choke from an asymmetric inductor.
+    if (primaryCurrent.get_processed() && primaryCurrent.get_processed()->get_rms()) {
+        double primaryRms = primaryCurrent.get_processed()->get_rms().value();
+        for (size_t windingIndex = 1; windingIndex < excitations.size(); ++windingIndex) {
+            auto secondaryCurrent = excitations[windingIndex].get_current();
+            if (!secondaryCurrent || !secondaryCurrent->get_processed() || !secondaryCurrent->get_processed()->get_rms()) {
+                return false;
+            }
+            double secondaryRms = secondaryCurrent->get_processed()->get_rms().value();
+            if (!is_close_enough(primaryRms, secondaryRms, 0.05)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     return false;
 }
 

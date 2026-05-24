@@ -5,6 +5,7 @@
 #include "constructive_models/Insulation.h"
 #include "constructive_models/NumberTurns.h"
 #include "physical_models/ComplexPermeability.h"
+#include "physical_models/InitialPermeability.h"
 #include "physical_models/CoreTemperature.h"
 #include "physical_models/Impedance.h"
 #include "physical_models/MagneticEnergy.h"
@@ -393,24 +394,119 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
     auto topology = inputs.get_design_requirements().get_topology();
     bool isEnergyStoring = is_energy_storing_topology(topology);
     
-    // Check if inductance requirement needs a specific value (nominal or bounded)
     auto inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
     bool hasNominalInductance = inductanceReq.get_nominal().has_value();
     bool hasMaxInductance = inductanceReq.get_maximum().has_value();
-    bool needsSpecificInductance = hasNominalInductance || hasMaxInductance;
-    
-    // Determine if we should skip gapping:
-    // Only skip if it's a transformer topology AND we don't need a specific inductance value
-    bool isTransformer = topology.has_value() ? !isEnergyStoring : 
+
+    // Transformer topologies skip gapping UNLESS a specific Lm value is required.
+    // When Lm is specified (nominal or maximum), the transformer core may need a gap:
+    // - If AL_ungapped > Lm (e.g. CLLLC Lm=1.32mH << ferrite AL), a gap reduces AL
+    //   to achieve the target Lm at the volt-seconds-derived turn count.
+    // - The gap is computed directly: gap = (N² / Lm - R_core) × μ₀ × Ae,
+    //   where N comes from the same volt-seconds estimate as add_initial_turns_by_inductance.
+    // When only a minimum inductance is specified (want high Lm), no gap is needed.
+    bool isTransformer = topology.has_value() ? !isEnergyStoring :
         (inductanceReq.get_minimum() && !hasNominalInductance && !hasMaxInductance);
-    
-    bool skipGapping = isTransformer && !needsSpecificInductance;
-    
+
+    bool skipGapping = isTransformer && !hasNominalInductance && !hasMaxInductance;
+
     if (skipGapping) {
-        // Transformer with minimum-only inductance: no gap needed (want maximum L)
+        // Pure transformer (no specific Lm target): ungapped, Lm maximized by turns
         for (size_t i = 0; i < magneticsWithScoring->size(); ++i) {
             Core core = (*magneticsWithScoring)[i].first.get_core();
             core.set_name(core.get_name().value_or("unnamed") + " ungapped");
+            (*magneticsWithScoring)[i].first.set_core(core);
+        }
+        return;
+    }
+
+    // Transformer WITH specific Lm: compute gap from volt-seconds N and target Lm.
+    // This runs BEFORE add_initial_turns_by_inductance so we re-derive the volt-seconds
+    // N estimate here. The gap ensures that with that N, the core achieves exactly Lm.
+    if (isTransformer && (hasNominalInductance || hasMaxInductance)) {
+        double targetLm = hasNominalInductance
+            ? inductanceReq.get_nominal().value()
+            : inductanceReq.get_maximum().value();
+
+        // Compute maxVoltSeconds (identical logic to add_initial_turns_by_inductance)
+        double maxVoltSeconds = 0.0;
+        for (const auto& op : inputs.get_operating_points()) {
+            auto excitation = Inputs::get_primary_excitation(op);
+            if (excitation.get_voltage() && excitation.get_voltage()->get_waveform() &&
+                excitation.get_voltage()->get_waveform()->get_time()) {
+                auto vw = excitation.get_voltage()->get_waveform().value();
+                const auto& data = vw.get_data();
+                auto time = vw.get_time().value();
+                double integral = 0.0;
+                for (size_t j = 0; j + 1 < std::min(data.size(), time.size()); ++j) {
+                    integral += data[j] * (time[j + 1] - time[j]);
+                    maxVoltSeconds = std::max(maxVoltSeconds, std::abs(integral));
+                }
+            } else if (excitation.get_voltage() && excitation.get_voltage()->get_processed() &&
+                       excitation.get_voltage()->get_processed()->get_peak()) {
+                double freq = excitation.get_frequency() > 0 ? excitation.get_frequency() : 100000.0;
+                double omega = 2.0 * std::numbers::pi * freq;
+                maxVoltSeconds = std::max(maxVoltSeconds,
+                    excitation.get_voltage()->get_processed()->get_peak().value() / omega);
+            }
+        }
+
+        ReluctanceModels reluctanceModelEnum;
+        from_json(_models["gapReluctance"], reluctanceModelEnum);
+        auto reluctanceModel = ReluctanceModel::factory(reluctanceModelEnum);
+        InitialPermeability initialPermeability;
+        auto constants = Constants();
+
+        for (size_t i = 0; i < magneticsWithScoring->size(); ++i) {
+            Core core = (*magneticsWithScoring)[i].first.get_core();
+            if (!core.get_processed_description()) {
+                core.process_data();
+                core.process_gap();
+            }
+            if (core.get_shape_family() == CoreShapeFamily::T) {
+                core.set_name(core.get_name().value_or("unnamed") + " ungapped");
+                (*magneticsWithScoring)[i].first.set_core(core);
+                continue;
+            }
+
+            double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+            double realisticBsat = core.get_magnetic_flux_density_saturation(25.0, true);
+            double bMax = realisticBsat * defaults.maximumProportionMagneticFluxDensitySaturation;
+
+            double nEstimate;
+            if (maxVoltSeconds > 0 && effectiveArea > 0 && bMax > 0) {
+                nEstimate = std::max(1.0, std::ceil(maxVoltSeconds / (bMax * effectiveArea)));
+            } else {
+                nEstimate = 5.0;  // same fallback as add_initial_turns_by_inductance
+            }
+
+            // Core reluctance (ungapped)
+            double mu_i = initialPermeability.get_initial_permeability(
+                core.resolve_material(), 25.0, std::nullopt,
+                defaults.coreAdviserFrequencyReference);
+            double rCore = reluctanceModel->get_core_reluctance(core, mu_i).get_core_reluctance();
+
+            // Gap to achieve targetLm with nEstimate turns: Lm = N²/(R_core + R_gap)
+            double rTotalNeeded = (nEstimate * nEstimate) / targetLm;
+            double rGap = rTotalNeeded - rCore;
+
+            double gapLength = 0.0;
+            if (rGap > 0) {
+                // R_gap = gap / (μ₀ × Ae)  →  gap = R_gap × μ₀ × Ae
+                gapLength = roundFloat(rGap * constants.vacuumPermeability * effectiveArea, 5);
+            }
+
+            core.set_ground_gapping(gapLength);
+            core.process_gap();
+
+            auto currentName = core.get_name().value_or("unnamed");
+            if (gapLength > 0) {
+                std::stringstream ss;
+                ss << std::fixed << std::setprecision(2) << (gapLength * 1000);
+                core.set_name(currentName + " gapped " + ss.str() + " mm");
+            } else {
+                core.set_name(currentName + " ungapped");
+            }
             (*magneticsWithScoring)[i].first.set_core(core);
         }
         return;

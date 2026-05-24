@@ -11,10 +11,6 @@
 #include <magic_enum_utility.hpp>
 #include "support/Logger.h"
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
-
 
 namespace OpenMagnetics {
 
@@ -242,16 +238,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         load_wires();
     }
 
-    #ifdef __EMSCRIPTEN__
-
-
-    EM_ASM({
-        console.log('[MagneticAdviser-DEBUG] coreDatabase.size()=' + $0 + ' wireDatabase.size()=' + $1);
-    }, static_cast<int>(coreDatabase.size()), static_cast<int>(wireDatabase.size()));
-
-
-    #endif
-
     bool previousCoilIncludeAdditionalCoordinates = settings.get_coil_include_additional_coordinates();
     settings.set_coil_include_additional_coordinates(false);
 
@@ -305,16 +291,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         requestedCores += 20;  // Linear growth instead of exponential
         auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores);
 
-        #ifdef __EMSCRIPTEN__
-
-
-        EM_ASM({
-            console.log('[MagneticAdviser-DEBUG] coreAdviser returned ' + $0 + ' cores (requested ' + $1 + ')');
-        }, static_cast<int>(masMagneticsWithCore.size()), static_cast<int>(requestedCores));
-
-
-        #endif
-
         if (previouslyObtainedCores == masMagneticsWithCore.size()) {
             break;
         }
@@ -344,17 +320,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             logEntry("Getting coil", "MagneticAdviser", 2);
             std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
-            
-            #ifdef __EMSCRIPTEN__
 
-            
-            EM_ASM({
-                console.log('[MagneticAdviser-DEBUG] coilAdviser for core ' + UTF8ToString($0) + ' returned ' + $1 + ' coils');
-            }, coreName.c_str(), static_cast<int>(masMagneticsWithCoreAndCoil.size()));
-
-            
-            #endif
-            
             if (masMagneticsWithCoreAndCoil.size() > 0) {
                 logEntry("Core wound!", "MagneticAdviser", 2);
                 coresWound++;
@@ -412,16 +378,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     }
 
     logEntry("Found " + std::to_string(masData.size()) + " magnetics", "MagneticAdviser", 2);
-    
-    #ifdef __EMSCRIPTEN__
-
-    
-    EM_ASM({
-        console.log('[MagneticAdviser-DEBUG] masData.size() before scoring=' + $0 + ' coresWound=' + $1);
-    }, static_cast<int>(masData.size()), static_cast<int>(coresWound));
-
-    
-    #endif
     
     auto masMagneticsWithScoring = score_magnetics(masData, filterFlow);
 
@@ -547,16 +503,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     if (coreFiltersChanged) {
         clear_loaded_cores();
     }
-
-    #ifdef __EMSCRIPTEN__
-
-
-    EM_ASM({
-        console.log('[MagneticAdviser-DEBUG] RETURNING ' + $0 + ' magnetics');
-    }, masMagneticsWithScoring.size());
-
-
-    #endif
 
     return masMagneticsWithScoring;
 }

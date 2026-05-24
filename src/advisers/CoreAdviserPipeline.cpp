@@ -419,7 +419,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     filterTurnCount.set_filter_configuration(&_filterConfiguration);
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
-    std::cerr << "[CMC-DEBUG] filter_available_cores_suppression_application: starting with " << magneticsWithScoring.size() << " magnetics\n";
 
     // DMC pre-filter: differential-mode chokes carry the full line current
     // through the winding (no flux cancellation). Ungapped high-µᵢ ferrite
@@ -457,60 +456,26 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     // candidates in other suppression flows.)
 
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
-    std::cerr << "[CMC-DEBUG] After add_initial_turns_by_inductance: " << magneticsWithScoring.size() << " magnetics\n";
 
-    // Use a tiny weight (0.001) so the impedance filter acts as a pure hard gate:
-    // it eliminates cores that cannot meet |Z| spec, but contributes essentially
-    // zero to the cumulative score. Without this, cores that far overshoot the
-    // impedance spec (many-turn powder toroids, Z >> Z_min) score as highly as
-    // 2.5 on impedance alone, overwhelming the TURN_COUNT score. A pure gate
-    // lets TURN_COUNT — which correctly penalises excessive turn counts — be
-    // the primary ranking signal. The tiny non-zero weight is needed because
-    // weight ≤ 0 would short-circuit the filter entirely (no elimination occurs).
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 0.001, true);
-    std::cerr << "[CMC-DEBUG] After filterMinimumImpedance: " << magneticsWithScoring.size() << " magnetics\n";
 
-    // Turn-count scoring: the primary ranking signal for the
-    // interference-suppression pipeline. Fewer turns → less copper burden
-    // → easier to wind. Weight 1.0 keeps this filter on the same scale as
-    // the user's COST/DIMENSIONS/LOSSES weights (each 0–1 after normalization),
-    // so high-µ ferrite (13–20 turns) naturally outranks low-µ powder (50–100
-    // turns) without overriding the user's other preferences entirely.
     magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 1.0, false);
-    std::cerr << "[CMC-DEBUG] After filterTurnCount: " << magneticsWithScoring.size() << " magnetics\n";
 
-    // Hard-cap candidates after the (cheap) impedance + turns-density filters to
-    // keep the expensive downstream filters (saturation, losses, magnetizing-
-    // inductance) bounded. The top-N here are now the ones with the best
-    // combined impedance-margin + turns-density score.
     constexpr size_t kMaxCandidatesAfterImpedance = 50;
     if (magneticsWithScoring.size() > kMaxCandidatesAfterImpedance) {
         magneticsWithScoring.resize(kMaxCandidatesAfterImpedance);
     }
-    std::cerr << "[CMC-DEBUG] After resize to 50: " << magneticsWithScoring.size() << " magnetics\n";
 
-    // Saturation gate: the CMC path already drops the DM line-current DC bias
-    // via Inputs::can_be_common_mode_choke, so this filter sees only the CM
-    // ripple B. Underlying MagneticFilterSaturation compares B_peak > Bsat
-    // strictly (no 0.7 headroom), so only genuinely-saturated cores drop
-    // out. Without this the DIMENSIONS filter can pick a too-small toroid
-    // that meets the impedance spec but saturates under normal CM noise.
     magneticsWithScoring = filterSaturation.filter_magnetics(
         &magneticsWithScoring, inputs, 1, true);
-    std::cerr << "[CMC-DEBUG] After filterSaturation: " << magneticsWithScoring.size() << " magnetics\n";
 
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
-    std::cerr << "[CMC-DEBUG] After filterCost: " << magneticsWithScoring.size() << " magnetics\n";
 
     magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::DIMENSIONS], true);
-    std::cerr << "[CMC-DEBUG] After filterDimensions: " << magneticsWithScoring.size() << " magnetics\n";
 
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
-    std::cerr << "[CMC-DEBUG] After filterMagneticInductance: " << magneticsWithScoring.size() << " magnetics\n";
 
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
-    std::cerr << "[CMC-DEBUG] After filterLosses: " << magneticsWithScoring.size() << " magnetics\n";
-    std::cerr << "[CMC-DEBUG] after all filters, " << magneticsWithScoring.size() << " magnetics remain\n";
 
     if (magneticsWithScoring.size() == 0) {
         return {};
@@ -576,7 +541,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
     log_stage("Starting", magneticsWithScoring.size());
-    std::cout << "[CoreAdviser] Starting with " << magneticsWithScoring.size() << " magnetics" << std::endl;
 
     bool usingPowderCores = should_include_powder(inputs);
 
@@ -585,7 +549,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // ========================================================================
     magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     log_stage("AreaProduct", magneticsWithScoring.size());
-    std::cout << "[CoreAdviser] After AreaProduct: " << magneticsWithScoring.size() << std::endl;
 
     // ========================================================================
     // STEP 2: Separate ferrite (gappable) and powder/toroidal cores
@@ -606,7 +569,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         ferriteCores.resize(ferriteLimit);
     }
     logEntry("Ferrite cores after pruning: " + std::to_string(ferriteCores.size()), "CoreAdviser");
-    std::cout << "[CoreAdviser] Ferrite cores after pruning: " << ferriteCores.size() << std::endl;
 
     // ========================================================================
     // STEP 3: Process FERRITE cores (gapped)
@@ -615,35 +577,29 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         // Add gaps to ferrite cores
         add_gapping_standard_cores(&ferriteCores, inputs);
         log_stage("gapping ferrite", ferriteCores.size());
-        std::cout << "[CoreAdviser] After gapping: " << ferriteCores.size() << std::endl;
-        
+
         // Filter by fringing factor
         ferriteCores = filterFringingFactor.filter_magnetics(&ferriteCores, inputs, 1, true);
         log_stage("FringingFactor", ferriteCores.size());
-        std::cout << "[CoreAdviser] After FringingFactor: " << ferriteCores.size() << std::endl;
-        
+
         // Filter by dimensions
         ferriteCores = filterDimensions.filter_magnetics(&ferriteCores, inputs, 1, true);
         log_stage("Dimensions (ferrite)", ferriteCores.size());
-        std::cout << "[CoreAdviser] After Dimensions: " << ferriteCores.size() << std::endl;
-        
+
         // Assign concrete ferrite materials
         ferriteCores = add_ferrite_materials_by_losses(&ferriteCores, inputs);
         log_stage("materials (ferrite)", ferriteCores.size());
-        std::cout << "[CoreAdviser] After materials: " << ferriteCores.size() << std::endl;
-        
+
         // Calculate turns
         add_initial_turns_by_inductance(&ferriteCores, inputs);
-        
+
         // Filter by inductance
         ferriteCores = filterMagneticInductance.filter_magnetics(&ferriteCores, inputs, 0.1, true);
         log_stage("Inductance (ferrite)", ferriteCores.size());
-        std::cout << "[CoreAdviser] After Inductance: " << ferriteCores.size() << std::endl;
-        
+
         // Filter by saturation
         ferriteCores = filterSaturation.filter_magnetics(&ferriteCores, inputs, 1, true);
         log_stage("Saturation (ferrite)", ferriteCores.size());
-        std::cout << "[CoreAdviser] After Saturation: " << ferriteCores.size() << std::endl;
 
         // Prune to top candidates by accumulated score before the expensive Loss filter
         // (which sweeps N per core). Cores already losing on cost+dimensions+inductance
@@ -659,7 +615,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         // Filter by losses
         ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1, true);
         log_stage("Losses (ferrite)", ferriteCores.size());
-        std::cout << "[CoreAdviser] After Losses: " << ferriteCores.size() << std::endl;
 
         if (settings.get_core_adviser_enable_temperature_filter()) {
             MagneticCoreFilterTemperature filterTemperature(
@@ -823,30 +778,20 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
     // }
 
 
-    std::cerr << "[CoreAdviser-DEBUG] Starting with " << magneticsWithScoring.size() << " magnetics" << std::endl;
-
     magneticsWithScoring = add_ferrite_materials_by_impedance(&magneticsWithScoring, inputs);
-    std::cerr << "[CoreAdviser-DEBUG] After add_ferrite_materials_by_impedance: " << magneticsWithScoring.size() << std::endl;
 
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
-    std::cerr << "[CoreAdviser-DEBUG] After add_initial_turns_by_inductance: " << magneticsWithScoring.size() << std::endl;
 
     // Same logic as filter_available_cores_suppression_application: use a tiny
     // weight so the impedance filter is a pure gate (no score contribution).
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 0.001, true);
-    std::cerr << "[CoreAdviser-DEBUG] After filterMinimumImpedance: " << magneticsWithScoring.size() << std::endl;
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    std::cerr << "[CoreAdviser-DEBUG] After filterCost: " << magneticsWithScoring.size() << std::endl;
     magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    std::cerr << "[CoreAdviser-DEBUG] After filterDimensions: " << magneticsWithScoring.size() << std::endl;
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    std::cerr << "[CoreAdviser-DEBUG] After filterMagneticInductance: " << magneticsWithScoring.size() << std::endl;
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    std::cerr << "[CoreAdviser-DEBUG] After filterLosses: " << magneticsWithScoring.size() << std::endl;
     // Manufacturability proxy — see filter_available_cores_suppression_application
     // for rationale. Same internal weight (1.0) here.
     magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
-    std::cerr << "[CoreAdviser-DEBUG] After filterTurnCount: " << magneticsWithScoring.size() << std::endl;
 
     if (magneticsWithScoring.size() == 0) {
         return {};
