@@ -2,6 +2,7 @@
 #include "constructive_models/Magnetic.h"
 #include "constructive_models/Mas.h"
 #include "processors/Outputs.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "physical_models/Reluctance.h"
 #include "support/Utils.h"
 #include "support/Exceptions.h"
@@ -164,30 +165,55 @@ bool Magnetic::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
 }
 
 double Magnetic::calculate_saturation_current(double temperature) {
-    // Both B_sat and initial permeability are temperature-dependent —
-    // forward the caller's `temperature` to both lookups. Previously
-    // only the permeability was temperature-corrected, leaving B_sat
-    // at the material's default-temperature value (typically 25 °C),
-    // which over-reports isat at hot operating points by ~20 % for
-    // typical ferrites (B_sat falls from ~0.50 T at 25 °C to ~0.39 T
-    // at 100 °C).
+    // Saturation current of the as-designed magnetic:
     //
-    // `get_core_reluctance(core, ...)` returns the operating
-    // (magnetic-circuit) reluctance for the core *as-designed* —
-    // gap-inclusive for a gapped E-core, bare-core for a toroid.
-    // The resulting isat = B_sat·A_e·ℜ/N is equivalent to
-    // B_sat·N·A_e/L_actual, i.e. it correctly reflects the
-    // as-picked magnetic's saturation current at its actual
-    // operating inductance.
-    auto magneticFluxDensitySaturation = get_mutable_core().get_magnetic_flux_density_saturation(temperature);
+    //   I_sat = B_sat(T) · N · A_e / L_actual
+    //
+    // where L_actual is the inductance the wound + gapped magnetic
+    // realises (NOT the bare-core inductance). Earlier this function
+    // used `ReluctanceModel::get_core_reluctance(core, μ_initial)`,
+    // which returns the *core's intrinsic* reluctance — for an
+    // ungapped toroid that happens to equal the operating reluctance,
+    // but for a gapped E-core the operating reluctance is dominated
+    // by the gap (typically ~10× the core piece's reluctance). The
+    // old formula therefore back-solved to a phantom L far above the
+    // real inductance and over-reported I_sat by the same factor.
+    //
+    // Symptom this fixes: on a 48 → 12 V 60 W buck the CoreAdviser
+    // picked an EP 17 with N = 6, L_actual ≈ 5.1 µH, ipeak ≈ 10.85 A.
+    // The MagneticFilterSaturation filter accepted it correctly
+    // (B_pk = 0.21 T, B_sat·1.2 = 0.49 T, margin 1.99×). PyMKF's
+    // calculate_saturation_current reported 11.79 A — corresponding
+    // to a phantom L = 9.4 µH (the EP 17's bare-core L at μ_init,
+    // before gap) — so Heaviside's I_sat / I_peak realism check saw
+    // 1.086 and falsely FAILed inductor_isat_margin. The honest
+    // value is 21.6 A (ratio 1.99 × — matches the filter).
+    //
+    // Use MagnetizingInductance::calculate_inductance_from_number_turns_and_gapping
+    // which solves the gapped magnetic's circuit (core piece + each
+    // gap entry + fringing factor) and reports the operating-point
+    // L. That L is then inverted into the saturation current via the
+    // same B_sat·N·A_e/L identity the realism gate expects.
+    auto magneticFluxDensitySaturation =
+        get_mutable_core().get_magnetic_flux_density_saturation(temperature);
     auto numberTurns = get_mutable_coil().get_number_turns(0);
     auto effectiveArea = get_mutable_core().get_effective_area();
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
-    auto initialPermeability = get_mutable_core().get_initial_permeability(temperature);
-    auto reluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
 
-    double saturationCurrent = magneticFluxDensitySaturation * effectiveArea * reluctance / numberTurns;
-    return saturationCurrent;
+    OpenMagnetics::MagnetizingInductance magnetizingInductanceCalc;
+    auto inductanceOutput =
+        magnetizingInductanceCalc.calculate_inductance_from_number_turns_and_gapping(
+            get_mutable_core(), get_mutable_coil());
+    auto inductanceNominal =
+        inductanceOutput.get_magnetizing_inductance().get_nominal();
+    if (!inductanceNominal.has_value() || inductanceNominal.value() <= 0) {
+        throw std::runtime_error(
+            "calculate_saturation_current: gapped-magnetic inductance "
+            "is missing or non-positive — cannot derive I_sat.");
+    }
+    double inductanceActual = inductanceNominal.value();
+
+    return magneticFluxDensitySaturation * numberTurns * effectiveArea
+         / inductanceActual;
 }
 
 void to_file(std::filesystem::path filepath, const Magnetic & x) {
