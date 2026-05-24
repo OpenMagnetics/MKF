@@ -48,6 +48,8 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
                          !inputs->get_design_requirements().get_magnetizing_inductance().get_maximum();
     }
 
+    const std::string magneticRef = magnetic->get_reference();
+    size_t opIndex = 0;
     for (auto operatingPoint : inputs->get_operating_points()) {
         double magneticFluxDensityPeak;
         auto magneticFluxDensitySaturation = magnetic->get_mutable_core().get_magnetic_flux_density_saturation(
@@ -127,6 +129,18 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             auto result = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(
                 magnetic->get_core(), magnetic->get_coil(), &operatingPoint);
             auto magneticFluxDensity = result.second;
+
+            // Phase 8 (perf): seed the per-adviser-invocation cache so
+            // downstream filters (TEMPERATURE) that need the same B for
+            // the same (magnetic, OP) can skip the iterative recomputation.
+            // Inductor path only — transformer branch uses a different B
+            // derivation and shouldn't share the cache.
+            if (magneticFluxDensity.get_processed() && magneticFluxDensity.get_processed()->get_peak()
+                && result.first.get_magnetizing_inductance().get_nominal()) {
+                cache_inductance_flux(magneticRef, opIndex,
+                    result.first.get_magnetizing_inductance().get_nominal().value(),
+                    magneticFluxDensity);
+            }
             
             // Debug: print magnetizing current details after calculation
             auto primaryExcitationAfter = Inputs::get_primary_excitation(operatingPoint);
@@ -177,6 +191,7 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
                   << " margin=" << margin
                   << " ratio=" << bRatio
                   << " isSaturated=" << isSaturated << std::endl;
+        ++opIndex;
 
         if (isSaturated) {
             return {false, 0.0};

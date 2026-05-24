@@ -110,6 +110,21 @@ namespace OpenMagnetics {
 
 void clear_scoring() {
     _scorings.clear();
+    _inductanceFluxCache.clear();
+}
+
+void cache_inductance_flux(const std::string& magneticRef, size_t operatingPointIndex,
+                           double inductance, const MAS::SignalDescriptor& magneticFluxDensity) {
+    _inductanceFluxCache[magneticRef][operatingPointIndex] = {inductance, magneticFluxDensity};
+}
+
+std::optional<InductanceFluxCacheEntry> get_cached_inductance_flux(
+    const std::string& magneticRef, size_t operatingPointIndex) {
+    auto magIt = _inductanceFluxCache.find(magneticRef);
+    if (magIt == _inductanceFluxCache.end()) return std::nullopt;
+    auto opIt = magIt->second.find(operatingPointIndex);
+    if (opIt == magIt->second.end()) return std::nullopt;
+    return opIt->second;
 }
 
 void add_scoring(std::string name, MagneticFilters filter, double scoring) {

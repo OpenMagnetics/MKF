@@ -46,6 +46,35 @@ inline OpenMagnetics::Settings& settings = OpenMagnetics::Settings::GetInstance(
 
 inline std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
 
+// Per-adviser-invocation cache for the iterative
+// MagnetizingInductance::calculate_inductance_and_magnetic_flux_density
+// result. Keyed by (magnetic_ref, operating_point_index). Multiple
+// filters (SATURATION, TEMPERATURE, ...) call this routine on the same
+// (magnetic, OP) with the same default reluctance model; the call
+// iterates to convergence and is expensive. The first caller writes
+// (L, B); later callers using the same model can read instead of
+// recompute. Cleared by clear_scoring() at the head of each adviser
+// invocation, so cross-run pollution can't happen.
+//
+// Stores the full SignalDescriptor for B (waveform + harmonics +
+// processed) because downstream consumers (CoreLosses' Steinmetz,
+// IGSE, etc.) need more than just peak — they query peak_to_peak,
+// harmonics, and sometimes the waveform itself.
+//
+// Limitations:
+//   * Cache is only valid for the default reluctance model. Filters
+//     that use a different model (e.g. MAGNETIZING_INDUCTANCE forces
+//     ZHANG) MUST NOT participate.
+//   * Cache is only valid as long as the magnetic's coil geometry
+//     (specifically number_turns) doesn't change mid-flow. The MKF
+//     filter pipeline does not mutate N after add_initial_turns_by_
+//     inductance, so this holds.
+struct InductanceFluxCacheEntry {
+    double inductance;
+    MAS::SignalDescriptor magneticFluxDensity;
+};
+inline std::map<std::string, std::map<size_t, InductanceFluxCacheEntry>> _inductanceFluxCache;
+
 inline std::vector<OpenMagnetics::Core> coreDatabase;
 inline std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
 inline std::map<std::string, MAS::CoreShape> coreShapeDatabase;
@@ -60,6 +89,11 @@ inline OpenMagnetics::MagneticsCache magneticsCache;
 void add_scoring(std::string name, OpenMagnetics::MagneticFilters filter, double scoring);
 void clear_scoring();
 std::optional<double> get_scoring(std::string name, OpenMagnetics::MagneticFilters filter);
+
+void cache_inductance_flux(const std::string& magneticRef, size_t operatingPointIndex,
+                           double inductance, const MAS::SignalDescriptor& magneticFluxDensity);
+std::optional<InductanceFluxCacheEntry> get_cached_inductance_flux(
+    const std::string& magneticRef, size_t operatingPointIndex);
 
 // Legacy logging interface - prefer using Logger directly
 // Verbosity levels: 0=ERROR, 1=WARNING, 2=INFO, 3+=DEBUG

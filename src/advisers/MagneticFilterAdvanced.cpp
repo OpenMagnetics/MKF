@@ -164,12 +164,28 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     double ambientTemperature = 25.0;
 
     const auto& coil = magnetic->get_coil();
+    const std::string magneticRef = magnetic->get_reference();
+    size_t opIndex = 0;
     for (auto& op : inputs->get_operating_points()) {
         ambientTemperature = op.get_conditions().get_ambient_temperature();
         auto excitation = op.get_excitations_per_winding()[0];
-        auto opCopy = op;
-        auto [magnetizingInductance, magneticFluxDensity] =
-            _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &opCopy);
+
+        // Phase 8 (perf): if a prior filter (typically SATURATION on the
+        // inductor branch) already ran calculate_inductance_and_magnetic_
+        // flux_density for this (magnetic, OP) with the default reluctance
+        // model, reuse its peak B. Both filters default-construct
+        // MagnetizingInductance and use it on the same fixed coil, so the
+        // peak B matches by construction. On cache miss, fall through to
+        // the iterative path.
+        SignalDescriptor magneticFluxDensity;
+        if (auto cached = get_cached_inductance_flux(magneticRef, opIndex)) {
+            magneticFluxDensity = cached->magneticFluxDensity;
+        } else {
+            auto opCopy = op;
+            auto [L, B] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &opCopy);
+            (void)L;
+            magneticFluxDensity = B;
+        }
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         auto coreLossesMethods = core.get_available_core_losses_methods();
         CoreLossesOutput cl;
@@ -182,6 +198,7 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
             cl = proprietaryModel->get_core_losses(core, excitation, ambientTemperature);
         }
         coreLosses += cl.get_core_losses();
+        ++opIndex;
     }
     if (!inputs->get_operating_points().empty())
         coreLosses /= inputs->get_operating_points().size();

@@ -658,7 +658,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
 
     for (size_t index = 0; index < catalogueMasWithStriclyRequirementsPassed.size(); ++index) {
         auto mas = catalogueMasWithStriclyRequirementsPassed[index];
-        std::vector<Outputs> outputs;
+        // Seed `outputs` from the strict-loop's accumulated outputs so the
+        // final resultMas carries them. Previously this re-initialised to an
+        // empty vector and the strict-loop outputs (e.g. core/winding losses
+        // from LOSSES_NO_PROXIMITY) were discarded.
+        auto outputs = mas.get_outputs();
         auto inputs = mas.get_inputs();
         auto magnetic = mas.get_magnetic();
         bool valid = true;
