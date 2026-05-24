@@ -623,38 +623,41 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
         {&filterPermeance, &filterVolumetricLosses, &filterWindingWindowArea, &filterEffectiveArea, &filterEnvelopingVolume},
         &_scorings, &_validScorings, &_scoredValues, &_filterConfiguration);
 
-    std::vector<std::pair<Core, double>> rankedCores = *cores;
+    using F = CoreCrossReferencerFilters;
+    // Order matches the prior magic_enum::enum_for_each iteration of
+    // CoreCrossReferencerFilters (PERMEANCE → WINDING_WINDOW_AREA →
+    // ENVELOPING_VOLUME → EFFECTIVE_AREA). CORE_LOSSES and SATURATION
+    // are intentionally absent from this list — CORE_LOSSES runs as a
+    // separate trailing step after the 1.1× pre-prune, and SATURATION
+    // is consumed by CORE_LOSSES as a saturationWeight argument.
+    std::vector<CrossReferencerStep<Core, F>> steps = {
+        {F::PERMEANCE,
+         [&](auto* r){ return filterPermeance.filter_core(r, referenceCore, inputs, _models, weights[F::PERMEANCE], limit); }},
+        {F::WINDING_WINDOW_AREA,
+         [&](auto* r){ return filterWindingWindowArea.filter_core(r, referenceCore, weights[F::WINDING_WINDOW_AREA], limit); }},
+        {F::ENVELOPING_VOLUME,
+         [&](auto* r){ return filterEnvelopingVolume.filter_core(r, referenceCore, weights[F::ENVELOPING_VOLUME], limit); }},
+        {F::EFFECTIVE_AREA,
+         [&](auto* r){ return filterEffectiveArea.filter_core(r, referenceCore, weights[F::EFFECTIVE_AREA], limit); }},
+    };
 
-    magic_enum::enum_for_each<CoreCrossReferencerFilters>([&] (auto val) {
-        CoreCrossReferencerFilters filter = val;
-        switch (filter) {
-            case CoreCrossReferencerFilters::ENVELOPING_VOLUME: 
-                rankedCores = filterEnvelopingVolume.filter_core(&rankedCores, referenceCore, weights[CoreCrossReferencerFilters::ENVELOPING_VOLUME], limit);
-                break;
-            case CoreCrossReferencerFilters::WINDING_WINDOW_AREA: 
-                rankedCores = filterWindingWindowArea.filter_core(&rankedCores, referenceCore, weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA], limit);
-                break;
-            case CoreCrossReferencerFilters::EFFECTIVE_AREA: 
-                rankedCores = filterEffectiveArea.filter_core(&rankedCores, referenceCore, weights[CoreCrossReferencerFilters::EFFECTIVE_AREA], limit);
-                break;
-            case CoreCrossReferencerFilters::PERMEANCE: 
-                rankedCores = filterPermeance.filter_core(&rankedCores, referenceCore, inputs, _models, weights[CoreCrossReferencerFilters::PERMEANCE], limit);
-                break;
-        }    
-        std::string filterString = to_string(filter);
-        logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + filterString + ".", "Core Cross Referencer", 2);
-    });
+    auto rankedCores = run_cross_referencer_pipeline(*cores, steps, "Core Cross Referencer");
 
+    // CORE_LOSSES is the most computationally costly filter, so it's
+    // gated behind a 1.1× maximumNumberResults pre-prune and run as a
+    // trailing single step rather than inside the iteration above.
     if (rankedCores.size() > (1.1 * maximumNumberResults)) {
-        rankedCores = std::vector<std::pair<Core, double>>(rankedCores.begin(), rankedCores.end() - (rankedCores.size() - (1.1 * maximumNumberResults)));
+        rankedCores.resize(static_cast<size_t>(1.1 * maximumNumberResults));
     }
-
-    // We leave core losses for the last one, as it is the most computationally costly
-    rankedCores = filterVolumetricLosses.filter_core(&rankedCores, referenceCore, referenceNumberTurns, inputs, _models, weights[CoreCrossReferencerFilters::CORE_LOSSES], limit, weights[CoreCrossReferencerFilters::SATURATION]);
-        logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + to_string(CoreCrossReferencerFilters::CORE_LOSSES) + ".", "Core Cross Referencer", 2);
+    rankedCores = filterVolumetricLosses.filter_core(
+        &rankedCores, referenceCore, referenceNumberTurns, inputs, _models,
+        weights[F::CORE_LOSSES], limit, weights[F::SATURATION]);
+    logEntry("There are " + std::to_string(rankedCores.size())
+                 + " after filtering by " + to_string(F::CORE_LOSSES) + ".",
+             "Core Cross Referencer", 2);
 
     if (rankedCores.size() > maximumNumberResults) {
-        rankedCores.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
+        rankedCores.resize(maximumNumberResults);
     }
 
     return rankedCores;

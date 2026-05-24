@@ -16,6 +16,7 @@
 #include "support/Utils.h"
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
@@ -272,6 +273,48 @@ void wire_cross_referencer_filters(
         f->set_scored_value(scoredValues);
         f->set_filter_configuration(filterConfiguration);
     }
+}
+
+// Phase 7 (Option C, dispatch unification): one declarative
+// representation of a single cross-referencer step. Each step pairs the
+// FilterEnum value (used solely for the "After …" log line) with a
+// callable that takes the in-flight ranked list pointer and returns the
+// new ranked list. The callable closes over whichever per-filter context
+// the concrete cross-referencer needs (referenceCore, inputs, _models,
+// temperature, weights, limit) — see CoreCrossReferencer.cpp and
+// CoreMaterialCrossReferencer.cpp for the canonical use.
+template <typename Item, typename FilterEnum>
+struct CrossReferencerStep {
+    FilterEnum filter;
+    std::function<std::vector<std::pair<Item, double>>(
+        std::vector<std::pair<Item, double>>*)> apply;
+};
+
+// Run a sequence of CrossReferencerStep<Item, FilterEnum> against an
+// initial ranked list. After each step, the surviving list is logged as
+// "There are N after filtering by <filter>." under the given log
+// category — identical to the format the two open-coded
+// magic_enum::enum_for_each switches used. Returns the final ranked list.
+//
+// Note: this intentionally does NOT iterate over the FilterEnum's value
+// set. The caller controls order and may skip values, which preserves
+// each cross-referencer's prior behaviour (e.g. CoreCrossReferencer
+// handles CORE_LOSSES as a separate trailing step after a prune, and
+// would not want it inside the iterated set).
+template <typename Item, typename FilterEnum>
+std::vector<std::pair<Item, double>> run_cross_referencer_pipeline(
+    std::vector<std::pair<Item, double>> ranked,
+    const std::vector<CrossReferencerStep<Item, FilterEnum>>& steps,
+    const std::string& logCategory)
+{
+    for (const auto& step : steps) {
+        ranked = step.apply(&ranked);
+        logEntry(
+            "There are " + std::to_string(ranked.size())
+                + " after filtering by " + to_string(step.filter) + ".",
+            logCategory, 2);
+    }
+    return ranked;
 }
 
 } // namespace OpenMagnetics

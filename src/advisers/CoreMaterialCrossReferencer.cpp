@@ -430,40 +430,28 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
         }
     }
 
-    magic_enum::enum_for_each<CoreMaterialCrossReferencerFilters>([&] (auto val) {
-        CoreMaterialCrossReferencerFilters filter = val;
-        std::string filterString = to_string(filter);
-        logEntry("There are " + std::to_string(rankedCoreMaterials.size()) + " before filtering by " + filterString + ".", "Core Material Cross Referencer", 2);
-        switch (filter) {
-            case CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY: 
-                rankedCoreMaterials = filterInitialPermeability.filter_core_materials(&rankedCoreMaterials, referenceCoreMaterial, temperature, weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY]);
-                break;
-            case CoreMaterialCrossReferencerFilters::REMANENCE: 
-                rankedCoreMaterials = filterRemanence.filter_core_materials(&rankedCoreMaterials, referenceCoreMaterial, temperature, weights[CoreMaterialCrossReferencerFilters::REMANENCE]);
-                break;
-            case CoreMaterialCrossReferencerFilters::COERCIVE_FORCE: 
-                rankedCoreMaterials = filterCoerciveForce.filter_core_materials(&rankedCoreMaterials, referenceCoreMaterial, temperature, weights[CoreMaterialCrossReferencerFilters::COERCIVE_FORCE]);
-                break;
-            case CoreMaterialCrossReferencerFilters::SATURATION: 
-                rankedCoreMaterials = filterSaturation.filter_core_materials(&rankedCoreMaterials, referenceCoreMaterial, temperature, weights[CoreMaterialCrossReferencerFilters::SATURATION]);
-                break;
-            case CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE: 
-                rankedCoreMaterials = filterCurieTemperature.filter_core_materials(&rankedCoreMaterials, referenceCoreMaterial, temperature, weights[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE]);
-                break;
-            case CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES: 
-                rankedCoreMaterials = filterVolumetricLosses.filter_core_materials(&rankedCoreMaterials, referenceCoreMaterial, temperature, _models, weights[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES]);
-                break;
-            case CoreMaterialCrossReferencerFilters::RESISTIVITY: 
-                rankedCoreMaterials = filterResistivity.filter_core_materials(&rankedCoreMaterials, referenceCoreMaterial, temperature, weights[CoreMaterialCrossReferencerFilters::RESISTIVITY]);
-                break;
-        }    
-        logEntry("There are " + std::to_string(rankedCoreMaterials.size()) + " after filtering by " + filterString + ".", "Core Material Cross Referencer", 2);
-    });
+    using F = CoreMaterialCrossReferencerFilters;
+    std::vector<CrossReferencerStep<CoreMaterial, F>> steps = {
+        {F::INITIAL_PERMEABILITY,
+         [&](auto* r){ return filterInitialPermeability.filter_core_materials(r, referenceCoreMaterial, temperature, weights[F::INITIAL_PERMEABILITY]); }},
+        {F::REMANENCE,
+         [&](auto* r){ return filterRemanence.filter_core_materials(r, referenceCoreMaterial, temperature, weights[F::REMANENCE]); }},
+        {F::COERCIVE_FORCE,
+         [&](auto* r){ return filterCoerciveForce.filter_core_materials(r, referenceCoreMaterial, temperature, weights[F::COERCIVE_FORCE]); }},
+        {F::SATURATION,
+         [&](auto* r){ return filterSaturation.filter_core_materials(r, referenceCoreMaterial, temperature, weights[F::SATURATION]); }},
+        {F::CURIE_TEMPERATURE,
+         [&](auto* r){ return filterCurieTemperature.filter_core_materials(r, referenceCoreMaterial, temperature, weights[F::CURIE_TEMPERATURE]); }},
+        {F::VOLUMETRIC_LOSSES,
+         [&](auto* r){ return filterVolumetricLosses.filter_core_materials(r, referenceCoreMaterial, temperature, _models, weights[F::VOLUMETRIC_LOSSES]); }},
+        {F::RESISTIVITY,
+         [&](auto* r){ return filterResistivity.filter_core_materials(r, referenceCoreMaterial, temperature, weights[F::RESISTIVITY]); }},
+    };
+    rankedCoreMaterials = run_cross_referencer_pipeline(rankedCoreMaterials, steps, "Core Material Cross Referencer");
 
     if (rankedCoreMaterials.size() > maximumNumberResults) {
-        rankedCoreMaterials.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
+        rankedCoreMaterials.resize(maximumNumberResults);
     }
-
     return rankedCoreMaterials;
 }
 
