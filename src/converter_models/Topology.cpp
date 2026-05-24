@@ -243,6 +243,101 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::WEINBERG_CONVERTER] = weinberg;
             }
 
+            // ──────────────────────────────────────────────────────────────
+            // Forward family — SingleSwitchForward / TwoSwitchForward /
+            // ActiveClampForward. All three share the buck-derived output
+            // LC stage and a hard-switched (CCM) primary; SSF adds a
+            // reset winding (N3) to dump the magnetising flux, TSF clamps
+            // it through D2/D3 to Vin, ACF resets it through an active
+            // clamp cap + complementary switch. The defaults below are
+            // shared because the SPICE behaviour at this resolution is
+            // dominated by the rectifier-diode commutation on the
+            // secondary, not by the reset mechanism. snubR=1 kΩ matches
+            // the Flyback real-magnetic-path damping (real coupled
+            // inductor → finite leakage spike); the bigger output cap
+            // 100 µF mirrors Buck/PushPull's LC-filter sizing. GEAR +
+            // TRTOL=7 needed for the coupled-inductor stiffness at the
+            // switching edges. These defaults are starting points —
+            // bench/EVM tuning may want to push solver tolerances or
+            // re-shape the snubber.
+            {
+                SpiceSimulationConfig forward;
+                forward.swModelVT = 2.5;        forward.swModelVH = 0.5;
+                forward.snubR = 1e3;            forward.snubC = 1e-9;
+                forward.diodeIS = 1e-12;        forward.diodeRS = 0.05;
+                forward.outputCapacitance = 100e-6;
+                forward.relTol = 0.01;          forward.absTol = 1e-7;
+                forward.vnTol = 1e-4;
+                forward.itl1 = 500;             forward.itl4 = 500;
+                forward.method = "GEAR";        forward.trTol = 7.0;
+                m[MAS::Topologies::SINGLE_SWITCH_FORWARD_CONVERTER] = forward;
+                m[MAS::Topologies::TWO_SWITCH_FORWARD_CONVERTER]    = forward;
+                m[MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER]  = forward;
+            }
+
+            // Asymmetric Half-Bridge (AHB): half-bridge primary driving a
+            // forward-rectified secondary with 50/50 complementary duty
+            // and resonant ZVS turn-on of the high-side switch. The
+            // commutation pattern is similar to ACF but with two
+            // primary-side switches instead of one; share the forward-
+            // family defaults but tighten itl1/itl4 (the AHB resonant
+            // window is short and over-relaxed solver caps can land
+            // outside it). Output cap kept at the forward-class 100 µF.
+            {
+                SpiceSimulationConfig ahb;
+                ahb.swModelVT = 2.5;            ahb.swModelVH = 0.5;
+                ahb.snubR = 1e3;                ahb.snubC = 1e-9;
+                ahb.diodeIS = 1e-12;            ahb.diodeRS = 0.05;
+                ahb.outputCapacitance = 100e-6;
+                ahb.relTol = 0.005;             ahb.absTol = 1e-8;
+                ahb.vnTol = 1e-5;
+                ahb.itl1 = 1000;                ahb.itl4 = 1000;
+                ahb.method = "GEAR";            ahb.trTol = 7.0;
+                m[MAS::Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER] = ahb;
+            }
+
+            // CLLC resonant — primary L_r1 + C_r1 series tank, secondary
+            // L_r2 + C_r2 series tank, magnetising inductance L_m, both
+            // sides full-bridge. Bidirectional resonant converter for
+            // V2G / charger applications. The resonant tank is stiff at
+            // the dual-resonance peaks; mirror Dab's looser tolerances
+            // but use GEAR (resonant tanks tolerate it well) and a
+            // smaller output cap (47 µF) because the secondary rectifier
+            // is current-fed by the tank.
+            {
+                SpiceSimulationConfig cllc;
+                cllc.swModelVT = 2.5;           cllc.swModelVH = 0.8;
+                cllc.swModelRON = 0.01;         cllc.swModelROFF = 1e6;
+                cllc.snubR = 1e3;               cllc.snubC = 1e-9;
+                cllc.diodeIS = 1e-12;           cllc.diodeRS = 0.05;
+                cllc.outputCapacitance = 47e-6;
+                cllc.relTol = 0.01;             cllc.absTol = 1e-7;
+                cllc.vnTol = 1e-4;
+                cllc.itl1 = 500;                cllc.itl4 = 500;
+                cllc.method = "GEAR";           cllc.trTol = 7.0;
+                m[MAS::Topologies::CLLC_RESONANT_CONVERTER] = cllc;
+            }
+
+            // IsolatedBuckBoost: isolated single-switch step-up/-down,
+            // similar to Flyback but with secondary inductor instead of
+            // pure transformer (buck-boost output stage on the secondary
+            // side). Share Flyback's GEAR + TRTOL=7 stiffness handling
+            // for the coupled-inductor model; use a larger output cap
+            // (47 µF) to match the LC filter on the secondary.
+            {
+                SpiceSimulationConfig ibb;
+                ibb.swModelVT = 2.5;            ibb.swModelVH = 0.5;
+                ibb.snubR = 1e3;                ibb.snubC = 1e-9;
+                ibb.snubRReal = 1e3;
+                ibb.diodeIS = 1e-12;            ibb.diodeRS = 0.05;
+                ibb.outputCapacitance = 47e-6;
+                ibb.relTol = 0.01;              ibb.absTol = 1e-7;
+                ibb.vnTol = 1e-4;
+                ibb.itl1 = 500;                 ibb.itl4 = 500;
+                ibb.method = "GEAR";            ibb.trTol = 7.0;
+                m[MAS::Topologies::ISOLATED_BUCK_BOOST_CONVERTER] = ibb;
+            }
+
             // 4-Switch Buck-Boost (FSBB): non-inverting H-bridge buck-boost with
             // single inductor and three operating regions (BUCK / BOOST /
             // BUCK_BOOST). Four MOSFETs (Q1/Q2 buck leg, Q3/Q4 boost leg) +
