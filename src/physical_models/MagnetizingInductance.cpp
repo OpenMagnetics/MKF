@@ -811,6 +811,34 @@ double MagnetizingInductance::calculate_flux_density_peak_from_voltage(
     return bPeak;
 }
 
+double MagnetizingInductance::calculate_flux_density_peak_from_volt_seconds(
+    Core& core,
+    double numberTurns,
+    double maxVoltSeconds)
+{
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    if (numberTurns <= 0 || effectiveArea <= 0 || maxVoltSeconds <= 0) {
+        return 0.0;
+    }
+    // Faraday's Law: V = N · A_e · dB/dt  →  B_peak = max|∫V dt| / (N · A_e).
+    // Works for arbitrary waveforms (DAB square, CLLLC trapezoid, ...);
+    // does NOT assume sinusoidal.
+    return maxVoltSeconds / (numberTurns * effectiveArea);
+}
+
+double MagnetizingInductance::calculate_turns_from_volt_seconds_and_max_flux_density(
+    Core& core,
+    double maxVoltSeconds,
+    double maxFluxDensity)
+{
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    if (effectiveArea <= 0 || maxFluxDensity <= 0 || maxVoltSeconds <= 0) {
+        return 0.0;
+    }
+    // Inverse of B_peak = V·s / (N · A_e): N_min = ceil(V·s / (B · A_e)).
+    return std::max(1.0, std::ceil(maxVoltSeconds / (maxFluxDensity * effectiveArea)));
+}
+
 double MagnetizingInductance::calculate_turns_from_voltage_and_max_flux_density(
     Core& core,
     double voltagePeak,

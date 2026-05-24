@@ -81,6 +81,26 @@ class Inputs : public MAS::Inputs {
     static OperatingPointExcitation get_primary_excitation(const OperatingPoint& operatingPoint);
 
     static SignalDescriptor calculate_induced_voltage(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress=true);
+
+    /**
+     * @brief Peak excursion of ∫V dt across the primary voltage waveform.
+     *
+     * Returns max|∫V dt| over the waveform's samples. This is the V·s
+     * quantity that pairs with Faraday's law (`B_peak = V·s / (N · A_e)`)
+     * for non-sinusoidal voltages — DAB squares, CLLLC trapezoids,
+     * push-pull rectangulars, etc. — where the sinusoidal V_peak/ω
+     * shortcut underestimates B_peak by ~36 %.
+     *
+     * Fallback: if the operating point doesn't carry a sampled voltage
+     * waveform but has a processed peak + frequency, return V_peak/ω
+     * (the sinusoidal estimate). Returns 0 if neither is available.
+     *
+     * Iterates over ALL operating points and ALL excitations (or the
+     * single OP / primary excitation overload below), returning the
+     * worst-case excursion.
+     */
+    static double calculate_max_volt_seconds(const OperatingPointExcitation& excitation);
+    static double calculate_max_volt_seconds(const OperatingPoint& operatingPoint);
     static bool include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,

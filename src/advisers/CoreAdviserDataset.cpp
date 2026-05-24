@@ -498,34 +498,17 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                         !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum();
     }
     
-    // Pre-compute shared transformer values once (not per-core)
+    // Pre-compute shared transformer values once (not per-core).
+    // maxVoltSeconds is the peak V·s excursion over all OPs' primary
+    // voltage waveforms — Faraday-integrated, non-sinusoidal-safe.
     double transformerTemperature = 25.0;
     double maxVoltSeconds = 0.0;
     if (isTransformer) {
-        // Phase 6 (perf): cache operating-points by const-ref.
         const auto& transformerOperatingPoints = inputs.get_operating_points();
-        for (size_t opIdx = 0; opIdx < transformerOperatingPoints.size(); ++opIdx) {
-            const auto& op = transformerOperatingPoints[opIdx];
+        for (const auto& op : transformerOperatingPoints) {
             transformerTemperature = std::max(transformerTemperature, op.get_conditions().get_ambient_temperature());
-            auto excitation = Inputs::get_primary_excitation(op);
-
-            if (excitation.get_voltage() && excitation.get_voltage()->get_waveform() &&
-                excitation.get_voltage()->get_waveform()->get_time()) {
-                auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
-                const auto& data = voltageWaveform.get_data();
-                auto time = voltageWaveform.get_time().value();
-                double integral = 0.0;
-                for (size_t j = 0; j + 1 < std::min(data.size(), time.size()); ++j) {
-                    integral += data[j] * (time[j + 1] - time[j]);
-                    maxVoltSeconds = std::max(maxVoltSeconds, std::abs(integral));
-                }
-            } else if (excitation.get_voltage() && excitation.get_voltage()->get_processed() &&
-                       excitation.get_voltage()->get_processed()->get_peak()) {
-                double frequency = excitation.get_frequency() > 0 ? excitation.get_frequency() : 100000;
-                double omega = 2 * std::numbers::pi * frequency;
-                maxVoltSeconds = std::max(maxVoltSeconds,
-                    excitation.get_voltage()->get_processed()->get_peak().value() / omega);
-            }
+            maxVoltSeconds = std::max(maxVoltSeconds,
+                Inputs::calculate_max_volt_seconds(Inputs::get_primary_excitation(op)));
         }
     }
 
@@ -559,16 +542,16 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
 
         if (initialNumberTurns == 1) {
             if (isTransformer) {
-                // Feasibility seed: fewest turns that keep B_peak under the material's safe
-                // operating flux. The loss filter refines N upward toward the loss optimum.
+                // Feasibility seed: fewest turns that keep B_peak under the
+                // material's safe operating flux. `get_magnetic_flux_density_
+                // saturation(temp, /*proportion=*/true)` already applies
+                // `defaults.maximumProportionMagneticFluxDensitySaturation` —
+                // pass it straight through. The loss filter refines N upward
+                // toward the loss optimum later.
                 double bMax = core.get_magnetic_flux_density_saturation(transformerTemperature, true);
-                double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
-
-                if (maxVoltSeconds > 0 && effectiveArea > 0 && bMax > 0) {
-                    initialNumberTurns = std::max(1.0, std::ceil(maxVoltSeconds / (bMax * effectiveArea)));
-                } else {
-                    initialNumberTurns = 5;
-                }
+                double nFromSaturation = magnetizingInductance
+                    .calculate_turns_from_volt_seconds_and_max_flux_density(core, maxVoltSeconds, bMax);
+                initialNumberTurns = nFromSaturation > 0 ? nFromSaturation : 5;
 
                 // For resonant transformers with a specific Lm target
                 // (e.g. CLLLC, CLLC) we must size BOTH N and the gap so

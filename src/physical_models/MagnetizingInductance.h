@@ -170,6 +170,48 @@ class MagnetizingInductance {
         double frequency = 100000.0);
 
     /**
+     * @brief Calculate peak magnetic flux density from a volt-second
+     *        excursion (non-sinusoidal-safe).
+     *
+     * Faraday's law: B_peak = max|∫V dt| / (N · A_e). Use this when the
+     * voltage waveform is non-sinusoidal (DAB square wave, CLLLC trapezoid,
+     * …) — the sinusoidal `calculate_flux_density_peak_from_voltage`
+     * underestimates B_peak by ~36 % on those because it assumes
+     * V·t = V_peak/ω. Pair with `Inputs::calculate_max_volt_seconds` to
+     * get the V·s peak from an operating point's voltage waveform.
+     *
+     * @param core            Core with effective area
+     * @param numberTurns     Number of primary turns
+     * @param maxVoltSeconds  Peak excursion of the running ∫V dt integral,
+     *                        in volt-seconds
+     * @return double         Peak magnetic flux density in Tesla, or 0 if
+     *                        N or A_e is zero/missing
+     */
+    double calculate_flux_density_peak_from_volt_seconds(
+        Core& core,
+        double numberTurns,
+        double maxVoltSeconds);
+
+    /**
+     * @brief Inverse of `calculate_flux_density_peak_from_volt_seconds`:
+     *        N = ceil(max|∫V dt| / (B_max · A_e)).
+     *
+     * Saturation-floor turn count for a non-sinusoidal voltage. Returns
+     * 0 if A_e or B_max is non-positive; otherwise rounds up to the
+     * smallest integer N that keeps B_peak ≤ B_max for the given V·s.
+     *
+     * @param core            Core with effective area
+     * @param maxVoltSeconds  Peak excursion of ∫V dt, in volt-seconds
+     * @param maxFluxDensity  Maximum allowed B_peak in Tesla (typically
+     *                        defaults.maximumProportionMagneticFluxDensitySaturation
+     *                        × B_sat at operating temperature)
+     */
+    double calculate_turns_from_volt_seconds_and_max_flux_density(
+        Core& core,
+        double maxVoltSeconds,
+        double maxFluxDensity);
+
+    /**
      * @brief Calculate minimum turns to avoid saturation from voltage
      * 
      * For transformers, calculates minimum turns needed to keep B below max.

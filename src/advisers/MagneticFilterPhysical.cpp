@@ -89,24 +89,14 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             double numberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
             OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
 
-            // For non-sinusoidal waveforms (e.g. DAB square wave), the sinusoidal formula
-            // V_peak/(N·Ae·ω) underestimates B_peak by ~36%. Integrate V·dt instead.
-            double maxVoltSeconds = 0.0;
-            if (hasVoltage && excitation.get_voltage()->get_waveform() &&
-                excitation.get_voltage()->get_waveform()->get_time()) {
-                auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
-                const auto& data = voltageWaveform.get_data();
-                auto time = voltageWaveform.get_time().value();
-                double integral = 0.0;
-                for (size_t j = 0; j + 1 < std::min(data.size(), time.size()); ++j) {
-                    integral += data[j] * (time[j + 1] - time[j]);
-                    maxVoltSeconds = std::max(maxVoltSeconds, std::abs(integral));
-                }
-            }
-
-            double effectiveArea = magnetic->get_mutable_core().get_processed_description()->get_effective_parameters().get_effective_area();
-            if (maxVoltSeconds > 0 && numberTurns > 0 && effectiveArea > 0) {
-                magneticFluxDensityPeak = maxVoltSeconds / (numberTurns * effectiveArea);
+            // For non-sinusoidal waveforms (DAB square, CLLLC trapezoid, ...)
+            // the sinusoidal V_peak/(N·A_e·ω) underestimates B_peak by ~36 %.
+            // Use the V·s excursion path (Faraday integrated).
+            double maxVoltSeconds = hasVoltage ? Inputs::calculate_max_volt_seconds(excitation) : 0.0;
+            if (maxVoltSeconds > 0 && numberTurns > 0) {
+                magneticFluxDensityPeak = magnetizingInductanceObj
+                    .calculate_flux_density_peak_from_volt_seconds(
+                        magnetic->get_mutable_core(), numberTurns, maxVoltSeconds);
             } else {
                 magneticFluxDensityPeak = magnetizingInductanceObj.calculate_flux_density_peak_from_voltage(
                     magnetic->get_mutable_core(), numberTurns, voltagePeak, frequency);

@@ -1155,6 +1155,42 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
     return sampledWaveform;
 }
 
+double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excitation) {
+    if (!excitation.get_voltage()) {
+        return 0.0;
+    }
+    const auto& voltage = excitation.get_voltage().value();
+    if (voltage.get_waveform() && voltage.get_waveform()->get_time()) {
+        const auto& wf = voltage.get_waveform().value();
+        const auto& data = wf.get_data();
+        const auto& time = wf.get_time().value();
+        double integral = 0.0;
+        double maxVoltSeconds = 0.0;
+        for (size_t j = 0; j + 1 < std::min(data.size(), time.size()); ++j) {
+            integral += data[j] * (time[j + 1] - time[j]);
+            maxVoltSeconds = std::max(maxVoltSeconds, std::abs(integral));
+        }
+        return maxVoltSeconds;
+    }
+    // Sinusoidal fallback from processed peak: V·t_max = V_peak / ω.
+    if (voltage.get_processed() && voltage.get_processed()->get_peak()) {
+        double frequency = excitation.get_frequency() > 0 ? excitation.get_frequency() : 100000.0;
+        double omega = 2.0 * std::numbers::pi * frequency;
+        if (omega > 0) {
+            return voltage.get_processed()->get_peak().value() / omega;
+        }
+    }
+    return 0.0;
+}
+
+double Inputs::calculate_max_volt_seconds(const OperatingPoint& operatingPoint) {
+    double maxVoltSeconds = 0.0;
+    for (const auto& exc : operatingPoint.get_excitations_per_winding()) {
+        maxVoltSeconds = std::max(maxVoltSeconds, calculate_max_volt_seconds(exc));
+    }
+    return maxVoltSeconds;
+}
+
 SignalDescriptor Inputs::calculate_induced_voltage(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress) {
     if (!excitation.get_current()->get_waveform()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Current waveform is missing");
