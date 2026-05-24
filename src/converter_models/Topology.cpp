@@ -311,6 +311,23 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER] = psb;
             }
 
+            // Vienna 3-φ rectifier: PFC-class line-frequency simulation
+            // with three boost-inductor channels. Solver settings mirror
+            // the boost family (single switch per phase, hard switching).
+            {
+                SpiceSimulationConfig vienna;
+                vienna.swModelVT = 2.5;         vienna.swModelVH = 0.5;
+                vienna.swModelRON = 0.02;       vienna.swModelROFF = 1e6;
+                vienna.snubR = 10e3;            vienna.snubC = 1e-9;
+                vienna.diodeIS = 1e-12;         vienna.diodeRS = 0.05;
+                vienna.outputCapacitance = 470e-6;
+                vienna.relTol = 0.01;           vienna.absTol = 1e-7;
+                vienna.vnTol = 1e-4;
+                vienna.itl1 = 1000;             vienna.itl4 = 1000;
+                vienna.method = "GEAR";         vienna.trTol = 7.0;
+                m[MAS::Topologies::VIENNA_RECTIFIER_CONVERTER] = vienna;
+            }
+
             // Asymmetric Half-Bridge (AHB): half-bridge primary driving a
             // forward-rectified secondary with 50/50 complementary duty
             // and resonant ZVS turn-on of the high-side switch. The
