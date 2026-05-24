@@ -850,7 +850,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
@@ -8750,7 +8750,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Rectangular_W
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Rectangular_Wire.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
@@ -9981,7 +9981,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_Many_Layers_Magnetic_Field", "[constructive
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turns_Planar_Many_Layers_Magnetic_Field.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);

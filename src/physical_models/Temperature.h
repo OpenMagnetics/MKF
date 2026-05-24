@@ -132,7 +132,7 @@ namespace OpenMagnetics {
 // SimpleMatrix (the dense thermal-circuit solver) is defined as a file-local
 // implementation detail in Temperature.cpp — it is not part of the public API.
 
-// Old thermal types for compatibility with BasicPainter
+// Old thermal types for compatibility with Painter
 enum class ThermalNodeType {
     CORE_CENTRAL_COLUMN,
     CORE_LATERAL_COLUMN,

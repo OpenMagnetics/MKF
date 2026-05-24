@@ -109,7 +109,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Boost_Primary.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -118,7 +118,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Boost_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -127,7 +127,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Boost_Primary_Maximum.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -136,7 +136,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Boost_Primary_Voltage_Maximum.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
             painter.export_svg();
         }

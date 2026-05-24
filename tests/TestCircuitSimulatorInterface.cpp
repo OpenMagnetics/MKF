@@ -628,7 +628,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
 
         outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder_Theory.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(windingCoreResistanceData, true);
 
 
@@ -660,7 +660,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder_Modeled.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(Curve2D(frequenciesVector, modeledCoreResistances, "meh"));
 
         painter.export_svg();
@@ -707,7 +707,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Rosano", "
 
         outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Rosano_Theory.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(windingCoreResistanceData, true);
         painter.export_svg();
         REQUIRE(std::filesystem::exists(outFile));
@@ -731,7 +731,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Rosano", "
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Rosano_Modeled.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(Curve2D(frequenciesVector, modeledCoreResistances, "meh"));
         painter.export_svg();
     }
@@ -1329,7 +1329,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-read
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1339,7 +1339,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-read
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1349,7 +1349,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-read
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryMagnetizingCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryMagnetizingCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1359,7 +1359,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-read
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1400,7 +1400,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-read
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1410,7 +1410,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-read
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1420,7 +1420,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-read
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryMagnetizingCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryMagnetizingCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1430,7 +1430,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-read
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1440,7 +1440,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-read
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1478,7 +1478,7 @@ TEST_CASE("Test_Simba", "[processor][circuit-simulation-reader]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1488,7 +1488,7 @@ TEST_CASE("Test_Simba", "[processor][circuit-simulation-reader]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1498,7 +1498,7 @@ TEST_CASE("Test_Simba", "[processor][circuit-simulation-reader]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1508,7 +1508,7 @@ TEST_CASE("Test_Simba", "[processor][circuit-simulation-reader]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1531,7 +1531,7 @@ TEST_CASE("Test_PFC_Only_Current", "[processor][circuit-simulation-reader]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1583,7 +1583,7 @@ TEST_CASE("Test_Simba_File_Loaded", "[processor][circuit-simulation-reader]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1593,7 +1593,7 @@ TEST_CASE("Test_Simba_File_Loaded", "[processor][circuit-simulation-reader]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1603,7 +1603,7 @@ TEST_CASE("Test_Simba_File_Loaded", "[processor][circuit-simulation-reader]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1613,7 +1613,7 @@ TEST_CASE("Test_Simba_File_Loaded", "[processor][circuit-simulation-reader]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1650,7 +1650,7 @@ TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1660,7 +1660,7 @@ TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1670,7 +1670,7 @@ TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1680,7 +1680,7 @@ TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1711,7 +1711,7 @@ TEST_CASE("Test_Plecs", "[processor][circuit-simulation-reader][plecs]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1721,7 +1721,7 @@ TEST_CASE("Test_Plecs", "[processor][circuit-simulation-reader][plecs]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1773,7 +1773,7 @@ TEST_CASE("Test_Plecs_Missing_Windings", "[processor][circuit-simulation-reader]
             auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("primaryCurrent.svg");
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(primaryCurrent.get_waveform().value());
             painter.export_svg();
         }
@@ -1781,7 +1781,7 @@ TEST_CASE("Test_Plecs_Missing_Windings", "[processor][circuit-simulation-reader]
             auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("primaryVoltage.svg");
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(primaryVoltage.get_waveform().value());
             painter.export_svg();
         }
@@ -1814,7 +1814,7 @@ TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1824,7 +1824,7 @@ TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(primaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -1834,7 +1834,7 @@ TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
 
         painter.export_svg();
@@ -1844,7 +1844,7 @@ TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
 
         painter.export_svg();
@@ -3022,7 +3022,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ngspice_Ideal_vs_Parasitic_Comparison",
     CHECK(std::abs(idealOutputV - 5.0) < 0.5);  // Should be close to 5V
     
     // Save waveforms for visual inspection
-    BasicPainter painter;
+    Painter painter;
     
     std::string svgIdeal = painter.paint_operating_point_waveforms(
         idealOps[0], "Flyback Ideal Transformer", 1200, 900);

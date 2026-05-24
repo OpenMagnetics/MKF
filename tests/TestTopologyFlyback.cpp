@@ -113,7 +113,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_CCM_Primary_Current_Minimum.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -248,7 +248,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_Drain_Source_Voltage_DCM_Primary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -256,7 +256,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_Drain_Source_Voltage_DCM_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -266,7 +266,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_Drain_Source_Voltage_DCM_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -274,7 +274,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_Drain_Source_Voltage_DCM_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
             painter.export_svg();
         }

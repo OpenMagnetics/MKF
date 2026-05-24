@@ -21,7 +21,7 @@ std::vector<SVG::Point> scale_points(std::vector<SVG::Point> points, double imag
     return scaledPoints;
 }
 
-std::vector<double> BasicPainter::get_image_size(Magnetic magnetic) {
+std::vector<double> Painter::get_image_size(Magnetic magnetic) {
     auto& core = magnetic.get_mutable_core();
 
     if (!core.get_processed_description()) {
@@ -54,7 +54,7 @@ std::vector<double> BasicPainter::get_image_size(Magnetic magnetic) {
 }
 
 
-void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
+void Painter::paint_round_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
     if (!wire.get_outer_diameter()) {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing outerDiameter");
     }
@@ -118,7 +118,7 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
     }
 }
 
-void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
+void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
     if (!wire.get_outer_diameter()) {
         wire.set_nominal_value_outer_diameter(wire.calculate_outer_diameter());
     }
@@ -233,7 +233,7 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
                 double internalYCoordinate = conductingDiameter / 2 * (*cciCoords)[i].second;
 
                 if (advancedMode) {
-                    BasicPainter::paint_round_wire(xCoordinate + internalXCoordinate, -(yCoordinate + internalYCoordinate), strand);
+                    Painter::paint_round_wire(xCoordinate + internalXCoordinate, -(yCoordinate + internalYCoordinate), strand);
                 }
                 else {
                     paint_circle(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strandOuterDiameter / 2, "copper", shapes, 360, 0, {0, 0}, label);
@@ -250,7 +250,7 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
                 double internalYCoordinate = currentRadius * sin(currentAngle / 180 * std::numbers::pi);
 
                 if (advancedMode) {
-                    BasicPainter::paint_round_wire(xCoordinate + internalXCoordinate, -(yCoordinate + internalYCoordinate), strand);
+                    Painter::paint_round_wire(xCoordinate + internalXCoordinate, -(yCoordinate + internalYCoordinate), strand);
                 }
                 else {
                     paint_circle(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strandOuterDiameter / 2, "copper", shapes, 360, 0, {0, 0}, label);
@@ -278,11 +278,11 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
     }
 }
 
-void BasicPainter::paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension) {
+void Painter::paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension) {
     return paint_rectangle(xCoordinate, yCoordinate, xDimension, yDimension, "point");
 }
 
-void BasicPainter::paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string cssClassName, SVG::Group* group, double angle, std::vector<double> center, std::optional<std::string> label) {
+void Painter::paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string cssClassName, SVG::Group* group, double angle, std::vector<double> center, std::optional<std::string> label) {
     std::vector<SVG::Point> turnPoints = {};
     turnPoints.push_back(SVG::Point(xCoordinate - xDimension / 2, yCoordinate + yDimension / 2));
     turnPoints.push_back(SVG::Point(xCoordinate + xDimension / 2, yCoordinate + yDimension / 2));
@@ -300,11 +300,11 @@ void BasicPainter::paint_rectangle(double xCoordinate, double yCoordinate, doubl
     }
 }
 
-void BasicPainter::paint_circle(double xCoordinate, double yCoordinate, double radius) {
+void Painter::paint_circle(double xCoordinate, double yCoordinate, double radius) {
     return paint_circle(xCoordinate, yCoordinate, radius, "point");
 }
 
-void BasicPainter::paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group, double fillAngle, double angle, std::vector<double> center, std::optional<std::string> label) {
+void Painter::paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group, double fillAngle, double angle, std::vector<double> center, std::optional<std::string> label) {
     if (group == nullptr) {
         group = _root.add_child<SVG::Group>();
     }
@@ -332,7 +332,7 @@ void BasicPainter::paint_circle(double xCoordinate, double yCoordinate, double r
     }
 }
 
-void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle, std::vector<double> center, std::optional<std::string> label) {
+void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle, std::vector<double> center, std::optional<std::string> label) {
     double outerWidth = 0;
     double outerHeight = 0;
     if (wire.get_outer_width()) {
@@ -417,7 +417,7 @@ void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate
     }
 }
 
-void BasicPainter::paint_two_piece_set_coil_sections(Magnetic magnetic) {
+void Painter::paint_two_piece_set_coil_sections(Magnetic magnetic) {
     auto constants = Constants();
 
     if (!magnetic.get_coil().get_sections_description()) {
@@ -439,7 +439,7 @@ void BasicPainter::paint_two_piece_set_coil_sections(Magnetic magnetic) {
     paint_two_piece_set_margin(magnetic);
 }
 
-void BasicPainter::paint_toroidal_coil_sections(Magnetic magnetic) {
+void Painter::paint_toroidal_coil_sections(Magnetic magnetic) {
 
     auto processedDescription = magnetic.get_core().get_processed_description().value();
 
@@ -501,7 +501,7 @@ void BasicPainter::paint_toroidal_coil_sections(Magnetic magnetic) {
     paint_toroidal_margin(magnetic);
 }
 
-void BasicPainter::paint_two_piece_set_coil_layers(Magnetic magnetic) {
+void Painter::paint_two_piece_set_coil_layers(Magnetic magnetic) {
     auto constants = Constants();
     Coil coil = magnetic.get_coil();
     if (!coil.get_layers_description()) {
@@ -533,7 +533,7 @@ void BasicPainter::paint_two_piece_set_coil_layers(Magnetic magnetic) {
     paint_two_piece_set_margin(magnetic);
 }
 
-void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
+void Painter::paint_toroidal_coil_layers(Magnetic magnetic) {
     Coil winding = magnetic.get_coil();
     Core core = magnetic.get_core();
     if (!core.get_processed_description()) {
@@ -592,7 +592,7 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
     paint_toroidal_margin(magnetic);
 }
 
-void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
+void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     auto constants = Constants();
     Coil coil = magnetic.get_coil();
     auto wirePerWinding = coil.get_wires();
@@ -683,7 +683,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMa
     }
 }
 
-void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
+void Painter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
 
@@ -793,7 +793,7 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginA
     // _root.autoscale();
 }
 
-void BasicPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
+void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()) {
         throw CoilNotProcessedException("Bobbin has not been processed");
@@ -852,7 +852,7 @@ void BasicPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_two_piece_set_core(Core core) {
+void Painter::paint_two_piece_set_core(Core core) {
     std::vector<SVG::Point> topPiecePoints = {};
     std::vector<SVG::Point> bottomPiecePoints = {};
     std::vector<std::vector<SVG::Point>> gapChunks = {};
@@ -975,7 +975,7 @@ void BasicPainter::paint_two_piece_set_core(Core core) {
     _root.autoscale();
 }
 
-void BasicPainter::paint_toroidal_core(Core core) {
+void Painter::paint_toroidal_core(Core core) {
     auto processedDescription = core.get_processed_description().value();
     auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
 
@@ -987,7 +987,7 @@ void BasicPainter::paint_toroidal_core(Core core) {
     paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr);
 }
 
-void BasicPainter::paint_two_piece_set_margin(Magnetic magnetic) {
+void Painter::paint_two_piece_set_margin(Magnetic magnetic) {
     auto sections = magnetic.get_coil().get_sections_description().value();
     for (size_t i = 0; i < sections.size(); ++i){
         if (sections[i].get_margin()) {
@@ -1054,7 +1054,7 @@ void BasicPainter::paint_two_piece_set_margin(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
+void Painter::paint_toroidal_margin(Magnetic magnetic) {
     bool drawSpacer = settings.get_painter_draw_spacer();
     auto sections = magnetic.get_coil().get_sections_description().value();
 
@@ -1173,7 +1173,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::set_image_size(Wire wire) {
+void Painter::set_image_size(Wire wire) {
     _extraDimension = 0.1;
     double margin = std::max(wire.get_maximum_outer_width() * _extraDimension, wire.get_maximum_outer_height() * _extraDimension);
     auto showingWireWidth = wire.get_maximum_outer_width();
@@ -1190,14 +1190,14 @@ void BasicPainter::set_image_size(Wire wire) {
     _imageWidth = showingWireWidth;
 }
 
-void BasicPainter::set_image_size(Magnetic magnetic) {
+void Painter::set_image_size(Magnetic magnetic) {
     auto aux = get_image_size(magnetic);
 
     _imageHeight = aux[0];
     _imageWidth = aux[1];
 }
 
-void BasicPainter::paint_wire(Wire wire) {
+void Painter::paint_wire(Wire wire) {
     set_image_size(wire);
     _scale = constants.coilPainterScale * 10;
 
@@ -1220,7 +1220,7 @@ void BasicPainter::paint_wire(Wire wire) {
     _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);  // TODO remove
 }
 
-void BasicPainter::paint_core(Magnetic magnetic) {
+void Painter::paint_core(Magnetic magnetic) {
     Core core = magnetic.get_core();
     set_image_size(magnetic);
     CoreShape shape = core.resolve_shape();
@@ -1235,7 +1235,7 @@ void BasicPainter::paint_core(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_bobbin(Magnetic magnetic) {
+void Painter::paint_bobbin(Magnetic magnetic) {
     Core core = magnetic.get_core();
     _imageHeight = core.get_processed_description()->get_height();
     CoreShape shape = core.resolve_shape();
@@ -1248,7 +1248,7 @@ void BasicPainter::paint_bobbin(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_coil_sections(Magnetic magnetic) {
+void Painter::paint_coil_sections(Magnetic magnetic) {
     Core core = magnetic.get_core();
     CoreShape shape = core.resolve_shape();
     _imageHeight = core.get_processed_description()->get_height();
@@ -1263,7 +1263,7 @@ void BasicPainter::paint_coil_sections(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_coil_layers(Magnetic magnetic) {
+void Painter::paint_coil_layers(Magnetic magnetic) {
     Core core = magnetic.get_core();
     if (!core.get_processed_description()) {
         throw CoreNotProcessedException("Core has not been processed");
@@ -1282,7 +1282,7 @@ void BasicPainter::paint_coil_layers(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
+void Painter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Core core = magnetic.get_core();
     CoreShape shape = core.resolve_shape();
     auto windingWindows = core.get_winding_windows();
@@ -1297,7 +1297,7 @@ void BasicPainter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers)
     }
 }
 
-std::string BasicPainter::get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value) {
+std::string Painter::get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value) {
     // Handle NaN or invalid values - return minimum color as fallback
     if (!std::isfinite(value)) {
         return minimumColor;
@@ -1335,7 +1335,7 @@ std::string BasicPainter::get_color(double minimumValue, double maximumValue, st
 }
 
 
-void BasicPainter::paint_field_point(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string color, std::string label) {
+void Painter::paint_field_point(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string color, std::string label) {
 
     SVG::Group* shapes = _root.add_child<SVG::Group>();
 
@@ -1347,7 +1347,7 @@ void BasicPainter::paint_field_point(double xCoordinate, double yCoordinate, dou
 }
 
 
-void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
+void Painter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
     set_image_size(magnetic);
     double minimumModule = DBL_MAX;
     double maximumModule = 0;
@@ -1527,7 +1527,7 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
     }
 }
 
-void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField, ElectricFieldVisualizationModel model, ColorPalette colorPalette) {
+void Painter::paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField, ElectricFieldVisualizationModel model, ColorPalette colorPalette) {
     set_image_size(magnetic);
     double minimumModule = DBL_MAX;
     double maximumModule = 0;
@@ -1676,7 +1676,7 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     }
 }
 
-void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs, std::optional<OperatingPoint> operatingPoint, double temperature) {
+void Painter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs, std::optional<OperatingPoint> operatingPoint, double temperature) {
     set_image_size(magnetic);
     auto constants = Constants();
     Coil coil = magnetic.get_coil();
@@ -1839,7 +1839,7 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
     }
 }
 
-void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar, ColorPalette palette, double ambientTemperature, const std::string& textColor, const std::string& bgColor) {
+void Painter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar, ColorPalette palette, double ambientTemperature, const std::string& textColor, const std::string& bgColor) {
     set_image_size(magnetic);
     _scale = constants.coilPainterScale;
     
@@ -2783,7 +2783,7 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
     }
 }
 
-std::string BasicPainter::export_svg() {
+std::string Painter::export_svg() {
     // Autoscale to fit all content before exporting
     _root.autoscale();
     
@@ -2858,7 +2858,7 @@ std::string BasicPainter::export_svg() {
     return svgString;
 }
 
-void BasicPainter::paint_waveform_svg(
+void Painter::paint_waveform_svg(
     const Waveform& waveform,
     const std::string& name,
     const std::string& color,
@@ -2966,7 +2966,7 @@ void BasicPainter::paint_waveform_svg(
     minText->set_attr("fill", "#666666");
 }
 
-std::string BasicPainter::paint_operating_point_waveforms(
+std::string Painter::paint_operating_point_waveforms(
     const OperatingPoint& operatingPoint,
     const std::string& title,
     double width,
@@ -3049,7 +3049,7 @@ std::string BasicPainter::paint_operating_point_waveforms(
     return export_svg();
 }
 
-std::string BasicPainter::paint_thermal_circuit_schematic(
+std::string Painter::paint_thermal_circuit_schematic(
     const std::vector<ThermalNetworkNode>& nodes,
     const std::vector<ThermalResistanceElement>& resistances,
     double width,
@@ -4222,11 +4222,11 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     return export_svg();
 }
 
-void BasicPainter::paint_waveform(Waveform waveform) {
+void Painter::paint_waveform(Waveform waveform) {
     paint_waveform(waveform.get_data(), waveform.get_time());
 }
 
-void BasicPainter::paint_waveform(std::vector<double> data, std::optional<std::vector<double>> time) {
+void Painter::paint_waveform(std::vector<double> data, std::optional<std::vector<double>> time) {
     if (data.empty()) return;
 
     std::vector<double> x;
@@ -4282,7 +4282,7 @@ void BasicPainter::paint_waveform(std::vector<double> data, std::optional<std::v
     svgPath->set_attr("stroke-width", "2");
 }
 
-void BasicPainter::paint_curve(Curve2D curve2D, bool logScale) {
+void Painter::paint_curve(Curve2D curve2D, bool logScale) {
     // For basic painter, ignore logScale and just plot
     paint_waveform(curve2D.get_y_points(), std::make_optional(curve2D.get_x_points()));
 }

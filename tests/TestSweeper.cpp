@@ -52,7 +52,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Impedance_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(impedanceSweep, true);
 
         painter.export_svg();
@@ -102,7 +102,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Q_Factor_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(impedanceSweep, true);
 
         painter.export_svg();
@@ -152,7 +152,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Impedance_Over_Frequency_Few_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(impedanceSweep, true);
 
         painter.export_svg();
@@ -202,7 +202,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Impedance_Over_Frequency_Larger_Core_Few_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(impedanceSweep, true);
 
         painter.export_svg();
@@ -252,7 +252,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Impedance_Over_Frequency_Larger_Core_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(impedanceSweep, true);
 
         painter.export_svg();
@@ -314,7 +314,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Winding_Resistance_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(impedanceSweep, true);
 
         painter.export_svg();
@@ -376,7 +376,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(impedanceSweep, true);
 
         painter.export_svg();
@@ -438,7 +438,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_Temperature_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
                 painter.paint_curve(impedanceSweep, false);
         
         painter.export_svg();
@@ -500,7 +500,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Powder.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
                 painter.paint_curve(impedanceSweep, false);
         
         painter.export_svg();
@@ -562,7 +562,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Ferrite.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
                 painter.paint_curve(impedanceSweep, false);
         
         painter.export_svg();
@@ -624,7 +624,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Resistance_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(impedanceSweep, true);
 
         painter.export_svg();
@@ -686,7 +686,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Core_Resistance_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(coreSweep, true);
 
         painter.export_svg();
@@ -767,7 +767,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Core_Losses_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(coreSweep, true);
 
         painter.export_svg();
@@ -848,7 +848,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Core_Losses_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(coreSweep, true);
 
         painter.export_svg();
@@ -929,7 +929,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Winding_Losses_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(coreSweep, true);
 
         painter.export_svg();
@@ -948,7 +948,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Resistance_Over_Frequency_Web_0.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(sweep, true);
 
         painter.export_svg();
@@ -973,7 +973,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Winding_Losses_Over_Frequency_Web_0.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(sweep, true);
 
         painter.export_svg();
@@ -996,7 +996,7 @@ namespace {
 
         outFile.append("Test_Sweeper_Winding_Losses_Over_Frequency_Web_1.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(sweep, true);
 
         painter.export_svg();

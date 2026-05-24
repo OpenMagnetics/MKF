@@ -283,7 +283,7 @@ TEST_CASE("Test_Psfb_Waveform_Plotting", "[converter-model][psfb-topology][visua
         auto outFile = outputFilePath;
         outFile.append("Test_Psfb_Primary_Current_Waveform.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
         painter.export_svg();
     }
@@ -292,7 +292,7 @@ TEST_CASE("Test_Psfb_Waveform_Plotting", "[converter-model][psfb-topology][visua
         auto outFile = outputFilePath;
         outFile.append("Test_Psfb_Primary_Voltage_Waveform.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
         painter.export_svg();
     }
@@ -301,7 +301,7 @@ TEST_CASE("Test_Psfb_Waveform_Plotting", "[converter-model][psfb-topology][visua
         auto outFile = outputFilePath;
         outFile.append("Test_Psfb_Secondary_Current_Waveform.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(ops[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
         painter.export_svg();
     }

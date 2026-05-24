@@ -796,90 +796,6 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
     return inducedField;
 }
 
-std::shared_ptr<PainterInterface> Painter::factory(bool useAdvancedPainter, std::filesystem::path filepath, bool addProportionForColorBar, bool showTicks) {
-    // AdvancedPainter (matplotplusplus) removed; the three legacy args
-    // are ignored. BasicPainter is the only backend.
-    (void)useAdvancedPainter;
-    (void)addProportionForColorBar;
-    (void)showTicks;
-    return std::make_shared<BasicPainter>(filepath);
-}
-
-void Painter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
-    _painter->paint_magnetic_field(operatingPoint, magnetic, harmonicIndex, inputField);
-}
-
-void Painter::paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField, ElectricFieldVisualizationModel model, ColorPalette colorPalette) {
-    _painter->paint_electric_field(operatingPoint, magnetic, harmonicIndex, inputField, model, colorPalette);
-}
-
-void Painter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs, std::optional<OperatingPoint> operatingPoint, double temperature) {
-    _painter->paint_wire_losses(magnetic, outputs, operatingPoint, temperature);
-}
-
-void Painter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar, ColorPalette palette, double ambientTemperature, const std::string& textColor, const std::string& bgColor) {
-    _painter->paint_temperature_field(magnetic, nodeTemperatures, showColorBar, palette, ambientTemperature, textColor, bgColor);
-}
-
-std::string Painter::export_svg() {
-    return _painter->export_svg();
-}
-
-void Painter::export_png() {
-    _painter->export_png();
-}
-
-void Painter::paint_core(Magnetic magnetic) {
-    _painter->paint_core(magnetic);
-}
-
-void Painter::paint_bobbin(Magnetic magnetic) {
-    _painter->paint_bobbin(magnetic);
-}
-
-void Painter::paint_coil_sections(Magnetic magnetic) {
-    _painter->paint_coil_sections(magnetic);
-}
-
-void Painter::paint_coil_layers(Magnetic magnetic) {
-    _painter->paint_coil_layers(magnetic);
-}
-
-void Painter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
-    _painter->paint_coil_turns(magnetic, skipMarginAndLayers);
-}
-
-void Painter::paint_wire(Wire wire) {
-    _painter->paint_wire(wire);
-}
-
-void Painter::paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex) {
-    _painter->paint_wire_with_current_density(wire, operatingPoint, windingIndex);
-}
-
-void Painter::paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature) {
-    _painter->paint_wire_with_current_density(wire, current, frequency, temperature);
-}
-
-void Painter::paint_waveform(Waveform waveform) {
-    paint_waveform(waveform.get_data(), waveform.get_time());
-}
-
-void Painter::paint_waveform(std::vector<double> data, std::optional<std::vector<double>> time) {
-    _painter->paint_waveform(data, time);
-}
-
-void Painter::paint_curve(Curve2D curve2D, bool logScale) {
-    _painter->paint_curve(curve2D, logScale);
-}
-
-void Painter::paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension) {
-    _painter->paint_rectangle(xCoordinate, yCoordinate, xDimension, yDimension);
-}
-
-void Painter::paint_circle(double xCoordinate, double yCoordinate, double radius){
-    _painter->paint_circle(xCoordinate, yCoordinate, radius);
-}
 
 double Painter::get_pixel_area_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape,
                                              std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape,
@@ -984,19 +900,5 @@ std::pair<double, double> Painter::get_pixel_dimensions(Magnetic magnetic) {
 
     return {pixelXDimension, pixelYDimension};
 }
-
-std::string Painter::paint_operating_point_waveforms(
-    const OperatingPoint& operatingPoint,
-    const std::string& title,
-    double width,
-    double height)
-{
-    // BasicPainter is the only backend after AdvancedPainter's removal;
-    // the dynamic_cast guard the old AdvancedPainter branch needed is
-    // gone.
-    auto* basic = static_cast<BasicPainter*>(_painter.get());
-    return basic->paint_operating_point_waveforms(operatingPoint, title, width, height);
-}
-
 
 } // namespace OpenMagnetics

@@ -372,7 +372,7 @@ class PainterInterface {
     virtual void paint_circle(double xCoordinate, double yCoordinate, double radius) = 0;
 };
 
-class BasicPainter : public PainterInterface {
+class Painter : public PainterInterface {
  private:
 
     std::filesystem::path _filepath = ".";
@@ -410,14 +410,11 @@ class BasicPainter : public PainterInterface {
     void paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group = nullptr, double fillAngle=360, double angle = 0, std::vector<double> center = {0, 0}, std::optional<std::string> label = std::nullopt);
     std::string get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value);
     void paint_field_point(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string color, std::string label);
-    void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField);
-    void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField, ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY, ColorPalette colorPalette = ColorPalette::VIRIDIS);
-    void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature);
 
  public:
     SVG::SVG _root;
-    BasicPainter(){};
-    BasicPainter(std::filesystem::path filepath){
+    Painter() = default;
+    Painter(std::filesystem::path filepath){
         _filename = filepath.filename();
         _filepath = filepath.remove_filename();
         _root = SVG::SVG();
@@ -439,8 +436,16 @@ class BasicPainter : public PainterInterface {
         _root.style(".white").set_attr("fill", "#ffffff");
         _root.style(".point").set_attr("fill", "#ff0000");
     };
-    virtual ~BasicPainter() = default;
+    virtual ~Painter() = default;
 
+    void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
+    void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt, ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY, ColorPalette colorPalette = ColorPalette::VIRIDIS);
+    void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature);
+
+    // Statics promoted from the deleted Painter wrapper (used by callers).
+    static double get_pixel_proportion_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
+    static double get_pixel_area_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
+    static std::pair<double, double> get_pixel_dimensions(Magnetic magnetic);
 
     std::string export_svg();
     void export_png() {
@@ -530,73 +535,6 @@ class BasicPainter : public PainterInterface {
         double yOffset,
         double plotWidth,
         double plotHeight);
-};
-
-// AdvancedPainter (matplotplusplus-backed) was removed. BasicPainter is
-// the only painter backend; the Painter wrapper ignores its legacy
-// useAdvancedPainter argument.
-
-class Painter{
- public:
-    std::shared_ptr<PainterInterface> _painter;
-
-    static std::shared_ptr<PainterInterface> factory(bool useAdvancedPainter, std::filesystem::path filepath, bool addProportionForColorBar = false, bool showTicks = false);
-    Painter(std::filesystem::path filepath, bool addProportionForColorBar = false, bool showTicks = false, bool useAdvancedPainter = false){
-        // AdvancedPainter removed (was matplotplusplus-backed). The
-        // useAdvancedPainter / addProportionForColorBar / showTicks args
-        // are accepted for source-compatibility but ignored — BasicPainter
-        // is the only backend.
-        (void)useAdvancedPainter;
-        (void)addProportionForColorBar;
-        (void)showTicks;
-        _painter = factory(false, filepath, false, false);
-    };
-    virtual ~Painter() = default;
-
-    void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
-    void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt, ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY, ColorPalette colorPalette = ColorPalette::VIRIDIS);
-    void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature);
-    void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false, ColorPalette palette = ColorPalette::BLUE_TO_RED, double ambientTemperature = 25.0, const std::string& textColor = "#000000", const std::string& bgColor = "");
-    static double get_pixel_proportion_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
-    static double get_pixel_area_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
-    static std::pair<double, double> get_pixel_dimensions(Magnetic magnetic);
-
-    std::string export_svg();
-    void export_png();
-
-    void paint_core(Magnetic magnetic);
-
-    void paint_bobbin(Magnetic magnetic);
-
-    void paint_coil_sections(Magnetic magnetic);
-
-    void paint_coil_layers(Magnetic magnetic);
-
-    void paint_wire(Wire wire); 
-    void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
-    void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0);
-    void paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature=defaults.ambientTemperature);
-
-    void paint_waveform(Waveform waveform);
-    void paint_waveform(std::vector<double> data, std::optional<std::vector<double>> time = std::nullopt);
-    void paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension);
-    void paint_circle(double xCoordinate, double yCoordinate, double radius);
-
-    void paint_curve(Curve2D curve2D, bool logScale = false);
-
-    /**
-     * @brief Stack-plot all winding excitations of an OperatingPoint into one SVG.
-     *
-     * Forwards to BasicPainter::paint_operating_point_waveforms.  Throws if the
-     * active painter backend is AdvancedPainter (only BasicPainter implements
-     * waveform stack plots).  Returned string is also written to the file the
-     * Painter was constructed with via export_svg().
-     */
-    std::string paint_operating_point_waveforms(
-        const OperatingPoint& operatingPoint,
-        const std::string& title = "Operating Point Waveforms",
-        double width = 1200,
-        double height = 800);
 };
 
 } // namespace OpenMagnetics

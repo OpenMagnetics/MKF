@@ -456,7 +456,7 @@ namespace {
             outFile.append("Test_Complex_Permeability_XFlux_60_Real.svg");
 
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_curve(curve, true);
             painter.export_svg();
             REQUIRE(std::filesystem::exists(outFile));
@@ -472,7 +472,7 @@ namespace {
             outFile.append("Test_Complex_Permeability_XFlux_60_Imaginary.svg");
 
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_curve(curve, true);
             painter.export_svg();
             REQUIRE(std::filesystem::exists(outFile));
@@ -487,7 +487,7 @@ namespace {
         outFile.append("Test_BH_Loop_3C97_Upper.svg");
 
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(curves.first);
         painter.export_svg();
         REQUIRE(std::filesystem::exists(outFile));

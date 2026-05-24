@@ -766,7 +766,7 @@ TEST_CASE("Test_Zeta_Waveform_Plotting",
         auto outFile = zetaOutputFilePath;
         outFile.append("Test_Zeta_L1_Current_Waveform.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
         painter.export_svg();
     }
@@ -775,7 +775,7 @@ TEST_CASE("Test_Zeta_Waveform_Plotting",
         auto outFile = zetaOutputFilePath;
         outFile.append("Test_Zeta_L1_Voltage_Waveform.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
         painter.export_svg();
     }

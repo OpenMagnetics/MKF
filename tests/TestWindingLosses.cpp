@@ -1054,7 +1054,7 @@ namespace TestWindingLossesWeb {
             auto outFile = outputFilePath;
             outFile.append("Test_Winding_Losses_Web_3_1.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
             painter.paint_magnetic_field(inputs1.get_operating_point(0), magnetic1);
             painter.paint_core(magnetic1);
             painter.paint_bobbin(magnetic1);
@@ -1065,7 +1065,7 @@ namespace TestWindingLossesWeb {
             auto outFile = outputFilePath;
             outFile.append("Test_Winding_Losses_Web_3_2.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
             painter.paint_magnetic_field(inputs2.get_operating_point(0), magnetic2);
             painter.paint_core(magnetic2);
             painter.paint_bobbin(magnetic2);
@@ -1076,7 +1076,7 @@ namespace TestWindingLossesWeb {
             auto outFile = outputFilePath;
             outFile.append("Test_Winding_Losses_Web_3_3.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
             painter.paint_magnetic_field(inputs3.get_operating_point(0), magnetic3);
             painter.paint_core(magnetic3);
             painter.paint_bobbin(magnetic3);

@@ -280,7 +280,7 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
 
         outFile.append("Test_Toroidal_Cores_With_Impedance.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_curve(impedanceSweep, true);
         painter.export_svg();
         REQUIRE(std::filesystem::exists(outFile));
@@ -291,7 +291,7 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
 
     //     outFile.append("Test_Impedance_Many_Turns.svg");
     //     std::filesystem::remove(outFile);
-    //     Painter painter(outFile, false, true);
+    //     Painter painter(outFile);
     //     painter.paint_core(masMagnetics[0].first.get_magnetic());
     //     painter.paint_bobbin(masMagnetics[0].first.get_magnetic());
     //     painter.paint_coil_turns(masMagnetics[0].first.get_magnetic());

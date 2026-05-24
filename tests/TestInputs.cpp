@@ -2295,7 +2295,7 @@ TEST_CASE("Test_Standardize_Waveform", "[processor][inputs][smoke-test]") {
         auto outFile = outputFilePath;
         outFile.append("Test_Standardize_Waveform.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(standardSignalDescriptor.get_waveform().value());
         painter.export_svg();
     #endif

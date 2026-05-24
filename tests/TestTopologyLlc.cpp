@@ -240,7 +240,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Llc_FullBridge_Primary_Current_Waveform.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
 
@@ -249,7 +249,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_FullBridge_Primary_Voltage_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
                 painter.export_svg();
             }
@@ -356,7 +356,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Llc_OP_Generation_Primary_Current_Waveform.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
 
@@ -365,7 +365,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_OP_Generation_Primary_Voltage_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
                 painter.export_svg();
             }
@@ -447,7 +447,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Llc_Below_Resonance_Primary_Current_Waveform.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
 
@@ -456,7 +456,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_Below_Resonance_Primary_Voltage_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
                 painter.export_svg();
             }
@@ -535,7 +535,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Llc_Above_Resonance_Primary_Current_Waveform.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
 
@@ -544,7 +544,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_Above_Resonance_Primary_Voltage_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
                 painter.export_svg();
             }
@@ -640,7 +640,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Llc_Multiple_Outputs_Primary_Current_Waveform.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
 
@@ -649,7 +649,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_Multiple_Outputs_Primary_Voltage_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
                 painter.export_svg();
             }
@@ -703,7 +703,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Llc_Multiple_OP_Primary_Current_Waveform.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
 
@@ -712,7 +712,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_Multiple_OP_Primary_Voltage_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
                 painter.export_svg();
             }
@@ -778,7 +778,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_AdvancedLlc_Primary_Current_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
                 painter.export_svg();
             }
@@ -788,7 +788,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_AdvancedLlc_Primary_Voltage_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
                 painter.export_svg();
             }
@@ -840,7 +840,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_EndToEnd_Primary_Current_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
                 painter.export_svg();
             }
@@ -850,7 +850,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_EndToEnd_Secondary_Current_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
                 painter.export_svg();
             }
@@ -860,7 +860,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_EndToEnd_Primary_Voltage_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
                 painter.export_svg();
             }
@@ -870,7 +870,7 @@ namespace {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Llc_EndToEnd_Secondary_Voltage_Waveform.svg");
                 std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
+                Painter painter(outFile);
                 painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
                 painter.export_svg();
             }

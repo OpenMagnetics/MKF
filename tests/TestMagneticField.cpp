@@ -142,7 +142,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Round.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
             painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
             painter.paint_core(magnetic);
             painter.paint_core(magnetic);
@@ -311,7 +311,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Magnetic_Image_Method.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_mode(PainterModes::QUIVER);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_mirroring_dimension(1);
@@ -400,7 +400,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Rectangular.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
             settings.set_painter_mode(PainterModes::QUIVER);
             settings.set_painter_logarithmic_scale(false);
             settings.set_painter_mirroring_dimension(0);
@@ -490,7 +490,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Foil.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
             settings.set_painter_mode(PainterModes::QUIVER);
             settings.set_painter_logarithmic_scale(false);
             settings.set_painter_mirroring_dimension(0);

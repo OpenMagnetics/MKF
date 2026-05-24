@@ -241,7 +241,7 @@ void run_one(const Spec& s) {
         auto outFile = outDir / (std::string(s.name) + "_waveforms.svg");
 
         auto op = pfc.simulate_with_ngspice_switching(s.L, s.cycles);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_operating_point_waveforms(
             op,
             std::string(s.name) + " — last line cycle (steady state)",

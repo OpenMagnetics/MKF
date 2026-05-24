@@ -223,7 +223,7 @@ TEST_CASE("Calculate leakage inductance for a PQ core with with several parallel
         auto outFile = outputFilePath;
         outFile.append("Test_Leakage_Inductance_Parallels_Interleaving.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_magnetic_field(OperatingPoint(), magnetic, 1, leakageMagneticField);
         painter.paint_core(magnetic);
         painter.paint_core(magnetic);
@@ -304,7 +304,7 @@ TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding or
         auto outFile = outputFilePath;
         outFile.append("Test_Leakage_Inductance_PQ_26_0.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false);
+        Painter painter(outFile);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -477,7 +477,7 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
         auto outFile = outputFilePath;
         outFile.append("Test_Leakage_Inductance_T_0.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_magnetic_field(OperatingPoint(), magnetic, 1, leakageMagneticField);
         painter.paint_core(magnetic);
         painter.paint_core(magnetic);
@@ -559,7 +559,7 @@ TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physic
         settings.set_painter_mode(PainterModes::CONTOUR);
         outFile.append("Test_Leakage_Inductance_Planar.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_magnetic_field(operatingPoint, magnetic);
         painter.paint_core(magnetic);
         painter.paint_coil_turns(magnetic);
@@ -606,7 +606,7 @@ TEST_CASE("Checks that increasing insulation between layers keeps leakage induct
         settings.set_painter_mode(PainterModes::CONTOUR);
         outFile.append("Test_Leakage_Inductance_Planar_Bug_Insulation.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_magnetic_field(operatingPoint, magnetic);
         painter.paint_core(magnetic);
         // painter.paint_coil_sections(magnetic);

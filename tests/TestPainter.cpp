@@ -30,7 +30,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -52,7 +52,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Logarithmic_Scale.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(true);
         settings.set_painter_include_fringing(true);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -74,7 +74,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_No_Fringing.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -96,7 +96,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Limit_Scale.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_maximum_value_colorbar(25500);
@@ -121,162 +121,11 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(true);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.export_svg();
 
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Quiver_Many_Turns", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        SKIP("Quiver mode requires matplotplusplus");
-        OpenMagneticsTesting::PainterTestConfig config;
-        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Quiver_Many_Turns.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(true);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Quiver_One_Turn", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        SKIP("Quiver mode requires matplotplusplus");
-        OpenMagneticsTesting::PainterTestConfig config;
-        config.numberTurns = {1};
-        config.numberParallels = {1};
-        config.interleavingLevel = 1;
-        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Quiver_One_Turn.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(true);
-        settings.set_painter_include_fringing(true);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Quiver_Many_Turns_No_Fringing", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        SKIP("Quiver mode requires matplotplusplus");
-        OpenMagneticsTesting::PainterTestConfig config;
-        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Quiver_Many_Turns_No_Fringing.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Quiver_Many_Turns_Logarithmic_Scale", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        SKIP("Quiver mode requires matplotplusplus");
-        OpenMagneticsTesting::PainterTestConfig config;
-        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Quiver_Many_Turns_Logarithmic_Scale.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(true);
-        settings.set_painter_include_fringing(true);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Quiver_Many_Turns_Limit_Scale", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        SKIP("Quiver mode requires matplotplusplus");
-        OpenMagneticsTesting::PainterTestConfig config;
-        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Quiver_Many_Turns_Limit_Scale.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(true);
-        settings.set_painter_maximum_value_colorbar(2500);
-        settings.set_painter_minimum_value_colorbar(0);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Quiver_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        SKIP("Quiver mode requires matplotplusplus");
-        OpenMagneticsTesting::PainterTestConfig config;
-        config.numberTurns = {1};
-        config.numberParallels = {1};
-        config.interleavingLevel = 1;
-        config.wireNames = {"Rectangular 2.36x1.12 - Grade 1"};
-        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Quiver_One_Turn_Rectangular.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -292,7 +141,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn_Rectangular.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -304,36 +153,6 @@ namespace {
         painter.export_svg();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Quiver_Many_Turns_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        SKIP("Quiver mode requires matplotplusplus");
-        OpenMagneticsTesting::PainterTestConfig config;
-        config.numberTurns = {10};
-        config.numberParallels = {1};
-        config.interleavingLevel = 1;
-        config.turnsAlignment = CoilAlignment::SPREAD;
-        config.wireNames = {"Rectangular 4.50x0.90 - Grade 1"};
-        config.compactCoil = false;
-        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Quiver_Many_Turns_Rectangular.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -351,7 +170,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Rectangular.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -362,43 +181,6 @@ namespace {
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
 
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Quiver_One_Turn_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        SKIP("Quiver mode requires matplotplusplus");
-        // Custom wire setup - modify Foil wire dimensions
-        OpenMagnetics::Wire wire = find_wire_by_name("Foil 0.15");
-        DimensionWithTolerance dimensionWithTolerance;
-        dimensionWithTolerance.set_nominal(0.010);
-        wire.set_conducting_height(dimensionWithTolerance);
-        wire.set_outer_width(wire.get_conducting_width().value());
-        wire.set_outer_height(dimensionWithTolerance);
-
-        OpenMagneticsTesting::PainterTestConfig config;
-        config.numberTurns = {1};
-        config.numberParallels = {1};
-        config.interleavingLevel = 1;
-        config.customWires = {wire};
-        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Quiver_One_Turn_Foil.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -440,7 +222,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn_Foil.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -452,62 +234,6 @@ namespace {
         painter.export_svg();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Quiver_Many_Turns_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        SKIP("Quiver mode requires matplotplusplus");
-        std::vector<int64_t> numberTurns = {10};
-        std::vector<int64_t> numberParallels = {1};
-        // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        OpenMagnetics::Wire wire = find_wire_by_name("Foil 0.15");
-        DimensionWithTolerance dimensionWithToleranceHeight;
-        dimensionWithToleranceHeight.set_nominal(0.010);
-        wire.set_conducting_height(dimensionWithToleranceHeight);
-        DimensionWithTolerance dimensionWithToleranceWidth;
-        dimensionWithToleranceWidth.set_nominal(0.2e-3);
-        wire.set_outer_width(dimensionWithToleranceWidth);
-        wire.set_outer_height(dimensionWithToleranceHeight);
-        auto wires = std::vector<OpenMagnetics::Wire>({wire});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Quiver_Many_Turns_Foil.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -551,7 +277,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Foil.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -605,7 +331,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Text_Color.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -895,8 +621,6 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Coil_Wire_Losses_NaN_MAS.svg");
             std::filesystem::remove(outFile);
-            
-            // Use Painter wrapper - it will use BasicPainter when matplotplusplus is disabled
             Painter painter(outFile);
 
             painter.paint_core(magnetic);
@@ -1168,430 +892,6 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Toroid_Round_Wires", "[support][painter][magnetic-field-painter][round-winding-window]") {
-        clear_databases();
-        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-
-        double temperature = 20;
-        std::vector<int64_t> numberTurns({100, 5});
-        std::vector<int64_t> numberParallels({1, 1});
-        std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
-
-        auto label = WaveformLabel::SINUSOIDAL;
-        double offset = 0;
-        double peakToPeak = 2 * 1.73205;
-        double dutyCycle = 0.5;
-        double frequency = 100000;
-        double magnetizingInductance = 1e-3;
-        std::string shapeName = "T 20/10/7";
-
-        Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                         magnetizingInductance,
-                                                                                         temperature,
-                                                                                         label,
-                                                                                         peakToPeak,
-                                                                                         dutyCycle,
-                                                                                         offset,
-                                                                                         turnsRatios);
-
-        uint8_t interleavingLevel = 1;
-        auto windingOrientation = WindingOrientation::OVERLAPPING;
-        auto layersOrientation = WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = CoilAlignment::INNER_OR_TOP;
-        auto sectionsAlignment = CoilAlignment::INNER_OR_TOP;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
-                                                         numberParallels,
-                                                         shapeName,
-                                                         interleavingLevel,
-                                                         windingOrientation,
-                                                         layersOrientation,
-                                                         turnsAlignment,
-                                                         sectionsAlignment);
-
-        int64_t numberStacks = 1;
-        std::string coreMaterial = "3C97";
-        auto gapping = json::array();
-        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
-        OpenMagnetics::Magnetic magnetic;
-
-
-        settings.reset();
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Painter_Toroid_Round_Wires.svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
-            OpenMagnetics::Magnetic magnetic;
-            magnetic.set_core(core);
-            magnetic.set_coil(coil);
-            // settings.set_painter_mode(PainterModes::CONTOUR);
-            settings.set_painter_mode(PainterModes::QUIVER);
-            settings.set_painter_logarithmic_scale(false);
-            settings.set_painter_include_fringing(true);
-            settings.set_painter_number_points_x(50);
-            settings.set_painter_number_points_y(50);
-            settings.set_painter_maximum_value_colorbar(std::nullopt);
-            settings.set_painter_minimum_value_colorbar(std::nullopt);
-            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-            painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
-            painter.paint_coil_turns(magnetic);
-                        painter.export_svg();
-            
-        }
-    }
-
-    TEST_CASE("Test_Painter_Toroid_Quiver_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][round-winding-window]") {
-        clear_databases();
-        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-        std::vector<int64_t> numberTurns = {1};
-        std::vector<int64_t> numberParallels = {1};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "T 20/10/7";
-
-        std::string coreMaterial = "3C97";
-        auto emptyGapping = json::array();
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
-
-        std::vector<OpenMagnetics::Wire> wires;
-        wires.push_back({find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Toroid_Quiver_One_Turn_Rectangular.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        settings.set_painter_number_points_x(100);
-        settings.set_painter_number_points_y(100);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        // painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Toroid_Quiver_One_Turn_Rectangular_Inner", "[support][painter][magnetic-field-painter][round-winding-window]") {
-        clear_databases();
-        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-        std::vector<int64_t> numberTurns = {1};
-        std::vector<int64_t> numberParallels = {1};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "T 20/10/7";
-
-        std::string coreMaterial = "3C97";
-        auto emptyGapping = json::array();
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
-        CoilAlignment turnsAlignment = CoilAlignment::INNER_OR_TOP;
-
-        std::vector<OpenMagnetics::Wire> wires;
-        wires.push_back({find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Toroid_Quiver_One_Turn_Rectangular_Inner.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        settings.set_painter_number_points_x(100);
-        settings.set_painter_number_points_y(100);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        // painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Inner", "[support][painter][magnetic-field-painter][round-winding-window]") {
-        clear_databases();
-        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-        std::vector<int64_t> numberTurns = {4};
-        std::vector<int64_t> numberParallels = {1};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "T 20/10/7";
-
-        std::string coreMaterial = "3C97";
-        auto emptyGapping = json::array();
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
-        CoilAlignment turnsAlignment = CoilAlignment::INNER_OR_TOP;
-
-        std::vector<OpenMagnetics::Wire> wires;
-        wires.push_back({find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Inner.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        settings.set_painter_number_points_x(100);
-        settings.set_painter_number_points_y(100);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        // painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Spread", "[support][painter][magnetic-field-painter][round-winding-window]") {
-        clear_databases();
-        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-        std::vector<int64_t> numberTurns = {4};
-        std::vector<int64_t> numberParallels = {1};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "T 20/10/7";
-
-        std::string coreMaterial = "3C97";
-        auto emptyGapping = json::array();
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
-
-        std::vector<OpenMagnetics::Wire> wires;
-        wires.push_back({find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Spread.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        settings.set_painter_number_points_x(100);
-        settings.set_painter_number_points_y(100);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        // painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Toroid_Quiver_Two_Turn_Rectangular", "[support][painter][magnetic-field-painter][round-winding-window]") {
-        clear_databases();
-        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-        std::vector<int64_t> numberTurns = {2};
-        std::vector<int64_t> numberParallels = {1};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "T 20/10/7";
-
-        std::string coreMaterial = "3C97";
-        auto emptyGapping = json::array();
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
-
-        std::vector<OpenMagnetics::Wire> wires;
-        wires.push_back({find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Toroid_Quiver_Two_Turn_Rectangular.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::QUIVER);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(false);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        settings.set_painter_number_points_x(100);
-        settings.set_painter_number_points_y(100);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        // painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-                painter.export_svg();
-        
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_Toroid_Rectangular_Wires", "[support][painter][magnetic-field-painter][round-winding-window]") {
-        clear_databases();
-        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-
-        double temperature = 20;
-        std::vector<int64_t> numberTurns = {11, 90};
-        std::vector<int64_t> numberParallels = {1, 1};
-        std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
-        uint8_t interleavingLevel = 1;
-        std::string coreShape = "T 20/10/7";
-        auto emptyGapping = json::array();
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
-        CoilAlignment turnsAlignment = CoilAlignment::INNER_OR_TOP;
-        std::vector<OpenMagnetics::Wire> wires;
-
-        wires.push_back({find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
-        wires.push_back({find_wire_by_name("Round 0.335 - Grade 1")});
-
-
-        auto label = WaveformLabel::SINUSOIDAL;
-        double offset = 0;
-        double peakToPeak = 2 * 1.73205;
-        double dutyCycle = 0.5;
-        double frequency = 100000;
-        double magnetizingInductance = 1e-3;
-        std::string shapeName = "T 20/10/7";
-
-        Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                         magnetizingInductance,
-                                                                                         temperature,
-                                                                                         label,
-                                                                                         peakToPeak,
-                                                                                         dutyCycle,
-                                                                                         offset,
-                                                                                         turnsRatios);
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
-                                                         numberParallels,
-                                                         shapeName,
-                                                         interleavingLevel,
-                                                         sectionOrientation,
-                                                         layersOrientation,
-                                                         turnsAlignment,
-                                                         sectionsAlignment,
-                                                         wires);
-
-        int64_t numberStacks = 1;
-        std::string coreMaterial = "3C97";
-        auto gapping = json::array();
-        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
-        OpenMagnetics::Magnetic magnetic;
-
-
-        settings.reset();
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Painter_Toroid_Rectangular_Wires.svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
-            OpenMagnetics::Magnetic magnetic;
-            magnetic.set_core(core);
-            magnetic.set_coil(coil);
-            // settings.set_painter_mode(PainterModes::CONTOUR);
-            settings.set_painter_mode(PainterModes::QUIVER);
-            settings.set_painter_logarithmic_scale(false);
-            settings.set_painter_include_fringing(true);
-            settings.set_painter_number_points_x(50);
-            settings.set_painter_number_points_y(50);
-            settings.set_painter_maximum_value_colorbar(std::nullopt);
-            settings.set_painter_minimum_value_colorbar(std::nullopt);
-            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-            painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
-            painter.paint_coil_turns(magnetic);
-                        painter.export_svg();
-            
-        }
-    }
-
     TEST_CASE("Test_Painter_T_Core", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") { 
         clear_databases();
         settings.set_coil_try_rewind(false);
@@ -1615,7 +915,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_T_Core.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false);
+        Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
@@ -1680,7 +980,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_T_Core_Contiguous_turns.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, false);
+            Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
@@ -1696,7 +996,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_T_Core_Contiguous_layers.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, false);
+            Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
@@ -1715,7 +1015,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_T_Core_Contiguous_sections.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, false);
+            Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
@@ -1754,7 +1054,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_T_Core_Contiguous_Sections_With_Margin.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
@@ -1792,7 +1092,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_T_Core_Contiguous_Sections_With_Spacer.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
@@ -1890,7 +1190,7 @@ namespace {
         OpenMagnetics::Magnetic magnetic(json::parse(json_file_1473));
         OperatingPoint operatingPoint(json::parse(R"({"name": "Operating Point No. 1", "conditions": {"ambientTemperature": 42}, "excitationsPerWinding": [{"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular", "acEffectiveFrequency": 110746.40291779551, "effectiveFrequency": 110746.40291779551, "peak": 5, "rms": 2.8874560332150576, "thd": 0.12151487440704967}, "harmonics": {"amplitudes": [1.1608769501236793e-14, 4.05366124583194, 1.787369544444173e-15, 0.4511310569983995, 9.749053004706756e-16, 0.16293015292554872, 4.036157626725542e-16, 0.08352979924600704, 3.4998295008010614e-16, 0.0508569581336163, 3.1489164048780735e-16, 0.034320410449418075, 3.142469873118059e-16, 0.024811988673843106, 2.3653352035940994e-16, 0.018849001010678823, 2.9306524147249266e-16, 0.014866633059596499, 1.796485796132569e-16, 0.012077180559557785, 1.6247782523152451e-16, 0.010049063750920609, 1.5324769149805092e-16, 0.008529750975091871, 1.0558579733068502e-16, 0.007363501410705499, 7.513269775674661e-17, 0.006450045785294609, 5.871414177162291e-17, 0.005722473794997712, 9.294731722001391e-17, 0.005134763398167541, 1.194820309200107e-16, 0.004654430423785411, 8.2422739080512e-17, 0.004258029771397032, 9.5067306351894e-17, 0.0039283108282380024, 1.7540347128474968e-16, 0.0036523670873925395, 9.623794010508822e-17, 0.0034204021424253787, 1.4083470894369491e-16, 0.0032248884817922927, 1.4749333016985644e-16, 0.0030599828465501895, 1.0448590642474364e-16, 0.002921112944200383, 7.575487373767413e-18, 0.002804680975178716, 7.419510610361002e-17, 0.0027078483284668376, 3.924741709073613e-17, 0.0026283777262804953, 2.2684279102637236e-17, 0.0025645167846443107, 8.997077625295079e-17, 0.0025149120164513483, 7.131074184849219e-17, 0.0024785457043284276, 9.354417496250849e-17, 0.0024546904085875065, 1.2488589642405877e-16, 0.0024428775264784264], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular", "acEffectiveFrequency": 591485.5360118389, "effectiveFrequency": 553357.3374711702, "peak": 70.5, "rms": 51.572309672924284, "thd": 0.4833151484524849}, "harmonics": {"amplitudes": [24.2890625, 57.92076613061847, 1.421875, 19.27588907896988, 1.421875, 11.528257939603122, 1.421875, 8.194467538528329, 1.421875, 6.331896912839248, 1.421875, 5.137996046859012, 1.421875, 4.304077056139349, 1.421875, 3.6860723299088454, 1.421875, 3.207698601961777, 1.421875, 2.8247804703632298, 1.421875, 2.509960393415185, 1.421875, 2.2453859950684323, 1.421875, 2.01890737840567, 1.421875, 1.8219644341144872, 1.421875, 1.6483482744897402, 1.421875, 1.4934420157473332, 1.421875, 1.3537375367153817, 1.421875, 1.2265178099275544, 1.421875, 1.1096421410704556, 1.421875, 1.0013973584174929, 1.421875, 0.9003924136274832, 1.421875, 0.8054822382572133, 1.421875, 0.7157117294021269, 1.421875, 0.6302738400635857, 1.421875, 0.5484777114167545, 1.421875, 0.46972405216147894, 1.421875, 0.3934858059809043, 1.421875, 0.31929270856030145, 1.421875, 0.24671871675852053, 1.421875, 0.17537155450693565, 1.421875, 0.10488380107099537, 1.421875, 0.034905072061178544], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"ancillaryLabel": null, "data": [-5, 5, -5], "numberPeriods": null, "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular", "acEffectiveFrequency": 110746.40291779551, "effectiveFrequency": 110746.40291779551, "peak": 5, "rms": 2.8874560332150576, "thd": 0.12151487440704967}, "harmonics": {"amplitudes": [1.1608769501236793e-14, 4.05366124583194, 1.787369544444173e-15, 0.4511310569983995, 9.749053004706756e-16, 0.16293015292554872, 4.036157626725542e-16, 0.08352979924600704, 3.4998295008010614e-16, 0.0508569581336163, 3.1489164048780735e-16, 0.034320410449418075, 3.142469873118059e-16, 0.024811988673843106, 2.3653352035940994e-16, 0.018849001010678823, 2.9306524147249266e-16, 0.014866633059596499, 1.796485796132569e-16, 0.012077180559557785, 1.6247782523152451e-16, 0.010049063750920609, 1.5324769149805092e-16, 0.008529750975091871, 1.0558579733068502e-16, 0.007363501410705499, 7.513269775674661e-17, 0.006450045785294609, 5.871414177162291e-17, 0.005722473794997712, 9.294731722001391e-17, 0.005134763398167541, 1.194820309200107e-16, 0.004654430423785411, 8.2422739080512e-17, 0.004258029771397032, 9.5067306351894e-17, 0.0039283108282380024, 1.7540347128474968e-16, 0.0036523670873925395, 9.623794010508822e-17, 0.0034204021424253787, 1.4083470894369491e-16, 0.0032248884817922927, 1.4749333016985644e-16, 0.0030599828465501895, 1.0448590642474364e-16, 0.002921112944200383, 7.575487373767413e-18, 0.002804680975178716, 7.419510610361002e-17, 0.0027078483284668376, 3.924741709073613e-17, 0.0026283777262804953, 2.2684279102637236e-17, 0.0025645167846443107, 8.997077625295079e-17, 0.0025149120164513483, 7.131074184849219e-17, 0.0024785457043284276, 9.354417496250849e-17, 0.0024546904085875065, 1.2488589642405877e-16, 0.0024428775264784264], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-50, 50, 50, -50, -50], "numberPeriods": null, "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular", "acEffectiveFrequency": 591485.536011839, "effectiveFrequency": 591449.4202715514, "peak": 50, "rms": 50, "thd": 0.48331514845248497}, "harmonics": {"amplitudes": [0.78125, 63.64919355013018, 1.5625, 21.18229569117569, 1.5625, 12.668415318245188, 1.5625, 9.004909382998164, 1.5625, 6.958128475647527, 1.5625, 5.646149502042871, 1.5625, 4.729755006746538, 1.5625, 4.050628933965765, 1.5625, 3.524943518639316, 1.5625, 3.104154363036517, 1.5625, 2.7581982345221827, 1.5625, 2.467457137437843, 1.5625, 2.2185795367095267, 1.5625, 2.0021587188071255, 1.5625, 1.8113717302085082, 1.5625, 1.6411450722498175, 1.5625, 1.487623666720196, 1.5625, 1.3478217691511587, 1.5625, 1.2193869682092893, 1.5625, 1.100436657601639, 1.5625, 0.9894422127774558, 1.5625, 0.8851453167661671, 1.5625, 0.7864964059364037, 1.5625, 0.6926086154544899, 1.5625, 0.60272275979863, 1.5625, 0.5161802771005264, 1.5625, 0.43240198459440116, 1.5625, 0.3508711083080249, 1.5625, 0.27111946896540395, 1.5625, 0.192715993963664, 1.5625, 0.11525692425384548, 1.5625, 0.03835722204524927], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}]})"));
 
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_magnetic_field(operatingPoint, magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1915,7 +1215,7 @@ namespace {
         std::ifstream json_file_1494(json_path_1494);
         OperatingPoint operatingPoint(json::parse(json_file_1494));
 
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_magnetic_field(operatingPoint, magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1938,7 +1238,7 @@ namespace {
         std::ifstream json_file_1513(json_path_1513);
         OpenMagnetics::Magnetic magnetic(json::parse(json_file_1513));
 
-        Painter painter(outFile, false);
+        Painter painter(outFile);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
@@ -1959,7 +1259,7 @@ namespace {
         OpenMagnetics::Magnetic magnetic(json::parse(json_file_1530));
         OperatingPoint operatingPoint(json::parse(R"({"conditions": {"ambientTemperature": 25}, "excitationsPerWinding": [{"frequency": 132000.0, "current": {"processed": {"label": "triangular", "rms": 1.8989304812834227, "peakToPeak": 6.578088147248217, "offset": 0, "dutyCycle": 0.5}, "waveform": {"ancillaryLabel": null, "data": [-3.2890440736241087, 3.2890440736241087, -3.2890440736241087], "numberPeriods": null, "time": [0.0, 3.787878787878788e-06, 7.575757575757576e-06]}}, "voltage": {"harmonics": {"amplitudes": [62.952303569165444, 5128.785093504464, 125.90460713833089, 1706.847115062678, 125.90460713833089, 1020.8075863736791, 125.90460713833089, 725.6061300368981, 125.90460713833089, 560.6786765724385, 125.90460713833089, 454.9607903353537, 125.90460713833089, 381.1186854303848, 125.90460713833089, 326.39542054023394, 125.90460713833089, 284.0362424954169, 125.90460713833089, 250.12949476790286, 125.90460713833089, 222.25271368137805, 125.90460713833089, 198.82510177266022, 125.90460713833089, 178.77080638371407, 125.90460713833089, 161.331844428797, 125.90460713833089, 145.95842948696347, 125.90460713833089, 132.2417443703173, 125.90460713833089, 119.87115092997756, 125.90460713833089, 108.60606101597877, 125.90460713833089, 98.25691979647422, 125.90460713833089, 88.67202883580953, 125.90460713833089, 79.72821317492881, 125.90460713833089, 71.32407895537791, 125.90460713833089, 63.37505344328454, 125.90460713833089, 55.809674002829496, 125.90460713833089, 48.56676626289743, 125.90460713833089, 41.5932640005737, 125.90460713833089, 34.84249727756338, 125.90460713833089, 28.27282499053598, 125.90460713833089, 21.84652174569095, 125.90460713833089, 15.528852165931653, 125.90460713833089, 9.2872817716177, 125.90460713833089, 3.0907846224163222], "frequencies": [0.0, 132000.0, 264000.0, 396000.0, 528000.0, 660000.0, 792000.0, 924000.0, 1056000.0, 1188000.0, 1320000.0, 1452000.0, 1584000.0, 1716000.0, 1848000.0, 1980000.0, 2112000.0, 2244000.0, 2376000.0, 2508000.0, 2640000.0, 2772000.0, 2904000.0, 3036000.0, 3168000.0, 3300000.0, 3432000.0, 3564000.0, 3696000.0, 3828000.0, 3960000.0, 4092000.0, 4224000.0, 4356000.0, 4488000.0, 4620000.0, 4752000.0, 4884000.0, 5016000.0, 5148000.0, 5280000.0, 5412000.0, 5544000.0, 5676000.0, 5808000.0, 5940000.0, 6072000.0, 6204000.0, 6336000.0, 6468000.0, 6600000.0, 6732000.0, 6864000.0, 6996000.0, 7128000.0, 7260000.0, 7392000.0, 7524000.0, 7656000.0, 7788000.0, 7920000.0, 8052000.0, 8184000.0, 8316000.0]}, "processed": {"acEffectiveFrequency": 780760.9075356274, "average": 62.952303569165224, "dutyCycle": 0.51, "effectiveFrequency": 780713.2347584474, "label": "custom", "offset": 0.0, "peak": 4028.9474284265884, "peakToPeak": 8057.894856853177, "phase": null, "rms": 4028.947428426593, "thd": 0.4833151484524849}, "waveform": {"ancillaryLabel": null, "data": [4028.9474284265884, 4028.9474284265884, -4028.9474284265884, -4028.9474284265884, 4028.947428426589], "numberPeriods": null, "time": [0.0, 3.787878787878788e-06, 3.787878787878788e-06, 7.575757575757576e-06, 7.575757575757576e-06]}}}, {"frequency": 132000.0, "current": {"processed": {"label": "triangular", "rms": 1.9251336898395721, "peakToPeak": 6.668858724329366, "offset": 0, "dutyCycle": 0.5}, "waveform": {"ancillaryLabel": null, "data": [-3.334429362164683, 3.334429362164683, -3.334429362164683], "numberPeriods": null, "time": [0.0, 3.787878787878788e-06, 7.575757575757576e-06]}}, "voltage": {"harmonics": {"amplitudes": [63.82097799183204, 5199.556839373717, 127.64195598366408, 1730.399778717443, 127.64195598366408, 1034.893638677906, 127.64195598366408, 735.6187181449823, 127.64195598366408, 568.4154423150599, 127.64195598366408, 461.2387623788434, 127.64195598366408, 386.37771544618, 127.64195598366408, 330.8993280610653, 127.64195598366408, 287.9556386886795, 127.64195598366408, 253.58101412685173, 127.64195598366408, 225.31956329286425, 127.64195598366408, 201.56867541018784, 127.64195598366408, 181.23765220539858, 127.64195598366408, 163.55805123730477, 127.64195598366408, 147.97249962068966, 127.64195598366408, 134.0665389279477, 127.64195598366408, 121.52524453616411, 127.64195598366408, 110.10470843636273, 127.64195598366408, 99.61276014286315, 127.64195598366408, 89.89560794393546, 127.64195598366408, 80.82837719790015, 127.64195598366408, 72.30827491956077, 127.64195598366408, 64.24956136182033, 127.64195598366408, 56.579787780958924, 127.64195598366408, 49.23693566500447, 127.64195598366408, 42.167206533952594, 127.64195598366408, 35.32328645430246, 127.64195598366408, 28.66295972005929, 127.64195598366408, 22.147980367358002, 127.64195598366408, 15.743133708069479, 127.64195598366408, 9.415436321549691, 127.64195598366408, 3.1334341426909305], "frequencies": [0.0, 132000.0, 264000.0, 396000.0, 528000.0, 660000.0, 792000.0, 924000.0, 1056000.0, 1188000.0, 1320000.0, 1452000.0, 1584000.0, 1716000.0, 1848000.0, 1980000.0, 2112000.0, 2244000.0, 2376000.0, 2508000.0, 2640000.0, 2772000.0, 2904000.0, 3036000.0, 3168000.0, 3300000.0, 3432000.0, 3564000.0, 3696000.0, 3828000.0, 3960000.0, 4092000.0, 4224000.0, 4356000.0, 4488000.0, 4620000.0, 4752000.0, 4884000.0, 5016000.0, 5148000.0, 5280000.0, 5412000.0, 5544000.0, 5676000.0, 5808000.0, 5940000.0, 6072000.0, 6204000.0, 6336000.0, 6468000.0, 6600000.0, 6732000.0, 6864000.0, 6996000.0, 7128000.0, 7260000.0, 7392000.0, 7524000.0, 7656000.0, 7788000.0, 7920000.0, 8052000.0, 8184000.0, 8316000.0]}, "processed": {"acEffectiveFrequency": 780760.9075356275, "average": 63.820977991832244, "dutyCycle": 0.51, "effectiveFrequency": 780713.2347584475, "label": "custom", "offset": 0.0, "peak": 4084.5425914772504, "peakToPeak": 8169.085182954501, "phase": null, "rms": 4084.5425914772554, "thd": 0.48331514845248497}, "waveform": {"ancillaryLabel": null, "data": [4084.5425914772504, 4084.5425914772504, -4084.5425914772504, -4084.5425914772504, 4084.542591477251], "numberPeriods": null, "time": [0.0, 3.787878787878788e-06, 3.787878787878788e-06, 7.575757575757576e-06, 7.575757575757576e-06]}}}, {"frequency": 132000.0, "current": {"processed": {"label": "triangular", "rms": 0.358288770053476, "peakToPeak": 1.2411487070279656, "offset": 0, "dutyCycle": 0.5}, "waveform": {"ancillaryLabel": null, "data": [-0.6205743535139828, 0.6205743535139828, -0.6205743535139828], "numberPeriods": null, "time": [0.0, 3.787878787878788e-06, 7.575757575757576e-06]}}, "voltage": {"harmonics": {"amplitudes": [11.87779312625763, 967.6953006612196, 23.75558625251526, 322.04662548352417, 23.75558625251526, 192.60520497616582, 23.75558625251526, 136.906816988094, 23.75558625251526, 105.7884295419695, 23.75558625251526, 85.84165855384032, 23.75558625251526, 71.90918593026129, 23.75558625251526, 61.58404161136487, 23.75558625251526, 53.59174386705979, 23.75558625251526, 47.194244295830735, 23.75558625251526, 41.93447427950528, 23.75558625251526, 37.51417014578499, 23.75558625251526, 33.73034082711585, 23.75558625251526, 30.439970646942818, 23.75558625251526, 27.539326318295032, 23.75558625251526, 24.951272522701416, 23.75558625251526, 22.61719828867497, 23.75558625251526, 20.491709625656366, 23.75558625251526, 18.5390414710329, 23.75558625251526, 16.730571478454657, 23.75558625251526, 15.043059089609208, 23.75558625251526, 13.45737338780712, 23.75558625251526, 11.957557253449902, 23.75558625251526, 10.530127170345182, 23.75558625251526, 9.163540804320238, 23.75558625251526, 7.847785660485627, 23.75558625251526, 6.574056090106289, 23.75558625251526, 5.334495281233224, 23.75558625251526, 4.12198523503605, 23.75558625251526, 2.9299721067795446, 23.75558625251526, 1.7523173153996083, 23.75558625251526, 0.583166909889826], "frequencies": [0.0, 132000.0, 264000.0, 396000.0, 528000.0, 660000.0, 792000.0, 924000.0, 1056000.0, 1188000.0, 1320000.0, 1452000.0, 1584000.0, 1716000.0, 1848000.0, 1980000.0, 2112000.0, 2244000.0, 2376000.0, 2508000.0, 2640000.0, 2772000.0, 2904000.0, 3036000.0, 3168000.0, 3300000.0, 3432000.0, 3564000.0, 3696000.0, 3828000.0, 3960000.0, 4092000.0, 4224000.0, 4356000.0, 4488000.0, 4620000.0, 4752000.0, 4884000.0, 5016000.0, 5148000.0, 5280000.0, 5412000.0, 5544000.0, 5676000.0, 5808000.0, 5940000.0, 6072000.0, 6204000.0, 6336000.0, 6468000.0, 6600000.0, 6732000.0, 6864000.0, 6996000.0, 7128000.0, 7260000.0, 7392000.0, 7524000.0, 7656000.0, 7788000.0, 7920000.0, 8052000.0, 8184000.0, 8316000.0]}, "processed": {"acEffectiveFrequency": 780760.9075356274, "average": 11.877793126257593, "dutyCycle": 0.51, "effectiveFrequency": 780713.2347584474, "label": "custom", "offset": 0.0, "peak": 760.1787600804884, "peakToPeak": 1520.3575201609767, "phase": null, "rms": 760.1787600804879, "thd": 0.48331514845248497}, "waveform": {"ancillaryLabel": null, "data": [760.1787600804884, 760.1787600804884, -760.1787600804884, -760.1787600804884, 760.1787600804885], "numberPeriods": null, "time": [0.0, 3.787878787878788e-06, 3.787878787878788e-06, 7.575757575757576e-06, 7.575757575757576e-06]}}}]})"));
 
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_magnetic_field(operatingPoint, magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1980,7 +1280,7 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_7.svg");
-        Painter painter(outFile, false);
+        Painter painter(outFile);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
@@ -2000,7 +1300,7 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_8.svg");
-        Painter painter(outFile, false);
+        Painter painter(outFile);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -3797,91 +3097,6 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Planar", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
-        SKIP("matplotplusplus disabled — skipping planar painter test");
-
-        settings.set_coil_wind_even_if_not_fit(false);
-        settings.set_coil_try_rewind(false);
-
-        std::vector<int64_t> numberTurns = {20, 5};
-        std::vector<int64_t> numberParallels = {4, 4};
-        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        double voltagePeakToPeak = 2000;
-        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
-        std::vector<size_t> stackUp = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "3C95");
-        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
-
-        std::vector<OpenMagnetics::Wire> wires;
-        OpenMagnetics::Wire wire;
-        wire.set_nominal_value_conducting_width(0.0008);
-        wire.set_nominal_value_conducting_height(0.000076);
-        wire.set_number_conductors(1);
-        wire.set_material("copper");
-        wire.set_type(WireType::RECTANGULAR);
-        wires.push_back(wire);
-        wire.set_nominal_value_conducting_width(0.0032);
-        wire.set_nominal_value_conducting_height(0.000076);
-        wires.push_back(wire);
-
-        OpenMagnetics::Coil coil;
-        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
-            OpenMagnetics::Winding coilFunctionalDescription; 
-            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
-            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
-            coilFunctionalDescription.set_name(OpenMagnetics::to_string(isolationSides[windingIndex]));
-            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
-            coilFunctionalDescription.set_wire(wires[windingIndex]);
-            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
-        }
-        coil.set_bobbin(bobbin);
-        coil.set_strict(false);
-
-        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0001}}, 0.0001);
-        coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}, {1, 0.0002}});
-        coil.delimit_and_compact();
-
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        {
-            OpenMagnetics::Mas mas;
-            mas.set_inputs(inputs);
-            mas.set_magnetic(magnetic);
-            mas.set_outputs({});
-            auto outFile = outputFilePath;
-            outFile.append("Test_Painter_Planar.mas.json");
-            OpenMagnetics::to_file(outFile, mas);
-        }
-        {
-
-            auto outFile = outputFilePath;
-            outFile.append("Test_Painter_Planar.svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, true);
-            // settings.set_painter_number_points_x(300);
-            // settings.set_painter_number_points_y(300);
-            settings.set_painter_mode(PainterModes::SCATTER);
-            // settings.set_painter_logarithmic_scale(false);
-            settings.set_painter_include_fringing(false);
-            // settings.set_painter_maximum_value_colorbar(std::nullopt);
-            // settings.set_painter_minimum_value_colorbar(std::nullopt);
-            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-            painter.paint_core(magnetic);
-            // painter.paint_bobbin(magnetic);
-            painter.paint_coil_turns(magnetic);
-                        painter.export_svg();
-            
-            REQUIRE(std::filesystem::exists(outFile));
-            settings.reset();
-        }
-    }
-
     TEST_CASE("Test_Field_Painter_Web_0", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
         clear_databases();
         settings.set_painter_color_bobbin("0x7F539796");
@@ -3894,30 +3109,7 @@ namespace {
         OperatingPoint operatingPoint(json::parse(R"({"name": "Operating Point No. 1", "conditions": {"ambientTemperature": 42}, "excitationsPerWinding": [{"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"ancillaryLabel": null, "data": [-0.5, 0.5, -0.5], "numberPeriods": null, "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 1, "offset": 0, "label": "triangular", "acEffectiveFrequency": 110746.40291779555, "effectiveFrequency": 110746.40291779555, "peak": 0.5, "rms": 0.28874560332150573, "thd": 0.12151487440704967}, "harmonics": {"amplitudes": [1.1639994523804376e-15, 0.405366124583194, 1.7625133133414615e-16, 0.04511310569983995, 9.794112399879062e-17, 0.016293015292554884, 4.7988858344639954e-17, 0.008352979924600703, 4.095487581202406e-17, 0.005085695813361643, 3.44883176864717e-17, 0.003432041044941819, 3.006242608568973e-17, 0.002481198867384312, 2.7043620343491673e-17, 0.001884900101067885, 2.3307495124652547e-17, 0.001486663305959666, 2.2626256707089782e-17, 0.0012077180559557953, 1.7697356001223085e-17, 0.0010049063750920616, 2.036097837850594e-17, 0.0008529750975091948, 1.2438706838922496e-17, 0.0007363501410705534, 1.422708446941111e-17, 0.0006450045785294559, 1.022638379745176e-17, 0.0005722473794997664, 8.850209619122964e-18, 0.0005134763398167083, 1.2327526502681126e-17, 0.00046544304237854605, 6.116630655891947e-18, 0.0004258029771397049, 1.0990156230869393e-17, 0.0003928310828238053, 1.5090528294941328e-17, 0.00036523670873923176, 1.1048170322215263e-17, 0.0003420402142425299, 1.2778884268149239e-17, 0.00032248884817922554, 1.1578435604880218e-17, 0.000305998284655021, 8.597983809652515e-18, 0.0002921112944200549, 2.4395966302795302e-18, 0.00028046809751785943, 1.0171613695358528e-17, 0.00027078483284668445, 5.9415411850148865e-18, 0.0002628377726280502, 4.740823506837856e-18, 0.0002564516784644257, 1.0500990956496667e-17, 0.00025149120164513414, 7.790761372538887e-18, 0.00024785457043285074, 1.1991920621603288e-17, 0.00024546904085874163, 1.0014371763736106e-17, 0.0002442877526479259], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-500, 500, 500, -500, -500], "numberPeriods": null, "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 1000, "offset": 0, "label": "rectangular", "acEffectiveFrequency": 591485.5360118389, "effectiveFrequency": 591449.4202715511, "peak": 500, "rms": 500, "thd": 0.4833151484524849}, "harmonics": {"amplitudes": [7.8125, 636.4919355013018, 15.625, 211.8229569117569, 15.625, 126.68415318245187, 15.625, 90.04909382998163, 15.625, 69.58128475647527, 15.625, 56.461495020428714, 15.625, 47.29755006746536, 15.625, 40.50628933965767, 15.625, 35.249435186393164, 15.625, 31.04154363036516, 15.625, 27.581982345221817, 15.625, 24.674571374378406, 15.625, 22.18579536709526, 15.625, 20.021587188071276, 15.625, 18.11371730208506, 15.625, 16.411450722498188, 15.625, 14.876236667201972, 15.625, 13.4782176915116, 15.625, 12.19386968209292, 15.625, 11.004366576016427, 15.625, 9.894422127774538, 15.625, 8.85145316766167, 15.625, 7.864964059364016, 15.625, 6.926086154544901, 15.625, 6.0272275979863, 15.625, 5.1618027710052665, 15.625, 4.324019845944026, 15.625, 3.50871108308025, 15.625, 2.7111946896540857, 15.625, 1.9271599396366668, 15.625, 1.1525692425384477, 15.625, 0.3835722204524359], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"ancillaryLabel": null, "data": [-5, 5, -5], "numberPeriods": null, "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular", "acEffectiveFrequency": 110746.40291779551, "effectiveFrequency": 110746.40291779551, "peak": 5, "rms": 2.8874560332150576, "thd": 0.12151487440704967}, "harmonics": {"amplitudes": [1.1608769501236793e-14, 4.05366124583194, 1.787369544444173e-15, 0.4511310569983995, 9.749053004706756e-16, 0.16293015292554872, 4.036157626725542e-16, 0.08352979924600704, 3.4998295008010614e-16, 0.0508569581336163, 3.1489164048780735e-16, 0.034320410449418075, 3.142469873118059e-16, 0.024811988673843106, 2.3653352035940994e-16, 0.018849001010678823, 2.9306524147249266e-16, 0.014866633059596499, 1.796485796132569e-16, 0.012077180559557785, 1.6247782523152451e-16, 0.010049063750920609, 1.5324769149805092e-16, 0.008529750975091871, 1.0558579733068502e-16, 0.007363501410705499, 7.513269775674661e-17, 0.006450045785294609, 5.871414177162291e-17, 0.005722473794997712, 9.294731722001391e-17, 0.005134763398167541, 1.194820309200107e-16, 0.004654430423785411, 8.2422739080512e-17, 0.004258029771397032, 9.5067306351894e-17, 0.0039283108282380024, 1.7540347128474968e-16, 0.0036523670873925395, 9.623794010508822e-17, 0.0034204021424253787, 1.4083470894369491e-16, 0.0032248884817922927, 1.4749333016985644e-16, 0.0030599828465501895, 1.0448590642474364e-16, 0.002921112944200383, 7.575487373767413e-18, 0.002804680975178716, 7.419510610361002e-17, 0.0027078483284668376, 3.924741709073613e-17, 0.0026283777262804953, 2.2684279102637236e-17, 0.0025645167846443107, 8.997077625295079e-17, 0.0025149120164513483, 7.131074184849219e-17, 0.0024785457043284276, 9.354417496250849e-17, 0.0024546904085875065, 1.2488589642405877e-16, 0.0024428775264784264], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-50, 50, 50, -50, -50], "numberPeriods": null, "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular", "acEffectiveFrequency": 591485.536011839, "effectiveFrequency": 591449.4202715514, "peak": 50, "rms": 50, "thd": 0.48331514845248497}, "harmonics": {"amplitudes": [0.78125, 63.64919355013018, 1.5625, 21.18229569117569, 1.5625, 12.668415318245188, 1.5625, 9.004909382998164, 1.5625, 6.958128475647527, 1.5625, 5.646149502042871, 1.5625, 4.729755006746538, 1.5625, 4.050628933965765, 1.5625, 3.524943518639316, 1.5625, 3.104154363036517, 1.5625, 2.7581982345221827, 1.5625, 2.467457137437843, 1.5625, 2.2185795367095267, 1.5625, 2.0021587188071255, 1.5625, 1.8113717302085082, 1.5625, 1.6411450722498175, 1.5625, 1.487623666720196, 1.5625, 1.3478217691511587, 1.5625, 1.2193869682092893, 1.5625, 1.100436657601639, 1.5625, 0.9894422127774558, 1.5625, 0.8851453167661671, 1.5625, 0.7864964059364037, 1.5625, 0.6926086154544899, 1.5625, 0.60272275979863, 1.5625, 0.5161802771005264, 1.5625, 0.43240198459440116, 1.5625, 0.3508711083080249, 1.5625, 0.27111946896540395, 1.5625, 0.192715993963664, 1.5625, 0.11525692425384548, 1.5625, 0.03835722204524927], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}]})"));
 
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        painter.paint_magnetic_field(operatingPoint, magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
-
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Field_Painter_Web_1", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        clear_databases();
-        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Field_Painter_Web_1.svg");
-        auto json_path_3429 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_field_painter_web_1_3429.json");
-        std::ifstream json_file_3429(json_path_3429);
-        OpenMagnetics::Magnetic magnetic(json::parse(json_file_3429));
-        OperatingPoint operatingPoint(json::parse(R"({"name": "Operating Point No. 1", "conditions": {"ambientTemperature": 42}, "excitationsPerWinding": [{"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"ancillaryLabel": null, "data": [-0.5, 0.5, -0.5], "numberPeriods": null, "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 1, "offset": 0, "label": "triangular", "acEffectiveFrequency": 110746.40291779555, "effectiveFrequency": 110746.40291779555, "peak": 0.5, "rms": 0.28874560332150573, "thd": 0.12151487440704967}, "harmonics": {"amplitudes": [1.1639994523804376e-15, 0.405366124583194, 1.7625133133414615e-16, 0.04511310569983995, 9.794112399879062e-17, 0.016293015292554884, 4.7988858344639954e-17, 0.008352979924600703, 4.095487581202406e-17, 0.005085695813361643, 3.44883176864717e-17, 0.003432041044941819, 3.006242608568973e-17, 0.002481198867384312, 2.7043620343491673e-17, 0.001884900101067885, 2.3307495124652547e-17, 0.001486663305959666, 2.2626256707089782e-17, 0.0012077180559557953, 1.7697356001223085e-17, 0.0010049063750920616, 2.036097837850594e-17, 0.0008529750975091948, 1.2438706838922496e-17, 0.0007363501410705534, 1.422708446941111e-17, 0.0006450045785294559, 1.022638379745176e-17, 0.0005722473794997664, 8.850209619122964e-18, 0.0005134763398167083, 1.2327526502681126e-17, 0.00046544304237854605, 6.116630655891947e-18, 0.0004258029771397049, 1.0990156230869393e-17, 0.0003928310828238053, 1.5090528294941328e-17, 0.00036523670873923176, 1.1048170322215263e-17, 0.0003420402142425299, 1.2778884268149239e-17, 0.00032248884817922554, 1.1578435604880218e-17, 0.000305998284655021, 8.597983809652515e-18, 0.0002921112944200549, 2.4395966302795302e-18, 0.00028046809751785943, 1.0171613695358528e-17, 0.00027078483284668445, 5.9415411850148865e-18, 0.0002628377726280502, 4.740823506837856e-18, 0.0002564516784644257, 1.0500990956496667e-17, 0.00025149120164513414, 7.790761372538887e-18, 0.00024785457043285074, 1.1991920621603288e-17, 0.00024546904085874163, 1.0014371763736106e-17, 0.0002442877526479259], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-500, 500, 500, -500, -500], "numberPeriods": null, "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 1000, "offset": 0, "label": "rectangular", "acEffectiveFrequency": 591485.5360118389, "effectiveFrequency": 591449.4202715511, "peak": 500, "rms": 500, "thd": 0.4833151484524849}, "harmonics": {"amplitudes": [7.8125, 636.4919355013018, 15.625, 211.8229569117569, 15.625, 126.68415318245187, 15.625, 90.04909382998163, 15.625, 69.58128475647527, 15.625, 56.461495020428714, 15.625, 47.29755006746536, 15.625, 40.50628933965767, 15.625, 35.249435186393164, 15.625, 31.04154363036516, 15.625, 27.581982345221817, 15.625, 24.674571374378406, 15.625, 22.18579536709526, 15.625, 20.021587188071276, 15.625, 18.11371730208506, 15.625, 16.411450722498188, 15.625, 14.876236667201972, 15.625, 13.4782176915116, 15.625, 12.19386968209292, 15.625, 11.004366576016427, 15.625, 9.894422127774538, 15.625, 8.85145316766167, 15.625, 7.864964059364016, 15.625, 6.926086154544901, 15.625, 6.0272275979863, 15.625, 5.1618027710052665, 15.625, 4.324019845944026, 15.625, 3.50871108308025, 15.625, 2.7111946896540857, 15.625, 1.9271599396366668, 15.625, 1.1525692425384477, 15.625, 0.3835722204524359], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"ancillaryLabel": null, "data": [-5, 5, -5], "numberPeriods": null, "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular", "acEffectiveFrequency": 110746.40291779551, "effectiveFrequency": 110746.40291779551, "peak": 5, "rms": 2.8874560332150576, "thd": 0.12151487440704967}, "harmonics": {"amplitudes": [1.1608769501236793e-14, 4.05366124583194, 1.787369544444173e-15, 0.4511310569983995, 9.749053004706756e-16, 0.16293015292554872, 4.036157626725542e-16, 0.08352979924600704, 3.4998295008010614e-16, 0.0508569581336163, 3.1489164048780735e-16, 0.034320410449418075, 3.142469873118059e-16, 0.024811988673843106, 2.3653352035940994e-16, 0.018849001010678823, 2.9306524147249266e-16, 0.014866633059596499, 1.796485796132569e-16, 0.012077180559557785, 1.6247782523152451e-16, 0.010049063750920609, 1.5324769149805092e-16, 0.008529750975091871, 1.0558579733068502e-16, 0.007363501410705499, 7.513269775674661e-17, 0.006450045785294609, 5.871414177162291e-17, 0.005722473794997712, 9.294731722001391e-17, 0.005134763398167541, 1.194820309200107e-16, 0.004654430423785411, 8.2422739080512e-17, 0.004258029771397032, 9.5067306351894e-17, 0.0039283108282380024, 1.7540347128474968e-16, 0.0036523670873925395, 9.623794010508822e-17, 0.0034204021424253787, 1.4083470894369491e-16, 0.0032248884817922927, 1.4749333016985644e-16, 0.0030599828465501895, 1.0448590642474364e-16, 0.002921112944200383, 7.575487373767413e-18, 0.002804680975178716, 7.419510610361002e-17, 0.0027078483284668376, 3.924741709073613e-17, 0.0026283777262804953, 2.2684279102637236e-17, 0.0025645167846443107, 8.997077625295079e-17, 0.0025149120164513483, 7.131074184849219e-17, 0.0024785457043284276, 9.354417496250849e-17, 0.0024546904085875065, 1.2488589642405877e-16, 0.0024428775264784264], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-50, 50, 50, -50, -50], "numberPeriods": null, "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular", "acEffectiveFrequency": 591485.536011839, "effectiveFrequency": 591449.4202715514, "peak": 50, "rms": 50, "thd": 0.48331514845248497}, "harmonics": {"amplitudes": [0.78125, 63.64919355013018, 1.5625, 21.18229569117569, 1.5625, 12.668415318245188, 1.5625, 9.004909382998164, 1.5625, 6.958128475647527, 1.5625, 5.646149502042871, 1.5625, 4.729755006746538, 1.5625, 4.050628933965765, 1.5625, 3.524943518639316, 1.5625, 3.104154363036517, 1.5625, 2.7581982345221827, 1.5625, 2.467457137437843, 1.5625, 2.2185795367095267, 1.5625, 2.0021587188071255, 1.5625, 1.8113717302085082, 1.5625, 1.6411450722498175, 1.5625, 1.487623666720196, 1.5625, 1.3478217691511587, 1.5625, 1.2193869682092893, 1.5625, 1.100436657601639, 1.5625, 0.9894422127774558, 1.5625, 0.8851453167661671, 1.5625, 0.7864964059364037, 1.5625, 0.6926086154544899, 1.5625, 0.60272275979863, 1.5625, 0.5161802771005264, 1.5625, 0.43240198459440116, 1.5625, 0.3508711083080249, 1.5625, 0.27111946896540395, 1.5625, 0.192715993963664, 1.5625, 0.11525692425384548, 1.5625, 0.03835722204524927], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000]}}}]})"));
-
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_magnetic_field(operatingPoint, magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -3938,7 +3130,7 @@ namespace {
         OperatingPoint operatingPoint(json::parse(R"({"name": "Operating Point No. 1", "conditions": {"ambientTemperature": 42}, "excitationsPerWinding": [{"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}]})"));
 
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_magnetic_field(operatingPoint, magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -3960,7 +3152,7 @@ namespace {
         OpenMagnetics::Magnetic magnetic(json::parse(json_file_3469));
 
         std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
@@ -4365,12 +3557,10 @@ namespace {
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        
-        // Plot using BasicPainter (useAdvancedPainter = false)
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Albach_2D_Field_With_Gap.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);  // Use BasicPainter
+        Painter painter(outFile);  // Use Painter
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);  // Enable fringing to show gap effects
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4422,7 +3612,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Albach_2D_Transformer_With_Gap.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4494,7 +3684,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Albach_2D_Planar_Transformer.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4541,7 +3731,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Albach_2D_RM_Core_Inductor.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4553,56 +3743,6 @@ namespace {
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
 
-        REQUIRE(std::filesystem::exists(outFile));
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Painter_RM_Core_Distributed_Gap_3", "[support][painter][magnetic-painter][pot-core][distributed-gap][smoke-test]") {
-        SKIP("matplotplusplus disabled — skipping RM core painter test");
-        // Test case with RM core (pot-like shape) with 3 distributed gaps
-        clear_databases();
-        
-        std::vector<int64_t> numberTurns = {24};
-        std::vector<int64_t> numberParallels = {1};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 400;
-        std::string coreShape = "RM 10";
-        std::string coreMaterial = "3C90";
-        auto gapping = OpenMagneticsTesting::get_distributed_gap(0.002, 3);
-
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(75000, 0.002, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_RM_Core_Distributed_Gap_3.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
-        settings.set_painter_logarithmic_scale(false);
-        settings.set_painter_include_fringing(true);
-        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
-        settings.set_painter_maximum_value_colorbar(std::nullopt);
-        settings.set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-
-        painter.export_svg();
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -4639,7 +3779,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_RM_Core_Single_Gap_Single_Turn.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4693,7 +3833,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Albach_2D_Litz_Wire_Transformer.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4757,7 +3897,7 @@ namespace {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Albach_2D_Rectangular_Wire.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, false, false);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4942,8 +4082,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Toroid_Magnetic_Field_BasicPainter", "[support][painter][magnetic-field-painter][round-winding-window][toroidal][basicpainter]") {
-        // Test magnetic field visualization for toroidal cores using BasicPainter (no matplotplusplus required)
+    TEST_CASE("Test_Painter_Toroid_Magnetic_Field_Painter", "[support][painter][magnetic-field-painter][round-winding-window][toroidal][basicpainter]") {
         clear_databases();
         
         double temperature = 20;
@@ -5002,14 +4141,12 @@ namespace {
 
         auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
         
-        // Test magnetic field with BasicPainter
+        // Test magnetic field with Painter
         {
             auto outFile = outputFilePath;
-            outFile.append("Test_Painter_Toroid_Magnetic_Field_BasicPainter.svg");
+            outFile.append("Test_Painter_Toroid_Magnetic_Field_Painter.svg");
             std::filesystem::remove(outFile);
-            
-            // Use BasicPainter (useAdvancedPainter = false)
-            Painter painter(outFile, false, false, false);
+            Painter painter(outFile);
             
             settings.set_painter_mode(PainterModes::QUIVER);
             settings.set_painter_logarithmic_scale(false);
@@ -5036,8 +4173,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Toroid_Electric_Field_BasicPainter", "[support][painter][electric-field-painter][round-winding-window][toroidal][basicpainter]") {
-        // Test electric field visualization for toroidal cores using BasicPainter (no matplotplusplus required)
+    TEST_CASE("Test_Painter_Toroid_Electric_Field_Painter", "[support][painter][electric-field-painter][round-winding-window][toroidal][basicpainter]") {
         clear_databases();
         
         std::vector<int64_t> numberTurns = {58};
@@ -5071,14 +4207,12 @@ namespace {
         
         auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
         
-        // Test electric field with BasicPainter using SDF_PHYSICS model
+        // Test electric field with Painter using SDF_PHYSICS model
         {
             auto outFile = outputFilePath;
-            outFile.append("Test_Painter_Toroid_Electric_Field_BasicPainter.svg");
+            outFile.append("Test_Painter_Toroid_Electric_Field_Painter.svg");
             std::filesystem::remove(outFile);
-            
-            // Use BasicPainter (useAdvancedPainter = false)
-            Painter painter(outFile, false, false, false);
+            Painter painter(outFile);
             
             // Increased grid points for toroidal cores to better resolve the circular field pattern
             settings.set_painter_number_points_x(300);
@@ -5136,7 +4270,7 @@ namespace {
         outFile.append("Test_Painter_Bug_Rectangular_Toroidal_Core.svg");
         std::filesystem::remove(outFile);
         
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         painter.paint_core(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
@@ -5165,7 +4299,7 @@ namespace {
         outFile.append("Test_Painter_Bug_Toroidal_One_Turn_H_Field.svg");
         std::filesystem::remove(outFile);
         
-        Painter painter(outFile, true);
+        Painter painter(outFile);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -5228,14 +4362,12 @@ namespace {
         
         auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
         
-        // Test electric field with BasicPainter using SDF_PHYSICS model
+        // Test electric field with Painter using SDF_PHYSICS model
         {
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_Toroidal_Electric_Field_Multiple_Turns.svg");
             std::filesystem::remove(outFile);
-            
-            // Use BasicPainter (useAdvancedPainter = false)
-            Painter painter(outFile, false, false, false);
+            Painter painter(outFile);
             
             // High resolution grid to see both inner and outer turn energy
             settings.set_painter_number_points_x(200);

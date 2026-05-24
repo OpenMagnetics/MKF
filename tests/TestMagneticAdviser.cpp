@@ -100,7 +100,7 @@ namespace {
                 //     std::string filename = "Test_MagneticAdviser_Filter_" + std::to_string(scoring) + ".svg";
                 //     outFile.append(filename);
                 //     settings.set_painter_include_fringing(false);
-                //     Painter painter(outFile, true);
+                //     Painter painter(outFile);
 
                 //     painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 //     painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -115,17 +115,15 @@ namespace {
 
                     outFile.append("Test_MagneticAdviser_Filter_Sweep_Impedance_Over_Frequency_" + std::to_string(scoring) + ".svg");
                     std::filesystem::remove(outFile);
-                    Painter painter(outFile, false, true);
+                    Painter painter(outFile);
                     #ifdef ENABLE_MATPLOTPP
                     painter.paint_curve(impedanceSweep);
                     #else
-                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                     #endif
 
                     #ifdef ENABLE_MATPLOTPP
                     painter.export_svg();
                     #else
-                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                     #endif
 
                 }
@@ -197,7 +195,7 @@ namespace {
                 //     std::string filename = "Test_MagneticAdviser_Filter_" + std::to_string(scoring) + ".svg";
                 //     outFile.append(filename);
                 //     settings.set_painter_include_fringing(false);
-                //     Painter painter(outFile, true);
+                //     Painter painter(outFile);
 
                 //     painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 //     painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -212,17 +210,15 @@ namespace {
 
                     outFile.append("Test_MagneticAdviser_Filter_Sweep_Impedance_Over_Frequency_" + std::to_string(scoring) + ".svg");
                     std::filesystem::remove(outFile);
-                    Painter painter(outFile, false, true);
+                    Painter painter(outFile);
                     #ifdef ENABLE_MATPLOTPP
                     painter.paint_curve(impedanceSweep);
                     #else
-                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                     #endif
 
                     #ifdef ENABLE_MATPLOTPP
                     painter.export_svg();
                     #else
-                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                     #endif
 
                 }
@@ -287,7 +283,7 @@ namespace {
                     std::string filename = "Test_MagneticAdviser_Filter_Planar_" + std::to_string(scoring) + ".svg";
                     outFile.append(filename);
                     settings.set_painter_include_fringing(false);
-                    Painter painter(outFile, false, false);
+                    Painter painter(outFile);
 
                     // painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                     painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -296,7 +292,6 @@ namespace {
                     #ifdef ENABLE_MATPLOTPP
                     painter.export_svg();
                     #else
-                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                     #endif
 
                 }
@@ -347,7 +342,7 @@ namespace {
                 std::string filename = "Test_MagneticAdviser_High_Current_" + std::to_string(scoring) + ".svg";
                 outFile.append(filename);
                 settings.set_painter_include_fringing(false);
-                Painter painter(outFile, true);
+                Painter painter(outFile);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -356,7 +351,6 @@ namespace {
                 #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
                 #else
-                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                 #endif
 
             }
@@ -427,7 +421,7 @@ namespace {
                 auto outFile = outputFilePath;
                 std::string filename = "MagneticAdviser" + masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
                 outFile.append(filename);
-                Painter painter(outFile, true);
+                Painter painter(outFile);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -436,7 +430,6 @@ namespace {
                 #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
                 #else
-                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                 #endif
 
             }
@@ -495,7 +488,7 @@ namespace {
                 auto outFile = outputFilePath;
                 std::string filename = "Test_MagneticAdviser_No_Insulation_Requirements_" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
                 outFile.append(filename);
-                Painter painter(outFile, true);
+                Painter painter(outFile);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -504,7 +497,6 @@ namespace {
                 #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
                 #else
-                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                 #endif
 
             }
@@ -632,7 +624,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "MagneticAdviser_MagneticAdviserJsonHV_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -641,7 +633,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -678,7 +669,7 @@ namespace {
                 auto outFile = outputFilePath;
                 std::string filename = "MagneticAdviser_MagneticAdviserJsonLV_" + std::to_string(scoring) + ".svg";
                 outFile.append(filename);
-                Painter painter(outFile, true);
+                Painter painter(outFile);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -687,7 +678,6 @@ namespace {
                 #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
                 #else
-                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                 #endif
 
             }
@@ -812,7 +802,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_MagneticAdviser_Random_0_" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -821,7 +811,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -869,7 +858,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_MagneticAdviser_Random_1_" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -878,7 +867,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -926,7 +914,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_MagneticAdviser_Random_2_" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -935,7 +923,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -988,7 +975,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_MagneticAdviser_Random_3_" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -997,7 +984,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1027,7 +1013,7 @@ namespace {
             name = std::filesystem::path(std::regex_replace(std::string(name), std::regex("\\/"), "_")).string();
             std::string filename = "Test_MagneticAdviser_Web_0_" + name + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -1036,7 +1022,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1258,7 +1243,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_MagneticAdviser_Web_7.svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
@@ -1266,7 +1251,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1310,7 +1294,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_MagneticAdviser_Inductor.svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -1319,7 +1303,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1369,7 +1352,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_MagneticAdviser_Inductor_Only_Toroidal_Cores.svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
@@ -1377,7 +1360,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1465,7 +1447,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_IEEE_Article_0_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_logarithmic_scale(true);
@@ -1481,7 +1463,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1549,7 +1530,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_Magnetic_Adviser_Psim_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_logarithmic_scale(true);
@@ -1565,7 +1546,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1627,7 +1607,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_Magnetic_Adviser_Plecs_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_logarithmic_scale(true);
@@ -1643,7 +1623,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1710,7 +1689,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_Magnetic_Adviser_Ltspice_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_logarithmic_scale(true);
@@ -1726,7 +1705,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1795,7 +1773,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_Magnetic_Adviser_Ltspice_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_logarithmic_scale(true);
@@ -1811,7 +1789,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1891,7 +1868,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_Magnetic_Adviser_Rosano_Forward_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_logarithmic_scale(true);
@@ -1907,7 +1884,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -1987,7 +1963,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_Magnetic_Adviser_Rosano_Forward_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_logarithmic_scale(true);
@@ -2003,7 +1979,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -2066,7 +2041,7 @@ namespace {
             auto outFile = outputFilePath;
             std::string filename = "Test_Magnetic_Adviser_PFC_Only_Current_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_logarithmic_scale(true);
@@ -2082,7 +2057,6 @@ namespace {
             #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -2162,7 +2136,7 @@ namespace {
 
         //     outFile.append("Test_Magnetic_Adviser_CMC_Impedance.svg");
         //     std::filesystem::remove(outFile);
-        //     Painter painter(outFile, false, true);
+        //     Painter painter(outFile);
         //     painter.paint_curve(impedanceSweep, true);
         //     painter.export_svg();
         //     REQUIRE(std::filesystem::exists(outFile));
@@ -2173,7 +2147,7 @@ namespace {
 
             outFile.append("Test_Magnetic_Adviser_CMC.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_core(masMagnetics[0].first.get_magnetic());
             painter.paint_bobbin(masMagnetics[0].first.get_magnetic());
             painter.paint_coil_turns(masMagnetics[0].first.get_magnetic());
@@ -2181,7 +2155,6 @@ namespace {
             painter.export_svg();
             REQUIRE(std::filesystem::exists(outFile));
             #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
         }
@@ -2316,7 +2289,7 @@ namespace {
                 auto outFile = outputFilePath;
                 std::string filename = "MagneticAdviser" + masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
                 outFile.append(filename);
-                Painter painter(outFile, true);
+                Painter painter(outFile);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -2325,7 +2298,6 @@ namespace {
                 #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
                 #else
-                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                 #endif
 
             }
@@ -2452,7 +2424,7 @@ namespace {
                 auto outFile = outputFilePath;
                 std::string filename = "MagneticAdviser" + masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
                 outFile.append(filename);
-                Painter painter(outFile, true);
+                Painter painter(outFile);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -2461,7 +2433,6 @@ namespace {
                 #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
                 #else
-                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                 #endif
 
             }
@@ -2541,7 +2512,7 @@ namespace {
                 auto outFile = outputFilePath;
                 std::string filename = "MagneticAdviser" + masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
                 outFile.append(filename);
-                Painter painter(outFile, true);
+                Painter painter(outFile);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -2550,7 +2521,6 @@ namespace {
                 #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
                 #else
-                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                 #endif
 
             }
@@ -2903,7 +2873,7 @@ namespace {
                 auto outFile = outputFilePath;
                 std::string filename = "MagneticAdviser" + mas.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
                 outFile.append(filename);
-                Painter painter(outFile, true);
+                Painter painter(outFile);
 
                 painter.paint_magnetic_field(mas.get_mutable_inputs().get_operating_point(0), mas.get_mutable_magnetic());
                 painter.paint_core(mas.get_mutable_magnetic());
@@ -2912,7 +2882,6 @@ namespace {
                 #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
                 #else
-                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
                 #endif
 
             }
@@ -3183,7 +3152,7 @@ namespace {
                 auto outFile = outputFilePath;
                 std::string filename = "Test_Colin_Tuck_Flyback_Rank" + std::to_string(rank) + ".svg";
                 outFile.append(filename);
-                Painter painter(outFile, true);
+                Painter painter(outFile);
                 
                 settings.set_painter_mode(PainterModes::CONTOUR);
                 settings.set_painter_logarithmic_scale(true);
@@ -3800,11 +3769,11 @@ TEST_CASE("Test_MagneticAdviserFromConverter_LLC", "[adviser][from-converter][ll
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
 
-    // Plot waveforms using BasicPainter for visual verification
+    // Plot waveforms using Painter for visual verification
     auto& inputs = mas.get_inputs();
     if (inputs.get_operating_points().size() > 0) {
         auto& operatingPoint = inputs.get_operating_points()[0];
-        BasicPainter painter;
+        Painter painter;
         std::string svg = painter.paint_operating_point_waveforms(
             operatingPoint,
             "LLC Converter Waveforms",

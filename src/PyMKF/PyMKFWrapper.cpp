@@ -59,7 +59,7 @@ std::string plot_field(json magneticJson, json operatingPointJson, std::string o
     try {
         OpenMagnetics::Magnetic magnetic(magneticJson);
         OperatingPoint operatingPoint(operatingPointJson);
-        OpenMagnetics::Painter painter(outFile, true);
+        OpenMagnetics::Painter painter(outFile);
         painter.paint_magnetic_field(operatingPoint, magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);

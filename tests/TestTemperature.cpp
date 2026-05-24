@@ -41,7 +41,7 @@ void exportTemperatureFieldSvg(const std::string& testName,
         }
     }
     
-    OpenMagnetics::BasicPainter painter(outFile);
+    OpenMagnetics::Painter painter(outFile);
     painter.paint_core(magnetic);
     // Don't paint turns separately - paint_temperature_field will paint them with temperature colors
     // if (magnetic.get_coil().get_turns_description()) {
@@ -58,7 +58,7 @@ void exportThermalCircuitSchematic(const std::string& testName,
     std::filesystem::create_directories(outputDir);
     auto outFile = outputDir / ("thermal_schematic_" + testName + ".svg");
     
-    OpenMagnetics::BasicPainter painter(outFile);
+    OpenMagnetics::Painter painter(outFile);
     auto nodes = temp.getNodes();
     auto resistances = temp.getResistances();
     std::string svg = painter.paint_thermal_circuit_schematic(nodes, resistances);
@@ -632,7 +632,7 @@ TEST_CASE("Temperature: T36 Two Windings Schematic Only", "[temperature][round-w
     auto result = temp.calculateTemperatures();
     
     // Paint the magnetic geometry for visualization
-    BasicPainter painter;
+    Painter painter;
     painter.paint_core(magnetic);
     painter.paint_coil_turns(magnetic);
     auto svg = painter.export_svg();
@@ -3914,7 +3914,7 @@ TEST_CASE("Temperature: BuckInductor T134_77_27 from MAS file", "[temperature][c
     {
         auto outFile = getOutputDir() / "magnetic_BuckInductor_T134.svg";
         std::filesystem::create_directories(getOutputDir());
-        BasicPainter painter(outFile);
+        Painter painter(outFile);
         painter.paint_core(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();

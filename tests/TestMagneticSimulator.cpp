@@ -271,7 +271,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_0_Waveform_Primary_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -281,7 +281,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_0_Waveform_Primary_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -291,7 +291,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_0_Waveform_Secondaty_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -301,7 +301,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_0_Waveform_Secondaty_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -311,7 +311,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_0.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_number_points_x(100);
@@ -467,7 +467,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_1_Waveform_Primary_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -477,7 +477,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_1_Waveform_Primary_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -487,7 +487,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_1_Waveform_Secondaty_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -497,7 +497,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_1_Waveform_Secondaty_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -507,7 +507,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_1.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_number_points_x(100);
@@ -649,7 +649,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_2_Waveform_Primary_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -659,7 +659,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_2_Waveform_Primary_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -669,7 +669,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_2_Waveform_Secondaty_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -679,7 +679,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_2_Waveform_Secondaty_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -689,7 +689,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_2.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_number_points_x(100);
@@ -836,7 +836,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_3_Waveform_Primary_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -846,7 +846,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_3_Waveform_Primary_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -856,7 +856,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_3_Waveform_Secondaty_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -866,7 +866,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_3_Waveform_Secondaty_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -876,7 +876,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_IEEE_Article_Simulation_3.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_number_points_x(100);
@@ -1023,7 +1023,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_Simulation_Waveform_Primary_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -1033,7 +1033,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_Simulation_Waveform_Primary_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 0).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -1043,7 +1043,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_Simulation_Waveform_Secondaty_Current.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_current()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -1053,7 +1053,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_Simulation_Waveform_Secondaty_Voltage.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_winding_excitation(0, 1).get_voltage()->get_waveform().value());
             painter.export_svg();
             settings.reset();
@@ -1063,7 +1063,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Flyback_Simulation.svg");
             std::filesystem::remove(outFile); 
-            Painter painter(outFile, true);
+            Painter painter(outFile);
 
             settings.set_painter_mode(PainterModes::CONTOUR);
             settings.set_painter_number_points_x(100);

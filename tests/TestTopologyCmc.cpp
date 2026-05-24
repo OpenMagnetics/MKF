@@ -178,7 +178,7 @@ TEST_CASE("Test_Cmc_SinglePhase", "[converter-model][cmc-topology][smoke-test]")
         auto outFile = outputFilePath;
         outFile.append("Test_Cmc_SinglePhase_Line_Current.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(inputs.get_operating_points()[0]
             .get_excitations_per_winding()[0].get_current()->get_waveform().value());
         painter.export_svg();
@@ -190,7 +190,7 @@ TEST_CASE("Test_Cmc_SinglePhase", "[converter-model][cmc-topology][smoke-test]")
         auto outFile = outputFilePath;
         outFile.append("Test_Cmc_SinglePhase_Line_Voltage.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile, false, true);
+        Painter painter(outFile);
         painter.paint_waveform(inputs.get_operating_points()[0]
             .get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
         painter.export_svg();
@@ -648,7 +648,7 @@ TEST_CASE("Test_Cmc_RealisticSimulation_FrontendDefaults", "[converter-model][cm
             auto outFile = outputFilePath;
             outFile.append("Test_Cmc_Realistic_Voltage_W0.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(exc.get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -657,7 +657,7 @@ TEST_CASE("Test_Cmc_RealisticSimulation_FrontendDefaults", "[converter-model][cm
             auto outFile = outputFilePath;
             outFile.append("Test_Cmc_Realistic_Current_W0.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(exc.get_current()->get_waveform().value());
             painter.export_svg();
         }

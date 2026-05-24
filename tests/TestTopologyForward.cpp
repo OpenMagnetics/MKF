@@ -115,7 +115,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_CCM_Primary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -123,7 +123,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_CCM_Demagnetization_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -131,7 +131,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_CCM_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -141,7 +141,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_CCM_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -149,7 +149,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_CCM_Demagnetization_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -157,7 +157,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_CCM_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -217,7 +217,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_DCM_Primary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -225,7 +225,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_DCM_Demagnetization_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -233,7 +233,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_DCM_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -243,7 +243,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_DCM_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -251,7 +251,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_DCM_Demagnetization_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -259,7 +259,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_SingleSwitchForward_DCM_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -312,7 +312,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_ActiveClampForward_CCM_Primary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -320,7 +320,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_ActiveClampForward_CCM_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -330,7 +330,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_ActiveClampForward_CCM_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -338,7 +338,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_ActiveClampForward_CCM_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -392,7 +392,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_ActiveClampForward_DCM_Primary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -400,7 +400,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_ActiveClampForward_DCM_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -410,7 +410,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_ActiveClampForward_DCM_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -418,7 +418,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_ActiveClampForward_DCM_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -466,7 +466,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_TwoSwitchForward_CCM_Primary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -474,7 +474,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_TwoSwitchForward_CCM_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -484,7 +484,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_TwoSwitchForward_CCM_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -492,7 +492,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_TwoSwitchForward_CCM_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -546,7 +546,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_TwoSwitchForward_DCM_Primary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -554,7 +554,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_TwoSwitchForward_DCM_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
             painter.export_svg();
         }
@@ -564,7 +564,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_TwoSwitchForward_DCM_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
             painter.export_svg();
         }
@@ -572,7 +572,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_TwoSwitchForward_DCM_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
-            Painter painter(outFile, false, true);
+            Painter painter(outFile);
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
             painter.export_svg();
         }

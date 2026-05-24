@@ -181,7 +181,7 @@ Vsec_gnd sec_gnd 0 0
         REQUIRE(!operatingPoint.get_excitations_per_winding().empty());
         
         // Export waveforms to SVG using OperatingPoint
-        BasicPainter painter;
+        Painter painter;
         std::string svg = painter.paint_operating_point_waveforms(
             operatingPoint,
             "Flyback Transformer Simulation",
@@ -206,9 +206,9 @@ Vsec_gnd sec_gnd 0 0
     }
 }
 
-TEST_CASE("BasicPainter paint_operating_point_waveforms with synthetic data", "[ngspice-runner][smoke-test]") {
+TEST_CASE("Painter paint_operating_point_waveforms with synthetic data", "[ngspice-runner][smoke-test]") {
     // Test the waveform painting without running simulation
-    BasicPainter painter;
+    Painter painter;
     
     // Create synthetic test waveforms
     Waveform primaryVoltageWf, primaryCurrentWf, secondaryVoltageWf, secondaryCurrentWf;
@@ -403,7 +403,7 @@ TEST_CASE("Flyback converter full flow: MAS::Flyback -> ngspice -> OperatingPoin
     }
     
     // Paint waveforms using the simplified OperatingPoint-based method
-    BasicPainter painter;
+    Painter painter;
     
     // Paint all windings for first operating point (just pass the OperatingPoint)
     std::string svg = painter.paint_operating_point_waveforms(
@@ -519,7 +519,7 @@ TEST_CASE("Flyback DCM with MAS::Flyback model", "[ngspice-runner][flyback-topol
     }
     
     // Paint waveforms
-    BasicPainter painter;
+    Painter painter;
     std::string svg = painter.paint_operating_point_waveforms(
         operatingPoints[0],
         "Flyback DCM - MAS::Flyback Model (Light Load)"
@@ -695,7 +695,7 @@ TEST_CASE("Flyback simulation with real Magnetic component", "[ngspice-runner][f
     INFO("Secondary current waveform points: " << secondaryExcitation.get_current()->get_waveform()->get_data().size());
     
     // Export to SVG for visualization
-    BasicPainter painter;
+    Painter painter;
     std::string svg = painter.paint_operating_point_waveforms(
         op,
         "Flyback with Real Magnetic - " + magnetic.get_reference(),
@@ -825,7 +825,7 @@ TEST_CASE("Flyback ideal vs real magnetic comparison", "[ngspice-runner][flyback
     CHECK(realPriImax > 0.1);   // Real also should have measurable current
     
     // Save comparison SVGs for visual inspection
-    BasicPainter painter;
+    Painter painter;
     
     std::string svgIdeal = painter.paint_operating_point_waveforms(
         idealOps[0], "Flyback Ideal Transformer", 1200, 900);
@@ -2154,7 +2154,7 @@ TEST_CASE("SingleSwitchForward ngspice simulation CCM", "[ngspice-runner][forwar
     }
     
     // Paint waveforms
-    BasicPainter painter;
+    Painter painter;
     std::string svg = painter.paint_operating_point_waveforms(
         operatingPoints[0],
         "Single-Switch Forward CCM - All Windings"
@@ -2371,7 +2371,7 @@ TEST_CASE("PushPull ngspice simulation CCM", "[ngspice-runner][push-pull-topolog
     }
     
     // Paint waveforms
-    BasicPainter painter;
+    Painter painter;
     std::string svg = painter.paint_operating_point_waveforms(
         operatingPoints[0],
         "Push-Pull CCM - All Windings"
@@ -2800,7 +2800,7 @@ TEST_CASE("IsolatedBuckBoost ngspice simulation CCM", "[ngspice-runner][isobbst-
     }
     
     // Paint waveforms
-    BasicPainter painter;
+    Painter painter;
     std::string svg = painter.paint_operating_point_waveforms(
         operatingPoints[0],
         "Isolated Buck-Boost CCM - All Windings"
