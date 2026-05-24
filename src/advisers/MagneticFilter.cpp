@@ -255,6 +255,29 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     bool valid = true;
     double scoring = 0;
 
+    // If no inductance requirement is set (e.g. CMC/DMC with only impedance requirements),
+    // this filter has nothing to check — pass with neutral score.
+    {
+        auto& lmReq = inputs->get_design_requirements().get_magnetizing_inductance();
+        if (!lmReq.get_minimum() && !lmReq.get_nominal() && !lmReq.get_maximum()) {
+            return {true, 0};
+        }
+    }
+
+    // For interference-suppression topologies (CMC, DMC), the inductance requirement was
+    // derived from Z/(2πf). The correct gate is the impedance filter, which already checked
+    // the complex permeability at the noise frequency. Checking inductance here would use
+    // DC-biased real permeability (which rolls off significantly), producing a false rejection
+    // of physically valid cores. The impedance check is authoritative for these topologies.
+    {
+        auto topology = inputs->get_design_requirements().get_topology();
+        if (topology.has_value() &&
+            (topology.value() == Topologies::COMMON_MODE_CHOKE ||
+             topology.value() == Topologies::DIFFERENTIAL_MODE_CHOKE)) {
+            return {true, 0};
+        }
+    }
+
     // Transformer vs Inductor Detection
     // ==================================
     // Transformers: Use initial permeability without DC bias iteration
