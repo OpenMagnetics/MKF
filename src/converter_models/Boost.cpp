@@ -342,10 +342,18 @@ namespace OpenMagnetics {
         circuit << "* DC Input\n";
         circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
         
-        // Inductor with current sense (between input and switch node)
+        // Inductor with current sense (between input and switch node).
+        // IC seeds steady-state Iin so UIC starts within one period of the
+        // operating point: Iin_avg = Iout·Vout/(Vin·η) for an ideal boost.
+        // Without this seed the inductor ramps from 0 toward steady-state
+        // over RC = Rload·Cout (~ms) while UIC honours Cout's IC=Vout —
+        // the extraction window catches the inductor mid-ramp.
+        double inductorIcCurrent =
+            outputCurrent * (outputVoltage + diodeVoltageDrop) / inputVoltage;
         circuit << "* Inductor with current sense\n";
         circuit << "Vl_sense vin_dc l_in 0\n";
-        circuit << "L1 l_in sw " << std::scientific << inductance << std::fixed << "\n";
+        circuit << "L1 l_in sw " << std::scientific << inductance << std::fixed
+                << " IC=" << inductorIcCurrent << "\n";
         // §5.0: across-winding differential probe. The inductor's "other"
         // terminal (sw) is NOT GND — it bounces between 0 (S1 closed) and
         // Vout (S1 open via D1). v(l_in)=Vin is constant DC, so saving it
@@ -397,8 +405,21 @@ namespace OpenMagnetics {
         circuit << "Rload vout 0 " << loadResistance << "\n\n";
 
         // Transient Analysis
+        //
+        // UIC (use initial conditions) is mandatory: without it ngspice runs
+        // its own DC operating-point analysis before t=0. For a boost the DC
+        // OP has the switch OFF — Cout charges through L1 and D1 from Vin to
+        // Vin-Vdiode (≈ Vin). The IC=Vout we set on Cout is then ignored.
+        // PWM then has to charge Cout from Vin up to Vout over τ = Rload·Cout
+        // — for a typical 24 Ω × 100 µF that's 2.4 ms, far longer than the
+        // 50 settling periods (250 µs at 200 kHz) the extractor allows.
+        // Result: the steady-state extraction window catches the boost
+        // still ramping, with i(Vl_sense) below the real inductor current
+        // by a large factor, and the saturation filter accepts undersized
+        // cores. UIC honours the cap's IC=Vout and the inductor's IC=Iavg
+        // immediately, so the very first switching cycle is at steady-state.
         circuit << "* Transient Analysis\n";
-        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << "\n\n";
+        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << " UIC\n\n";
 
         // Save signals — split into two streams per §5.0:
         //   - Winding-port stream: v(vpri_diff) i(Vl_sense)
