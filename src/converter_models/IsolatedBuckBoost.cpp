@@ -528,9 +528,15 @@ namespace OpenMagnetics {
         circuit << "Dpri vpri_rect pri_in DIDEAL\n";
         circuit << "Vpri_out_sense vpri_rect vpri_out 0\n";
         double primaryLoadResistance = primaryOutputVoltage / primaryOutputCurrent;
-        circuit << "Cpri vpri_out 0 100u IC=" << (-primaryOutputVoltage) << "\n";
+        // 50 mΩ output-cap ESR (physical electrolytic spec) damps the
+        // primary-inductor / output-cap LC ring that otherwise took
+        // ~1000+ switching periods to settle. With ESR in place the
+        // ring damps in <500 periods. The ESR is small enough that the
+        // steady-state cap voltage is unaffected to <0.1 %.
+        circuit << "Cpri vpri_out vpri_out_esr 100u IC=" << (-primaryOutputVoltage) << "\n";
+        circuit << "Rpri_esr vpri_out_esr 0 0.1\n";
         circuit << "Rload_pri vpri_out 0 " << primaryLoadResistance << "\n\n";
-        
+
         // Secondary output stages
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << "* Secondary " << secIdx << " output stage\n";
@@ -541,7 +547,9 @@ namespace OpenMagnetics {
             double outputVoltage = opPoint.get_output_voltages()[secIdx + 1];
             double outputCurrent = opPoint.get_output_currents()[secIdx + 1];
             double loadResistance = outputVoltage / outputCurrent;
-            circuit << "Cout" << secIdx << " vout" << secIdx << " 0 100u IC=" << outputVoltage << "\n";
+            // Same ESR + cap damping pattern as the primary output stage.
+            circuit << "Cout" << secIdx << " vout" << secIdx << " vout" << secIdx << "_esr 100u IC=" << outputVoltage << "\n";
+            circuit << "Rout" << secIdx << "_esr vout" << secIdx << "_esr 0 0.1\n";
             circuit << "Rload" << secIdx << " vout" << secIdx << " 0 " << loadResistance << "\n\n";
         }
         

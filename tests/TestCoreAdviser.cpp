@@ -102,6 +102,12 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores", "[adviser][core-adviser][a
 TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_With_Margin", "[adviser][core-adviser][available-cores][smoke-test]") {
     settings.reset();
     settings.set_core_adviser_include_margin(true);
+    // Test asserts a specific gapped E-core survives the available-cores
+    // sweep. That core sits at the Bsat edge; the production default
+    // saturation margin (1.2) now rejects it. Pin to the legacy 1.0 margin
+    // here so the test continues to validate the available-cores plumbing
+    // independently of the production safety derate.
+    settings.set_core_adviser_saturation_margin(1.0);
     auto standard = InsulationIEC60664Model();
     DimensionWithTolerance altitude;
     altitude.set_maximum(2000);
@@ -712,6 +718,12 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings", "[adviser][c
 
 TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Points_High_Power_Low_Power", "[adviser][core-adviser][available-cores][smoke-test]") {
     clear_databases();
+    // Test asserts a specific U-core (Kool Mµ 60 ungapped) survives at
+    // high power. With the production default saturation margin (1.2)
+    // this candidate is rejected at the high-power operating point. Pin
+    // to legacy 1.0 margin so this test still validates the
+    // multi-operating-point plumbing.
+    settings.set_core_adviser_saturation_margin(1.0);
     OpenMagnetics::Inputs inputs;
     std::vector<double> turnsRatios = {1};
     {

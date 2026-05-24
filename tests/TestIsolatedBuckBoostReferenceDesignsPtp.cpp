@@ -108,27 +108,27 @@ void run_ptp_gates(const RefDesignSpec& s) {
     auto aResampled = ptp_interp(aTime, aData, 256);
 
     // ── SPICE switching pass ──────────────────────────────────────────
-    // Flyback-class converters with multi-output rectification need long
-    // settling. Output caps are pre-charged via `IC=Vout` (see
-    // IsolatedBuckBoost.cpp:~531, ~544) and `.nodeset v(vout*)=Vout`
-    // (~582), so cap voltage doesn't have to charge from 0. Despite
-    // that, Gate 3 (Pout vs nominal) still requires 1200+ periods:
+    // Flyback-class converters with multi-output rectification need
+    // long settling. IsolatedBuckBoost.cpp now emits 100 mΩ ESR in
+    // series with each output cap — physical-realistic damping for an
+    // electrolytic, large enough to damp the inductor-cap LC ring that
+    // previously took 1200+ periods to settle.
     //
-    //   600  periods  → Pout err 33% / 9% / 21%   (MAX / LM5180 / Erickson)
-    //   900  periods  → Pout err 33% / 9% / 21%   (identical — not settled)
-    //   1200 periods  → all three within ±10-30% gates
+    // Empirical convergence ladder (ESR present, all three designs):
     //
-    // The plateau between 600 and 900 indicates this isn't an RC tail
-    // (which would decay monotonically). It's a slow LC ring between the
-    // primary inductor and the multi-output cap network that doesn't
-    // damp until ~1000+ periods. IC=/.nodeset can't shortcut a resonant
-    // mode the netlist itself excites.
+    //   periods  MAX17498A    LM5180     Erickson    Wall-time
+    //   600      -32.5 %      -10.8 %    +16.2 %     5.4-5.9 s
+    //   800      -31.0 %      -12.8 %    +4.2  %     7.5-8.3 s
+    //   1000     -29.6 %      -13.4 %    -1.8  %     7.9-8.2 s
+    //   1200     -29.9 %      -13.4 %    -6.0  %     8.9-9.3 s
     //
-    // If this needs to be faster, the right fix is in the SPICE netlist:
-    // add a small series-R damping element or shrink Cout (reducing the
-    // RC time constant), not raise settling. See
-    // src/converter_models/IsolatedBuckBoost.cpp:541-545.
-    ibb.set_num_steady_state_periods(1200);
+    // Gates are ±30 / ±15 / ±10 %. 1000 periods is the first row where
+    // all three pass. MAX17498A plateaus near -30 % regardless of
+    // settling — that's the analytical-vs-SPICE mismatch floor, not an
+    // unfinished transient. The Erickson case (was 20.7 s @ 1200
+    // periods without ESR) is now 8.2 s — 60 % faster while landing
+    // closer to the analytical answer.
+    ibb.set_num_steady_state_periods(1000);
     ibb.set_num_periods_to_extract(1);
 
     const auto t0 = std::chrono::steady_clock::now();

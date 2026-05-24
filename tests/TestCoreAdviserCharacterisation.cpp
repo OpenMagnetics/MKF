@@ -167,12 +167,19 @@ void check_top_n(const std::string& label,
 // Baselines captured 2026-05-19. Top entries are ordering-sensitive; scores
 // are within 1e-6 relative tolerance.
 // ----------------------------------------------------------------------------
+// Refreshed after the saturation-margin default flipped 1.0 → 1.2
+// (Maniktala Ch.5 production safety). Slot 2 now hosts an EP 20 3C91
+// gapped 0.605 mm that previously scored below the EFD 25/13/9 entry —
+// at margin 1.2 the EFD candidate hits the saturation-rejection gate
+// for its higher Bpeak/Bsat ratio and drops out of the top-5. PQ 20/20
+// 3C97 stays top-1 with a small score shift (4.030 → 3.929) reflecting
+// the tightened acceptance window.
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          4.029813628967557},
-    {"EP 20 - 3C91 - Gapped 0.382 mm",             3.9580897618280382},
-    {"T 21/12/7.1 - Kool Mµ Hƒ 60 - Ungapped",     3.915251082271789},
-    {"PQ 20/20 - 3C95 - Gapped 0.477 mm",          3.8799515162229437},
-    {"EFD 25/13/9 - 97 - Gapped 0.5 mm",           3.8157898032674495},
+    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          3.9291496909131993},
+    {"EP 20 - 3C91 - Gapped 0.382 mm",             3.8653763355963369},
+    {"EP 20 - 3C91 - Gapped 0.605 mm",             3.8298752301770511},
+    {"T 21/12/7.1 - Kool Mµ Hƒ 60 - Ungapped",     3.8224660990687345},
+    {"PQ 20/20 - 3C95 - Gapped 0.477 mm",          3.8009258949850238},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.

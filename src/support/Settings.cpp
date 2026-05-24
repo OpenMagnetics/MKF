@@ -118,7 +118,7 @@ namespace OpenMagnetics {
         // are intentionally NOT reset here — preserving the pre-existing behavior
         // that those fields persist across reset() calls. Out of scope for the
         // saturation-margin change.
-        _coreAdviserSaturationMargin = 1.0;
+        _coreAdviserSaturationMargin = 1.2;
 
         _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;

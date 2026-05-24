@@ -154,16 +154,22 @@ void check_top_n(const std::string& label,
 // every winding here now resolves to Single Build. Top-2 also swapped
 // rankings because the new wire selection changed the magnetic-level
 // scoring.
+// Refreshed after the saturation-margin default flipped 1.0 → 1.2.
+// At the tighter Bpeak·1.2 ≤ Bsat gate, the 8/2 3-stack candidate is
+// rejected (saturation-edge under no-derate, over-margin under 1.2);
+// the next-larger 8.3/4 2-stack candidate wins both rectifier rounds
+// and the slightly larger 10/3 fills the third slot at a lower score
+// (margin pushes its loss budget tighter too).
 const std::vector<MagneticEntry> kTopThreeWinding = {
-    {"96 E 8/2 3 stacks, Turns: 8, Order: 012, Non-Interleaved, Margin Taped 00",
-     "Round 33.0 - Single Build || Round 41.0 - Single Build || Round 38.0 - Single Build",
-     2.0976790191266708},
-    {"96 E 8/2 3 stacks, Turns: 8, Order: 012, Non-Interleaved, Margin Taped 01",
-     "Round 33.0 - Single Build || Round 41.0 - Heavy Build || Round 38.0 - Single Build",
-     1.8527246513128552},
+    {"96 E 8.3/4 2 stacks, Turns: 10, Order: 102, Non-Interleaved, Margin Taped 00",
+     "Round 33.0 - Single Build || Round 38.0 - Single Build || Round 38.0 - Single Build",
+     1.7391079152509736},
+    {"96 E 8.3/4 2 stacks, Turns: 10, Order: 102, Non-Interleaved, Margin Taped 01",
+     "Round 33.0 - Single Build || Round 38.0 - Heavy Build || Round 38.0 - Single Build",
+     1.5356432403340934},
     {"96 E 10/3, Turns: 23, Order: 012, Non-Interleaved, Margin Taped 00",
      "Round 33.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Heavy Build",
-     0.6244012849507049},
+     1.1470545003241872},
 };
 
 } // namespace
@@ -223,5 +229,8 @@ TEST_CASE("Benchmark MagneticAdviser 3-winding end-to-end (top-3)",
 // Date       | Scenario                          | mean (3 samples) | notes
 // -----------+-----------------------------------+------------------+----------
 // 2026-05-19 | 3-winding 24:78:76 / 507 kHz top-3| TBD              | initial
+// 2026-05-25 | 3-winding 24:78:76 / 507 kHz top-3| 44.52 s ± 590 ms | first recorded baseline; uncontested host;
+//            |                                   |                  | after Phase-7 dispatch unification +
+//            |                                   |                  | sat-margin 1.0→1.2 default flip
 //
 // =============================================================================

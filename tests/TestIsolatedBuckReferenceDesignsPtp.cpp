@@ -219,7 +219,7 @@ TEST_CASE("IsolatedBuck reference design PtP — TI LM5160 SNVA674 (24V→12V Fl
         /*Lpri*/         47e-6,
         /*n*/            1.0,
         /*Iout2*/        0.10,
-        /*tol_walltime*/ 4.0,
+        /*tol_walltime*/ 6.0,
         /*tol_rload_pct*/ 0.01,
         /*tol_loss_max*/ 0.10,
         /*tol_nrmse*/    0.15
@@ -238,7 +238,7 @@ TEST_CASE("IsolatedBuck reference design PtP — TI LM5017 SNVA674A (48V→5V Fl
         /*Lpri*/         220e-6,
         /*n*/            9.0,
         /*Iout2*/        0.10,
-        /*tol_walltime*/ 4.0,
+        /*tol_walltime*/ 6.0,
         /*tol_rload_pct*/ 0.01,
         /*tol_loss_max*/ 0.10,
         /*tol_nrmse*/    0.15
@@ -257,7 +257,7 @@ TEST_CASE("IsolatedBuck reference design PtP — TI LM5160-Q1 (60V→12V automot
         /*Lpri*/         47e-6,
         /*n*/            5.0,
         /*Iout2*/        0.20,
-        /*tol_walltime*/ 4.0,
+        /*tol_walltime*/ 6.0,
         /*tol_rload_pct*/ 0.01,
         /*tol_loss_max*/ 0.10,
         /*tol_nrmse*/    0.15

@@ -308,6 +308,60 @@ TEST_CASE("Test_MagneticAdviserFromConverter_CLLLC_Reverse",
     REQUIRE(results[0].second > 0);
 }
 
+// ============================================================================
+// CLLLC parameter sweep — exercises the gap+N coupling fix (commit 2f7cd511)
+// across the realistic K∈{4,6,8} × Q∈{0.3,0.5} × forward/reverse design
+// envelope. Each cell builds a CLLLC, asks MagneticAdviser for at least
+// one candidate, and asserts both candidate-count and positive scoring.
+//
+// Coverage rationale: K (Lm/Lr ratio) and Q (quality factor) are the two
+// CLLLC parameters that most aggressively shape target Lm. Small Lm
+// (large K · large Q · large Rload) is where the gap solver has to find
+// realistic ferrite gaps; sweeping these forces the chain through its
+// edge cases. The reverse case stresses the same gap+N coupling under
+// inverted power flow.
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_CLLLC_Sweep_K_Q_Direction",
+          "[adviser][from-converter][clllc-topology][sweep]") {
+    auto runOne = [](double K, double Q, const std::string& dir,
+                     const std::string& label) {
+        json j = {
+            {"highVoltageBusVoltage", {{"nominal", 400.0}}},
+            {"lowVoltageBusVoltage",  {{"nominal", 400.0}}},
+            {"minSwitchingFrequency", 250000},
+            {"maxSwitchingFrequency", 500000},
+            {"primaryResonantFrequency", 350000},
+            {"qualityFactor", Q},
+            {"inductanceRatioK", K},
+            {"operatingPoints", json::array({
+                {{"ambientTemperature", 25.0},
+                 {"switchingFrequency", 350000},
+                 {"outputVoltages", {400.0}},
+                 {"outputCurrents", {10.0}},
+                 {"powerFlowDirection", dir}}
+            })}
+        };
+
+        Clllc converter(j);
+        MagneticAdviser adviser;
+        INFO("scenario=" << label);
+        auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
+        REQUIRE(results.size() >= 1);
+        REQUIRE(results[0].second > 0);
+    };
+
+    for (double K : {4.0, 6.0, 8.0}) {
+        for (double Q : {0.3, 0.5}) {
+            for (const std::string& dir : {"forward", "reverse"}) {
+                std::string label = "K=" + std::to_string(K) +
+                                    "_Q=" + std::to_string(Q) +
+                                    "_" + dir;
+                runOne(K, Q, dir, label);
+            }
+        }
+    }
+}
+
 
 // ============================================================================
 // Vienna (three-phase PFC). Vdc must satisfy Vdc > sqrt(2)*Vll to avoid

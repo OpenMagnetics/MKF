@@ -107,11 +107,12 @@ class Settings
         double _coreAdviserMaximumTemperature = 130.0;
         // Multiplicative derating applied to the operating peak flux density
         // before comparing against B_sat in MagneticFilterSaturation. 1.0 (the
-        // default) reproduces the historical "reject only if Bpeak > Bsat"
-        // behaviour. Engineering practice (Maniktala Ch.5) recommends ≥1.2 so
-        // a core with Bpeak·1.2 > Bsat is rejected — leaves headroom for
-        // tolerance, temperature, and DC-bias swing.
-        double _coreAdviserSaturationMargin = 1.0;
+        // Production default 1.2 (Maniktala Ch.5 ferrite-design recommendation):
+        // a candidate is rejected when Bpeak·1.2 > Bsat — leaves headroom for
+        // tolerance, temperature, and DC-bias swing. Set to 1.0 to reproduce
+        // the historical "reject only if Bpeak > Bsat" no-derate behaviour
+        // (the snapshot-anchor for tests written before this default landed).
+        double _coreAdviserSaturationMargin = 1.2;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
