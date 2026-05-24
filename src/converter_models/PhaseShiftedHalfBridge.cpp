@@ -714,31 +714,52 @@ std::string Pshb::generate_ngspice_circuit(
         }
 
         const double halfVin = 0.5 * Vin;
-        circuit << "Vmid_cap mid_cap 0 " << halfVin << "\n";
 
-        // §8a.5 input-current probe — Vq1_sense is a 0-V ammeter inserted
-        // between the behavioral PWL leg source and the bridge midpoint
-        // (bridge_a), so i(Vq1_sense) reports the leg's instantaneous
-        // current draw. This is the closest proxy to converter input
-        // current in BEHAVIORAL_PULSE mode because Vdc is decoupled from
-        // the bridge here (Vbridge_a / Vmid_cap are independent stiff
-        // sources, so i(Vdc) is identically zero by construction).
-        // Bridge_a PWL pattern (one full period). Levels: V_high=Vin,
-        // V_clamp=Vin/2, V_low=0. Transitions of width = slew bracket
-        // each level change, centered on the conduction-state change.
-        circuit << "Vbridge_a leg_a_src 0 PWL("
-                << std::scientific
-                << 0.0                       << " " << halfVin << " "
-                << slew                      << " " << Vin     << " "
-                << t_act                     << " " << Vin     << " "
-                << (t_act + slew)            << " " << halfVin << " "
-                << halfPeriod                << " " << halfVin << " "
-                << (halfPeriod + slew)       << " " << 0.0     << " "
-                << (halfPeriod + t_act)      << " " << 0.0     << " "
-                << (halfPeriod + t_act + slew) << " " << halfVin << " "
-                << period                    << " " << halfVin
-                << ") R=0" << std::fixed << "\n";
-        circuit << "Vq1_sense leg_a_src bridge_a 0\n\n";
+        // SPICE_PROBE_HANDOFF.md Bug 2 fix:
+        //
+        // The old form was `Vbridge_a leg_a_src 0 PWL(...)` (an
+        // independent 3-level source) + `Vq1_sense leg_a_src bridge_a
+        // 0`. Vdc was decoupled from the bridge by construction, so
+        // `i(Vdc) = 0` and `i(Vq1_sense)` measured the leg-internal
+        // current, not the actual DC-bus draw the §8a.5 probe rule (B)
+        // requires. The half-bridge split-cap mid-point made this
+        // approximation worse than PSFB's.
+        //
+        // Replace the independent PWL leg with a 4-switch NPC leg
+        // (mirrors the SW1 branch below): split capacitors create the
+        // mid_cap = Vin/2 reference, S1/S4 are the outer switches
+        // routed through `Vq1_sense` on `vin_dc`, S2/S3 are the inner
+        // switches that clamp `bridge_a` to mid_cap during the
+        // non-active half of each cycle. Body diodes and snubbers are
+        // intentionally omitted to keep the BEHAVIORAL path lean — only
+        // S1's drain runs through `Vq1_sense`, so the measured
+        // i(Vq1_sense) is the outer-top switch channel current, which
+        // is the §8a.5-compliant input-current probe.
+        circuit << "C_split_hi vin_dc mid_cap 470u ic=" << halfVin << "\n";
+        circuit << "C_split_lo mid_cap 0 470u ic=" << halfVin << "\n\n";
+
+        // PWM signals: S1 active for t_act in first half, S4 active for
+        // t_act in second half (outer switches); S2 active throughout
+        // the first half, S3 throughout the second half (inner clamp).
+        auto pulse = [&](const std::string& name, double delay, double width) {
+            circuit << "V" << name << " " << name << " 0 PULSE(0 5 "
+                    << std::scientific << delay << " " << slew << " " << slew
+                    << " " << width << " " << period << std::fixed << ")\n";
+        };
+        pulse("pwm_S1", 0.0,        t_act);
+        pulse("pwm_S2", 0.0,        halfPeriod);
+        pulse("pwm_S3", halfPeriod, halfPeriod);
+        pulse("pwm_S4", halfPeriod, t_act);
+
+        circuit << "Vq1_sense vin_dc qa_drain 0\n";
+        circuit << "S1 qa_drain nH pwm_S1 0 SW1\n";
+        circuit << "S2 nH bridge_a pwm_S2 0 SW1\n";
+        circuit << "S3 bridge_a nL pwm_S3 0 SW1\n";
+        circuit << "S4 nL 0 pwm_S4 0 SW1\n";
+        // NPC clamp: nH/nL pulled to mid_cap during the off-half so
+        // bridge_a sees Vin/2 instead of floating.
+        circuit << "DC1 mid_cap nH DIDEAL\n";
+        circuit << "DC2 nL mid_cap DIDEAL\n\n";
     }
     else {
         // -----------------------------------------------------------------

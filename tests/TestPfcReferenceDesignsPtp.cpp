@@ -19,6 +19,33 @@
 // Tags: [converter-model][pfc-topology][refdesign][ptp][slow]
 //   The [slow] tag keeps these out of the snappy default suite — they
 //   each take several seconds of ngspice wall-time.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// Why PFC PtP cases are inherently slow (~3-10 s sim wall-time)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Unlike DC-DC converters that simulate a few switching periods (10s of
+// µs) and reach steady state quickly, PFC operates on a line cycle:
+// 20 ms at 50 Hz or 16.7 ms at 60 Hz. Each simulation must cover at
+// least one full line cycle to capture the envelope. With a typical
+// switching frequency of 100 kHz, that's 100,000 switching events per
+// line cycle, and ngspice has to march through every one to maintain
+// the duty-command tracking near zero-crossings.
+//
+// The cost scales as:
+//
+//     sim_time ∝ (T_line × f_sw) × (per-switching-event solver cost)
+//
+// where T_line × f_sw is ~2000 events. We CANNOT shorten this by
+// pre-charging caps or raising the settling shortcut — the test is
+// fundamentally measuring envelope behaviour over a line cycle, which
+// requires the line cycle. The 3-10 s wall-times observed for PFC PtP
+// (NCP1654 100 W ≈ 10 s, UCC28180 360 W ≈ 5 s, L4981 1000 W ≈ 3 s) are
+// expected and proportional to design size, not a sign of pathology.
+//
+// If PFC PtP needs to be faster, the right lever is reducing f_sw in
+// the test fixture (fewer switching events per line cycle), not
+// adjusting settling. ngspice itself is not the bottleneck.
 
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>

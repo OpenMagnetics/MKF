@@ -449,3 +449,42 @@ TEST_CASE("SRC: get_extra_components_inputs round-trips fr = 1/(2π√(LrCr))",
     double fr = 1.0 / (2.0 * M_PI * std::sqrt(Lr * Cr));
     REQUIRE_THAT(fr, WithinRel(100e3, 1e-3));
 }
+
+// =========================================================================
+// SPICE §8a.5 probe contract — see TestTopologyLlc.cpp counterpart.
+// =========================================================================
+TEST_CASE("Test_Src_Spice_Probe_Contract",
+          "[converter-model][src-topology][spice][probe-contract]") {
+    auto runOne = [](const std::string& bridge,
+                     OpenMagnetics::BridgeSimulationMode mode,
+                     const std::string& label) {
+        auto j = make_src_json(/*Vin*/400, /*Vout*/48, /*Iout*/10,
+                               /*fsw*/100e3, /*fr*/100e3, /*Q*/2.0, bridge);
+        OpenMagnetics::Src src(j);
+        src.set_bridge_simulation_mode(mode);
+        auto req = src.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : req.get_turns_ratios()) turnsRatios.push_back(resolve_dimensional_values(tr));
+        double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+        std::string netlist = src.generate_ngspice_circuit(turnsRatios, Lm, 0, 0);
+
+        INFO("scenario=" << label);
+        REQUIRE(netlist.find("Vq1_sense leg_a_src") == std::string::npos);
+        REQUIRE(netlist.find("Vq1_sense bridge_a")  == std::string::npos);
+        REQUIRE(netlist.find("Vq3_sense leg_a_src") == std::string::npos);
+        REQUIRE(netlist.find("Vq3_sense bridge_a")  == std::string::npos);
+
+        auto savePos = netlist.find(".save");
+        REQUIRE(savePos != std::string::npos);
+        auto saveLineEnd = netlist.find('\n', savePos);
+        std::string saveLine = netlist.substr(savePos, saveLineEnd - savePos);
+        if (saveLine.find("i(Vq") != std::string::npos) {
+            REQUIRE(netlist.find("Vq1_sense vin_dc") != std::string::npos);
+        }
+    };
+
+    runOne("fullBridge", OpenMagnetics::BridgeSimulationMode::BEHAVIORAL_PULSE,         "FB_BEHAVIORAL");
+    runOne("fullBridge", OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH, "FB_SW1");
+    runOne("halfBridge", OpenMagnetics::BridgeSimulationMode::BEHAVIORAL_PULSE,         "HB_BEHAVIORAL");
+    runOne("halfBridge", OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH, "HB_SW1");
+}

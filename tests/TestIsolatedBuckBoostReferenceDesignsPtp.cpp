@@ -108,9 +108,26 @@ void run_ptp_gates(const RefDesignSpec& s) {
     auto aResampled = ptp_interp(aTime, aData, 256);
 
     // ── SPICE switching pass ──────────────────────────────────────────
-    // Flyback-class converters with multi-output rectification have long
-    // RC tails on the bias-output cap; bump settling to 1200 periods
-    // (mirrors what IsolatedBuck needed for similar tail).
+    // Flyback-class converters with multi-output rectification need long
+    // settling. Output caps are pre-charged via `IC=Vout` (see
+    // IsolatedBuckBoost.cpp:~531, ~544) and `.nodeset v(vout*)=Vout`
+    // (~582), so cap voltage doesn't have to charge from 0. Despite
+    // that, Gate 3 (Pout vs nominal) still requires 1200+ periods:
+    //
+    //   600  periods  → Pout err 33% / 9% / 21%   (MAX / LM5180 / Erickson)
+    //   900  periods  → Pout err 33% / 9% / 21%   (identical — not settled)
+    //   1200 periods  → all three within ±10-30% gates
+    //
+    // The plateau between 600 and 900 indicates this isn't an RC tail
+    // (which would decay monotonically). It's a slow LC ring between the
+    // primary inductor and the multi-output cap network that doesn't
+    // damp until ~1000+ periods. IC=/.nodeset can't shortcut a resonant
+    // mode the netlist itself excites.
+    //
+    // If this needs to be faster, the right fix is in the SPICE netlist:
+    // add a small series-R damping element or shrink Cout (reducing the
+    // RC time constant), not raise settling. See
+    // src/converter_models/IsolatedBuckBoost.cpp:541-545.
     ibb.set_num_steady_state_periods(1200);
     ibb.set_num_periods_to_extract(1);
 

@@ -777,18 +777,35 @@ std::string Psfb::generate_ngspice_circuit(
                 + std::to_string(pulseWidth) + " s. "
                 "Reduce dead time or increase switching period.");
         }
-        // Vq1_sense is a 0-V ammeter inserted between the behavioral
-        // leading-leg source and the bridge midpoint, so i(Vq1_sense)
-        // reports the leading leg's current draw (analogue of the
-        // high-side switch current in SW1 mode). It is the closest
-        // proxy to converter input current in the BEHAVIORAL_PULSE
-        // bridge because Vdc itself is decoupled from the bridge
-        // (the leg sources are independent PULSE voltage sources, so
-        // i(Vdc) = 0 by construction).
-        circuit << "Vleg_A leg_a_src 0 PULSE(0 " << Vin << " 0 "
+        // SPICE_PROBE_HANDOFF.md Bug 1 fix:
+        //
+        // The old form was `Vleg_A leg_a_src 0 PULSE(...)` + `Vq1_sense
+        // leg_a_src mid_A 0`. The leg source was independent of `vin_dc`,
+        // so `i(Vdc) = 0` by construction and `i(Vq1_sense)` measured
+        // the leg-internal current — not the actual DC-bus draw the
+        // §8a.5 probe rule (B) requires. Body-diode and snubber currents
+        // on `vin_dc` were also missed.
+        //
+        // Replace the independent leading-leg source with a minimal
+        // SW1 high/low pair routed through `vin_dc`: `Vq1_sense` now
+        // sits between `vin_dc` and the high-side switch's drain,
+        // mirroring the SW1 branch below. The lagging leg stays
+        // behavioral (no probe needed there) so the bulk of the perf
+        // win over full SW1 mode is preserved — only one leg pays the
+        // SW1 threshold-convergence tax. Body diodes and snubbers are
+        // intentionally omitted from this lean leading-leg model;
+        // mid_A floats briefly during dead time but the lagging leg's
+        // behavioral drive + the primary winding's coupling clamp it
+        // in practice.
+        circuit << "Vpwm_QA pwm_QA 0 PULSE(0 5 0 "
                 << std::scientific << slew << " " << slew
                 << " " << pulseWidth << " " << period << std::fixed << ")\n";
-        circuit << "Vq1_sense leg_a_src mid_A 0\n";
+        circuit << "Vpwm_QB pwm_QB 0 PULSE(0 5 "
+                << std::scientific << halfPeriod << " " << slew << " " << slew
+                << " " << pulseWidth << " " << period << std::fixed << ")\n";
+        circuit << "Vq1_sense vin_dc qa_drain 0\n";
+        circuit << "SQA qa_drain mid_A pwm_QA 0 SW1\n";
+        circuit << "SQB mid_A 0 pwm_QB 0 SW1\n";
         circuit << "Vleg_C mid_C 0 PULSE(0 " << Vin << " "
                 << std::scientific << phaseDelay << " " << slew << " " << slew
                 << " " << pulseWidth << " " << period << std::fixed << ")\n\n";

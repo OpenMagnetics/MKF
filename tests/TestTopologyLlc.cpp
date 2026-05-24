@@ -2311,3 +2311,85 @@ TEST_CASE("LLC Simulated Waveforms", "[topology][llc][simulation]") {
 }
 
 } // namespace waveform tests
+
+// =========================================================================
+// SPICE §8a.5 probe contract — guards against the PSFB / PSHB bug class.
+//
+// For every bridge topology, in BOTH BridgeSimulationMode values, the
+// emitted netlist must satisfy:
+//
+//   (i)  No `Vq*_sense leg_a_src` substring  (PSFB bug-form: ammeter on
+//        behavioral leg, decoupled from vin_dc).
+//   (ii) No `Vq*_sense bridge_a` substring   (PSHB bug-form: same idea,
+//        bridge-side terminal instead of DC bus).
+//   (iii) If `Vq` appears in the `.save` directive, the netlist MUST
+//        also contain `Vq*_sense vin_dc` (the corollary: saving a
+//        non-existent probe is meaningless).
+//
+// LLC's BEHAVIORAL_PULSE path intentionally OMITS `Vq*_sense` and
+// recovers input current via power-balance reconstruction in the
+// extractor (see Llc.cpp); the contract passes because (i) and (ii)
+// hold trivially and (iii)'s `.save` filter excludes `i(Vq` in that
+// mode. The SW1 path emits a real ammeter and the contract holds the
+// strict way.
+// =========================================================================
+TEST_CASE("Test_Llc_Spice_Probe_Contract",
+          "[converter-model][llc-topology][spice][probe-contract]") {
+    auto runOne = [](OpenMagnetics::LlcBridgeType bridgeType,
+                     OpenMagnetics::BridgeSimulationMode mode,
+                     const std::string& label) {
+        json llcJson;
+        json inputVoltage;
+        inputVoltage["nominal"] = 400.0;
+        inputVoltage["minimum"] = 370.0;
+        inputVoltage["maximum"] = 410.0;
+        llcJson["inputVoltage"] = inputVoltage;
+        llcJson["bridgeType"] = (bridgeType == OpenMagnetics::LlcBridgeType::FULL_BRIDGE)
+                                    ? "fullBridge" : "halfBridge";
+        llcJson["minSwitchingFrequency"] = 80000;
+        llcJson["maxSwitchingFrequency"] = 200000;
+        llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 5.0;
+        llcJson["integratedResonantInductor"] = false;
+        llcJson["operatingPoints"] = json::array();
+        {
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["switchingFrequency"] = 100000;
+            op["outputVoltages"] = {12.0};
+            op["outputCurrents"] = {10.0};
+            llcJson["operatingPoints"].push_back(op);
+        }
+
+        OpenMagnetics::Llc llc(llcJson);
+        llc.set_bridge_simulation_mode(mode);
+        auto req = llc.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : req.get_turns_ratios()) turnsRatios.push_back(resolve_dimensional_values(tr));
+        double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+        std::string netlist = llc.generate_ngspice_circuit(turnsRatios, Lm, 0, 0);
+
+        INFO("scenario=" << label);
+        REQUIRE(netlist.find("Vq1_sense leg_a_src") == std::string::npos);
+        REQUIRE(netlist.find("Vq1_sense bridge_a")  == std::string::npos);
+        REQUIRE(netlist.find("Vq3_sense leg_a_src") == std::string::npos);
+        REQUIRE(netlist.find("Vq3_sense bridge_a")  == std::string::npos);
+
+        auto savePos = netlist.find(".save");
+        REQUIRE(savePos != std::string::npos);
+        auto saveLineEnd = netlist.find('\n', savePos);
+        std::string saveLine = netlist.substr(savePos, saveLineEnd - savePos);
+        if (saveLine.find("i(Vq") != std::string::npos) {
+            REQUIRE(netlist.find("Vq1_sense vin_dc") != std::string::npos);
+        }
+    };
+
+    runOne(OpenMagnetics::LlcBridgeType::FULL_BRIDGE,
+           OpenMagnetics::BridgeSimulationMode::BEHAVIORAL_PULSE,         "FB_BEHAVIORAL");
+    runOne(OpenMagnetics::LlcBridgeType::FULL_BRIDGE,
+           OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH, "FB_SW1");
+    runOne(OpenMagnetics::LlcBridgeType::HALF_BRIDGE,
+           OpenMagnetics::BridgeSimulationMode::BEHAVIORAL_PULSE,         "HB_BEHAVIORAL");
+    runOne(OpenMagnetics::LlcBridgeType::HALF_BRIDGE,
+           OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH, "HB_SW1");
+}

@@ -372,7 +372,7 @@ TEST_CASE("Test_Psfb_Spice_Netlist", "[converter-model][psfb-topology][spice]") 
 // resolved the tag should be removed.
 // =========================================================================
 TEST_CASE("Test_Psfb_Spice_BehavioralPulse_Vq1Sense_On_VinDc",
-          "[converter-model][psfb-topology][spice][!shouldfail]") {
+          "[converter-model][psfb-topology][spice]") {
     auto psfbJson = make_psfb_json();
     OpenMagnetics::Psfb psfb(psfbJson);
     // Pin the BEHAVIORAL_PULSE bridge (which is the default for ngspice-WASM

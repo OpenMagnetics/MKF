@@ -410,7 +410,7 @@ TEST_CASE("Test_Pshb_Spice_Netlist", "[converter-model][pshb-topology][spice]") 
 // `[!shouldfail]` until PhaseShiftedHalfBridge.cpp:~729-741 is fixed.
 // =========================================================================
 TEST_CASE("Test_Pshb_Spice_BehavioralPulse_Vq1Sense_On_VinDc",
-          "[converter-model][pshb-topology][spice][!shouldfail]") {
+          "[converter-model][pshb-topology][spice]") {
     auto pshbJson = make_pshb_json();
     OpenMagnetics::Pshb pshb(pshbJson);
     pshb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::BEHAVIORAL_PULSE);
