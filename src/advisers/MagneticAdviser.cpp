@@ -295,7 +295,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             break;
         }
         previouslyObtainedCores = masMagneticsWithCore.size();
-        
+
         for (auto& [mas, coreScoring] : masMagneticsWithCore) {
             auto coreNameOpt = mas.get_magnetic().get_core().get_name();
             if (!coreNameOpt) {

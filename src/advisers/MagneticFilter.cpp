@@ -323,7 +323,9 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
         double requiredInductance = resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance());
         scoring += fabs(requiredInductance - magnetizingInductance);
 
-        if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance)) {
+        bool reqOk = check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance);
+
+        if (!reqOk) {
             valid = false;
         }
         else {

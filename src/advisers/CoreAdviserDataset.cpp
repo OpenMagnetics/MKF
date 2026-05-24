@@ -570,28 +570,63 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                     initialNumberTurns = 5;
                 }
 
-                // For resonant transformers with a specific Lm target (e.g. CLLLC, CLLC):
-                // the core has no gap, so N must be large enough to achieve the required Lm.
-                // Voltage-seconds gives the saturation floor; inductance gives the Lm floor.
-                // Use the larger of the two so both constraints are satisfied.
-                {
-                    auto lmDim = inputs.get_design_requirements().get_magnetizing_inductance();
-                    bool hasNominalLm = lmDim.get_nominal().has_value();
-                    bool hasMaxLm = lmDim.get_maximum().has_value();
-                    if (hasNominalLm || hasMaxLm) {
-                        // Pass an Inputs with only design requirements (no operating points)
-                        // to avoid the magnetizing-current lookup inside
-                        // calculate_number_turns_from_gapping_and_inductance, which throws
-                        // when the excitation has voltage but no magnetizing_current waveform
-                        // (e.g. CLLLC/CLLC). Without operating points the function falls back
-                        // to N = round(sqrt(Lm * reluctance)) — accurate for ungapped
-                        // transformer cores with no DC bias.
-                        Inputs lmInputs;
-                        lmInputs.set_design_requirements(inputs.get_design_requirements());
-                        DimensionalValues dimVal = hasNominalLm ? DimensionalValues::NOMINAL : DimensionalValues::MAXIMUM;
-                        double nForInductance = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
-                            core, &lmInputs, dimVal);
-                        initialNumberTurns = std::max(initialNumberTurns, nForInductance);
+                // For resonant transformers with a specific Lm target
+                // (e.g. CLLLC, CLLC) we must size BOTH N and the gap so
+                // that L_actual(N, gap) == target Lm at the saturation-
+                // safe N.
+                //
+                // Plan:
+                //   1. Saturation floor for N (volt-seconds) is already
+                //      in `initialNumberTurns` above.
+                //   2. From that N, ask MagnetizingInductance for the
+                //      gap length that produces the target Lm.
+                //   3. Apply the gap to the core and persist N on the
+                //      magnetic's coil so add_gapping_standard_cores
+                //      (run earlier with the ungapped-transformer path)
+                //      and filterMagneticInductance agree.
+                //
+                // Toroidal cores can't take a discrete gap — leave them
+                // ungapped (they'll be rejected by the inductance filter
+                // if AL_ungapped is too high for the target Lm, which
+                // is the correct behaviour).
+                auto lmDim = inputs.get_design_requirements().get_magnetizing_inductance();
+                bool hasNominalLm = lmDim.get_nominal().has_value();
+                bool hasMaxLm = lmDim.get_maximum().has_value();
+                if ((hasNominalLm || hasMaxLm) && core.get_shape_family() != CoreShapeFamily::T) {
+                    // Build a temporary coil with the saturation-safe N for the
+                    // gap calculation. The wire is unimportant; only N matters
+                    // for the reluctance-based gap solver.
+                    Coil tempCoil = (*magneticsWithScoring)[i].first.get_coil();
+                    if (!tempCoil.get_functional_description().empty()) {
+                        tempCoil.get_mutable_functional_description()[0]
+                                .set_number_turns(static_cast<int64_t>(initialNumberTurns));
+                    }
+
+                    // Pass an Inputs with only design requirements (no operating points)
+                    // — the gap solver's reluctance model otherwise dives into the
+                    // magnetizing-current pipeline and throws on resonant inputs
+                    // (CLLLC/CLLC) that have voltage but no per-winding
+                    // magnetizing_current waveform yet.
+                    Inputs lmInputs;
+                    lmInputs.set_design_requirements(inputs.get_design_requirements());
+
+                    try {
+                        auto gaps = magnetizingInductance
+                            .calculate_gapping_from_number_turns_and_inductance(
+                                core, tempCoil, &lmInputs, GappingType::GROUND);
+                        if (!gaps.empty()) {
+                            core.set_gapping(gaps);
+                            core.process_gap();
+                            (*magneticsWithScoring)[i].first.set_core(core);
+                        }
+                    } catch (const std::exception& e) {
+                        // Solver failed (e.g. target Lm unreachable with this
+                        // core/material combination). Leave the core ungapped;
+                        // the inductance filter downstream rejects it cleanly.
+                        logEntry(std::string("Transformer gap solver failed for core ")
+                                 + core.get_name().value_or("?") + ": " + e.what()
+                                 + " — leaving ungapped",
+                                 "CoreAdviser", 2);
                     }
                 }
             } else if (isSuppression && suppressionEquivalentInductance > 0.0) {
