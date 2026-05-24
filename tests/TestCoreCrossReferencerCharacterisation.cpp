@@ -106,12 +106,18 @@ void check_top_n(const std::string& label,
 // adjacent material (3C94) now correctly tops the list; powders still
 // appear in slots 2-5 because they remain geometrically and
 // magnetically competitive (low Bpeak/Bsat in both cases).
+// Refreshed 2026-05-24 after commit 3c851744 (fix(coil): two OOB reads in
+// Coil::equalize_margins). That fix corrected margin sizing on multi-section
+// bridge topologies, which shifts the WINDING_WINDOW_AREA filter's
+// contribution downward by ~3 % for several powder toroids. The top-1 ferrite
+// is unaffected; powder slots 1-4 keep the same identities and order but
+// with lower scores.
 const std::vector<TopEntry> kTopDefault = {
     {"EC 35/17/10 - 3C94 - Gapped 1.000 mm",                       3.0915469239085107},
-    {"T 28/14/12 - epoxy coated - Edge 75 - Ungapped",             2.6023810299281194},
-    {"T 28/14/12 - epoxy coated - Kool Mµ 75 - Ungapped",          2.5598799018962883},
-    {"T 28/14/12 - epoxy coated - Kool Mµ MAX 75 - Ungapped",      2.4488472314630836},
-    {"T 28/14/12 - epoxy coated - XFlux 75 - Ungapped",            2.2430466357109586},
+    {"T 28/14/12 - epoxy coated - Edge 75 - Ungapped",             2.5332385934426584},
+    {"T 28/14/12 - epoxy coated - Kool Mµ 75 - Ungapped",          2.4637902771095823},
+    {"T 28/14/12 - epoxy coated - Kool Mµ MAX 75 - Ungapped",      2.3482690546043852},
+    {"T 28/14/12 - epoxy coated - XFlux 75 - Ungapped",            2.02063120011971},
 };
 
 const std::vector<TopEntry> kTopSameMaterial = {
@@ -122,12 +128,15 @@ const std::vector<TopEntry> kTopSameMaterial = {
     {"EP 17 - 3C91 - Gapped 0.255 mm",                             1.414304619475435},
 };
 
+// Refreshed 2026-05-24: 3c851744 reshuffled slots 1 and 4 — the
+// EC 35/17/10 distributed-gap N27 moved from slot 4 up past
+// E 32/16/9 N87, which dropped to slot 4. ETD 29/16/10 stays on top.
 const std::vector<TopEntry> kTopOnlyTdk = {
-    {"ETD 29/16/10 - N87 - Gapped 1.000 mm",                       2.8695155571782585},
-    {"E 32/16/9 - N87 - Gapped 1.000 mm",                          2.7089256051581794},
-    {"ETD 29/16/10 - N27 - Gapped 1.000 mm",                       2.6299427704000218},
-    {"ETD 29/16/10 - N27 - Distributed gapped 0.500 mm",           2.5625439304740238},
-    {"EC 35/17/10 - N27 - Distributed gapped 0.500 mm",            2.232510837412359},
+    {"ETD 29/16/10 - N87 - Gapped 1.000 mm",                       2.8472835377128982},
+    {"EC 35/17/10 - N27 - Distributed gapped 0.500 mm",            2.6366007138718883},
+    {"ETD 29/16/10 - N27 - Gapped 1.000 mm",                       2.6094871648192499},
+    {"ETD 29/16/10 - N27 - Distributed gapped 0.500 mm",           2.5227157465982319},
+    {"E 32/16/9 - N27 - Gapped 1.000 mm",                          1.9199033881211673},
 };
 
 // Phase 1 fix landed: with SATURATION now active, the powder ordering
@@ -135,12 +144,15 @@ const std::vector<TopEntry> kTopOnlyTdk = {
 // top; MS 60 wins on combined losses + saturation distance. The
 // previous CORE_LOSSES ceiling-clamp removal also still applies — no
 // candidates tie at the artificial 2.6 maximum.
+// Refreshed 2026-05-24: 3c851744 moved Edge 60 into slot 2 (was absent
+// from top-5) and pushed Kool Mµ MAX 60 out of top-5. MS / FS / Kool Mµ
+// keep their identities; Kool Mµ Hƒ drops two slots.
 const std::vector<TopEntry> kTopPowder = {
     {"E 25/9.5/6.3 - MS 60 - Ungapped",                            2.9338806063397938},
     {"E 25/9.5/6.3 - FS 60 - Ungapped",                            2.7454801535568123},
-    {"E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped",                    2.6147453693692406},
+    {"E 25/9.5/6.3 - Edge 60 - Ungapped",                          2.5837166775568221},
     {"E 25/9.5/6.3 - Kool Mµ 60 - Ungapped",                       2.4001098422524034},
-    {"E 25/9.5/6.3 - Kool Mµ MAX 60 - Ungapped",                   2.2461078440549671},
+    {"E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped",                    2.1310286918124186},
 };
 
 } // namespace
