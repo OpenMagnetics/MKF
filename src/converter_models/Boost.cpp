@@ -376,7 +376,8 @@ namespace OpenMagnetics {
                 << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
                 << tOn << " " << period << std::fixed
                 << ")\n";
-        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH << "\n";
+        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
         circuit << "S1 sw 0 pwm_ctrl 0 SW1\n";
         // Snubber RC across the switch — absorbs di/dt at hard-switching
         // events and improves ngspice convergence in CCM/DCM transitions
