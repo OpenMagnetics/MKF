@@ -289,6 +289,28 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER]  = forward;
             }
 
+            // Phase-shifted full bridge (PSFB) / half-bridge (PSHB):
+            // four / two primary-side switches with phase-shifted gate
+            // drive driving a centre-tapped or full-wave-rectified
+            // secondary LC filter. Hard switching at the start of each
+            // conduction interval but ZVS at turn-off — solver
+            // tolerances mirror PushPull / forward (many switching
+            // events per period). Bigger output cap (100 µF) matches
+            // forward-class LC sizing.
+            {
+                SpiceSimulationConfig psb;
+                psb.swModelVT = 2.5;            psb.swModelVH = 0.5;
+                psb.snubR = 1e3;                psb.snubC = 1e-9;
+                psb.diodeIS = 1e-12;            psb.diodeRS = 0.05;
+                psb.outputCapacitance = 100e-6;
+                psb.relTol = 0.005;             psb.absTol = 1e-8;
+                psb.vnTol = 1e-5;
+                psb.itl1 = 1000;                psb.itl4 = 1000;
+                psb.method = "GEAR";            psb.trTol = 7.0;
+                m[MAS::Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER] = psb;
+                m[MAS::Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER] = psb;
+            }
+
             // Asymmetric Half-Bridge (AHB): half-bridge primary driving a
             // forward-rectified secondary with 50/50 complementary duty
             // and resonant ZVS turn-on of the high-side switch. The
