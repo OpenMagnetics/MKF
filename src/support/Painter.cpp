@@ -7,9 +7,6 @@
 #include "MAS.hpp"
 #include "support/Utils.h"
 #include "json.hpp"
-#ifdef ENABLE_MATPLOTPP
-#include <matplot/matplot.h>
-#endif
 #include <cfloat>
 #include <chrono>
 #include <thread>
@@ -800,19 +797,12 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
 }
 
 std::shared_ptr<PainterInterface> Painter::factory(bool useAdvancedPainter, std::filesystem::path filepath, bool addProportionForColorBar, bool showTicks) {
-#ifdef ENABLE_MATPLOTPP
-    if (useAdvancedPainter) {
-        return std::make_shared<AdvancedPainter>(filepath, addProportionForColorBar, showTicks);
-    }
-    else {
-        return std::make_shared<BasicPainter>(filepath);
-    }
-#else
+    // AdvancedPainter (matplotplusplus) removed; the three legacy args
+    // are ignored. BasicPainter is the only backend.
     (void)useAdvancedPainter;
     (void)addProportionForColorBar;
     (void)showTicks;
     return std::make_shared<BasicPainter>(filepath);
-#endif
 }
 
 void Painter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
@@ -1001,14 +991,10 @@ std::string Painter::paint_operating_point_waveforms(
     double width,
     double height)
 {
-    auto* basic = dynamic_cast<BasicPainter*>(_painter.get());
-    if (basic == nullptr) {
-        throw std::runtime_error(
-            "Painter::paint_operating_point_waveforms requires the BasicPainter "
-            "backend; the active painter is not BasicPainter (likely "
-            "AdvancedPainter).  Construct Painter with useAdvancedPainter=false "
-            "and addProportionForColorBar=false, showTicks=false.");
-    }
+    // BasicPainter is the only backend after AdvancedPainter's removal;
+    // the dynamic_cast guard the old AdvancedPainter branch needed is
+    // gone.
+    auto* basic = static_cast<BasicPainter*>(_painter.get());
     return basic->paint_operating_point_waveforms(operatingPoint, title, width, height);
 }
 

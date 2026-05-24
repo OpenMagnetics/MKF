@@ -148,12 +148,8 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -179,12 +175,8 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -207,12 +199,8 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -235,12 +223,8 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -263,12 +247,8 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -295,12 +275,8 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -356,12 +332,8 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -424,12 +396,8 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -538,12 +506,8 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
@@ -802,12 +766,8 @@ namespace {
             settings.set_painter_number_points_x(50);
             settings.set_painter_number_points_y(100);
             settings.set_painter_include_fringing(false);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_electric_field(inputs.get_operating_point(0), magnetic);
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
+                        painter.paint_electric_field(inputs.get_operating_point(0), magnetic);
+            
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
@@ -836,12 +796,8 @@ namespace {
             settings.set_painter_number_points_x(50);
             settings.set_painter_number_points_y(100);
             settings.set_painter_include_fringing(false);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_electric_field(inputs.get_operating_point(0), magnetic);
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
+                        painter.paint_electric_field(inputs.get_operating_point(0), magnetic);
+            
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
@@ -1214,9 +1170,7 @@ namespace {
 
     TEST_CASE("Test_Painter_Toroid_Round_Wires", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-#endif
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({100, 5});
@@ -1290,20 +1244,14 @@ namespace {
             painter.paint_core(magnetic);
             // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
-            painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
+                        painter.export_svg();
+            
         }
     }
 
     TEST_CASE("Test_Painter_Toroid_Quiver_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-#endif
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1346,21 +1294,15 @@ namespace {
         painter.paint_core(magnetic);
         // painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
 
     TEST_CASE("Test_Painter_Toroid_Quiver_One_Turn_Rectangular_Inner", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-#endif
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1403,21 +1345,15 @@ namespace {
         painter.paint_core(magnetic);
         // painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
 
     TEST_CASE("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Inner", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-#endif
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1460,21 +1396,15 @@ namespace {
         painter.paint_core(magnetic);
         // painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
 
     TEST_CASE("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Spread", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-#endif
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1517,21 +1447,15 @@ namespace {
         painter.paint_core(magnetic);
         // painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
 
     TEST_CASE("Test_Painter_Toroid_Quiver_Two_Turn_Rectangular", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-#endif
         std::vector<int64_t> numberTurns = {2};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1574,21 +1498,15 @@ namespace {
         painter.paint_core(magnetic);
         // painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
-        painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.export_svg();
+        
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
 
     TEST_CASE("Test_Painter_Toroid_Rectangular_Wires", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-#endif
 
         double temperature = 20;
         std::vector<int64_t> numberTurns = {11, 90};
@@ -1669,12 +1587,8 @@ namespace {
             painter.paint_core(magnetic);
             // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
-            painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
+                        painter.export_svg();
+            
         }
     }
 
@@ -3884,9 +3798,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Planar", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping planar painter test");
-#endif
 
         settings.set_coil_wind_even_if_not_fit(false);
         settings.set_coil_try_rewind(false);
@@ -3963,12 +3875,8 @@ namespace {
             painter.paint_core(magnetic);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
-            painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
+                        painter.export_svg();
+            
             REQUIRE(std::filesystem::exists(outFile));
             settings.reset();
         }
@@ -3999,9 +3907,7 @@ namespace {
 
     TEST_CASE("Test_Field_Painter_Web_1", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
         clear_databases();
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping magnetic field painter test");
-#endif
 
         auto outFile = outputFilePath;
         outFile.append("Test_Field_Painter_Web_1.svg");
@@ -4429,273 +4335,6 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1", "[support][painter][wire-density-painter][smoke-test]") {
-        clear_databases();
-
-        double currentPeakToPeak = 1000;
-        double frequency = 250000;
-        auto wire = find_wire_by_name("Round 3.55 - Grade 1");
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Simple", "[support][painter][wire-density-painter][smoke-test]") {
-        clear_databases();
-
-        double currentPeakToPeak = 1000;
-        double frequency = 250000000;
-        auto wire = find_wire_by_name("Litz 10x0.02 - Grade 2 - Single Served");
-        settings.set_painter_simple_litz(true);
-        // settings.set_painter_advanced_litz(false);
-
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Simple_" + std::to_string(frequency) + ".svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal", "[support][painter][wire-density-painter][smoke-test]") {
-        clear_databases();
-
-        double currentPeakToPeak = 1000;
-        double frequency = 100e6;
-        auto wire = find_wire_by_name("Litz 8x0.1 - Grade 1 - Single Served");
-        settings.set_painter_simple_litz(false);
-        // settings.set_painter_advanced_litz(false);
-
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_" + std::to_string(frequency) + ".svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_Many_Strands", "[support][painter][wire-density-painter]") {
-        clear_databases();
-
-        double currentPeakToPeak = 1000;
-        double frequency = 250000000;
-        auto wire = find_wire_by_name("Litz 1000x0.02 - Grade 1 - Single Served");
-        settings.set_painter_simple_litz(false);
-        settings.set_painter_advanced_litz(true);
-
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_Many_Strands_" + std::to_string(frequency) + ".svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Advanced", "[support][painter][wire-density-painter][smoke-test]") {
-        clear_databases();
-
-        double currentPeakToPeak = 1000;
-        double frequency = 250000000;
-        auto wire = find_wire_by_name("Litz 10x0.02 - Grade 2 - Single Served");
-        settings.set_painter_simple_litz(false);
-        settings.set_painter_advanced_litz(true);
-
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Advanced_" + std::to_string(frequency) + ".svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Wire_Painter_Current_Density_Rectangular_Enamelled_Grade_1", "[support][painter][wire-density-painter][smoke-test]") {
-        clear_databases();
-
-        double currentPeakToPeak = 1000;
-        double frequency = 250000;
-        auto wire = find_wire_by_name("Rectangular 2x0.80 - Grade 1");
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Rectangular_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Wire_Painter_Current_Density_Foil", "[support][painter][wire-density-painter][smoke-test]") {
-        clear_databases();
-
-        double currentPeakToPeak = 1000;
-        double frequency = 250000;
-        auto wire = find_wire_by_name("Foil 0.5");
-        DimensionWithTolerance dimensionWithTolerance;
-        dimensionWithTolerance.set_nominal(0.010);
-        wire.set_conducting_height(dimensionWithTolerance);
-        wire.set_outer_width(wire.get_conducting_width().value());
-        wire.set_outer_height(dimensionWithTolerance);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Foil_" + std::to_string(frequency) + ".svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Wire_Painter_Current_Density_Web_0", "[support][painter][wire-density-painter][smoke-test]") {
-        clear_databases();
-
-        OpenMagnetics::Wire wire(json::parse(R"({"coating": {"breakdownVoltage": 6000, "grade": null, "material": "TCA", "numberLayers": 3, "temperatureRating": 155, "thickness": null, "thicknessLayers": 7.62e-05, "type": "insulated"}, "conductingArea": null, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00026900000000000003, "minimum": 0.000261, "nominal": 0.000265}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round 0.265 - Grade 1", "numberConductors": 92, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.000297, "minimum": 0.000283, "nominal": 0.0018383994787140629}, "outerHeight": null, "outerWidth": null, "standard": "IEC 60317", "standardName": "0.265 mm", "strand": {"coating": {"breakdownVoltage": 500, "grade": 1, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled"}, "conductingArea": null, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00010300000000000001, "minimum": 9.7e-05, "nominal": 0.0001}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round 0.1 - Grade 1", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00011700000000000001, "minimum": 0.000108, "nominal": null}, "outerHeight": null, "outerWidth": null, "standard": "IEC 60317", "standardName": "0.1 mm", "strand": null, "type": "round"}, "type": "litz"})"));
-        OperatingPoint operatingPoint(json::parse(R"({"name": "Operating Point No. 1", "conditions": {"ambientTemperature": 42}, "excitationsPerWinding": [{"name": "Primary winding excitation", "frequency": 100000000, "current": {"waveform": {"ancillaryLabel": null, "data": [-5, 5, -5], "numberPeriods": null, "time": [0, 5e-09, 1e-08]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular", "acEffectiveFrequency": 110746402.91779621, "effectiveFrequency": 110746402.91779621, "peak": 5, "rms": 2.887456033215047, "thd": 0.12151487440705}, "harmonics": {"amplitudes": [1.9671764217576992e-15, 4.053661245831925, 9.528877815088396e-15, 0.4511310569983986, 3.867859480230825e-15, 0.16293015292554885, 2.6154487633755876e-15, 0.08352979924600734, 1.9651652434930284e-15, 0.05085695813361692, 1.6136051601223988e-15, 0.034320410449418734, 1.3808009023999193e-15, 0.024811988673843956, 1.1386794830042506e-15, 0.018849001010679767, 1.0370440806127272e-15, 0.014866633059597558, 8.851494177631955e-16, 0.012077180559558507, 9.326505898457337e-16, 0.010049063750921247, 8.13280272912139e-16, 0.008529750975092641, 7.240094812312869e-16, 0.007363501410706191, 6.482105482773775e-16, 0.006450045785295375, 6.066430502657454e-16, 0.0057224737949983576, 5.440719337350025e-16, 0.005134763398167652, 6.25059167873935e-16, 0.004654430423786248, 4.892419283154727e-16, 0.004258029771397705, 5.345312821060954e-16, 0.0039283108282387675, 4.672784117529907e-16, 0.003652367087393178, 3.3833965320162966e-16, 0.003420402142426004, 4.2496275203954786e-16, 0.0032248884817931253, 3.8603919165942636e-16, 0.0030599828465507064, 3.809779240559984e-16, 0.0029211129442011045, 4.459588218866508e-16, 0.002804680975179318, 3.8344856196395527e-16, 0.0027078483284674916, 3.809203930919387e-16, 0.0026283777262812655, 4.0712748931445545e-16, 0.0025645167846449803, 3.9966373222574786e-16, 0.0025149120164521047, 4.572347145426278e-16, 0.0024785457043292464, 3.6473608081573336e-16, 0.0024546904085880616, 3.509577233239641e-16, 0.0024428775264793146], "frequencies": [0, 100000000, 200000000, 300000000, 400000000, 500000000, 600000000, 700000000, 800000000, 900000000, 1000000000, 1100000000, 1200000000, 1300000000, 1400000000, 1500000000, 1600000000, 1700000000, 1800000000, 1900000000, 2000000000, 2100000000, 2200000000, 2300000000, 2400000000, 2500000000, 2600000000, 2700000000, 2800000000, 2900000000, 3000000000, 3100000000, 3200000000, 3300000000, 3400000000, 3500000000, 3600000000, 3700000000, 3800000000, 3900000000, 4000000000, 4100000000, 4200000000, 4300000000, 4400000000, 4500000000, 4600000000, 4700000000, 4800000000, 4900000000, 5000000000, 5100000000, 5200000000, 5300000000, 5400000000, 5500000000, 5600000000, 5700000000, 5800000000, 5900000000, 6000000000, 6100000000, 6200000000, 6300000000]}}, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-50, 50, 50, -50, -50], "numberPeriods": null, "time": [0, 0, 5e-09, 5e-09, 1e-08]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular", "acEffectiveFrequency": 591485536.0118392, "effectiveFrequency": 591449420.2715513, "peak": 50, "rms": 50, "thd": 0.48331514845248497}, "harmonics": {"amplitudes": [0.78125, 63.64919355013018, 1.5625, 21.18229569117569, 1.5625, 12.668415318245188, 1.5625, 9.004909382998164, 1.5625, 6.958128475647527, 1.5625, 5.646149502042871, 1.5625, 4.729755006746538, 1.5625, 4.050628933965765, 1.5625, 3.524943518639316, 1.5625, 3.104154363036517, 1.5625, 2.7581982345221827, 1.5625, 2.467457137437843, 1.5625, 2.2185795367095267, 1.5625, 2.0021587188071255, 1.5625, 1.8113717302085082, 1.5625, 1.6411450722498175, 1.5625, 1.487623666720196, 1.5625, 1.3478217691511587, 1.5625, 1.2193869682092893, 1.5625, 1.100436657601639, 1.5625, 0.9894422127774558, 1.5625, 0.8851453167661671, 1.5625, 0.7864964059364037, 1.5625, 0.6926086154544899, 1.5625, 0.60272275979863, 1.5625, 0.5161802771005264, 1.5625, 0.43240198459440116, 1.5625, 0.3508711083080249, 1.5625, 0.27111946896540395, 1.5625, 0.192715993963664, 1.5625, 0.11525692425384548, 1.5625, 0.03835722204524927], "frequencies": [0, 100000000, 200000000, 300000000, 400000000, 500000000, 600000000, 700000000, 800000000, 900000000, 1000000000, 1100000000, 1200000000, 1300000000, 1400000000, 1500000000, 1600000000, 1700000000, 1800000000, 1900000000, 2000000000, 2100000000, 2200000000, 2300000000, 2400000000, 2500000000, 2600000000, 2700000000, 2800000000, 2900000000, 3000000000, 3100000000, 3200000000, 3300000000, 3400000000, 3500000000, 3600000000, 3700000000, 3800000000, 3900000000, 4000000000, 4100000000, 4200000000, 4300000000, 4400000000, 4500000000, 4600000000, 4700000000, 4800000000, 4900000000, 5000000000, 5100000000, 5200000000, 5300000000, 5400000000, 5500000000, 5600000000, 5700000000, 5800000000, 5900000000, 6000000000, 6100000000, 6200000000, 6300000000]}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5], "time": [0, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "triangular"}}, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 5e-06, 5e-06, 1e-05]}, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "rectangular"}}}]})"));
-        settings.set_painter_simple_litz(false);
-        // settings.set_painter_advanced_litz(false);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Web_0.svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-            #ifdef ENABLE_MATPLOTPP
-            painter.paint_wire_with_current_density(wire, operatingPoint);
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
-
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Wire_Painter_Current_Density_Web_1", "[support][painter][wire-density-painter][smoke-test]") {
-        clear_databases();
-
-        OpenMagnetics::Wire wire(json::parse(R"({"coating": {"breakdownVoltage": 13500, "grade": null, "material": "FEP", "numberLayers": 3, "temperatureRating": 155, "thickness": null, "thicknessLayers": 7.62e-05, "type": "insulated"}, "conductingArea": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 1.0602875205865554e-06}, "conductingDiameter": null, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": null, "name": "Litz 15x0.3 - Grade 1 - Unserved", "numberConductors": 18, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0016300000000000002, "minimum": 0.0011557, "nominal": 0.012585990719707143}, "outerHeight": null, "outerWidth": null, "standard": "NEMA MW 1000 C", "standardName": null, "strand": {"coating": {"breakdownVoltage": 2500, "grade": 1, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled"}, "conductingArea": null, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.004115}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Nearson", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round 6.0 - Single Build", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.004186}, "outerHeight": null, "outerWidth": null, "standard": "NEMA MW 1000 C", "standardName": "6 AWG", "strand": null, "type": "round"}, "type": "litz"})"));
-        settings.set_painter_simple_litz(false);
-        // settings.set_painter_advanced_litz(false);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Web_1.svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-            painter.paint_wire(wire);
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
-    TEST_CASE("Test_Wire_Painter_Current_Density_Web_2", "[support][painter][wire-density-painter][smoke-test]") {
-        clear_databases();
-
-        // OpenMagnetics::Wire wire(json::parse(R"({"coating": {"breakdownVoltage": null, "grade": null, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "bare"}, "conductingArea": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 1.0602875205865554e-06}, "conductingDiameter": null, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": null, "name": "Litz 15x0.3 - Grade 1 - Unserved", "numberConductors": 15, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0016300000000000002, "minimum": 0.0011557, "nominal": null}, "outerHeight": null, "outerWidth": null, "standard": "IEC 60317", "standardName": null, "strand": {"coating": {"breakdownVoltage": 2200, "grade": 1, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled"}, "conductingArea": null, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.000303999999999, "minimum": 0.000296, "nominal": 0.00030000000000000003}, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round 0.3 - Grade 1", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00033400000000000004, "minimum": 0.000319, "nominal": null}, "standard": "IEC 60317", "standardName": "0.3 mm", "type": "round"}, "type": "litz"})"));
-        OpenMagnetics::Wire wire(json::parse(R"({"coating": {"breakdownVoltage": null, "grade": null, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "bare"}, "conductingArea": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 1.0602875205865554e-06}, "conductingDiameter": null, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": null, "name": "Litz 15x0.3 - Grade 1 - Unserved", "numberConductors": 15, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0016300000000000002, "minimum": 0.0011557, "nominal": 0.0015933066187962695}, "outerHeight": null, "outerWidth": null, "standard": "IEC 60317", "standardName": null, "strand": {"coating": {"breakdownVoltage": 2200, "grade": 1, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled"}, "conductingArea": null, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.000303999999999, "minimum": 0.000296, "nominal": 0.00030000000000000003}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round 0.3 - Grade 1", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00033400000000000004, "minimum": 0.000319, "nominal": null}, "outerHeight": null, "outerWidth": null, "standard": "IEC 60317", "standardName": "0.3 mm", "strand": null, "type": "round"}, "type": "litz"})"));
-        settings.set_painter_simple_litz(false);
-        // settings.set_painter_advanced_litz(false);
-
-        {
-            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Web_2.svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile, false, false, true);
-
-            painter.paint_wire(wire);
-            painter.export_svg();
-
-        }
-        settings.reset();
-    }
-
     TEST_CASE("Test_Painter_Albach_2D_Field_With_Gap", "[support][painter][magnetic-field-painter][albach-2d]") {
         // Test case to visualize the magnetic field using the Albach 2D boundary value solver
         // Uses a PQ core with a center leg gap
@@ -4919,9 +4558,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_RM_Core_Distributed_Gap_3", "[support][painter][magnetic-painter][pot-core][distributed-gap][smoke-test]") {
-#ifndef ENABLE_MATPLOTPP
         SKIP("matplotplusplus disabled — skipping RM core painter test");
-#endif
         // Test case with RM core (pot-like shape) with 3 distributed gaps
         clear_databases();
         

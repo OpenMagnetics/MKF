@@ -439,12 +439,8 @@ namespace {
         outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_Temperature_Many_Turns.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, true);
-        #ifdef ENABLE_MATPLOTPP
-        painter.paint_curve(impedanceSweep, false);
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.paint_curve(impedanceSweep, false);
+        
         painter.export_svg();
 
         REQUIRE(std::filesystem::exists(outFile));
@@ -505,12 +501,8 @@ namespace {
         outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Powder.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, true);
-        #ifdef ENABLE_MATPLOTPP
-        painter.paint_curve(impedanceSweep, false);
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.paint_curve(impedanceSweep, false);
+        
         painter.export_svg();
 
         REQUIRE(std::filesystem::exists(outFile));
@@ -571,12 +563,8 @@ namespace {
         outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Ferrite.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, true);
-        #ifdef ENABLE_MATPLOTPP
-        painter.paint_curve(impedanceSweep, false);
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
-
+                painter.paint_curve(impedanceSweep, false);
+        
         painter.export_svg();
 
         REQUIRE(std::filesystem::exists(outFile));

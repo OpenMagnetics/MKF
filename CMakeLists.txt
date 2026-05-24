@@ -58,22 +58,10 @@ option(BUILD_EXAMPLES "Build examples (for dependencies)" OFF)
 option(BUILD_DEMO "Build demo (for dependencies)" OFF)
 # REMOVED: # REMOVED: option(HAVE_LAPACK "Use LAPACK" OFF) — no longer needed, levmar replaced by Eigen — no longer needed, levmar replaced by Eigen
 option(INCLUDE_PYMKF "Compile the Python interface" OFF)
-option(MATPLOTPP_BUILD_HIGH_RESOLUTION_WORLD_MAP "Compile high resolution maps for geoplots" OFF)
 option(ENABLE_NGSPICE "Enable ngspice integration for circuit simulation" OFF)
-option(ENABLE_MATPLOTPP "Enable matplotplusplus for AdvancedPainter" OFF)
-
-# If the Python interface is being built, disable matplotplusplus so PyMKF
-# is built without the matplotplusplus dependency.
-if(INCLUDE_PYMKF)
-    if(ENABLE_MATPLOTPP)
-        message(STATUS "Disabling matplotplusplus because PyMKF build requested.")
-    endif()
-    set(ENABLE_MATPLOTPP OFF CACHE BOOL "Enable matplotplusplus for AdvancedPainter" FORCE)
-endif()
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "ngspice integration: ${ENABLE_NGSPICE}")
-message(STATUS "matplotplusplus support: ${ENABLE_MATPLOTPP}")
 message(STATUS "Embedding MAS Data: ${EMBED_MAS_DATA}")
 message(STATUS "Embedding MAS Cores: ${EMBED_MAS_CORES}")
 message(STATUS "Embedding MAS CoreShapes: ${EMBED_MAS_CORE_SHAPES}")
@@ -113,17 +101,6 @@ FetchContent_Declare(magic-enum
 FetchContent_MakeAvailable(magic-enum)
 include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include/magic_enum")
 
-if(ENABLE_MATPLOTPP)
-    FetchContent_Declare(matplotplusplus
-        GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
-        GIT_TAG tags/v1.2.1)
-    FetchContent_GetProperties(matplotplusplus)
-    if(NOT matplotplusplus_POPULATED)
-        FetchContent_MakeAvailable(matplotplusplus)
-        # add_subdirectory(${matplotplusplus_SOURCE_DIR} ${matplotplusplus_BINARY_DIR} EXCLUDE_FROM_ALL)
-    endif()
-    add_compile_definitions(ENABLE_MATPLOTPP)
-endif()
 
 # Make profiling and ASan opt-in so users can build fast Release binaries by default
 option(ENABLE_PROFILING "Enable gprof profiling (-pg)" OFF)
@@ -556,11 +533,7 @@ cmrc_add_resource_library(data ALIAS data::data NAMESPACE data ${DATA_LIST})
 target_link_libraries(MKF PUBLIC data::data)
 target_link_libraries(MKF PUBLIC data::core_losses_data)
 
-if(ENABLE_MATPLOTPP)
-    target_link_libraries(MKF PUBLIC matplot rapidfuzz::rapidfuzz)
-else()
-    target_link_libraries(MKF PUBLIC rapidfuzz::rapidfuzz)
-endif()
+target_link_libraries(MKF PUBLIC rapidfuzz::rapidfuzz)
 target_link_libraries(MKF PRIVATE nlohmann_json::nlohmann_json)
 
 # Link ngspice if enabled
