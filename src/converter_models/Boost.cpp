@@ -229,6 +229,20 @@ namespace OpenMagnetics {
         return process_operating_points(turnsRatios, magnetizingInductance);
     }
 
+    DesignRequirements AdvancedBoost::process_design_requirements() {
+        // Advanced workflow: target the user's desiredInductance as the
+        // CoreAdviser's L nominal. Mirrors AdvancedBuck.
+        DesignRequirements designRequirements;
+        DimensionWithTolerance inductanceWithTolerance;
+        inductanceWithTolerance.set_nominal(roundFloat(get_desired_inductance(), 10));
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        std::vector<IsolationSide> isolationSides;
+        isolationSides.push_back(get_isolation_side_from_index(0));
+        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_topology(Topologies::BOOST_CONVERTER);
+        return designRequirements;
+    }
+
     Inputs AdvancedBoost::process() {
         Boost::run_checks(_assertErrors);
 

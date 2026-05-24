@@ -166,6 +166,21 @@ public:
 
     Inputs process();
 
+    /**
+     * @brief Override the parent Buck's process_design_requirements()
+     *        so that downstream pipelines reading the
+     *        DesignRequirements (CoreAdviser, MagneticAdviser, …)
+     *        see the user's ``desiredInductance`` as the L target.
+     *
+     * Buck::process_design_requirements() sets only
+     * ``magnetizingInductance.minimum`` (the ripple-floor). With that
+     * the CoreAdviser shortlists the smallest core satisfying the
+     * floor, ignoring the L the caller actually asked for. The
+     * Advanced workflow says "I already know my L"; setting nominal
+     * from desiredInductance lets MKF design for it.
+     */
+    DesignRequirements process_design_requirements() override;
+
     const double & get_desired_inductance() const { return desiredInductance; }
     double & get_mutable_desired_inductance() { return desiredInductance; }
     void set_desired_inductance(const double & value) { this->desiredInductance = value; }

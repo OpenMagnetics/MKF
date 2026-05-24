@@ -233,6 +233,14 @@ public:
 
     Inputs process();
 
+    /**
+     * @brief Override the parent Boost's process_design_requirements()
+     *        so the CoreAdviser sees ``desiredInductance`` as the L
+     *        target instead of the parent's minimum-only constraint.
+     *        See AdvancedBuck for the rationale.
+     */
+    DesignRequirements process_design_requirements() override;
+
     const double & get_desired_inductance() const { return desiredInductance; }
     double & get_mutable_desired_inductance() { return desiredInductance; }
     void set_desired_inductance(const double & value) { this->desiredInductance = value; }

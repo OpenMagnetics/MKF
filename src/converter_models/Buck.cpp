@@ -225,6 +225,21 @@ namespace OpenMagnetics {
         return process_operating_points(turnsRatios, magnetizingInductance);
     }
 
+    DesignRequirements AdvancedBuck::process_design_requirements() {
+        // Advanced workflow: the user already knows the L they want;
+        // set it as nominal in DesignRequirements so the CoreAdviser
+        // targets it instead of the parent Buck's ripple-floor minimum.
+        DesignRequirements designRequirements;
+        DimensionWithTolerance inductanceWithTolerance;
+        inductanceWithTolerance.set_nominal(roundFloat(get_desired_inductance(), 10));
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        std::vector<IsolationSide> isolationSides;
+        isolationSides.push_back(get_isolation_side_from_index(0));
+        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_topology(Topologies::BUCK_CONVERTER);
+        return designRequirements;
+    }
+
     Inputs AdvancedBuck::process() {
         Buck::run_checks(_assertErrors);
 
