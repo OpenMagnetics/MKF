@@ -356,6 +356,51 @@ TEST_CASE("Test_Psfb_Spice_Netlist", "[converter-model][psfb-topology][spice]") 
     }
 }
 
+// =========================================================================
+// REGRESSION: SPICE_PROBE_HANDOFF.md Bug 1 — Vq1_sense must sit between
+// `vin_dc` and a switch drain in BEHAVIORAL_PULSE mode, not between the
+// behavioral leg source and the bridge midpoint.
+//
+// Status at time of writing (commit 38e3947b):
+//   BEHAVIORAL_PULSE branch emits `Vq1_sense leg_a_src mid_A 0`, which
+//   measures the behavioral source's leg current, not the true DC bus
+//   draw. The body diode and snubber currents on `vin_dc` are missed,
+//   biasing avg(input_current) away from output_power / Vin.
+//
+// This test is marked `[!shouldfail]` so that the smoke run reports it
+// as "failed as expected" until the netlist is fixed. When the bug is
+// resolved the tag should be removed.
+// =========================================================================
+TEST_CASE("Test_Psfb_Spice_BehavioralPulse_Vq1Sense_On_VinDc",
+          "[converter-model][psfb-topology][spice][!shouldfail]") {
+    auto psfbJson = make_psfb_json();
+    OpenMagnetics::Psfb psfb(psfbJson);
+    // Pin the BEHAVIORAL_PULSE bridge (which is the default for ngspice-WASM
+    // performance) so this test stays directly aligned with SPICE_PROBE_HANDOFF.md
+    // Bug 1 even if the global default changes.
+    psfb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::BEHAVIORAL_PULSE);
+    auto req = psfb.process_design_requirements();
+
+    std::vector<double> turnsRatios;
+    for (auto& tr : req.get_turns_ratios()) {
+        turnsRatios.push_back(resolve_dimensional_values(tr));
+    }
+    double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+    std::string netlist = psfb.generate_ngspice_circuit(turnsRatios, Lm);
+
+    // Per the SW1 reference at PhaseShiftedFullBridge.cpp:820, the correct
+    // form is `Vq1_sense vin_dc qa_drain 0` — the ammeter must sit on the
+    // DC rail, not between the behavioral source and the bridge node.
+    INFO("netlist excerpt around Vq1_sense:");
+    auto pos = netlist.find("Vq1_sense");
+    if (pos != std::string::npos) {
+        INFO(netlist.substr(pos, 80));
+    }
+    REQUIRE(netlist.find("Vq1_sense vin_dc") != std::string::npos);
+    // And the bug-form should NOT be present.
+    REQUIRE(netlist.find("Vq1_sense leg_a_src") == std::string::npos);
+}
+
 
 // =========================================================================
 // TEST 5: PSFB Multiple Outputs

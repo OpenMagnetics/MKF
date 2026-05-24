@@ -395,6 +395,46 @@ TEST_CASE("Test_Pshb_Spice_Netlist", "[converter-model][pshb-topology][spice]") 
     }
 }
 
+// =========================================================================
+// REGRESSION: SPICE_PROBE_HANDOFF.md Bug 2 — Vq1_sense must sit between
+// `vin_dc` and a switch drain in BEHAVIORAL_PULSE mode, not between the
+// behavioral leg source and the bridge node.
+//
+// Status at time of writing (commit 38e3947b):
+//   BEHAVIORAL_PULSE branch emits `Vq1_sense leg_a_src bridge_a 0`,
+//   which measures the behavioral source's leg current and misses the
+//   DC-link split-cap mid-point currents. The half-bridge offset makes
+//   avg(input_current) drift further from output_power / Vin than in
+//   the PSFB case.
+//
+// `[!shouldfail]` until PhaseShiftedHalfBridge.cpp:~729-741 is fixed.
+// =========================================================================
+TEST_CASE("Test_Pshb_Spice_BehavioralPulse_Vq1Sense_On_VinDc",
+          "[converter-model][pshb-topology][spice][!shouldfail]") {
+    auto pshbJson = make_pshb_json();
+    OpenMagnetics::Pshb pshb(pshbJson);
+    pshb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::BEHAVIORAL_PULSE);
+    auto req = pshb.process_design_requirements();
+
+    std::vector<double> turnsRatios;
+    for (auto& tr : req.get_turns_ratios()) {
+        turnsRatios.push_back(resolve_dimensional_values(tr));
+    }
+    double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+    std::string netlist = pshb.generate_ngspice_circuit(turnsRatios, Lm);
+
+    // Per the SW1 reference at PhaseShiftedHalfBridge.cpp:~772, the correct
+    // form is `Vq1_sense vin_dc qa_drain 0` — the ammeter must sit on the
+    // DC rail, not between the behavioral source and the bridge node.
+    INFO("netlist excerpt around Vq1_sense:");
+    auto pos = netlist.find("Vq1_sense");
+    if (pos != std::string::npos) {
+        INFO(netlist.substr(pos, 80));
+    }
+    REQUIRE(netlist.find("Vq1_sense vin_dc") != std::string::npos);
+    REQUIRE(netlist.find("Vq1_sense leg_a_src") == std::string::npos);
+}
+
 
 // =========================================================================
 // TEST 5: PSHB Multiple Outputs
