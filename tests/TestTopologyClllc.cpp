@@ -965,6 +965,9 @@ TEST_CASE("CLLLC: AdvancedClllc JSON round-trip preserves desired fields",
     CHECK_THAT(adv.get_desired_primary_resonant_capacitance().value(),
                WithinRel(10e-9, 1e-12));
 
-    // process() is a v2 stub — must throw rather than silently return junk.
-    CHECK_THROWS_AS(adv.process(), std::logic_error);
+    // 781a6910 replaced the previously-stubbed AdvancedClllc::process()
+    // with a real implementation mirroring AdvancedLlc::process. It now
+    // returns a populated Inputs without throwing.
+    auto inputs = adv.process();
+    CHECK(!inputs.get_operating_points().empty());
 }
