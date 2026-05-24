@@ -115,8 +115,6 @@ TEST_CASE("NgspiceRunner simulate and export waveforms to SVG", "[ngspice-runner
         SKIP("ngspice not available on this system");
     }
 
-    // FIXME: Waveform extraction is failing with "Got 5 waveforms" error
-    SKIP("Waveform extraction needs fixing - skipping until ngspice integration is stable");
 
     // Flyback-like transformer test circuit
     // Primary side: voltage source with rectangular wave
@@ -150,7 +148,15 @@ Vsec_gnd sec_gnd 0 0
     SimulationConfig config;
     config.frequency = 100e3;  // 100 kHz
     config.keepTempFiles = false;
-    config.extractOnePeriod = false;  // Keep full waveforms for plotting
+    // extract_operating_point() needs a single, time-normalized period
+    // (starting at t=0). The raw ngspice transient run has tstart=100µs
+    // and runs multiple periods; leaving extractOnePeriod=false would
+    // hand the un-normalized multi-period waveform to
+    // Inputs::calculate_sampled_waveform, which then fails to interpolate
+    // at sampledTime=0 because the waveform's first time point is 100µs.
+    // The period-extraction code path normalises time and isolates one
+    // period — exactly what OperatingPoint extraction expects.
+    config.extractOnePeriod = true;
     
     auto result = runner.run_simulation(netlist, config);
     
