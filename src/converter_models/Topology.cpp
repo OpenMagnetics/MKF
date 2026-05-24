@@ -33,9 +33,23 @@ namespace OpenMagnetics {
             // τ would consume 40 % of the switching period and visibly
             // distort the inductor-current waveform, so the snubber is
             // sized for τ = 10 ns (negligible at all supported Fs).
+            //
+            // 2026-05: snubR raised 100 Ω → 10 kΩ. The 100-Ω value sits
+            // node "sw" → 0 and, during the OFF interval, dissipates
+            // Vout²/Rsnub of average power — for a 48 V output that's
+            // ~23 W per switch-OFF, around 6 W steady-state at 25 %
+            // OFF duty. On a 96 W boost (12→48 V × 2 A) that's enough
+            // to drag the operating point below the nameplate
+            // Vout/Iin, so simulate_and_extract_operating_points
+            // settles at 44 V / 1.8 A instead of 48 V / 8 A. The
+            // downstream Heaviside pipeline reads the "Primary"
+            // winding current from this waveform and the saturation
+            // filter then accepts undersized cores. 10 kΩ // 100 pF
+            // (τ = 1 µs) still damps switch ringing but only
+            // dissipates Vout²/10 kΩ = 0.23 W at 48 V.
             {
                 SpiceSimulationConfig boost;
-                boost.snubR = 100.0;       boost.snubC = 100e-12;
+                boost.snubR = 1e4;         boost.snubC = 100e-12;
                 boost.outputCapacitance = 100e-6;
                 m[MAS::Topologies::BOOST_CONVERTER] = boost;
             }
