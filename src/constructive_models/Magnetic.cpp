@@ -164,6 +164,32 @@ bool Magnetic::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
     }
 }
 
+double Magnetic::calculate_saturation_current(OperatingPoint& operatingPoint,
+                                              double temperature) {
+    // Operating-point variant: same B_sat·N·A_e/L identity, but L is
+    // taken at the supplied operating point (DC-bias-rolled-off μ).
+    // Use this when comparing against I_peak from the same OP — keeps
+    // both numbers on a consistent footing.
+    auto magneticFluxDensitySaturation =
+        get_mutable_core().get_magnetic_flux_density_saturation(temperature);
+    auto numberTurns = get_mutable_coil().get_number_turns(0);
+    auto effectiveArea = get_mutable_core().get_effective_area();
+
+    OpenMagnetics::MagnetizingInductance magnetizingInductanceCalc;
+    auto inductanceOutput =
+        magnetizingInductanceCalc.calculate_inductance_from_number_turns_and_gapping(
+            get_mutable_core(), get_mutable_coil(), &operatingPoint);
+    auto inductanceNominal =
+        inductanceOutput.get_magnetizing_inductance().get_nominal();
+    if (!inductanceNominal.has_value() || inductanceNominal.value() <= 0) {
+        throw std::runtime_error(
+            "calculate_saturation_current(OP): operating-point inductance "
+            "is missing or non-positive — cannot derive I_sat.");
+    }
+    return magneticFluxDensitySaturation * numberTurns * effectiveArea
+         / inductanceNominal.value();
+}
+
 double Magnetic::calculate_saturation_current(double temperature) {
     // Saturation current of the as-designed magnetic:
     //

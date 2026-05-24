@@ -60,6 +60,22 @@ class Magnetic : public MAS::Magnetic {
 
         double calculate_saturation_current(double temperature = Defaults().ambientTemperature);
 
+        /**
+         * @brief Saturation current evaluated at a specific operating point.
+         *
+         * Same I_sat = B_sat(T)·N·A_e/L identity as the no-arg overload,
+         * but L is the *operating* inductance (with DC-bias rolloff of
+         * the core's permeability under the operating point's primary
+         * current). For heavily-gapped cores the gap dominates and L
+         * barely moves with bias; for low-gap / ungapped cores the
+         * operating L can be 30–50 % lower than the μ_init L and the
+         * I_sat values differ accordingly. Callers comparing I_sat
+         * against I_peak (a realism-gate idiom) should use this overload
+         * so both numbers are evaluated at the same operating conditions.
+         */
+        double calculate_saturation_current(OperatingPoint& operatingPoint,
+                                            double temperature = Defaults().ambientTemperature);
+
 };
 
 bool operator==(Magnetic lhs, Magnetic rhs);
