@@ -731,8 +731,12 @@ namespace {
         REQUIRE(!inputs.get_operating_points().empty());
 
         auto dr = adv.process_design_requirements();
-        REQUIRE(dr.get_magnetizing_inductance().get_minimum().has_value());
-        REQUIRE(dr.get_magnetizing_inductance().get_minimum().value() > 0);
+        // 8acd72c7: AdvancedBuck::process_design_requirements now sets the L
+        // target as `nominal` (user's `desiredInductance`) instead of the
+        // parent Buck's minimum-only constraint. Test follows the new
+        // contract.
+        REQUIRE(dr.get_magnetizing_inductance().get_nominal().has_value());
+        REQUIRE(dr.get_magnetizing_inductance().get_nominal().value() > 0);
     }
 
 }  // namespace

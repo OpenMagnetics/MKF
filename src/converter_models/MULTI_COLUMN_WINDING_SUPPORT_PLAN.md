@@ -889,10 +889,13 @@ ninja -j2 MKF_tests
 > **Note**: `src/support/Painter.cpp` does NOT contain
 > `windingWindows` references (verified at HEAD `b00af7b`). The
 > actual winding-window-aware painting is in:
-> - `src/support/BasicPainter.cpp` (lines 1056, 1057, 1233, 1252, 1266)
-> - `src/support/AdvancedPainter.cpp` (lines 384, 398, 412, 825, 826)
+> - `src/support/PainterImpl.cpp` (the lines below referred to the old
+>   BasicPainter / AdvancedPainter split — both files have been merged
+>   into `PainterImpl.cpp` and the line numbers no longer apply; see
+>   the §13.2 section for the per-section group lookup pattern that
+>   still needs implementing)
 
-### 13.2. BasicPainter.cpp
+### 13.2. PainterImpl.cpp
 
 **Lines 1056–1057** (in section painter):
 ```cpp
@@ -913,13 +916,6 @@ itself): these read `core.get_winding_windows()` to size the
 canvas. The core painter typically iterates these already; verify
 the loop is correct.
 
-### 13.3. AdvancedPainter.cpp
-
-**Lines 384, 398, 412** (core painter): same pattern; should
-already iterate.
-
-**Lines 825–826**: same as BasicPainter 1056–1057. Apply the same
-per-section group lookup.
 
 ### 13.4. Canvas sizing
 
@@ -1209,7 +1205,7 @@ TEST_CASE("Test_Coil_Painter_Multi_Column_Canvas_Size", "[Coil][Painter]") {
     coil.assign_windings_to_columns({{0,3},{1,4},{2,5}});
     coil.wind_by_sections();
 
-    auto painter = AdvancedPainter();
+    auto painter = Painter();
     auto svg = painter.paint(core, coil);
 
     // Parse SVG, find canvas width attribute, assert ≥ 3× single-column width.
@@ -1454,8 +1450,7 @@ After v1 ships and a real 3-phase DAB design is built and measured:
 | `src/constructive_models/Bobbin.cpp` | A | §8: Remove 2 guards (lines 777, 793); loop in `create_quick_bobbin` |
 | `src/constructive_models/Coil.cpp` | A | §9–§12: Remove 3 guards (lines 346, 2189, 3361); new `create_default_groups`; replace 115× `windingWindows[0]` per cluster; add `assign_windings_to_columns`; add `find_window_index_for_group` helper |
 | `src/constructive_models/Coil.h` | A | Declare new API (§10.1, §12.2) |
-| `src/support/BasicPainter.cpp` | A | §13.2: per-section group lookup at lines 1056–1057 |
-| `src/support/AdvancedPainter.cpp` | A | §13.3: per-section group lookup at lines 825–826; canvas sizing |
+| `src/support/PainterImpl.cpp` | A | §13.2: per-section group lookup (line numbers from old BasicPainter/AdvancedPainter split no longer apply) |
 | `src/physical_models/MagnetizingInductance.cpp` | B | §14: per-column reluctance |
 | `src/physical_models/MagnetizingInductance.h` | B | §14.4: multi-column header note + `get_per_column_lm` declaration |
 | `src/physical_models/CoreLosses.cpp` | B | §15: per-column flux density |

@@ -155,7 +155,7 @@ Renders the core cross-section using SVG. Highlights each winding
 window. Shows winding chips overlaid on their assigned window.
 
 For v1 UI: a simple rectangular schematic is enough. For v2:
-hook into the AdvancedPainter's SVG output so the visual matches
+hook into the Painter's SVG output so the visual matches
 what the final render will look like.
 
 ### Task 4 — Wire up to coil JSON
@@ -199,7 +199,7 @@ If invalid, disable the "Continue" button with a clear error.
 
 ## Visual rendering
 
-The MKF `AdvancedPainter` (after Phase 6 changes) extends the canvas
+The MKF `Painter` (after Phase 6 changes) extends the canvas
 symmetrically when `windingWindows.size() > 1`. Sections placed in
 column 1 (negative-X coordinates) will render correctly without
 frontend changes.
@@ -219,7 +219,7 @@ WASM for every drag.
 2. **Phase F2** (1 week) — Add `CoreColumnVisualizer` SVG, drag-drop
    from winding chips to column drop targets. Polish.
 3. **Phase F3** (later) — Hook up live preview by re-running the
-   AdvancedPainter on each change.
+   Painter on each change.
 
 ---
 

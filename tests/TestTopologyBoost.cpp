@@ -536,12 +536,12 @@ namespace {
         REQUIRE(!inputs.get_operating_points().empty());
 
         auto dr = adv.process_design_requirements();
-        // Boost's parent PDR sets inductance as minimum (sized from ripple).
-        // For AdvancedBoost this is the parent-derived value; the desired*
-        // override is applied inside process(), not in PDR. The point of
-        // this test is just to prove construction and PDR succeed.
-        REQUIRE(dr.get_magnetizing_inductance().get_minimum().has_value());
-        REQUIRE(dr.get_magnetizing_inductance().get_minimum().value() > 0);
+        // 8acd72c7 changed AdvancedBoost::process_design_requirements to set
+        // the L target as `nominal` (the user's `desiredInductance`) instead
+        // of inheriting the parent Boost's minimum-only constraint. Mirrors
+        // AdvancedFlyback and AdvancedBuck. Test follows the new contract.
+        REQUIRE(dr.get_magnetizing_inductance().get_nominal().has_value());
+        REQUIRE(dr.get_magnetizing_inductance().get_nominal().value() > 0);
     }
 
 }  // namespace
