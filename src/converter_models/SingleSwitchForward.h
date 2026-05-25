@@ -19,7 +19,34 @@ private:
     mutable std::vector<Waveform> extraLoCurrentWaveforms;
     mutable std::vector<double>   extraLoInductances;
 
+protected:
+    // Computed diagnostics populated by process_design_requirements()/
+    // process_operating_points(). Mirror what the Forward wizard displays
+    // in its #diagnostics slot. Zeros after a successful process_* call
+    // mean the C++ skipped the assignment — that's a bug, not a normal
+    // state.
+    mutable double lastMaximumDutyCycle           = 0.0;  // D_max at Vin_min [-]
+    mutable double lastComputedMagnetizingInductance = 0.0;  // chosen Lm [H]
+    mutable double lastComputedPrimaryTurnsRatio  = 0.0;  // n_pri:n_demag = 1 (forward); reset for clarity
+    mutable double lastComputedSecondaryTurnsRatio   = 0.0;  // n_pri:n_sec_main (V_pri / V_sec at D_max) [-]
+    mutable double lastPrimaryPeakCurrent         = 0.0;  // I_pri peak at end of t_on [A]
+    mutable double lastSecondaryPeakCurrent       = 0.0;  // I_sec peak (reflected through n) [A]
+    mutable double lastMagnetizingPeakCurrent     = 0.0;  // ΔI_mag peak (worst case) [A]
+    mutable double lastResetVoltage               = 0.0;  // V_reset on the demag winding [V]
+    mutable bool   lastIsCcm                      = true; // output-inductor mode
+
 public:
+    double get_last_maximum_duty_cycle()           const { return lastMaximumDutyCycle; }
+    double get_last_computed_magnetizing_inductance() const { return lastComputedMagnetizingInductance; }
+    double get_last_computed_primary_turns_ratio() const { return lastComputedPrimaryTurnsRatio; }
+    double get_last_computed_secondary_turns_ratio()  const { return lastComputedSecondaryTurnsRatio; }
+    double get_last_primary_peak_current()         const { return lastPrimaryPeakCurrent; }
+    double get_last_secondary_peak_current()       const { return lastSecondaryPeakCurrent; }
+    double get_last_magnetizing_peak_current()     const { return lastMagnetizingPeakCurrent; }
+    double get_last_reset_voltage()                const { return lastResetVoltage; }
+    bool   get_last_is_ccm()                       const { return lastIsCcm; }
+
+
     bool _assertErrors = false;
 
     SingleSwitchForward(const json& j);

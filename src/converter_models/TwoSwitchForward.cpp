@@ -209,6 +209,14 @@ namespace OpenMagnetics {
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
 
+        // ---- Diagnostics (per-OP, last-call-wins across multiple OPs) ----
+        lastPrimaryPeakCurrent     = maximumPrimaryCurrent;
+        lastMagnetizingPeakCurrent = magnetizationCurrent;
+        if (!maximumSecondaryCurrents.empty()) {
+            lastSecondaryPeakCurrent = maximumSecondaryCurrents[0];
+        }
+        lastIsCcm = (minimumPrimaryCurrent > 0);
+
         return operatingPoint;
     }
 
@@ -270,6 +278,12 @@ namespace OpenMagnetics {
         designRequirements.set_isolation_sides(
             Topology::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), false));
         designRequirements.set_topology(Topologies::TWO_SWITCH_FORWARD_CONVERTER);
+
+        // ---- Diagnostics ----
+        lastMaximumDutyCycle              = dutyCycle;
+        lastComputedMagnetizingInductance = minimumNeededInductance;
+        lastComputedSecondaryTurnsRatio   = turnsRatios.empty() ? 0.0 : turnsRatios[0];
+
         return designRequirements;
     }
 

@@ -151,6 +151,17 @@ namespace OpenMagnetics {
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
 
+        // ---- Diagnostics ----
+        // Capture per-OP quantities. Worst case across all OPs is folded into
+        // the public getters; later OPs may overwrite earlier ones — that's
+        // intended (the last-call wins) and mirrors what other topologies do.
+        lastPrimaryPeakCurrent     = maximumPrimaryCurrent;
+        lastMagnetizingPeakCurrent = magnetizationCurrent;
+        if (!maximumSecondaryCurrents.empty()) {
+            lastSecondaryPeakCurrent = maximumSecondaryCurrents[0];
+        }
+        lastIsCcm = (minimumPrimaryCurrent > 0);
+
         return operatingPoint;
     }
 
@@ -220,6 +231,19 @@ namespace OpenMagnetics {
         designRequirements.set_isolation_sides(
             Topology::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), true));
         designRequirements.set_topology(Topologies::SINGLE_SWITCH_FORWARD_CONVERTER);
+
+        // ---- Diagnostics ----
+        // Stable per-call values (peak currents are populated later in
+        // process_operating_points_for_input_voltage; here we set what the
+        // design-requirements step already knows).
+        lastMaximumDutyCycle              = dutyCycle;
+        lastComputedMagnetizingInductance = minimumNeededInductance;
+        lastComputedPrimaryTurnsRatio     = turnsRatios.empty() ? 0.0 : turnsRatios[0];   // demag winding (= 1 for SSF reset = Vin)
+        lastComputedSecondaryTurnsRatio   = turnsRatios.size() > 1 ? turnsRatios[1] : 0.0;
+        // Reset voltage on demag winding equals Vin_min when n_demag = n_pri (single-switch forward
+        // with 1:1 demag winding — the canonical configuration).
+        lastResetVoltage                  = minimumInputVoltage;
+
         return designRequirements;
     }
 

@@ -22,7 +22,29 @@ private:
     mutable std::vector<double>   extraClampVoltages;
     mutable std::vector<double>   extraSwitchingFrequencies;
 
+protected:
+    // Computed diagnostics — same set as SingleSwitchForward plus the
+    // clamp-capacitor voltage that's unique to the ACF reset mechanism.
+    mutable double lastMaximumDutyCycle              = 0.0;
+    mutable double lastComputedMagnetizingInductance = 0.0;
+    mutable double lastComputedSecondaryTurnsRatio   = 0.0;
+    mutable double lastPrimaryPeakCurrent            = 0.0;
+    mutable double lastSecondaryPeakCurrent          = 0.0;
+    mutable double lastMagnetizingPeakCurrent        = 0.0;
+    mutable double lastClampCapVoltage               = 0.0;  // V_clamp = D·Vin/(1-D), ACF-specific
+    mutable bool   lastIsCcm                         = true;
+
 public:
+    double get_last_maximum_duty_cycle()              const { return lastMaximumDutyCycle; }
+    double get_last_computed_magnetizing_inductance() const { return lastComputedMagnetizingInductance; }
+    double get_last_computed_secondary_turns_ratio()  const { return lastComputedSecondaryTurnsRatio; }
+    double get_last_primary_peak_current()            const { return lastPrimaryPeakCurrent; }
+    double get_last_secondary_peak_current()          const { return lastSecondaryPeakCurrent; }
+    double get_last_magnetizing_peak_current()        const { return lastMagnetizingPeakCurrent; }
+    double get_last_clamp_cap_voltage()               const { return lastClampCapVoltage; }
+    bool   get_last_is_ccm()                          const { return lastIsCcm; }
+
+
     bool _assertErrors = false;
 
     ActiveClampForward(const json& j);

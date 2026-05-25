@@ -297,11 +297,39 @@ public:
                                                     int numberOfLineCycles = 3,
                                                     bool trimToLastLineCycle = true);
 
+    // ------------------------------------------------------------------
+    // Computed diagnostics — populated by process_design_requirements()
+    // and process_operating_points(). These mirror the values shown in
+    // the wizard UI under the "Diagnostics" panel. All are populated on
+    // every successful process_* call (zeros mean the C++ path skipped
+    // its assignment — a bug, not a normal state).
+    // ------------------------------------------------------------------
+    double get_computed_inductance()          const { return computedInductance; }
+    std::string get_computed_actual_mode()    const { return computedActualMode; }
+    double get_last_duty_cycle_peak()         const { return lastDutyCyclePeak; }
+    double get_last_peak_inductor_current()   const { return lastPeakInductorCurrent; }
+    double get_last_inductor_ripple()         const { return lastInductorRipple; }
+    double get_last_line_rms_current()        const { return lastLineRmsCurrent; }
+    double get_last_input_power()             const { return lastInputPower; }
+
 private:
     // MKF-only field — number of mains periods to synthesize per operating
     // point. Not part of the MAS schema (it's a simulation knob, not a
     // physical spec).
     int _numberOfPeriods = 2;
+
+    // Computed diagnostics members (mutable so const-context process_* can
+    // assign them when the topology models declare process methods as const
+    // — Buck/Boost convention). PFC's process_* are non-const so plain
+    // doubles would also work; using `mutable` keeps the pattern uniform
+    // across topologies.
+    mutable double computedInductance         = 0.0;   // L from calculate_inductance_<mode> [H]
+    mutable std::string computedActualMode    = "";    // "Continuous Conduction Mode" / "Critical..." / "Discontinuous..."
+    mutable double lastDutyCyclePeak          = 0.0;   // D at minimum-Vin peak-of-line — worst case
+    mutable double lastPeakInductorCurrent    = 0.0;   // I_L peak at line peak, minimum Vin [A]
+    mutable double lastInductorRipple         = 0.0;   // ΔI_L at the worst-case sample [A]
+    mutable double lastLineRmsCurrent         = 0.0;   // I_in_rms at minimum Vin [A]
+    mutable double lastInputPower             = 0.0;   // P_in_avg (per phase for interleaved) [W]
 };
 
 } // namespace OpenMagnetics

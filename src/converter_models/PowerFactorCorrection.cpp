@@ -290,6 +290,12 @@ namespace OpenMagnetics {
         inductanceWithTolerance.set_minimum(inductance);
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
 
+        // Populate the computed-inductance / actual-mode diagnostics now so
+        // the wizard can show them even on an analytical-only call (before
+        // process_operating_points runs).
+        computedInductance  = inductance;
+        computedActualMode  = determine_actual_mode(inductance);
+
         return designRequirements;
     }
 
@@ -332,6 +338,22 @@ namespace OpenMagnetics {
         double pinAvg     = outputPower / efficiency;
         double iinRmsAvg  = pinAvg / vinRmsMin;
         double iLinePeak  = iinRmsAvg * std::sqrt(2);
+
+        // Populate per-OP diagnostics. Worst-case is at minimum input voltage
+        // peak-of-line (where current is max → ΔI_L is max and D is max).
+        // For DCM the peak-current formula above already assumes continuous
+        // envelope; the lastInductorRipple reflects the peak-of-line value.
+        {
+            double Dpeak    = calculate_duty_cycle(vinPeakMin, outputVoltage);
+            double deltaIpk = vinPeakMin * Dpeak / (L * switchingFrequency);
+            computedInductance      = L;
+            computedActualMode      = mode;
+            lastDutyCyclePeak       = Dpeak;
+            lastPeakInductorCurrent = iLinePeak + deltaIpk / 2.0;
+            lastInductorRipple      = deltaIpk;
+            lastLineRmsCurrent      = iinRmsAvg;
+            lastInputPower          = pinAvg;
+        }
 
         double mainsPeriod     = 1.0 / lineFrequency;
         double switchingPeriod = 1.0 / switchingFrequency;

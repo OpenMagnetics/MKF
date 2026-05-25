@@ -145,6 +145,20 @@ public:
      * @brief Propose a design based on the specifications.
      */
     json propose_design();
+
+    // ---- Diagnostics (populated by process_design_requirements) ----
+    double get_computed_inductance()         const { return computedInductance; }
+    double get_computed_min_frequency()      const { return computedMinFrequency; }
+    double get_computed_max_frequency()      const { return computedMaxFrequency; }
+    double get_computed_impedance_at_min_freq() const { return computedImpedanceAtMinFreq; }
+    int    get_computed_number_windings()    const { return computedNumberWindings; }
+
+private:
+    mutable double computedInductance         = 0.0;
+    mutable double computedMinFrequency       = 0.0;  // lowest impedance spec frequency [Hz]
+    mutable double computedMaxFrequency       = 0.0;  // highest impedance spec frequency [Hz]
+    mutable double computedImpedanceAtMinFreq = 0.0;  // |Z| at the lowest spec freq [Ω]
+    mutable int    computedNumberWindings     = 1;
 };
 
 } // namespace OpenMagnetics

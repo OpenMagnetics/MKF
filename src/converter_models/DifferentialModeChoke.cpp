@@ -100,6 +100,28 @@ namespace OpenMagnetics {
             designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         }
 
+        // ---- Diagnostics ----
+        computedNumberWindings = numWindings;
+        if (auto Lreq = designRequirements.get_magnetizing_inductance().get_minimum()) {
+            computedInductance = Lreq.value();
+        }
+        if (minImpedance) {
+            double lowestFreq = std::numeric_limits<double>::max();
+            double highestFreq = 0.0;
+            double zAtLowestFreq = 0.0;
+            for (const auto& point : minImpedance.value()) {
+                double f = point.get_frequency();
+                if (f < lowestFreq) {
+                    lowestFreq = f;
+                    zAtLowestFreq = point.get_impedance().get_magnitude();
+                }
+                if (f > highestFreq) highestFreq = f;
+            }
+            computedMinFrequency       = lowestFreq;
+            computedMaxFrequency       = highestFreq;
+            computedImpedanceAtMinFreq = zAtLowestFreq;
+        }
+
         return designRequirements;
     }
 

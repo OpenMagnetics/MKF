@@ -19,7 +19,28 @@ private:
     mutable std::vector<Waveform> extraLoCurrentWaveforms;
     mutable std::vector<double>   extraLoInductances;
 
+protected:
+    // Computed diagnostics — TSF reset clamps to ±Vin via the diodes
+    // (no separate clamp cap or demag winding) so D ≤ 0.5 is enforced
+    // by the topology itself.
+    mutable double lastMaximumDutyCycle              = 0.0;
+    mutable double lastComputedMagnetizingInductance = 0.0;
+    mutable double lastComputedSecondaryTurnsRatio   = 0.0;
+    mutable double lastPrimaryPeakCurrent            = 0.0;
+    mutable double lastSecondaryPeakCurrent          = 0.0;
+    mutable double lastMagnetizingPeakCurrent        = 0.0;
+    mutable bool   lastIsCcm                         = true;
+
 public:
+    double get_last_maximum_duty_cycle()              const { return lastMaximumDutyCycle; }
+    double get_last_computed_magnetizing_inductance() const { return lastComputedMagnetizingInductance; }
+    double get_last_computed_secondary_turns_ratio()  const { return lastComputedSecondaryTurnsRatio; }
+    double get_last_primary_peak_current()            const { return lastPrimaryPeakCurrent; }
+    double get_last_secondary_peak_current()          const { return lastSecondaryPeakCurrent; }
+    double get_last_magnetizing_peak_current()        const { return lastMagnetizingPeakCurrent; }
+    bool   get_last_is_ccm()                          const { return lastIsCcm; }
+
+
     bool _assertErrors = false;
 
     TwoSwitchForward(const json& j);
