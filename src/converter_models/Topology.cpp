@@ -277,7 +277,15 @@ namespace OpenMagnetics {
             {
                 SpiceSimulationConfig forward;
                 forward.swModelVT = 2.5;        forward.swModelVH = 0.5;
-                forward.snubR = 1e3;            forward.snubC = 1e-9;
+                // snubR was 1kΩ which dissipated V_pri²/R per switching
+                // edge — for a 48V primary swing that's 2.3W per snubber
+                // and 4.6–7W total across the bridge, eating ~37% of
+                // input power for low-power (≤10W) decks and falsely
+                // failing efficiency_sanity. 10kΩ keeps the snubber
+                // functional (RC time constant 10µs vs 100kHz switching
+                // is fine) but cuts dissipation 10×. Same fix as the
+                // Vienna/boost defaults.
+                forward.snubR = 10e3;           forward.snubC = 1e-9;
                 forward.diodeIS = 1e-12;        forward.diodeRS = 0.05;
                 forward.outputCapacitance = 100e-6;
                 forward.relTol = 0.01;          forward.absTol = 1e-7;
