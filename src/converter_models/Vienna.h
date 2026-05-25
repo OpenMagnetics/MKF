@@ -143,10 +143,37 @@ public:
     static double compute_line_peak_current(double P, double V_phase_rms, double eff, double pf);
     /** L = V_phase_peak * (1 - M) / (DeltaI_pp_target * Fsw). */
     static double compute_inductor_for_ripple(double V_phase_peak, double M, double Fsw, double DeltaI_pp_target);
-    /** Switch RMS via Hartmann ETH 19755 (2011) closed form (per-switch, single Vienna leg). */
+    /** Vienna I per-switch RMS via Hartmann ETH 19755 (2011) §3.2 closed form.
+     *  Single switch per leg conducts both half-cycles through the diode
+     *  bridge: I_sw_rms² = I_pk² · (1/4 − 2M/(3π)). */
     static double compute_switch_rms(double I_pk, double M);
     /** Per-diode average current = I_pk / pi (full-wave bridge). */
     static double compute_diode_avg(double I_pk);
+
+    // ── Vienna II helpers (Phase 3, Item 3) ───────────────────────────────
+    //
+    // Vienna II splits each leg into TWO active switches (back-to-back
+    // MOSFETs forming a bidirectional clamp). Each switch conducts only
+    // during ONE polarity half-cycle of the phase current — exactly half
+    // the duty of Vienna I's single-switch-per-leg arrangement. The fast-
+    // rectifier diodes disappear; their job is taken by the body diode of
+    // the OFF-polarity switch (see also synchronousRectifier, Item 5).
+    //
+    // Derivation (Friedli & Kolar, "Essence of 3-φ PFC Part II" §IV.B):
+    //   I_sw_avg = I_pk · (1/(2π)) · ∫₀^π sin(t)·(1 − M·sin(t)) dt
+    //            = I_pk · (1/π − M/4)
+    //   I_sw_rms² = I_pk² · (1/(2π)) · ∫₀^π sin²(t)·(1 − M·sin(t)) dt
+    //             = I_pk² · (1/8 − M/(3π))
+    //
+    // Each closed form is exactly HALF its Vienna I counterpart (same
+    // integrand, half the integration range).
+
+    /** Vienna II per-switch RMS — half the Vienna I duty.
+     *  I_sw_rms² = I_pk² · (1/8 − M/(3π)). */
+    static double compute_switch_rms_vienna_ii(double I_pk, double M);
+    /** Vienna II per-switch average — half the Vienna I duty.
+     *  I_sw_avg = I_pk · (1/π − M/4). */
+    static double compute_switch_avg_vienna_ii(double I_pk, double M);
 
     // Phase-3 fullLineCycle waveform builder.
     //

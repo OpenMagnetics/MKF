@@ -158,6 +158,26 @@ double Vienna::compute_diode_avg(double I_pk) {
     return I_pk / M_PI;
 }
 
+double Vienna::compute_switch_rms_vienna_ii(double I_pk, double M) {
+    if (I_pk < 0)
+        throw std::runtime_error("Vienna II: I_pk must be >= 0");
+    // Domain: M ≤ 3π/8 ≈ 1.178 — comfortably beyond the M ≤ 1 over-mod
+    // gate. Inner term is positive for any valid M.
+    double inner = 1.0 / 8.0 - M / (3.0 * M_PI);
+    if (inner < 0)
+        throw std::runtime_error(
+            "Vienna II: switch-RMS closed form yields negative argument at M=" +
+            std::to_string(M));
+    return I_pk * std::sqrt(inner);
+}
+
+double Vienna::compute_switch_avg_vienna_ii(double I_pk, double M) {
+    if (I_pk < 0)
+        throw std::runtime_error("Vienna II: I_pk must be >= 0");
+    // Always positive for the valid M ≤ 1 range (1/π ≈ 0.318 ≫ M/4 ≤ 0.25).
+    return I_pk * (1.0 / M_PI - M / 4.0);
+}
+
 // =====================================================================
 // run_checks
 // =====================================================================
@@ -190,20 +210,21 @@ bool Vienna::run_checks(bool assertErrors) {
             return false;
         }
     }
-    // Variant gates - Phase 1+2 supports only the default.
-    if (get_vienna_variant().has_value() &&
-        get_vienna_variant().value() != ViennaVariant::VIENNA_I) {
-        if (assertErrors) throw std::runtime_error(
-            "Vienna: only viennaI is supported in Phase 1+2 (viennaII deferred to Phase 3).");
-        return false;
-    }
-    if (get_switch_type().has_value() &&
-        get_switch_type().value() != ViennaSwitchType::T_TYPE) {
-        if (assertErrors) throw std::runtime_error(
-            "Vienna: only switchType=tType is supported in Phase 1+2 "
-            "(backToBackMosfet / singleMosfetIn4DiodeBridge deferred to Phase 3).");
-        return false;
-    }
+    // Variant gates — Phase 3 supports both viennaI and viennaII.
+    // switchType gate fully lifted in Phase 3 Item 4. All three variants
+    // are now analytically modelled:
+    //   - tType                       → standard Vienna I single-switch leg
+    //                                   (or Vienna II two-switch leg if
+    //                                   viennaVariant=viennaII).
+    //   - backToBackMosfet            → analytically identical to Vienna II
+    //                                   (same physical two-switch arrangement,
+    //                                   different schematic-symbol on BOM).
+    //   - singleMosfetIn4DiodeBridge  → single MOSFET inside a 4-diode
+    //                                   bridge per leg. Same Vienna I
+    //                                   per-switch RMS / avg, but with 4
+    //                                   forward diode drops in the
+    //                                   conduction path (higher conduction
+    //                                   loss — caller's loss model).
     if (get_synchronous_rectifier().value_or(false)) {
         if (assertErrors) throw std::runtime_error(
             "Vienna: synchronousRectifier is not modelled in Phase 1+2 "
@@ -454,6 +475,13 @@ std::vector<OperatingPoint> Vienna::process_operating_points(
             "30°", "90°", "150°", "210°", "270°", "330°",
         };
         for (size_t i = 0; i < ops.size(); ++i) {
+            // Set the per-op diagnostic side-effects (lastSwitchRmsCurrent,
+            // lastInductorPeakCurrent, etc.) by running the peak-of-line
+            // solver once. emit_switching_period_op_at_line_angle does NOT
+            // touch the last* fields, so without this call the sector
+            // path would leave them stale from the previous input OP.
+            (void) process_operating_point_for_input_voltage(ops[i]);
+
             for (size_t s = 0; s < 6; ++s) {
                 auto op = emit_switching_period_op_at_line_angle(ops[i], sectorAngles[s]);
                 op.set_name("OP " + std::to_string(i)
@@ -549,8 +577,29 @@ OperatingPoint Vienna::process_operating_point_for_input_voltage(
     lastInductorRipplePeakToPeak = DeltaI_pp;
     lastDutyAtPeak               = duty_at_peak;
     lastSwitchVoltageStress      = Vdc / 2.0;
-    lastSwitchRmsCurrent         = compute_switch_rms(I_pk, M);
-    lastDiodeAvgCurrent          = compute_diode_avg(I_pk);
+    // Variant-aware switch / diode diagnostics.
+    //
+    //   viennaVariant=viennaII       → 2 switches/leg, each conducts half
+    //                                  the duty → use Vienna II forms.
+    //   switchType=backToBackMosfet  → physically identical to Vienna II
+    //                                  (two switches per leg). Treat as
+    //                                  Vienna II for the diagnostics.
+    //   switchType=singleMosfetIn4DiodeBridge → single switch per leg, both
+    //                                  polarities via the bridge → Vienna I
+    //                                  forms apply unchanged. The 4 diode
+    //                                  drops show up in the caller's
+    //                                  conduction-loss model, not in the
+    //                                  per-switch RMS/avg numbers.
+    const auto vvariant = get_vienna_variant().value_or(ViennaVariant::VIENNA_I);
+    const auto stype    = get_switch_type().value_or(ViennaSwitchType::T_TYPE);
+    const bool twoSwitchPerLeg = (vvariant == ViennaVariant::VIENNA_II) ||
+                                  (stype    == ViennaSwitchType::BACK_TO_BACK_MOSFET);
+    lastSwitchRmsCurrent = twoSwitchPerLeg
+        ? compute_switch_rms_vienna_ii(I_pk, M)
+        : compute_switch_rms(I_pk, M);
+    lastDiodeAvgCurrent  = twoSwitchPerLeg
+        ? compute_switch_avg_vienna_ii(I_pk, M)  // body-diode current
+        : compute_diode_avg(I_pk);                // fast-rectifier current
     lastModulationIndex          = M;
     lastInputPower               = P / eff;
 

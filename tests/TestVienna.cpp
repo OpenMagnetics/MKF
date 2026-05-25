@@ -151,20 +151,8 @@ TEST_CASE("Vienna: throws on outputDcVoltage below sqrt(2)*V_LL", "[vienna-topol
 }
 
 
-TEST_CASE("Vienna: rejects unsupported viennaII / non-tType / synchronousRectifier in Phase 1+2",
+TEST_CASE("Vienna: rejects unsupported synchronousRectifier / phaseCount>1 (gating before items 5-6)",
           "[vienna-topology]") {
-    {
-        auto j = make_vienna_json();
-        j["viennaVariant"] = "viennaII";
-        Vienna v(j);
-        REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
-    }
-    {
-        auto j = make_vienna_json();
-        j["switchType"] = "backToBackMosfet";
-        Vienna v(j);
-        REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
-    }
     {
         auto j = make_vienna_json();
         j["synchronousRectifier"] = true;
@@ -177,8 +165,126 @@ TEST_CASE("Vienna: rejects unsupported viennaII / non-tType / synchronousRectifi
         Vienna v(j);
         REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
     }
-    // Phase 3 (this and the previous commit) lifted both fullLineCycle and
-    // peakOfLinePlusSectors out of the deferred list.
+    // Phase 3 (these commits) lifted fullLineCycle, peakOfLinePlusSectors,
+    // and viennaII out of the deferred list.
+}
+
+
+// =========================================================================
+// Phase 3 — Item 3: viennaII variant.
+//
+// Vienna II splits each leg into two back-to-back MOSFETs (bidirectional
+// clamp), each conducting one polarity half-cycle. Per-switch RMS / avg
+// are HALF their Vienna I counterparts; the fast-rectifier diodes are
+// replaced by body diodes of the OFF-polarity switch.
+//
+// Gates:
+//   (1) run_checks accepts viennaII.
+//   (2) Closed-form check: I_sw_rms² for Vienna II = ½ · I_sw_rms² for
+//       Vienna I at the same (I_pk, M).
+//   (3) Inductor waveforms are UNCHANGED — the variant difference is on
+//       the converter switch arrangement, not the boost inductor itself.
+// =========================================================================
+TEST_CASE("Vienna: viennaII switch RMS is half Vienna I in energy terms",
+          "[vienna-topology][phase3-vienna-ii]") {
+    // (2) closed-form sanity check.
+    const double I_pk = 10.0;
+    const double M    = 0.85;
+    double rmsI    = Vienna::compute_switch_rms(I_pk, M);
+    double rmsII   = Vienna::compute_switch_rms_vienna_ii(I_pk, M);
+    // I²_II / I²_I = 0.5 (exact, by integral construction).
+    CHECK((rmsII * rmsII) ==
+          Catch::Approx(0.5 * rmsI * rmsI).epsilon(1e-9));
+
+    double avgII = Vienna::compute_switch_avg_vienna_ii(I_pk, M);
+    // I_avg_ii = I_pk · (1/π − M/4) — quick spot check.
+    CHECK(avgII == Catch::Approx(I_pk * (1.0 / M_PI - M / 4.0)).epsilon(1e-9));
+}
+
+
+// =========================================================================
+// Phase 3 — Item 4: alternative switch types.
+//
+// switchType=backToBackMosfet shares Vienna II's two-switches-per-leg
+// arrangement, so the per-switch RMS / avg numbers must equal the
+// viennaVariant=viennaII case at the same operating point.
+//
+// switchType=singleMosfetIn4DiodeBridge is single-switch-per-leg (like
+// Vienna I tType) but with 4 forward diode drops in the conduction path
+// — the per-switch RMS / avg are unchanged from Vienna I; the diode-loss
+// model is the caller's responsibility.
+// =========================================================================
+TEST_CASE("Vienna: backToBackMosfet switchType matches viennaII diagnostics",
+          "[vienna-topology][phase3-switchtypes]") {
+    auto jBb = make_vienna_json();
+    jBb["switchType"] = "backToBackMosfet";
+    Vienna vBb(jBb);
+    REQUIRE(vBb.run_checks(false));
+    (void) vBb.process();
+
+    auto jII = make_vienna_json();
+    jII["viennaVariant"] = "viennaII";
+    Vienna vII(jII);
+    (void) vII.process();
+
+    CHECK(vBb.get_last_switch_rms_current() ==
+          Catch::Approx(vII.get_last_switch_rms_current()).epsilon(1e-9));
+    CHECK(vBb.get_last_diode_avg_current() ==
+          Catch::Approx(vII.get_last_diode_avg_current()).epsilon(1e-9));
+}
+
+
+TEST_CASE("Vienna: singleMosfetIn4DiodeBridge switchType keeps Vienna I diagnostics",
+          "[vienna-topology][phase3-switchtypes]") {
+    auto jSm = make_vienna_json();
+    jSm["switchType"] = "singleMosfetIn4DiodeBridge";
+    Vienna vSm(jSm);
+    REQUIRE(vSm.run_checks(false));
+    (void) vSm.process();
+
+    auto jI = make_vienna_json();  // tType + viennaI (defaults)
+    Vienna vI(jI);
+    (void) vI.process();
+
+    CHECK(vSm.get_last_switch_rms_current() ==
+          Catch::Approx(vI.get_last_switch_rms_current()).epsilon(1e-9));
+    CHECK(vSm.get_last_diode_avg_current() ==
+          Catch::Approx(vI.get_last_diode_avg_current()).epsilon(1e-9));
+}
+
+
+TEST_CASE("Vienna: viennaII run_checks + diagnostics dispatch",
+          "[vienna-topology][phase3-vienna-ii]") {
+    auto j = make_vienna_json();
+    j["viennaVariant"] = "viennaII";
+    Vienna v(j);
+
+    // (1)
+    REQUIRE(v.run_checks(false));
+
+    auto inputs = v.process();
+    REQUIRE(!inputs.get_operating_points().empty());
+
+    // Diagnostics should reflect Vienna II's per-switch numbers, NOT
+    // Vienna I's. Compute both and confirm we got the II flavour.
+    double I_pk = v.get_computed_line_peak_current();
+    double M    = v.get_last_modulation_index();
+    REQUIRE(I_pk > 0.0);
+    REQUIRE(M > 0.0);
+
+    double expectedII = Vienna::compute_switch_rms_vienna_ii(I_pk, M);
+    CHECK(v.get_last_switch_rms_current() ==
+          Catch::Approx(expectedII).epsilon(1e-6));
+
+    // (3) Inductor waveform is unchanged: Vienna I and Vienna II produce
+    // the same inductor current envelope. Compare peak-current diagnostic
+    // across the two variants at the same OP.
+    auto j2 = make_vienna_json();
+    j2["viennaVariant"] = "viennaI";
+    Vienna vI(j2);
+    (void) vI.process();
+    CHECK(v.get_last_inductor_peak_current() ==
+          Catch::Approx(vI.get_last_inductor_peak_current()).epsilon(1e-6));
 }
 
 
