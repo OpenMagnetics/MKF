@@ -533,7 +533,10 @@ namespace OpenMagnetics {
         double magnetizingInductance,
         size_t inputVoltageIndex,
         size_t operatingPointIndex) {
-        
+
+        // Minimal spice_config() consolidation — PULSE rise/fall only.
+        const auto cfg = spice_config();
+
         // Get input voltages
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames_;
@@ -611,7 +614,9 @@ namespace OpenMagnetics {
         // Two-Switch Forward uses two switches: S1 (high-side) and S2 (low-side)
         // Both switches turn on and off together
         circuit << "* PWM Switches (both controlled together)\n";
-        circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
+        circuit << "Vpwm pwm_ctrl 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+                << cfg.pwmRise << " " << cfg.pwmFall
+                << " " << tOn << " " << period << ")\n";
         circuit << ".model SW1 SW VT=2.5 VH=0.5 RON=0.1 ROFF=1MEG\n";
         // Use simple diode model without junction capacitance for better convergence
         circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n\n";

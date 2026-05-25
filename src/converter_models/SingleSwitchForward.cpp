@@ -500,7 +500,15 @@ namespace OpenMagnetics {
         double magnetizingInductance,
         size_t inputVoltageIndex,
         size_t operatingPointIndex) {
-        
+
+        // Minimal spice_config() consolidation — only the PULSE rise/fall
+        // times are pulled from the shared `forward` registry entry.
+        // Other SSF hardcoded values (.options, SW model, diode model,
+        // snubbers) await registry alignment before swapping; current
+        // registry values match the .cpp for the most part but a
+        // careful comparison is needed first.
+        const auto cfg = spice_config();
+
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
@@ -577,7 +585,9 @@ namespace OpenMagnetics {
 
         // PWM Main Switch
         circuit << "* PWM Main Switch\n";
-        circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
+        circuit << "Vpwm pwm_ctrl 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+                << cfg.pwmRise << " " << cfg.pwmFall
+                << " " << tOn << " " << period << ")\n";
         circuit << ".model SW1 SW VT=2.5 VH=0.5\n";
         circuit << "S1 q1_drain pri_p pwm_ctrl 0 SW1\n\n";
         
