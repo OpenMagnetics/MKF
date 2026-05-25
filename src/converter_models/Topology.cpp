@@ -397,6 +397,28 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::CLLC_RESONANT_CONVERTER] = cllc;
             }
 
+            // SRC (Series-Resonant Converter) — series-only L_r + C_r tank
+            // driving a full-bridge or half-bridge primary. Resonant
+            // converter class shares LLC's solver settings (looser
+            // tolerances, GEAR method) and switch/snubber/diode params.
+            // Values matched to Src::generate_ngspice_circuit's historical
+            // hardcoded netlist byte-for-byte (Topology.h: SW1 VH=0.8,
+            // RON=0.01, diode IS=1e-12 RS=0.05, snub 1k/1nF, output cap
+            // 47 µF, RELTOL=0.01 ABSTOL=1e-7 ITL1=500 ITL4=500 GEAR).
+            {
+                SpiceSimulationConfig src;
+                src.swModelVT = 2.5;            src.swModelVH = 0.8;
+                src.swModelRON = 0.01;          src.swModelROFF = 1e6;
+                src.snubR = 1e3;                src.snubC = 1e-9;
+                src.diodeIS = 1e-12;            src.diodeRS = 0.05;
+                src.outputCapacitance = 47e-6;
+                src.relTol = 0.01;              src.absTol = 1e-7;
+                src.vnTol = 1e-4;
+                src.itl1 = 500;                 src.itl4 = 500;
+                src.method = "GEAR";            src.trTol = 7.0;
+                m[MAS::Topologies::SERIES_RESONANT_CONVERTER] = src;
+            }
+
             // LLC resonant — series-resonant L_r + C_r in series with
             // the magnetizing inductance L_m of a center-tapped
             // transformer, half-bridge primary inverter at 50%
