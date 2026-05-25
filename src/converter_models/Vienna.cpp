@@ -178,6 +178,22 @@ double Vienna::compute_switch_avg_vienna_ii(double I_pk, double M) {
     return I_pk * (1.0 / M_PI - M / 4.0);
 }
 
+double Vienna::compute_boost_diode_avg(double I_pk, double M) {
+    if (I_pk < 0)
+        throw std::runtime_error("Vienna: I_pk must be >= 0");
+    if (M < 0 || M > 1.0)
+        throw std::runtime_error("Vienna: M must be in [0, 1]");
+    return I_pk * M / 4.0;
+}
+
+double Vienna::compute_boost_diode_rms(double I_pk, double M) {
+    if (I_pk < 0)
+        throw std::runtime_error("Vienna: I_pk must be >= 0");
+    if (M < 0 || M > 1.0)
+        throw std::runtime_error("Vienna: M must be in [0, 1]");
+    return I_pk * std::sqrt(2.0 * M / (3.0 * M_PI));
+}
+
 // =====================================================================
 // run_checks
 // =====================================================================
@@ -225,16 +241,10 @@ bool Vienna::run_checks(bool assertErrors) {
     //                                   forward diode drops in the
     //                                   conduction path (higher conduction
     //                                   loss — caller's loss model).
-    if (get_synchronous_rectifier().value_or(false)) {
+    // Phase 3 Item 5 lifted synchronousRectifier. Item 6 lifted phaseCount>1.
+    if (get_phase_count().value_or(1) < 1) {
         if (assertErrors) throw std::runtime_error(
-            "Vienna: synchronousRectifier is not modelled in Phase 1+2 "
-            "(deferred to Phase 3).");
-        return false;
-    }
-    if (get_phase_count().value_or(1) > 1) {
-        if (assertErrors) throw std::runtime_error(
-            "Vienna: phaseCount > 1 (interleaved channels) is not supported "
-            "in Phase 1+2 (deferred to Phase 3).");
+            "Vienna: phaseCount must be >= 1");
         return false;
     }
     // Phase 3 supports all three sampling strategies: peakOfLineOnly,
@@ -399,9 +409,19 @@ DesignRequirements Vienna::process_design_requirements() {
     double I_pk = compute_line_peak_current(P_max, V_phase_rms, eff, pf);
     computedLinePeakCurrent = I_pk;
 
-    // L from peak-to-peak ripple target (ripple expressed as fraction of I_pk).
+    // L from peak-to-peak ripple target (ripple expressed as fraction of
+    // I_pk). For interleaved channels (phaseCount > 1), the SUM-current
+    // ripple at the converter input cancels by ≈1/N (ideal case), so
+    // each channel can have N× the ripple of the single-channel design
+    // while still meeting the input-side ripple target. Per-channel
+    // inductance is therefore L_single / N.
     double DeltaI_pp_target = rippleRatio * I_pk;
     double L = compute_inductor_for_ripple(V_phase_peak, M, Fsw, DeltaI_pp_target);
+
+    const int N_ch = static_cast<int>(get_phase_count().value_or(1));
+    if (N_ch > 1) {
+        L = L / static_cast<double>(N_ch);
+    }
 
     // User overrides take precedence (validation against published designs).
     if (userBoostInductance > 0) L = userBoostInductance;
@@ -600,64 +620,79 @@ OperatingPoint Vienna::process_operating_point_for_input_voltage(
     lastDiodeAvgCurrent  = twoSwitchPerLeg
         ? compute_switch_avg_vienna_ii(I_pk, M)  // body-diode current
         : compute_diode_avg(I_pk);                // fast-rectifier current
+    // Boost-diode / sync-rec MOSFET diagnostics. These numbers are the
+    // same per-component current irrespective of synchronousRectifier
+    // (the physical inductor current and rectifier conduction window
+    // are identical); the caller's loss model multiplies by Vf
+    // (sync-rec OFF) or Rds (sync-rec ON).
+    lastBoostDiodeAvgCurrent = compute_boost_diode_avg(I_pk, M);
+    lastBoostDiodeRmsCurrent = compute_boost_diode_rms(I_pk, M);
     lastModulationIndex          = M;
     lastInputPower               = P / eff;
 
-    // ---- Build three phase-inductor windings ----
+    // ---- Build phase-inductor windings ----
     //
-    // peakOfLineOnly (default, Phase 1+2): each winding is the switching-
-    // period waveform at the worst-case stress point (its own peak-of-line);
-    // all three are by definition identical. Good for adviser worst-case
-    // sizing; poor for visualisation (wizard shows three identical traces).
-    //
-    // fullLineCycle (Phase 3): each winding is the full 50/60 Hz line cycle,
-    // with the three phases offset by ±120°. Wizard sees a recognisable
-    // 3-phase pattern; adviser sees both line-frequency and switching-
-    // frequency content via the FFT.
+    // peakOfLineOnly (default, Phase 1+2): switching-period waveform at
+    //   the worst-case stress point. Three windings, identical by symmetry.
+    // fullLineCycle (Phase 3 Item 1): full 50/60 Hz line cycle envelope,
+    //   three windings shifted by ±120°.
+    // phaseCount=N > 1 (Phase 3 Item 6): each phase has N interleaved
+    //   channels; emit 3N windings ("Phase A ch 1", ..., "Phase C ch N").
+    //   Per-channel current = (per-phase current) / N. The L value above
+    //   was already divided by N in process_design_requirements, so the
+    //   computed DeltaI_pp is per-channel. Channels of the same phase
+    //   are identical analytically (switching-frequency phase shift not
+    //   modelled here — visible only via FFT cross-spectral cancellation,
+    //   which the adviser doesn't use). The adviser sizes ONE channel
+    //   inductor; user builds 3·N physical units.
     static const char* phaseNames[3] = { "Phase A", "Phase B", "Phase C" };
     const double F_line = get_line_frequency().value_or(50.0);
     const bool fullLineCycle =
         get_sampling_strategy().value_or(ViennaSamplingStrategy::PEAK_OF_LINE_ONLY)
             == ViennaSamplingStrategy::FULL_LINE_CYCLE;
 
-    // Positive-sequence A-B-C: Phase A at 0, B at -120°, C at +120°. The
-    // wizard plot then shows A leading B leading C, matching the grid
-    // convention.
     static const double phaseOffsets[3] = {
         0.0,
         -2.0 * M_PI / 3.0,
         +2.0 * M_PI / 3.0,
     };
 
+    const int N_ch_emit = std::max(1, static_cast<int>(get_phase_count().value_or(1)));
+    const double inv_N = 1.0 / static_cast<double>(N_ch_emit);
+    const double I_pk_ch = I_pk * inv_N;
+
     for (int ph = 0; ph < 3; ++ph) {
-        Waveform currentWaveform;
-        Waveform voltageWaveform;
-        double opFreq = Fsw;
+        for (int ch = 0; ch < N_ch_emit; ++ch) {
+            Waveform currentWaveform;
+            Waveform voltageWaveform;
+            double opFreq = Fsw;
 
-        if (fullLineCycle) {
-            currentWaveform = build_line_cycle_waveform(
-                LineCycleKind::CURRENT, I_pk, V_phase_peak, Vdc,
-                L, Fsw, F_line, phaseOffsets[ph]);
-            voltageWaveform = build_line_cycle_waveform(
-                LineCycleKind::VOLTAGE, I_pk, V_phase_peak, Vdc,
-                L, Fsw, F_line, phaseOffsets[ph]);
-            // The waveform's natural period is the line period; downstream
-            // FFT analysis treats `frequency` as the fundamental of the
-            // signal. Use F_line so the line-frequency component lands on
-            // bin 1 of the harmonic decomposition.
-            opFreq = F_line;
-        }
-        else {
-            currentWaveform = Inputs::create_waveform(
-                WaveformLabel::TRIANGULAR, DeltaI_pp, Fsw, duty_at_peak, I_pk, 0);
-            voltageWaveform = Inputs::create_waveform(
-                WaveformLabel::RECTANGULAR, V_L_pp, Fsw, duty_at_peak,
-                V_L_off + V_L_pp / 2.0, 0);
-        }
+            if (fullLineCycle) {
+                currentWaveform = build_line_cycle_waveform(
+                    LineCycleKind::CURRENT, I_pk_ch, V_phase_peak, Vdc,
+                    L, Fsw, F_line, phaseOffsets[ph]);
+                voltageWaveform = build_line_cycle_waveform(
+                    LineCycleKind::VOLTAGE, I_pk_ch, V_phase_peak, Vdc,
+                    L, Fsw, F_line, phaseOffsets[ph]);
+                opFreq = F_line;
+            }
+            else {
+                currentWaveform = Inputs::create_waveform(
+                    WaveformLabel::TRIANGULAR, DeltaI_pp, Fsw, duty_at_peak,
+                    I_pk_ch, 0);
+                voltageWaveform = Inputs::create_waveform(
+                    WaveformLabel::RECTANGULAR, V_L_pp, Fsw, duty_at_peak,
+                    V_L_off + V_L_pp / 2.0, 0);
+            }
 
-        auto excitation = complete_excitation(
-            currentWaveform, voltageWaveform, opFreq, phaseNames[ph]);
-        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            std::string name = phaseNames[ph];
+            if (N_ch_emit > 1) {
+                name += " ch " + std::to_string(ch + 1);
+            }
+            auto excitation = complete_excitation(
+                currentWaveform, voltageWaveform, opFreq, name);
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+        }
     }
 
     OperatingConditions conditions;
@@ -727,38 +762,44 @@ OperatingPoint Vienna::emit_switching_period_op_at_line_angle(
         0.0, -2.0 * M_PI / 3.0, +2.0 * M_PI / 3.0,
     };
 
+    // Interleaving: per-phase current splits evenly across N_ch parallel
+    // channels. L is already L_single / N_ch (process_design_requirements),
+    // so the local ΔI_pp formula naturally gives the per-channel ripple.
+    const int N_ch = std::max(1, static_cast<int>(get_phase_count().value_or(1)));
+    const double inv_N = 1.0 / static_cast<double>(N_ch);
+
     OperatingPoint operatingPoint;
     for (int ph = 0; ph < 3; ++ph) {
         const double theta_ph   = sectorAngleRad + phaseOffsets[ph];
         const double sinTheta   = std::sin(theta_ph);
         const double Vphase_inst = V_phase_peak * sinTheta;
         const double Vphase_abs  = std::abs(Vphase_inst);
-        const double I_avg_inst  = I_pk * sinTheta;
+        const double I_avg_inst  = I_pk * sinTheta * inv_N;   // per-channel avg
 
-        // Local boost duty at this instant. Below the "off-time floor" of
-        // |V_phase|/Vhalf the converter has nothing to do (sin near zero
-        // crossing), so duty saturates at 0.
         double duty_inst = 1.0 - Vphase_abs / Vhalf;
         if (duty_inst < 0.0) duty_inst = 0.0;
         if (duty_inst > 1.0) duty_inst = 1.0;
 
-        // Switching-period ripple. ΔI = V_phase·d·T_sw / L. Sign follows
-        // the inductor-current sign so the triangular waveform is centred
-        // on the local DC average I_avg_inst (which may itself be ±).
         const double dI_pp = Vphase_abs * duty_inst * Tsw / L;
         const double V_L_on  = Vphase_inst;
         const double V_L_off = Vphase_inst - ((Vphase_inst >= 0) ? Vhalf : -Vhalf);
         const double V_L_pp  = std::abs(V_L_on - V_L_off);
         const double V_L_off_mid = V_L_off + (V_L_on - V_L_off) / 2.0;
 
-        Waveform currentWaveform = Inputs::create_waveform(
-            WaveformLabel::TRIANGULAR, dI_pp, Fsw, duty_inst, I_avg_inst, 0);
-        Waveform voltageWaveform = Inputs::create_waveform(
-            WaveformLabel::RECTANGULAR, V_L_pp, Fsw, duty_inst, V_L_off_mid, 0);
+        for (int ch = 0; ch < N_ch; ++ch) {
+            Waveform currentWaveform = Inputs::create_waveform(
+                WaveformLabel::TRIANGULAR, dI_pp, Fsw, duty_inst, I_avg_inst, 0);
+            Waveform voltageWaveform = Inputs::create_waveform(
+                WaveformLabel::RECTANGULAR, V_L_pp, Fsw, duty_inst, V_L_off_mid, 0);
 
-        auto excitation = complete_excitation(
-            currentWaveform, voltageWaveform, Fsw, phaseNames[ph]);
-        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            std::string name = phaseNames[ph];
+            if (N_ch > 1) {
+                name += " ch " + std::to_string(ch + 1);
+            }
+            auto excitation = complete_excitation(
+                currentWaveform, voltageWaveform, Fsw, name);
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+        }
     }
 
     OperatingConditions conditions;

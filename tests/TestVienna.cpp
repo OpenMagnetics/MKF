@@ -151,22 +151,79 @@ TEST_CASE("Vienna: throws on outputDcVoltage below sqrt(2)*V_LL", "[vienna-topol
 }
 
 
-TEST_CASE("Vienna: rejects unsupported synchronousRectifier / phaseCount>1 (gating before items 5-6)",
-          "[vienna-topology]") {
-    {
-        auto j = make_vienna_json();
-        j["synchronousRectifier"] = true;
-        Vienna v(j);
-        REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
-    }
-    {
-        auto j = make_vienna_json();
-        j["phaseCount"] = 2;
-        Vienna v(j);
-        REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
-    }
-    // Phase 3 (these commits) lifted fullLineCycle, peakOfLinePlusSectors,
-    // and viennaII out of the deferred list.
+// (No "rejects unsupported" cases remain — Phase 3 lifted every gate that
+// Phase 1+2 had. phaseCount < 1 is still rejected as a validation error,
+// not a "deferred to Phase X" gate.)
+
+
+// =========================================================================
+// Phase 3 — Item 6: phaseCount > 1 interleaved channels.
+//
+// N parallel boost stages per phase. Each channel sees I_pk/N average
+// current and L_single/N inductance, so the per-channel ripple is N×
+// the single-channel ripple but the SUM-current ripple at the input
+// cancels to ~1/N (ideal). The adviser sizes ONE channel inductor;
+// the user builds 3·N physical units.
+//
+// Gates:
+//   (1) run_checks accepts phaseCount=N for N >= 1.
+//   (2) computedBoostInductance with phaseCount=2 is half the
+//       single-channel computed inductance (at the same operating
+//       point and ripple-ratio target).
+//   (3) process_operating_points emits 3·N windings per OP.
+//   (4) Winding names tag the channel ("Phase A ch 1", ...).
+// =========================================================================
+TEST_CASE("Vienna: phaseCount=2 halves computed L and emits 6 windings",
+          "[vienna-topology][phase3]") {
+    auto jN1 = make_vienna_json();
+    Vienna vN1(jN1);
+    (void) vN1.process();
+    const double L_single = vN1.get_computed_boost_inductance();
+
+    auto jN2 = make_vienna_json();
+    jN2["phaseCount"] = 2;
+    Vienna vN2(jN2);
+    REQUIRE(vN2.run_checks(false));  // (1)
+    auto inputs = vN2.process();
+
+    // (2)
+    CHECK(vN2.get_computed_boost_inductance() ==
+          Catch::Approx(L_single / 2.0).epsilon(1e-6));
+
+    // (3) 1 input × 1 OP × 3 phases × 2 channels = 6 windings
+    REQUIRE(inputs.get_operating_points().size() == 1);
+    const auto& exc = inputs.get_operating_points()[0].get_excitations_per_winding();
+    REQUIRE(exc.size() == 6);
+
+    // (4) names — first six should be Phase A ch 1, Phase A ch 2, Phase B
+    //     ch 1, Phase B ch 2, Phase C ch 1, Phase C ch 2.
+    REQUIRE(exc[0].get_name().has_value());
+    CHECK(exc[0].get_name().value() == "Phase A ch 1");
+    CHECK(exc[1].get_name().value() == "Phase A ch 2");
+    CHECK(exc[2].get_name().value() == "Phase B ch 1");
+    CHECK(exc[5].get_name().value() == "Phase C ch 2");
+}
+
+
+TEST_CASE("Vienna: phaseCount=3 per-channel current is 1/3 of single-channel",
+          "[vienna-topology][phase3]") {
+    auto jN1 = make_vienna_json();
+    Vienna vN1(jN1);
+    (void) vN1.process();
+    double I_pk_phase = vN1.get_computed_line_peak_current();
+
+    auto jN3 = make_vienna_json();
+    jN3["phaseCount"] = 3;
+    Vienna vN3(jN3);
+    auto inputs = vN3.process();
+    const auto& exc = inputs.get_operating_points()[0].get_excitations_per_winding();
+    REQUIRE(exc.size() == 9);  // 3 phases × 3 channels
+
+    // Per-channel triangular current — at peakOfLineOnly (default), Phase A
+    // ch 1 should have I_avg ≈ +I_pk_phase / 3 (since sin(π/2) = 1).
+    auto offsetA1 = exc[0].get_current().value().get_processed().value().get_offset();
+    CHECK(offsetA1 ==
+          Catch::Approx(I_pk_phase / 3.0).epsilon(0.05));
 }
 
 
@@ -186,7 +243,7 @@ TEST_CASE("Vienna: rejects unsupported synchronousRectifier / phaseCount>1 (gati
 //       the converter switch arrangement, not the boost inductor itself.
 // =========================================================================
 TEST_CASE("Vienna: viennaII switch RMS is half Vienna I in energy terms",
-          "[vienna-topology][phase3-vienna-ii]") {
+          "[vienna-topology][phase3]") {
     // (2) closed-form sanity check.
     const double I_pk = 10.0;
     const double M    = 0.85;
@@ -203,6 +260,63 @@ TEST_CASE("Vienna: viennaII switch RMS is half Vienna I in energy terms",
 
 
 // =========================================================================
+// Phase 3 — Item 5: synchronousRectifier.
+//
+// The boost diode and its sync-rec MOSFET replacement carry identical
+// current — the inductor doesn't care which rectifier device is in
+// circuit. What changes is the caller's conduction-loss model:
+//   diode  → P = Vf · I_avg
+//   syncRec → P = Rds · I_rms²
+//
+// So sync rec primarily needs an I_rms diagnostic to multiply by Rds.
+// The closed-form (Hartmann ETH 19755 §3.2.3, half-cycle integration):
+//   I_avg = I_pk · M / 4
+//   I_rms = I_pk · sqrt(2M / (3π))
+// =========================================================================
+TEST_CASE("Vienna: boost-diode avg/rms closed forms",
+          "[vienna-topology][phase3]") {
+    const double I_pk = 25.0;
+    const double M    = 0.85;
+    CHECK(Vienna::compute_boost_diode_avg(I_pk, M) ==
+          Catch::Approx(I_pk * M / 4.0).epsilon(1e-9));
+    CHECK(Vienna::compute_boost_diode_rms(I_pk, M) ==
+          Catch::Approx(I_pk * std::sqrt(2.0 * M / (3.0 * M_PI))).epsilon(1e-9));
+    // I_rms > I_avg always (RMS ≥ avg by Cauchy-Schwarz on positive signal).
+    CHECK(Vienna::compute_boost_diode_rms(I_pk, M) >
+          Vienna::compute_boost_diode_avg(I_pk, M));
+}
+
+
+TEST_CASE("Vienna: synchronousRectifier=true accepted + boost-diode RMS populated",
+          "[vienna-topology][phase3]") {
+    auto j = make_vienna_json();
+    j["synchronousRectifier"] = true;
+    Vienna v(j);
+    REQUIRE(v.run_checks(false));
+    auto inputs = v.process();
+    REQUIRE(!inputs.get_operating_points().empty());
+
+    double I_pk = v.get_computed_line_peak_current();
+    double M    = v.get_last_modulation_index();
+    REQUIRE(I_pk > 0.0);
+
+    CHECK(v.get_last_boost_diode_avg_current() ==
+          Catch::Approx(Vienna::compute_boost_diode_avg(I_pk, M)).epsilon(1e-6));
+    CHECK(v.get_last_boost_diode_rms_current() ==
+          Catch::Approx(Vienna::compute_boost_diode_rms(I_pk, M)).epsilon(1e-6));
+
+    // Inductor waveform is unchanged from the diode-rectifier variant —
+    // sync rec only changes the rectifier device, not the boost current.
+    auto j2 = make_vienna_json();
+    j2["synchronousRectifier"] = false;
+    Vienna v2(j2);
+    (void) v2.process();
+    CHECK(v.get_last_inductor_peak_current() ==
+          Catch::Approx(v2.get_last_inductor_peak_current()).epsilon(1e-6));
+}
+
+
+// =========================================================================
 // Phase 3 — Item 4: alternative switch types.
 //
 // switchType=backToBackMosfet shares Vienna II's two-switches-per-leg
@@ -215,7 +329,7 @@ TEST_CASE("Vienna: viennaII switch RMS is half Vienna I in energy terms",
 // model is the caller's responsibility.
 // =========================================================================
 TEST_CASE("Vienna: backToBackMosfet switchType matches viennaII diagnostics",
-          "[vienna-topology][phase3-switchtypes]") {
+          "[vienna-topology][phase3]") {
     auto jBb = make_vienna_json();
     jBb["switchType"] = "backToBackMosfet";
     Vienna vBb(jBb);
@@ -235,7 +349,7 @@ TEST_CASE("Vienna: backToBackMosfet switchType matches viennaII diagnostics",
 
 
 TEST_CASE("Vienna: singleMosfetIn4DiodeBridge switchType keeps Vienna I diagnostics",
-          "[vienna-topology][phase3-switchtypes]") {
+          "[vienna-topology][phase3]") {
     auto jSm = make_vienna_json();
     jSm["switchType"] = "singleMosfetIn4DiodeBridge";
     Vienna vSm(jSm);
@@ -254,7 +368,7 @@ TEST_CASE("Vienna: singleMosfetIn4DiodeBridge switchType keeps Vienna I diagnost
 
 
 TEST_CASE("Vienna: viennaII run_checks + diagnostics dispatch",
-          "[vienna-topology][phase3-vienna-ii]") {
+          "[vienna-topology][phase3]") {
     auto j = make_vienna_json();
     j["viennaVariant"] = "viennaII";
     Vienna v(j);
@@ -310,7 +424,7 @@ TEST_CASE("Vienna: viennaII run_checks + diagnostics dispatch",
 //       per-angle duty/ripple computation).
 // =========================================================================
 TEST_CASE("Vienna: peakOfLinePlusSectors emits 6 OPs with per-sector physics",
-          "[vienna-topology][phase3-sectors]") {
+          "[vienna-topology][phase3]") {
     auto j = make_vienna_json();
     j["samplingStrategy"] = "peakOfLinePlusSectors";
     Vienna v(j);
@@ -396,7 +510,7 @@ TEST_CASE("Vienna: peakOfLinePlusSectors emits 6 OPs with per-sector physics",
 //       the analytical helper.
 // =========================================================================
 TEST_CASE("Vienna: fullLineCycle emits 120-degree-shifted phase waveforms",
-          "[vienna-topology][phase3-line-cycle]") {
+          "[vienna-topology][phase3]") {
     auto j = make_vienna_json();
     j["samplingStrategy"] = "fullLineCycle";
     Vienna v(j);
@@ -475,7 +589,7 @@ TEST_CASE("Vienna: fullLineCycle emits 120-degree-shifted phase waveforms",
 
 
 TEST_CASE("Vienna: peakOfLineOnly default keeps identical-phases behaviour",
-          "[vienna-topology][phase3-line-cycle]") {
+          "[vienna-topology][phase3]") {
     // Regression guard — make sure the new fullLineCycle path didn't change
     // the default behaviour. Three windings, all identical, sampled at the
     // switching period.

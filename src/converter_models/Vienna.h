@@ -93,6 +93,8 @@ private:
     mutable double lastSwitchVoltageStress  = 0.0;   // Vdc/2
     mutable double lastSwitchRmsCurrent     = 0.0;   // Kolar 1994
     mutable double lastDiodeAvgCurrent      = 0.0;   // I_pk/pi
+    mutable double lastBoostDiodeAvgCurrent = 0.0;   // I_pk · M/4 (Phase 3)
+    mutable double lastBoostDiodeRmsCurrent = 0.0;   // sync-rec MOSFET I_rms (Phase 3)
     mutable double lastModulationIndex      = 0.0;
     mutable double lastInputPower           = 0.0;
 
@@ -131,6 +133,8 @@ public:
     double get_last_switch_voltage_stress()      const { return lastSwitchVoltageStress; }
     double get_last_switch_rms_current()         const { return lastSwitchRmsCurrent; }
     double get_last_diode_avg_current()          const { return lastDiodeAvgCurrent; }
+    double get_last_boost_diode_avg_current()    const { return lastBoostDiodeAvgCurrent; }
+    double get_last_boost_diode_rms_current()    const { return lastBoostDiodeRmsCurrent; }
     double get_last_modulation_index()           const { return lastModulationIndex; }
     double get_last_input_power()                const { return lastInputPower; }
 
@@ -174,6 +178,27 @@ public:
     /** Vienna II per-switch average — half the Vienna I duty.
      *  I_sw_avg = I_pk · (1/π − M/4). */
     static double compute_switch_avg_vienna_ii(double I_pk, double M);
+
+    // ── Boost-diode / sync-rectifier MOSFET currents (Phase 3, Item 5) ───
+    //
+    // The boost diode (Vienna I/II fast rectifier) conducts the inductor
+    // current during the (1-d) portion of each switching cycle. With
+    // d(θ) = 1 − M·|sin(θ)|, the diode duty per switching cycle is
+    // M·|sin(θ)|, and at small switching-period ripple the instantaneous
+    // diode current ≈ |i_L(θ)| = I_pk·|sin(θ)|.
+    //
+    // Integrating over the half-cycle where the diode is the active rect:
+    //   I_diode_avg = I_pk · (1/(2π)) · ∫₀^π M·sin²(θ) dθ
+    //               = I_pk · M / 4
+    //   I_diode_rms² = I_pk² · (1/(2π)) · ∫₀^π M·sin³(θ) dθ
+    //                = I_pk² · 2M / (3π)
+    //
+    // With synchronousRectifier=true these same closed forms apply to the
+    // sync-rec MOSFET (the device that replaces the fast diode). The
+    // conduction-loss model swaps from Vf·I_avg to Rds·I_rms² — Rds is
+    // the caller's loss model, but the I_rms field is what they need.
+    static double compute_boost_diode_avg(double I_pk, double M);
+    static double compute_boost_diode_rms(double I_pk, double M);
 
     // Phase-3 fullLineCycle waveform builder.
     //

@@ -1,10 +1,19 @@
-# Vienna Rectifier — Phase 3+ Implementation Plan
+# Vienna Rectifier — Phase 3 Implementation (Done)
 
 **Repo:** `OpenMagnetics/MKF`
 **File:** `src/converter_models/Vienna.{cpp,h}`
-**Written:** 2026-05-25
-**Status:** Item 1 (fullLineCycle) landed in commit (TBD).
-Items 2-6 below are next.
+**Written:** 2026-05-25 (plan), 2026-05-25 (all 6 items landed)
+**Status:** COMPLETE — every gate that Phase 1+2 had has been lifted.
+Tests live under Catch2 tag `[phase3]` (11 test cases, 330 assertions).
+
+Commit trail:
+  - 3ad41c39  Item 1 — fullLineCycle sampling
+  - 1b01a422  Item 2 — peakOfLinePlusSectors sampling
+  - 8fa150a7  Items 3+4 — viennaII + alternative switch types
+  - (this)    Items 5+6 — synchronousRectifier + phaseCount>1
+
+This document describes WHAT was implemented. For the original deferred-
+work tracking, see the git history of this file.
 
 This document is the spec for finishing Vienna Phase 3+. Each item is a
 self-contained workstream — pick one per session/PR. Order is suggested
