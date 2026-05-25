@@ -736,9 +736,14 @@ std::string Psfb::generate_ngspice_circuit(
     const auto bridgeMode = get_bridge_simulation_mode();
 
     circuit << ".model DIDEAL D(IS=1e-12 RS=0.005 CJO=1n)\n";
-    if (bridgeMode == BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH) {
-        circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-    }
+    // SW1 is referenced by BOTH bridge modes — VOLTAGE_CONTROLLED_SWITCH uses
+    // it for all four bridge switches, and BEHAVIORAL_PULSE uses it for the
+    // leading-leg SQA/SQB pair (the §8a.5-correct probe insertion path that
+    // routes through `vin_dc → qa_drain` via Vq1_sense). Without this model
+    // definition the netlist parses as "can't find model 'sw1'" and the
+    // simulation aborts before .tran even starts, surfacing on the frontend
+    // as an unrecoverable "Simulated" hang.
+    circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
     circuit << "\n";
 
     circuit << "Vdc vin_dc 0 " << Vin << "\n\n";

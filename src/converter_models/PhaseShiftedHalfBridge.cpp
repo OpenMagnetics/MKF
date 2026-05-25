@@ -665,9 +665,13 @@ std::string Pshb::generate_ngspice_circuit(
     const double t_act = Deff * halfPeriod;
 
     circuit << ".model DIDEAL D(IS=1e-12 RS=0.005 CJO=1n BV=1000 IBV=1e-12)\n";
-    if (bridgeMode == BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH) {
-        circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-    }
+    // SW1 is referenced by BOTH bridge modes — VOLTAGE_CONTROLLED_SWITCH uses
+    // it for the four NPC switches, and BEHAVIORAL_PULSE also instantiates
+    // S1..S4 SW1 elements (lines ~794-800) as the §8a.5-correct probe
+    // insertion path. Without this model definition the netlist parses as
+    // "can't find model 'sw1'" and the simulation aborts before .tran even
+    // starts, surfacing on the frontend as an unrecoverable "Simulated" hang.
+    circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
     circuit << "\n";
 
     circuit << "Vdc vin_dc 0 " << Vin << "\n\n";

@@ -1039,4 +1039,134 @@ TEST_CASE("Test_Psfb_ConverterPortWaveforms",
 }
 
 
+// =========================================================================
+// Front-end-default reproduction — diagnoses the perceived "Simulated"
+// hang reported from the WebFrontend PSFB wizard.
+//
+// Reproduces the exact JSON shape emitted by PsfbWizard.vue.buildParams
+// with no user edits (designMode = "Help me with the design", so
+// desiredTurnsRatios = [Vin/Vout] = [400/48]). Reports per-stage wall
+// times so we can see whether
+//   (a) the two simulate_and_extract_* calls are roughly equal — the
+//       binding does 2x ngspice work for identical netlists and the
+//       planned simResult-sharing refactor would halve total time; or
+//   (b) one of them dominates wildly, pointing at a real netlist bug
+//       rather than duplicated work.
+//
+// Native run is the same C++ that compiles into WASM but without the
+// emscripten interpreter overhead, so the timings here are a *lower
+// bound* on what the user sees. If native already feels like a hang,
+// WASM is hopeless.
+// =========================================================================
+TEST_CASE("Test_Psfb_FrontendDefaults_TimingDiagnostic",
+          "[converter-model][psfb-topology][advanced][timing]") {
+    using clk = std::chrono::steady_clock;
+    auto ms = [](clk::time_point a, clk::time_point b) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count();
+    };
+
+    // ---- Replicate PsfbWizard.vue defaults exactly ------------------
+    //   inputVoltage:  { nominal: 400, tolerance: 0.1 }
+    //   outputs:       [{ voltage: 48, current: 20.83, turnsRatio: 4.0 }]
+    //   numberOutputs: 1
+    //   switchingFreq: 100000 Hz
+    //   phaseShift:    90 deg
+    //   maxPhaseShift: 144 deg
+    //   efficiency:    0.97
+    //   seriesInductance: 0  (left out → falls back to useLeakageInductance)
+    //   useLeakageInductance: true
+    //   rectifierType: "fullBridge"
+    //   magnetizingInductance: 1e-3 H
+    //   ambientTemperature: 25 C
+    //   designMode: "Help me with the design"   → desiredTurnsRatios = [Vin/Vout] = [400/48]
+    //   numberOfPeriods: 2
+    //   numberOfSteadyStatePeriods: 5   (note: wizard overrides binding default of 3)
+    json advJson;
+    {
+        json inputVoltage;
+        inputVoltage["nominal"] = 400.0;
+        // Wizard's tolerance is 0.1 (= 10 %) → ±40 V around 400 V.
+        // collect_input_voltages will fan this out to 360/400/440.
+        inputVoltage["minimum"] = 360.0;
+        inputVoltage["maximum"] = 440.0;
+        advJson["inputVoltage"] = inputVoltage;
+    }
+    advJson["rectifierType"] = "fullBridge";
+    advJson["useLeakageInductance"] = true;
+    advJson["maximumPhaseShift"] = 144.0;
+    advJson["desiredTurnsRatios"] = { 400.0 / 48.0 };
+    advJson["desiredMagnetizingInductance"] = 1e-3;
+    advJson["operatingPoints"] = json::array();
+    {
+        json op;
+        op["ambientTemperature"] = 25.0;
+        op["outputVoltages"] = {48.0};
+        op["outputCurrents"] = {20.83};
+        op["switchingFrequency"] = 100000.0;
+        op["phaseShift"] = 90.0;
+        advJson["operatingPoints"].push_back(op);
+    }
+
+    auto t0 = clk::now();
+    OpenMagnetics::AdvancedPsfb advPsfb(advJson);
+    auto inputs = advPsfb.process();
+    auto t1 = clk::now();
+    std::cout << "[PSFB-DEFAULT-TIMING] process()                                       took "
+              << ms(t0, t1) << " ms" << std::endl;
+
+    auto& designReq = inputs.get_design_requirements();
+    std::vector<double> turnsRatios;
+    for (const auto& tr : designReq.get_turns_ratios()) {
+        if (tr.get_nominal()) turnsRatios.push_back(tr.get_nominal().value());
+    }
+    REQUIRE(!turnsRatios.empty());
+
+    double Lm = 0.0;
+    if (designReq.get_magnetizing_inductance().get_minimum()) {
+        Lm = designReq.get_magnetizing_inductance().get_minimum().value();
+    } else if (designReq.get_magnetizing_inductance().get_nominal()) {
+        Lm = designReq.get_magnetizing_inductance().get_nominal().value();
+    }
+    REQUIRE(Lm > 0.0);
+
+    advPsfb.set_num_periods_to_extract(2);
+    advPsfb.set_num_steady_state_periods(5);
+
+    OpenMagnetics::NgspiceRunner runner;
+    if (!runner.is_available()) {
+        WARN("ngspice not available — skipping the simulation timing portion of this diagnostic");
+        return;
+    }
+
+    // Report how many ngspice runs each call will perform so the user
+    // can interpret the totals (per-(vinIdx, opIdx) ngspice runs).
+    const size_t expectedRunsPerCall = 3 /*vins: 360/400/440*/ * inputs.get_operating_points().size();
+    std::cout << "[PSFB-DEFAULT-TIMING] expected ngspice runs per simulate_and_extract_* call: "
+              << expectedRunsPerCall << std::endl;
+
+    auto t2 = clk::now();
+    auto topologyWaveforms = advPsfb.simulate_and_extract_topology_waveforms(turnsRatios, Lm, /*numberOfPeriods*/ 2);
+    auto t3 = clk::now();
+    std::cout << "[PSFB-DEFAULT-TIMING] simulate_and_extract_topology_waveforms()      took "
+              << ms(t2, t3) << " ms"
+              << "  (" << topologyWaveforms.size() << " waveform sets)" << std::endl;
+
+    auto t4 = clk::now();
+    auto operatingPoints = advPsfb.simulate_and_extract_operating_points(turnsRatios, Lm);
+    auto t5 = clk::now();
+    std::cout << "[PSFB-DEFAULT-TIMING] simulate_and_extract_operating_points()        took "
+              << ms(t4, t5) << " ms"
+              << "  (" << operatingPoints.size() << " operating points)" << std::endl;
+
+    const auto totalSimMs = ms(t2, t5);
+    std::cout << "[PSFB-DEFAULT-TIMING] total simulation wall time                     "
+              << totalSimMs << " ms" << std::endl;
+
+    // The test always succeeds — it's a diagnostic, not a correctness gate.
+    // The wall-time prints above are what matters.
+    REQUIRE(!topologyWaveforms.empty());
+    REQUIRE(!operatingPoints.empty());
+}
+
+
 } // anonymous namespace
