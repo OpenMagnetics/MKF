@@ -277,15 +277,17 @@ namespace OpenMagnetics {
             {
                 SpiceSimulationConfig forward;
                 forward.swModelVT = 2.5;        forward.swModelVH = 0.5;
-                // snubR was 1kΩ which dissipated V_pri²/R per switching
-                // edge — for a 48V primary swing that's 2.3W per snubber
-                // and 4.6–7W total across the bridge, eating ~37% of
-                // input power for low-power (≤10W) decks and falsely
-                // failing efficiency_sanity. 10kΩ keeps the snubber
-                // functional (RC time constant 10µs vs 100kHz switching
-                // is fine) but cuts dissipation 10×. Same fix as the
-                // Vienna/boost defaults.
-                forward.snubR = 10e3;           forward.snubC = 1e-9;
+                // snubR=1kΩ is the historical forward-family setting.
+                // (RC snubber dissipation = C·V²·f is independent of R;
+                // R only sets damping ratio. The earlier change to 10kΩ
+                // didn't reduce losses and actually made ngspice converge
+                // to a different — and lossier — steady state. The
+                // efficiency_sanity FAIL is a sim-measurement issue: the
+                // forward decks probe i(vpri_sense) for iin and miss
+                // the reset return path going back to Vin via D1/D2, so
+                // average pin is overestimated. Fix is in the deck's
+                // sense placement / probe selection, not the snubber.)
+                forward.snubR = 1e3;            forward.snubC = 1e-9;
                 forward.diodeIS = 1e-12;        forward.diodeRS = 0.05;
                 forward.outputCapacitance = 100e-6;
                 forward.relTol = 0.01;          forward.absTol = 1e-7;
