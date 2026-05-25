@@ -565,9 +565,19 @@ namespace OpenMagnetics {
         circuit << "Vq1_sense vin_dc q1_drain 0\n\n";
 
         // PWM Main Switch
+        // Emit RON/ROFF from the per-topology SpiceSimulationConfig
+        // (default RON=0.01Ω). The previous hardcoded `.model SW1 SW
+        // VT=2.5 VH=0.5` left RON at ngspice's default 1Ω, which made
+        // the clamp loop (S1 + S_clamp in series with Cclamp) dissipate
+        // hundreds of watts per cycle from the circulating reset
+        // current — observed eff=31.7% instead of the expected ~90%.
+        const SpiceSimulationConfig acfCfg = spice_config();
         circuit << "* PWM Main Switch\n";
         circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
-        circuit << ".model SW1 SW VT=2.5 VH=0.5\n";
+        circuit << ".model SW1 SW VT=" << acfCfg.swModelVT
+                << " VH=" << acfCfg.swModelVH
+                << " RON=" << acfCfg.swModelRON
+                << " ROFF=" << acfCfg.swModelROFF << "\n";
         circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n";
         circuit << "S1 q1_drain sw_node pwm_ctrl 0 SW1\n\n";
         
@@ -607,7 +617,15 @@ namespace OpenMagnetics {
         circuit << "S_clamp clamp_cap sw_node clamp_ctrl 0 SW1\n";
         // Clamp capacitor to ground (stores energy during reset)
         double clampCapacitance = 10e-6;  // 10uF typical
-        double clampVoltage = inputVoltage * dutyCycle / (1 - dutyCycle);  // Steady-state clamp voltage
+        // Steady-state clamp-cap voltage from volt-second balance on Lpri:
+        //   V_in · tOn  =  V_clamp · t_clamp_on
+        // where t_clamp_on = period - tOn - 2·deadTime (matches the
+        // Vpwm_clamp pulse width). The simpler formula
+        // Vin·D/(1-D) ignores the two dead-time windows and pre-charges
+        // Cclamp below its true steady state, forcing the cap to gain
+        // a few volts during transient — that drift is what was leaving
+        // efficiency near 45 % instead of the design ~90 %.
+        double clampVoltage = inputVoltage * tOn / (period - tOn - 2 * deadTime);
         circuit << "Cclamp clamp_cap 0 " << std::scientific << clampCapacitance << std::fixed << " IC=" << clampVoltage << "\n";
         // Small resistance for convergence
         circuit << "Rclamp clamp_cap 0 1MEG\n\n";
@@ -638,9 +656,17 @@ namespace OpenMagnetics {
             circuit << "Rload" << secIdx << " vout" << secIdx << " 0 " << loadResistance << "\n\n";
         }
         
-        // Transient Analysis
+        // Transient Analysis — UIC ('use initial conditions') is REQUIRED
+        // because Cclamp (10 µF) is pre-charged to its steady-state
+        // V_clamp ≈ Vin·D/(1-D) via the IC= directive. Without UIC,
+        // ngspice runs a DC operating-point pass first that ignores the
+        // IC value and seeds Cclamp at 0 V. The first switching cycles
+        // then dump a huge inrush from Vin into the clamp loop to charge
+        // Cclamp, which over the .tran extraction window biases pin
+        // (~150 W observed vs ~70 W expected) and reports a 40 %
+        // efficiency instead of the design ~90 %.
         circuit << "* Transient Analysis\n";
-        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << "\n\n";
+        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << " UIC\n\n";
         
         // Save signals
         circuit << "* Output signals\n";
