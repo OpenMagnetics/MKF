@@ -48,7 +48,15 @@ namespace OpenMagnetics {
             return get_duty_cycle().value();
         }
         else {
-            return 0.5;
+            // Push-pull physics requires D < 0.5 strictly (both switches
+            // simultaneously ON shorts the primary). Defaulting to
+            // exactly 0.5 puts process_design_requirements' computed
+            // turns ratio at the FP boundary of process_operating_points'
+            // t1 ≤ period/2 check, so rounding tips it over and throws
+            // 'T1 cannot be larger than period/2'. 0.48 leaves a 4%
+            // headroom — same margin convention used by the forward
+            // family (which defaults to 0.45).
+            return 0.48;
         }
     }
 
@@ -842,6 +850,14 @@ namespace OpenMagnetics {
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
 
+        // Per-OP diagnostic snapshot.
+        perOpDutyCycle.push_back(lastDutyCycle);
+        perOpSwitchingFrequency.push_back(lastSwitchingFrequency);
+        perOpPrimaryAverageCurrent.push_back(lastPrimaryAverageCurrent);
+        perOpPrimaryPeakCurrent.push_back(lastPrimaryPeakCurrent);
+        perOpMagnetizingPeakCurrent.push_back(lastMagnetizingPeakCurrent);
+        perOpIsCcm.push_back(lastIsCcm);
+
         return operatingPoint;
     }
 
@@ -1018,6 +1034,16 @@ namespace OpenMagnetics {
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        // Clear per-OP diagnostic vectors so the wizard table reflects this run only.
+        perOpName.clear();
+        perOpDutyCycle.clear();
+        perOpSwitchingFrequency.clear();
+        perOpPrimaryAverageCurrent.clear();
+        perOpPrimaryPeakCurrent.clear();
+        perOpMagnetizingPeakCurrent.clear();
+        perOpIsCcm.clear();
+
+
         extraLoVoltageWaveforms.clear();
         extraLoCurrentWaveforms.clear();
 
@@ -1031,6 +1057,11 @@ namespace OpenMagnetics {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t pushPullOperatingPointIndex = 0; pushPullOperatingPointIndex < get_operating_points().size(); ++pushPullOperatingPointIndex) {
                 auto& pop = get_operating_points()[pushPullOperatingPointIndex];
+                std::string opName = inputVoltagesNames[inputVoltageIndex];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(pushPullOperatingPointIndex);
+                }
+                perOpName.push_back(opName);
                 auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, pop, turnsRatios, magnetizingInductance, minimumOutputInductance);
 
                 // Capture Lo waveforms for main secondary
