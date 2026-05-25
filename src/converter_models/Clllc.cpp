@@ -901,6 +901,11 @@ std::string Clllc::generate_ngspice_circuit(
         size_t inputVoltageIndex,
         size_t operatingPointIndex) {
 
+    // All SPICE-side knobs come from spice_config(). Registry entry for
+    // CLLLC is in Topology.cpp; values match the previous hardcoded
+    // netlist byte-for-byte.
+    const auto cfg = spice_config();
+
     auto& ops = get_operating_points();
     if (ops.empty())
         throw std::runtime_error(
@@ -1007,8 +1012,10 @@ std::string Clllc::generate_ngspice_circuit(
       << (clllcOp.get_phase_shift_degrees().has_value() ? "psm/hybrid" : "pfm") << "\n\n";
 
     // -------- Models --------
-    c << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-    c << ".model DIDEAL D(IS=1e-12 RS=0.05)\n\n";
+    c << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+      << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
+    c << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
+      << " RS=" << cfg.diodeRS << std::fixed << ")\n\n";
 
     // -------- DC sources --------
     c << "Vdc_HV vdc_HV 0 " << V_HV << "\n";
@@ -1038,8 +1045,10 @@ std::string Clllc::generate_ngspice_circuit(
         // Gate sources
         for (int q = 1; q <= 4; ++q) {
             double ts = ((q == 1 || q == 4) ? t0_diag1 : t0_diag2);
-            c << "Vpwm_" << label << q << " pwm_" << label << q << " 0 PULSE(0 5 "
-              << ts << " 10n 10n " << timing.tOn << " " << timing.period << ")\n";
+            c << "Vpwm_" << label << q << " pwm_" << label << q << " 0 PULSE(0 "
+              << cfg.pwmHigh << " " << ts << " "
+              << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << std::fixed
+              << " " << timing.tOn << " " << timing.period << ")\n";
         }
         // High-side switches (Q1, Q3) bus → leg node; Low-side (Q2, Q4) leg → 0
         // Diagonal pair semantics: on diag1 → Q1 (HS-A) + Q4 (LS-B) closed
@@ -1052,10 +1061,20 @@ std::string Clllc::generate_ngspice_circuit(
         c << "S" << label << "4 " << bNode << " 0 pwm_" << label << "4 0 SW1\n";
         c << "D" << label << "4 " << bNode << " " << busNode << " DIDEAL\n";
         // RC snubbers (4 per bridge → 8 total across both bridges)
-        c << "Rsnub_" << label << "1 " << busNode << " " << aNode << " 1k\nCsnub_" << label << "1 " << busNode << " " << aNode << " 1n\n";
-        c << "Rsnub_" << label << "2 " << aNode << " 0 1k\nCsnub_" << label << "2 " << aNode << " 0 1n\n";
-        c << "Rsnub_" << label << "3 " << busNode << " " << bNode << " 1k\nCsnub_" << label << "3 " << busNode << " " << bNode << " 1n\n";
-        c << "Rsnub_" << label << "4 " << bNode << " 0 1k\nCsnub_" << label << "4 " << bNode << " 0 1n\n";
+        {
+            std::ostringstream rfmt; rfmt << cfg.snubR;
+            std::ostringstream cfmt; cfmt << std::scientific << cfg.snubC;
+            const std::string sR = rfmt.str();
+            const std::string sC = cfmt.str();
+            c << "Rsnub_" << label << "1 " << busNode << " " << aNode << " " << sR
+              << "\nCsnub_" << label << "1 " << busNode << " " << aNode << " " << sC << "\n";
+            c << "Rsnub_" << label << "2 " << aNode << " 0 " << sR
+              << "\nCsnub_" << label << "2 " << aNode << " 0 " << sC << "\n";
+            c << "Rsnub_" << label << "3 " << busNode << " " << bNode << " " << sR
+              << "\nCsnub_" << label << "3 " << busNode << " " << bNode << " " << sC << "\n";
+            c << "Rsnub_" << label << "4 " << bNode << " 0 " << sR
+              << "\nCsnub_" << label << "4 " << bNode << " 0 " << sC << "\n";
+        }
         (void)driven;  // currently identical PWM emission; v2 polish item
     };
 
@@ -1110,8 +1129,10 @@ std::string Clllc::generate_ngspice_circuit(
     c << "* controlStrategy = "
       << (clllcOp.get_phase_shift_degrees().has_value() ? "psm/hybrid" : "pfm") << "\n\n";
 
-    c << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-    c << ".model DIDEAL D(IS=1e-12 RS=0.05)\n\n";
+    c << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+      << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
+    c << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
+      << " RS=" << cfg.diodeRS << std::fixed << ")\n\n";
 
     c << "Vdc_HV vdc_HV 0 " << V_HV << "\n";
     c << "Cbus_HV vdc_HV 0 " << 100e-6 << " IC=" << V_HV << "\n";
@@ -1177,8 +1198,12 @@ std::string Clllc::generate_ngspice_circuit(
     c << ".ic v(vdc_HV)=" << V_HV << " v(vdc_LV)=" << V_LV << "\n\n";
 
     // -------- Solver options --------
-    c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
-    c << ".options METHOD=GEAR TRTOL=7\n\n";
+    c << ".options RELTOL=" << cfg.relTol
+      << " ABSTOL=" << std::scientific << cfg.absTol
+      << " VNTOL=" << cfg.vnTol << std::fixed
+      << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
+    c << ".options METHOD=" << cfg.method
+      << " TRTOL=" << cfg.trTol << "\n\n";
 
     c << ".tran " << maxStep << " " << simTime << " " << startT << " " << maxStep << " UIC\n\n";
 

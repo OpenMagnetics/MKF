@@ -1696,6 +1696,12 @@ double get_value_or(T&& val, double default_val) {
         size_t inputVoltageIndex,
         size_t operatingPointIndex) {
 
+        // All SPICE-side knobs come from the per-topology config; see the
+        // CLLC entry in spice_simulation_defaults() (Topology.cpp). The
+        // registry values match the previous hardcoded netlist
+        // byte-for-byte; this is a consolidation, not a tuning change.
+        const auto cfg = spice_config();
+
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames_;
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
@@ -1809,17 +1815,24 @@ double get_value_or(T&& val, double default_val) {
         // freewheeling through the diode during deadtime. See
         // TestCllcKitLossBreakdown.cpp.
         circuit << "* Switch model (CLLC_REWRITE_PLAN §6.2)\n";
-        circuit << ".model SW1 SW(VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg)\n";
+        circuit << ".model SW1 SW(VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << ")\n";
         circuit << ".model DBODY D(IS=1e-12 N=1 RS=0.001 BV=2000)\n\n";
 
         // PWM control signals for full bridge
         // Pair 1: S1 (high-side leg A), S4 (low-side leg B) - first half cycle
         // Pair 2: S2 (low-side leg A), S3 (high-side leg B) - second half cycle
         circuit << "* PWM control signals (complementary pairs with dead time)\n";
-        circuit << "Vpwm1 pwm1 0 PULSE(0 5 0 10n 10n " << tOn
-                << " " << period << ")\n";
-        circuit << "Vpwm2 pwm2 0 PULSE(0 5 " << halfPeriod
-                << " 10n 10n " << tOn << " " << period << ")\n\n";
+        // File-wide stream mode is std::scientific (set at top of function);
+        // emit PULSE values directly without toggling so subsequent writes
+        // (notably .tran timing values at the bottom) keep printing
+        // small step times correctly instead of rounding to 0.000000.
+        circuit << "Vpwm1 pwm1 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+                << cfg.pwmRise << " " << cfg.pwmFall
+                << " " << tOn << " " << period << ")\n";
+        circuit << "Vpwm2 pwm2 0 PULSE(0 " << cfg.pwmHigh << " " << halfPeriod
+                << " " << cfg.pwmRise << " " << cfg.pwmFall
+                << " " << tOn << " " << period << ")\n\n";
 
         // Primary full bridge — 4 active switches.
         //
@@ -1853,10 +1866,16 @@ double get_value_or(T&& val, double default_val) {
         circuit << "DS4 0      node_b DBODY\n";
         // Per-switch snubbers (1k + 1nF) — 4 primary, 4 secondary = 8 total
         circuit << "* Primary snubbers (1k + 1nF across each switch)\n";
-        circuit << "Rsn_S1 vin_p ns1 1k\n   Csn_S1 ns1 node_a 1n\n";
-        circuit << "Rsn_S2 node_a ns2 1k\n  Csn_S2 ns2 0 1n\n";
-        circuit << "Rsn_S3 vin_p ns3 1k\n   Csn_S3 ns3 node_b 1n\n";
-        circuit << "Rsn_S4 node_b ns4 1k\n  Csn_S4 ns4 0 1n\n\n";
+        {
+            std::ostringstream rfmt; rfmt << cfg.snubR;
+            std::ostringstream cfmt; cfmt << std::scientific << cfg.snubC;
+            const std::string sR = rfmt.str();
+            const std::string sC = cfmt.str();
+            circuit << "Rsn_S1 vin_p ns1 " << sR << "\n   Csn_S1 ns1 node_a " << sC << "\n";
+            circuit << "Rsn_S2 node_a ns2 " << sR << "\n  Csn_S2 ns2 0 " << sC << "\n";
+            circuit << "Rsn_S3 vin_p ns3 " << sR << "\n   Csn_S3 ns3 node_b " << sC << "\n";
+            circuit << "Rsn_S4 node_b ns4 " << sR << "\n  Csn_S4 ns4 0 " << sC << "\n\n";
+        }
 
         // Bridge midpoint differential probe.
         circuit << "* Bridge differential voltage probe\n";
@@ -1946,10 +1965,16 @@ double get_value_or(T&& val, double default_val) {
         // catastrophic dissipation.
         // Per-switch snubbers (1k + 1nF) on the SR side
         circuit << "* Secondary snubbers (1k + 1nF across each SR switch)\n";
-        circuit << "Rsn_Sa node_c nsa 1k\n  Csn_Sa nsa vout_p 1n\n";
-        circuit << "Rsn_Sb vout_n nsb 1k\n  Csn_Sb nsb node_c 1n\n";
-        circuit << "Rsn_Sc node_d nsc 1k\n  Csn_Sc nsc vout_p 1n\n";
-        circuit << "Rsn_Sd vout_n nsd 1k\n  Csn_Sd nsd node_d 1n\n\n";
+        {
+            std::ostringstream rfmt; rfmt << cfg.snubR;
+            std::ostringstream cfmt; cfmt << std::scientific << cfg.snubC;
+            const std::string sR = rfmt.str();
+            const std::string sC = cfmt.str();
+            circuit << "Rsn_Sa node_c nsa " << sR << "\n  Csn_Sa nsa vout_p " << sC << "\n";
+            circuit << "Rsn_Sb vout_n nsb " << sR << "\n  Csn_Sb nsb node_c " << sC << "\n";
+            circuit << "Rsn_Sc node_d nsc " << sR << "\n  Csn_Sc nsc vout_p " << sC << "\n";
+            circuit << "Rsn_Sd vout_n nsd " << sR << "\n  Csn_Sd nsd node_d " << sC << "\n\n";
+        }
 
         // Ground reference for secondary
         circuit << "* Secondary ground reference\n";
@@ -2003,8 +2028,13 @@ double get_value_or(T&& val, double default_val) {
 
         // Solver options — verbatim from plan §6.2
         circuit << "* Solver options (CLLC_REWRITE_PLAN §6.2)\n";
-        circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
-        circuit << ".options METHOD=GEAR TRTOL=7\n\n";
+        // File-wide stream mode is std::scientific — don't toggle here.
+        circuit << ".options RELTOL=" << cfg.relTol
+                << " ABSTOL=" << cfg.absTol
+                << " VNTOL=" << cfg.vnTol
+                << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
+        circuit << ".options METHOD=" << cfg.method
+                << " TRTOL=" << cfg.trTol << "\n\n";
 
         // Initial conditions: pre-charge output cap to Vo, leave resonant
         // caps at zero. SPICE node names for cap voltages: the node BETWEEN
