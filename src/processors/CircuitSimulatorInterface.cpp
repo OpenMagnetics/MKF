@@ -1533,19 +1533,61 @@ std::string emit_mutual_resistance_network_spice(
 
 
 
+// Strip leading/trailing whitespace (and CR) in place.
+static void trim_inplace(std::string& s) {
+    size_t start = 0;
+    while (start < s.size() && (static_cast<unsigned char>(s[start]) <= 32)) ++start;
+    size_t end = s.size();
+    while (end > start && (static_cast<unsigned char>(s[end - 1]) <= 32)) --end;
+    if (start > 0 || end < s.size()) {
+        s = s.substr(start, end - start);
+    }
+}
+
+// Decide whether a CSV line should be ignored entirely (blank or comment).
+// Comment prefixes accepted: '#', '!', '*' (SPICE), "//".
+static bool is_skippable_csv_line(const std::string& line) {
+    if (line.empty()) return true;
+    size_t i = 0;
+    while (i < line.size() && static_cast<unsigned char>(line[i]) <= 32) ++i;
+    if (i == line.size()) return true;
+    char c = line[i];
+    if (c == '#' || c == '!' || c == '*') return true;
+    if (c == '/' && i + 1 < line.size() && line[i + 1] == '/') return true;
+    return false;
+}
+
+// Strip a UTF-8 BOM (EF BB BF) if present at the start of the string.
+static void strip_utf8_bom(std::string& s) {
+    if (s.size() >= 3 &&
+        static_cast<unsigned char>(s[0]) == 0xEF &&
+        static_cast<unsigned char>(s[1]) == 0xBB &&
+        static_cast<unsigned char>(s[2]) == 0xBF) {
+        s.erase(0, 3);
+    }
+}
+
 void CircuitSimulationReader::process_line(std::string line, char separator) {
+    process_line_with_context(line, separator, 0);
+}
+
+void CircuitSimulationReader::process_line_with_context(const std::string& line, char separator, size_t lineNumber) {
     std::stringstream ss(line);
     std::string token;
 
     if (_columns.size() == 0) {
-        // Getting column names
+        // Header row: collect column names. Strip CR and surrounding quotes from each token.
         while(getline(ss, token, separator)) {
-            if (int(token[0]) < 32) {
-                continue;
+            // Strip CR anywhere in the token (handles CRLF files).
+            token.erase(std::remove(token.begin(), token.end(), '\r'), token.end());
+            // Strip surrounding quotes only (preserves quoted commas/separators within names).
+            if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
+                token = token.substr(1, token.size() - 2);
             }
+            // Trim whitespace; many exports pad headers with spaces.
+            trim_inplace(token);
+            if (token.empty()) continue;
             CircuitSimulationSignal circuitSimulationSignal;
-            token.erase(std::remove(token.begin(), token.end(), (char)13), token.end());
-            token.erase(std::remove(token.begin(), token.end(), '\"'), token.end());
             circuitSimulationSignal.name = token;
             _columns.push_back(circuitSimulationSignal);
         }
@@ -1553,10 +1595,33 @@ void CircuitSimulationReader::process_line(std::string line, char separator) {
     else {
         size_t currentColumnIndex = 0;
         while(getline(ss, token, separator)) {
-            if (int(token[0]) < 32) {
-                continue;
+            // Same CR/quote/whitespace cleanup as the header so a stray CR in the
+            // last field of a CRLF file does not break std::stod.
+            token.erase(std::remove(token.begin(), token.end(), '\r'), token.end());
+            if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
+                token = token.substr(1, token.size() - 2);
             }
-            _columns[currentColumnIndex].data.push_back(stod(token));
+            trim_inplace(token);
+            if (token.empty()) continue;
+            if (currentColumnIndex >= _columns.size()) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Data row " + std::to_string(lineNumber) +
+                    " has more columns than the header (" +
+                    std::to_string(_columns.size()) + ")");
+            }
+            double value;
+            try {
+                size_t consumed = 0;
+                value = std::stod(token, &consumed);
+                (void)consumed;
+            }
+            catch (const std::exception&) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Could not parse number on line " + std::to_string(lineNumber) +
+                    ", column " + std::to_string(currentColumnIndex + 1) + " (\"" +
+                    _columns[currentColumnIndex].name + "\"): \"" + token + "\"");
+            }
+            _columns[currentColumnIndex].data.push_back(value);
             currentColumnIndex++;
         }
     }
@@ -1565,37 +1630,50 @@ void CircuitSimulationReader::process_line(std::string line, char separator) {
 CircuitSimulationReader::CircuitSimulationReader(std::string filePathOrFile, bool forceFile) {
     char separator = '\0';
     std::string line;
+    size_t lineNumber = 0;
 
     std::filesystem::path path = filePathOrFile;
 
-    if (path.has_parent_path() && !forceFile) {
-        if (!std::filesystem::exists(filePathOrFile)) {
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "File not found");
+    auto handle_line = [&](std::string& rawLine) {
+        ++lineNumber;
+        // Strip BOM on the very first line; harmless if absent.
+        if (lineNumber == 1) {
+            strip_utf8_bom(rawLine);
         }
-        std::ifstream is(filePathOrFile);
-        if (is.is_open()) {
-            while(getline(is, line)) {
-                if (separator == '\0') {
-                    separator = guess_separator(line);
-                }
+        if (is_skippable_csv_line(rawLine)) {
+            return;
+        }
+        if (separator == '\0') {
+            separator = guess_separator(rawLine);
+        }
+        process_line_with_context(rawLine, separator, lineNumber);
+    };
 
-                process_line(line, separator);
+    if (path.has_parent_path() && !forceFile) {
+        std::ifstream is(filePathOrFile);
+        if (!is.is_open()) {
+            if (!std::filesystem::exists(filePathOrFile)) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA,
+                    "File not found: " + filePathOrFile);
             }
-            is.close();
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "Could not open file (check permissions): " + filePathOrFile);
         }
-        else {
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "File not found");
+        while (getline(is, line)) {
+            handle_line(line);
         }
+        is.close();
     }
     else {
         std::stringstream ss(filePathOrFile);
-        while(std::getline(ss, line, '\n')){
-            if (separator == '\0') {
-                separator = guess_separator(line);
-            }
-
-            process_line(line, separator);
+        while (std::getline(ss, line, '\n')) {
+            handle_line(line);
         }
+    }
+
+    if (_columns.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "No columns found in input — the file may be empty, contain only comments, or use an unsupported separator");
     }
 
     _time = find_time(_columns);
@@ -1686,22 +1764,46 @@ bool CircuitSimulationReader::can_be_current(std::vector<double> data, double li
 }
 
 char CircuitSimulationReader::guess_separator(std::string line){
-    std::vector<char> possibleSeparators = {',', ';', '\t'};
+    // Pick the candidate that produces the most columns (≥2), counting only
+    // separator characters that appear *outside* double-quoted fields. This
+    // lets us correctly detect ';' as the separator in
+    //     "Voltage, primary";"Current, primary";"Time / s"
+    // which a naive std::count would mis-detect as ',' because it would also
+    // count the commas inside the quoted column names.
+    static const std::vector<char> possibleSeparators = {',', ';', '\t', '|'};
+
+    auto count_outside_quotes = [&](char sep) -> size_t {
+        size_t count = 0;
+        bool inQuotes = false;
+        for (char c : line) {
+            if (c == '"') {
+                inQuotes = !inQuotes;
+                continue;
+            }
+            if (!inQuotes && c == sep) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    char bestSeparator = '\0';
+    size_t bestColumns = 1;
 
     for (auto separator : possibleSeparators) {
-        std::stringstream ss(line);
-        std::string token;
-        size_t numberColumns = 0;
-        while(getline(ss, token, separator)) {
-            numberColumns++;
-        }
-
-        if (numberColumns >= 2) {
-            return separator;
+        size_t numberColumns = count_outside_quotes(separator) + 1;
+        if (numberColumns > bestColumns) {
+            bestColumns = numberColumns;
+            bestSeparator = separator;
         }
     }
 
-    throw InvalidInputException(ErrorCode::INVALID_INPUT, "No column separator found");
+    if (bestSeparator != '\0') {
+        return bestSeparator;
+    }
+
+    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+        "No column separator found (expected one of comma, semicolon, tab, or pipe)");
 }
 
 Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample, bool alignToZeroCrossing) {
@@ -1810,29 +1912,10 @@ CircuitSimulationReader::CircuitSimulationSignal CircuitSimulationReader::find_t
 }
 
 Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::CircuitSimulationSignal signal, double frequency, bool sample) {
-    auto& settings = Settings::GetInstance();
     Waveform waveform;
     waveform.set_data(signal.data);
     waveform.set_time(_time.data);
-
-    auto waveformOnePeriod = get_one_period(waveform, frequency, sample);
-    Waveform reconstructedWaveform = waveformOnePeriod;
-
-    if (false) {
-        double originalThreshold = settings.get_harmonic_amplitude_threshold();
-        while (reconstructedWaveform.get_data().size() > 8192) {
-            settings.set_harmonic_amplitude_threshold(settings.get_harmonic_amplitude_threshold() * 2);
-            auto harmonics = Inputs::calculate_harmonics_data(waveformOnePeriod, frequency);
-            settings.set_inputs_number_points_sampled_waveforms(2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
-            reconstructedWaveform = Inputs::reconstruct_signal(harmonics, frequency);
-        }
-
-        settings.set_harmonic_amplitude_threshold(originalThreshold);
-        return reconstructedWaveform;
-    }
-    else {
-        return waveformOnePeriod;
-    }
+    return get_one_period(waveform, frequency, sample);
 }
 
 std::vector<int> get_numbers_in_string(std::string s) {
@@ -1850,16 +1933,20 @@ std::vector<int> get_numbers_in_string(std::string s) {
 bool CircuitSimulationReader::extract_winding_indexes(size_t numberWindings) {
     size_t numberFoundIndexes = 0;
     std::vector<size_t> indexes;
-    std::map<std::string, size_t> windingLabels = {
+    // Insertion order matters: longer / more-specific labels must be checked
+    // before short single-letter fallbacks, otherwise "I_trafo_HV" would match
+    // "a" (from "trafo") before "HV". Using std::map iterated alphabetically,
+    // which is what the previous code did by accident.
+    const std::vector<std::pair<std::string, size_t>> windingLabels = {
         {"pri", 0},
         {"sec", 1},
         {"aux", 2},
         {"ter", 2},
+        {"HV", 0},
+        {"LV", 1},
         {"a", 0},
         {"b", 1},
         {"c", 2},
-        {"HV", 0},
-        {"LV", 1},
     };
 
     std::vector<CircuitSimulationSignal> columnsWithIndexes;

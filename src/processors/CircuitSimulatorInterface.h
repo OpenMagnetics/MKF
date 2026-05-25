@@ -677,6 +677,7 @@ class CircuitSimulationReader {
     CircuitSimulationReader(std::string filePathOrFile, bool forceFile=false);
 
     void process_line(std::string line, char separator);
+    void process_line_with_context(const std::string& line, char separator, size_t lineNumber);
     bool extract_winding_indexes(size_t numberWindings);
     bool extract_column_types(double frequency);
     OperatingPoint extract_operating_point(size_t numberWindings, double frequency, std::optional<std::vector<std::map<std::string, std::string>>> mapColumnNames = std::nullopt, double ambientTemperature = 25);
