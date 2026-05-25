@@ -683,6 +683,13 @@ std::string Psfb::generate_ngspice_circuit(
     size_t inputVoltageIndex,
     size_t operatingPointIndex)
 {
+    // Minimal spice_config() consolidation — only the PULSE rise/fall
+    // times are pulled from the registry. PSFB's other knobs (SW1 VH,
+    // diode RS+CJO, .options block) diverge from the shared `psb` entry
+    // in Topology.cpp and need a registry-vs-cpp alignment first
+    // (split `psb` into per-topology PSFB/PSHB entries, then re-sweep).
+    const auto cfg = spice_config();
+
     auto& inputVoltageSpec = get_input_voltage();
     auto& ops = get_operating_points();
 
@@ -829,7 +836,7 @@ std::string Psfb::generate_ngspice_circuit(
                 << std::scientific << tOn << " " << period << std::fixed << ")\n";
         circuit << "Vpwm_B pwm_B 0 PULSE(0 5 "
                 << std::scientific << halfPeriod << std::fixed
-                << " 10n 10n "
+                << " " << cfg.pwmRise << " " << cfg.pwmFall << " "
                 << std::scientific << tOn << " " << period << std::fixed << ")\n";
         // Vq1_sense is a 0-V ammeter inserted between vin_dc and the
         // leading-leg high-side switch SA's drain. i(Vq1_sense) reports
@@ -850,11 +857,11 @@ std::string Psfb::generate_ngspice_circuit(
         // Lagging leg (QC-QD): phase-shifted by phaseDelay.
         circuit << "Vpwm_C pwm_C 0 PULSE(0 5 "
                 << std::scientific << phaseDelay << std::fixed
-                << " 10n 10n "
+                << " " << cfg.pwmRise << " " << cfg.pwmFall << " "
                 << std::scientific << tOn << " " << period << std::fixed << ")\n";
         circuit << "Vpwm_D pwm_D 0 PULSE(0 5 "
                 << std::scientific << (halfPeriod + phaseDelay) << std::fixed
-                << " 10n 10n "
+                << " " << cfg.pwmRise << " " << cfg.pwmFall << " "
                 << std::scientific << tOn << " " << period << std::fixed << ")\n";
         circuit << "SC vin_dc mid_C pwm_C 0 SW1\n";
         circuit << "DC 0 mid_C DIDEAL\n";

@@ -581,6 +581,15 @@ std::string Pshb::generate_ngspice_circuit(
     size_t inputVoltageIndex,
     size_t operatingPointIndex)
 {
+    // Minimal spice_config() consolidation (same scope as the PSFB
+    // companion): only the PULSE rise/fall times are pulled from the
+    // registry. Other PSHB SPICE knobs (SW1 VH=0.8 vs psb 0.5, diode
+    // RS=0.005 with CJO=1n BV=1000 IBV=1e-12 vs psb 0.05, .options
+    // RELTOL=0.01 ABSTOL=1e-7 ITL1=500 vs psb 0.005/1e-8/1000)
+    // diverge from the shared `psb` entry and need a registry split
+    // before they can be swapped without changing solver behaviour.
+    const auto cfg = spice_config();
+
     auto& inputVoltageSpec = get_input_voltage();
     auto& ops = get_operating_points();
 
@@ -777,7 +786,8 @@ std::string Pshb::generate_ngspice_circuit(
 
         auto pulse = [&](const std::string& name, double delay, double width) {
             circuit << "V" << name << " " << name << " 0 PULSE(0 5 "
-                    << std::scientific << delay << " 10n 10n "
+                    << std::scientific << delay
+                    << " " << cfg.pwmRise << " " << cfg.pwmFall << " "
                     << width << " " << period << std::fixed << ")\n";
         };
 
