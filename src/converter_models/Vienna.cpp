@@ -1,24 +1,23 @@
 // =====================================================================
-// Vienna rectifier - Phase 1+2 implementation.
+// Vienna rectifier — Phase 1+2+3 (incremental).
 //
 // Phase 1: skeleton (constructor, run_checks, design-requirements stub).
 // Phase 2: per-phase analytical solver at peak-of-line (single sample).
+// Phase 3 (this file): adds samplingStrategy=fullLineCycle — each of the
+//   three "Phase A/B/C" windings carries the full 50/60 Hz line cycle,
+//   shifted by 120° per phase, so the wizard plot shows a recognisable
+//   3-phase pattern instead of three identical peak-of-line snapshots.
+//   The remaining Phase-3 items (viennaII, alternative switch types,
+//   synchronousRectifier, phaseCount>1, peakOfLinePlusSectors) are
+//   gated separately in run_checks and documented in VIENNA_PHASE3_PLAN.md.
 //
-// The three boost inductors of a balanced 3-phase Vienna are identical by
-// design, and each sees its worst-case stress at its own peak-of-line
-// instant. Phase 1+2 emits one OperatingPoint with three "windings" -
-// Phase A / B / C inductor - each shaped as a triangular boost-inductor
-// waveform at its peak-of-line operating point. The downstream magnetic
-// adviser uses any of the three (they are equivalent) to size a single
-// powder-core inductor; production would build three identical units.
-//
-// Deferred to Phase 3+ (throws on use):
+// Deferred (throws on use, planned next):
+//   - samplingStrategy=peakOfLinePlusSectors
 //   - viennaII variant, backToBackMosfet / singleMosfetIn4DiodeBridge
 //     switch types, synchronousRectifier, phaseCount > 1.
-//   - peakOfLinePlusSectors / fullLineCycle sampling strategies.
 //   - Neutral-point voltage-ripple modelling (NP balancing controller).
 //   - DC-bus capacitor sizing.
-//   - SPICE netlist emission.
+//   - SPICE netlist emission for the full 3-phase circuit.
 //
 // REFERENCES
 //   [1] Kolar & Zach, PCIM 1994 (the original Vienna paper).
@@ -217,14 +216,111 @@ bool Vienna::run_checks(bool assertErrors) {
             "in Phase 1+2 (deferred to Phase 3).");
         return false;
     }
+    // Phase 1+2 supported peakOfLineOnly; Phase 3 adds fullLineCycle (this
+    // file). peakOfLinePlusSectors is still gated — its DPWM-sector sampling
+    // model is a separate workstream.
     if (get_sampling_strategy().has_value() &&
-        get_sampling_strategy().value() != ViennaSamplingStrategy::PEAK_OF_LINE_ONLY) {
+        get_sampling_strategy().value() != ViennaSamplingStrategy::PEAK_OF_LINE_ONLY &&
+        get_sampling_strategy().value() != ViennaSamplingStrategy::FULL_LINE_CYCLE) {
         if (assertErrors) throw std::runtime_error(
-            "Vienna: only samplingStrategy=peakOfLineOnly is implemented in "
-            "Phase 1+2 (peakOfLinePlusSectors / fullLineCycle deferred to Phase 3).");
+            "Vienna: samplingStrategy=peakOfLinePlusSectors is not yet "
+            "implemented (deferred to Phase 3+, future commit).");
         return false;
     }
     return true;
+}
+
+// =====================================================================
+// build_line_cycle_waveform — full-line-cycle envelope + switching ripple
+// =====================================================================
+//
+// Direct answer to the wizard's "all 3 phases look identical" report: in
+// Phase 1+2 the three windings carried the SAME switching-period snapshot
+// at peak-of-line, because each phase was sampled at its own worst-case
+// angle and that is the same waveform by symmetry. With fullLineCycle the
+// three windings carry the full 50/60 Hz line cycle, shifted by 120° per
+// phase, so A/B/C trace a recognisable 3-phase pattern in the wizard plot.
+//
+// Sampling note: 4096 samples per line cycle gives ~2 samples per
+// switching cycle at the typical 100 kHz / 50 Hz ratio. The line envelope
+// is therefore exact and the switching ripple is aliased — visible as a
+// reduced-amplitude high-frequency texture on top of the sinusoid. Both
+// content bands survive into the FFT-based harmonic decomposition the
+// MagneticAdviser runs downstream, so the per-band core-loss attribution
+// still works (line component from the envelope, switching component from
+// the aliased ripple band). For high-fidelity switching-period view of
+// the inductor at its stress point use samplingStrategy=peakOfLineOnly.
+Waveform Vienna::build_line_cycle_waveform(
+    LineCycleKind kind,
+    double I_pk, double V_phase_peak, double Vdc,
+    double L, double Fsw, double F_line,
+    double phaseOffsetRad,
+    size_t numSamples)
+{
+    if (numSamples < 2)
+        throw std::runtime_error("Vienna::build_line_cycle_waveform: numSamples must be >= 2");
+    if (F_line <= 0)
+        throw std::runtime_error("Vienna::build_line_cycle_waveform: F_line must be > 0");
+    if (Fsw <= F_line)
+        throw std::runtime_error(
+            "Vienna::build_line_cycle_waveform: Fsw must be > F_line");
+    if (L <= 0)
+        throw std::runtime_error("Vienna::build_line_cycle_waveform: L must be > 0");
+
+    const double T_line  = 1.0 / F_line;
+    const double T_sw    = 1.0 / Fsw;
+    const double omega   = 2.0 * M_PI * F_line;
+    const double Vhalf   = Vdc / 2.0;
+
+    std::vector<double> time(numSamples);
+    std::vector<double> data(numSamples);
+    for (size_t i = 0; i < numSamples; ++i) {
+        double t = static_cast<double>(i) / static_cast<double>(numSamples - 1) * T_line;
+        time[i]  = t;
+
+        double theta     = omega * t + phaseOffsetRad;
+        double sinTheta  = std::sin(theta);
+        double Vphase_t  = V_phase_peak * sinTheta;
+        double Iavg_t    = I_pk * sinTheta;
+
+        // Per-angle boost duty (1 − |Vphase|/Vhalf). Floors at 0 in the
+        // (rare) over-modulated edge where |Vphase| > Vhalf; the M ≤ 1 gate
+        // in process_design_requirements should prevent that, but be safe.
+        double dutyAbs = 1.0 - std::abs(Vphase_t) / Vhalf;
+        if (dutyAbs < 0.0) dutyAbs = 0.0;
+        if (dutyAbs > 1.0) dutyAbs = 1.0;
+
+        // Local switching-period ripple peak-to-peak.
+        double dI_pp = std::abs(Vphase_t) * dutyAbs * T_sw / L;
+
+        // Sub-sampled triangular ripple: tri(2π·Fsw·t) in [-1,+1], scaled
+        // by dI_pp/2. Captures sign correctly so the aliased high-freq
+        // band appears in the FFT.
+        double tri = 0.0;
+        {
+            double swPhase = std::fmod(Fsw * t, 1.0);            // [0,1)
+            tri = (swPhase < 0.5) ? (4.0 * swPhase - 1.0)
+                                  : (3.0 - 4.0 * swPhase);
+        }
+
+        if (kind == LineCycleKind::CURRENT) {
+            data[i] = Iavg_t + 0.5 * dI_pp * tri;
+        }
+        else {
+            // Inductor voltage = +V_phase during the switch-ON segment,
+            // V_phase − sign(Vphase)·Vhalf during OFF (so the cycle average
+            // matches the boost equilibrium and the high-freq band is
+            // visible). Use the same triangular phase to alternate.
+            double V_on  = Vphase_t;
+            double V_off = Vphase_t - ((Vphase_t >= 0) ? Vhalf : -Vhalf);
+            data[i] = (tri >= 0) ? V_on : V_off;
+        }
+    }
+
+    Waveform wf;
+    wf.set_data(data);
+    wf.set_time(time);
+    return wf;
 }
 
 // =====================================================================
@@ -426,19 +522,60 @@ OperatingPoint Vienna::process_operating_point_for_input_voltage(
     lastModulationIndex          = M;
     lastInputPower               = P / eff;
 
-    // ---- Build three identical phase-inductor windings ----
-    // Each winding represents the phase inductor at its own peak-of-line.
-    // Triangular ripple around the dc average I_pk; rectangular voltage
-    // alternates +V_L_on (during d) and V_L_off (during 1-d).
+    // ---- Build three phase-inductor windings ----
+    //
+    // peakOfLineOnly (default, Phase 1+2): each winding is the switching-
+    // period waveform at the worst-case stress point (its own peak-of-line);
+    // all three are by definition identical. Good for adviser worst-case
+    // sizing; poor for visualisation (wizard shows three identical traces).
+    //
+    // fullLineCycle (Phase 3): each winding is the full 50/60 Hz line cycle,
+    // with the three phases offset by ±120°. Wizard sees a recognisable
+    // 3-phase pattern; adviser sees both line-frequency and switching-
+    // frequency content via the FFT.
     static const char* phaseNames[3] = { "Phase A", "Phase B", "Phase C" };
+    const double F_line = get_line_frequency().value_or(50.0);
+    const bool fullLineCycle =
+        get_sampling_strategy().value_or(ViennaSamplingStrategy::PEAK_OF_LINE_ONLY)
+            == ViennaSamplingStrategy::FULL_LINE_CYCLE;
+
+    // Positive-sequence A-B-C: Phase A at 0, B at -120°, C at +120°. The
+    // wizard plot then shows A leading B leading C, matching the grid
+    // convention.
+    static const double phaseOffsets[3] = {
+        0.0,
+        -2.0 * M_PI / 3.0,
+        +2.0 * M_PI / 3.0,
+    };
+
     for (int ph = 0; ph < 3; ++ph) {
-        Waveform currentWaveform = Inputs::create_waveform(
-            WaveformLabel::TRIANGULAR, DeltaI_pp, Fsw, duty_at_peak, I_pk, 0);
-        Waveform voltageWaveform = Inputs::create_waveform(
-            WaveformLabel::RECTANGULAR, V_L_pp, Fsw, duty_at_peak,
-            V_L_off + V_L_pp / 2.0, 0);
+        Waveform currentWaveform;
+        Waveform voltageWaveform;
+        double opFreq = Fsw;
+
+        if (fullLineCycle) {
+            currentWaveform = build_line_cycle_waveform(
+                LineCycleKind::CURRENT, I_pk, V_phase_peak, Vdc,
+                L, Fsw, F_line, phaseOffsets[ph]);
+            voltageWaveform = build_line_cycle_waveform(
+                LineCycleKind::VOLTAGE, I_pk, V_phase_peak, Vdc,
+                L, Fsw, F_line, phaseOffsets[ph]);
+            // The waveform's natural period is the line period; downstream
+            // FFT analysis treats `frequency` as the fundamental of the
+            // signal. Use F_line so the line-frequency component lands on
+            // bin 1 of the harmonic decomposition.
+            opFreq = F_line;
+        }
+        else {
+            currentWaveform = Inputs::create_waveform(
+                WaveformLabel::TRIANGULAR, DeltaI_pp, Fsw, duty_at_peak, I_pk, 0);
+            voltageWaveform = Inputs::create_waveform(
+                WaveformLabel::RECTANGULAR, V_L_pp, Fsw, duty_at_peak,
+                V_L_off + V_L_pp / 2.0, 0);
+        }
+
         auto excitation = complete_excitation(
-            currentWaveform, voltageWaveform, Fsw, phaseNames[ph]);
+            currentWaveform, voltageWaveform, opFreq, phaseNames[ph]);
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 

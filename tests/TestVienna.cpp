@@ -14,6 +14,7 @@
 #include "converter_models/Vienna.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
@@ -177,10 +178,139 @@ TEST_CASE("Vienna: rejects unsupported viennaII / non-tType / synchronousRectifi
         REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
     }
     {
+        // Phase 3 (this file) lifted fullLineCycle out of the deferred list.
+        // peakOfLinePlusSectors is still gated.
         auto j = make_vienna_json();
-        j["samplingStrategy"] = "fullLineCycle";
+        j["samplingStrategy"] = "peakOfLinePlusSectors";
         Vienna v(j);
         REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
+    }
+}
+
+
+// =========================================================================
+// Phase 3 — fullLineCycle sampling.
+//
+// peakOfLineOnly (default) emits three identical switching-period snapshots
+// because the analytical model represents each phase at its own peak-of-
+// line, which is the same waveform by symmetry. The wizard plot of those
+// three windings looked indistinguishable. fullLineCycle emits the full
+// line cycle per phase, with the three phases shifted by 120° in time, so
+// the plot now shows a recognisable 3-phase pattern.
+//
+// This test pins:
+//   (1) run_checks accepts fullLineCycle.
+//   (2) Each winding carries a line-cycle-long waveform (period = 1/F_line,
+//       not 1/Fsw).
+//   (3) Phase A current at angle θ ≈ Phase B current at angle (θ − 120°),
+//       and Phase C at (θ + 120°). This is the heart of the "phases must
+//       not be identical" complaint.
+//   (4) Peak inductor current is within tolerance of I_pk computed from
+//       the analytical helper.
+// =========================================================================
+TEST_CASE("Vienna: fullLineCycle emits 120-degree-shifted phase waveforms",
+          "[vienna-topology][phase3-line-cycle]") {
+    auto j = make_vienna_json();
+    j["samplingStrategy"] = "fullLineCycle";
+    Vienna v(j);
+
+    // (1) run_checks must now accept fullLineCycle.
+    REQUIRE(v.run_checks(false));
+
+    auto inputs = v.process();
+    const auto& ops = inputs.get_operating_points();
+    REQUIRE(!ops.empty());
+    const auto& exc = ops[0].get_excitations_per_winding();
+    REQUIRE(exc.size() == 3);
+
+    const double F_line = 50.0;  // make_vienna_json() default
+    const double T_line = 1.0 / F_line;
+
+    // (2) Each winding's waveform spans one line period.
+    auto get_current = [&](size_t w) {
+        REQUIRE(exc[w].get_current().has_value());
+        auto sig = exc[w].get_current().value();
+        REQUIRE(sig.get_waveform().has_value());
+        return sig.get_waveform().value();
+    };
+    Waveform wfA = get_current(0);
+    Waveform wfB = get_current(1);
+    Waveform wfC = get_current(2);
+
+    REQUIRE(wfA.get_time().has_value());
+    REQUIRE(wfA.get_data().size() == wfA.get_time().value().size());
+    REQUIRE(wfA.get_time().value().back() ==
+            Catch::Approx(T_line).epsilon(0.001));
+
+    // (3) Time-domain phase relationship. Sample A at t0 ≈ T/4 (= π/2, peak
+    // of phase A), then locate the same value on phase B at t = t0 + T/3
+    // (120° later, since B trails A by 120° in positive-sequence). Use
+    // index lookup so the test isn't fragile to the exact sample count.
+    //
+    // A leads B by 120° means: A(t) = B(t + T/3) = C(t − T/3).
+    const size_t N = wfA.get_data().size();
+    const size_t iAtQuarter      = N / 4;                          // ≈ T/4
+    const size_t iAtQuarter_plus = (iAtQuarter + N / 3) % N;       // ≈ T/4 + T/3
+    const size_t iAtQuarter_minus= (iAtQuarter + N - N / 3) % N;   // ≈ T/4 − T/3
+
+    double Ipeak = v.get_last_inductor_peak_current();
+    REQUIRE(Ipeak > 0.0);
+
+    // The line-cycle envelope is exact but the switching ripple at the
+    // 4096-sample / 100 kHz Fsw / 50 Hz F_line ratio is heavily aliased
+    // (≈2 samples per switching cycle). That makes the exact value at any
+    // individual sample drift by up to ~ΔI_pp/2 (≈10-15 % of I_pk for the
+    // default ripple ratio). Use a generous 25 %·I_pk margin — still far
+    // tighter than the bug we're protecting against, where A = B = C
+    // exactly, and where the line envelope at iAtQuarter_plus would be
+    // shifted by ≈sqrt(3)/2 · I_pk ≈ 0.87·I_pk from A's reading.
+    const double margin = 0.25 * Ipeak;
+
+    // A at its own peak — envelope ≈ Ipeak * sin(π/2) = Ipeak.
+    CHECK(wfA.get_data()[iAtQuarter] == Catch::Approx(Ipeak).margin(margin));
+    // B trails A by T/3 — at the same wall-clock time A is +T/3 ahead of
+    // B's peak, so B(t0+T/3) ≈ A(t0).
+    CHECK(wfB.get_data()[iAtQuarter_plus] ==
+          Catch::Approx(wfA.get_data()[iAtQuarter]).margin(margin));
+    CHECK(wfC.get_data()[iAtQuarter_minus] ==
+          Catch::Approx(wfA.get_data()[iAtQuarter]).margin(margin));
+
+    // (4) The three waveforms must NOT be element-wise identical — the bug
+    // we are fixing. At iAtQuarter (A's peak), B is at angle (π/2 − 2π/3)
+    // = −π/6, sin = −0.5, so B's value is ≈ −0.5·Ipeak — that's >0.5·Ipeak
+    // away from A's +Ipeak reading. Same for C. Use a generous 0.5·Ipeak
+    // floor that still trips on A=B=C.
+    CHECK(std::abs(wfA.get_data()[iAtQuarter] - wfB.get_data()[iAtQuarter]) >
+          0.5 * Ipeak);
+    CHECK(std::abs(wfA.get_data()[iAtQuarter] - wfC.get_data()[iAtQuarter]) >
+          0.5 * Ipeak);
+}
+
+
+TEST_CASE("Vienna: peakOfLineOnly default keeps identical-phases behaviour",
+          "[vienna-topology][phase3-line-cycle]") {
+    // Regression guard — make sure the new fullLineCycle path didn't change
+    // the default behaviour. Three windings, all identical, sampled at the
+    // switching period.
+    auto j = make_vienna_json();
+    // Explicit peakOfLineOnly (== absent default).
+    j["samplingStrategy"] = "peakOfLineOnly";
+    Vienna v(j);
+    auto inputs = v.process();
+    const auto& exc = inputs.get_operating_points()[0].get_excitations_per_winding();
+    REQUIRE(exc.size() == 3);
+
+    auto get_current_data = [&](size_t w) {
+        return exc[w].get_current().value().get_waveform().value().get_data();
+    };
+    auto da = get_current_data(0);
+    auto db = get_current_data(1);
+    auto dc = get_current_data(2);
+    REQUIRE(da.size() == db.size());
+    REQUIRE(da.size() == dc.size());
+    for (size_t i = 0; i < da.size(); ++i) {
+        CHECK(da[i] == Catch::Approx(db[i]).epsilon(1e-9));
+        CHECK(da[i] == Catch::Approx(dc[i]).epsilon(1e-9));
     }
 }
 

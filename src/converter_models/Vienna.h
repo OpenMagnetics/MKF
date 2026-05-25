@@ -148,6 +148,41 @@ public:
     /** Per-diode average current = I_pk / pi (full-wave bridge). */
     static double compute_diode_avg(double I_pk);
 
+    // Phase-3 fullLineCycle waveform builder.
+    //
+    // For samplingStrategy=fullLineCycle, each phase inductor sees its own
+    // sinusoidal current envelope at the line frequency, offset by ±120°
+    // from the other two phases. The instantaneous switching-frequency
+    // ripple |ΔI(θ)| varies with the angle:
+    //
+    //   i_avg(t)   = I_pk · sin(ω_line·t + φ)
+    //   V_phase(t) = V_peak · sin(ω_line·t + φ)
+    //   d(t)       = 1 − |V_phase(t)| / (Vdc/2)
+    //                (≥0 by construction since M ≤ 1)
+    //   ΔI_pp(t)   = |V_phase(t)| · d(t) / (L · Fsw)
+    //
+    // Builds a Waveform with `numSamples` uniform time samples across one
+    // line period, carrying the envelope plus a superposed triangular ripple
+    // term. The envelope is exact; the ripple is sub-sampled (a typical
+    // 100 kHz switching × 50 Hz line gives 2000 switching cycles per line
+    // cycle, so the ripple visible at 1-4 samples/cycle is an aliased proxy
+    // — adequate for plotting and for FFT-based harmonic analysis, since
+    // both line-frequency and switching-frequency content remain present in
+    // the spectrum).
+    //
+    // `phaseOffsetRad` shifts the line angle (0 = Phase A, -2π/3 = Phase B,
+    // +2π/3 = Phase C in a positive-sequence A-B-C grid).
+    //
+    // `kind` picks the quantity: CURRENT returns inductor current; VOLTAGE
+    // returns inductor terminal voltage.
+    enum class LineCycleKind { CURRENT, VOLTAGE };
+    static Waveform build_line_cycle_waveform(
+        LineCycleKind kind,
+        double I_pk, double V_phase_peak, double Vdc,
+        double L, double Fsw, double F_line,
+        double phaseOffsetRad,
+        size_t numSamples = 4096);
+
     // Topology interface
     bool run_checks(bool assert = false) override;
     DesignRequirements process_design_requirements() override;
