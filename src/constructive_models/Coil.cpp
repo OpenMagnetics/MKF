@@ -4501,7 +4501,15 @@ bool Coil::wind_by_turns() {
         set_functional_description(functionalDescription);
         set_sections_description(sectionsDescription);
         set_layers_description(layersDescription);
-        devirtualize_turns_description();
+        // Only devirtualize when the underlying wind actually populated
+        // a turns description. wind_by_rectangular_turns / wind_by_round_turns
+        // can return false (geometry doesn't fit) and leave the turns
+        // description std::nullopt; devirtualize_turns_description's
+        // unconditional .value() then died with bad_optional_access for
+        // push_pull / weinberg with multi-winding virtualized cores.
+        if (result) {
+            devirtualize_turns_description();
+        }
     }
     return result;
 }
