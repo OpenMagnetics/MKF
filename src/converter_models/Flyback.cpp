@@ -239,6 +239,9 @@ namespace OpenMagnetics {
         }
 
         // ---- Populate per-OP diagnostics (golden-quality contract) ----
+        // Scalar last_* fields reflect the MOST RECENT call. Vectors below
+        // accumulate one entry per call so the wizard's Diagnostics table
+        // can show every operating point in its own column.
         lastMode = mode;
         lastDutyCycle = dutyCycle;
         lastSwitchingFrequency = switchingFrequency;
@@ -247,6 +250,15 @@ namespace OpenMagnetics {
         lastPrimaryPeakCurrent = primaryCurrentOffset + primaryCurrentPeakToPeak;
         lastSecondaryPeakCurrent = lastPrimaryPeakCurrent * turnsRatios[0];
         lastIsCcm = (mode == FlybackModes::CONTINUOUS_CONDUCTION_MODE);
+
+        perOpMode.push_back(mode);
+        perOpDutyCycle.push_back(dutyCycle);
+        perOpSwitchingFrequency.push_back(switchingFrequency);
+        perOpPrimaryAverageCurrent.push_back(primaryCurrentAverage);
+        perOpPrimaryPeakToPeak.push_back(primaryCurrentPeakToPeak);
+        perOpPrimaryPeakCurrent.push_back(lastPrimaryPeakCurrent);
+        perOpSecondaryPeakCurrent.push_back(lastSecondaryPeakCurrent);
+        perOpIsCcm.push_back(lastIsCcm);
 
         // Primary
         {
@@ -387,7 +399,14 @@ namespace OpenMagnetics {
                 " at Vin=" + std::to_string(inputVoltage) + "V (mode=" +
                 (isDcm ? "DCM" : "CCM") + ") in generate_ngspice_circuit.");
         }
-        
+
+        // Capture the SPICE-input duty cycle (and frequency) so libMKF.cpp
+        // can emit it as a "what the simulator actually ran" diagnostic
+        // without re-deriving it from the trace (where ramp+commutation
+        // would otherwise need careful zero-crossing detection).
+        lastDutyCycle = dutyCycle;
+        lastSwitchingFrequency = switchingFrequency;
+
         // Number of secondaries
         size_t numSecondaries = turnsRatios.size();
 
@@ -1201,10 +1220,29 @@ namespace OpenMagnetics {
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        // Clear per-OP diagnostic vectors so the wizard's Diagnostics table
+        // reflects only this run, not any previous one.
+        perOpName.clear();
+        perOpMode.clear();
+        perOpDutyCycle.clear();
+        perOpSwitchingFrequency.clear();
+        perOpPrimaryAverageCurrent.clear();
+        perOpPrimaryPeakToPeak.clear();
+        perOpPrimaryPeakCurrent.clear();
+        perOpSecondaryPeakCurrent.clear();
+        perOpIsCcm.clear();
+
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
                 auto mode = get_mutable_operating_points()[flybackOperatingPointIndex].resolve_mode(get_current_ripple_ratio());
+
+                std::string opName = inputVoltagesNames[inputVoltageIndex];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(flybackOperatingPointIndex);
+                }
+                perOpName.push_back(opName);
+
                 auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[flybackOperatingPointIndex], turnsRatios, magnetizingInductance, mode);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";

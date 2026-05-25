@@ -147,6 +147,15 @@ private:
     mutable bool   lastIsCcm = true;                // false → DCM (IL_min < 0)
     mutable double lastConductionRatio = 1.0;       // (t_on + t_off) / T  (1.0 in CCM)
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in × OP iteration) ----
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double> perOpDutyCycle;
+    mutable std::vector<double> perOpInductorAverageCurrent;
+    mutable std::vector<double> perOpInductorPeakToPeak;
+    mutable std::vector<double> perOpPeakInductorCurrent;
+    mutable std::vector<bool>   perOpIsCcm;
+    mutable std::vector<double> perOpConductionRatio;
+
 public:
     bool _assertErrors = false;
 
@@ -173,6 +182,14 @@ public:
     double get_last_peak_inductor_current() const { return lastPeakInductorCurrent; }
     bool   get_last_is_ccm() const { return lastIsCcm; }
     double get_last_conduction_ratio() const { return lastConductionRatio; }
+
+    const std::vector<std::string>& get_per_op_name() const { return perOpName; }
+    const std::vector<double>& get_per_op_duty_cycle() const { return perOpDutyCycle; }
+    const std::vector<double>& get_per_op_inductor_average_current() const { return perOpInductorAverageCurrent; }
+    const std::vector<double>& get_per_op_inductor_peak_to_peak() const { return perOpInductorPeakToPeak; }
+    const std::vector<double>& get_per_op_peak_inductor_current() const { return perOpPeakInductorCurrent; }
+    const std::vector<bool>&   get_per_op_is_ccm() const { return perOpIsCcm; }
+    const std::vector<double>& get_per_op_conduction_ratio() const { return perOpConductionRatio; }
 
     bool run_checks(bool assert = false) override;
 

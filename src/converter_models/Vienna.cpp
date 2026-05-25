@@ -687,9 +687,20 @@ OperatingPoint Vienna::process_operating_point_for_input_voltage(
                 currentWaveform = Inputs::create_waveform(
                     WaveformLabel::TRIANGULAR, DeltaI_pp, Fsw, duty_at_peak,
                     I_pk_ch, 0);
+                // The boost-inductor voltage in steady state has zero DC
+                // average (volt-second balance). `Inputs::create_waveform`
+                // for RECTANGULAR interprets `offset` as the time-averaged
+                // DC value, not the geometric midpoint of max/min — so
+                // passing `V_L_off + V_L_pp/2` (the midpoint, 126V here)
+                // shifts max/min by that midpoint instead of producing
+                // the intended V_on=+V_phase_peak / V_off=V_phase_peak-Vdc/2
+                // levels. Use offset=0 so the resulting trace alternates
+                // between V_L_on = peakToPeak·(1-D) and V_L_off =
+                // -peakToPeak·D, which match V_phase_peak and
+                // V_phase_peak - Vdc/2 respectively for this design point.
                 voltageWaveform = Inputs::create_waveform(
                     WaveformLabel::RECTANGULAR, V_L_pp, Fsw, duty_at_peak,
-                    V_L_off + V_L_pp / 2.0, 0);
+                    0.0, 0);
             }
 
             std::string name = phaseNames[ph];
@@ -928,7 +939,16 @@ std::string Vienna::generate_ngspice_circuit(
     // Boost inductor with primary current sense (IC= sets initial current)
     c << "Vph_sense vphase l_a 0\n";
     c << "Lboost l_a sw_node " << std::scientific << L << std::fixed
-      << " IC=" << I_pk << "\n\n";
+      << " IC=" << I_pk << "\n";
+    // §8a.5 differential probe — v(l_a) alone is just the upper-terminal
+    // node potential (≈ constant V_phase_peak DC); the *inductor* voltage
+    // (what the magnetic winding sees) is v(l_a) − v(sw_node), which
+    // pulsates between +V_phase_peak (switch on, drawing energy into L)
+    // and V_phase_peak − Vdc/2 (switch off, delivering to bus, a large
+    // negative swing). Without this E-source the extract_operating_point
+    // mapping was reading the single-ended node and the magnetic-side
+    // voltage waveform appeared flat-DC.
+    c << "Evl_a_w vl_a_w 0 vol = 'v(l_a) - v(sw_node)'\n\n";
 
     // Switch model: T-type bidir leg behaves as a low-side switch from sw_node
     // to ground (neutral midpoint). Use SW1 with antiparallel ideal diode
@@ -960,7 +980,7 @@ std::string Vienna::generate_ngspice_circuit(
     c << ".tran " << std::scientific << maxStep << " " << simTime
       << " " << startTime << " " << maxStep << " UIC\n\n";
 
-    c << ".save v(vphase) i(Vphase) v(l_a) v(sw_node) v(vdc_plus) v(vdc_cap)"
+    c << ".save v(vphase) i(Vphase) v(l_a) v(sw_node) v(vl_a_w) v(vdc_plus) v(vdc_cap)"
       << " i(Vph_sense)\n\n";
     c << ".end\n";
     return c.str();
@@ -1010,11 +1030,14 @@ std::vector<OperatingPoint> Vienna::simulate_and_extract_operating_points(
         }
 
         // Map the same single-phase inductor waveform to all 3 windings.
+        // Voltage probe is the *differential* `vl_a_w` E-source (= v(l_a) −
+        // v(sw_node)), not the single-ended `l_a` node — see netlist comment
+        // at §8a.5 for the rationale.
         NgspiceRunner::WaveformNameMapping waveformMapping;
         std::vector<std::string> windingNames;
         std::vector<bool> flipCurrentSign;
         for (const char* nm : {"Phase A", "Phase B", "Phase C"}) {
-            waveformMapping.push_back({{"voltage", "l_a"},
+            waveformMapping.push_back({{"voltage", "vl_a_w"},
                                        {"current", "vph_sense#branch"}});
             windingNames.push_back(nm);
             flipCurrentSign.push_back(false);

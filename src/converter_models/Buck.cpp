@@ -117,6 +117,14 @@ namespace OpenMagnetics {
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
 
+        // Per-OP diagnostic snapshot for the wizard's multi-column table.
+        perOpDutyCycle.push_back(lastDutyCycle);
+        perOpInductorAverageCurrent.push_back(lastInductorAverageCurrent);
+        perOpInductorPeakToPeak.push_back(lastInductorPeakToPeak);
+        perOpPeakInductorCurrent.push_back(lastPeakInductorCurrent);
+        perOpIsCcm.push_back(lastIsCcm);
+        perOpConductionRatio.push_back(lastConductionRatio);
+
         return operatingPoint;
     }
 
@@ -197,9 +205,23 @@ namespace OpenMagnetics {
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        // Clear per-OP diagnostic vectors so the wizard table reflects this run only.
+        perOpName.clear();
+        perOpDutyCycle.clear();
+        perOpInductorAverageCurrent.clear();
+        perOpInductorPeakToPeak.clear();
+        perOpPeakInductorCurrent.clear();
+        perOpIsCcm.clear();
+        perOpConductionRatio.clear();
+
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t buckOperatingPointIndex = 0; buckOperatingPointIndex < get_operating_points().size(); ++buckOperatingPointIndex) {
+                std::string opName = inputVoltagesNames[inputVoltageIndex];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(buckOperatingPointIndex);
+                }
+                perOpName.push_back(opName);
                 auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[buckOperatingPointIndex], magnetizingInductance);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";

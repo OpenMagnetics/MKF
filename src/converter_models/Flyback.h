@@ -98,6 +98,20 @@ private:
     mutable double lastSecondaryPeakCurrent = 0.0;  // IL_sec,pk lumped [A]
     mutable bool   lastIsCcm = true;                // false → DCM/QRM/BMO
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in × OP iteration)
+    // populated by process_operating_points so the wizard can render a
+    // Diagnostics table with one column per OP. Cleared at the start of
+    // each process_operating_points call.
+    mutable std::vector<std::string>  perOpName;
+    mutable std::vector<FlybackModes> perOpMode;
+    mutable std::vector<double>       perOpDutyCycle;
+    mutable std::vector<double>       perOpSwitchingFrequency;
+    mutable std::vector<double>       perOpPrimaryAverageCurrent;
+    mutable std::vector<double>       perOpPrimaryPeakToPeak;
+    mutable std::vector<double>       perOpPrimaryPeakCurrent;
+    mutable std::vector<double>       perOpSecondaryPeakCurrent;
+    mutable std::vector<bool>         perOpIsCcm;
+
 public:
     // ---- Per-OP diagnostic accessors ----
     FlybackModes get_last_mode() const { return lastMode; }
@@ -108,6 +122,17 @@ public:
     double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
     double get_last_secondary_peak_current() const { return lastSecondaryPeakCurrent; }
     bool   get_last_is_ccm() const { return lastIsCcm; }
+
+    // ---- Per-OP vector accessors ----
+    const std::vector<std::string>&  get_per_op_name()                      const { return perOpName; }
+    const std::vector<FlybackModes>& get_per_op_mode()                      const { return perOpMode; }
+    const std::vector<double>&       get_per_op_duty_cycle()                const { return perOpDutyCycle; }
+    const std::vector<double>&       get_per_op_switching_frequency()       const { return perOpSwitchingFrequency; }
+    const std::vector<double>&       get_per_op_primary_average_current()   const { return perOpPrimaryAverageCurrent; }
+    const std::vector<double>&       get_per_op_primary_peak_to_peak()      const { return perOpPrimaryPeakToPeak; }
+    const std::vector<double>&       get_per_op_primary_peak_current()      const { return perOpPrimaryPeakCurrent; }
+    const std::vector<double>&       get_per_op_secondary_peak_current()    const { return perOpSecondaryPeakCurrent; }
+    const std::vector<bool>&         get_per_op_is_ccm()                    const { return perOpIsCcm; }
 
     MAS::Topologies topology_kind() const override { return MAS::Topologies::FLYBACK_CONVERTER; }
 
