@@ -1631,6 +1631,12 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
     size_t inputVoltageIndex,
     size_t operatingPointIndex)
 {
+    // All SPICE-side knobs from spice_config(). The AHB registry entry
+    // (Topology.cpp) was tuned to match this file's historical values
+    // (VH=0.8, RON=1m, RS=0.001 with BV=1000/IBV=1e-12 diode extras,
+    // .options RELTOL=0.01 ABSTOL=1e-7 ITL1=500). Behaviour-preserving.
+    const auto cfg = spice_config();
+
     // ---- Validation (Guide §5: throw loudly on malformed inputs) ----
     AhbRectifierType rect = get_rectifier_type().value_or(
         AhbRectifierType::CENTER_TAPPED);
@@ -1753,21 +1759,29 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
         c << "* IC: i_Lm=" << iLm_init_v5 << " A, V_Cclamp=" << Vclamp_dc_v5
           << " V, V_Co=" << Vo << " V\n\n";
 
-        c << ".model SW1 SW VT=2.5 VH=0.8 RON=1m ROFF=1Meg\n";
-        c << ".model DIDEAL D(IS=1e-12 RS=0.001 BV=1000 IBV=1e-12)\n\n";
+        c << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+      << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
+        c << ".model DIDEAL D(IS=" << cfg.diodeIS << " RS=" << cfg.diodeRS;
+    if (!cfg.diodeExtra.empty()) c << " " << cfg.diodeExtra;
+    c << ")\n\n";
 
         c << "Vdc vin_dc 0 " << Vin << "\n\n";
 
-        c << "Vpwm_Q1 g1 0 PULSE(0 5 0 10n 10n " << t_q1_on_v5 << " " << Tsw_v5 << ")\n";
-        c << "Vpwm_Q2 g2 0 PULSE(0 5 " << (tA_v5 + T_DEAD_V5) << " 10n 10n "
-          << t_q2_on_v5 << " " << Tsw_v5 << ")\n\n";
+        c << "Vpwm_Q1 g1 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+          << cfg.pwmRise << " " << cfg.pwmFall
+          << " " << t_q1_on_v5 << " " << Tsw_v5 << ")\n";
+        c << "Vpwm_Q2 g2 0 PULSE(0 " << cfg.pwmHigh << " " << (tA_v5 + T_DEAD_V5)
+          << " " << cfg.pwmRise << " " << cfg.pwmFall
+          << " " << t_q2_on_v5 << " " << Tsw_v5 << ")\n\n";
 
         c << "S1 vin_dc sw g1 0 SW1\n";
         c << "D1 sw vin_dc DIDEAL\n";
-        c << "Rsnub_Q1 vin_dc sw 1k\nCsnub_Q1 vin_dc sw 1n\n";
+        c << "Rsnub_Q1 vin_dc sw " << cfg.snubR
+          << "\nCsnub_Q1 vin_dc sw " << cfg.snubC << "\n";
         c << "S2 sw clamp_lo g2 0 SW1\n";
         c << "D2 clamp_lo sw DIDEAL\n";
-        c << "Rsnub_Q2 sw clamp_lo 1k\nCsnub_Q2 sw clamp_lo 1n\n";
+        c << "Rsnub_Q2 sw clamp_lo " << cfg.snubR
+          << "\nCsnub_Q2 sw clamp_lo " << cfg.snubC << "\n";
         c << "C_clamp clamp_lo 0 " << C_clamp_v5 << " IC=" << Vclamp_dc_v5 << "\n";
         c << "R_clamp_bleed clamp_lo 0 1Meg\n\n";
 
@@ -1870,17 +1884,23 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
     c << "* IC: V_Cb=" << VCb_dc << " V, i_Lm=" << iLm_init
       << " A, i_Lo=" << iLo_init << " A, V_Co=" << Vo << " V\n\n";
 
-    c << ".model SW1 SW VT=2.5 VH=0.8 RON=1m ROFF=1Meg\n";
+    c << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+      << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
     // Near-ideal diode RS so SPICE secondary-side operating point stays
     // close to the analytical ideal-diode assumption (P8 NRMSE).
-    c << ".model DIDEAL D(IS=1e-12 RS=0.001 BV=1000 IBV=1e-12)\n\n";
+    c << ".model DIDEAL D(IS=" << cfg.diodeIS << " RS=" << cfg.diodeRS;
+    if (!cfg.diodeExtra.empty()) c << " " << cfg.diodeExtra;
+    c << ")\n\n";
 
     c << "Vdc vin_dc 0 " << Vin << "\n\n";
 
     // ---- PWM gates (complementary, 50 ns dead-time) ----
-    c << "Vpwm_Q1 g1 0 PULSE(0 5 0 10n 10n " << t_q1_on << " " << Tsw << ")\n";
-    c << "Vpwm_Q2 g2 0 PULSE(0 5 " << (tA + T_DEAD) << " 10n 10n "
-      << t_q2_on << " " << Tsw << ")\n\n";
+    c << "Vpwm_Q1 g1 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+      << cfg.pwmRise << " " << cfg.pwmFall
+      << " " << t_q1_on << " " << Tsw << ")\n";
+    c << "Vpwm_Q2 g2 0 PULSE(0 " << cfg.pwmHigh << " " << (tA + T_DEAD)
+      << " " << cfg.pwmRise << " " << cfg.pwmFall
+      << " " << t_q2_on << " " << Tsw << ")\n\n";
 
     // ---- Half-bridge leg ----
     // Vq1_sense is a 0-V ammeter inserted between vin_dc and the high-side
@@ -1892,10 +1912,12 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
     c << "Vq1_sense vin_dc q1_drain 0\n";
     c << "S1 q1_drain sw g1 0 SW1\n";
     c << "D1 sw vin_dc DIDEAL\n";
-    c << "Rsnub_Q1 vin_dc sw 1k\nCsnub_Q1 vin_dc sw 1n\n";
+    c << "Rsnub_Q1 vin_dc sw " << cfg.snubR
+          << "\nCsnub_Q1 vin_dc sw " << cfg.snubC << "\n";
     c << "S2 sw 0 g2 0 SW1\n";
     c << "D2 0 sw DIDEAL\n";
-    c << "Rsnub_Q2 sw 0 1k\nCsnub_Q2 sw 0 1n\n\n";
+    c << "Rsnub_Q2 sw 0 " << cfg.snubR
+      << "\nCsnub_Q2 sw 0 " << cfg.snubC << "\n\n";
 
     // ---- Primary loop: Vin → Cb → pri_top → Llk → Lpri → sw ----
     // Cb sense source so we can probe i_Cb (= i_pri at steady state).
@@ -2037,8 +2059,12 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
       << " i(Vpri_sense) i(Vcb_sense) i(Vsec_a_sense)"
       << " i(Vsec_b_sense) i(Vout_sense) i(Vdc) i(Vq1_sense)\n\n";
 
-    c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
-    c << ".options METHOD=GEAR TRTOL=7\n";
+    c << ".options RELTOL=" << cfg.relTol
+      << " ABSTOL=" << cfg.absTol
+      << " VNTOL=" << cfg.vnTol
+      << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
+    c << ".options METHOD=" << cfg.method
+      << " TRTOL=" << cfg.trTol << "\n";
     // NOTE: do NOT emit a `.ic v(sw)=...` line here. With `uic` on .tran the
     // switch-node IC is fought between (a) the body-diode operating point of
     // Q1/Q2 and (b) the snubber RC time constant; the resulting timestep is

@@ -356,13 +356,21 @@ namespace OpenMagnetics {
             // outside it). Output cap kept at the forward-class 100 µF.
             {
                 SpiceSimulationConfig ahb;
-                ahb.swModelVT = 2.5;            ahb.swModelVH = 0.5;
+                // Tuned to match AsymmetricHalfBridge.cpp's historical
+                // hardcoded values byte-for-byte (VH=0.8, RON=1m,
+                // diodeRS=0.001, BV/IBV extras, relTol 0.01, itl 500).
+                // The original registry values (0.5/0.01/0.05/0.005/1000)
+                // were aspirational — the .cpp file never used them. This
+                // entry now matches reality.
+                ahb.swModelVT = 2.5;            ahb.swModelVH = 0.8;
+                ahb.swModelRON = 0.001;         ahb.swModelROFF = 1e6;
                 ahb.snubR = 1e3;                ahb.snubC = 1e-9;
-                ahb.diodeIS = 1e-12;            ahb.diodeRS = 0.05;
+                ahb.diodeIS = 1e-12;            ahb.diodeRS = 0.001;
+                ahb.diodeExtra = "BV=1000 IBV=1e-12";
                 ahb.outputCapacitance = 100e-6;
-                ahb.relTol = 0.005;             ahb.absTol = 1e-8;
-                ahb.vnTol = 1e-5;
-                ahb.itl1 = 1000;                ahb.itl4 = 1000;
+                ahb.relTol = 0.01;              ahb.absTol = 1e-7;
+                ahb.vnTol = 1e-4;
+                ahb.itl1 = 500;                 ahb.itl4 = 500;
                 ahb.method = "GEAR";            ahb.trTol = 7.0;
                 m[MAS::Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER] = ahb;
             }
