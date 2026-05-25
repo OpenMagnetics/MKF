@@ -1284,6 +1284,13 @@ std::string Llc::generate_ngspice_circuit(
     size_t inputVoltageIndex,
     size_t operatingPointIndex)
 {
+    // Pull all SPICE-side knobs (PULSE timing, SW model, snubbers, diode
+    // model, output cap, solver options) from the per-topology config —
+    // no literals from here on out. Registry default for LLC is wired in
+    // Topology.cpp (LLC_RESONANT_CONVERTER entry); the values below
+    // therefore match the previous hardcoded netlist byte-for-byte.
+    const auto cfg = spice_config();
+
     auto& inputVoltageSpec = get_input_voltage();
     auto& ops = get_operating_points();
 
@@ -1409,21 +1416,27 @@ std::string Llc::generate_ngspice_circuit(
                 + std::to_string(halfPeriod) + " s) — tOn would be non-positive.");
         }
 
-        circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-        circuit << ".model DIDEAL D(IS=1e-12 RS=0.05)\n\n";
+        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
+        circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
+                << " RS=" << cfg.diodeRS << std::fixed << ")\n\n";
 
         if (isFullBridge) {
             // Diagonal QA+QD on first half, QB+QC on second half.
-            circuit << "Vpwm_QA pwm_QA 0 PULSE(0 5 0 10n 10n "
-                    << std::scientific << tOn << " " << period << std::fixed << ")\n";
-            circuit << "Vpwm_QB pwm_QB 0 PULSE(0 5 "
-                    << std::scientific << halfPeriod << " 10n 10n "
+            circuit << "Vpwm_QA pwm_QA 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+                    << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
                     << tOn << " " << period << std::fixed << ")\n";
-            circuit << "Vpwm_QC pwm_QC 0 PULSE(0 5 "
-                    << std::scientific << halfPeriod << " 10n 10n "
+            circuit << "Vpwm_QB pwm_QB 0 PULSE(0 " << cfg.pwmHigh << " "
+                    << std::scientific << halfPeriod << " "
+                    << cfg.pwmRise << " " << cfg.pwmFall << " "
                     << tOn << " " << period << std::fixed << ")\n";
-            circuit << "Vpwm_QD pwm_QD 0 PULSE(0 5 0 10n 10n "
-                    << std::scientific << tOn << " " << period << std::fixed << ")\n";
+            circuit << "Vpwm_QC pwm_QC 0 PULSE(0 " << cfg.pwmHigh << " "
+                    << std::scientific << halfPeriod << " "
+                    << cfg.pwmRise << " " << cfg.pwmFall << " "
+                    << tOn << " " << period << std::fixed << ")\n";
+            circuit << "Vpwm_QD pwm_QD 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+                    << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
+                    << tOn << " " << period << std::fixed << ")\n";
             // §8a.5 input-current sense: zero-V sources upstream of each
             // high-side switch drain. i(Vq1_sense)+i(Vq3_sense) gives the
             // true DC-bus current sourced from vin_dc.
@@ -1433,14 +1446,18 @@ std::string Llc::generate_ngspice_circuit(
             circuit << "DQA 0 bridge_a DIDEAL\n";
             circuit << "SQB bridge_a 0 pwm_QB 0 SW1\n";
             circuit << "DQB bridge_a qa_drain DIDEAL\n";
-            circuit << "Rsnub_QA qa_drain bridge_a 1k\nCsnub_QA qa_drain bridge_a 1n\n";
-            circuit << "Rsnub_QB bridge_a 0 1k\nCsnub_QB bridge_a 0 1n\n";
+            circuit << "Rsnub_QA qa_drain bridge_a " << cfg.snubR
+                    << "\nCsnub_QA qa_drain bridge_a " << std::scientific << cfg.snubC << std::fixed << "\n";
+            circuit << "Rsnub_QB bridge_a 0 " << cfg.snubR
+                    << "\nCsnub_QB bridge_a 0 " << std::scientific << cfg.snubC << std::fixed << "\n";
             circuit << "SQC qc_drain bridge_b pwm_QC 0 SW1\n";
             circuit << "DQC 0 bridge_b DIDEAL\n";
             circuit << "SQD bridge_b 0 pwm_QD 0 SW1\n";
             circuit << "DQD bridge_b qc_drain DIDEAL\n";
-            circuit << "Rsnub_QC qc_drain bridge_b 1k\nCsnub_QC qc_drain bridge_b 1n\n";
-            circuit << "Rsnub_QD bridge_b 0 1k\nCsnub_QD bridge_b 0 1n\n";
+            circuit << "Rsnub_QC qc_drain bridge_b " << cfg.snubR
+                    << "\nCsnub_QC qc_drain bridge_b " << std::scientific << cfg.snubC << std::fixed << "\n";
+            circuit << "Rsnub_QD bridge_b 0 " << cfg.snubR
+                    << "\nCsnub_QD bridge_b 0 " << std::scientific << cfg.snubC << std::fixed << "\n";
             circuit << "Vpri_sense bridge_a lr_in 0\n\n";
         } else {
             // Half-bridge: split caps form mid_point at Vin/2.
@@ -1448,10 +1465,12 @@ std::string Llc::generate_ngspice_circuit(
             circuit << "Cbus_lo mid_point 0 1u IC=" << (inputVoltage / 2.0) << "\n";
             circuit << "Rbal_hi vin_dc mid_point 100k\n";
             circuit << "Rbal_lo mid_point 0 100k\n";
-            circuit << "Vpwm_HI pwm_HI 0 PULSE(0 5 0 10n 10n "
-                    << std::scientific << tOn << " " << period << std::fixed << ")\n";
-            circuit << "Vpwm_LO pwm_LO 0 PULSE(0 5 "
-                    << std::scientific << halfPeriod << " 10n 10n "
+            circuit << "Vpwm_HI pwm_HI 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+                    << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
+                    << tOn << " " << period << std::fixed << ")\n";
+            circuit << "Vpwm_LO pwm_LO 0 PULSE(0 " << cfg.pwmHigh << " "
+                    << std::scientific << halfPeriod << " "
+                    << cfg.pwmRise << " " << cfg.pwmFall << " "
                     << tOn << " " << period << std::fixed << ")\n";
             // §8a.5 input-current sense upstream of the high-side switch.
             circuit << "Vq1_sense vin_dc qhi_drain 0\n";
@@ -1459,8 +1478,10 @@ std::string Llc::generate_ngspice_circuit(
             circuit << "DHI 0 sw_node DIDEAL\n";
             circuit << "SLO sw_node 0 pwm_LO 0 SW1\n";
             circuit << "DLO sw_node qhi_drain DIDEAL\n";
-            circuit << "Rsnub_HI qhi_drain sw_node 1k\nCsnub_HI qhi_drain sw_node 1n\n";
-            circuit << "Rsnub_LO sw_node 0 1k\nCsnub_LO sw_node 0 1n\n";
+            circuit << "Rsnub_HI qhi_drain sw_node " << cfg.snubR
+                    << "\nCsnub_HI qhi_drain sw_node " << std::scientific << cfg.snubC << std::fixed << "\n";
+            circuit << "Rsnub_LO sw_node 0 " << cfg.snubR
+                    << "\nCsnub_LO sw_node 0 " << std::scientific << cfg.snubC << std::fixed << "\n";
             circuit << "Vpri_sense sw_node lr_in 0\n\n";
         }
     }
@@ -1702,8 +1723,12 @@ std::string Llc::generate_ngspice_circuit(
     if (!integratedLs) circuit << " v(cr_ls)=0";
     circuit << "\n\n";
 
-    circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
-    circuit << ".options METHOD=GEAR TRTOL=7\n\n";
+    circuit << ".options RELTOL=" << cfg.relTol
+            << " ABSTOL=" << std::scientific << cfg.absTol
+            << " VNTOL=" << cfg.vnTol << std::fixed
+            << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
+    circuit << ".options METHOD=" << cfg.method
+            << " TRTOL=" << cfg.trTol << "\n\n";
     // UIC tells ngspice to skip the DC operating-point solve and start the
     // transient straight from .ic values (with inductor currents = 0). That
     // works for CT/FB/CD where the output node has a single cap charged to
