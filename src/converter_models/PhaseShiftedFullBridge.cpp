@@ -683,11 +683,11 @@ std::string Psfb::generate_ngspice_circuit(
     size_t inputVoltageIndex,
     size_t operatingPointIndex)
 {
-    // Minimal spice_config() consolidation — only the PULSE rise/fall
-    // times are pulled from the registry. PSFB's other knobs (SW1 VH,
-    // diode RS+CJO, .options block) diverge from the shared `psb` entry
-    // in Topology.cpp and need a registry-vs-cpp alignment first
-    // (split `psb` into per-topology PSFB/PSHB entries, then re-sweep).
+    // All SPICE-side knobs are pulled from spice_config(). The PSFB
+    // registry entry (Topology.cpp) was split out from the previously
+    // shared `psb` entry and tuned to match this file's historical
+    // hardcoded netlist byte-for-byte; this refactor is behaviour-
+    // preserving.
     const auto cfg = spice_config();
 
     auto& inputVoltageSpec = get_input_voltage();
@@ -742,7 +742,11 @@ std::string Psfb::generate_ngspice_circuit(
 
     const auto bridgeMode = get_bridge_simulation_mode();
 
-    circuit << ".model DIDEAL D(IS=1e-12 RS=0.005 CJO=1n)\n";
+    circuit << ".model DIDEAL D(IS=" << cfg.diodeIS << " RS=" << cfg.diodeRS;
+    if (!cfg.diodeExtra.empty()) {
+        circuit << " " << cfg.diodeExtra;
+    }
+    circuit << ")\n";
     // SW1 is referenced by BOTH bridge modes — VOLTAGE_CONTROLLED_SWITCH uses
     // it for all four bridge switches, and BEHAVIORAL_PULSE uses it for the
     // leading-leg SQA/SQB pair (the §8a.5-correct probe insertion path that
@@ -750,7 +754,8 @@ std::string Psfb::generate_ngspice_circuit(
     // definition the netlist parses as "can't find model 'sw1'" and the
     // simulation aborts before .tran even starts, surfacing on the frontend
     // as an unrecoverable "Simulated" hang.
-    circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
+    circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+            << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
     circuit << "\n";
 
     circuit << "Vdc vin_dc 0 " << Vin << "\n\n";
@@ -851,8 +856,10 @@ std::string Psfb::generate_ngspice_circuit(
         circuit << "DA 0 mid_A DIDEAL\n";
         circuit << "SB mid_A 0 pwm_B 0 SW1\n";
         circuit << "DB mid_A vin_dc DIDEAL\n";
-        circuit << "Rsnub_QA vin_dc mid_A 1k\nCsnub_QA vin_dc mid_A 1n\n";
-        circuit << "Rsnub_QB mid_A 0 1k\nCsnub_QB mid_A 0 1n\n\n";
+        circuit << "Rsnub_QA vin_dc mid_A " << cfg.snubR
+                << "\nCsnub_QA vin_dc mid_A " << cfg.snubC << "\n";
+        circuit << "Rsnub_QB mid_A 0 " << cfg.snubR
+                << "\nCsnub_QB mid_A 0 " << cfg.snubC << "\n\n";
 
         // Lagging leg (QC-QD): phase-shifted by phaseDelay.
         circuit << "Vpwm_C pwm_C 0 PULSE(0 5 "
@@ -867,8 +874,10 @@ std::string Psfb::generate_ngspice_circuit(
         circuit << "DC 0 mid_C DIDEAL\n";
         circuit << "SD mid_C 0 pwm_D 0 SW1\n";
         circuit << "DD mid_C vin_dc DIDEAL\n";
-        circuit << "Rsnub_QC vin_dc mid_C 1k\nCsnub_QC vin_dc mid_C 1n\n";
-        circuit << "Rsnub_QD mid_C 0 1k\nCsnub_QD mid_C 0 1n\n\n";
+        circuit << "Rsnub_QC vin_dc mid_C " << cfg.snubR
+                << "\nCsnub_QC vin_dc mid_C " << cfg.snubC << "\n";
+        circuit << "Rsnub_QD mid_C 0 " << cfg.snubR
+                << "\nCsnub_QD mid_C 0 " << cfg.snubC << "\n\n";
     }
 
     // Primary current sense + differential bridge output (Vab = mid_A - mid_C).
@@ -1010,8 +1019,12 @@ std::string Psfb::generate_ngspice_circuit(
     circuit << "\n\n";
 
     // Solver options for switching-circuit convergence (DAB-pattern).
-    circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
-    circuit << ".options METHOD=GEAR TRTOL=7\n";
+    circuit << ".options RELTOL=" << cfg.relTol
+            << " ABSTOL=" << cfg.absTol
+            << " VNTOL=" << cfg.vnTol
+            << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
+    circuit << ".options METHOD=" << cfg.method
+            << " TRTOL=" << cfg.trTol << "\n";
     circuit << ".ic";
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);

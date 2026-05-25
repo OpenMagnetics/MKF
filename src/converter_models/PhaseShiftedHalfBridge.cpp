@@ -581,13 +581,11 @@ std::string Pshb::generate_ngspice_circuit(
     size_t inputVoltageIndex,
     size_t operatingPointIndex)
 {
-    // Minimal spice_config() consolidation (same scope as the PSFB
-    // companion): only the PULSE rise/fall times are pulled from the
-    // registry. Other PSHB SPICE knobs (SW1 VH=0.8 vs psb 0.5, diode
-    // RS=0.005 with CJO=1n BV=1000 IBV=1e-12 vs psb 0.05, .options
-    // RELTOL=0.01 ABSTOL=1e-7 ITL1=500 vs psb 0.005/1e-8/1000)
-    // diverge from the shared `psb` entry and need a registry split
-    // before they can be swapped without changing solver behaviour.
+    // All SPICE-side knobs are pulled from spice_config(). The PSHB
+    // registry entry (Topology.cpp) was split out from the previously
+    // shared `psb` entry and tuned to match this file's historical
+    // hardcoded netlist byte-for-byte; this refactor is behaviour-
+    // preserving.
     const auto cfg = spice_config();
 
     auto& inputVoltageSpec = get_input_voltage();
@@ -673,14 +671,19 @@ std::string Pshb::generate_ngspice_circuit(
     // model (Vhb = Vin/2, Deff active fraction per half-cycle).
     const double t_act = Deff * halfPeriod;
 
-    circuit << ".model DIDEAL D(IS=1e-12 RS=0.005 CJO=1n BV=1000 IBV=1e-12)\n";
+    circuit << ".model DIDEAL D(IS=" << cfg.diodeIS << " RS=" << cfg.diodeRS;
+    if (!cfg.diodeExtra.empty()) {
+        circuit << " " << cfg.diodeExtra;
+    }
+    circuit << ")\n";
     // SW1 is referenced by BOTH bridge modes — VOLTAGE_CONTROLLED_SWITCH uses
     // it for the four NPC switches, and BEHAVIORAL_PULSE also instantiates
     // S1..S4 SW1 elements (lines ~794-800) as the §8a.5-correct probe
     // insertion path. Without this model definition the netlist parses as
     // "can't find model 'sw1'" and the simulation aborts before .tran even
     // starts, surfacing on the frontend as an unrecoverable "Simulated" hang.
-    circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
+    circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+            << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
     circuit << "\n";
 
     circuit << "Vdc vin_dc 0 " << Vin << "\n\n";
@@ -815,10 +818,14 @@ std::string Pshb::generate_ngspice_circuit(
         circuit << "D4 0 nL DIDEAL\n";
         circuit << "DC1 mid_cap nH DIDEAL\n";
         circuit << "DC2 nL mid_cap DIDEAL\n";
-        circuit << "Rsnub_S1 vin_dc nH 1k\nCsnub_S1 vin_dc nH 1n\n";
-        circuit << "Rsnub_S2 nH bridge_a 1k\nCsnub_S2 nH bridge_a 1n\n";
-        circuit << "Rsnub_S3 bridge_a nL 1k\nCsnub_S3 bridge_a nL 1n\n";
-        circuit << "Rsnub_S4 nL 0 1k\nCsnub_S4 nL 0 1n\n\n";
+        circuit << "Rsnub_S1 vin_dc nH " << cfg.snubR
+                << "\nCsnub_S1 vin_dc nH " << cfg.snubC << "\n";
+        circuit << "Rsnub_S2 nH bridge_a " << cfg.snubR
+                << "\nCsnub_S2 nH bridge_a " << cfg.snubC << "\n";
+        circuit << "Rsnub_S3 bridge_a nL " << cfg.snubR
+                << "\nCsnub_S3 bridge_a nL " << cfg.snubC << "\n";
+        circuit << "Rsnub_S4 nL 0 " << cfg.snubR
+                << "\nCsnub_S4 nL 0 " << cfg.snubC << "\n\n";
     }
 
     // Primary current sense (in series with the transformer leg) and
@@ -937,8 +944,12 @@ std::string Pshb::generate_ngspice_circuit(
     }
     circuit << "\n\n";
 
-    circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
-    circuit << ".options METHOD=GEAR TRTOL=7\n";
+    circuit << ".options RELTOL=" << cfg.relTol
+            << " ABSTOL=" << cfg.absTol
+            << " VNTOL=" << cfg.vnTol
+            << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
+    circuit << ".options METHOD=" << cfg.method
+            << " TRTOL=" << cfg.trTol << "\n";
     circuit << ".ic v(mid_cap)=" << (Vin/2.0);
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);

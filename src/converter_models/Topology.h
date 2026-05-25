@@ -183,6 +183,13 @@ struct SpiceSimulationConfig {
     // ---- Output diode model (.model DIDEAL D(...)) ----
     double diodeIS = 1e-14;       // saturation current [A]
     double diodeRS = 1e-6;        // series resistance [Ω]
+    // Free-form extension appended to the diode .model line after IS/RS.
+    // Empty by default; topologies that need extra fields (junction
+    // capacitance CJO, reverse-breakdown BV/IBV for converters that see
+    // high reverse-voltage spikes like PSFB/PSHB/CLLC) set this to e.g.
+    // "CJO=1n" or "CJO=1n BV=1000 IBV=1e-12". Caller emits as:
+    //   .model DIDEAL D(IS=<is> RS=<rs> <diodeExtra>)
+    std::string diodeExtra = "";
 
     // ---- Output filter ----
     double outputCapacitance              = 100e-6;  // [F]

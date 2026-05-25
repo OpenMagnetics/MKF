@@ -300,25 +300,33 @@ namespace OpenMagnetics {
             }
 
             // Phase-shifted full bridge (PSFB) / half-bridge (PSHB):
-            // four / two primary-side switches with phase-shifted gate
-            // drive driving a centre-tapped or full-wave-rectified
-            // secondary LC filter. Hard switching at the start of each
-            // conduction interval but ZVS at turn-off — solver
-            // tolerances mirror PushPull / forward (many switching
-            // events per period). Bigger output cap (100 µF) matches
-            // forward-class LC sizing.
+            // Separate entries since the two topologies make different
+            // trade-offs on SW hysteresis, diode model (PSHB needs reverse-
+            // breakdown BV/IBV for the leakage-inductance flyback spike
+            // that PSFB clamps symmetrically through its bridge) and
+            // solver tolerances (looser RELTOL/ABSTOL to keep WASM
+            // simulation times under the perceived-hang threshold).
+            //
+            // Values below match the previous Psfb::generate_ngspice_circuit
+            // and Pshb::generate_ngspice_circuit hardcoded netlist byte-
+            // for-byte, so the refactor is behaviour-preserving.
             {
-                SpiceSimulationConfig psb;
-                psb.swModelVT = 2.5;            psb.swModelVH = 0.5;
-                psb.snubR = 1e3;                psb.snubC = 1e-9;
-                psb.diodeIS = 1e-12;            psb.diodeRS = 0.05;
-                psb.outputCapacitance = 100e-6;
-                psb.relTol = 0.005;             psb.absTol = 1e-8;
-                psb.vnTol = 1e-5;
-                psb.itl1 = 1000;                psb.itl4 = 1000;
-                psb.method = "GEAR";            psb.trTol = 7.0;
-                m[MAS::Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER] = psb;
-                m[MAS::Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER] = psb;
+                SpiceSimulationConfig psfb;
+                psfb.swModelVT = 2.5;           psfb.swModelVH = 0.8;
+                psfb.swModelRON = 0.01;         psfb.swModelROFF = 1e6;
+                psfb.snubR = 1e3;               psfb.snubC = 1e-9;
+                psfb.diodeIS = 1e-12;           psfb.diodeRS = 0.005;
+                psfb.diodeExtra = "CJO=1n";
+                psfb.outputCapacitance = 100e-6;
+                psfb.relTol = 0.01;             psfb.absTol = 1e-7;
+                psfb.vnTol = 1e-4;
+                psfb.itl1 = 500;                psfb.itl4 = 500;
+                psfb.method = "GEAR";           psfb.trTol = 7.0;
+                m[MAS::Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER] = psfb;
+
+                SpiceSimulationConfig pshb = psfb;     // start from PSFB
+                pshb.diodeExtra = "CJO=1n BV=1000 IBV=1e-12";
+                m[MAS::Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER] = pshb;
             }
 
             // Vienna 3-φ rectifier: PFC-class line-frequency simulation
