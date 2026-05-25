@@ -56,6 +56,15 @@ private:
     mutable double lastVcrPeak       = 0.0;   // resonant cap peak voltage [V]
     mutable bool   lastIsAboveResonance = true;
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in solved in
+    // process_operating_points). Cleared at top, pushed at end of each iter.
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>      perOpGainM;
+    mutable std::vector<double>      perOpNormalizedFsw;
+    mutable std::vector<double>      perOpIrPeak;
+    mutable std::vector<double>      perOpVcrPeak;
+    mutable std::vector<int>         perOpIsAboveResonance;
+
     // SPICE simulation tuning (mirrors Llc / Cllc).
     int numPeriodsToExtract   = 5;
     int numSteadyStatePeriods = 10;
@@ -109,6 +118,13 @@ public:
     double get_last_vcr_peak() const { return lastVcrPeak; }
     /** True iff last operating point was above resonance (Λ ≥ 1). */
     bool   get_last_is_above_resonance() const { return lastIsAboveResonance; }
+
+    const std::vector<std::string>& get_per_op_name()                 const { return perOpName; }
+    const std::vector<double>&      get_per_op_gain_m()               const { return perOpGainM; }
+    const std::vector<double>&      get_per_op_normalized_fsw()       const { return perOpNormalizedFsw; }
+    const std::vector<double>&      get_per_op_ir_peak()              const { return perOpIrPeak; }
+    const std::vector<double>&      get_per_op_vcr_peak()             const { return perOpVcrPeak; }
+    const std::vector<int>&         get_per_op_is_above_resonance()   const { return perOpIsAboveResonance; }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
     /** Returns 0.5 for half-bridge, 1.0 for full-bridge / phase-shift FB.

@@ -33,7 +33,19 @@ protected:
     mutable double lastSecondaryPeakCurrent       = 0.0;  // I_sec peak (reflected through n) [A]
     mutable double lastMagnetizingPeakCurrent     = 0.0;  // ΔI_mag peak (worst case) [A]
     mutable double lastResetVoltage               = 0.0;  // V_reset on the demag winding [V]
-    mutable bool   lastIsCcm                      = true; // output-inductor mode
+    mutable bool   lastIsCcm                      = true;
+
+    // ---- Per-OP diagnostic vectors ----
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>  perOpMaximumDutyCycle;
+    mutable std::vector<double>  perOpComputedMagnetizingInductance;
+    mutable std::vector<double>  perOpComputedSecondaryTurnsRatio;
+    mutable std::vector<double>  perOpPrimaryPeakCurrent;
+    mutable std::vector<double>  perOpSecondaryPeakCurrent;
+    mutable std::vector<double>  perOpMagnetizingPeakCurrent;
+    mutable std::vector<bool>    perOpIsCcm;
+    mutable std::vector<double>  perOpComputedPrimaryTurnsRatio;
+    mutable std::vector<double>  perOpResetVoltage; // output-inductor mode
 
 public:
     double get_last_maximum_duty_cycle()           const { return lastMaximumDutyCycle; }
@@ -45,6 +57,18 @@ public:
     double get_last_magnetizing_peak_current()     const { return lastMagnetizingPeakCurrent; }
     double get_last_reset_voltage()                const { return lastResetVoltage; }
     bool   get_last_is_ccm()                       const { return lastIsCcm; }
+
+    // ---- Per-OP vector accessors ----
+    const std::vector<std::string>& get_per_op_name() const { return perOpName; }
+    const std::vector<double>& get_per_op_maximum_duty_cycle() const { return perOpMaximumDutyCycle; }
+    const std::vector<double>& get_per_op_computed_magnetizing_inductance() const { return perOpComputedMagnetizingInductance; }
+    const std::vector<double>& get_per_op_computed_secondary_turns_ratio() const { return perOpComputedSecondaryTurnsRatio; }
+    const std::vector<double>& get_per_op_primary_peak_current() const { return perOpPrimaryPeakCurrent; }
+    const std::vector<double>& get_per_op_secondary_peak_current() const { return perOpSecondaryPeakCurrent; }
+    const std::vector<double>& get_per_op_magnetizing_peak_current() const { return perOpMagnetizingPeakCurrent; }
+    const std::vector<bool>& get_per_op_is_ccm() const { return perOpIsCcm; }
+    const std::vector<double>& get_per_op_computed_primary_turns_ratio() const { return perOpComputedPrimaryTurnsRatio; }
+    const std::vector<double>& get_per_op_reset_voltage() const { return perOpResetVoltage; }
 
 
     bool _assertErrors = false;

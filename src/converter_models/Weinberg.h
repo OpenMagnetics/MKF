@@ -184,6 +184,26 @@ protected:
     mutable double lastSizedCo = 0.0;
     mutable double lastOutputVoltageRipple = 0.0;
 
+    // ---- Per-OP diagnostic vectors ----
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>  perOpDutyCycle;
+    mutable std::vector<double>  perOpConversionRatio;
+    mutable std::vector<int>     perOpOperatingRegime;
+    mutable std::vector<double>  perOpOverlapFraction;
+    mutable std::vector<double>  perOpSwitchPeakVoltage;
+    mutable std::vector<double>  perOpSwitchPeakCurrent;
+    mutable std::vector<double>  perOpDiodePeakReverseVoltage;
+    mutable std::vector<double>  perOpDiodePeakCurrent;
+    mutable std::vector<double>  perOpEnergyRecoveryAvgCurrent;
+    mutable std::vector<double>  perOpInputInductorAverage;
+    mutable std::vector<double>  perOpInputInductorRipple;
+    mutable std::vector<double>  perOpMagnetizingRipple;
+    mutable std::vector<double>  perOpFluxImbalanceMargin;
+    mutable std::vector<double>  perOpRhpZeroFrequency;
+    mutable std::vector<bool>    perOpIsCcm;
+    mutable std::vector<double>  perOpSizedCo;
+    mutable std::vector<double>  perOpOutputVoltageRipple;
+
     // ---- Extra-component waveforms (cleared in process_operating_points) ----
     mutable std::vector<Waveform> extraL1VoltageWaveforms;   // per-winding voltage
     mutable std::vector<Waveform> extraL1CurrentWaveforms;   // per-winding current
@@ -229,6 +249,26 @@ public:
     double get_last_sized_l1()                     const { return lastSizedL1; }
     double get_last_sized_co()                     const { return lastSizedCo; }
     double get_last_output_voltage_ripple()        const { return lastOutputVoltageRipple; }
+
+    // ---- Per-OP vector accessors ----
+    const std::vector<std::string>& get_per_op_name() const { return perOpName; }
+    const std::vector<double>& get_per_op_duty_cycle() const { return perOpDutyCycle; }
+    const std::vector<double>& get_per_op_conversion_ratio() const { return perOpConversionRatio; }
+    const std::vector<int>& get_per_op_operating_regime() const { return perOpOperatingRegime; }
+    const std::vector<double>& get_per_op_overlap_fraction() const { return perOpOverlapFraction; }
+    const std::vector<double>& get_per_op_switch_peak_voltage() const { return perOpSwitchPeakVoltage; }
+    const std::vector<double>& get_per_op_switch_peak_current() const { return perOpSwitchPeakCurrent; }
+    const std::vector<double>& get_per_op_diode_peak_reverse_voltage() const { return perOpDiodePeakReverseVoltage; }
+    const std::vector<double>& get_per_op_diode_peak_current() const { return perOpDiodePeakCurrent; }
+    const std::vector<double>& get_per_op_energy_recovery_avg_current() const { return perOpEnergyRecoveryAvgCurrent; }
+    const std::vector<double>& get_per_op_input_inductor_average() const { return perOpInputInductorAverage; }
+    const std::vector<double>& get_per_op_input_inductor_ripple() const { return perOpInputInductorRipple; }
+    const std::vector<double>& get_per_op_magnetizing_ripple() const { return perOpMagnetizingRipple; }
+    const std::vector<double>& get_per_op_flux_imbalance_margin() const { return perOpFluxImbalanceMargin; }
+    const std::vector<double>& get_per_op_rhp_zero_frequency() const { return perOpRhpZeroFrequency; }
+    const std::vector<bool>& get_per_op_is_ccm() const { return perOpIsCcm; }
+    const std::vector<double>& get_per_op_sized_co() const { return perOpSizedCo; }
+    const std::vector<double>& get_per_op_output_voltage_ripple() const { return perOpOutputVoltageRipple; }
 
     bool run_checks(bool assert = false) override;
 

@@ -212,6 +212,23 @@ namespace OpenMagnetics {
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
 
+        // Per-OP diagnostic snapshot.
+        perOpDutyCycle.push_back(lastDutyCycle);
+        perOpConversionRatio.push_back(lastConversionRatio);
+        perOpCouplingCapVoltage.push_back(lastCouplingCapVoltage);
+        perOpInputInductorAverage.push_back(lastInputInductorAverage);
+        perOpOutputInductorAverage.push_back(lastOutputInductorAverage);
+        perOpInputInductorRipple.push_back(lastInputInductorRipple);
+        perOpOutputInductorRipple.push_back(lastOutputInductorRipple);
+        perOpSwitchPeakVoltage.push_back(lastSwitchPeakVoltage);
+        perOpSwitchPeakCurrent.push_back(lastSwitchPeakCurrent);
+        perOpDiodePeakReverseVoltage.push_back(lastDiodePeakReverseVoltage);
+        perOpDiodePeakCurrent.push_back(lastDiodePeakCurrent);
+        perOpCouplingCapRmsCurrent.push_back(lastCouplingCapRmsCurrent);
+        perOpIsCcm.push_back(lastIsCcm);
+        perOpSizedCs.push_back(lastSizedCs);
+        perOpSizedCo.push_back(lastSizedCo);
+
         return operatingPoint;
     }
 
@@ -314,6 +331,24 @@ namespace OpenMagnetics {
         extraCoVoltageWaveforms.clear();
         extraCoCurrentWaveforms.clear();
 
+        // Clear per-OP diagnostic vectors so the wizard table reflects this run only.
+        perOpName.clear();
+        perOpDutyCycle.clear();
+        perOpConversionRatio.clear();
+        perOpCouplingCapVoltage.clear();
+        perOpInputInductorAverage.clear();
+        perOpOutputInductorAverage.clear();
+        perOpInputInductorRipple.clear();
+        perOpOutputInductorRipple.clear();
+        perOpSwitchPeakVoltage.clear();
+        perOpSwitchPeakCurrent.clear();
+        perOpDiodePeakReverseVoltage.clear();
+        perOpDiodePeakCurrent.clear();
+        perOpCouplingCapRmsCurrent.clear();
+        perOpIsCcm.clear();
+        perOpSizedCs.clear();
+        perOpSizedCo.clear();
+
         std::vector<OperatingPoint> operatingPoints;
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
@@ -323,6 +358,11 @@ namespace OpenMagnetics {
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+                std::string opName = inputVoltagesNames[inputVoltageIndex];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(opIndex);
+                }
+                perOpName.push_back(opName);
                 auto operatingPoint = process_operating_points_for_input_voltage(
                     inputVoltage, get_operating_points()[opIndex], magnetizingInductance);
 
@@ -505,7 +545,7 @@ namespace OpenMagnetics {
         circuit << "S1 node_A_int 0 pwm_ctrl 0 SW1\n";
         circuit << "Rsnub_s1 node_A_int 0 " << cfg.snubR << "\n"
                 << "Csnub_s1 node_A_int snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                << "Rsnub_s1b snub_s1_int 0 0.001\n\n";
+                << "Rsnub_s1b snub_s1_int 0 " << 0.001 << "\n\n";
 
         // Cs coupling cap (node_A_int → node_B with sense + ESR)
         circuit << "* Cs coupling cap (with ESR; +plate at node_A side, IC=Vin)\n";
@@ -533,7 +573,7 @@ namespace OpenMagnetics {
             circuit << "S2 rect_in vout pwm_ctrl_inv 0 SW2\n";
             circuit << "Rsnub_d1 rect_in 0 " << cfg.snubR << "\n"
                     << "Csnub_d1 rect_in snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 0.001\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
         } else {
             circuit << "* D1 rectifier diode\n";
             circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
@@ -542,7 +582,7 @@ namespace OpenMagnetics {
             circuit << "D1 rect_in vout DIDEAL\n";
             circuit << "Rsnub_d1 rect_in 0 " << cfg.snubR << "\n"
                     << "Csnub_d1 rect_in snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 0.001\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
         }
 
         // V2 coupled-inductor: K_L1L2 between L1 and L2.

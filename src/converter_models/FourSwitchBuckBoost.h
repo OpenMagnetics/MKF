@@ -198,6 +198,11 @@ protected:
     mutable double lastSizedOutputCapacitance   = 0.0;
     mutable double lastOutputVoltageRipple      = 0.0;
 
+    // ---- Per-OP diagnostic vectors ----
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>  perOpInductorAverageCurrent;
+    mutable std::vector<double>  perOpSizedOutputCapacitance;
+
     // Extra-component waveforms (cleared in process_operating_points).
     mutable std::vector<Waveform> extraInductorVoltageWaveforms;
     mutable std::vector<Waveform> extraInductorCurrentWaveforms;
@@ -247,6 +252,11 @@ public:
     double get_last_sized_input_capacitance()  const { return lastSizedInputCapacitance; }
     double get_last_sized_output_capacitance() const { return lastSizedOutputCapacitance; }
     double get_last_output_voltage_ripple()    const { return lastOutputVoltageRipple; }
+
+    // ---- Per-OP vector accessors ----
+    const std::vector<std::string>& get_per_op_name() const { return perOpName; }
+    const std::vector<double>& get_per_op_inductor_average_current() const { return perOpInductorAverageCurrent; }
+    const std::vector<double>& get_per_op_sized_output_capacitance() const { return perOpSizedOutputCapacitance; }
 
     bool run_checks(bool assert = false) override;
     DesignRequirements process_design_requirements() override;

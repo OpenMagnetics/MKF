@@ -353,6 +353,20 @@ namespace OpenMagnetics {
             lastInductorRipple      = deltaIpk;
             lastLineRmsCurrent      = iinRmsAvg;
             lastInputPower          = pinAvg;
+
+            // Single-shot per-OP surface (one entry, worst case at min-Vin peak-of-line).
+            perOpName.clear();
+            perOpDutyCyclePeak.clear();
+            perOpPeakInductorCurrent.clear();
+            perOpInductorRipple.clear();
+            perOpLineRmsCurrent.clear();
+            perOpInputPower.clear();
+            perOpName.push_back("Worst-case");
+            perOpDutyCyclePeak.push_back(lastDutyCyclePeak);
+            perOpPeakInductorCurrent.push_back(lastPeakInductorCurrent);
+            perOpInductorRipple.push_back(lastInductorRipple);
+            perOpLineRmsCurrent.push_back(lastLineRmsCurrent);
+            perOpInputPower.push_back(lastInputPower);
         }
 
         double mainsPeriod     = 1.0 / lineFrequency;

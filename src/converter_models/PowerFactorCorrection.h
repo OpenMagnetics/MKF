@@ -330,6 +330,26 @@ private:
     mutable double lastInductorRipple         = 0.0;   // ΔI_L at the worst-case sample [A]
     mutable double lastLineRmsCurrent         = 0.0;   // I_in_rms at minimum Vin [A]
     mutable double lastInputPower             = 0.0;   // P_in_avg (per phase for interleaved) [W]
+
+    // PFC is single-shot: process_operating_points populates the last_* fields
+    // at the worst-case operating point (minimum Vin, line peak) only — there
+    // is no V_in × OP loop because the line-cycle envelope is the operating
+    // point. To keep the diagnostics surface uniform with the other topologies,
+    // expose a single-row perOp vector named "Worst-case".
+public:
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>      perOpDutyCyclePeak;
+    mutable std::vector<double>      perOpPeakInductorCurrent;
+    mutable std::vector<double>      perOpInductorRipple;
+    mutable std::vector<double>      perOpLineRmsCurrent;
+    mutable std::vector<double>      perOpInputPower;
+
+    const std::vector<std::string>& get_per_op_name()                  const { return perOpName; }
+    const std::vector<double>&      get_per_op_duty_cycle_peak()       const { return perOpDutyCyclePeak; }
+    const std::vector<double>&      get_per_op_peak_inductor_current() const { return perOpPeakInductorCurrent; }
+    const std::vector<double>&      get_per_op_inductor_ripple()       const { return perOpInductorRipple; }
+    const std::vector<double>&      get_per_op_line_rms_current()      const { return perOpLineRmsCurrent; }
+    const std::vector<double>&      get_per_op_input_power()           const { return perOpInputPower; }
 };
 
 } // namespace OpenMagnetics

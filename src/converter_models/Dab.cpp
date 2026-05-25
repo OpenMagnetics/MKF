@@ -607,6 +607,13 @@ std::vector<OperatingPoint> Dab::process_operating_points(
     extraIndVoltageWaveforms.clear();
     extraIndCurrentWaveforms.clear();
 
+    perOpName.clear();
+    perOpModulationType.clear();
+    perOpZvsMarginPrimary.clear();
+    perOpZvsMarginSecondary.clear();
+    perOpD3Rad.clear();
+    perOpVoltageConversionRatio.clear();
+
     std::vector<OperatingPoint> result;
     auto& inputVoltage = get_input_voltage();
     auto& ops = get_operating_points();
@@ -630,6 +637,13 @@ std::vector<OperatingPoint> Dab::process_operating_points(
             Vin, ops[0], turnsRatios, magnetizingInductance);
         op.set_name(name + " input (" + std::to_string(static_cast<int>(Vin)) + "V)");
         result.push_back(op);
+
+        perOpName.push_back(name);
+        perOpModulationType.push_back(lastModulationType);
+        perOpZvsMarginPrimary.push_back(lastZvsMarginPrimary);
+        perOpZvsMarginSecondary.push_back(lastZvsMarginSecondary);
+        perOpD3Rad.push_back(lastD3Rad);
+        perOpVoltageConversionRatio.push_back(lastVoltageConversionRatio);
     }
     return result;
 }

@@ -364,6 +364,25 @@ namespace OpenMagnetics {
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
 
+        // Per-OP diagnostic snapshot.
+        perOpDutyCycle.push_back(lastDutyCycle);
+        perOpConversionRatio.push_back(lastConversionRatio);
+        perOpOperatingRegime.push_back(lastOperatingRegime);
+        perOpOverlapFraction.push_back(lastOverlapFraction);
+        perOpSwitchPeakVoltage.push_back(lastSwitchPeakVoltage);
+        perOpSwitchPeakCurrent.push_back(lastSwitchPeakCurrent);
+        perOpDiodePeakReverseVoltage.push_back(lastDiodePeakReverseVoltage);
+        perOpDiodePeakCurrent.push_back(lastDiodePeakCurrent);
+        perOpEnergyRecoveryAvgCurrent.push_back(lastEnergyRecoveryAvgCurrent);
+        perOpInputInductorAverage.push_back(lastInputInductorAverage);
+        perOpInputInductorRipple.push_back(lastInputInductorRipple);
+        perOpMagnetizingRipple.push_back(lastMagnetizingRipple);
+        perOpFluxImbalanceMargin.push_back(lastFluxImbalanceMargin);
+        perOpRhpZeroFrequency.push_back(lastRhpZeroFrequency);
+        perOpIsCcm.push_back(lastIsCcm);
+        perOpSizedCo.push_back(lastSizedCo);
+        perOpOutputVoltageRipple.push_back(lastOutputVoltageRipple);
+
         return operatingPoint;
     }
 
@@ -490,9 +509,35 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
         Topology::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        // Clear per-OP diagnostic vectors so the wizard table reflects this run only.
+        perOpName.clear();
+        perOpDutyCycle.clear();
+        perOpConversionRatio.clear();
+        perOpOperatingRegime.clear();
+        perOpOverlapFraction.clear();
+        perOpSwitchPeakVoltage.clear();
+        perOpSwitchPeakCurrent.clear();
+        perOpDiodePeakReverseVoltage.clear();
+        perOpDiodePeakCurrent.clear();
+        perOpEnergyRecoveryAvgCurrent.clear();
+        perOpInputInductorAverage.clear();
+        perOpInputInductorRipple.clear();
+        perOpMagnetizingRipple.clear();
+        perOpFluxImbalanceMargin.clear();
+        perOpRhpZeroFrequency.clear();
+        perOpIsCcm.clear();
+        perOpSizedCo.clear();
+        perOpOutputVoltageRipple.clear();
+
+
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             double inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+                std::string opName = inputVoltagesNames[inputVoltageIndex];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(opIndex);
+                }
+                perOpName.push_back(opName);
                 auto operatingPoint = process_operating_points_for_input_voltage(
                     inputVoltage, get_operating_points()[opIndex], turnsRatio, magnetizingInductance);
 

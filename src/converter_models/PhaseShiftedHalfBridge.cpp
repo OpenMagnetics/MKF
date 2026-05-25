@@ -252,24 +252,42 @@ std::vector<OperatingPoint> Pshb::process_operating_points(
     extraLrVoltageWaveforms.clear();
     extraLrCurrentWaveforms.clear();
 
+    perOpName.clear();
+    perOpDutyCycleLoss.clear();
+    perOpEffectiveDutyCycle.clear();
+    perOpZvsMarginLagging.clear();
+    perOpZvsLoadThreshold.clear();
+    perOpResonantTransitionTime.clear();
+    perOpPrimaryPeakCurrent.clear();
+
     std::vector<OperatingPoint> result;
     auto& inputVoltage = get_input_voltage();
 
-    std::vector<double> inputVoltages;
+    std::vector<std::pair<double, std::string>> labelled;
     if (inputVoltage.get_nominal().has_value())
-        inputVoltages.push_back(inputVoltage.get_nominal().value());
+        labelled.push_back({inputVoltage.get_nominal().value(), "Nominal"});
     if (inputVoltage.get_minimum().has_value())
-        inputVoltages.push_back(inputVoltage.get_minimum().value());
+        labelled.push_back({inputVoltage.get_minimum().value(), "Min"});
     if (inputVoltage.get_maximum().has_value())
-        inputVoltages.push_back(inputVoltage.get_maximum().value());
+        labelled.push_back({inputVoltage.get_maximum().value(), "Max"});
+    std::sort(labelled.begin(), labelled.end(),
+        [](const auto& a, const auto& b) { return a.first < b.first; });
+    auto last = std::unique(labelled.begin(), labelled.end(),
+        [](const auto& a, const auto& b) { return a.first == b.first; });
+    labelled.erase(last, labelled.end());
 
-    std::sort(inputVoltages.begin(), inputVoltages.end());
-    inputVoltages.erase(std::unique(inputVoltages.begin(), inputVoltages.end()), inputVoltages.end());
-
-    for (double Vin : inputVoltages) {
+    for (const auto& [Vin, name] : labelled) {
         auto op = process_operating_point_for_input_voltage(
             Vin, get_operating_points()[0], turnsRatios, magnetizingInductance);
         result.push_back(op);
+
+        perOpName.push_back(name);
+        perOpDutyCycleLoss.push_back(lastDutyCycleLoss);
+        perOpEffectiveDutyCycle.push_back(lastEffectiveDutyCycle);
+        perOpZvsMarginLagging.push_back(lastZvsMarginLagging);
+        perOpZvsLoadThreshold.push_back(lastZvsLoadThreshold);
+        perOpResonantTransitionTime.push_back(lastResonantTransitionTime);
+        perOpPrimaryPeakCurrent.push_back(lastPrimaryPeakCurrent);
     }
     return result;
 }

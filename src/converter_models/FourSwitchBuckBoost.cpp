@@ -453,6 +453,10 @@ namespace OpenMagnetics {
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
 
+        // Per-OP diagnostic snapshot.
+        perOpInductorAverageCurrent.push_back(lastInductorAverageCurrent);
+        perOpSizedOutputCapacitance.push_back(lastSizedOutputCapacitance);
+
         return operatingPoint;
     }
 
@@ -528,8 +532,19 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
         Topology::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        // Clear per-OP diagnostic vectors so the wizard table reflects this run only.
+        perOpName.clear();
+        perOpInductorAverageCurrent.clear();
+        perOpSizedOutputCapacitance.clear();
+
+
         for (size_t i = 0; i < inputVoltages.size(); ++i) {
             for (size_t opIdx = 0; opIdx < get_operating_points().size(); ++opIdx) {
+                std::string opName = inputVoltagesNames[i];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(opIdx);
+                }
+                perOpName.push_back(opName);
                 auto op = process_operating_point_for_input_voltage(
                     inputVoltages[i], get_operating_points()[opIdx], magnetizingInductance);
                 std::string name = inputVoltagesNames[i] + " input volt.";

@@ -260,6 +260,14 @@ namespace OpenMagnetics {
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
 
+        // Per-OP diagnostic snapshot.
+        perOpDutyCycle.push_back(lastDutyCycle);
+        perOpMagnetizingCurrentRipple.push_back(lastMagnetizingCurrentRipple);
+        perOpPrimaryAverageCurrent.push_back(lastPrimaryAverageCurrent);
+        perOpPrimaryPeakCurrent.push_back(lastPrimaryPeakCurrent);
+        perOpSecondaryPeakCurrent.push_back(lastSecondaryPeakCurrent);
+        perOpIsCcm.push_back(lastIsCcm);
+
         return operatingPoint;
     }
 
@@ -383,6 +391,16 @@ namespace OpenMagnetics {
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        // Clear per-OP diagnostic vectors so the wizard table reflects this run only.
+        perOpName.clear();
+        perOpDutyCycle.clear();
+        perOpMagnetizingCurrentRipple.clear();
+        perOpPrimaryAverageCurrent.clear();
+        perOpPrimaryPeakCurrent.clear();
+        perOpSecondaryPeakCurrent.clear();
+        perOpIsCcm.clear();
+
+
         extraLoVoltageWaveforms.clear();
         extraLoCurrentWaveforms.clear();
         extraLoInductances.clear();
@@ -394,6 +412,11 @@ namespace OpenMagnetics {
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t isolatedbuckOperatingPointIndex = 0; isolatedbuckOperatingPointIndex < get_operating_points().size(); ++isolatedbuckOperatingPointIndex) {
+                std::string opName = inputVoltagesNames[inputVoltageIndex];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(isolatedbuckOperatingPointIndex);
+                }
+                perOpName.push_back(opName);
                 auto operatingPoint = process_operating_point_for_input_voltage(inputVoltage, get_operating_points()[isolatedbuckOperatingPointIndex], turnsRatios, magnetizingInductance);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";

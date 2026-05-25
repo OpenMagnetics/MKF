@@ -214,6 +214,28 @@ private:
     mutable int    lastOperatingMode                   = 0; // 0=CCM, 1=DCM
     mutable int    lastRectifierType                   = 0; // 0=CT,1=CD,2=FB,3=Flyback
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in solved in
+    // process_operating_points). Cleared at top, pushed at end of each iter.
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>      perOpDutyCycle;
+    mutable std::vector<double>      perOpConversionRatio;
+    mutable std::vector<double>      perOpDcBlockingCapVoltage;
+    mutable std::vector<double>      perOpDcBlockingCapRipple;
+    mutable std::vector<double>      perOpPrimaryPeakVoltagePositive;
+    mutable std::vector<double>      perOpPrimaryPeakVoltageNegative;
+    mutable std::vector<double>      perOpSwitchPeakVoltageQ1;
+    mutable std::vector<double>      perOpSwitchPeakVoltageQ2;
+    mutable std::vector<double>      perOpSwitchRmsCurrentQ1;
+    mutable std::vector<double>      perOpSwitchRmsCurrentQ2;
+    mutable std::vector<double>      perOpZvsMargin;
+    mutable std::vector<double>      perOpResonantTransitionTime;
+    mutable std::vector<double>      perOpSteadyStateFluxExcursion;
+    mutable std::vector<double>      perOpTransientFluxExcursionEstimate;
+    mutable std::vector<double>      perOpMagnetizingCurrentRipple;
+    mutable std::vector<double>      perOpOutputInductorRipple;
+    mutable std::vector<int>         perOpOperatingMode;
+    mutable std::vector<int>         perOpRectifierType;
+
     // Extra-component waveforms (cleared in process_operating_points once P4 lands).
     mutable std::vector<Waveform> extraLoVoltageWaveforms;
     mutable std::vector<Waveform> extraLoCurrentWaveforms;
@@ -313,6 +335,26 @@ public:
     double get_last_output_inductor_ripple() const { return lastOutputInductorRipple; }
     int get_last_operating_mode() const { return lastOperatingMode; }
     int get_last_rectifier_type() const { return lastRectifierType; }
+
+    const std::vector<std::string>& get_per_op_name()                              const { return perOpName; }
+    const std::vector<double>&      get_per_op_duty_cycle()                        const { return perOpDutyCycle; }
+    const std::vector<double>&      get_per_op_conversion_ratio()                  const { return perOpConversionRatio; }
+    const std::vector<double>&      get_per_op_dc_blocking_cap_voltage()           const { return perOpDcBlockingCapVoltage; }
+    const std::vector<double>&      get_per_op_dc_blocking_cap_ripple()            const { return perOpDcBlockingCapRipple; }
+    const std::vector<double>&      get_per_op_primary_peak_voltage_positive()     const { return perOpPrimaryPeakVoltagePositive; }
+    const std::vector<double>&      get_per_op_primary_peak_voltage_negative()     const { return perOpPrimaryPeakVoltageNegative; }
+    const std::vector<double>&      get_per_op_switch_peak_voltage_q1()            const { return perOpSwitchPeakVoltageQ1; }
+    const std::vector<double>&      get_per_op_switch_peak_voltage_q2()            const { return perOpSwitchPeakVoltageQ2; }
+    const std::vector<double>&      get_per_op_switch_rms_current_q1()             const { return perOpSwitchRmsCurrentQ1; }
+    const std::vector<double>&      get_per_op_switch_rms_current_q2()             const { return perOpSwitchRmsCurrentQ2; }
+    const std::vector<double>&      get_per_op_zvs_margin()                        const { return perOpZvsMargin; }
+    const std::vector<double>&      get_per_op_resonant_transition_time()          const { return perOpResonantTransitionTime; }
+    const std::vector<double>&      get_per_op_steady_state_flux_excursion()       const { return perOpSteadyStateFluxExcursion; }
+    const std::vector<double>&      get_per_op_transient_flux_excursion_estimate() const { return perOpTransientFluxExcursionEstimate; }
+    const std::vector<double>&      get_per_op_magnetizing_current_ripple()        const { return perOpMagnetizingCurrentRipple; }
+    const std::vector<double>&      get_per_op_output_inductor_ripple()            const { return perOpOutputInductorRipple; }
+    const std::vector<int>&         get_per_op_operating_mode()                    const { return perOpOperatingMode; }
+    const std::vector<int>&         get_per_op_rectifier_type()                    const { return perOpRectifierType; }
 
     // ---- Topology interface (P1 implements run_checks; P3-P7 implement the rest) ----
     bool run_checks(bool assert = false) override;

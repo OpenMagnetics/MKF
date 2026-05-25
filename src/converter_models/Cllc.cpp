@@ -1611,6 +1611,15 @@ double get_value_or(T&& val, double default_val) {
         extraLr2CurrentWaveforms.clear();
         extraTimeVectors.clear();
 
+        perOpName.clear();
+        perOpMode.clear();
+        perOpSteadyStateResidual.clear();
+        perOpZvsMarginPrimary.clear();
+        perOpZvsMarginSecondary.clear();
+        perOpResonantTransitionTime.clear();
+        perOpPrimaryPeakCurrent.clear();
+        perOpResonantCapPeakVoltage.clear();
+
         double n = turnsRatios[0];
 
         // Calculate resonant parameters for ngspice and waveform generation
@@ -1648,6 +1657,17 @@ double get_value_or(T&& val, double default_val) {
                 name += flowStr;
                 operatingPoint.set_name(name);
                 operatingPoints.push_back(operatingPoint);
+
+                perOpName.push_back(inputVoltagesNames[inputVoltageIndex]
+                    + (get_operating_points().size() > 1 ? (" / op " + std::to_string(opIndex)) : std::string())
+                    + flowStr);
+                perOpMode.push_back(lastMode);
+                perOpSteadyStateResidual.push_back(lastSteadyStateResidual);
+                perOpZvsMarginPrimary.push_back(lastZvsMarginPrimary);
+                perOpZvsMarginSecondary.push_back(lastZvsMarginSecondary);
+                perOpResonantTransitionTime.push_back(lastResonantTransitionTime);
+                perOpPrimaryPeakCurrent.push_back(lastPrimaryPeakCurrent);
+                perOpResonantCapPeakVoltage.push_back(lastResonantCapPeakVoltage);
             }
         }
         return operatingPoints;

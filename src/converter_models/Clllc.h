@@ -94,6 +94,26 @@ private:
     mutable double lastCurrentSharingRatio    = 1.0;
     mutable double lastSteadyStateResidual    = 0.0;
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in solved in
+    // process_operating_points). Cleared at top, pushed at end of each iter.
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<int>         perOpModeForward;
+    mutable std::vector<int>         perOpModeReverse;
+    mutable std::vector<double>      perOpZvsMarginPrimaryLagging;
+    mutable std::vector<double>      perOpZvsMarginSecondaryLagging;
+    mutable std::vector<double>      perOpZvsLoadThresholdPrimary;
+    mutable std::vector<double>      perOpZvsLoadThresholdSecondary;
+    mutable std::vector<double>      perOpResonantTransitionTime;
+    mutable std::vector<double>      perOpPrimaryPeakCurrent;
+    mutable std::vector<double>      perOpSecondaryPeakCurrent;
+    mutable std::vector<double>      perOpPrimaryRmsCurrent;
+    mutable std::vector<double>      perOpSecondaryRmsCurrent;
+    mutable std::vector<double>      perOpMagnetizingPeakCurrent;
+    mutable std::vector<double>      perOpCr1PeakVoltage;
+    mutable std::vector<double>      perOpCr2PeakVoltage;
+    mutable std::vector<double>      perOpCurrentSharingRatio;
+    mutable std::vector<double>      perOpSteadyStateResidual;
+
     // Extra-component waveforms (cleared in process_operating_points)
     mutable std::vector<Waveform> extraLr1CurrentWaveforms;
     mutable std::vector<Waveform> extraLr1VoltageWaveforms;
@@ -166,6 +186,24 @@ public:
     double get_last_cr2_peak_voltage() const { return lastCr2PeakVoltage; }
     double get_last_current_sharing_ratio() const { return lastCurrentSharingRatio; }
     double get_last_steady_state_residual() const { return lastSteadyStateResidual; }
+
+    const std::vector<std::string>& get_per_op_name()                          const { return perOpName; }
+    const std::vector<int>&         get_per_op_mode_forward()                  const { return perOpModeForward; }
+    const std::vector<int>&         get_per_op_mode_reverse()                  const { return perOpModeReverse; }
+    const std::vector<double>&      get_per_op_zvs_margin_primary_lagging()    const { return perOpZvsMarginPrimaryLagging; }
+    const std::vector<double>&      get_per_op_zvs_margin_secondary_lagging()  const { return perOpZvsMarginSecondaryLagging; }
+    const std::vector<double>&      get_per_op_zvs_load_threshold_primary()    const { return perOpZvsLoadThresholdPrimary; }
+    const std::vector<double>&      get_per_op_zvs_load_threshold_secondary()  const { return perOpZvsLoadThresholdSecondary; }
+    const std::vector<double>&      get_per_op_resonant_transition_time()      const { return perOpResonantTransitionTime; }
+    const std::vector<double>&      get_per_op_primary_peak_current()          const { return perOpPrimaryPeakCurrent; }
+    const std::vector<double>&      get_per_op_secondary_peak_current()        const { return perOpSecondaryPeakCurrent; }
+    const std::vector<double>&      get_per_op_primary_rms_current()           const { return perOpPrimaryRmsCurrent; }
+    const std::vector<double>&      get_per_op_secondary_rms_current()         const { return perOpSecondaryRmsCurrent; }
+    const std::vector<double>&      get_per_op_magnetizing_peak_current()      const { return perOpMagnetizingPeakCurrent; }
+    const std::vector<double>&      get_per_op_cr1_peak_voltage()              const { return perOpCr1PeakVoltage; }
+    const std::vector<double>&      get_per_op_cr2_peak_voltage()              const { return perOpCr2PeakVoltage; }
+    const std::vector<double>&      get_per_op_current_sharing_ratio()         const { return perOpCurrentSharingRatio; }
+    const std::vector<double>&      get_per_op_steady_state_residual()         const { return perOpSteadyStateResidual; }
 
     // Bridge factor (0.5 HB / 1.0 FB) per side
     double get_primary_bridge_voltage_factor() const;

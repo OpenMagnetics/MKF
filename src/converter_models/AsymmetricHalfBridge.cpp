@@ -1089,6 +1089,26 @@ std::vector<OperatingPoint> AsymmetricHalfBridge::process_operating_points(
     extraCbVoltageWaveforms.clear();
     extraCbCurrentWaveforms.clear();
 
+    perOpName.clear();
+    perOpDutyCycle.clear();
+    perOpConversionRatio.clear();
+    perOpDcBlockingCapVoltage.clear();
+    perOpDcBlockingCapRipple.clear();
+    perOpPrimaryPeakVoltagePositive.clear();
+    perOpPrimaryPeakVoltageNegative.clear();
+    perOpSwitchPeakVoltageQ1.clear();
+    perOpSwitchPeakVoltageQ2.clear();
+    perOpSwitchRmsCurrentQ1.clear();
+    perOpSwitchRmsCurrentQ2.clear();
+    perOpZvsMargin.clear();
+    perOpResonantTransitionTime.clear();
+    perOpSteadyStateFluxExcursion.clear();
+    perOpTransientFluxExcursionEstimate.clear();
+    perOpMagnetizingCurrentRipple.clear();
+    perOpOutputInductorRipple.clear();
+    perOpOperatingMode.clear();
+    perOpRectifierType.clear();
+
     std::vector<double> inputVoltages;
     std::vector<std::string> inputVoltageNames;
     collect_input_voltages(get_input_voltage(), inputVoltages,
@@ -1114,6 +1134,27 @@ std::vector<OperatingPoint> AsymmetricHalfBridge::process_operating_points(
                 name += " with op. point " + std::to_string(oi);
             op.set_name(name);
             result.push_back(std::move(op));
+
+            perOpName.push_back(inputVoltageNames[vi]
+                + (ops.size() > 1 ? (" / op " + std::to_string(oi)) : std::string()));
+            perOpDutyCycle.push_back(lastDutyCycle);
+            perOpConversionRatio.push_back(lastConversionRatio);
+            perOpDcBlockingCapVoltage.push_back(lastDcBlockingCapVoltage);
+            perOpDcBlockingCapRipple.push_back(lastDcBlockingCapRipple);
+            perOpPrimaryPeakVoltagePositive.push_back(lastPrimaryPeakVoltagePositive);
+            perOpPrimaryPeakVoltageNegative.push_back(lastPrimaryPeakVoltageNegative);
+            perOpSwitchPeakVoltageQ1.push_back(lastSwitchPeakVoltageQ1);
+            perOpSwitchPeakVoltageQ2.push_back(lastSwitchPeakVoltageQ2);
+            perOpSwitchRmsCurrentQ1.push_back(lastSwitchRmsCurrentQ1);
+            perOpSwitchRmsCurrentQ2.push_back(lastSwitchRmsCurrentQ2);
+            perOpZvsMargin.push_back(lastZvsMargin);
+            perOpResonantTransitionTime.push_back(lastResonantTransitionTime);
+            perOpSteadyStateFluxExcursion.push_back(lastSteadyStateFluxExcursion);
+            perOpTransientFluxExcursionEstimate.push_back(lastTransientFluxExcursionEstimate);
+            perOpMagnetizingCurrentRipple.push_back(lastMagnetizingCurrentRipple);
+            perOpOutputInductorRipple.push_back(lastOutputInductorRipple);
+            perOpOperatingMode.push_back(lastOperatingMode);
+            perOpRectifierType.push_back(lastRectifierType);
         }
     }
     return result;

@@ -46,6 +46,15 @@ private:
     mutable double lastSecondaryPeakCurrent = 0.0;
     mutable bool   lastIsCcm = true;
 
+    // ---- Per-OP diagnostic vectors ----
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>  perOpDutyCycle;
+    mutable std::vector<double>  perOpMagnetizingCurrentRipple;
+    mutable std::vector<double>  perOpPrimaryAverageCurrent;
+    mutable std::vector<double>  perOpPrimaryPeakCurrent;
+    mutable std::vector<double>  perOpSecondaryPeakCurrent;
+    mutable std::vector<bool>    perOpIsCcm;
+
     mutable std::vector<Waveform> extraLoVoltageWaveforms;
     mutable std::vector<Waveform> extraLoCurrentWaveforms;
     mutable std::vector<double>   extraLoInductances;
@@ -76,6 +85,15 @@ public:
     double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
     double get_last_secondary_peak_current() const { return lastSecondaryPeakCurrent; }
     bool   get_last_is_ccm() const { return lastIsCcm; }
+
+    // ---- Per-OP vector accessors ----
+    const std::vector<std::string>& get_per_op_name() const { return perOpName; }
+    const std::vector<double>& get_per_op_duty_cycle() const { return perOpDutyCycle; }
+    const std::vector<double>& get_per_op_magnetizing_current_ripple() const { return perOpMagnetizingCurrentRipple; }
+    const std::vector<double>& get_per_op_primary_average_current() const { return perOpPrimaryAverageCurrent; }
+    const std::vector<double>& get_per_op_primary_peak_current() const { return perOpPrimaryPeakCurrent; }
+    const std::vector<double>& get_per_op_secondary_peak_current() const { return perOpSecondaryPeakCurrent; }
+    const std::vector<bool>& get_per_op_is_ccm() const { return perOpIsCcm; }
 
     bool run_checks(bool assert = false) override;
 

@@ -134,6 +134,15 @@ private:
     mutable double lastVoltageConversionRatio = 1.0; // d = N·V₂/V₁
     mutable std::vector<double> lastSubIntervalTimes; // boundary angles in radians, [0, 2π]
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in solved in
+    // process_operating_points). Cleared at top, pushed at end of each iter.
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<int>         perOpModulationType;
+    mutable std::vector<double>      perOpZvsMarginPrimary;
+    mutable std::vector<double>      perOpZvsMarginSecondary;
+    mutable std::vector<double>      perOpD3Rad;
+    mutable std::vector<double>      perOpVoltageConversionRatio;
+
     // Extra-component waveforms — one entry per operating point, populated by
     // process_operating_points, consumed by get_extra_components_inputs.
     // Cleared at the start of every process_operating_points() call.
@@ -185,6 +194,13 @@ public:
     double get_last_voltage_conversion_ratio() const { return lastVoltageConversionRatio; }
     /** Sub-interval boundary angles for the last solved op point (rad, [0, 2π]). */
     const std::vector<double>& get_last_sub_interval_times() const { return lastSubIntervalTimes; }
+
+    const std::vector<std::string>& get_per_op_name()                       const { return perOpName; }
+    const std::vector<int>&         get_per_op_modulation_type()            const { return perOpModulationType; }
+    const std::vector<double>&      get_per_op_zvs_margin_primary()         const { return perOpZvsMarginPrimary; }
+    const std::vector<double>&      get_per_op_zvs_margin_secondary()       const { return perOpZvsMarginSecondary; }
+    const std::vector<double>&      get_per_op_d3_rad()                     const { return perOpD3Rad; }
+    const std::vector<double>&      get_per_op_voltage_conversion_ratio()   const { return perOpVoltageConversionRatio; }
 
     // ---- Topology interface ----
     bool run_checks(bool assert = false) override;

@@ -226,6 +226,12 @@ std::vector<OperatingPoint> Llc::process_operating_points(
     extraLo2VoltageWaveforms.clear();
     extraVoutCapVoltageWaveforms.clear();
 
+    perOpName.clear();
+    perOpMode.clear();
+    perOpSteadyStateResidual.clear();
+    perOpZvsMarginLagging.clear();
+    perOpPrimaryPeakCurrent.clear();
+
     std::vector<OperatingPoint> result;
     auto& inputVoltage = get_input_voltage();
     auto& ops = get_operating_points();
@@ -248,6 +254,12 @@ std::vector<OperatingPoint> Llc::process_operating_points(
             Vin, ops[0], turnsRatios, magnetizingInductance);
         op.set_name(name + " input (" + std::to_string(static_cast<int>(Vin)) + "V)");
         result.push_back(op);
+
+        perOpName.push_back(name);
+        perOpMode.push_back(lastMode);
+        perOpSteadyStateResidual.push_back(lastSteadyStateResidual);
+        perOpZvsMarginLagging.push_back(lastZvsMarginLagging);
+        perOpPrimaryPeakCurrent.push_back(lastPrimaryPeakCurrent);
     }
     return result;
 }

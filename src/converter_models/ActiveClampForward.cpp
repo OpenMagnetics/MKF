@@ -225,6 +225,16 @@ namespace OpenMagnetics {
         }
         lastIsCcm = (minimumPrimaryCurrent > 0);
 
+        // Per-OP diagnostic snapshot.
+        perOpMaximumDutyCycle.push_back(lastMaximumDutyCycle);
+        perOpComputedMagnetizingInductance.push_back(lastComputedMagnetizingInductance);
+        perOpComputedSecondaryTurnsRatio.push_back(lastComputedSecondaryTurnsRatio);
+        perOpPrimaryPeakCurrent.push_back(lastPrimaryPeakCurrent);
+        perOpSecondaryPeakCurrent.push_back(lastSecondaryPeakCurrent);
+        perOpMagnetizingPeakCurrent.push_back(lastMagnetizingPeakCurrent);
+        perOpIsCcm.push_back(lastIsCcm);
+        perOpClampCapVoltage.push_back(lastClampCapVoltage);
+
         return operatingPoint;
     }
 
@@ -321,6 +331,18 @@ namespace OpenMagnetics {
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        // Clear per-OP diagnostic vectors so the wizard table reflects this run only.
+        perOpName.clear();
+        perOpMaximumDutyCycle.clear();
+        perOpComputedMagnetizingInductance.clear();
+        perOpComputedSecondaryTurnsRatio.clear();
+        perOpPrimaryPeakCurrent.clear();
+        perOpSecondaryPeakCurrent.clear();
+        perOpMagnetizingPeakCurrent.clear();
+        perOpIsCcm.clear();
+        perOpClampCapVoltage.clear();
+
+
         extraLoVoltageWaveforms.clear();
         extraLoCurrentWaveforms.clear();
         extraLoInductances.clear();
@@ -341,6 +363,11 @@ namespace OpenMagnetics {
 
             for (size_t forwardOperatingPointIndex = 0; forwardOperatingPointIndex < get_operating_points().size(); ++forwardOperatingPointIndex) {
                 auto& fop = get_operating_points()[forwardOperatingPointIndex];
+                std::string opName = inputVoltagesNames[inputVoltageIndex];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(forwardOperatingPointIndex);
+                }
+                perOpName.push_back(opName);
                 auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, fop, turnsRatios, magnetizingInductance, outputInductancePerSecondary[0]);
 
                 // Capture Lo waveforms for each secondary

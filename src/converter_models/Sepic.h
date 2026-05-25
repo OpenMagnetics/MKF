@@ -151,6 +151,24 @@ protected:
     mutable double lastSizedCs = 0.0;                  // internally-sized Cs
     mutable double lastSizedCo = 0.0;                  // internally-sized Co
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in × OP iteration) ----
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>      perOpDutyCycle;
+    mutable std::vector<double>      perOpConversionRatio;
+    mutable std::vector<double>      perOpCouplingCapVoltage;
+    mutable std::vector<double>      perOpInputInductorAverage;
+    mutable std::vector<double>      perOpOutputInductorAverage;
+    mutable std::vector<double>      perOpInputInductorRipple;
+    mutable std::vector<double>      perOpOutputInductorRipple;
+    mutable std::vector<double>      perOpSwitchPeakVoltage;
+    mutable std::vector<double>      perOpSwitchPeakCurrent;
+    mutable std::vector<double>      perOpDiodePeakReverseVoltage;
+    mutable std::vector<double>      perOpDiodePeakCurrent;
+    mutable std::vector<double>      perOpCouplingCapRmsCurrent;
+    mutable std::vector<bool>        perOpIsCcm;
+    mutable std::vector<double>      perOpSizedCs;
+    mutable std::vector<double>      perOpSizedCo;
+
     // ---- Extra-component waveforms (filled in process_operating_points_for_input_voltage,
     //      consumed by get_extra_components_inputs).  Cleared at the start of
     //      process_operating_points so a re-run does not accumulate. ----
@@ -197,6 +215,24 @@ public:
     double get_last_sized_l2()                    const { return lastSizedL2; }
     double get_last_sized_cs()                    const { return lastSizedCs; }
     double get_last_sized_co()                    const { return lastSizedCo; }
+
+    // ---- Per-OP vector accessors ----
+    const std::vector<std::string>& get_per_op_name()                       const { return perOpName; }
+    const std::vector<double>&      get_per_op_duty_cycle()                 const { return perOpDutyCycle; }
+    const std::vector<double>&      get_per_op_conversion_ratio()           const { return perOpConversionRatio; }
+    const std::vector<double>&      get_per_op_coupling_cap_voltage()       const { return perOpCouplingCapVoltage; }
+    const std::vector<double>&      get_per_op_input_inductor_average()     const { return perOpInputInductorAverage; }
+    const std::vector<double>&      get_per_op_output_inductor_average()    const { return perOpOutputInductorAverage; }
+    const std::vector<double>&      get_per_op_input_inductor_ripple()      const { return perOpInputInductorRipple; }
+    const std::vector<double>&      get_per_op_output_inductor_ripple()     const { return perOpOutputInductorRipple; }
+    const std::vector<double>&      get_per_op_switch_peak_voltage()        const { return perOpSwitchPeakVoltage; }
+    const std::vector<double>&      get_per_op_switch_peak_current()        const { return perOpSwitchPeakCurrent; }
+    const std::vector<double>&      get_per_op_diode_peak_reverse_voltage() const { return perOpDiodePeakReverseVoltage; }
+    const std::vector<double>&      get_per_op_diode_peak_current()         const { return perOpDiodePeakCurrent; }
+    const std::vector<double>&      get_per_op_coupling_cap_rms_current()   const { return perOpCouplingCapRmsCurrent; }
+    const std::vector<bool>&        get_per_op_is_ccm()                     const { return perOpIsCcm; }
+    const std::vector<double>&      get_per_op_sized_cs()                   const { return perOpSizedCs; }
+    const std::vector<double>&      get_per_op_sized_co()                   const { return perOpSizedCo; }
 
     bool run_checks(bool assert = false) override;
 

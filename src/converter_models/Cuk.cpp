@@ -356,6 +356,25 @@ namespace OpenMagnetics {
             conditions.set_ambient_temperature(outputOperatingPoint.get_ambient_temperature());
             conditions.set_cooling(std::nullopt);
             operatingPoint.set_conditions(conditions);
+            // Per-OP diagnostic snapshot.
+            perOpDutyCycle.push_back(lastDutyCycle);
+            perOpConversionRatio.push_back(lastConversionRatio);
+            perOpCouplingCapVoltage.push_back(lastCouplingCapVoltage);
+            perOpInputInductorAverage.push_back(lastInputInductorAverage);
+            perOpOutputInductorAverage.push_back(lastOutputInductorAverage);
+            perOpInputInductorRipple.push_back(lastInputInductorRipple);
+            perOpOutputInductorRipple.push_back(lastOutputInductorRipple);
+            perOpSwitchPeakVoltage.push_back(lastSwitchPeakVoltage);
+            perOpSwitchPeakCurrent.push_back(lastSwitchPeakCurrent);
+            perOpDiodePeakReverseVoltage.push_back(lastDiodePeakReverseVoltage);
+            perOpDiodePeakCurrent.push_back(lastDiodePeakCurrent);
+            perOpCouplingCapRmsCurrent.push_back(lastCouplingCapRmsCurrent);
+            perOpIsCcm.push_back(lastIsCcm);
+            perOpSizedCa.push_back(lastSizedCa);
+            perOpSizedCb.push_back(lastSizedCb);
+            perOpSizedCo.push_back(lastSizedCo);
+            perOpRhpZeroFrequency.push_back(lastRhpZeroFrequency);
+
             return operatingPoint;
         }
 
@@ -437,6 +456,25 @@ namespace OpenMagnetics {
         conditions.set_ambient_temperature(outputOperatingPoint.get_ambient_temperature());
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
+
+        // Per-OP diagnostic snapshot.
+        perOpDutyCycle.push_back(lastDutyCycle);
+        perOpConversionRatio.push_back(lastConversionRatio);
+        perOpCouplingCapVoltage.push_back(lastCouplingCapVoltage);
+        perOpInputInductorAverage.push_back(lastInputInductorAverage);
+        perOpOutputInductorAverage.push_back(lastOutputInductorAverage);
+        perOpInputInductorRipple.push_back(lastInputInductorRipple);
+        perOpOutputInductorRipple.push_back(lastOutputInductorRipple);
+        perOpSwitchPeakVoltage.push_back(lastSwitchPeakVoltage);
+        perOpSwitchPeakCurrent.push_back(lastSwitchPeakCurrent);
+        perOpDiodePeakReverseVoltage.push_back(lastDiodePeakReverseVoltage);
+        perOpDiodePeakCurrent.push_back(lastDiodePeakCurrent);
+        perOpCouplingCapRmsCurrent.push_back(lastCouplingCapRmsCurrent);
+        perOpIsCcm.push_back(lastIsCcm);
+        perOpSizedCa.push_back(lastSizedCa);
+        perOpSizedCb.push_back(lastSizedCb);
+        perOpSizedCo.push_back(lastSizedCo);
+        perOpRhpZeroFrequency.push_back(lastRhpZeroFrequency);
 
         return operatingPoint;
     }
@@ -603,9 +641,35 @@ namespace OpenMagnetics {
 
         Topology::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        // Clear per-OP diagnostic vectors so the wizard table reflects this run only.
+        perOpName.clear();
+        perOpDutyCycle.clear();
+        perOpConversionRatio.clear();
+        perOpCouplingCapVoltage.clear();
+        perOpInputInductorAverage.clear();
+        perOpOutputInductorAverage.clear();
+        perOpInputInductorRipple.clear();
+        perOpOutputInductorRipple.clear();
+        perOpSwitchPeakVoltage.clear();
+        perOpSwitchPeakCurrent.clear();
+        perOpDiodePeakReverseVoltage.clear();
+        perOpDiodePeakCurrent.clear();
+        perOpCouplingCapRmsCurrent.clear();
+        perOpIsCcm.clear();
+        perOpSizedCa.clear();
+        perOpSizedCb.clear();
+        perOpSizedCo.clear();
+        perOpRhpZeroFrequency.clear();
+
+
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+                std::string opName = inputVoltagesNames[inputVoltageIndex];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(opIndex);
+                }
+                perOpName.push_back(opName);
                 auto operatingPoint = process_operating_points_for_input_voltage(
                     inputVoltage, get_operating_points()[opIndex], magnetizingInductance);
 
@@ -861,7 +925,7 @@ namespace OpenMagnetics {
         circuit << "S1 node_A_int 0 pwm_ctrl 0 SW1\n";
         circuit << "Rsnub_s1 node_A_int 0 " << cfg.snubR << "\n"
                 << "Csnub_s1 node_A_int snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                << "Rsnub_s1b snub_s1_int 0 0.001\n\n";
+                << "Rsnub_s1b snub_s1_int 0 " << 0.001 << "\n\n";
 
         // Coupling section. V1/V2: single C1 between node_A_int and node_B.
         // V3 isolated: split into Ca → Lp ⟂ Ls → Cb with the transformer
@@ -915,7 +979,7 @@ namespace OpenMagnetics {
             circuit << "S2 node_B d_cath pwm_ctrl_inv 0 SW2\n";
             circuit << "Rsnub_d1 node_B 0 " << cfg.snubR << "\n"
                     << "Csnub_d1 node_B snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 0.001\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
         } else {
             circuit << "* D1 freewheel diode\n";
             circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
@@ -923,7 +987,7 @@ namespace OpenMagnetics {
             circuit << "D1 node_B d_cath DIDEAL\n";
             circuit << "Rsnub_d1 node_B 0 " << cfg.snubR << "\n"
                     << "Csnub_d1 node_B snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 0.001\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
         }
 
         // L2 output inductor (from node_B to vout_load_node, with DCR)

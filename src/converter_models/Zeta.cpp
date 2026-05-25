@@ -214,6 +214,25 @@ namespace OpenMagnetics {
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
 
+        // Per-OP diagnostic snapshot.
+        perOpDutyCycle.push_back(lastDutyCycle);
+        perOpConversionRatio.push_back(lastConversionRatio);
+        perOpCouplingCapVoltage.push_back(lastCouplingCapVoltage);
+        perOpInputInductorAverage.push_back(lastInputInductorAverage);
+        perOpOutputInductorAverage.push_back(lastOutputInductorAverage);
+        perOpInputInductorRipple.push_back(lastInputInductorRipple);
+        perOpOutputInductorRipple.push_back(lastOutputInductorRipple);
+        perOpSwitchPeakVoltage.push_back(lastSwitchPeakVoltage);
+        perOpSwitchPeakCurrent.push_back(lastSwitchPeakCurrent);
+        perOpDiodePeakReverseVoltage.push_back(lastDiodePeakReverseVoltage);
+        perOpDiodePeakCurrent.push_back(lastDiodePeakCurrent);
+        perOpCouplingCapRmsCurrent.push_back(lastCouplingCapRmsCurrent);
+        perOpIsCcm.push_back(lastIsCcm);
+        perOpSizedCc.push_back(lastSizedCc);
+        perOpSizedCo.push_back(lastSizedCo);
+        perOpOutputVoltageRipple.push_back(lastOutputVoltageRipple);
+        perOpInputCurrentRipple.push_back(lastInputCurrentRipple);
+
         return operatingPoint;
     }
 
@@ -314,9 +333,35 @@ namespace OpenMagnetics {
 
         Topology::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        // Clear per-OP diagnostic vectors so the wizard table reflects this run only.
+        perOpName.clear();
+        perOpDutyCycle.clear();
+        perOpConversionRatio.clear();
+        perOpCouplingCapVoltage.clear();
+        perOpInputInductorAverage.clear();
+        perOpOutputInductorAverage.clear();
+        perOpInputInductorRipple.clear();
+        perOpOutputInductorRipple.clear();
+        perOpSwitchPeakVoltage.clear();
+        perOpSwitchPeakCurrent.clear();
+        perOpDiodePeakReverseVoltage.clear();
+        perOpDiodePeakCurrent.clear();
+        perOpCouplingCapRmsCurrent.clear();
+        perOpIsCcm.clear();
+        perOpSizedCc.clear();
+        perOpSizedCo.clear();
+        perOpOutputVoltageRipple.clear();
+        perOpInputCurrentRipple.clear();
+
+
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+                std::string opName = inputVoltagesNames[inputVoltageIndex];
+                if (get_operating_points().size() > 1) {
+                    opName += " · OP" + std::to_string(opIndex);
+                }
+                perOpName.push_back(opName);
                 auto operatingPoint = process_operating_points_for_input_voltage(
                     inputVoltage, get_operating_points()[opIndex], magnetizingInductance);
 
@@ -501,7 +546,7 @@ namespace OpenMagnetics {
         circuit << "S1 sw_top node_SW pwm_ctrl 0 SW1\n";
         circuit << "Rsnub_s1 sw_top node_SW " << cfg.snubR << "\n"
                 << "Csnub_s1 sw_top snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                << "Rsnub_s1b snub_s1_int node_SW 0.001\n\n";
+                << "Rsnub_s1b snub_s1_int node_SW " << 0.001 << "\n\n";
 
         // L1 magnetizing inductor: node_SW → GND (with DCR).
         circuit << "* L1 magnetizing inductor (top at node_SW; with DCR)\n";
@@ -532,7 +577,7 @@ namespace OpenMagnetics {
             circuit << "S2 0 rect_in pwm_ctrl_inv 0 SW2\n";
             circuit << "Rsnub_d1 0 node_X " << cfg.snubR << "\n"
                     << "Csnub_d1 node_X snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 0.001\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
         } else {
             circuit << "* D1 catch diode (anode=GND, cathode=node_X)\n";
             circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
@@ -541,7 +586,7 @@ namespace OpenMagnetics {
             circuit << "D1 0 rect_in DIDEAL\n";
             circuit << "Rsnub_d1 0 node_X " << cfg.snubR << "\n"
                     << "Csnub_d1 node_X snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 0.001\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
         }
 
         // L2 output inductor: node_X → vout (with DCR).

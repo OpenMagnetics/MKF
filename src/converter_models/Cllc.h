@@ -274,6 +274,17 @@ private:
     // identically to what populated the extra*Waveforms above.
     mutable CllcResonantParameters lastResonantParameters{};
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in solved in
+    // process_operating_points). Cleared at top, pushed at end of each iter.
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<int>         perOpMode;
+    mutable std::vector<double>      perOpSteadyStateResidual;
+    mutable std::vector<double>      perOpZvsMarginPrimary;
+    mutable std::vector<double>      perOpZvsMarginSecondary;
+    mutable std::vector<double>      perOpResonantTransitionTime;
+    mutable std::vector<double>      perOpPrimaryPeakCurrent;
+    mutable std::vector<double>      perOpResonantCapPeakVoltage;
+
 public:
     bool _assertErrors = false;
 
@@ -318,6 +329,15 @@ public:
     double get_last_resonant_cap_peak_voltage() const { return lastResonantCapPeakVoltage; }
     /** Sub-state sequence (CllcSubState IDs) traversed in the last half-cycle. */
     const std::vector<int>& get_last_sub_state_sequence() const { return lastSubStateSequence; }
+
+    const std::vector<std::string>& get_per_op_name()                       const { return perOpName; }
+    const std::vector<int>&         get_per_op_mode()                       const { return perOpMode; }
+    const std::vector<double>&      get_per_op_steady_state_residual()      const { return perOpSteadyStateResidual; }
+    const std::vector<double>&      get_per_op_zvs_margin_primary()         const { return perOpZvsMarginPrimary; }
+    const std::vector<double>&      get_per_op_zvs_margin_secondary()       const { return perOpZvsMarginSecondary; }
+    const std::vector<double>&      get_per_op_resonant_transition_time()   const { return perOpResonantTransitionTime; }
+    const std::vector<double>&      get_per_op_primary_peak_current()       const { return perOpPrimaryPeakCurrent; }
+    const std::vector<double>&      get_per_op_resonant_cap_peak_voltage()  const { return perOpResonantCapPeakVoltage; }
 
     // --- Helpers --------------------------------------------------------
     /** Returns 1.0 for full-bridge, 0.5 for half-bridge. */

@@ -286,10 +286,24 @@ std::vector<OperatingPoint> Src::process_operating_points(
                             [](const auto& a, const auto& b) { return a.first == b.first; });
     inputVoltages.erase(last, inputVoltages.end());
 
+    perOpName.clear();
+    perOpGainM.clear();
+    perOpNormalizedFsw.clear();
+    perOpIrPeak.clear();
+    perOpVcrPeak.clear();
+    perOpIsAboveResonance.clear();
+
     for (const auto& [Vin, name] : inputVoltages) {
         auto op = process_operating_point_for_input_voltage(Vin, ops[0], turnsRatios);
         op.set_name(name + " input (" + std::to_string(static_cast<int>(Vin)) + "V)");
         result.push_back(op);
+
+        perOpName.push_back(name);
+        perOpGainM.push_back(lastGainM);
+        perOpNormalizedFsw.push_back(lastNormalizedFsw);
+        perOpIrPeak.push_back(lastIrPeak);
+        perOpVcrPeak.push_back(lastVcrPeak);
+        perOpIsAboveResonance.push_back(lastIsAboveResonance ? 1 : 0);
     }
     return result;
 }

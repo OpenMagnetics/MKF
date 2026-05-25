@@ -515,6 +515,24 @@ std::vector<OperatingPoint> Clllc::process_operating_points(
     extraLmCurrentWaveforms.clear();
     extraTimeVectors.clear();
 
+    perOpName.clear();
+    perOpModeForward.clear();
+    perOpModeReverse.clear();
+    perOpZvsMarginPrimaryLagging.clear();
+    perOpZvsMarginSecondaryLagging.clear();
+    perOpZvsLoadThresholdPrimary.clear();
+    perOpZvsLoadThresholdSecondary.clear();
+    perOpResonantTransitionTime.clear();
+    perOpPrimaryPeakCurrent.clear();
+    perOpSecondaryPeakCurrent.clear();
+    perOpPrimaryRmsCurrent.clear();
+    perOpSecondaryRmsCurrent.clear();
+    perOpMagnetizingPeakCurrent.clear();
+    perOpCr1PeakVoltage.clear();
+    perOpCr2PeakVoltage.clear();
+    perOpCurrentSharingRatio.clear();
+    perOpSteadyStateResidual.clear();
+
     std::vector<OperatingPoint> result;
     auto& ops = get_operating_points();
     if (ops.empty())
@@ -559,6 +577,24 @@ std::vector<OperatingPoint> Clllc::process_operating_points(
                 << (reverse ? "reverse" : "forward") << ")";
             sample.set_name(tag.str());
             result.push_back(sample);
+
+            perOpName.push_back(tag.str());
+            perOpModeForward.push_back(lastModeForward);
+            perOpModeReverse.push_back(lastModeReverse);
+            perOpZvsMarginPrimaryLagging.push_back(lastZvsMarginPrimaryLagging);
+            perOpZvsMarginSecondaryLagging.push_back(lastZvsMarginSecondaryLagging);
+            perOpZvsLoadThresholdPrimary.push_back(lastZvsLoadThresholdPrimary);
+            perOpZvsLoadThresholdSecondary.push_back(lastZvsLoadThresholdSecondary);
+            perOpResonantTransitionTime.push_back(lastResonantTransitionTime);
+            perOpPrimaryPeakCurrent.push_back(lastPrimaryPeakCurrent);
+            perOpSecondaryPeakCurrent.push_back(lastSecondaryPeakCurrent);
+            perOpPrimaryRmsCurrent.push_back(lastPrimaryRmsCurrent);
+            perOpSecondaryRmsCurrent.push_back(lastSecondaryRmsCurrent);
+            perOpMagnetizingPeakCurrent.push_back(lastMagnetizingPeakCurrent);
+            perOpCr1PeakVoltage.push_back(lastCr1PeakVoltage);
+            perOpCr2PeakVoltage.push_back(lastCr2PeakVoltage);
+            perOpCurrentSharingRatio.push_back(lastCurrentSharingRatio);
+            perOpSteadyStateResidual.push_back(lastSteadyStateResidual);
         }
     }
     return result;

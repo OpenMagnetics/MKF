@@ -169,7 +169,27 @@ protected:
     mutable double lastSizedCc = 0.0;
     mutable double lastSizedCo = 0.0;
     mutable double lastOutputVoltageRipple = 0.0;      // small (L2 in series with Co)
-    mutable double lastInputCurrentRipple  = 0.0;      // large (Q1 pulsed input)
+    mutable double lastInputCurrentRipple  = 0.0;
+
+    // ---- Per-OP diagnostic vectors ----
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>  perOpDutyCycle;
+    mutable std::vector<double>  perOpConversionRatio;
+    mutable std::vector<double>  perOpCouplingCapVoltage;
+    mutable std::vector<double>  perOpInputInductorAverage;
+    mutable std::vector<double>  perOpOutputInductorAverage;
+    mutable std::vector<double>  perOpInputInductorRipple;
+    mutable std::vector<double>  perOpOutputInductorRipple;
+    mutable std::vector<double>  perOpSwitchPeakVoltage;
+    mutable std::vector<double>  perOpSwitchPeakCurrent;
+    mutable std::vector<double>  perOpDiodePeakReverseVoltage;
+    mutable std::vector<double>  perOpDiodePeakCurrent;
+    mutable std::vector<double>  perOpCouplingCapRmsCurrent;
+    mutable std::vector<bool>    perOpIsCcm;
+    mutable std::vector<double>  perOpSizedCc;
+    mutable std::vector<double>  perOpSizedCo;
+    mutable std::vector<double>  perOpOutputVoltageRipple;
+    mutable std::vector<double>  perOpInputCurrentRipple;      // large (Q1 pulsed input)
 
     // ---- Extra-component waveforms ----
     mutable std::vector<Waveform> extraL2VoltageWaveforms;
@@ -217,6 +237,26 @@ public:
     double get_last_sized_co()                    const { return lastSizedCo; }
     double get_last_output_voltage_ripple()       const { return lastOutputVoltageRipple; }
     double get_last_input_current_ripple()        const { return lastInputCurrentRipple; }
+
+    // ---- Per-OP vector accessors ----
+    const std::vector<std::string>& get_per_op_name() const { return perOpName; }
+    const std::vector<double>& get_per_op_duty_cycle() const { return perOpDutyCycle; }
+    const std::vector<double>& get_per_op_conversion_ratio() const { return perOpConversionRatio; }
+    const std::vector<double>& get_per_op_coupling_cap_voltage() const { return perOpCouplingCapVoltage; }
+    const std::vector<double>& get_per_op_input_inductor_average() const { return perOpInputInductorAverage; }
+    const std::vector<double>& get_per_op_output_inductor_average() const { return perOpOutputInductorAverage; }
+    const std::vector<double>& get_per_op_input_inductor_ripple() const { return perOpInputInductorRipple; }
+    const std::vector<double>& get_per_op_output_inductor_ripple() const { return perOpOutputInductorRipple; }
+    const std::vector<double>& get_per_op_switch_peak_voltage() const { return perOpSwitchPeakVoltage; }
+    const std::vector<double>& get_per_op_switch_peak_current() const { return perOpSwitchPeakCurrent; }
+    const std::vector<double>& get_per_op_diode_peak_reverse_voltage() const { return perOpDiodePeakReverseVoltage; }
+    const std::vector<double>& get_per_op_diode_peak_current() const { return perOpDiodePeakCurrent; }
+    const std::vector<double>& get_per_op_coupling_cap_rms_current() const { return perOpCouplingCapRmsCurrent; }
+    const std::vector<bool>& get_per_op_is_ccm() const { return perOpIsCcm; }
+    const std::vector<double>& get_per_op_sized_cc() const { return perOpSizedCc; }
+    const std::vector<double>& get_per_op_sized_co() const { return perOpSizedCo; }
+    const std::vector<double>& get_per_op_output_voltage_ripple() const { return perOpOutputVoltageRipple; }
+    const std::vector<double>& get_per_op_input_current_ripple() const { return perOpInputCurrentRipple; }
 
     bool run_checks(bool assert = false) override;
 

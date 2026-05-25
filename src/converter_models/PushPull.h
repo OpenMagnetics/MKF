@@ -91,7 +91,16 @@ private:
     mutable double lastPrimaryAverageCurrent = 0.0; // Midpoint of model ramp = (1-r/2)·Iout/N [A]
     mutable double lastPrimaryPeakCurrent = 0.0;    // IL_pri,pk = (1-r/2)·Iout/N + ΔImag/2 [A]
     mutable double lastMagnetizingPeakCurrent = 0.0;// ΔImag = Vin·t1/Lm [A]
-    mutable bool   lastIsCcm = true;                // true → CCM, false → DCM
+    mutable bool   lastIsCcm = true;
+
+    // ---- Per-OP diagnostic vectors ----
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>  perOpDutyCycle;
+    mutable std::vector<double>  perOpSwitchingFrequency;
+    mutable std::vector<double>  perOpPrimaryAverageCurrent;
+    mutable std::vector<double>  perOpPrimaryPeakCurrent;
+    mutable std::vector<double>  perOpMagnetizingPeakCurrent;
+    mutable std::vector<bool>    perOpIsCcm;                // true → CCM, false → DCM
 
 public:
     // ---- Per-OP diagnostic accessors ----
@@ -101,6 +110,15 @@ public:
     double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
     double get_last_magnetizing_peak_current() const { return lastMagnetizingPeakCurrent; }
     bool   get_last_is_ccm() const { return lastIsCcm; }
+
+    // ---- Per-OP vector accessors ----
+    const std::vector<std::string>& get_per_op_name() const { return perOpName; }
+    const std::vector<double>& get_per_op_duty_cycle() const { return perOpDutyCycle; }
+    const std::vector<double>& get_per_op_switching_frequency() const { return perOpSwitchingFrequency; }
+    const std::vector<double>& get_per_op_primary_average_current() const { return perOpPrimaryAverageCurrent; }
+    const std::vector<double>& get_per_op_primary_peak_current() const { return perOpPrimaryPeakCurrent; }
+    const std::vector<double>& get_per_op_magnetizing_peak_current() const { return perOpMagnetizingPeakCurrent; }
+    const std::vector<bool>& get_per_op_is_ccm() const { return perOpIsCcm; }
 
     MAS::Topologies topology_kind() const override { return MAS::Topologies::PUSH_PULL_CONVERTER; }
     bool is_bridge_topology() const override { return true; }

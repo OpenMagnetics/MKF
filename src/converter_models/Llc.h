@@ -105,6 +105,14 @@ private:
     mutable double lastResonantTransitionTime = 0.0;  // s; commutation interval
     mutable double lastPrimaryPeakCurrent     = 0.0;  // A; peak |iLs| over period
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in solved in
+    // process_operating_points). Cleared at top, pushed at end of each iter.
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<int>         perOpMode;
+    mutable std::vector<double>      perOpSteadyStateResidual;
+    mutable std::vector<double>      perOpZvsMarginLagging;
+    mutable std::vector<double>      perOpPrimaryPeakCurrent;
+
     // Extra-component waveforms — one entry per operating point, populated by
     // process_operating_point_for_input_voltage, consumed by get_extra_components_inputs.
     // Cleared at the start of every process_operating_points() call.
@@ -175,6 +183,12 @@ public:
     double get_last_zvs_load_threshold() const { return lastZvsLoadThreshold; }
     /** Resonant transition time (dead-time / Coss-resonance interval). */
     double get_last_resonant_transition_time() const { return lastResonantTransitionTime; }
+
+    const std::vector<std::string>& get_per_op_name()                  const { return perOpName; }
+    const std::vector<int>&         get_per_op_mode()                  const { return perOpMode; }
+    const std::vector<double>&      get_per_op_steady_state_residual() const { return perOpSteadyStateResidual; }
+    const std::vector<double>&      get_per_op_zvs_margin_lagging()    const { return perOpZvsMarginLagging; }
+    const std::vector<double>&      get_per_op_primary_peak_current()  const { return perOpPrimaryPeakCurrent; }
     /** Peak primary tank current over the last solved period. */
     double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
 

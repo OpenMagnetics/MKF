@@ -190,6 +190,16 @@ private:
     mutable double lastResonantTransitionTime = 0.0;
     mutable double lastPrimaryPeakCurrent = 0.0;
 
+    // ---- Per-OP diagnostic vectors (one entry per V_in solved in
+    // process_operating_points). Cleared at top, pushed at end of each iter.
+    mutable std::vector<std::string> perOpName;
+    mutable std::vector<double>      perOpDutyCycleLoss;
+    mutable std::vector<double>      perOpEffectiveDutyCycle;
+    mutable std::vector<double>      perOpZvsMarginLagging;
+    mutable std::vector<double>      perOpZvsLoadThreshold;
+    mutable std::vector<double>      perOpResonantTransitionTime;
+    mutable std::vector<double>      perOpPrimaryPeakCurrent;
+
     mutable std::vector<Waveform> extraLoVoltageWaveforms;
     mutable std::vector<Waveform> extraLoCurrentWaveforms;
     mutable std::vector<Waveform> extraLo2VoltageWaveforms;
@@ -239,6 +249,14 @@ public:
     double get_last_resonant_transition_time() const { return lastResonantTransitionTime; }
     /// Primary peak current at the lagging-leg switching instant (A).
     double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
+
+    const std::vector<std::string>& get_per_op_name()                       const { return perOpName; }
+    const std::vector<double>&      get_per_op_duty_cycle_loss()            const { return perOpDutyCycleLoss; }
+    const std::vector<double>&      get_per_op_effective_duty_cycle()       const { return perOpEffectiveDutyCycle; }
+    const std::vector<double>&      get_per_op_zvs_margin_lagging()         const { return perOpZvsMarginLagging; }
+    const std::vector<double>&      get_per_op_zvs_load_threshold()         const { return perOpZvsLoadThreshold; }
+    const std::vector<double>&      get_per_op_resonant_transition_time()   const { return perOpResonantTransitionTime; }
+    const std::vector<double>&      get_per_op_primary_peak_current()       const { return perOpPrimaryPeakCurrent; }
 
     // ---- Topology interface ----
     bool run_checks(bool assert = false) override;
