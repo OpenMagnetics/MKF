@@ -858,4 +858,110 @@ TEST_CASE("Test_Pshb_ConverterPortWaveforms",
 }
 
 
+// =========================================================================
+// Front-end-default reproduction — mirrors the PSFB version. Replays
+// PshbWizard.vue defaults verbatim so we can see whether the perceived
+// "Simulated" hang on the frontend's PSHB wizard is a missing SPICE
+// model, a 2x duplicated-netlist issue, or a real convergence problem.
+// =========================================================================
+TEST_CASE("Test_Pshb_FrontendDefaults_TimingDiagnostic",
+          "[converter-model][pshb-topology][advanced][timing]") {
+    using clk = std::chrono::steady_clock;
+    auto ms = [](clk::time_point a, clk::time_point b) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count();
+    };
+
+    // ---- Replicate PshbWizard.vue defaults exactly ------------------
+    //   inputVoltage:           { nominal: 400, tolerance: 0.1 }
+    //   outputVoltage:          12 V
+    //   outputPower:            200 W   (→ outputCurrent = 200 / 12 ≈ 16.67 A)
+    //   switchingFreq:          100000 Hz
+    //   phaseShift:             72 deg
+    //   maxPhaseShift:          144 deg
+    //   efficiency:             0.95
+    //   seriesInductance:       0   (left out → useLeakageInductance branch)
+    //   useLeakageInductance:   true
+    //   rectifierType:          "fullBridge"
+    //   magnetizingInductance:  1e-3 H
+    //   ambientTemperature:     25 C
+    //   designMode:             "Help me with the design"  → desiredTurnsRatios = [Vin/Vout] = [400/12]
+    //   numberOfPeriods:        2
+    //   numberOfSteadyStatePeriods: 5
+    json advJson;
+    {
+        json inputVoltage;
+        inputVoltage["nominal"] = 400.0;
+        inputVoltage["minimum"] = 360.0;
+        inputVoltage["maximum"] = 440.0;
+        advJson["inputVoltage"] = inputVoltage;
+    }
+    advJson["rectifierType"] = "fullBridge";
+    advJson["useLeakageInductance"] = true;
+    advJson["maximumPhaseShift"] = 144.0;
+    advJson["desiredTurnsRatios"] = { 400.0 / 12.0 };
+    advJson["desiredMagnetizingInductance"] = 1e-3;
+    advJson["operatingPoints"] = json::array();
+    {
+        json op;
+        op["ambientTemperature"] = 25.0;
+        op["outputVoltages"] = {12.0};
+        op["outputCurrents"] = {200.0 / 12.0};
+        op["switchingFrequency"] = 100000.0;
+        op["phaseShift"] = 72.0;
+        advJson["operatingPoints"].push_back(op);
+    }
+
+    auto t0 = clk::now();
+    OpenMagnetics::AdvancedPshb advPshb(advJson);
+    auto inputs = advPshb.process();
+    auto t1 = clk::now();
+    std::cout << "[PSHB-DEFAULT-TIMING] process()                                       took "
+              << ms(t0, t1) << " ms" << std::endl;
+
+    auto& designReq = inputs.get_design_requirements();
+    std::vector<double> turnsRatios;
+    for (const auto& tr : designReq.get_turns_ratios()) {
+        if (tr.get_nominal()) turnsRatios.push_back(tr.get_nominal().value());
+    }
+    REQUIRE(!turnsRatios.empty());
+
+    double Lm = 0.0;
+    if (designReq.get_magnetizing_inductance().get_minimum()) {
+        Lm = designReq.get_magnetizing_inductance().get_minimum().value();
+    } else if (designReq.get_magnetizing_inductance().get_nominal()) {
+        Lm = designReq.get_magnetizing_inductance().get_nominal().value();
+    }
+    REQUIRE(Lm > 0.0);
+
+    advPshb.set_num_periods_to_extract(2);
+    advPshb.set_num_steady_state_periods(5);
+
+    OpenMagnetics::NgspiceRunner runner;
+    if (!runner.is_available()) {
+        WARN("ngspice not available — skipping the simulation timing portion of this diagnostic");
+        return;
+    }
+
+    auto t2 = clk::now();
+    auto topologyWaveforms = advPshb.simulate_and_extract_topology_waveforms(turnsRatios, Lm, /*numberOfPeriods*/ 2);
+    auto t3 = clk::now();
+    std::cout << "[PSHB-DEFAULT-TIMING] simulate_and_extract_topology_waveforms()      took "
+              << ms(t2, t3) << " ms"
+              << "  (" << topologyWaveforms.size() << " waveform sets)" << std::endl;
+
+    auto t4 = clk::now();
+    auto operatingPoints = advPshb.simulate_and_extract_operating_points(turnsRatios, Lm);
+    auto t5 = clk::now();
+    std::cout << "[PSHB-DEFAULT-TIMING] simulate_and_extract_operating_points()        took "
+              << ms(t4, t5) << " ms"
+              << "  (" << operatingPoints.size() << " operating points)" << std::endl;
+
+    std::cout << "[PSHB-DEFAULT-TIMING] total simulation wall time                     "
+              << ms(t2, t5) << " ms" << std::endl;
+
+    REQUIRE(!topologyWaveforms.empty());
+    REQUIRE(!operatingPoints.empty());
+}
+
+
 } // anonymous namespace

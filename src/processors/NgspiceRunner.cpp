@@ -453,7 +453,28 @@ SimulationResult NgspiceRunner::run_shared_library(const std::string& netlist, c
         return result;
     }
 
-    // Wait for completion with timeout
+    // libngspice can run the simulation either in a background thread (native
+    // builds with pthreads) or synchronously in the caller's thread (WASM,
+    // where emscripten pthreads aren't enabled in this build). The wait loop
+    // below polls _simulationComplete, which is flipped to true by *one* of
+    // three callbacks: ng_thread_runs(false), ng_exit, or ng_getstat seeing
+    // "--ready--" on stdout. In the WASM/sync case, ngSpice_Command("run")
+    // already finished the entire transient before returning — and *none* of
+    // those three signals necessarily fire (no bg thread → no
+    // ng_thread_runs; no quit → no ng_exit; the WASM-built ngspice does not
+    // always emit "--ready--" to status). Result: the wait loop spins for
+    // 300 s and times out even though the data is already in _timeData.
+    //
+    // Shortcut: if data was streamed during the synchronous "run" call,
+    // declare the simulation complete. _timeData growing means ng_data fired
+    // at least once, which only happens after the solver has stepped — i.e.
+    // the transient is in progress or done. Combined with ret==0 from the
+    // command, "done" is the only consistent interpretation.
+    if (!_timeData.empty()) {
+        _simulationComplete = true;
+    }
+
+    // Wait for completion with timeout (native threaded path).
     auto timeoutEnd = startTime + std::chrono::duration<double>(config.timeout);
     int timeoutCheckCount = 0;
     auto tWait0 = std::chrono::steady_clock::now();
