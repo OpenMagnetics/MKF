@@ -340,6 +340,17 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
         }
     }
 
+    // Guard the harmonic[0] access — if every tempFieldPerHarmonic
+    // entry had zero data the vector is empty and the loop below
+    // SEGVs. Triggered by isolated_buck whose primary-loop excitation
+    // produced no usable harmonic content with the picked core.
+    if (fieldPerHarmonic.empty()) {
+        throw CoilNotProcessedException(
+            "generate_mesh_inducing_coil: no harmonic produced inducing-field data "
+            "(every tempFieldPerHarmonic[i].get_data() was empty) — the picked "
+            "core / operating-point combination does not excite the mesh");
+    }
+
     for (auto& inducingFieldPoint : fieldPerHarmonic[0].get_data()) {
 
         if (std::isnan(inducingFieldPoint.get_value())) {
