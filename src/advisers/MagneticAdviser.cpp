@@ -567,6 +567,19 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             nonStrictlyRequiredFilterFlow.push_back(filterConfiguration);
         }
     }
+    // Detect data-corruption-class failures vs per-core failures.
+    // A throw is "per-core" when it depends on the specific core
+    // (geometry mismatch, bobbin lookup miss, etc.) — different
+    // candidates raise different exceptions. A throw is
+    // "data-class" when every candidate hits the SAME message
+    // (typically an operating-point malformation: zero harmonics,
+    // missing excitation, etc.); retrying every candidate is
+    // useless and just burns wall-clock to no end. Bail out after
+    // a small streak of identical messages so callers see a
+    // diagnosable error instead of timing out.
+    static constexpr size_t kIdenticalThrowBailThreshold = 8;
+    std::string previousThrowMessage;
+    size_t identicalThrowStreak = 0;
     for (size_t index = 0; index < catalogueMagneticsWithInputs.size(); ++index) {
         auto mas = catalogueMagneticsWithInputs[index];
         std::vector<Outputs> outputs;
@@ -575,7 +588,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         bool validMagnetic = true;
         for (auto filterConfiguration : strictlyRequiredFilterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
-        
+
             try {
                 auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
                 add_scoring(magnetic.get_reference(), filterEnum, scoring);
@@ -585,12 +598,35 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                         break;
                     }
                 }
+                // Successful evaluation resets the streak.
+                identicalThrowStreak = 0;
+                previousThrowMessage.clear();
             }
             catch (const std::exception& e) {
                 logEntry(std::string("MagneticAdviser: strict filter ") + std::string(magic_enum::enum_name(filterEnum)) + " threw, rejecting magnetic: " + e.what(), "MagneticAdviser", 2);
+                std::string thisMsg = e.what();
+                if (thisMsg == previousThrowMessage) {
+                    ++identicalThrowStreak;
+                } else {
+                    previousThrowMessage = thisMsg;
+                    identicalThrowStreak = 1;
+                }
                 validMagnetic = false;
                 break;
             }
+        }
+        if (identicalThrowStreak >= kIdenticalThrowBailThreshold) {
+            throw InvalidInputException(
+                ErrorCode::INVALID_INPUT,
+                std::string("MagneticAdviser: aborted after ") +
+                std::to_string(identicalThrowStreak) +
+                " consecutive candidates failed with identical error '" +
+                previousThrowMessage +
+                "'. The failure is not core-specific — the operating point or " +
+                "inputs are malformed (e.g. zero-harmonic excitation). Fix " +
+                "process_design_requirements / process_operating_points for " +
+                "this topology rather than continuing the candidate search."
+            );
         }
 
         if (validMagnetic) {
