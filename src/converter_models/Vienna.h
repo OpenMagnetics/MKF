@@ -195,9 +195,22 @@ public:
 
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    /** Per-OP analytical solver. */
+    /** Per-OP analytical solver. peakOfLineOnly path → switching-period
+     *  triangular at sectorAngleRad = π/2; fullLineCycle path → full
+     *  line-cycle envelope across all three windings.
+     */
     OperatingPoint process_operating_point_for_input_voltage(
         const TopologyExcitation& viennaOpPoint);
+
+    /** Switching-period OP at an arbitrary line angle. The angle is
+     *  applied to Phase A; Phases B/C are at ±2π/3 from it. Used as the
+     *  per-sector building block for samplingStrategy=peakOfLinePlusSectors
+     *  (called for each of 6 sector mid-points) and as the implementation
+     *  of peakOfLineOnly (sectorAngleRad = π/2).
+     */
+    OperatingPoint emit_switching_period_op_at_line_angle(
+        const TopologyExcitation& viennaOpPoint,
+        double sectorAngleRad);
 
     // ── SPICE simulation tuning ─────────────────────────────────────────────
     int  get_num_steady_state_periods() const { return numSteadyStatePeriods; }

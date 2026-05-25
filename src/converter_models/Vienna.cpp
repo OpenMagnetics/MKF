@@ -216,17 +216,8 @@ bool Vienna::run_checks(bool assertErrors) {
             "in Phase 1+2 (deferred to Phase 3).");
         return false;
     }
-    // Phase 1+2 supported peakOfLineOnly; Phase 3 adds fullLineCycle (this
-    // file). peakOfLinePlusSectors is still gated — its DPWM-sector sampling
-    // model is a separate workstream.
-    if (get_sampling_strategy().has_value() &&
-        get_sampling_strategy().value() != ViennaSamplingStrategy::PEAK_OF_LINE_ONLY &&
-        get_sampling_strategy().value() != ViennaSamplingStrategy::FULL_LINE_CYCLE) {
-        if (assertErrors) throw std::runtime_error(
-            "Vienna: samplingStrategy=peakOfLinePlusSectors is not yet "
-            "implemented (deferred to Phase 3+, future commit).");
-        return false;
-    }
+    // Phase 3 supports all three sampling strategies: peakOfLineOnly,
+    // fullLineCycle, peakOfLinePlusSectors. No gate left here.
     return true;
 }
 
@@ -424,6 +415,15 @@ DesignRequirements Vienna::process_design_requirements() {
 
 // =====================================================================
 // process_operating_points
+//
+// Dispatch on samplingStrategy:
+//   peakOfLineOnly (default)    → 1 OP per input × peak-of-line snapshot
+//   fullLineCycle (Phase 3)     → 1 OP per input × full line-cycle envelope
+//   peakOfLinePlusSectors (P-3) → 6 OPs per input (DPWM sector mid-points)
+//
+// All three paths emit 3 windings per OP (Phase A/B/C). The first two
+// match the legacy single-OP-per-input convention; the third produces
+// six OPs per input so the adviser sizes worst-case across DPWM sectors.
 // =====================================================================
 std::vector<OperatingPoint> Vienna::process_operating_points(
     const std::vector<double>& /*turnsRatios*/, double /*magnetizingInductance*/)
@@ -431,8 +431,40 @@ std::vector<OperatingPoint> Vienna::process_operating_points(
     if (computedBoostInductance <= 0)
         process_design_requirements();
 
+    const auto strategy =
+        get_sampling_strategy().value_or(ViennaSamplingStrategy::PEAK_OF_LINE_ONLY);
+
     std::vector<OperatingPoint> result;
     auto& ops = get_operating_points();
+
+    if (strategy == ViennaSamplingStrategy::PEAK_OF_LINE_PLUS_SECTORS) {
+        // Six DPWM sector mid-points across one line cycle. Phase A's sector
+        // angle θ_sec; phases B and C are at θ_sec ± 2π/3 inside each OP, so
+        // every OP captures a single instant in the balanced-3-phase grid
+        // and shows what each phase is doing at that instant.
+        static const double sectorAngles[6] = {
+            M_PI / 6.0,
+            M_PI / 2.0,            // = peak-of-line for Phase A
+            5.0 * M_PI / 6.0,
+            7.0 * M_PI / 6.0,
+            3.0 * M_PI / 2.0,
+            11.0 * M_PI / 6.0,
+        };
+        static const char* sectorLabels[6] = {
+            "30°", "90°", "150°", "210°", "270°", "330°",
+        };
+        for (size_t i = 0; i < ops.size(); ++i) {
+            for (size_t s = 0; s < 6; ++s) {
+                auto op = emit_switching_period_op_at_line_angle(ops[i], sectorAngles[s]);
+                op.set_name("OP " + std::to_string(i)
+                             + " sec " + sectorLabels[s]);
+                result.push_back(op);
+            }
+        }
+        return result;
+    }
+
+    // peakOfLineOnly and fullLineCycle share the existing per-OP solver.
     for (size_t i = 0; i < ops.size(); ++i) {
         auto op = process_operating_point_for_input_voltage(ops[i]);
         op.set_name("OP " + std::to_string(i));
@@ -576,6 +608,107 @@ OperatingPoint Vienna::process_operating_point_for_input_voltage(
 
         auto excitation = complete_excitation(
             currentWaveform, voltageWaveform, opFreq, phaseNames[ph]);
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    }
+
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(viennaOpPoint.get_ambient_temperature());
+    conditions.set_cooling(std::nullopt);
+    operatingPoint.set_conditions(conditions);
+
+    return operatingPoint;
+}
+
+
+// =====================================================================
+// emit_switching_period_op_at_line_angle  (Phase 3, Item 2)
+//
+// Builds ONE switching-period operating point at a given line angle
+// θ_sec for Phase A; Phases B and C are at θ_sec ± 2π/3. Each phase's
+// local inductor sees its own instantaneous (V_phase, duty, ΔI_pp)
+// because |sin| varies per phase at the same wall-clock instant.
+//
+// Used by samplingStrategy=peakOfLinePlusSectors (called 6× with the
+// DPWM sector mid-points). The default peakOfLineOnly path still goes
+// through process_operating_point_for_input_voltage at θ=π/2.
+// =====================================================================
+OperatingPoint Vienna::emit_switching_period_op_at_line_angle(
+    const TopologyExcitation& viennaOpPoint,
+    double sectorAngleRad)
+{
+    if (viennaOpPoint.get_output_voltages().empty() ||
+        viennaOpPoint.get_output_currents().empty())
+        throw std::runtime_error("Vienna: OP missing output voltage/current");
+
+    double Fsw = get_switching_frequency();
+    if (Fsw <= 0)
+        throw std::runtime_error("Vienna: switchingFrequency must be > 0");
+
+    auto& vll = get_line_to_line_voltage();
+    double V_LL = vll.get_nominal().value_or(
+        (vll.get_minimum().value_or(0) + vll.get_maximum().value_or(0)) / 2.0);
+    double Vdc = get_output_dc_voltage();
+    double V_phase_peak = compute_phase_peak_voltage(V_LL);
+    double V_phase_rms  = V_phase_peak / std::sqrt(2.0);
+    double M = compute_modulation_index(V_phase_peak, Vdc);
+    if (M > 1.0)
+        throw std::runtime_error(
+            "Vienna: modulation index M=" + std::to_string(M) +
+            " > 1 (over-modulation).");
+
+    double eff = get_efficiency().value_or(0.97);
+    double pf  = get_power_factor().value_or(0.99);
+
+    double Vout = viennaOpPoint.get_output_voltages()[0];
+    double Iout = viennaOpPoint.get_output_currents()[0];
+    double P    = Vout * Iout;
+    if (P <= 0)
+        throw std::runtime_error("Vienna: OP output power must be > 0");
+
+    double I_pk = compute_line_peak_current(P, V_phase_rms, eff, pf);
+    double L    = computedBoostInductance;
+    if (L <= 0)
+        throw std::runtime_error("Vienna: boost inductance not initialised");
+
+    const double Vhalf = Vdc / 2.0;
+    const double Tsw   = 1.0 / Fsw;
+
+    static const char*  phaseNames[3]   = { "Phase A", "Phase B", "Phase C" };
+    static const double phaseOffsets[3] = {
+        0.0, -2.0 * M_PI / 3.0, +2.0 * M_PI / 3.0,
+    };
+
+    OperatingPoint operatingPoint;
+    for (int ph = 0; ph < 3; ++ph) {
+        const double theta_ph   = sectorAngleRad + phaseOffsets[ph];
+        const double sinTheta   = std::sin(theta_ph);
+        const double Vphase_inst = V_phase_peak * sinTheta;
+        const double Vphase_abs  = std::abs(Vphase_inst);
+        const double I_avg_inst  = I_pk * sinTheta;
+
+        // Local boost duty at this instant. Below the "off-time floor" of
+        // |V_phase|/Vhalf the converter has nothing to do (sin near zero
+        // crossing), so duty saturates at 0.
+        double duty_inst = 1.0 - Vphase_abs / Vhalf;
+        if (duty_inst < 0.0) duty_inst = 0.0;
+        if (duty_inst > 1.0) duty_inst = 1.0;
+
+        // Switching-period ripple. ΔI = V_phase·d·T_sw / L. Sign follows
+        // the inductor-current sign so the triangular waveform is centred
+        // on the local DC average I_avg_inst (which may itself be ±).
+        const double dI_pp = Vphase_abs * duty_inst * Tsw / L;
+        const double V_L_on  = Vphase_inst;
+        const double V_L_off = Vphase_inst - ((Vphase_inst >= 0) ? Vhalf : -Vhalf);
+        const double V_L_pp  = std::abs(V_L_on - V_L_off);
+        const double V_L_off_mid = V_L_off + (V_L_on - V_L_off) / 2.0;
+
+        Waveform currentWaveform = Inputs::create_waveform(
+            WaveformLabel::TRIANGULAR, dI_pp, Fsw, duty_inst, I_avg_inst, 0);
+        Waveform voltageWaveform = Inputs::create_waveform(
+            WaveformLabel::RECTANGULAR, V_L_pp, Fsw, duty_inst, V_L_off_mid, 0);
+
+        auto excitation = complete_excitation(
+            currentWaveform, voltageWaveform, Fsw, phaseNames[ph]);
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 

@@ -177,14 +177,95 @@ TEST_CASE("Vienna: rejects unsupported viennaII / non-tType / synchronousRectifi
         Vienna v(j);
         REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
     }
-    {
-        // Phase 3 (this file) lifted fullLineCycle out of the deferred list.
-        // peakOfLinePlusSectors is still gated.
-        auto j = make_vienna_json();
-        j["samplingStrategy"] = "peakOfLinePlusSectors";
-        Vienna v(j);
-        REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
+    // Phase 3 (this and the previous commit) lifted both fullLineCycle and
+    // peakOfLinePlusSectors out of the deferred list.
+}
+
+
+// =========================================================================
+// Phase 3 — peakOfLinePlusSectors sampling.
+//
+// Emits 6 OPs per input op (DPWM sector mid-points at 30°/90°/150°/210°/
+// 270°/330°). Each OP carries 3 windings — at the same wall-clock instant
+// each phase is at its own local sin·θ. So within a single sector OP the
+// three windings are NOT identical (different |V_phase|, different duty,
+// different ripple), and across the 6 sectors the per-phase stress varies
+// from zero (sin near 0) to peak (sin = ±1).
+//
+// Gates:
+//   (1) run_checks accepts peakOfLinePlusSectors.
+//   (2) process_operating_points returns 6 OPs per input op.
+//   (3) Each OP carries 3 windings (one per phase).
+//   (4) The sector at θ=90° is identical to peakOfLineOnly's snapshot for
+//       Phase A (sin(π/2)=1 — worst-case), validating the helper is the
+//       same building block both paths share.
+//   (5) At sector θ=30° (sin=0.5), Phase A's local |V|·d ripple is
+//       roughly half of the peak-of-line value (sanity check on the
+//       per-angle duty/ripple computation).
+// =========================================================================
+TEST_CASE("Vienna: peakOfLinePlusSectors emits 6 OPs with per-sector physics",
+          "[vienna-topology][phase3-sectors]") {
+    auto j = make_vienna_json();
+    j["samplingStrategy"] = "peakOfLinePlusSectors";
+    Vienna v(j);
+
+    // (1)
+    REQUIRE(v.run_checks(false));
+
+    auto inputs = v.process();
+    const auto& ops = inputs.get_operating_points();
+
+    // (2) 1 input × 6 sectors = 6 OPs
+    REQUIRE(ops.size() == 6);
+
+    // (3)
+    for (const auto& op : ops) {
+        REQUIRE(op.get_excitations_per_winding().size() == 3);
     }
+
+    // (4) Peak-of-line cross-check: sector @ 90° (index 1) — Phase A there
+    //     equals what peakOfLineOnly emits, modulo the names/labels.
+    auto j2 = make_vienna_json();
+    j2["samplingStrategy"] = "peakOfLineOnly";
+    Vienna v2(j2);
+    auto inputs2 = v2.process();
+    REQUIRE(inputs2.get_operating_points().size() == 1);
+    const auto& peakOp     = inputs2.get_operating_points()[0];
+    const auto& sectorOp90 = ops[1];
+
+    // Average from the Processed.offset field — Inputs::calculate_processed_data
+    // computes the DC offset robustly from the FFT (bin 0). Summing the raw
+    // sampled-waveform data array directly is unreliable: power-of-2 resampling
+    // of the 3-point triangular can land sample points unevenly across the
+    // triangle's apex, biasing a naive arithmetic mean. The FFT DC term is
+    // immune to that.
+    auto get_iavg = [](const OperatingPoint& op, size_t w) {
+        auto sig = op.get_excitations_per_winding()[w].get_current().value();
+        REQUIRE(sig.get_processed().has_value());
+        return sig.get_processed().value().get_offset();
+    };
+    double iPeakA   = get_iavg(peakOp,     0);
+    double iSec90A  = get_iavg(sectorOp90, 0);
+    CHECK(iSec90A == Catch::Approx(iPeakA).epsilon(0.05));
+
+    // (5) Sector @ 30° (sin=0.5) — Phase A's |I_avg| ≈ 0.5·I_pk;
+    //     Phase B at 30°-120° = -90° (sin=-1) — Phase B's |I_avg| ≈ I_pk
+    //     with negative sign (the inductor is at its -peak).
+    double Ipeak = v.get_last_inductor_peak_current();
+    double Ipeak_envelope = v.get_computed_line_peak_current();
+    REQUIRE(Ipeak_envelope > 0.0);
+
+    double iSec30A = get_iavg(ops[0], 0);
+    double iSec30B = get_iavg(ops[0], 1);
+    double iSec30C = get_iavg(ops[0], 2);
+
+    CHECK(std::abs(iSec30A) ==
+          Catch::Approx(0.5 * Ipeak_envelope).margin(0.20 * Ipeak_envelope));
+    CHECK(iSec30B < -0.5 * Ipeak_envelope);  // at its negative peak
+    CHECK(std::abs(iSec30C) ==
+          Catch::Approx(0.5 * Ipeak_envelope).margin(0.20 * Ipeak_envelope));
+
+    (void) Ipeak;  // suppress unused warning if any
 }
 
 
