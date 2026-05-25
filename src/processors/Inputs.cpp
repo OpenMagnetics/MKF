@@ -2463,6 +2463,33 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
         return bestFreq;
     };
 
+    // Returns the amplitude at the harmonic bin closest to `target` Hz, or 0 if
+    // the spectrum is unavailable. Used to decide whether to override a stated
+    // fundamental: if the user-stated fundamental already carries comparable
+    // amplitude to the candidate switching bin, we should not override.
+    auto amplitudeAtFrequency = [](const SignalDescriptor& sig, double target) -> double {
+        if (!sig.get_harmonics() || target <= 0) {
+            return 0.0;
+        }
+        auto harmonics = sig.get_harmonics().value();
+        const auto& freqs = harmonics.get_frequencies();
+        const auto& amps = harmonics.get_amplitudes();
+        if (freqs.size() != amps.size() || freqs.empty()) {
+            return 0.0;
+        }
+        size_t closestIdx = 0;
+        double bestDiff = std::numeric_limits<double>::infinity();
+        for (size_t k = 0; k < freqs.size(); ++k) {
+            if (freqs[k] <= 0) continue;
+            double diff = std::abs(freqs[k] - target);
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                closestIdx = k;
+            }
+        }
+        return amps[closestIdx];
+    };
+
     for (size_t i = 0; i < operatingPoint.get_excitations_per_winding().size(); ++i) {
         auto& excitation = operatingPoint.get_mutable_excitations_per_winding()[i];
         auto freq = excitation.get_frequency();
@@ -2489,18 +2516,48 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
         }
 
         double effectiveFreq = 0.0;
+        // The amplitude check below must be against the *same* signal that
+        // produced effectiveFreq, otherwise we compare bins from different
+        // spectra. Stash a copy of the driving signal (get_current()/get_voltage()
+        // return optionals by value here, so a raw pointer would dangle).
+        std::optional<SignalDescriptor> drivingSignal;
         if (excitation.get_current()) {
-            effectiveFreq = effectiveFrequencyFromHarmonics(excitation.get_current().value());
+            auto sig = excitation.get_current().value();
+            effectiveFreq = effectiveFrequencyFromHarmonics(sig);
+            if (effectiveFreq > 0) {
+                drivingSignal = sig;
+            }
         }
         if (effectiveFreq <= 0 && excitation.get_voltage()) {
-            effectiveFreq = effectiveFrequencyFromHarmonics(excitation.get_voltage().value());
+            auto sig = excitation.get_voltage().value();
+            effectiveFreq = effectiveFrequencyFromHarmonics(sig);
+            if (effectiveFreq > 0) {
+                drivingSignal = sig;
+            }
         }
 
-        // Replace only when the loss-dominant harmonic lives above the gate —
-        // PFC-style. For single-tone excitations below 400 Hz the max-score bin is
-        // the stated fundamental itself and this is a no-op.
-        if (effectiveFreq >= kLineFrequencyGate && effectiveFreq > freq) {
-            excitation.set_frequency(effectiveFreq);
+        // Replace only when (1) the loss-dominant harmonic lives above the gate
+        // (PFC-style) AND (2) the user-stated fundamental does not already carry
+        // comparable amplitude. Without the second check we hijack a real 50 Hz
+        // line-transformer waveform that happens to have switching ripple at
+        // 100 kHz: f·amp scoring favours the switching bin because of the f
+        // factor, even when its amplitude is a small fraction of the fundamental.
+        //
+        // PFC inductor current: amp@line ≪ amp@switching → override fires.
+        // Line transformer current with small ripple: amp@line ≫ amp@switching
+        //   → don't override.
+        if (effectiveFreq >= kLineFrequencyGate && effectiveFreq > freq && drivingSignal.has_value()) {
+            double ampAtStated    = amplitudeAtFrequency(drivingSignal.value(), freq);
+            double ampAtEffective = amplitudeAtFrequency(drivingSignal.value(), effectiveFreq);
+            // Threshold: if the stated fundamental's amplitude is at least half
+            // of the candidate switching bin's amplitude, treat the stated
+            // frequency as authoritative. Half is conservative — real PFC
+            // inductor currents have amp@line many orders of magnitude below
+            // amp@switching.
+            const double overrideAmplitudeRatio = 0.5;
+            if (ampAtStated < overrideAmplitudeRatio * ampAtEffective) {
+                excitation.set_frequency(effectiveFreq);
+            }
         }
     }
 
