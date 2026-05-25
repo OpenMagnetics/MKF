@@ -397,6 +397,31 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::CLLC_RESONANT_CONVERTER] = cllc;
             }
 
+            // PFC (Power Factor Correction). Single-switch boost-PFC with
+            // average-current-mode control. Drives the SW model from a
+            // low-level (0.5 V) control signal — not the standard 5 V
+            // gate drive — so VT/VH need to be much lower than the
+            // switching-converter defaults. Snubber values also low-side
+            // (100 Ω / 100 pF series-RC) instead of the bridge-class
+            // 1 kΩ / 1 nF. Solver tolerances match the default class.
+            //
+            // Values match PowerFactorCorrection.cpp's historical
+            // `generate_ngspice_switching_circuit` netlist byte-for-byte.
+            {
+                SpiceSimulationConfig pfc;
+                pfc.swModelVT = 0.5;            pfc.swModelVH = 0.1;
+                pfc.swModelRON = 0.01;          pfc.swModelROFF = 1e6;
+                pfc.snubR = 100.0;              pfc.snubC = 100e-12;
+                pfc.diodeIS = 1e-12;            pfc.diodeRS = 0.001;
+                pfc.diodeExtra = "N=1";
+                pfc.outputCapacitance = 100e-6;
+                pfc.relTol = 1e-3;              pfc.absTol = 1e-9;
+                pfc.vnTol = 1e-6;
+                pfc.itl1 = 500;                 pfc.itl4 = 200;
+                pfc.method = "GEAR";            pfc.trTol = 7.0;
+                m[MAS::Topologies::POWER_FACTOR_CORRECTION] = pfc;
+            }
+
             // Common-mode choke (CMC) and differential-mode choke (DMC):
             // line-frequency filter topologies that emit AC impedance
             // sweeps rather than switching transients. No switches, no

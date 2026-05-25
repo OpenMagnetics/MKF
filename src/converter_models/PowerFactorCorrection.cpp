@@ -887,6 +887,11 @@ namespace OpenMagnetics {
     std::string PowerFactorCorrection::generate_ngspice_switching_circuit(
             double inductance,
             int numberOfLineCycles) {
+        // SPICE-side knobs from spice_config(). PFC registry entry
+        // (Topology.cpp) matches this file's historical hardcoded
+        // netlist byte-for-byte — behaviour-preserving.
+        const auto cfg = spice_config();
+
         validate_topology_variant();
         const auto variant = get_topology_variant_or_default();
         if (variant != PfcTopologyVariants::BOOST) {
@@ -1002,7 +1007,8 @@ namespace OpenMagnetics {
         c << "B_vin     vin_rect 0     V=vpk*abs(sin(2*3.141592653589793*fline*time))\n";
         c << "Vl_sense  vin_rect l_in  0          ; in-line current sense\n";
         c << "L1        l_in     sw    {l_ind}\n";
-        c << ".model SW1 SW (VT=0.5 VH=0.1 RON=10m ROFF=1MEG)\n";
+        c << ".model SW1 SW (VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+          << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << ")\n";
         c << "S1        sw  0    gate 0 SW1\n";
         // Series-RC snubber across the switch (R in series with C, NOT both
         // shunted to 0).  When S1 is OFF and D1 is reverse-biased (vin_rect <
@@ -1016,9 +1022,13 @@ namespace OpenMagnetics {
         // the diode keeps conducting into vbus.  The series-RC pattern blocks
         // DC and only damps switching-edge ringing, which is the textbook
         // role of an RC snubber (Erickson §A.2; Basso 2008 §4.5).
-        c << "Rsnub_s1  sw   snub_n  100\n";
-        c << "Csnub_s1  snub_n 0     100p\n";
-        c << ".model DIDEAL D (IS=1e-12 RS=1m N=1)\n";
+        c << "Rsnub_s1  sw   snub_n  " << cfg.snubR << "\n";
+        c << "Csnub_s1  snub_n 0     " << std::scientific << cfg.snubC
+          << std::defaultfloat << "\n";
+        c << ".model DIDEAL D (IS=" << std::scientific << cfg.diodeIS
+          << " RS=" << cfg.diodeRS << std::defaultfloat;
+        if (!cfg.diodeExtra.empty()) c << " " << cfg.diodeExtra;
+        c << ")\n";
         c << "D1        sw  vbus DIDEAL\n";
         c << "Cout      vbus 0   {cbus}  IC={ic_vbus}\n";
         c << "Rload     vbus 0   {rload}\n\n";
@@ -1105,8 +1115,13 @@ namespace OpenMagnetics {
           << sci(maxStep) << " uic\n";
         c << ".save i(vl_sense) v(vin_rect) v(vbus) v(vea) v(vrms_ff) "
              "v(i_ref) v(i_sense) v(vc_i) v(vref_v) v(saw) v(gate)\n";
-        c << ".options METHOD=GEAR TRTOL=7 RELTOL=1e-3 ABSTOL=1e-9 VNTOL=1e-6\n";
-        c << ".options ITL1=500 ITL4=200\n";
+        // std::defaultfloat after std::scientific block — see the
+        // IsolatedBuck commit (6f795fef) for why std::fixed would break.
+        c << ".options METHOD=" << cfg.method << " TRTOL=" << cfg.trTol
+          << " RELTOL=" << cfg.relTol
+          << " ABSTOL=" << std::scientific << cfg.absTol
+          << " VNTOL=" << cfg.vnTol << std::defaultfloat << "\n";
+        c << ".options ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
         c << ".end\n";
 
         return c.str();
