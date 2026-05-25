@@ -490,6 +490,11 @@ Inputs AdvancedCommonModeChoke::process() {
 std::string CommonModeChoke::generate_ngspice_circuit(double inductance, double frequency) {
     int numWindings = get_number_of_windings();
 
+    // Pull solver tolerances from spice_config(). CMC registry entry
+    // (Topology.cpp) sets relTol/absTol/vnTol matching this file's
+    // historical .options line byte-for-byte; behaviour-preserving.
+    const auto cfg = spice_config();
+
     std::ostringstream circuit;
     double period = 1.0 / frequency;
 
@@ -587,7 +592,13 @@ std::string CommonModeChoke::generate_ngspice_circuit(double inductance, double 
     circuit << "\n\n";
 
     // Options
-    circuit << ".options RELTOL=0.001 ABSTOL=1e-12 VNTOL=1e-9\n\n";
+    // Use std::defaultfloat (NOT std::fixed) to restore the stream's
+    // pre-toggle general-format behaviour — std::fixed would round the
+    // tiny ABSTOL / VNTOL to 0.000000. See the IsolatedBuck commit for
+    // the full debugging story (6f795fef).
+    circuit << ".options RELTOL=" << cfg.relTol
+            << " ABSTOL=" << std::scientific << cfg.absTol
+            << " VNTOL=" << cfg.vnTol << std::defaultfloat << "\n\n";
 
     circuit << ".end\n";
 
@@ -761,6 +772,8 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
     int numberOfPeriods,
     int numberOfSteadyStatePeriods) {
 
+    const auto cfg = spice_config();
+
     if (numberOfPeriods < 1) numberOfPeriods = 1;
     if (numberOfSteadyStatePeriods < 0) numberOfSteadyStatePeriods = 0;
 
@@ -862,7 +875,13 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
     circuit << "\n";
 
     // Options
-    circuit << ".options RELTOL=0.001 ABSTOL=1e-12 VNTOL=1e-9\n\n";
+    // Use std::defaultfloat (NOT std::fixed) to restore the stream's
+    // pre-toggle general-format behaviour — std::fixed would round the
+    // tiny ABSTOL / VNTOL to 0.000000. See the IsolatedBuck commit for
+    // the full debugging story (6f795fef).
+    circuit << ".options RELTOL=" << cfg.relTol
+            << " ABSTOL=" << std::scientific << cfg.absTol
+            << " VNTOL=" << cfg.vnTol << std::defaultfloat << "\n\n";
     circuit << ".end\n";
 
     return circuit.str();

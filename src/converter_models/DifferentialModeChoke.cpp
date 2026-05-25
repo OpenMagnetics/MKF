@@ -312,6 +312,12 @@ namespace OpenMagnetics {
     }
 
     std::string DifferentialModeChoke::generate_ngspice_circuit(double inductance, double frequency) {
+        // Solver tolerances from the SPICE config registry. DMC doesn't
+        // inherit Topology (only MAS::DifferentialModeChoke) so we use
+        // the free-function lookup. Shares the CMC entry; behaviour-
+        // preserving (matches the file's historical .options line).
+        const auto cfg = get_default_spice_config(MAS::Topologies::DIFFERENTIAL_MODE_CHOKE);
+
         // ============================================================
         // LC Low-Pass Filter Test Circuit
         // ============================================================
@@ -384,7 +390,11 @@ namespace OpenMagnetics {
         circuit << ".save v(noise_src) v(filter_out) i(Vsense)\n\n";
 
         // Options
-        circuit << ".options RELTOL=0.001 ABSTOL=1e-12 VNTOL=1e-9\n\n";
+        // std::defaultfloat after the std::scientific block — see the
+        // IsolatedBuck commit (6f795fef) for why std::fixed would break.
+        circuit << ".options RELTOL=" << cfg.relTol
+                << " ABSTOL=" << std::scientific << cfg.absTol
+                << " VNTOL=" << cfg.vnTol << std::defaultfloat << "\n\n";
 
         circuit << ".end\n";
 

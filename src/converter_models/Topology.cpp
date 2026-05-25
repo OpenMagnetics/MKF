@@ -397,6 +397,24 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::CLLC_RESONANT_CONVERTER] = cllc;
             }
 
+            // Common-mode choke (CMC) and differential-mode choke (DMC):
+            // line-frequency filter topologies that emit AC impedance
+            // sweeps rather than switching transients. No switches, no
+            // diodes, no snubbers — only solver tolerances matter, and
+            // they need to be TIGHTER than the switching-converter
+            // defaults because the impedance sweep operates at sub-µV
+            // node voltages at high frequency. Matches CommonModeChoke.cpp
+            // and DifferentialModeChoke.cpp historical `.options` lines.
+            {
+                SpiceSimulationConfig choke;
+                choke.relTol = 1e-3;            choke.absTol = 1e-12;
+                choke.vnTol = 1e-9;
+                // ITLs, method, trTol unused by these topologies (no
+                // .options second line emitted) — leave struct defaults.
+                m[MAS::Topologies::COMMON_MODE_CHOKE] = choke;
+                m[MAS::Topologies::DIFFERENTIAL_MODE_CHOKE] = choke;
+            }
+
             // Isolated Buck (Fly-Buck class). Values matched to
             // IsolatedBuck.cpp's historical netlist (Topology.h:
             // SW1/SW2 VT=2.5 VH=0.5 RON=0.01 ROFF=1e6, diode IS=1e-14
