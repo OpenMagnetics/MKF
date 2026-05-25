@@ -648,6 +648,8 @@ namespace OpenMagnetics {
         size_t inputVoltageIndex,
         size_t operatingPointIndex) {
 
+        const auto cfg = spice_config();
+
         // Get input voltages
         std::vector<double> inputVoltages;
         if (get_input_voltage().get_nominal()) {
@@ -717,14 +719,20 @@ namespace OpenMagnetics {
 
         // High-side switch (synchronous buck)
         circuit << "* High-side Switch\n";
-        circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
-        circuit << ".model SW1 SW VT=2.5 VH=0.5 RON=0.01 ROFF=1e6\n";
+        circuit << "Vpwm pwm_ctrl 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+                << std::scientific << cfg.pwmRise << " " << cfg.pwmFall
+                << std::defaultfloat << " " << tOn << " " << period << ")\n";
+        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
         circuit << "S1 q1_drain sw_node pwm_ctrl 0 SW1\n\n";
 
         // Low-side switch (synchronous rectification)
         circuit << "* Low-side Switch (Synchronous Rectifier)\n";
-        circuit << "Vpwm_inv pwm_inv 0 PULSE(5 0 0 10n 10n " << tOn << " " << period << ")\n";
-        circuit << ".model SW2 SW VT=2.5 VH=0.5 RON=0.01 ROFF=1e6\n";
+        circuit << "Vpwm_inv pwm_inv 0 PULSE(" << cfg.pwmHigh << " 0 0 "
+                << std::scientific << cfg.pwmRise << " " << cfg.pwmFall
+                << std::defaultfloat << " " << tOn << " " << period << ")\n";
+        circuit << ".model SW2 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
         circuit << "S2 sw_node 0 pwm_inv 0 SW2\n\n";
 
         // Coupled inductor (Primary = buck inductor)
@@ -801,7 +809,10 @@ namespace OpenMagnetics {
 
         // Diode model
         circuit << "* Diode model\n";
-        circuit << ".model DIDEAL D(IS=1e-14 RS=0.01 N=1.0)\n\n";
+        circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
+                << " RS=" << cfg.diodeRS << std::defaultfloat;
+        if (!cfg.diodeExtra.empty()) circuit << " " << cfg.diodeExtra;
+        circuit << ")\n\n";
 
         // Primary output (buck output) - directly from inductor output
         // In this topology, vpri_out is the output node (after the inductor)
@@ -848,7 +859,10 @@ namespace OpenMagnetics {
         circuit << "\n\n";
 
         // Options (matching other converters for convergence)
-        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000\n";
+        circuit << ".options RELTOL=" << cfg.relTol
+                << " ABSTOL=" << std::scientific << cfg.absTol
+                << " VNTOL=" << cfg.vnTol << std::defaultfloat
+                << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
         circuit << ".ic v(vpri_out)=" << primaryOutputVoltage << "\n";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << ".ic v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx + 1] << "\n";

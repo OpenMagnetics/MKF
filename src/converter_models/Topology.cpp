@@ -397,6 +397,25 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::CLLC_RESONANT_CONVERTER] = cllc;
             }
 
+            // Isolated Buck (Fly-Buck class). Values matched to
+            // IsolatedBuck.cpp's historical netlist (Topology.h:
+            // SW1/SW2 VT=2.5 VH=0.5 RON=0.01 ROFF=1e6, diode IS=1e-14
+            // RS=0.01 N=1.0, no snubbers in netlist, .options RELTOL=
+            // 0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL=1000).
+            {
+                SpiceSimulationConfig ib;
+                ib.swModelVT = 2.5;             ib.swModelVH = 0.5;
+                ib.swModelRON = 0.01;           ib.swModelROFF = 1e6;
+                ib.diodeIS = 1e-14;             ib.diodeRS = 0.01;
+                ib.diodeExtra = "N=1.0";
+                ib.outputCapacitance = 100e-6;
+                ib.relTol = 1e-3;               ib.absTol = 1e-9;
+                ib.vnTol = 1e-6;
+                ib.itl1 = 1000;                 ib.itl4 = 1000;
+                ib.method = "GEAR";             ib.trTol = 7.0;
+                m[MAS::Topologies::ISOLATED_BUCK_CONVERTER] = ib;
+            }
+
             // SRC (Series-Resonant Converter) — series-only L_r + C_r tank
             // driving a full-bridge or half-bridge primary. Resonant
             // converter class shares LLC's solver settings (looser

@@ -341,7 +341,7 @@ namespace {
         
         INFO("Isolated Buck - Turns ratio: " << turnsRatios[0]);
         INFO("Isolated Buck - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
-        
+
         // Run ngspice simulation
         auto operatingPoints = isolatedBuck.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
         
