@@ -1142,11 +1142,14 @@ namespace {
 
     // ====================================================================
     // P3 — ZVS-boundary diagnostic (reverse direction).
-    // In reverse mode the active bridge moves to the secondary side; we
-    // populate lastZvsMarginSecondary using the secondary-referred iLm
-    // and the secondary terminal voltage. Same monotonicity holds.
-    // Reverse mode physical SR drive is P8; this test exercises the
-    // analytical diagnostic only.
+    //
+    // In a bidirectional CLLC BOTH bridges need ZVS regardless of which
+    // direction is the active inverter — the inactive bridge runs as a
+    // synchronous rectifier and still wants ZVS turn-on to limit
+    // switching loss. Since commit 0e65b0ec the analytical model populates
+    // both `lastZvsMarginPrimary` and `lastZvsMarginSecondary` every iter;
+    // the test confirms BOTH are monotonic in Lm (lower Lm → larger iLm
+    // → bigger ZVS margin), not just the active-inverter side.
     // ====================================================================
     TEST_CASE("Test_Cllc_ZVS_Boundaries_Reverse",
               "[converter-model][cllc-topology][tda][zvs][smoke-test]") {
@@ -1158,7 +1161,7 @@ namespace {
         double fs   = 73000.0;
         double Lm_eq28 = td / (16.0 * Coss * fs);
 
-        auto sweep = [&](double Lm) -> double {
+        auto sweep = [&](double Lm) -> std::pair<double, double> {
             CllcOperatingPoint op;
             op.set_output_voltages({600.0});
             op.set_output_currents({18.33});
@@ -1167,16 +1170,20 @@ namespace {
             op.set_power_flow(CllcPowerFlow::REVERSE);
             (void)c.process_operating_point_for_input_voltage(
                 750.0, op, params.turnsRatio, Lm, params);
-            // Forward margin should be 0 (placeholder); secondary carries
-            // the real value in reverse mode.
-            CHECK(c.get_last_zvs_margin_primary() == 0.0);
-            return c.get_last_zvs_margin_secondary();
+            return { c.get_last_zvs_margin_primary(),
+                     c.get_last_zvs_margin_secondary() };
         };
 
-        double m_low  = sweep(0.25 * Lm_eq28);
-        double m_high = sweep(4.0  * Lm_eq28);
-        INFO("Reverse ZVS margins (A): low=" << m_low << "  high=" << m_high);
-        CHECK(m_low > m_high);
+        auto m_low  = sweep(0.25 * Lm_eq28);
+        auto m_high = sweep(4.0  * Lm_eq28);
+        INFO("Reverse ZVS margins (A): low pri=" << m_low.first
+             << " sec=" << m_low.second
+             << "  high pri=" << m_high.first
+             << " sec=" << m_high.second);
+        // Both bridges' margins are monotonic in Lm — lower Lm gives larger
+        // iLm at switching, which feeds the Coss·V/td threshold by more.
+        CHECK(m_low.second > m_high.second);
+        CHECK(m_low.first  > m_high.first);
     }
 
     // ====================================================================
