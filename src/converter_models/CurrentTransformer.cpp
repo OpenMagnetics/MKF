@@ -63,7 +63,8 @@ namespace OpenMagnetics {
         primaryCurrent.set_processed(Inputs::calculate_processed_data(primaryCurrent, primaryCurrentWaveform, true, primaryCurrent.get_processed()));
 
         SignalDescriptor secondaryVoltage;
-        auto secondaryVoltageWaveform = Inputs::multiply_waveform(primaryCurrentWaveform, get_burden_resistor());
+        auto secondaryCurrentWaveform = Inputs::multiply_waveform(primaryCurrentWaveform, turnsRatio);
+        auto secondaryVoltageWaveform = Inputs::multiply_waveform(secondaryCurrentWaveform, get_burden_resistor());
         secondaryVoltageWaveform = Inputs::sum_waveform(secondaryVoltageWaveform, get_diode_voltage_drop() + secondaryDcResistance);
         secondaryVoltage.set_waveform(secondaryVoltageWaveform);
         secondaryVoltage.set_harmonics(Inputs::calculate_harmonics_data(secondaryVoltageWaveform, get_frequency()));

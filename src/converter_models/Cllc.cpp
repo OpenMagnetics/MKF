@@ -1403,32 +1403,38 @@ double get_value_or(T&& val, double default_val) {
             }
             else {
                 double iLm_at_switch = std::abs(IL_pos[N]);
-                double Vi_for_zvs = std::abs(Vi);  // Vi already includes k_bridge
-                double iLm_threshold = (Vi_for_zvs > 0)
-                    ? (2.0 * Coss * Vi_for_zvs / td) : 0.0;
-                double zvs_margin = iLm_at_switch - iLm_threshold;
-                double t_resonant = (iLm_at_switch > 0)
-                    ? (2.0 * Coss * Vi_for_zvs / iLm_at_switch)
-                    : std::numeric_limits<double>::infinity();
 
-                if (isReverse) {
-                    // Active bridge in reverse mode is on the secondary side.
-                    // Secondary-referred magnetizing current is iLm/n; the
-                    // secondary bridge sees ±k_bridge·outputVoltage. After
-                    // the P8b Vi/Vo swap, Vi is already k_bridge·n·Vout in
-                    // primary terms, so Vsec_actual = |Vi|/n.
-                    double iLm_sec = iLm_at_switch / n;
-                    double Vsec    = std::abs(Vi) / n;
-                    double iLm_thr_sec = (Vsec > 0)
-                        ? (2.0 * Coss * Vsec / td) : 0.0;
-                    lastZvsMarginSecondary = iLm_sec - iLm_thr_sec;
-                    lastZvsMarginPrimary   = 0.0;
-                }
-                else {
-                    lastZvsMarginPrimary   = zvs_margin;
-                    lastZvsMarginSecondary = 0.0;
-                }
-                lastResonantTransitionTime = t_resonant;
+                // Both bridges need ZVS in a bidirectional CLLC — primary as the
+                // active inverter (forward) or synchronous rectifier (reverse), and
+                // secondary vice-versa. Compute both margins unconditionally.
+                //
+                // After the P8b Vi/Vo swap:
+                //   forward:  Vi = k_bridge·Vin,           Vo = n·Vout
+                //   reverse:  Vi = k_bridge·n·Vout,        Vo = Vin
+                //
+                // Primary bridge switching voltage:
+                //   forward → abs(Vi) = k_bridge·Vin
+                //   reverse → k_bridge·Vo = k_bridge·Vin   (same physical Vin)
+                double Vpri_zvs = isReverse ? (k_bridge * Vo) : std::abs(Vi);
+
+                // Secondary bridge switching voltage = k_bridge·Vout_physical:
+                //   forward → k_bridge·(Vo/n) = k_bridge·Vout
+                //   reverse → abs(Vi)/n = k_bridge·Vout   (same physical Vout)
+                double Vsec_zvs = isReverse ? (std::abs(Vi) / n) : (k_bridge * Vo / n);
+
+                double iLm_thr_pri = (Vpri_zvs > 0)
+                    ? (2.0 * Coss * Vpri_zvs / td) : 0.0;
+                double iLm_thr_sec = (Vsec_zvs > 0)
+                    ? (2.0 * Coss * Vsec_zvs / td) : 0.0;
+
+                lastZvsMarginPrimary   = iLm_at_switch       - iLm_thr_pri;
+                lastZvsMarginSecondary = (iLm_at_switch / n) - iLm_thr_sec;
+
+                // Resonant transition time for the active inverter bridge.
+                double Vactive_zvs = isReverse ? Vsec_zvs : Vpri_zvs;
+                lastResonantTransitionTime = (iLm_at_switch > 0)
+                    ? (2.0 * Coss * Vactive_zvs / iLm_at_switch)
+                    : std::numeric_limits<double>::infinity();
             }
         }
 
