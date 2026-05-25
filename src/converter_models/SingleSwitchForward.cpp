@@ -588,7 +588,13 @@ namespace OpenMagnetics {
         circuit << "Vpwm pwm_ctrl 0 PULSE(0 " << cfg.pwmHigh << " 0 "
                 << cfg.pwmRise << " " << cfg.pwmFall
                 << " " << tOn << " " << period << ")\n";
-        circuit << ".model SW1 SW VT=2.5 VH=0.5\n";
+        // SSF historically emits SW1 without explicit RON/ROFF, relying
+        // on ngspice's defaults (RON=1, ROFF=1e12). Registry entry
+        // captures those values; we still emit them here for clarity
+        // and to avoid version-of-ngspice drift.
+        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON
+                << " ROFF=" << std::scientific << cfg.swModelROFF << std::defaultfloat << "\n";
         circuit << "S1 q1_drain pri_p pwm_ctrl 0 SW1\n\n";
         
         // Primary current sense
@@ -629,7 +635,10 @@ namespace OpenMagnetics {
         // Demagnetization diode - conducts when main switch is off to reset the core
         // The demag winding has opposite polarity through the coupling definition
         circuit << "* Demagnetization Diode and current sense\n";
-        circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n";
+        circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
+                << " RS=" << cfg.diodeRS << std::defaultfloat;
+        if (!cfg.diodeExtra.empty()) circuit << " " << cfg.diodeExtra;
+        circuit << ")\n";
         circuit << "Vdemag_sense demag_in demag_sense 0\n";
         circuit << "Ddemag demag_sense vin_dc DIDEAL\n\n";
         
@@ -677,7 +686,12 @@ namespace OpenMagnetics {
         circuit << "\n\n";
         
         // Options
-        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000\n";
+        // std::defaultfloat (not std::fixed) — see IsolatedBuck commit
+        // 6f795fef for why std::fixed would round small values to 0.
+        circuit << ".options RELTOL=" << cfg.relTol
+                << " ABSTOL=" << std::scientific << cfg.absTol
+                << " VNTOL=" << cfg.vnTol << std::defaultfloat
+                << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << ".ic v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx] << "\n";
         }

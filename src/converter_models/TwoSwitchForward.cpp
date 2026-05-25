@@ -617,9 +617,14 @@ namespace OpenMagnetics {
         circuit << "Vpwm pwm_ctrl 0 PULSE(0 " << cfg.pwmHigh << " 0 "
                 << cfg.pwmRise << " " << cfg.pwmFall
                 << " " << tOn << " " << period << ")\n";
-        circuit << ".model SW1 SW VT=2.5 VH=0.5 RON=0.1 ROFF=1MEG\n";
+        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON
+                << " ROFF=" << std::scientific << cfg.swModelROFF << std::defaultfloat << "\n";
         // Use simple diode model without junction capacitance for better convergence
-        circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n\n";
+        circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
+                << " RS=" << cfg.diodeRS << std::defaultfloat;
+        if (!cfg.diodeExtra.empty()) circuit << " " << cfg.diodeExtra;
+        circuit << ")\n\n";
 
         // High-side switch S1 with clamping diode D1
         circuit << "* High-side switch S1 and clamp diode D1\n";
@@ -712,7 +717,10 @@ namespace OpenMagnetics {
         circuit << "\n\n";
         
         // Options - tighter tolerances for better convergence with high voltage ratios
-        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000\n";
+        circuit << ".options RELTOL=" << cfg.relTol
+                << " ABSTOL=" << std::scientific << cfg.absTol
+                << " VNTOL=" << cfg.vnTol << std::defaultfloat
+                << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << ".ic v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx] << "\n";
         }

@@ -294,9 +294,47 @@ namespace OpenMagnetics {
                 forward.vnTol = 1e-4;
                 forward.itl1 = 500;             forward.itl4 = 500;
                 forward.method = "GEAR";        forward.trTol = 7.0;
-                m[MAS::Topologies::SINGLE_SWITCH_FORWARD_CONVERTER] = forward;
-                m[MAS::Topologies::TWO_SWITCH_FORWARD_CONVERTER]    = forward;
+                // ACF stays on the original `forward` entry (validated by
+                // its existing test suite). SSF and TSF historically
+                // emit a different SPICE deck (looser switching, no
+                // explicit RON/ROFF on SW1, tighter solver tolerances) —
+                // they get their own entries below to preserve those
+                // values byte-for-byte.
                 m[MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER]  = forward;
+            }
+
+            // SingleSwitchForward: relies on ngspice's SW-model defaults
+            // (no explicit RON/ROFF emit; effectively RON≈1 Ω) and
+            // tighter solver tolerances than the bridge-class converters.
+            // Matches SingleSwitchForward.cpp's .options + DIDEAL lines.
+            {
+                SpiceSimulationConfig ssf;
+                ssf.swModelVT = 2.5;            ssf.swModelVH = 0.5;
+                ssf.swModelRON = 1.0;           ssf.swModelROFF = 1e12;
+                ssf.snubR = 1e3;                ssf.snubC = 1e-9;
+                ssf.diodeIS = 1e-14;            ssf.diodeRS = 1e-6;
+                ssf.outputCapacitance = 100e-6;
+                ssf.relTol = 1e-3;              ssf.absTol = 1e-9;
+                ssf.vnTol = 1e-6;
+                ssf.itl1 = 1000;                ssf.itl4 = 1000;
+                ssf.method = "GEAR";            ssf.trTol = 7.0;
+                m[MAS::Topologies::SINGLE_SWITCH_FORWARD_CONVERTER] = ssf;
+            }
+
+            // TwoSwitchForward: explicit RON=0.1 Ω (higher than IB's 0.01)
+            // for stiffer switching loss; otherwise mirrors SSF.
+            {
+                SpiceSimulationConfig tsf;
+                tsf.swModelVT = 2.5;            tsf.swModelVH = 0.5;
+                tsf.swModelRON = 0.1;           tsf.swModelROFF = 1e6;
+                tsf.snubR = 1e3;                tsf.snubC = 1e-9;
+                tsf.diodeIS = 1e-14;            tsf.diodeRS = 1e-6;
+                tsf.outputCapacitance = 100e-6;
+                tsf.relTol = 1e-3;              tsf.absTol = 1e-9;
+                tsf.vnTol = 1e-6;
+                tsf.itl1 = 1000;                tsf.itl4 = 1000;
+                tsf.method = "GEAR";            tsf.trTol = 7.0;
+                m[MAS::Topologies::TWO_SWITCH_FORWARD_CONVERTER] = tsf;
             }
 
             // Phase-shifted full bridge (PSFB) / half-bridge (PSHB):
@@ -529,14 +567,20 @@ namespace OpenMagnetics {
             // (47 µF) to match the LC filter on the secondary.
             {
                 SpiceSimulationConfig ibb;
+                // Tuned to match IsolatedBuckBoost.cpp's historical
+                // netlist byte-for-byte (was aspirational previously —
+                // 1e-12/0.05 + tighter solver, but the .cpp emitted
+                // 1e-14/1e-6 + RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6
+                // ITL=1000). Aligned here.
                 ibb.swModelVT = 2.5;            ibb.swModelVH = 0.5;
+                ibb.swModelRON = 0.01;          ibb.swModelROFF = 1e6;
                 ibb.snubR = 1e3;                ibb.snubC = 1e-9;
                 ibb.snubRReal = 1e3;
-                ibb.diodeIS = 1e-12;            ibb.diodeRS = 0.05;
+                ibb.diodeIS = 1e-14;            ibb.diodeRS = 1e-6;
                 ibb.outputCapacitance = 47e-6;
-                ibb.relTol = 0.01;              ibb.absTol = 1e-7;
-                ibb.vnTol = 1e-4;
-                ibb.itl1 = 500;                 ibb.itl4 = 500;
+                ibb.relTol = 1e-3;              ibb.absTol = 1e-9;
+                ibb.vnTol = 1e-6;
+                ibb.itl1 = 1000;                ibb.itl4 = 1000;
                 ibb.method = "GEAR";            ibb.trTol = 7.0;
                 m[MAS::Topologies::ISOLATED_BUCK_BOOST_CONVERTER] = ibb;
             }
