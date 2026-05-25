@@ -520,9 +520,22 @@ namespace OpenMagnetics {
         double tOn = period * dutyCycle;
         // Active clamp switch timing: overlap slightly with main switch for simulation stability
         // Start 100ns before main switch turns off, end 100ns after main switch turns on next cycle
-        double overlapTime = 100e-9;  // 100ns overlap for smooth transitions
-        double clampDelay = tOn - overlapTime;  // Start slightly before main switch off
-        double clampOn = period - tOn + 2 * overlapTime;  // End slightly after main switch on
+        // Dead time between main switch S1 and clamp switch S_clamp:
+        // they connect the same primary node (sw_node) to DIFFERENT
+        // voltage sources (S1 -> Vin via q1_drain; S_clamp -> Cclamp
+        // at ~Vin·D/(1-D) ≈ 39V for D=0.45). Any conduction overlap
+        // is a dead short between those sources through the two
+        // switches and crashes ngspice convergence. Need non-overlap
+        // (break-before-make), the opposite of what the previous
+        // "overlap" code did.
+        //
+        //   S1 ON      : 0          ── tOn
+        //   dead time  : tOn        ── tOn + dt
+        //   S_clamp ON : tOn + dt   ── period - dt
+        //   dead time  : period - dt── period
+        double deadTime = 100e-9;
+        double clampDelay = tOn + deadTime;
+        double clampOn = period - tOn - 2 * deadTime;
         
         // Simulation timing
         int periodsToExtract = get_num_periods_to_extract();
@@ -587,7 +600,10 @@ namespace OpenMagnetics {
         // Active clamp circuit: auxiliary switch + clamp capacitor
         // Clamp switch turns on during off-time of main switch
         circuit << "* Active Clamp Circuit\n";
-        circuit << "Vpwm_clamp clamp_ctrl 0 PULSE(0 5 " << clampDelay << " 10n 10n " << clampOn << " " << period << ")\n";
+        circuit << "Vpwm_clamp clamp_ctrl 0 PULSE(0 5 "
+                << std::scientific << clampDelay
+                << " 10n 10n "
+                << clampOn << " " << period << std::fixed << ")\n";
         circuit << "S_clamp clamp_cap sw_node clamp_ctrl 0 SW1\n";
         // Clamp capacitor to ground (stores energy during reset)
         double clampCapacitance = 10e-6;  // 10uF typical
