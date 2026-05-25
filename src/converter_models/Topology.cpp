@@ -371,6 +371,46 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::CLLC_RESONANT_CONVERTER] = cllc;
             }
 
+            // LLC resonant — series-resonant L_r + C_r in series with
+            // the magnetizing inductance L_m of a center-tapped
+            // transformer, half-bridge primary inverter at 50%
+            // complementary duty, frequency-modulated to regulate.
+            // Same solver class as CLLC (resonant tank, stiff at
+            // peak gain, GEAR-tolerant) but half-bridge primary
+            // instead of full-bridge so snubR matches PushPull / AHB
+            // (1k) and output cap stays at the resonant 47 µF.
+            {
+                SpiceSimulationConfig llc;
+                llc.swModelVT = 2.5;            llc.swModelVH = 0.8;
+                llc.swModelRON = 0.01;          llc.swModelROFF = 1e6;
+                llc.snubR = 1e3;                llc.snubC = 1e-9;
+                llc.diodeIS = 1e-12;            llc.diodeRS = 0.05;
+                llc.outputCapacitance = 47e-6;
+                llc.relTol = 0.01;              llc.absTol = 1e-7;
+                llc.vnTol = 1e-4;
+                llc.itl1 = 500;                 llc.itl4 = 500;
+                llc.method = "GEAR";            llc.trTol = 7.0;
+                m[MAS::Topologies::LLC_RESONANT_CONVERTER] = llc;
+            }
+
+            // CLLLC resonant — like CLLC but with an extra resonant
+            // inductor (L_r1 + C_r1 primary, L_r2 + C_r2 secondary,
+            // L_m magnetising), full-bridge both sides. Bidirectional
+            // for V2G; same solver class as CLLC.
+            {
+                SpiceSimulationConfig clllc;
+                clllc.swModelVT = 2.5;          clllc.swModelVH = 0.8;
+                clllc.swModelRON = 0.01;        clllc.swModelROFF = 1e6;
+                clllc.snubR = 1e3;              clllc.snubC = 1e-9;
+                clllc.diodeIS = 1e-12;          clllc.diodeRS = 0.05;
+                clllc.outputCapacitance = 47e-6;
+                clllc.relTol = 0.01;            clllc.absTol = 1e-7;
+                clllc.vnTol = 1e-4;
+                clllc.itl1 = 500;               clllc.itl4 = 500;
+                clllc.method = "GEAR";          clllc.trTol = 7.0;
+                m[MAS::Topologies::CLLLC_RESONANT_CONVERTER] = clllc;
+            }
+
             // IsolatedBuckBoost: isolated single-switch step-up/-down,
             // similar to Flyback but with secondary inductor instead of
             // pure transformer (buck-boost output stage on the secondary
