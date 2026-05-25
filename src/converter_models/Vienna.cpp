@@ -1,23 +1,30 @@
 // =====================================================================
-// Vienna rectifier — Phase 1+2+3 (incremental).
+// Vienna rectifier — Phase 1+2+3 (complete).
 //
 // Phase 1: skeleton (constructor, run_checks, design-requirements stub).
 // Phase 2: per-phase analytical solver at peak-of-line (single sample).
-// Phase 3 (this file): adds samplingStrategy=fullLineCycle — each of the
-//   three "Phase A/B/C" windings carries the full 50/60 Hz line cycle,
-//   shifted by 120° per phase, so the wizard plot shows a recognisable
-//   3-phase pattern instead of three identical peak-of-line snapshots.
-//   The remaining Phase-3 items (viennaII, alternative switch types,
-//   synchronousRectifier, phaseCount>1, peakOfLinePlusSectors) are
-//   gated separately in run_checks and documented in VIENNA_PHASE3_PLAN.md.
+// Phase 3: every previously-deferred item shipped (see VIENNA_PHASE3_PLAN.md):
+//   - Item 1 — samplingStrategy=fullLineCycle: each of the three
+//     "Phase A/B/C" windings carries the full 50/60 Hz line cycle,
+//     shifted by 120° per phase, so the wizard plot shows a
+//     recognisable 3-phase pattern instead of three identical
+//     peak-of-line snapshots.
+//   - Item 2 — samplingStrategy=peakOfLinePlusSectors: 6 OPs per
+//     input op, one per DPWM sector mid-point (30°/…/330°).
+//   - Item 3 — viennaVariant=viennaII: 2-switch-per-leg bidirectional
+//     clamp; per-switch RMS/avg = ½ Vienna I (Friedli/Kolar §IV.B).
+//   - Item 4 — switchType ∈ {tType, backToBackMosfet,
+//     singleMosfetIn4DiodeBridge}: routed analytically.
+//   - Item 5 — synchronousRectifier: boost-diode avg/rms diagnostics
+//     populated; sync-rec MOSFET conduction loss = Rds·I_rms².
+//   - Item 6 — phaseCount>1: N interleaved channels per phase;
+//     L scales to L_single/N; emits 3·N windings ("Phase X ch K").
 //
-// Deferred (throws on use, planned next):
-//   - samplingStrategy=peakOfLinePlusSectors
-//   - viennaII variant, backToBackMosfet / singleMosfetIn4DiodeBridge
-//     switch types, synchronousRectifier, phaseCount > 1.
-//   - Neutral-point voltage-ripple modelling (NP balancing controller).
+// Cross-cutting items still pending (not gated; just not modelled):
+//   - Neutral-point voltage-ripple (NP balancing controller).
 //   - DC-bus capacitor sizing.
-//   - SPICE netlist emission for the full 3-phase circuit.
+//   - True 3-phase SPICE netlist (current SPICE path is the
+//     Phase-1 single-phase boost emulator at peak-of-line).
 //
 // REFERENCES
 //   [1] Kolar & Zach, PCIM 1994 (the original Vienna paper).
