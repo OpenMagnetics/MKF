@@ -376,6 +376,37 @@ std::vector<std::pair<OpenMagnetics::Winding, double>> WireAdviser::get_advised_
     return get_advised_wire(&wires, winding, section, current, temperature, numberSections, maximumNumberResults);
 }
 
+std::vector<std::pair<Winding, double>> WireAdviser::get_advised_wire(
+        Winding winding,
+        Section section,
+        SignalDescriptor current,
+        double temperature,
+        uint8_t numberSections,
+        size_t maximumNumberResults,
+        const LibraryContext* ctx,
+        const AdviserConstraints& constraints) {
+    auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
+
+    if (constraints.wireType.empty()) {
+        return get_advised_wire(winding, section, current, temperature,
+                                numberSections, maximumNumberResults);
+    }
+
+    if (wireDatabase.empty()) load_wires();
+
+    std::vector<Wire> wires;
+    for (auto& [name, wire] : wireDatabase) {
+        if (!acceptsWireType(constraints.wireType, wire.get_type())) continue;
+        if (_commonWireStandard && wire.get_standard()
+            && wire.get_standard().value() != _commonWireStandard) {
+            continue;
+        }
+        wires.push_back(wire);
+    }
+    return get_advised_wire(&wires, winding, section, current, temperature,
+                            numberSections, maximumNumberResults);
+}
+
 /**
  * @brief Calculate copper thickness penalty for planar wires (progressive).
  *

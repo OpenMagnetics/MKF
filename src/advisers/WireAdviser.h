@@ -2,6 +2,7 @@
 #include "constructive_models/Coil.h"
 #include "constructive_models/Wire.h"
 #include "support/Utils.h"
+#include "support/LibraryContext.h"
 #include <MAS.hpp>
 
 using namespace MAS;
@@ -159,6 +160,16 @@ class WireAdviser {
                                                                                    double temperature,
                                                                                    uint8_t numberSections,
                                                                                    size_t maximumNumberResults=1);
+        // ctx-aware variant: applies a per-call library override and the
+        // wireType constraint before delegating to the standard pipeline.
+        std::vector<std::pair<Winding, double>> get_advised_wire(Winding winding,
+                                                                  Section section,
+                                                                  SignalDescriptor current,
+                                                                  double temperature,
+                                                                  uint8_t numberSections,
+                                                                  size_t maximumNumberResults,
+                                                                  const LibraryContext* ctx,
+                                                                  const AdviserConstraints& constraints);
 
         std::vector<std::pair<Winding, double>> get_advised_planar_wire(Winding winding,
                                                                                           Section section,

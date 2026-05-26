@@ -14,6 +14,41 @@
 
 namespace OpenMagnetics {
 
+namespace {
+// RAII: back up the global core/wire databases, replace them with constraint-
+// filtered copies for the duration of the scope, and restore on destruction
+// (also on exception). A no-op when the relevant section of `constraints` is
+// empty — safe to construct unconditionally at the top of any ctx-aware
+// adviser overload.
+struct DatabaseFilterScope {
+    explicit DatabaseFilterScope(const AdviserConstraints& constraints) {
+        if (!constraints.shapeFamily.empty() || !constraints.coreMaterialType.empty()) {
+            if (coreDatabase.empty()) load_cores();
+            _coreBackup = coreDatabase;
+            coreDatabase = filterCoresByConstraints(coreDatabase, constraints);
+            _restoreCores = true;
+        }
+        if (!constraints.wireType.empty()) {
+            if (wireDatabase.empty()) load_wires();
+            _wireBackup = wireDatabase;
+            wireDatabase = filterWiresByConstraints(wireDatabase, constraints);
+            _restoreWires = true;
+        }
+    }
+    ~DatabaseFilterScope() {
+        if (_restoreCores) coreDatabase = std::move(_coreBackup);
+        if (_restoreWires) wireDatabase = std::move(_wireBackup);
+    }
+    DatabaseFilterScope(const DatabaseFilterScope&) = delete;
+    DatabaseFilterScope& operator=(const DatabaseFilterScope&) = delete;
+private:
+    std::vector<Core> _coreBackup;
+    std::map<std::string, Wire> _wireBackup;
+    bool _restoreCores = false;
+    bool _restoreWires = false;
+};
+} // namespace
+
 void MagneticAdviser::set_unique_core_shapes(bool value) {
     _uniqueCoreShapes = value;
 }
@@ -149,6 +184,48 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, size_t maximumNumberResults) {
     return get_advised_magnetic(inputs, _defaultCustomMagneticFilterFlow, maximumNumberResults);
+}
+
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(
+        Inputs inputs,
+        size_t maximumNumberResults,
+        const LibraryContext* ctx,
+        const AdviserConstraints& constraints) {
+    auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
+    DatabaseFilterScope dbScope(constraints);
+    return get_advised_magnetic(inputs, _defaultCustomMagneticFilterFlow, maximumNumberResults);
+}
+
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(
+        Inputs inputs,
+        std::map<MagneticFilters, double> weights,
+        size_t maximumNumberResults,
+        const LibraryContext* ctx,
+        const AdviserConstraints& constraints) {
+    auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
+    DatabaseFilterScope dbScope(constraints);
+    return get_advised_magnetic(inputs, weights, maximumNumberResults);
+}
+
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(
+        Inputs inputs,
+        std::vector<MagneticFilterOperation> filterFlow,
+        size_t maximumNumberResults,
+        const LibraryContext* ctx,
+        const AdviserConstraints& constraints) {
+    auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
+    DatabaseFilterScope dbScope(constraints);
+    return get_advised_magnetic(inputs, filterFlow, maximumNumberResults);
+}
+
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(
+        Inputs inputs,
+        size_t maximumNumberResults,
+        const LibraryContext* ctx,
+        const AdviserConstraints& constraints) {
+    auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
+    DatabaseFilterScope dbScope(constraints);
+    return get_advised_magnetic_fast(inputs, maximumNumberResults);
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<MagneticFilters, double> weights, size_t maximumNumberResults) {

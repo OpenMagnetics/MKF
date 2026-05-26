@@ -7,6 +7,10 @@
 #include "constructive_models/Wire.h"
 #include "support/Painter.h"
 #include "support/Settings.h"
+#include "support/LibraryContext.h"
+#include "support/Utils.h"
+#include "advisers/CoreAdviser.h"
+#include "advisers/MagneticAdviser.h"
 
 using namespace MAS;
 using json = nlohmann::json;
@@ -208,6 +212,62 @@ void reset_settings() {
     OpenMagnetics::settings.reset();
 }
 
+// ----- Adviser / LibraryContext bindings ----------------------------------
+
+static json get_advised_core_py(json inputsJson,
+                                 json weightsJson,
+                                 size_t maximumNumberResults,
+                                 const OpenMagnetics::LibraryContext* ctx,
+                                 const OpenMagnetics::AdviserConstraints& constraints) {
+    OpenMagnetics::Inputs inputs(inputsJson);
+
+    std::map<OpenMagnetics::CoreAdviser::CoreAdviserFilters, double> weights;
+    if (weightsJson.is_object()) {
+        for (auto it = weightsJson.begin(); it != weightsJson.end(); ++it) {
+            OpenMagnetics::CoreAdviser::CoreAdviserFilters f;
+            from_json(it.key(), f);
+            weights[f] = it.value().get<double>();
+        }
+    }
+    if (weights.empty()) {
+        weights = {
+            {OpenMagnetics::CoreAdviser::CoreAdviserFilters::COST, 1.0},
+            {OpenMagnetics::CoreAdviser::CoreAdviserFilters::EFFICIENCY, 1.0},
+            {OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS, 1.0},
+        };
+    }
+
+    OpenMagnetics::CoreAdviser adviser;
+    auto results = adviser.get_advised_core(inputs, weights, maximumNumberResults,
+                                             ctx, constraints);
+    json out = json::array();
+    for (const auto& [mas, score] : results) {
+        json entry;
+        to_json(entry["mas"], mas);
+        entry["score"] = score;
+        out.push_back(std::move(entry));
+    }
+    return out;
+}
+
+static json get_advised_magnetic_py(json inputsJson,
+                                    size_t maximumNumberResults,
+                                    const OpenMagnetics::LibraryContext* ctx,
+                                    const OpenMagnetics::AdviserConstraints& constraints) {
+    OpenMagnetics::Inputs inputs(inputsJson);
+    OpenMagnetics::MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(inputs, maximumNumberResults,
+                                                 ctx, constraints);
+    json out = json::array();
+    for (const auto& [mas, score] : results) {
+        json entry;
+        to_json(entry["mas"], mas);
+        entry["score"] = score;
+        out.push_back(std::move(entry));
+    }
+    return out;
+}
+
 PYBIND11_MODULE(PyMKF, m) {
     m.doc() = "OpenMagnetics Python bindings (legacy PyMKF compatibility)";
     m.def("plot_turns", &plot_turns, "Generate SVG plot of individual turns");
@@ -218,4 +278,66 @@ PYBIND11_MODULE(PyMKF, m) {
     m.def("set_settings", &set_settings, "Configure simulation settings");
     m.def("get_settings", &get_settings, "Retrieve current simulation settings");
     m.def("reset_settings", &reset_settings, "Reset settings to defaults");
+
+    // ---- LibraryContext / type-filter bindings ---------------------------
+    py::enum_<OpenMagnetics::LibraryContext::LoadMode>(m, "LoadMode")
+        .value("Merge", OpenMagnetics::LibraryContext::LoadMode::Merge)
+        .value("Replace", OpenMagnetics::LibraryContext::LoadMode::Replace);
+
+    py::class_<OpenMagnetics::LibraryContext>(m, "LibraryContext")
+        .def(py::init<>())
+        .def("load_from_json",
+             [](OpenMagnetics::LibraryContext& self, json data,
+                OpenMagnetics::LibraryContext::LoadMode mode) {
+                 self.loadFromJson(data, mode);
+             },
+             py::arg("data"), py::arg("mode") = OpenMagnetics::LibraryContext::LoadMode::Merge,
+             "Load library entries from a parsed JSON object")
+        .def("load_from_string", &OpenMagnetics::LibraryContext::loadFromString,
+             py::arg("json_text"), py::arg("mode") = OpenMagnetics::LibraryContext::LoadMode::Merge,
+             "Load library entries from a JSON-encoded string")
+        .def("load_from_file", &OpenMagnetics::LibraryContext::loadFromFile,
+             py::arg("path"), py::arg("mode") = OpenMagnetics::LibraryContext::LoadMode::Merge,
+             "Load library entries from a JSON file on disk")
+        .def("clear", &OpenMagnetics::LibraryContext::clear)
+        .def("empty", &OpenMagnetics::LibraryContext::empty);
+
+    py::class_<OpenMagnetics::TypeFilterSet>(m, "TypeFilterSet")
+        .def(py::init<>())
+        .def_readwrite("allowed", &OpenMagnetics::TypeFilterSet::allowed)
+        .def_readwrite("blocked", &OpenMagnetics::TypeFilterSet::blocked);
+
+    py::class_<OpenMagnetics::AdviserConstraints>(m, "AdviserConstraints")
+        .def(py::init<>())
+        .def_readwrite("shape_family", &OpenMagnetics::AdviserConstraints::shapeFamily)
+        .def_readwrite("core_material_type", &OpenMagnetics::AdviserConstraints::coreMaterialType)
+        .def_readwrite("wire_type", &OpenMagnetics::AdviserConstraints::wireType)
+        .def("empty", &OpenMagnetics::AdviserConstraints::empty);
+
+    m.def("get_advised_core",
+          [](json inputs, json weights, size_t n,
+             const OpenMagnetics::LibraryContext* ctx,
+             const OpenMagnetics::AdviserConstraints& constraints) {
+              return get_advised_core_py(inputs, weights, n, ctx, constraints);
+          },
+          py::arg("inputs"),
+          py::arg("weights") = json::object(),
+          py::arg("maximum_number_results") = 1,
+          py::arg("ctx").none(true) = nullptr,
+          py::arg("constraints") = OpenMagnetics::AdviserConstraints{},
+          py::return_value_policy::move,
+          "Run CoreAdviser with optional library context + type constraints");
+
+    m.def("get_advised_magnetic",
+          [](json inputs, size_t n,
+             const OpenMagnetics::LibraryContext* ctx,
+             const OpenMagnetics::AdviserConstraints& constraints) {
+              return get_advised_magnetic_py(inputs, n, ctx, constraints);
+          },
+          py::arg("inputs"),
+          py::arg("maximum_number_results") = 1,
+          py::arg("ctx").none(true) = nullptr,
+          py::arg("constraints") = OpenMagnetics::AdviserConstraints{},
+          py::return_value_policy::move,
+          "Run MagneticAdviser with optional library context + type constraints");
 }

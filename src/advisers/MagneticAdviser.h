@@ -178,6 +178,31 @@ class MagneticAdviser{
          */
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, size_t maximumNumberResults=1);
 
+        // ctx-aware variants: apply a per-call library override and type
+        // constraints (shape family, core material type, wire type) before
+        // delegating to the matching base flow. ctx=nullptr means "use the
+        // built-in catalogs"; an empty AdviserConstraints means "no type
+        // pre-filtering" — in both cases the call is equivalent to the base
+        // overload.
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs,
+                                                                  size_t maximumNumberResults,
+                                                                  const LibraryContext* ctx,
+                                                                  const AdviserConstraints& constraints);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs,
+                                                                  std::map<MagneticFilters, double> weights,
+                                                                  size_t maximumNumberResults,
+                                                                  const LibraryContext* ctx,
+                                                                  const AdviserConstraints& constraints);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs,
+                                                                  std::vector<MagneticFilterOperation> filterFlow,
+                                                                  size_t maximumNumberResults,
+                                                                  const LibraryContext* ctx,
+                                                                  const AdviserConstraints& constraints);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic_fast(Inputs inputs,
+                                                                       size_t maximumNumberResults,
+                                                                       const LibraryContext* ctx,
+                                                                       const AdviserConstraints& constraints);
+
         /**
          * @brief Get optimized magnetic designs with custom weights.
          * @param inputs Design requirements and operating conditions.

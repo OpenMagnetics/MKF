@@ -110,6 +110,60 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
     return get_advised_core(inputs, weights, maximumNumberResults);
 }
 
+std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(
+        Inputs inputs,
+        std::map<CoreAdviserFilters, double> weights,
+        size_t maximumNumberResults,
+        const LibraryContext* ctx,
+        const AdviserConstraints& constraints) {
+    // Apply per-call library override (RAII swap on the global *Database maps).
+    auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
+
+    if (constraints.empty()) {
+        return get_advised_core(inputs, weights, maximumNumberResults);
+    }
+
+    // Type pre-filter at the top of the pipeline. Only AVAILABLE_CORES mode
+    // operates on explicit Core instances; STANDARD_CORES / CUSTOM_CORES
+    // expand from shape lists, so the shape-family filter is applied by
+    // filtering coreShapeDatabase indirectly via constraints on the cores
+    // dataset later in the flow (see filter inside the shapes branch).
+    if (get_mode() == CoreAdviserModes::AVAILABLE_CORES) {
+        if (coreDatabase.empty()) {
+            load_cores();
+        }
+        auto filtered = filterCoresByConstraints(coreDatabase, constraints);
+        return get_advised_core(inputs, weights, &filtered, maximumNumberResults);
+    }
+
+    if (get_mode() == CoreAdviserModes::STANDARD_CORES) {
+        if (coreMaterialDatabase.empty()) load_core_materials();
+        if (coreShapeDatabase.empty())    load_core_shapes();
+
+        std::vector<MAS::CoreShape> shapes;
+        std::set<std::string> seen;
+        for (auto& [key, shape] : coreShapeDatabase) {
+            if (!constraints.shapeFamily.empty()
+                && !acceptsCoreShapeFamily(constraints.shapeFamily, shape.get_family())) {
+                continue;
+            }
+            auto canonical = shape.get_name().value_or("");
+            if (canonical.empty() || !seen.insert(canonical).second) continue;
+            shapes.push_back(shape);
+        }
+        // Material-type constraint is applied later in the pipeline by
+        // add_powder_materials / add_ferrite_materials_by_losses; for now we
+        // pass the trimmed shape set in and rely on the existing material
+        // selection logic. (Future refinement: thread coreMaterialType into
+        // those helpers explicitly.)
+        return get_advised_core(inputs, &shapes, maximumNumberResults);
+    }
+
+    // CUSTOM_CORES and any other mode: fall back to default flow (constraints
+    // do not currently affect synthetic shape generation).
+    return get_advised_core(inputs, weights, maximumNumberResults);
+}
+
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
     if (get_mode() == CoreAdviserModes::AVAILABLE_CORES) {
         if (coreDatabase.empty()) {

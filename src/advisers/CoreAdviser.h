@@ -15,6 +15,7 @@
 #include <cmath>
 #include <MAS.hpp>
 #include "support/Exceptions.h"
+#include "support/LibraryContext.h"
 
 using namespace MAS;
 
@@ -203,6 +204,14 @@ class CoreAdviser {
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults=1);
+        // Variants that take a user library context and/or hard type-constraints
+        // (shape family, core material type). ctx=nullptr means use built-in
+        // catalogs; an empty AdviserConstraints means no type pre-filtering.
+        std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs,
+                                                              std::map<CoreAdviserFilters, double> weights,
+                                                              size_t maximumNumberResults,
+                                                              const LibraryContext* ctx,
+                                                              const AdviserConstraints& constraints);
         std::vector<CoreShape> create_custom_core_shapes(Inputs inputs);
 
         Mas post_process_core(Magnetic magnetic, Inputs inputs);
