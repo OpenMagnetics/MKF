@@ -177,8 +177,9 @@ struct SpiceSimulationConfig {
     // damp) so the snubber doesn't draw DC bias; with real leakage, the
     // turn-off Lk·di/dt spike needs a much smaller R to clamp. Topologies
     // that distinguish the two paths (e.g. Flyback) read `snubRReal` when
-    // generating the real-magnetic netlist. NaN ⇒ fall back to `snubR`.
-    double snubRReal = std::numeric_limits<double>::quiet_NaN();
+    // generating the real-magnetic netlist; std::nullopt ⇒ caller falls
+    // back to `snubR` via .value_or(snubR).
+    std::optional<double> snubRReal;
 
     // ---- Output diode model (.model DIDEAL D(...)) ----
     double diodeIS = 1e-14;       // saturation current [A]
@@ -195,40 +196,25 @@ struct SpiceSimulationConfig {
     double outputCapacitance              = 100e-6;  // [F]
     double outputCapInitialChargeFraction = 1.0;     // IC = Vout * fraction
 
-    // ---- Topology-specific extras (string-keyed map) ----
+    // ---- Per-topology overrides (std::optional<double> = unset by default) ----
     //
-    // Any per-topology numeric SPICE value that doesn't fit one of the
-    // named fields above lives here. Keyed by a stable string so the
-    // same key can be reused across similar topologies. Examples
-    // actually used today:
-    //   "rectifierSnubR"          — secondary-side rectifier snubber R
-    //                              (distinct from switch-side snubR;
-    //                              PushPull uses 100 Ω vs 1 kΩ switch)
-    //   "rectifierSnubC"          — secondary-side rectifier snubber C
-    //                              (PushPull uses 1 nF)
-    //   "floatingNodeProtection"  — high-value pull-down (~1 MΩ) on
-    //                              floating winding nodes to keep
-    //                              ngspice's DC OP solver happy
-    //   "snubDampR"               — small (mΩ-class) damping resistor
-    //                              series with the RC snubber chain
-    //                              (Cuk / Sepic / Zeta pattern)
+    // These exist because they're meaningful for only one or two topologies;
+    // adding a default value would imply they apply to every topology, which
+    // they don't. Callers read them via require_spice_field(opt, "name") —
+    // throws with the field name if the registry entry forgot to set it.
     //
-    // No silent fallback per CLAUDE.md §"No fallbacks": getExtra() throws
-    // when the key is not set so a misconfigured registry entry surfaces
-    // loudly with the missing key name, instead of running with a
-    // placeholder value nobody can trust.
-    std::map<std::string, double> extras;
-    double getExtra(const std::string& key) const {
-        auto it = extras.find(key);
-        if (it == extras.end()) {
-            throw std::runtime_error(
-                "SpiceSimulationConfig::getExtra: missing key '" + key +
-                "' — add it to this topology's entry in "
-                "spice_simulation_defaults() (Topology.cpp) or drop the "
-                "call site that needs it.");
-        }
-        return it->second;
-    }
+    // Secondary-side rectifier snubber, distinct from the switch-side
+    // snubR/snubC (PushPull uses 100 Ω / 1 nF on the sec rectifier vs
+    // 1 kΩ / 100 pF on the primary switch).
+    std::optional<double> rectifierSnubR;          // [Ω]
+    std::optional<double> rectifierSnubC;          // [F]
+    // High-value pull-down (~1 MΩ) on floating winding nodes to keep
+    // ngspice's DC OP solver from failing on otherwise-ungrounded
+    // transformer terminals (PushPull, Weinberg pattern).
+    std::optional<double> floatingNodeProtection; // [Ω]
+    // Small mΩ-class damping resistor in series with the RC snubber chain
+    // (Cuk / Sepic / Zeta series-C-then-shunt-R pattern; 1 mΩ default).
+    std::optional<double> snubDampR;              // [Ω]
 
     // ---- Solver / transient ----
     int    samplesPerPeriod = 200;
@@ -240,6 +226,28 @@ struct SpiceSimulationConfig {
     std::string method = "GEAR";
     double trTol   = 7.0;
 };
+
+/**
+ * @brief Read a required-but-optional SpiceSimulationConfig field; throws
+ *        with the field name when the registry entry forgot to set it.
+ *        Use for per-topology overrides (the std::optional<double> fields
+ *        on SpiceSimulationConfig) when the caller's generate_ngspice_circuit
+ *        absolutely needs the value. Per CLAUDE.md §"No fallbacks": a
+ *        missing entry surfaces loudly instead of silently using a
+ *        placeholder.
+ */
+inline double require_spice_field(const std::optional<double>& opt,
+                                  const char* fieldName) {
+    if (!opt) {
+        throw std::runtime_error(
+            std::string("SpiceSimulationConfig: required field '") +
+            fieldName +
+            "' is not set in this topology's registry entry — set it in "
+            "spice_simulation_defaults() (Topology.cpp) or drop the call "
+            "site that needs it.");
+    }
+    return *opt;
+}
 
 /**
  * @brief Central registry of per-topology default `SpiceSimulationConfig`s.

@@ -1458,9 +1458,9 @@ namespace OpenMagnetics {
         // Convergence helpers (high-impedance pull-downs on the floating
         // winding nodes — prevent ngspice DC OP failure on otherwise-
         // ungrounded transformer terminals). Sourced from
-        // cfg.extras["floatingNodeProtection"]; throws if the registry
-        // entry forgot to set it.
-        const double Rfloat = cfg.getExtra("floatingNodeProtection");
+        // cfg.floatingNodeProtection; throws if the registry entry
+        // forgot to set it.
+        const double Rfloat = require_spice_field(cfg.floatingNodeProtection, "floatingNodeProtection");
         circuit << "* Convergence helpers\n";
         circuit << "Rsnub_top pri_top 0 "      << Rfloat << "\n";
         circuit << "Rsnub_bot pri_bot 0 "      << Rfloat << "\n";
@@ -1483,9 +1483,9 @@ namespace OpenMagnetics {
         // RC snubbers across the rectifier diodes. These are SECONDARY-
         // side snubbers with their own R/C distinct from the primary
         // switch snubber (cfg.snubR/snubC). Sourced from
-        // cfg.extras["rectifierSnubR" / "rectifierSnubC"].
-        const double rsnubR = cfg.getExtra("rectifierSnubR");
-        const double rsnubC = cfg.getExtra("rectifierSnubC");
+        // cfg.rectifierSnubR / cfg.rectifierSnubC.
+        const double rsnubR = require_spice_field(cfg.rectifierSnubR, "rectifierSnubR");
+        const double rsnubC = require_spice_field(cfg.rectifierSnubC, "rectifierSnubC");
         circuit << "Rsnub_d1 sec_top sec_snub1 " << rsnubR << "\n";
         circuit << "Csnub_d1 sec_snub1 sec_rect " << std::scientific
                 << rsnubC << std::defaultfloat << "\n";

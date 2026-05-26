@@ -750,7 +750,7 @@ namespace OpenMagnetics {
         circuit << "S1 vin_dc pri_p pwm_ctrl 0 SW1\n";
         // Real-magnetic path: use snubRReal if set (handles real Lk·di/dt
         // turn-off spike clamping), else fall back to snubR.
-        double snubR_eff = std::isnan(cfg.snubRReal) ? cfg.snubR : cfg.snubRReal;
+        double snubR_eff = cfg.snubRReal.value_or(cfg.snubR);
         circuit << "Rsnub_s1 vin_dc pri_p " << snubR_eff << "\n"
                 << "Csnub_s1 vin_dc pri_p " << std::scientific << cfg.snubC << std::fixed << "\n\n";
 
