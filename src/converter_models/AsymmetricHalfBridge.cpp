@@ -1847,8 +1847,12 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
           << startTime_v5 << " uic\n\n";
         c << ".save v(vab) v(sw) v(co_top) i(Vpri_sense) i(Vsec_a_sense)"
           << " i(Vout_sense) i(Vdc)\n\n";
-        c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
-        c << ".options METHOD=GEAR TRTOL=7\n";
+        c << ".options RELTOL=" << cfg.relTol
+          << " ABSTOL=" << cfg.absTol
+          << " VNTOL=" << cfg.vnTol
+          << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
+        c << ".options METHOD=" << cfg.method
+          << " TRTOL=" << cfg.trTol << "\n";
         c << ".nodeset v(co_top)=" << Vo
           << " v(clamp_lo)=" << Vclamp_dc_v5 << "\n\n";
         c << ".end\n";

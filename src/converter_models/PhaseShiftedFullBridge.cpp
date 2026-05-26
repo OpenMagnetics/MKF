@@ -855,9 +855,10 @@ std::string Psfb::generate_ngspice_circuit(
         // designs and switching-loss validation.
         // -----------------------------------------------------------------
         // Leading leg (QA-QB): 50% duty at Fs.
-        circuit << "Vpwm_A pwm_A 0 PULSE(0 5 0 10n 10n "
-                << std::scientific << tOn << " " << period << std::fixed << ")\n";
-        circuit << "Vpwm_B pwm_B 0 PULSE(0 5 "
+        circuit << "Vpwm_A pwm_A 0 PULSE(0 " << cfg.pwmHigh << " 0 "
+                << cfg.pwmRise << " " << cfg.pwmFall
+                << " " << std::scientific << tOn << " " << period << std::fixed << ")\n";
+        circuit << "Vpwm_B pwm_B 0 PULSE(0 " << cfg.pwmHigh << " "
                 << std::scientific << halfPeriod << std::fixed
                 << " " << cfg.pwmRise << " " << cfg.pwmFall << " "
                 << std::scientific << tOn << " " << period << std::fixed << ")\n";

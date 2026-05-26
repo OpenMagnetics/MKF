@@ -600,12 +600,17 @@ namespace OpenMagnetics {
         // current — observed eff=31.7% instead of the expected ~90%.
         const SpiceSimulationConfig acfCfg = spice_config();
         circuit << "* PWM Main Switch\n";
-        circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
+        circuit << "Vpwm pwm_ctrl 0 PULSE(0 " << acfCfg.pwmHigh << " 0 "
+                << acfCfg.pwmRise << " " << acfCfg.pwmFall
+                << " " << tOn << " " << period << ")\n";
         circuit << ".model SW1 SW VT=" << acfCfg.swModelVT
                 << " VH=" << acfCfg.swModelVH
                 << " RON=" << acfCfg.swModelRON
                 << " ROFF=" << acfCfg.swModelROFF << "\n";
-        circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n";
+        circuit << ".model DIDEAL D(IS=" << std::scientific << acfCfg.diodeIS
+                << " RS=" << acfCfg.diodeRS << std::defaultfloat;
+        if (!acfCfg.diodeExtra.empty()) circuit << " " << acfCfg.diodeExtra;
+        circuit << ")\n";
         circuit << "S1 q1_drain sw_node pwm_ctrl 0 SW1\n\n";
         
         // Primary current sense
@@ -637,10 +642,10 @@ namespace OpenMagnetics {
         // Active clamp circuit: auxiliary switch + clamp capacitor
         // Clamp switch turns on during off-time of main switch
         circuit << "* Active Clamp Circuit\n";
-        circuit << "Vpwm_clamp clamp_ctrl 0 PULSE(0 5 "
+        circuit << "Vpwm_clamp clamp_ctrl 0 PULSE(0 " << acfCfg.pwmHigh << " "
                 << std::scientific << clampDelay
-                << " 10n 10n "
-                << clampOn << " " << period << std::fixed << ")\n";
+                << " " << acfCfg.pwmRise << " " << acfCfg.pwmFall
+                << " " << clampOn << " " << period << std::fixed << ")\n";
         circuit << "S_clamp clamp_cap sw_node clamp_ctrl 0 SW1\n";
         // Clamp capacitor to ground (stores energy during reset)
         double clampCapacitance = 10e-6;  // 10uF typical
@@ -704,7 +709,10 @@ namespace OpenMagnetics {
         circuit << "\n\n";
         
         // Options
-        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000\n";
+        circuit << ".options RELTOL=" << acfCfg.relTol
+                << " ABSTOL=" << std::scientific << acfCfg.absTol
+                << " VNTOL=" << acfCfg.vnTol << std::defaultfloat
+                << " ITL1=" << acfCfg.itl1 << " ITL4=" << acfCfg.itl4 << "\n";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << ".ic v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx] << "\n";
         }

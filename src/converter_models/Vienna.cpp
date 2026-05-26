@@ -862,6 +862,11 @@ std::string Vienna::generate_ngspice_circuit(
     size_t /*inputVoltageIndex*/,
     size_t operatingPointIndex)
 {
+    // All SPICE-side knobs from spice_config(). Vienna registry entry
+    // (Topology.cpp) was retuned to match this file's historical
+    // hardcoded netlist byte-for-byte — behaviour-preserving.
+    const auto cfg = spice_config();
+
     auto& ops = get_operating_points();
     if (ops.empty())
         throw std::runtime_error("Vienna generate_ngspice_circuit: no operating points");
@@ -953,17 +958,24 @@ std::string Vienna::generate_ngspice_circuit(
     // Switch model: T-type bidir leg behaves as a low-side switch from sw_node
     // to ground (neutral midpoint). Use SW1 with antiparallel ideal diode
     // (so the switch carries inductor current regardless of polarity).
-    c << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-    c << ".model DIDEAL D(IS=1e-12 RS=0.05)\n";
+    c << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+      << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
+    c << ".model DIDEAL D(IS=" << cfg.diodeIS << " RS=" << cfg.diodeRS;
+    if (!cfg.diodeExtra.empty()) c << " " << cfg.diodeExtra;
+    c << ")\n";
+    // DBOOST is the BOOST diode (vs DIDEAL = bidirectional clamp);
+    // kept hardcoded — its IS/N/RS are tuned to the Vienna boost-loop
+    // recovery characteristic and don't map to the cfg.diode* triple.
     c << ".model DBOOST D(Is=1e-8 N=0.01 RS=0.01)\n\n";
 
-    c << "Vpwm pwm 0 PULSE(0 5 0 "
+    c << "Vpwm pwm 0 PULSE(0 " << cfg.pwmHigh << " 0 "
       << std::scientific << tEdge << " " << tEdge << " "
       << tOn << " " << period << std::fixed << ")\n";
     c << "Ssw sw_node 0 pwm 0 SW1\n";
     c << "Dsw_bd 0 sw_node DIDEAL\n";
-    c << "Rsnub_sw sw_node 0 1k\n";
-    c << "Csnub_sw sw_node 0 1n\n\n";
+    c << "Rsnub_sw sw_node 0 " << cfg.snubR << "\n";
+    c << "Csnub_sw sw_node 0 " << std::scientific << cfg.snubC
+      << std::defaultfloat << "\n\n";
 
     // Boost diode to upper half-bus + cap + load
     c << "Dboost sw_node vdc_plus DBOOST\n";
@@ -975,8 +987,11 @@ std::string Vienna::generate_ngspice_circuit(
     c << ".ic v(vdc_cap)=" << V_half
       << " v(vdc_plus)="   << V_half << "\n\n";
 
-    c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
-    c << ".options METHOD=GEAR TRTOL=7\n\n";
+    c << ".options RELTOL=" << cfg.relTol
+      << " ABSTOL=" << std::scientific << cfg.absTol
+      << " VNTOL=" << cfg.vnTol << std::defaultfloat
+      << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
+    c << ".options METHOD=" << cfg.method << " TRTOL=" << cfg.trTol << "\n\n";
     c << ".tran " << std::scientific << maxStep << " " << simTime
       << " " << startTime << " " << maxStep << " UIC\n\n";
 

@@ -307,7 +307,16 @@ namespace OpenMagnetics {
                 // explicit RON/ROFF on SW1, tighter solver tolerances) —
                 // they get their own entries below to preserve those
                 // values byte-for-byte.
-                m[MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER]  = forward;
+                // ACF starts from the `forward` block above, then overrides
+                // the fields its own .cpp emits (tighter tolerances,
+                // tighter diode model than the forward-family aspirational
+                // defaults). Mirrors the SSF/TSF split pattern below.
+                SpiceSimulationConfig acf = forward;
+                acf.diodeIS = 1e-14;             acf.diodeRS = 1e-6;
+                acf.relTol = 1e-3;               acf.absTol = 1e-9;
+                acf.vnTol = 1e-6;
+                acf.itl1 = 1000;                 acf.itl4 = 1000;
+                m[MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER]  = acf;
             }
 
             // SingleSwitchForward: relies on ngspice's SW-model defaults
@@ -379,14 +388,18 @@ namespace OpenMagnetics {
             // the boost family (single switch per phase, hard switching).
             {
                 SpiceSimulationConfig vienna;
-                vienna.swModelVT = 2.5;         vienna.swModelVH = 0.5;
-                vienna.swModelRON = 0.02;       vienna.swModelROFF = 1e6;
-                vienna.snubR = 10e3;            vienna.snubC = 1e-9;
+                // Retuned to match Vienna.cpp's historical netlist
+                // byte-for-byte (was aspirational previously — VH=0.5,
+                // RON=0.02, snub 10k, itl=1000 — but the .cpp emitted
+                // VH=0.8, RON=0.01, snub 1k, itl=500). Aligned here.
+                vienna.swModelVT = 2.5;         vienna.swModelVH = 0.8;
+                vienna.swModelRON = 0.01;       vienna.swModelROFF = 1e6;
+                vienna.snubR = 1e3;             vienna.snubC = 1e-9;
                 vienna.diodeIS = 1e-12;         vienna.diodeRS = 0.05;
                 vienna.outputCapacitance = 470e-6;
                 vienna.relTol = 0.01;           vienna.absTol = 1e-7;
                 vienna.vnTol = 1e-4;
-                vienna.itl1 = 1000;             vienna.itl4 = 1000;
+                vienna.itl1 = 500;              vienna.itl4 = 500;
                 vienna.method = "GEAR";         vienna.trTol = 7.0;
                 m[MAS::Topologies::VIENNA_RECTIFIER_CONVERTER] = vienna;
             }
