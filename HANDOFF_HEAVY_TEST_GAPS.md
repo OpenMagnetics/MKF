@@ -149,3 +149,89 @@ Gap 2 — multi-winding Wire Adviser hang (Flyback, Isolated-BB,
           2. Refactor: per-winding, generate top-K candidates by
              individual score (where K is configurable, default 10);
              only the K×K pairing matrix runs through wind().
+
+---
+
+## Session 5 — Gap 2 first attempt reverted; lesson captured
+
+Tried the obvious "top-K per winding by score" refactor for the
+multi-winding pairing loop in
+`CoilAdviser::get_advised_coil_for_pattern`:
+
+  1. `std::stable_sort(wireCoilPerWinding[w], by score asc)` after the
+     per-winding candidate-collection loop
+  2. Truncate each list to K (default 10, Settings-controlled)
+  3. Existing pairing loop runs over the smaller lists
+
+**It made things worse, not better.** Verified results:
+
+  Test                                          | Before  | After
+  ----------------------------------------------+---------+--------
+  CoilAdviser flyback snapshot (1000 wires)     | passes  | wrong wire pair (predicted)
+  Test_MagneticAdviserFromConverter_PSFB        | passes  | passes
+  Test_MagneticAdviserFromConverter_LLC_Variant | 47 s    | >240 s (timeout)
+  Test_MagneticAdviserFromConverter_SRC_Variant | passes  | passes
+  Test_MagneticAdviserFromConverter_Vienna      | passes  | passes
+  Test_MagneticAdviserFromConverter_Flyback     | passes  | passes
+
+The snapshot-test failure was the *predicted* and acceptable change
+(pinning a specific wire identity from the 1000-pool was the test's
+contract; an opt-out for that specific case is fine). The **LLC
+regression is the real issue**.
+
+**Root cause of the LLC slowdown:**
+`wireCoilPerWinding[w]` is the concatenation of 4 `wireConfiguration`
+calls — same wire pool, but each config runs the wire-adviser with
+DIFFERENT settings (current-density limit, max-parallels). The
+returned scores are normalized against the per-call config, not
+globally. Sorting the concatenated list by `pair.second` and taking
+the top-K therefore mixes top entries from different configs in an
+order that has no real ranking semantics across them.
+
+When `wind()` runs on top-K-from-merged-sort:
+  - Some candidates have unrealistic per-strand current density
+    (passed under config-2's higher limit but fail in the wound coil)
+  - Some have over-paralleled wire that doesn't fit the section width
+  - Each `wind()` failure on those takes 0.1–1 s before returning false
+
+The original code's "advance the lowest-scored winding" greedy walked
+within-config first (because the concatenation preserves each
+config's score-sorted chunk). The top-K-from-global-sort breaks that
+locality.
+
+The 25-failure bail-out cap (`max(25, totalCandidates)`) didn't help
+because — with `LLC_VariantMatrix` running 6 sections × 25 failed
+wind()s × ~1.5 s each — total per call exceeds the playwright budget.
+
+### The right shape of the fix (not implemented)
+
+Cap PER CONFIG, not per winding:
+
+```cpp
+for (auto& cfgWires : per_config_per_winding[w]) {
+    if (cfgWires.size() > kPerConfig) cfgWires.resize(kPerConfig);
+}
+// Then concatenate the truncated chunks.
+```
+
+This preserves each config's "top wires by its own scoring" while
+still bounding total candidates. For `kPerConfig = 3` and 4 configs ×
+2 windings, you get 12 candidates per winding (24 total) instead of
+~120 — same order of speedup as my failed attempt, but without
+breaking score locality.
+
+Need to refactor `CoilAdviser::get_advised_coil_for_pattern`'s per-
+winding candidate loop to keep the chunks separate before
+concatenating, so the cap can apply to each chunk independently.
+Probably 30–60 minutes of careful work + regression run. The reverted
+attempt's commit message and inline comment (now removed) capture the
+context.
+
+### What's known about the actual hang
+
+Still no reproducer from WebFrontend captured. The
+`mkf.calculate_advised_coil` wasm entry prints
+`=== INPUT_JSON_START ===` then the MAS JSON to stdout — the next
+WebFrontend playwright run will surface the exact failing inputs in
+its console capture. Until then, the per-config-cap refactor would
+have to be validated against LLC_VariantMatrix as the proxy.
