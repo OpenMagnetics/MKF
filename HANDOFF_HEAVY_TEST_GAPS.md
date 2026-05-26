@@ -96,3 +96,56 @@ Recommended next session: re-run the WebFrontend heavy suite end-to-
 end. Several tests that timed out at 180-600 s should now finish in
 ~10-30 s. The remaining open work is Gap 2 (algorithmic refactor)
 and PFC slowness (profile + targeted optimisation).
+
+---
+
+## Session 4 update — Gap 3 PFC slowness FIXED
+
+Commit `c26c4c9f`: pre-Inductance pruning cap on the powder branch of
+`CoreAdviser::filter_standard_cores_power_application`. The ferrite
+branch already had an analogous pre-Losses cap (line 608); the
+powder branch was missing the symmetric pre-Inductance one and was
+running `add_initial_turns_by_inductance` + `filterMagneticInductance`
+on 3 609 candidates (400 cores × 10 powder materials each, after
+`add_powder_materials` blew the set up).
+
+Profile diff (from the new CORE_ADVISER_PROFILE=1 stage timer also
+added in this commit):
+
+  Stage            | Before  | After
+  -----------------+---------+--------
+  Inductance pwdr  | 246 s   | 5 s
+  Saturation pwdr  | 113 s   | 3 s
+  Losses pwdr      |  72 s   | 11 s
+
+Test_MagneticAdviserFromConverter_PFC end-to-end:
+  before: 5 min 25 s
+  after:  1 min 03 s   (5.2× faster, well under WebFrontend's 180 s)
+
+No regression on the 6 converter tests verified (PSFB, LLC, SRC,
+Vienna, Flyback, Buck) — same green output as session 3.
+
+### Status of the four gaps
+
+  Gap 1 (CLLLC ngspice non-convergence)            — FIXED (session 1, 03bf3f8f)
+  Gap 2 (Wire Adviser multi-winding hang)          — open
+  Gap 3 PSFB / LLC FB+CT/CD / SRC return zero      — FIXED (session 3, 3175d9fb + f65913e3)
+  Gap 3 PFC slowness                                — FIXED (session 4, c26c4c9f)
+  Gap 4 MagneticAdviser empty                       — cascade-fixed by Gap 3 work
+
+### What's still open
+
+Gap 2 — multi-winding Wire Adviser hang (Flyback, Isolated-BB,
+        Push-Pull, LLC, Vienna, Weinberg, Zeta playwright G2 tests).
+        Needs the top-K-per-winding refactor of the inner wind loop
+        (`CoilAdviser::get_advised_coil_for_pattern` lines ~636-792)
+        to cap pairing at K² instead of |wireDatabase|^N. The 60 s
+        wall-clock timer attempt in 4b4ebc48 was reverted (silent
+        shortcut; CLAUDE.md disallows). Real fix requires:
+          1. Capturing the actual MAS JSON the WebFrontend posts to
+             `mkf.calculate_advised_coil` (the wasm entry already
+             logs it via INPUT_JSON_START markers) so we have a
+             deterministic MKF unit-test reproducer.
+          2. Refactor: per-winding, generate top-K candidates by
+             individual score (where K is configurable, default 10);
+             only the K×K pairing matrix runs through wind().
