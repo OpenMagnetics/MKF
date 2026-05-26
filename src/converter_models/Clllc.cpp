@@ -1195,6 +1195,14 @@ std::string Clllc::generate_ngspice_circuit(
     }
 
     // -------- HV tank: bridge_a_hv → Cr1 → Lr1 → Lpri_top, Lpri_bot ↔ bridge_b_hv --------
+    // Component values can be sub-microscale (Cr1 ~ 58 nF, Lr1 ~ 3.6 μH,
+    // maxStep ~ 5.7 ns). The stream is in std::fixed mode at this point
+    // (set on line 1171 inside the diode model emit). At default 6-decimal
+    // precision a 5.8e-8 cap rounds to "0.000000", which ngspice rejects
+    // with "Error on line N: Simulation interrupted due to error!". Force
+    // scientific so all small component values emit faithfully; we restore
+    // fixed before the K-statements where 0.999 reads cleaner as decimal.
+    c << std::scientific;
     c << "\n* HV-side tank (Lr1 + Cr1 + Lm)\n";
     c << "V_pri_bridge_sense bridge_a_hv tank_hv_a 0\n";
     c << "Cr1 tank_hv_a cr1_lr1 " << Cr1 << " IC=0\n";
@@ -1214,6 +1222,7 @@ std::string Clllc::generate_ngspice_circuit(
     c << "V_Lr2_sense lsec_top lsec_top_s 0\n";
     c << "Lsec lsec_top_s lsec_bot " << Lsec << "\n";
     c << "Rsec_ret lsec_bot bridge_b_lv 0.001\n\n";
+    c << std::fixed;
 
     // -------- Coupling --------
     // Three K-statements per CLLLC_PLAN §A.6:
@@ -1241,7 +1250,12 @@ std::string Clllc::generate_ngspice_circuit(
     c << ".options METHOD=" << cfg.method
       << " TRTOL=" << cfg.trTol << "\n\n";
 
-    c << ".tran " << maxStep << " " << simTime << " " << startT << " " << maxStep << " UIC\n\n";
+    // .tran tstep tstop tstart tmaxstep — force scientific because maxStep
+    // is sub-microsecond (period/500 ≈ 5.7 ns at 350 kHz) and rounds to
+    // "0.000000" under std::fixed's default 6-decimal precision, which
+    // ngspice rejects.
+    c << ".tran " << std::scientific << maxStep << " " << simTime
+      << " " << startT << " " << maxStep << " UIC\n\n" << std::fixed;
 
     c << ".save v(vdc_HV) v(vdc_LV) v(bridge_a_hv) v(bridge_b_hv)"
       << " v(bridge_a_lv) v(bridge_b_lv) v(lpri_top) v(lpri_bot)"
