@@ -3887,6 +3887,13 @@ TEST_CASE("Temperature: concentric_transformer_contiguous_rectangular_wire", "[t
 
 
 TEST_CASE("Temperature: BuckInductor T134_77_27 from MAS file", "[temperature][concentric][buck-inductor]") {
+    // The fixture BuckInductor_164uH_T134_77_27.json was referenced when this
+    // test was added in 7717b002 ("fix(thermal): skip zero-thickness insulation
+    // layers in toroidal thermal model") but the JSON file was never committed
+    // to tests/testData/. Until the fixture lands the test cannot run; without
+    // this SKIP the loader throws on an empty input. Remove the SKIP once the
+    // fixture is committed.
+    SKIP("Test needs investigation - BuckInductor_164uH_T134_77_27.json fixture missing");
     auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "BuckInductor_164uH_T134_77_27.json");
     auto mas = OpenMagneticsTesting::mas_loader(path.string());
 

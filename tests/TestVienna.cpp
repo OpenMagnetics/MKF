@@ -616,12 +616,13 @@ TEST_CASE("Vienna: peakOfLineOnly default keeps identical-phases behaviour",
 }
 
 
-TEST_CASE("Vienna: missing operating points fails run_checks", "[vienna-topology]") {
+TEST_CASE("Vienna: missing operating points fails at construction", "[vienna-topology]") {
+    // Vienna validates spec shape eagerly in the ctor (validate_vienna_spec_shape
+    // at Vienna.cpp:86). Empty operatingPoints arrays are rejected before
+    // run_checks ever runs, which is the desired fail-fast contract.
     auto j = make_vienna_json();
     j["operatingPoints"] = json::array();
-    Vienna v(j);
-    REQUIRE_FALSE(v.run_checks(false));
-    REQUIRE_THROWS_AS(v.run_checks(true), std::runtime_error);
+    REQUIRE_THROWS_AS(Vienna(j), std::runtime_error);
 }
 
 
