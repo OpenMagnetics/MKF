@@ -134,3 +134,15 @@ tests/testData
 src/tools
 
 output/
+# Claude Code internals (local-only)
+.claude/
+memory/
+
+# Test runner artifacts
+test-results/
+
+# Stray dev/build outputs that have been mass-cleaned once already
+gmon.out
+_.svg
+bobbin-visible.png
+norwe_bobbins.ndjson
