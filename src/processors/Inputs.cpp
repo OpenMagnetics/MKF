@@ -1159,11 +1159,28 @@ double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excita
     if (!excitation.get_voltage()) {
         return 0.0;
     }
-    const auto& voltage = excitation.get_voltage().value();
-    if (voltage.get_waveform() && voltage.get_waveform()->get_time()) {
-        const auto& wf = voltage.get_waveform().value();
+    // MAS::OperatingPointExcitation::get_voltage() (and every other MAS-
+    // generated optional getter on this path) returns
+    // `std::optional<...>` BY VALUE (MAS.hpp:4650). Binding
+    //     const auto& voltage = excitation.get_voltage().value();
+    // takes a reference to the contents of the temporary optional, which
+    // dies at the end of the full-expression — leaving `voltage` dangling
+    // and silently returning an empty optional from
+    // `voltage.get_waveform()` even when the original excitation has a
+    // populated voltage waveform. Symptom upstream was the transformer
+    // saturation-aware initial-N (CoreAdviserDataset.cpp:552) computing
+    // `nFromSat = 0`, falling back to 5 turns, and then the saturation
+    // filter rejecting every ferrite core for PSFB / SRC / LLC / Vienna
+    // designs because B_peak = V·s / (N·Ae) ≫ B_sat at N=5.
+    // Copy each level by value so all references stay valid for the
+    // whole function.
+    const auto voltage = excitation.get_voltage().value();
+    const auto waveformOpt = voltage.get_waveform();
+    if (waveformOpt.has_value() && waveformOpt.value().get_time().has_value()) {
+        const auto& wf = waveformOpt.value();
         const auto& data = wf.get_data();
-        const auto& time = wf.get_time().value();
+        const auto timeOpt = wf.get_time();
+        const auto& time = timeOpt.value();
         double integral = 0.0;
         double maxVoltSeconds = 0.0;
         for (size_t j = 0; j + 1 < std::min(data.size(), time.size()); ++j) {
@@ -1173,11 +1190,12 @@ double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excita
         return maxVoltSeconds;
     }
     // Sinusoidal fallback from processed peak: V·t_max = V_peak / ω.
-    if (voltage.get_processed() && voltage.get_processed()->get_peak()) {
+    const auto processedOpt = voltage.get_processed();
+    if (processedOpt.has_value() && processedOpt.value().get_peak().has_value()) {
         double frequency = excitation.get_frequency() > 0 ? excitation.get_frequency() : 100000.0;
         double omega = 2.0 * std::numbers::pi * frequency;
         if (omega > 0) {
-            return voltage.get_processed()->get_peak().value() / omega;
+            return processedOpt.value().get_peak().value() / omega;
         }
     }
     return 0.0;
