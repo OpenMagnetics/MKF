@@ -235,3 +235,60 @@ Still no reproducer from WebFrontend captured. The
 WebFrontend playwright run will surface the exact failing inputs in
 its console capture. Until then, the per-config-cap refactor would
 have to be validated against LLC_VariantMatrix as the proxy.
+
+---
+
+## Session 6 — Gap 2 per-config cap LANDED (c1c21964)
+
+Implemented the session-5 lesson correctly: cap each `wireConfiguration`'s
+returned `wiresWithScoring` to top K=10 BEFORE concatenating into
+`wireCoilPerWinding[w]`, not after a global merge-sort. Applied to both
+wound (`CoilAdviser.cpp:780`) and planar (`CoilAdviser.cpp:1067`) paths.
+
+Per-chunk truncation preserves each config's locally-scored ordering
+and the within-config locality the greedy `wind()`-pairing walk
+depends on. Cross-config score comparison (which broke session 5's
+attempt) is never performed.
+
+### Regression run (all green)
+
+  Test                                          | Before    | After
+  ----------------------------------------------+-----------+----------
+  CoilAdviser flyback top-3 snapshot            | 10/10     | 10/10
+  [coil-adviser] tag (full)                     | n/a       | 46p 2s 374a
+  Test_MagneticAdviserFromConverter_PSFB        | 9 s       | 9 s
+  Test_MagneticAdviserFromConverter_Flyback     | 9 s       | 9 s
+  Test_MagneticAdviserFromConverter_Vienna      | 7 s       | 7 s
+  Test_MagneticAdviserFromConverter_PFC         | 1 min 03 s| 1 min 04 s
+  Test_MagneticAdviserFromConverter_SRC_Variant | passes    | 37 s
+  Test_MagneticAdviserFromConverter_LLC_Variant | 47 s      | 1 min 08-12 s
+
+LLC_VariantMatrix is mildly slower (one CoilAdviser call now returns
+fewer candidates -> MagneticAdviser advances to more cores in its
+`whileIteration` loop). Still comfortably under the 180 s
+WebFrontend playwright budget. Acceptable trade-off for bounding
+the worst-case multi-winding hang.
+
+### Status of the four gaps
+
+  Gap 1 (CLLLC ngspice non-convergence)            — FIXED (session 1, 03bf3f8f)
+  Gap 2 (Wire Adviser multi-winding hang)          — FIXED (session 6, c1c21964)
+  Gap 3 PSFB / LLC FB+CT/CD / SRC return zero      — FIXED (session 3, 3175d9fb + f65913e3)
+  Gap 3 PFC slowness                                — FIXED (session 4, c26c4c9f)
+  Gap 4 MagneticAdviser empty                       — cascade-fixed by Gap 3 work
+
+### What's still open
+
+1. **WebFrontend validation**: capture the failing MAS JSON via the
+   `=== INPUT_JSON_START ===` markers in `WebLibMKF/src/libMKF.cpp:2849`
+   from a fresh playwright run, then confirm the Gap 2 cap actually
+   resolves the original G2 hangs (LLC_VariantMatrix was used here as
+   a proxy regression-gate, not as the actual reproducer).
+2. **WASM rebuild + heavy playwright re-run**: with sessions 1-6 fixes
+   in, the previously-timing-out CLLLC, PSFB, LLC FB+CT/CD, SRC, PFC,
+   and multi-winding G2 variants should finish well under their
+   playwright budgets.
+3. **Tune K if needed**: K=10 was chosen to comfortably preserve the
+   flyback snapshot (whose top wire is wire #1 of config #1). If
+   LLC's mild slowdown becomes a concern, bump K to 15-20. If a
+   WebFrontend trace still hangs, try K=5.
