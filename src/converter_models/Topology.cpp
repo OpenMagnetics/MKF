@@ -177,6 +177,10 @@ namespace OpenMagnetics {
                 pushPull.vnTol  = 1e-4;
                 pushPull.itl1 = 500;           pushPull.itl4 = 200;
                 pushPull.method = "TRAP";      pushPull.trTol = 7.0;
+                // Topology-specific extras (see SpiceSimulationConfig::extras).
+                pushPull.extras["rectifierSnubR"]         = 100.0;   // Ω
+                pushPull.extras["rectifierSnubC"]         = 1e-9;    // 1 nF
+                pushPull.extras["floatingNodeProtection"] = 1e6;     // 1 MΩ
                 m[MAS::Topologies::PUSH_PULL_CONVERTER] = pushPull;
             }
 
@@ -199,6 +203,7 @@ namespace OpenMagnetics {
                 cuk.vnTol = 1e-4;
                 cuk.itl1 = 500;            cuk.itl4 = 500;
                 cuk.method = "GEAR";       cuk.trTol = 7.0;
+                cuk.extras["snubDampR"] = 0.001;   // 1 mΩ snubber-chain damper
                 m[MAS::Topologies::CUK_CONVERTER] = cuk;
             }
 
@@ -215,6 +220,7 @@ namespace OpenMagnetics {
                 sepic.vnTol = 1e-4;
                 sepic.itl1 = 500;            sepic.itl4 = 500;
                 sepic.method = "GEAR";       sepic.trTol = 7.0;
+                sepic.extras["snubDampR"] = 0.001;   // 1 mΩ snubber-chain damper
                 m[MAS::Topologies::SEPIC_CONVERTER] = sepic;
             }
 
@@ -232,6 +238,7 @@ namespace OpenMagnetics {
                 zeta.vnTol = 1e-4;
                 zeta.itl1 = 500;             zeta.itl4 = 500;
                 zeta.method = "GEAR";        zeta.trTol = 7.0;
+                zeta.extras["snubDampR"] = 0.001;   // 1 mΩ snubber-chain damper
                 m[MAS::Topologies::ZETA_CONVERTER] = zeta;
             }
 

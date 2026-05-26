@@ -545,7 +545,7 @@ namespace OpenMagnetics {
         circuit << "S1 node_A_int 0 pwm_ctrl 0 SW1\n";
         circuit << "Rsnub_s1 node_A_int 0 " << cfg.snubR << "\n"
                 << "Csnub_s1 node_A_int snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                << "Rsnub_s1b snub_s1_int 0 " << 0.001 << "\n\n";
+                << "Rsnub_s1b snub_s1_int 0 " << cfg.getExtra("snubDampR") << "\n\n";
 
         // Cs coupling cap (node_A_int → node_B with sense + ESR)
         circuit << "* Cs coupling cap (with ESR; +plate at node_A side, IC=Vin)\n";
@@ -573,7 +573,7 @@ namespace OpenMagnetics {
             circuit << "S2 rect_in vout pwm_ctrl_inv 0 SW2\n";
             circuit << "Rsnub_d1 rect_in 0 " << cfg.snubR << "\n"
                     << "Csnub_d1 rect_in snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << cfg.getExtra("snubDampR") << "\n\n";
         } else {
             circuit << "* D1 rectifier diode\n";
             circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
@@ -582,7 +582,7 @@ namespace OpenMagnetics {
             circuit << "D1 rect_in vout DIDEAL\n";
             circuit << "Rsnub_d1 rect_in 0 " << cfg.snubR << "\n"
                     << "Csnub_d1 rect_in snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << cfg.getExtra("snubDampR") << "\n\n";
         }
 
         // V2 coupled-inductor: K_L1L2 between L1 and L2.

@@ -925,7 +925,7 @@ namespace OpenMagnetics {
         circuit << "S1 node_A_int 0 pwm_ctrl 0 SW1\n";
         circuit << "Rsnub_s1 node_A_int 0 " << cfg.snubR << "\n"
                 << "Csnub_s1 node_A_int snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                << "Rsnub_s1b snub_s1_int 0 " << 0.001 << "\n\n";
+                << "Rsnub_s1b snub_s1_int 0 " << cfg.getExtra("snubDampR") << "\n\n";
 
         // Coupling section. V1/V2: single C1 between node_A_int and node_B.
         // V3 isolated: split into Ca → Lp ⟂ Ls → Cb with the transformer
@@ -979,7 +979,7 @@ namespace OpenMagnetics {
             circuit << "S2 node_B d_cath pwm_ctrl_inv 0 SW2\n";
             circuit << "Rsnub_d1 node_B 0 " << cfg.snubR << "\n"
                     << "Csnub_d1 node_B snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << cfg.getExtra("snubDampR") << "\n\n";
         } else {
             circuit << "* D1 freewheel diode\n";
             circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
@@ -987,7 +987,7 @@ namespace OpenMagnetics {
             circuit << "D1 node_B d_cath DIDEAL\n";
             circuit << "Rsnub_d1 node_B 0 " << cfg.snubR << "\n"
                     << "Csnub_d1 node_B snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << cfg.getExtra("snubDampR") << "\n\n";
         }
 
         // L2 output inductor (from node_B to vout_load_node, with DCR)

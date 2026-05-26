@@ -195,6 +195,41 @@ struct SpiceSimulationConfig {
     double outputCapacitance              = 100e-6;  // [F]
     double outputCapInitialChargeFraction = 1.0;     // IC = Vout * fraction
 
+    // ---- Topology-specific extras (string-keyed map) ----
+    //
+    // Any per-topology numeric SPICE value that doesn't fit one of the
+    // named fields above lives here. Keyed by a stable string so the
+    // same key can be reused across similar topologies. Examples
+    // actually used today:
+    //   "rectifierSnubR"          — secondary-side rectifier snubber R
+    //                              (distinct from switch-side snubR;
+    //                              PushPull uses 100 Ω vs 1 kΩ switch)
+    //   "rectifierSnubC"          — secondary-side rectifier snubber C
+    //                              (PushPull uses 1 nF)
+    //   "floatingNodeProtection"  — high-value pull-down (~1 MΩ) on
+    //                              floating winding nodes to keep
+    //                              ngspice's DC OP solver happy
+    //   "snubDampR"               — small (mΩ-class) damping resistor
+    //                              series with the RC snubber chain
+    //                              (Cuk / Sepic / Zeta pattern)
+    //
+    // No silent fallback per CLAUDE.md §"No fallbacks": getExtra() throws
+    // when the key is not set so a misconfigured registry entry surfaces
+    // loudly with the missing key name, instead of running with a
+    // placeholder value nobody can trust.
+    std::map<std::string, double> extras;
+    double getExtra(const std::string& key) const {
+        auto it = extras.find(key);
+        if (it == extras.end()) {
+            throw std::runtime_error(
+                "SpiceSimulationConfig::getExtra: missing key '" + key +
+                "' — add it to this topology's entry in "
+                "spice_simulation_defaults() (Topology.cpp) or drop the "
+                "call site that needs it.");
+        }
+        return it->second;
+    }
+
     // ---- Solver / transient ----
     int    samplesPerPeriod = 200;
     double relTol  = 1e-3;

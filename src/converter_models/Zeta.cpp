@@ -546,7 +546,7 @@ namespace OpenMagnetics {
         circuit << "S1 sw_top node_SW pwm_ctrl 0 SW1\n";
         circuit << "Rsnub_s1 sw_top node_SW " << cfg.snubR << "\n"
                 << "Csnub_s1 sw_top snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                << "Rsnub_s1b snub_s1_int node_SW " << 0.001 << "\n\n";
+                << "Rsnub_s1b snub_s1_int node_SW " << cfg.getExtra("snubDampR") << "\n\n";
 
         // L1 magnetizing inductor: node_SW → GND (with DCR).
         circuit << "* L1 magnetizing inductor (top at node_SW; with DCR)\n";
@@ -577,7 +577,7 @@ namespace OpenMagnetics {
             circuit << "S2 0 rect_in pwm_ctrl_inv 0 SW2\n";
             circuit << "Rsnub_d1 0 node_X " << cfg.snubR << "\n"
                     << "Csnub_d1 node_X snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << cfg.getExtra("snubDampR") << "\n\n";
         } else {
             circuit << "* D1 catch diode (anode=GND, cathode=node_X)\n";
             circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
@@ -586,7 +586,7 @@ namespace OpenMagnetics {
             circuit << "D1 0 rect_in DIDEAL\n";
             circuit << "Rsnub_d1 0 node_X " << cfg.snubR << "\n"
                     << "Csnub_d1 node_X snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
-                    << "Rsnub_d1b snub_d1_int 0 " << 0.001 << "\n\n";
+                    << "Rsnub_d1b snub_d1_int 0 " << cfg.getExtra("snubDampR") << "\n\n";
         }
 
         // L2 output inductor: node_X → vout (with DCR).

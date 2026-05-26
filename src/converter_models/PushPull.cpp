@@ -1455,12 +1455,17 @@ namespace OpenMagnetics {
         circuit << "K5 Lpri_bot Lsec_bot 0.9999\n";
         circuit << "K6 Lsec_top Lsec_bot 0.9999\n\n";
 
-        // Convergence helpers (high impedance, negligible effect)
+        // Convergence helpers (high-impedance pull-downs on the floating
+        // winding nodes — prevent ngspice DC OP failure on otherwise-
+        // ungrounded transformer terminals). Sourced from
+        // cfg.extras["floatingNodeProtection"]; throws if the registry
+        // entry forgot to set it.
+        const double Rfloat = cfg.getExtra("floatingNodeProtection");
         circuit << "* Convergence helpers\n";
-        circuit << "Rsnub_top pri_top 0 1MEG\n";
-        circuit << "Rsnub_bot pri_bot 0 1MEG\n";
-        circuit << "Rsnub_sec_top sec_top 0 1MEG\n";
-        circuit << "Rsnub_sec_bot sec_bot 0 1MEG\n\n";
+        circuit << "Rsnub_top pri_top 0 "      << Rfloat << "\n";
+        circuit << "Rsnub_bot pri_bot 0 "      << Rfloat << "\n";
+        circuit << "Rsnub_sec_top sec_top 0 "  << Rfloat << "\n";
+        circuit << "Rsnub_sec_bot sec_bot 0 "  << Rfloat << "\n\n";
 
         // =====================================================================
         // Output Rectifiers and Filter
@@ -1475,11 +1480,18 @@ namespace OpenMagnetics {
         circuit << "Vsec_bot_sense sec_bot sec_bot_d 0\n";
         circuit << "Dsec_bot sec_bot_d sec_rect DIDEAL\n";
         
-        // RC snubbers across diodes
-        circuit << "Rsnub_d1 sec_top sec_snub1 100\n";
-        circuit << "Csnub_d1 sec_snub1 sec_rect 1n\n";
-        circuit << "Rsnub_d2 sec_bot sec_snub2 100\n";
-        circuit << "Csnub_d2 sec_snub2 sec_rect 1n\n";
+        // RC snubbers across the rectifier diodes. These are SECONDARY-
+        // side snubbers with their own R/C distinct from the primary
+        // switch snubber (cfg.snubR/snubC). Sourced from
+        // cfg.extras["rectifierSnubR" / "rectifierSnubC"].
+        const double rsnubR = cfg.getExtra("rectifierSnubR");
+        const double rsnubC = cfg.getExtra("rectifierSnubC");
+        circuit << "Rsnub_d1 sec_top sec_snub1 " << rsnubR << "\n";
+        circuit << "Csnub_d1 sec_snub1 sec_rect " << std::scientific
+                << rsnubC << std::defaultfloat << "\n";
+        circuit << "Rsnub_d2 sec_bot sec_snub2 " << rsnubR << "\n";
+        circuit << "Csnub_d2 sec_snub2 sec_rect " << std::scientific
+                << rsnubC << std::defaultfloat << "\n";
 
         // Output current sense
         circuit << "Vsec_sense sec_rect sec_l_in 0\n";
