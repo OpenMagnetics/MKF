@@ -4,6 +4,7 @@
 #include "constructive_models/Insulation.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include <algorithm>
+#include <chrono>
 #include <set>
 #include <limits> // B18 FIX: for numeric_limits
 #include "support/Exceptions.h"
@@ -822,7 +823,24 @@ namespace OpenMagnetics {
         const size_t kMaxConsecutiveFailuresWithNoSuccess = std::max<size_t>(25, totalCandidates);
         size_t consecutiveFailures = 0;
 
+        // Wall-clock budget: cap inner-loop runtime to 60 s. Multi-winding
+        // wizards (Flyback, Push-Pull, LLC, Isolated-BB, Vienna, Weinberg)
+        // can otherwise produce >100 s per call when both windings have
+        // ~120 candidates (4 wireConfigurations × 30 wires) and wind()
+        // fails most of them. The WebFrontend test harness assumes
+        // advisers return well within its 180 s test timeout — without
+        // this cap, the call hangs and the wizard's wire-advise step
+        // never completes. Surface whatever was found within budget;
+        // emptiness still throws or returns gracefully at the caller.
+        const auto kInnerLoopWallBudget = std::chrono::seconds(60);
+        const auto innerLoopStart = std::chrono::steady_clock::now();
+
         while (true) {
+            if (std::chrono::steady_clock::now() - innerLoopStart > kInnerLoopWallBudget) {
+                logEntry("Wind loop hit 60 s wall-clock budget; returning what's been found so far ("
+                         + std::to_string(masesWithCoil.size()) + " coil(s))", "CoilAdviser", 1);
+                break;
+            }
 
             std::vector<Winding> windings;
 
@@ -1099,7 +1117,18 @@ namespace OpenMagnetics {
 
         size_t wiresIndex = 0;
 
+        // Planar branch wall-clock budget (mirrors the wound-branch cap at
+        // get_advised_coil_for_pattern). 60 s ceiling on the wind-and-try
+        // loop so multi-winding planar requests can't hang the caller.
+        const auto kPlanarInnerLoopWallBudget = std::chrono::seconds(60);
+        const auto planarInnerLoopStart = std::chrono::steady_clock::now();
+
         while (true) {
+            if (std::chrono::steady_clock::now() - planarInnerLoopStart > kPlanarInnerLoopWallBudget) {
+                logEntry("Planar wind loop hit 60 s wall-clock budget; returning "
+                         + std::to_string(masesWithCoil.size()) + " coil(s)", "CoilAdviser", 1);
+                break;
+            }
 
             std::vector<Winding> windings;
 
