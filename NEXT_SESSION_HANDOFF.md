@@ -12,7 +12,16 @@ runtime: 3027 s (~50 min) — fast subset only, excludes [adviser][slow][ptp][re
 
 99.0% case pass / 99.99% assertion pass. The remaining **21 failures
 are pre-existing** (verified by stashing the last commit and re-running
-at HEAD~1 for the affected suites) and split into 5 categories below.
+at HEAD~1 for the affected suites).
+
+The actual list (enumerated from a 50-min `-r compact` run captured to
+`/tmp/mkf_full.log` at handoff time) is **further down in §"The actual
+21 failing test cases (ground-truth list)"** — the speculative
+categories A-E I wrote first turned out to be misleading (those were
+[adviser]/[ptp]-tagged failures that DON'T appear in the fast suite).
+**The fast-suite failures are concentrated in core-losses, winding-
+losses, temperature, and fracpole — not the adviser pattern I
+expected.** Read the ground-truth list before anything else.
 
 ---
 
@@ -47,30 +56,106 @@ suite to confirm no new regressions, in this order:
 
 ---
 
-## First step: enumerate the 21 failing tests
+## The actual 21 failing test cases (ground-truth list)
 
-The summary line from a fast-suite run only gives counts; you need the
-test names. Run with `--reporter compact` and capture to a file:
+Already enumerated during this session — 30 unique `file:line` assertion
+sites in 10 source locations, distributed across 21 `TEST_CASE` runs.
+Listed below in priority order (cheap-to-debug first, hardest last).
 
-```bash
-cd /home/alf/OpenMagnetics/MKF/build
-./MKF_tests "~[adviser]~[slow]~[ptp]~[refdesign]" -r compact 2>&1 \
-  | tee /tmp/mkf_failures.log
-grep -E "^/.*\.cpp:[0-9]+: failed:" /tmp/mkf_failures.log | sort -u
-```
+### 1. `Test_Vienna_missing_operating_points_fails_run_checks`
+- **File:** `tests/TestVienna.cpp:619`
+- **Symptom:** `unexpected exception: 'Vienna: 'operatingPoints' must be a non-empty array'`
+- **Cause:** `Vienna::Vienna(const json&)` calls `validate_vienna_spec_shape(j)` which throws on empty `operatingPoints` BEFORE the test calls `run_checks(true)`. Test expects the ctor to succeed and `run_checks` to throw — but the ctor pre-empts it.
+- **Fix options:** (a) move the empty-operatingPoints check from `validate_vienna_spec_shape` into `run_checks`; (b) rewrite the test to expect the ctor throw. Option (a) is cleaner — keep `validate_vienna_spec_shape` for malformed JSON (wrong types) and let `run_checks` handle empty business-logic states.
 
-That gives `file.cpp:line` for each FAILED assertion. Cross-reference
-each line to its enclosing `TEST_CASE("Test_*", ...)` via:
+### 2. `Test_Fracpole_Evaluate_Debug`
+- **File:** `tests/TestCircuitSimulatorInterface.cpp:2857`
+- **Symptom:** `R_high > R_low * 10 for: 0.00000000016167893 > 0.00147055906061926` — i.e. R_high (~1.6e-10) is FAR smaller than R_low (~1.5e-3), inverting the expected stage ordering.
+- **Cause:** The 12-stage fracpole network's R values are being computed in the wrong order or with a wrong scaling. The test name has `[debug]` — possibly a half-finished investigation.
+- **Investigation seed:** read `emit_fracpole_winding_spice` in `src/processors/CircuitSimulatorInterface.cpp` around the R-stage generation. Compare the ordering against `Test_Fracpole_Evaluate_Smoke` if that one passes.
 
-```bash
-awk '/^TEST_CASE\(/{name=$0} NR==<LINE>{print name; exit}' tests/<file>
-```
+### 3. Three `TestTemperature` failures
+- **`Temperature: concentric_flyback_rectangular_column`** — `tests/TestTemperature.cpp:3664` — `tempsByType.at("core") <= 605.73 for: 676.79378...` — core temp 671 K vs gate 605.73 K (≈12 % over).
+- **`Temperature: concentric_transformer_contiguous_rectangular_wire`** — `tests/TestTemperature.cpp:3777` — `tempsByType.at("core") >= 283.82 for: 270.933...` — core temp 271 vs gate 283.82 (≈5 % under).
+- **`Temperature: BuckInductor T134_77_27 from MAS file`** — `tests/TestTemperature.cpp:3889` — `'[json.exception.parse_error.101] parse error at line 1, column 1: attempting to parse an empty input'` — the MAS file load is returning empty content.
+- **Cause:** Two are thermal-model drift (the bounds are tight ±5-12 %) — likely a thermal-network parameter shifted in some commit. The third is a file-loading bug — `T134_77_27` MAS file path or load function returns empty input.
+- **Investigation seed:** Bisect when `Test_Buck_Inductor*` started failing for the empty-input case (`git log -p tests/TestTemperature.cpp | head -200`). For the two ± bound failures, check if the thermal-network resistance values in `src/physical_models/Temperature.cpp` have moved recently.
 
-…or simpler, open the file and look up.
+### 4. `Test_Kool_Mu_Ultra_60`
+- **File:** `tests/TestCoreLosses.cpp:2712`
+- **Symptom:** `Catch::Matchers::WithinAbs(...) for: 0.23200000000000001 is within 0.0232 of 0.26913806865459983` — actual `B_offset` is 0.269 vs expected 0.232 ± 0.023.
+- **Cause:** Kool Mu Ultra 60 material parameters drifted, or the new test data was authored against a different model coefficient. ~16 % offset error.
+
+### 5. `Test_Core_Losses_Hoganas`
+- **File:** `tests/TestCoreLosses.cpp:2855`
+- **Symptom:** `'[json.exception.parse_error.101] parse error at line 1, column 1: attempting to parse an empty input'` — same empty-MAS-file pattern as the Buck temperature test above. Likely the same root cause.
+
+### 6. Mass core-losses formula blowup — `TestCoreLosses.cpp:700`
+- **File:** `tests/TestCoreLosses.cpp:700` (assertion site inside the helper `test_core_losses_*`; called from MANY TEST_CASEs starting at line 1742).
+- **Symptom:** **Multiple failures with catastrophic numerical blowup:**
+  - `138214 within 79389 of 49618` — 2.8× off (recoverable)
+  - `343943 within 99200 of 62000` — 5.5× off
+  - `1.4e+27` value
+  - `6.6e+42` value
+  - `1.8e+33` value
+  - `2.8e+233` value
+  - `4.7e+97` value
+  - `6.7e+115` value
+  - **Three `inf` results**
+- **Cause:** One or more core-loss formulas overflow at certain operating-point ranges. The pattern (clusters around specific value scales) suggests a `pow(B, n)` or `exp(...)` blowing up when an intermediate goes negative or exceeds a representable range. Inf appearances point at division-by-zero somewhere.
+- **Investigation seed:** Grep the helper to identify which model is computing each value: `awk 'NR>=600 && NR<=750' tests/TestCoreLosses.cpp`. Then check the model classes in `src/physical_models/CoreLosses*.cpp` — almost certainly one of Steinmetz / iGSE / Magnetics / Micrometals has a bad input-range guard.
+- **Triage:** Run the suite filtered to ONE model at a time (each `TEST_CASE` uses a specific `CoreLossesModels` enum) to isolate which model is bad: `MKF_tests "[steinmetz-core-losses-model]"`, `"[igse-core-losses-model]"`, etc.
+
+### 7. Mass winding-losses tolerance drift — `TestWindingLosses.cpp:61` and `:98`
+- **File:** `tests/TestWindingLosses.cpp:61` (2 fails) and `:98` (6+ fails). Both are inside helper functions called from MANY TEST_CASEs starting at line 108.
+- **Symptom:** Mix of mild and catastrophic drift:
+  - Line 61: `0.000442 within 0.000110 of 0.000573` — ~30 % off (mild)
+  - Line 61: `0.01035 within 0.0026 of 0.01295` — ~25 % off
+  - Line 98: `0.34495 within 0.086 of 0.25370` — ~36 %
+  - Line 98: `1421 within 426 of 9.74` — ~146× off (catastrophic)
+  - Line 98: `1438 within 432 of 9.30` — ~155×
+  - Line 98: `219 within 55 of 164` — ~33 %
+  - Line 98: `289 within 87 of 7.98` — ~36×
+  - Line 98: `513 within 154 of 93.5` — ~5.5×
+- **Cause:** Two distinct issues — the 25-36 % drifts are tolerance/coefficient shifts; the 36-155× catastrophic results are a wrong-formula regression for a subset of inputs (probably a unit confusion or missing reflection factor for some winding geometries).
+- **Investigation seed:** `tests/TestWindingLosses.cpp:60-100` to see which helper and which inputs trigger each. Then look at `src/physical_models/WindingOhmicLosses*.cpp` for recent changes.
+- **Note:** Lines 61 and 98 are in TEST_CASEs `Test_Winding_Losses_One_Turn_Round_Sinusoidal_Stacked` (line 108) and tests around line 195+ — the smoke-tagged ones explicitly tagged `[!mayfail]` (which is a milder XFAIL, will fail-as-expected, but NOT the `[!shouldfail]` we should leave alone). Confirm the failing ones don't carry `[!mayfail]` — if they do, they're already accepted-as-broken and shouldn't be in the 21 count.
 
 ---
 
-## The 5 failure categories I observed during the SPICE sweep
+## Quick-repro per failure (no 50-min suite needed)
+
+```bash
+cd /home/alf/OpenMagnetics/MKF/build
+./MKF_tests "Vienna: missing operating points fails run_checks"
+./MKF_tests "Test_Fracpole_Evaluate_Debug"
+./MKF_tests "Temperature: concentric_flyback_rectangular_column"
+./MKF_tests "Temperature: concentric_transformer_contiguous_rectangular_wire"
+./MKF_tests "Temperature: BuckInductor T134_77_27 from MAS file"
+./MKF_tests "Test_Kool_Mu_Ultra_60"
+./MKF_tests "Test_Core_Losses_Hoganas"
+# For the mass TestCoreLosses.cpp:700 failures, run each model tag:
+./MKF_tests "[steinmetz-core-losses-model]"
+./MKF_tests "[igse-core-losses-model]"
+./MKF_tests "[magnetics-core-losses-model]"
+./MKF_tests "[micrometals-core-losses-model]"
+# For winding-losses, both lines come from many TEST_CASEs — run the tag:
+./MKF_tests "[winding-losses]"
+```
+
+---
+
+## (Archived) Speculative categories from earlier in this session
+
+The five categories below were what I predicted the failures would look
+like based on targeted suite runs (`[llc-topology]`, `[psfb-topology]`,
+…) without proper exclusion of `[adviser]` / `[ptp]` / `[refdesign]`.
+**They are NOT the fast-suite failures** — those are the ones in the
+ground-truth list above. The categories here are still informative for
+the `[adviser]` / `[ptp]` / `[refdesign]` sweeps once the fast-suite
+ones are clean (a separate workstream). Skim, don't act on them yet.
+
+## 5 failure categories observed during the SPICE sweep (slow suites)
 
 ### Category A — `MagneticAdviser::get_advised_magnetic_from_converter` returns 0 results
 
