@@ -685,10 +685,18 @@ namespace {
     }
 
     TEST_CASE("Test_MagneticAdviser_Random", "[adviser][magnetic-adviser][random]") {
-        settings.reset();
-
         int count = 10;
         while (count > 0) {
+            // Reset adviser-visible global state at the *start* of every
+            // iteration. Previously this was done once before the loop, but
+            // some random inputs leave settings/databases in a state that
+            // corrupts the *next* iteration's call (manifesting as a
+            // SIGSEGV deep in the adviser pipeline on seeds 1/2/3/4/5/42/100/…
+            // — never on the captured input run in isolation). Per-iteration
+            // reset eliminates that cross-talk.
+            settings.reset();
+            clear_databases();
+
             std::vector<double> turnsRatios;
 
             std::vector<int64_t> numberTurns;
