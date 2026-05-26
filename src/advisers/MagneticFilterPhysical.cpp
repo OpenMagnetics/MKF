@@ -52,8 +52,23 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
     size_t opIndex = 0;
     for (auto operatingPoint : inputs->get_operating_points()) {
         double magneticFluxDensityPeak;
+        // Use RAW B_sat here (proportion=false). The Maniktala-style
+        // multiplicative `margin` derating below (Settings::get_core_adviser_-
+        // saturation_margin(), default 1.2) is the saturation-side safety
+        // factor. The `proportion` factor — defaults.maximumProportionMagnetic-
+        // FluxDensitySaturation = 0.7 — is the design-side target headroom
+        // used at initial-turn selection time (CoreAdviserDataset.cpp:551)
+        // so the picked N keeps steady-state B_peak ≈ 70 % of B_sat_raw.
+        // Stacking both factors here was a double-count: the filter rejected
+        // any candidate where B_peak × 1.2 > 0.7 × B_sat_raw (i.e.
+        // B_peak > 0.58 × B_sat_raw), which the initial-N seed cannot satisfy
+        // because it deliberately picked N for B_peak ≈ 0.7 × B_sat_raw.
+        // Net effect was every PSFB / LLC FB / SRC transformer that depended
+        // on the saturation-aware seed losing its entire candidate set at
+        // this filter (HANDOFF_HEAVY_TEST_GAPS.md §Gap 3 PSFB diagnosis).
         auto magneticFluxDensitySaturation = magnetic->get_mutable_core().get_magnetic_flux_density_saturation(
-            operatingPoint.get_conditions().get_ambient_temperature());
+            operatingPoint.get_conditions().get_ambient_temperature(),
+            /*proportion=*/false);
         
         if (isTransformer) {
             // For transformers, calculate B from voltage using MagnetizingInductance method
