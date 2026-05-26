@@ -656,10 +656,28 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             // Filter by dimensions
             powderCores = filterDimensions.filter_magnetics(&powderCores, inputs, 1, true);
             log_stage("Dimensions (powder)", powderCores.size());
-            
+
+            // Prune to top candidates by accumulated score before the
+            // expensive `add_initial_turns_by_inductance` +
+            // `filterMagneticInductance` pair. `add_powder_materials` blows
+            // the candidate set up by an order of magnitude (one entry per
+            // core × powder material — e.g. 400 cores × 10 materials = 4000)
+            // and the inductance step takes ~70 ms per candidate. Without
+            // this cap the powder path dominates PFC's 5-minute runtime
+            // (≈4 min on Inductance alone, profiled). Use the same
+            // top-K-by-score policy that the ferrite path already applies
+            // before its Losses filter (see line 608 in this file).
+            {
+                const size_t preInductanceCap = std::max<size_t>(maximumNumberResults * 5, 50);
+                if (settings.get_core_adviser_enable_intermediate_pruning() && powderCores.size() > preInductanceCap) {
+                    powderCores.resize(preInductanceCap);
+                    log_pruned("Inductance (powder)", powderCores.size());
+                }
+            }
+
             // Calculate turns
             add_initial_turns_by_inductance(&powderCores, inputs);
-            
+
             // Filter by inductance
             powderCores = filterMagneticInductance.filter_magnetics(&powderCores, inputs, 0.1, true);
             log_stage("Inductance (powder)", powderCores.size());

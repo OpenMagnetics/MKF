@@ -14,6 +14,9 @@
 #include "constructive_models/Magnetic.h"
 #include "physical_models/CoreLosses.h"
 #include "support/Logger.h"
+#include <chrono>
+#include <cstdlib>
+#include <iostream>
 #include <memory>
 #include <string>
 
@@ -23,8 +26,21 @@ namespace OpenMagnetics {
 //   logEntry("There are " + std::to_string(c.size()) + " magnetics after the X filter.", "CoreAdviser");
 // idioms that used to be scattered across the pipeline functions. Format:
 //   "After <stage>: <n>"   /   "Pruned to <n> before <stage>"
+//
+// CORE_ADVISER_PROFILE=1 in the environment additionally streams the
+// elapsed time between consecutive log_stage calls to stderr, for
+// per-stage timing investigations (e.g. finding the bottleneck in slow
+// converter wizards). Off by default — production callers and the
+// WebFrontend WASM build see only the existing log entries.
 inline void log_stage(const std::string& stage, size_t count) {
     logEntry("After " + stage + ": " + std::to_string(count), "CoreAdviser");
+    if (const char* dbg = std::getenv("CORE_ADVISER_PROFILE"); dbg && dbg[0] == '1') {
+        thread_local auto prev = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - prev).count();
+        std::cerr << "[CA-PROFILE] " << stage << ": " << dt_ms << " ms (count=" << count << ")\n";
+        prev = now;
+    }
 }
 inline void log_pruned(const std::string& stage, size_t count) {
     logEntry("Pruned to " + std::to_string(count) + " before " + stage, "CoreAdviser");
