@@ -245,9 +245,22 @@ namespace OpenMagnetics {
         size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(maximumNumberResults / (patterns.size() * repetitions.size())));
         logEntry("Trying " + std::to_string(repetitions.size()) + " repetitions and " + std::to_string(patterns.size()) + " patterns", "CoilAdviser");
 
+        // Early-termination cap. For multi-winding coils (Flyback, LLC,
+        // Push-Pull, IBB, Vienna, Weinberg…) the patterns × repetitions ×
+        // insulation-combinations enumeration easily exceeds the 240 s
+        // Playwright @heavy timeout — and once we have a comfortable pool
+        // of candidates for scoring, additional iterations add nothing.
+        // Allow 10× the caller's request so the stable_sort still has
+        // headroom to pick the top maximumNumberResults; for the typical
+        // calculate_advised_coil(mas, 1) call this caps at 10 candidates.
+        const size_t earlyTerminationCap = std::max<size_t>(maximumNumberResults * 10, 10);
+
         std::vector<Mas> masesWithCoil;
+        bool earlyTerminated = false;
         for (auto repetition : repetitions) {
+            if (earlyTerminated) break;
             for (auto pattern : patterns) {
+                if (earlyTerminated) break;
                 auto aux = mas.get_mutable_magnetic().get_mutable_coil().check_pattern_and_repetitions_integrity(pattern, repetition);
                 pattern = aux.first;
                 repetition = aux.second;
@@ -285,6 +298,12 @@ namespace OpenMagnetics {
                         auto resultsPerPattern = get_advised_coil_for_pattern(wires, mas, pattern, repetition, solidInsulationRequirementsForWires, maximumNumberResultsPerPattern, reference);
 
                         std::move(resultsPerPattern.begin(), resultsPerPattern.end(), std::back_inserter(masesWithCoil));
+                        if (masesWithCoil.size() >= earlyTerminationCap) {
+                            logEntry("CoilAdviser early-terminating: " + std::to_string(masesWithCoil.size()) +
+                                     " candidates (cap=" + std::to_string(earlyTerminationCap) + ")", "CoilAdviser");
+                            earlyTerminated = true;
+                            break;
+                        }
                     }
 
                 }
@@ -298,6 +317,12 @@ namespace OpenMagnetics {
                     reference += std::to_string(mas.get_magnetic().get_coil().get_functional_description()[0].get_number_turns());
                     auto resultsPerPattern = get_advised_planar_coil_for_pattern(wires, mas, pattern, repetition, maximumNumberResultsPerPattern, reference);
                     std::move(resultsPerPattern.begin(), resultsPerPattern.end(), std::back_inserter(masesWithCoil));
+                    if (masesWithCoil.size() >= earlyTerminationCap) {
+                        logEntry("CoilAdviser early-terminating (planar): " + std::to_string(masesWithCoil.size()) +
+                                 " candidates (cap=" + std::to_string(earlyTerminationCap) + ")", "CoilAdviser");
+                        earlyTerminated = true;
+                        break;
+                    }
                 }
             }
         }
