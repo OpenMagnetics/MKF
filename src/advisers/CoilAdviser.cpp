@@ -778,6 +778,16 @@ namespace OpenMagnetics {
                                                                      maximumNumberWires);
 
                 if (wiresWithScoring.size() != 0) {
+                    // COA-GAP2: cap top-K per wireConfiguration BEFORE concatenating.
+                    // wiresWithScoring is already sorted desc by score within this
+                    // config; truncating preserves per-config locality (unlike a
+                    // global sort across the merged list, which mixes wires from
+                    // configs with different current-density/parallels limits and
+                    // breaks the greedy walk downstream — see HANDOFF session 5).
+                    const size_t kMaxWiresPerConfig = 10;
+                    if (wiresWithScoring.size() > kMaxWiresPerConfig) {
+                        wiresWithScoring.resize(kMaxWiresPerConfig);
+                    }
                     timeout += wiresWithScoring.size();
 
                     std::move(wiresWithScoring.begin(), wiresWithScoring.end(), std::back_inserter(wireCoilPerWinding.back()));
@@ -1065,6 +1075,12 @@ namespace OpenMagnetics {
                                                                              maximumNumberWires);
 
                 if (wiresWithScoring.size() != 0) {
+                    // COA-GAP2: cap top-K per wireConfiguration BEFORE concatenating.
+                    // See identical comment in the wound path above (~line 780).
+                    const size_t kMaxWiresPerConfig = 10;
+                    if (wiresWithScoring.size() > kMaxWiresPerConfig) {
+                        wiresWithScoring.resize(kMaxWiresPerConfig);
+                    }
                     timeout += wiresWithScoring.size();
                     // Only add wires up to the limit, but continue trying other configurations
                     size_t spaceRemaining = maximumNumberResults * 4 - wireCoilPerWinding.back().size();
