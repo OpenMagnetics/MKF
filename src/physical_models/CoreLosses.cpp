@@ -1042,25 +1042,23 @@ void CoreLossesciGSEModel::load_coefficients() {
  * @param temperature Operating temperature in °C
  * @return Pointer to the coefficients, or nullptr if material not found
  */
-const ciGSECoefficients* 
-CoreLossesciGSEModel::get_expanded_loss_space_coefficients(const std::string& materialName, double temperature) {
-    // Ensure coefficients are loaded
-    load_coefficients();
-    
-    const ciGSECoefficients* bestMatch = nullptr;
-    double bestTempDiff = std::numeric_limits<double>::max();
-    
-    for (const auto& coeff : _coefficientsCache) {
-        if (coeff.materialName == materialName) {
-            double tempDiff = std::abs(coeff.temperature - temperature);
-            if (tempDiff < bestTempDiff) {
-                bestTempDiff = tempDiff;
-                bestMatch = &coeff;
-            }
-        }
-    }
-    
-    return bestMatch;
+const ciGSECoefficients*
+CoreLossesciGSEModel::get_expanded_loss_space_coefficients(const std::string& /*materialName*/, double /*temperature*/) {
+    // The ciGSE polynomial coefficients shipped in
+    // src/data/core_losses/ciGSE_coefficients.json (Arruti 2024, Tables II & V)
+    // produce non-physical losses when evaluated with the units declared in the
+    // file ("dBdt": T/s, "deltaB": T): ln(Pv) saturates to values in the
+    // hundreds for ordinary operating points, so exp(lnPv) returns 1e+30..inf.
+    // Suspected root cause: the paper trained the polynomial in a different
+    // unit system (e.g. kT/s or mT/μs) than declared here; until that's
+    // reconciled, return nullptr so get_core_volumetric_losses falls back to
+    // iGSE — the model's documented backward-compat path (see line 1148).
+    // The polynomial evaluation and coefficient loader are left in place so
+    // the eventual re-enable is a one-line change.
+    // TODO: validate units against Arruti, "The Composite Improved Generalized
+    //       Steinmetz Equation (ciGSE)", IEEE TPEL Jan. 2024, and remove this
+    //       short-circuit.
+    return nullptr;
 }
 
 /**
