@@ -857,7 +857,25 @@ namespace OpenMagnetics {
             double outputVoltage = opPoint.get_output_voltages()[secIdx + 1];
             double outputCurrent = opPoint.get_output_currents()[secIdx + 1];
             double loadResistance = outputVoltage / outputCurrent;
-            circuit << "Cout" << secIdx << " vout" << secIdx << " 0 100u IC=" << outputVoltage << "\n";
+
+            // Cout startup IC. The secondary diode forward-biases only when
+            // V(sec_in)_peak ≈ Vpri_out/n exceeds V(vout) + Vd. When the
+            // analytical peak is strictly below the spec'd outputVoltage,
+            // even an ideal diode (Vd→0) cannot forward-bias against an
+            // IC=outputVoltage pre-charge, so the secondary loop carries only
+            // numerical noise — the failure mode documented in
+            // Heaviside/docs/MKF-HANDOFF.md §2 (FFT amplitudes ~1000× too
+            // small → CoilMesher empty-harmonic). In that case seed Cout at
+            // 0 V so the diode conducts during transient. For marginal specs
+            // where peak ≈ outputVoltage (e.g. LM5160 24→12V, n=1) keep
+            // IC=outputVoltage: the cap stays pre-charged through the short
+            // PtP sim window and downstream gates are unaffected.
+            double secondaryVoltagePeak = primaryOutputVoltage / turnsRatios[secIdx];
+            double coutIC = outputVoltage;
+            if (secondaryVoltagePeak < outputVoltage) {
+                coutIC = 0.0;
+            }
+            circuit << "Cout" << secIdx << " vout" << secIdx << " 0 100u IC=" << coutIC << "\n";
             circuit << "Rload" << secIdx << " vout" << secIdx << " 0 " << loadResistance << "\n\n";
         }
 
@@ -888,7 +906,10 @@ namespace OpenMagnetics {
                 << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
         circuit << ".ic v(vpri_out)=" << primaryOutputVoltage << "\n";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-            circuit << ".ic v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx + 1] << "\n";
+            double outputVoltage = opPoint.get_output_voltages()[secIdx + 1];
+            double secondaryVoltagePeak = primaryOutputVoltage / turnsRatios[secIdx];
+            double coutIC = (secondaryVoltagePeak < outputVoltage) ? 0.0 : outputVoltage;
+            circuit << ".ic v(vout" << secIdx << ")=" << coutIC << "\n";
         }
         circuit << "\n";
 
