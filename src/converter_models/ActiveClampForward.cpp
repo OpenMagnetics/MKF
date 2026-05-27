@@ -545,16 +545,12 @@ namespace OpenMagnetics {
         std::ostringstream circuit;
         double period = 1.0 / switchingFrequency;
         double tOn = period * dutyCycle;
-        // Active clamp switch timing: overlap slightly with main switch for simulation stability
-        // Start 100ns before main switch turns off, end 100ns after main switch turns on next cycle
-        // Dead time between main switch S1 and clamp switch S_clamp:
-        // they connect the same primary node (sw_node) to DIFFERENT
-        // voltage sources (S1 -> Vin via q1_drain; S_clamp -> Cclamp
-        // at ~Vin·D/(1-D) ≈ 39V for D=0.45). Any conduction overlap
-        // is a dead short between those sources through the two
-        // switches and crashes ngspice convergence. Need non-overlap
-        // (break-before-make), the opposite of what the previous
-        // "overlap" code did.
+        // Active clamp switch timing: non-overlap (break-before-make)
+        // dead time between S1 and S_clamp. In the canonical topology
+        // S1 ties sw_node->q1_drain->vin_dc; S_clamp ties vin_dc->clamp_node.
+        // Both ultimately source from vin_dc and overlap is harmless here,
+        // but the dead time is still required to avoid contention on the
+        // primary's reset path (Lpri di/dt during commutation).
         //
         //   S1 ON      : 0          ── tOn
         //   dead time  : tOn        ── tOn + dt
@@ -640,27 +636,44 @@ namespace OpenMagnetics {
         circuit << "\n";
         
         // Active clamp circuit: auxiliary switch + clamp capacitor
-        // Clamp switch turns on during off-time of main switch
-        circuit << "* Active Clamp Circuit\n";
+        // Clamp switch turns on during off-time of main switch.
+        //
+        // CANONICAL CLAMP TOPOLOGY (boost-derived high-side clamp):
+        //   S_clamp connects vin_dc <-> clamp_node when clamp PWM is high.
+        //   Cclamp sits between clamp_node and pri_in (i.e. ACROSS the
+        //   primary referenced to Vin), not from a node to ground.
+        //   During S1 ON: pri_in = Vin (through Vpri_sense), S_clamp OFF,
+        //                  Cclamp floats holding its charge.
+        //   During S_clamp ON (S1 OFF): clamp_node = vin_dc, so the
+        //                                primary sees Vin - V_Cclamp at
+        //                                pri_in — the reset voltage.
+        //
+        // Previous "clamp to ground" topology (Cclamp clamp_cap-to-0,
+        // S_clamp clamp_cap-to-sw_node) caused the primary current to
+        // collapse during OFF for high-N/high-Iout designs because the
+        // magnetising current commutated via the secondary-side rectifier
+        // instead of through the active-clamp leg. The canonical topology
+        // keeps the clamp loop tight to the primary regardless of N.
+        // See TestActiveClampForwardReferenceDesignsPtp.cpp:326-330 for
+        // the original investigation.
+        circuit << "* Active Clamp Circuit (canonical: Cclamp across primary)\n";
         circuit << "Vpwm_clamp clamp_ctrl 0 PULSE(0 " << acfCfg.pwmHigh << " "
                 << std::scientific << clampDelay
                 << " " << acfCfg.pwmRise << " " << acfCfg.pwmFall
                 << " " << clampOn << " " << period << std::fixed << ")\n";
-        circuit << "S_clamp clamp_cap sw_node clamp_ctrl 0 SW1\n";
-        // Clamp capacitor to ground (stores energy during reset)
+        circuit << "S_clamp vin_dc clamp_node clamp_ctrl 0 SW1\n";
+        // Clamp capacitor between clamp_node and pri_in (canonical).
         double clampCapacitance = 10e-6;  // 10uF typical
-        // Steady-state clamp-cap voltage from volt-second balance on Lpri:
-        //   V_in · tOn  =  V_clamp · t_clamp_on
-        // where t_clamp_on = period - tOn - 2·deadTime (matches the
-        // Vpwm_clamp pulse width). The simpler formula
-        // Vin·D/(1-D) ignores the two dead-time windows and pre-charges
-        // Cclamp below its true steady state, forcing the cap to gain
-        // a few volts during transient — that drift is what was leaving
-        // efficiency near 45 % instead of the design ~90 %.
-        double clampVoltage = inputVoltage * tOn / (period - tOn - 2 * deadTime);
-        circuit << "Cclamp clamp_cap 0 " << std::scientific << clampCapacitance << std::fixed << " IC=" << clampVoltage << "\n";
-        // Small resistance for convergence
-        circuit << "Rclamp clamp_cap 0 1MEG\n\n";
+        // Steady-state Cclamp voltage:
+        //   V_Cclamp = Vin + V_reset
+        // where V_reset comes from volt-second balance on Lpri
+        //   V_in · tOn = V_reset · (period - tOn - 2·deadTime)
+        // giving V_Cclamp = Vin · (period - 2·deadTime) / (period - tOn - 2·deadTime).
+        // (Cf. clamp-to-ground topology where Cclamp holds only V_reset.)
+        double clampVoltage = inputVoltage * (period - 2 * deadTime) / (period - tOn - 2 * deadTime);
+        circuit << "Cclamp clamp_node pri_in " << std::scientific << clampCapacitance << std::fixed << " IC=" << clampVoltage << "\n";
+        // Small resistance for convergence (parallel with Cclamp, across primary).
+        circuit << "Rclamp clamp_node pri_in 1MEG\n\n";
         
         // Output stages for each secondary
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
