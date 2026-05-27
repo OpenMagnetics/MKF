@@ -5,6 +5,7 @@
 #include <limits>
 #include "advisers/MagneticAdviser.h"
 #include "advisers/CoreAdviser.h"
+#include "advisers/MagneticFilterInternal.h"  // is_energy_storing_topology()
 #include "physical_models/Impedance.h"
 #include "processors/MagneticSimulator.h"
 #include "support/Painter.h"
@@ -128,6 +129,53 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     const size_t maxCandidates = std::max(maximumNumberResults * 20, size_t(50));
     if (magneticsWithScoring.size() > maxCandidates) {
         magneticsWithScoring.resize(maxCandidates);
+    }
+
+    // Step 2c: For energy-storing topologies (flyback, buck, boost,
+    // SEPIC, Cuk, Zeta, isolated-buck, PFC, CMC/DMC, isolated buck-
+    // boost), toroidal ferrite cores are physically incompatible
+    // with the core's job: ferrite has no distributed gap (unlike
+    // powder), and a toroid has no parting plane for a discrete air
+    // gap. Result: ungapped high-µ ferrite saturates at a fraction
+    // of an ampere — useless for flyback-class energy storage.
+    //
+    // Without this filter, the fast path served ferrite toroids for
+    // flyback designs (Heaviside corpus: T 38.1/19.05/12.7 with N30,
+    // isat=1.2 A vs ipeak=1.8 A — see docs/MKF-HANDOFF.md). The
+    // slow-path CoreAdviserPipeline already splits toroidal->powder
+    // and non-toroidal->ferrite paths so this combination never
+    // arises; the fast path needed the same guard.
+    //
+    // We do NOT call add_gapping_standard_cores here (the slow path
+    // does). Non-toroidal ferrite cores are left ungapped at this
+    // stage; add_initial_turns_by_inductance computes turns against
+    // whatever gap the core has, and filterSaturation rejects any
+    // candidate whose B_peak exceeds B_sat. That's the existing
+    // fast-path contract — this step only narrows it physically.
+    {
+        auto topology = inputs.get_design_requirements().get_topology();
+        if (is_energy_storing_topology(topology)) {
+            std::vector<std::pair<Magnetic, double>> filtered;
+            filtered.reserve(magneticsWithScoring.size());
+            for (auto& entry : magneticsWithScoring) {
+                const auto& core = entry.first.get_core();
+                bool isToroidal = core.get_functional_description().get_type()
+                                  == CoreType::TOROIDAL;
+                if (isToroidal) {
+                    auto material = core.resolve_material();
+                    if (material.get_material() == MaterialType::FERRITE) {
+                        // Drop — ungappable ferrite toroid for energy-storing app.
+                        continue;
+                    }
+                }
+                filtered.push_back(std::move(entry));
+            }
+            magneticsWithScoring = std::move(filtered);
+
+            if (magneticsWithScoring.empty()) {
+                return {};
+            }
+        }
     }
 
     // Step 3: Set turns and gap analytically (single pass, no iteration)
