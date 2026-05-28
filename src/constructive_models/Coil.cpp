@@ -457,6 +457,15 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             set_layers_description(std::nullopt);
             set_turns_description(std::nullopt);
 
+            // Special case: toroid with one physical turn whose wire OD
+            // exceeds the inner-hole radius. The wire cannot be wound on
+            // the inner wall, so place it at the geometric centre of the
+            // hole. Skips the sections/layers fit pipeline entirely.
+            if (can_build_centered_single_turn_toroidal()) {
+                logEntry("Building centered single-turn toroidal", "Coil", 2);
+                return build_centered_single_turn_toroidal();
+            }
+
             if (_insulationSections.size() == 0) {
 
                 if (_inputs) {
@@ -4761,6 +4770,132 @@ bool Coil::wind_by_rectangular_turns() {
     return true;
 }
 
+bool Coil::can_build_centered_single_turn_toroidal() {
+    // Bobbin must be set up with a round winding window (toroid).
+    if (!std::holds_alternative<Bobbin>(get_bobbin())) {
+        return false;
+    }
+    Bobbin bobbin = std::get<Bobbin>(get_bobbin());
+    if (!bobbin.get_processed_description()) {
+        return false;
+    }
+    auto pd = bobbin.get_processed_description().value();
+    auto windingWindows = pd.get_winding_windows();
+    if (windingWindows.empty() || !windingWindows[0].get_radial_height()) {
+        return false;
+    }
+    auto shape = bobbin.get_winding_window_shape();
+    if (shape != WindingWindowShape::ROUND) {
+        return false;
+    }
+    // Exactly one functional winding with 1 turn × 1 parallel.
+    const auto& fd = get_functional_description();
+    if (fd.size() != 1) return false;
+    if (get_number_turns(0) != 1 || get_number_parallels(0) != 1) return false;
+
+    // Wire OD > inner radius (won't fit against the inner wall) and ≤ B
+    // (still fits inside the hole). When _strict is false we tolerate
+    // oversize-beyond-B wires for visualisation purposes.
+    double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+    auto wires = get_wires();
+    double wireOuterDiameter = wires[0].get_maximum_outer_width();
+    if (wireOuterDiameter <= windingWindowRadialHeight) {
+        return false;
+    }
+    if (_strict && wireOuterDiameter > 2 * windingWindowRadialHeight) {
+        return false;
+    }
+    return true;
+}
+
+bool Coil::build_centered_single_turn_toroidal() {
+    auto bobbin = resolve_bobbin();
+    auto bobbinPd = bobbin.get_processed_description().value();
+    auto bobbinColumnShape = bobbinPd.get_column_shape();
+    auto bobbinColumnDepth = bobbinPd.get_column_depth();
+    if (!bobbinPd.get_column_width()) {
+        throw CoilNotProcessedException("Toroids must have their bobbin column set");
+    }
+    double bobbinColumnWidth = bobbinPd.get_column_width().value();
+    auto windingWindows = bobbinPd.get_winding_windows();
+    double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+
+    auto wires = get_wires();
+    auto& wire = wires[0];
+    double wireOuterDiameter = wire.get_maximum_outer_width();
+    double wireWidth = wireOuterDiameter;
+    double wireHeight = wire.get_maximum_outer_height();
+    auto windingName = get_name(0);
+
+    PartialWinding partialWinding;
+    partialWinding.set_winding(windingName);
+    partialWinding.set_parallels_proportion({1.0});
+
+    Section section;
+    section.set_name(windingName + " section 0");
+    section.set_partial_windings({partialWinding});
+    section.set_type(ElectricalType::CONDUCTION);
+    section.set_layers_orientation(WindingOrientation::OVERLAPPING);
+    section.set_coordinate_system(CoordinateSystem::POLAR);
+    // Section covers the whole inner-hole disk: full radial extent and 360°.
+    section.set_dimensions(std::vector<double>{windingWindowRadialHeight, 360.0});
+    // Section centre in polar: midway between bobbin inner surface and toroid axis.
+    section.set_coordinates(std::vector<double>{windingWindowRadialHeight / 2.0, 0.0, 0.0});
+    section.set_margin(std::vector<double>{0.0, 0.0});
+    set_sections_description(std::vector<Section>{section});
+
+    Layer layer;
+    layer.set_name(windingName + " section 0 layer 0");
+    layer.set_partial_windings({partialWinding});
+    layer.set_type(ElectricalType::CONDUCTION);
+    layer.set_section(section.get_name());
+    layer.set_orientation(WindingOrientation::OVERLAPPING);
+    layer.set_coordinate_system(CoordinateSystem::POLAR);
+    layer.set_dimensions(std::vector<double>{wireWidth, 360.0});
+    // Layer at polar radialHeight = B/2 → cartesian (0,0) via polar_to_cartesian.
+    layer.set_coordinates(std::vector<double>{windingWindowRadialHeight, 0.0});
+    layer.set_winding_style(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
+    layer.set_turns_alignment(CoilAlignment::CENTERED);
+    set_layers_description(std::vector<Layer>{layer});
+
+    Turn turn;
+    turn.set_coordinates(std::vector<double>{windingWindowRadialHeight, 0.0});
+    turn.set_layer(layer.get_name());
+    if (bobbinColumnShape == ColumnShape::ROUND) {
+        turn.set_length(2 * std::numbers::pi * (windingWindowRadialHeight + bobbinColumnWidth));
+    }
+    else if (bobbinColumnShape == ColumnShape::OBLONG) {
+        turn.set_length(2 * std::numbers::pi * (windingWindowRadialHeight + bobbinColumnWidth) + 4 * (bobbinColumnDepth - bobbinColumnWidth));
+    }
+    else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
+        turn.set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * windingWindowRadialHeight);
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
+    }
+    if (turn.get_length() < 0) {
+        return false;
+    }
+    turn.set_name(windingName + " parallel 0 turn 0");
+    turn.set_orientation(TurnOrientation::CLOCKWISE);
+    turn.set_parallel(0);
+    turn.set_section(section.get_name());
+    turn.set_winding(windingName);
+    turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
+    turn.set_rotation(0.0);
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        turn.set_cross_sectional_shape(TurnCrossSectionalShape::ROUND);
+    }
+    else {
+        turn.set_cross_sectional_shape(TurnCrossSectionalShape::RECTANGULAR);
+    }
+    turn.set_coordinate_system(CoordinateSystem::POLAR);
+
+    set_turns_description(std::vector<Turn>{turn});
+    convert_turns_to_cartesian_coordinates();
+    return true;
+}
+
 bool Coil::wind_by_round_turns() {
     set_turns_description(std::nullopt);
     if (!get_layers_description()) {
@@ -5272,17 +5407,47 @@ bool Coil::wind_toroidal_additional_turns() {
                 }
             }
             
+            size_t conductionLayerCount = 0;
             for (auto layer : layersThisSection) {
                 if (layer.get_type() == ElectricalType::CONDUCTION) {
                     auto turnsThisLayer = get_turns_by_layer(layer.get_name());
+                    bool isFirstConductionLayer = (conductionLayerCount == 0);
+                    conductionLayerCount++;
                     for (auto turn : turnsThisLayer) {
                         auto turnIndex = get_turn_index_by_name(turn.get_name());
                         std::vector<double> additionalCoordinates = {-bobbinColumnWidth * 2 - turn.get_coordinates()[0], turn.get_coordinates()[1]};
 
                         if (!areLayersTaped) {
 
-                            // If the turn is not on the first layer of the section, we try to place it in a slot there
-                            if (roundFloat(turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2, 9) > 0) {
+                            if (!isFirstConductionLayer) {
+                                {
+                                    auto collisions = get_collision_distances(additionalCoordinates, placedTurnsCoordinates, wireHeight);
+                                    if (collisions.size() > 0) {
+                                        double currentRadius = windingWindowRadialHeight - additionalCoordinates[0];
+                                        double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
+                                        double sectionMinAngle = section.get_coordinates()[1] - section.get_dimensions()[1] / 2;
+                                        double sectionMaxAngle = section.get_coordinates()[1] + section.get_dimensions()[1] / 2;
+                                        double scanStep = currentWireAngle / 2;
+                                        double defaultAngle = additionalCoordinates[1];
+                                        bool foundSlot = false;
+                                        for (double offset = scanStep; !foundSlot; offset += scanStep) {
+                                            for (int sign : {-1, +1}) {
+                                                double testAngle = defaultAngle + sign * offset;
+                                                if (testAngle < sectionMinAngle + currentWireAngle / 2 ||
+                                                    testAngle > sectionMaxAngle - currentWireAngle / 2) continue;
+                                                std::vector<double> testCoords = {additionalCoordinates[0], testAngle};
+                                                auto testCollisions = get_collision_distances(testCoords, placedTurnsCoordinates, wireHeight);
+                                                if (testCollisions.size() == 0) {
+                                                    additionalCoordinates[1] = testAngle;
+                                                    foundSlot = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (offset > section.get_dimensions()[1]) break;
+                                        }
+                                    }
+                                }
+
                                 std::vector<double> newCoordinates = {additionalCoordinates[0], additionalCoordinates[1]};
                                 newCoordinates[0] = currentBaseRadialHeight;
                                 auto collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
@@ -7456,6 +7621,15 @@ std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
         if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
             return {1};
         }
+        // Multi-winding toroidal transformers: prefer non-interleaved first
+        // even when a leakage_inductance spec is set. Toroids have an
+        // intrinsically closed magnetic path so the leakage gain from
+        // interleaving is small, but rep=2 splits the inner arc into more
+        // sections — on tight inner columns most rep=2 wind() attempts fail
+        // geometrically and consume the wind-failure budget for nothing.
+        // The {2} pass still runs after, so designs that genuinely need
+        // interleaving for leakage are not blocked.
+        return {1, 2};
     }
     
     if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {

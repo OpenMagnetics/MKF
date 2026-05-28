@@ -129,6 +129,14 @@ class Coil : public MAS::Coil {
         bool wind_by_rectangular_turns();
         bool wind_by_round_turns();
         bool wind_toroidal_additional_turns();
+        // Special case: toroid with exactly one physical turn whose wire
+        // outer diameter exceeds the inner-hole radius (so it cannot be
+        // wound on the inner wall). Builds sections / layers / turns with
+        // the wire placed at the geometric centre of the inner hole and
+        // returns true on success; returns false if the case does not
+        // apply or the wire physically cannot fit inside the hole.
+        bool can_build_centered_single_turn_toroidal();
+        bool build_centered_single_turn_toroidal();
         bool delimit_and_compact_rectangular_window();
         bool delimit_and_compact_round_window();
         bool create_default_group(Bobbin bobbin, WiringTechnology coilType = WiringTechnology::WOUND, double coreToLayerDistance = 0);
