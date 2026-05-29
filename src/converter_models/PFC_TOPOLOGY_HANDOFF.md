@@ -86,10 +86,38 @@ compares against the SIGNED sine; input-port check uses a zero-mean bipolar
 line (`check_pfc_switching_ports(..., bipolarInput=true)`, fed `v(vline)`).
 Sim wall-time ≈ 10 s, bus lands ~382 V (−4.5 %, inside ±6 %), all gates pass.
 
-### 2b. SEPIC/Ćuk switching PtP  (highest value remaining)
+### 2b. SEPIC/Ćuk switching PtP  (highest value remaining; PARTIALLY SCOUTED 2026-05-29)
 4th-order plant (L1, L2, coupling cap, Cout). Needs its own converging
 controller. Analytical sizing is done and correct for CCM/CrCM; DCM needs the
 `Le = L1‖L2` model (currently rejected in `calculate_inductance_dcm`).
+
+**Scouting result (do NOT repeat the dead end):** unlike totem-pole, the boost
+average-current loop CANNOT just be reused. A genuine SEPIC power stage (L1,
+switch, Cc, L2, output diode, Cout) with the boost controller driving the
+switch **converges numerically but does not control** — the input current does
+not track the `|sin|` envelope (measured steady-state envelope NRMSE ≈ **96.6 %**
+even after adding an Rd–Cd damper across the coupling-cap branch). Root causes:
+(a) the duty→iL1 transfer function carries the Cc–L2 resonance (~6 kHz with
+L1=L2=1 mH, Cc=0.66 µF) that sits below the fc_i=fsw/10 crossover and rings;
+(b) `derive_pfc_controller_tuning` is boost-specific — its current-loop Kp
+assumes the boost plant `Vbus/(sL)`, and its warm-start `ic_vc_i = (1−Vpk/Vbus)`
+is the BOOST duty (~0.19) whereas SEPIC needs ~0.55. To actually land this you
+need: a SEPIC-aware compensator (notch/extra pole for the Cc–L2 resonance), a
+proper damping network sized to `Rd ≈ √(Le/Cc)`, and a SEPIC-aware warm-start
+duty. Budget a full controller-design session; the power stage is the easy
+part. Prototype netlist that converged-but-didn't-track: `/tmp/sepic.cir`
+(throwaway). Keep SEPIC/Ćuk analytical-only until the controller is real — do
+NOT ship the non-tracking netlist.
+
+**Analytical fix shipped alongside this scouting (2026-05-29):**
+`process_operating_points` was synthesizing the SEPIC/Ćuk current waveform with
+the BOOST duty `1−Vin/(Vout+Vd)` (line ~524) instead of the buck-boost duty
+`(Vout+Vd)/(Vin+Vout+Vd)` — violating L1 volt-second balance and making the
+synthesized peak current disagree with the (already-correct) diagnostic
+`get_last_peak_inductor_current()`. Now topology-aware, matching
+`simulate_and_extract_waveforms`. Guarded by
+`Test_Pfc_SepicCuk_WaveformDutyConsistency`. Boost family unchanged
+(byte-identical else-branch).
 
 ### 2c. Buck / buck-boost PFC
 Different topology (discontinuous input current, inductor not in series with
@@ -155,25 +183,29 @@ tolerance. Don't "fix" a failing bus gate by loosening it.
 
 ```bash
 ninja -C build -j5 MKF_tests        # always -j5
-build/MKF_tests "[pfc-topology]"                 # 30 cases incl 6 slow PtP
-build/MKF_tests "[pfc-topology]~[slow]"          # fast subset (24)
+build/MKF_tests "[pfc-topology]"                 # 31 cases incl 6 slow PtP
+build/MKF_tests "[pfc-topology]~[slow]"          # fast subset (25)
 build/MKF_tests "[totem-pole]"                   # totem-pole netlist + PtP only
-build/MKF_tests "[converter-model]"              # 535 cases — shared-loop regression
+build/MKF_tests "[sepic-cuk]"                    # SEPIC/Ćuk sizing + duty consistency
+build/MKF_tests "[converter-model]"              # 536 cases — shared-loop regression
 build/MKF_tests "[pfc]"                          # PFC adviser path
 ```
 
-All green as of this handoff: pfc-topology 30/30 (467 assertions, all 6 PtP
-incl totem-pole), converter-model 535/535 (8407), pfc adviser 4/4.
+All green as of this handoff: pfc-topology 31/31 (475 assertions, all 6 PtP
+incl totem-pole), converter-model 536/536 (8415), pfc adviser 4/4.
 
 ---
 
 ## 7. Suggested next step
-2a (totem-pole switching PtP) is **done** — every boost-family AND bridgeless
-variant now has a converging switching PtP. The remaining switching-PtP gap is
-**2b (SEPIC/Ćuk)**: a 4th-order plant (L1, L2, coupling cap, Cout) that needs
-its own converging controller — a genuinely harder problem than totem-pole was
-(totem-pole reused the boost loop verbatim; SEPIC/Ćuk cannot). Analytical
-sizing for SEPIC/Ćuk is already done and correct for CCM/CrCM. If you take it,
-expect the real work to be controller convergence, not the power stage. As with
-totem-pole, keep the variant analytical-only rather than shipping a
-non-converging circuit.
+2a (totem-pole switching PtP) is **done**, and 2b (SEPIC/Ćuk) has been
+**scouted** — see §2b for the dead end (boost-loop reuse gives 96.6 % envelope
+NRMSE) and the concrete recipe to actually land it (SEPIC-aware compensator +
+damping network + SEPIC-aware warm-start). 2b is now a well-scoped
+controller-design session for whoever picks it up.
+
+If switching-PtP isn't the priority, the highest-value PFC-adjacent work is the
+analytical SEPIC/Ćuk **DCM sizing** (`Le = L1‖L2`, currently rejected in
+`calculate_inductance_dcm`) — small, self-contained, and unblocks DCM SEPIC
+designs. Outside PFC, the pre-existing `[adviser]`-suite isolation/segfault
+flakiness and `Test_MagneticAdviser_Inductor_Only_Toroidal_Cores` baseline
+failure (see §4) remain the biggest test-health items.

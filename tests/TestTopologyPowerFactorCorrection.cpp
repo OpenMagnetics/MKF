@@ -24,6 +24,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -358,6 +359,47 @@ TEST_CASE("Test_Pfc_SepicCuk_BuckBoostSizing",
         // No native switching controller for the 4th-order stage yet.
         pfc.set_bulk_capacitance(220e-6);
         REQUIRE_THROWS(pfc.generate_ngspice_switching_circuit(l, 2));
+    }
+}
+
+TEST_CASE("Test_Pfc_SepicCuk_WaveformDutyConsistency",
+          "[converter-model][pfc-topology][variants][sepic-cuk]") {
+    // Regression guard: process_operating_points must synthesize the SEPIC/Ćuk
+    // current waveform using the BUCK-BOOST duty D = (Vout+Vd)/(Vin+Vout+Vd),
+    // not the boost duty 1−Vin/(Vout+Vd). The bug used the boost duty (~0.19 vs
+    // ~0.55 here) only in the waveform loop, so the synthesized peak inductor
+    // current (envelope + ΔI/2, ΔI ∝ D) disagreed with the analytical
+    // diagnostic get_last_peak_inductor_current() (which already used the
+    // correct duty) by the duty ratio. Post-fix the waveform and the diagnostic
+    // agree. The boost-duty value would undershoot the diagnostic by ~2.9×
+    // in ΔI, far outside this tolerance.
+    for (auto variant : {PfcTopologyVariants::SEPIC, PfcTopologyVariants::CUK}) {
+        auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+        pfc.set_topology_variant(variant);
+        pfc.set_num_periods_to_extract(1);
+        const double L = pfc.calculate_inductance_ccm();
+        auto ops = pfc.process_operating_points({}, L);
+        REQUIRE(!ops.empty());
+
+        const auto iWf = ops[0].get_excitations_per_winding()[0]
+                             .get_current().value().get_waveform().value();
+        const auto& iData = iWf.get_data();
+        REQUIRE(!iData.empty());
+        const double iPeakWaveform =
+            *std::max_element(iData.begin(), iData.end());
+
+        // Diagnostic peak (envelope + ΔI/2) computed from the SEPIC duty.
+        const double iPeakDiag = pfc.get_last_peak_inductor_current();
+        REQUIRE(iPeakDiag > 0.0);
+
+        INFO("variant peak: waveform=" << iPeakWaveform
+             << " A, diagnostic=" << iPeakDiag << " A");
+        // 4-sample/cycle quantization keeps the waveform vertex slightly below
+        // the analytical +ΔI/2: measured deviation with the correct buck-boost
+        // duty is ~2.5 % here. The boost-duty bug shrinks ΔI by the duty ratio
+        // (~2.9×), pushing the waveform peak ~9 % below the diagnostic — so a
+        // 5 % band passes the fix with margin and fails the bug decisively.
+        CHECK(std::fabs(iPeakWaveform - iPeakDiag) / iPeakDiag < 0.05);
     }
 }
 

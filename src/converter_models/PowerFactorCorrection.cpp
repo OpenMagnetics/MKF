@@ -511,17 +511,24 @@ namespace OpenMagnetics {
             const double vinInst    = vinPeakMin * vinShape;
             const double vinAbsInst = vinPeakMin * vinAbs;
 
-            // Analytical-model boundary at line zero-crossings: as Vin→0, the
-            // CCM duty D = 1 − Vin/Vout → 1, and ΔI = Vin·D·Tsw/L → 0. The
-            // model produces no usable waveform sample at exact Vin = 0
-            // (boost can't sustain output current with zero input voltage —
-            // it relies on Cbus dump-out, which this analytical surface
-            // does not model). The physical duty bound D ∈ [0, 1] holds; we
-            // clip there (NOT to [0.01, 0.95]) because [0, 1] is the true
-            // physical range. A real PFC controller will simply disable
-            // gating during the few microseconds of near-zero Vin per cycle
-            // (the same numerical behaviour you see here).
-            double D = 1.0 - vinAbsInst / (outputVoltage + diodeVoltageDrop);
+            // Switching duty — TOPOLOGY-AWARE (must match
+            // simulate_and_extract_waveforms and the OFF-time voltage selected
+            // below). Boost family: D = 1 − Vin/(Vout+Vd). SEPIC/Ćuk: the
+            // buck-boost ratio D = (Vout+Vd)/(Vin+Vout+Vd). Using the boost duty
+            // for SEPIC/Ćuk would violate L1 volt-second balance
+            // (Vin·D ≠ (Vout+Vd)·(1−D)) — see the OFF-time branch comment.
+            //
+            // Analytical-model boundary at line zero-crossings: as Vin→0 the
+            // boost duty → 1 and ΔI = Vin·D·Tsw/L → 0; the model produces no
+            // usable sample at exact Vin = 0 (a boost can't sustain output
+            // current with zero input — it relies on Cbus dump-out, which this
+            // analytical surface does not model). The physical duty bound
+            // D ∈ [0, 1] holds; we clip there (NOT [0.01, 0.95]) because [0, 1]
+            // is the true physical range. A real PFC controller simply disables
+            // gating during the few µs of near-zero Vin per cycle.
+            double D = buckBoostClass
+                ? (outputVoltage + diodeVoltageDrop) / (vinAbsInst + outputVoltage + diodeVoltageDrop)
+                : 1.0 - vinAbsInst / (outputVoltage + diodeVoltageDrop);
             if (D < 0.0) D = 0.0;
             if (D > 1.0) D = 1.0;
 
