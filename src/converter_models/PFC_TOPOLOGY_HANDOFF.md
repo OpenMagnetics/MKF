@@ -26,7 +26,7 @@ Two commits:
 | BRIDGELESS | ✅ | ✅ | inductor ≡ boost (series, rectified side) |
 | SEMI_BRIDGELESS | ✅ | ✅ | inductor ≡ boost |
 | INTERLEAVED_BOOST | ✅ (per-phase) | ✅ (per-phase cell) | `numberOfPhases` ∈ {2,3} |
-| TOTEM_POLE | ✅ (bipolar waveform) | ❌ throws | **needs bipolar power stage + controller** |
+| TOTEM_POLE | ✅ (bipolar waveform) | ✅ (bipolar 4-switch stage) | CCM requires `wideBandgapSwitch=true` |
 | SEPIC | ✅ (analytical, CCM/CrCM) | ❌ throws | buck-boost class; DCM rejected |
 | CUK | ✅ (analytical, CCM/CrCM) | ❌ throws | buck-boost class; DCM rejected |
 | BUCK | ❌ throws | ❌ | discontinuous input current — no series-L path |
@@ -42,6 +42,22 @@ fallbacks). Every variant either works or refuses with a precise reason.
   during OFF → identical boost sizing `L = Vin·D/(ΔI·fsw)` and the SAME
   switching netlist (`generate_ngspice_switching_circuit`). Interleaved emits
   ONE per-phase cell (`per_phase_power` = Pout/N, per-phase L).
+- **Totem-pole** (bridgeless, bipolar): same boost sizing, but the inductor is
+  on the AC side and carries SIGNED current. `generate_ngspice_switching_circuit`
+  has a `bipolar` branch (selected for TOTEM_POLE) emitting a genuine 4-switch
+  stage: a floating line source `B_vac` between `vac` and the LF-leg midpoint
+  `mid_lf`; an HF leg (`S_hf_hi`/`S_hf_lo` + rectifying diodes `D_hf_hi`/
+  `D_hf_lo`) where ONE switch is the active boost switch and the OPPOSITE leg's
+  diode rectifies — roles swap by line polarity; and a line-frequency LF leg
+  (`S_lf_hi`/`S_lf_lo`) routing the AC return to gnd (positive half) or vbus
+  (negative half). Only one switch + one diode conduct at any instant, so it
+  converges like the boost. The controller is REUSED verbatim (same
+  `derive_pfc_controller_tuning`, type-II EAs, warm-start) but runs in the
+  rectified domain: it senses `|i_L|` (`abs(I(Vl_sense))`), the multiplier
+  reference is on `|vline|`, and a polarity selector (`pol_pos`) ROUTES the
+  single PWM command to the active HF switch + drives the LF leg. This is how
+  industry totem-pole average-current controllers actually work — no separate
+  bipolar controller was needed.
 - **Buck-boost class** (SEPIC/Ćuk): `is_buck_boost_class()` in the header.
   Series input inductor (continuous input current) but buck-boost conversion:
   `D = (Vout+Vd)/(Vin+Vout+Vd)` (see `calculate_duty_cycle`), L1 sees `+Vin`
@@ -55,29 +71,22 @@ fallbacks). Every variant either works or refuses with a precise reason.
 
 ## 2. Deferred work — what's left, why, and how to do it
 
-### 2a. Totem-pole switching PtP  (highest value remaining)
-Totem-pole is analytically complete (bipolar inductor current/voltage already
-synthesized in `process_operating_points`, `bipolar` flag). The gap is the
-**switching netlist + PtP**. Why it's a real project, not an increment:
-- No input bridge → the inductor sees a **signed sine**, current is bipolar.
-- Needs a **bipolar power stage**: bipolar source `B_vin = vpk*sin(ωt)`,
-  a totem-pole HF leg (high/low switch, complementary PWM, roles swap by
-  half-cycle), and a line-frequency polarity leg.
-- Needs a **bipolar rewrite of the average-current controller**: the
-  multiplier reference `i_ref = G_mul·vea·vin/vrms_ff` must follow signed
-  `sin` (not `|sin|`), and the current EA must regulate signed current. The
-  existing controller (`PfcControllerDesign.{h,cpp}`) is unipolar and its
-  convergence took heavy soft-start/anti-windup/IC-warm-start tuning — budget
-  similar effort.
-- Where to hook: `generate_ngspice_switching_circuit` currently has a
-  `switch(variant)` that allows only the unipolar boost family; TOTEM_POLE
-  falls into the `default: throw`. Add a `generate_ngspice_switching_circuit_totempole`
-  (or branch) + a bipolar tuning path.
-- PtP: extend `TestPfcReferenceDesignsPtp.cpp`. The gates compare the inductor
-  envelope; for bipolar you'll compare against a signed-sine reference, not
-  `|sin|`.
+### 2a. Totem-pole switching PtP  ✅ DONE (2026-05-29)
+Implemented as the `bipolar` branch of `generate_ngspice_switching_circuit`
+(see the "Totem-pole" bullet in §1). Key outcome vs the original plan: a
+**separate bipolar controller was NOT needed** — the average-current loop runs
+in the rectified domain (senses `|i_L|`, multiplier on `|vline|`) and a
+line-polarity selector routes the single PWM command to the active HF switch,
+exactly as industry totem-pole controllers do. The genuine 4-switch stage
+(floating source + HF leg with role-swapped active-switch/diode + LF polarity
+leg) converged on the first attempt with the existing PFC solver settings (only
+one switch + one diode conduct at a time, so it's boost-like numerically).
+PtP: `TestPfcReferenceDesignsPtp.cpp` "Totem-pole 100 W" — envelope gate
+compares against the SIGNED sine; input-port check uses a zero-mean bipolar
+line (`check_pfc_switching_ports(..., bipolarInput=true)`, fed `v(vline)`).
+Sim wall-time ≈ 10 s, bus lands ~382 V (−4.5 %, inside ±6 %), all gates pass.
 
-### 2b. SEPIC/Ćuk switching PtP
+### 2b. SEPIC/Ćuk switching PtP  (highest value remaining)
 4th-order plant (L1, L2, coupling cap, Cout). Needs its own converging
 controller. Analytical sizing is done and correct for CCM/CrCM; DCM needs the
 `Le = L1‖L2` model (currently rejected in `calculate_inductance_dcm`).
@@ -146,22 +155,25 @@ tolerance. Don't "fix" a failing bus gate by loosening it.
 
 ```bash
 ninja -C build -j5 MKF_tests        # always -j5
-build/MKF_tests "[pfc-topology]"                 # 28 cases incl 5 slow PtP
-build/MKF_tests "[pfc-topology]~[slow]"          # fast subset (23)
-build/MKF_tests "[converter-model]"              # 533 cases — shared-loop regression
+build/MKF_tests "[pfc-topology]"                 # 30 cases incl 6 slow PtP
+build/MKF_tests "[pfc-topology]~[slow]"          # fast subset (24)
+build/MKF_tests "[totem-pole]"                   # totem-pole netlist + PtP only
+build/MKF_tests "[converter-model]"              # 535 cases — shared-loop regression
 build/MKF_tests "[pfc]"                          # PFC adviser path
 ```
 
-All green as of this handoff: pfc-topology 28/28 (415 assertions, all 5 PtP),
-converter-model 533/533 (8355), pfc adviser 4/4.
+All green as of this handoff: pfc-topology 30/30 (467 assertions, all 6 PtP
+incl totem-pole), converter-model 535/535 (8407), pfc adviser 4/4.
 
 ---
 
 ## 7. Suggested next step
-Take **2a (totem-pole switching PtP)** as a dedicated session — it's the last
-boost-family gap and the highest-value remaining item. Start from the boost
-netlist in `generate_ngspice_switching_circuit`, fork a bipolar power stage,
-and adapt the controller multiplier/current-EA for signed current. Expect
-real ngspice convergence iteration; keep totem-pole analytical-only (it
-already works) if the bipolar netlist won't converge, rather than ship a
-half-working circuit.
+2a (totem-pole switching PtP) is **done** — every boost-family AND bridgeless
+variant now has a converging switching PtP. The remaining switching-PtP gap is
+**2b (SEPIC/Ćuk)**: a 4th-order plant (L1, L2, coupling cap, Cout) that needs
+its own converging controller — a genuinely harder problem than totem-pole was
+(totem-pole reused the boost loop verbatim; SEPIC/Ćuk cannot). Analytical
+sizing for SEPIC/Ćuk is already done and correct for CCM/CrCM. If you take it,
+expect the real work to be controller convergence, not the power stage. As with
+totem-pole, keep the variant analytical-only rather than shipping a
+non-converging circuit.

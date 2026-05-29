@@ -237,6 +237,13 @@ inline void check_pfc_ports(const OpenMagnetics::ConverterWaveforms& w,
 // line cycles (the default `trimToLastLineCycle = true` of
 // simulate_with_ngspice_switching satisfies this).
 // ─────────────────────────────────────────────────────────────────────────────
+// `bipolarInput` selects the input-port semantics:
+//   • false (bridged boost family): InputPort.voltage is the rectified line,
+//     so its mean ≈ (2√2/π)·Vrms ≈ 0.9·Vrms and RMS ≈ Vrms.
+//   • true  (bridgeless totem-pole): InputPort.voltage is the SIGNED AC line,
+//     so its mean ≈ 0 and RMS ≈ Vrms. Power balance <vin·iL> is identical in
+//     both cases — for the totem-pole both vin and iL are bipolar and in
+//     phase, so their product is positive over the whole line cycle.
 inline void check_pfc_switching_ports(const MAS::OperatingPoint&            op,
                                       const std::string&                    topoName,
                                       double                                vinRms,
@@ -244,7 +251,8 @@ inline void check_pfc_switching_ports(const MAS::OperatingPoint&            op,
                                       double                                poutNom,
                                       double                                vinTol      = 0.05,
                                       double                                voutMeanTol = kVoutMeanTol,
-                                      double                                pinTol      = 0.05) {
+                                      double                                pinTol      = 0.05,
+                                      bool                                  bipolarInput = false) {
     const auto& wnds = op.get_excitations_per_winding();
     REQUIRE(wnds.size() >= 2);
 
@@ -278,11 +286,17 @@ inline void check_pfc_switching_ports(const MAS::OperatingPoint&            op,
     REQUIRE(tvec.size() == vinData.size());
     const double vinMean       = time_weighted_mean(tvec, vinData);
     const double vinRmsAct     = time_weighted_rms (tvec, vinData);
-    const double expectVinMean = 2.0 * std::sqrt(2.0) * vinRms / M_PI;
+    // Bridged input is rectified (mean ≈ 0.9·Vrms); bridgeless totem-pole
+    // input is the signed line (mean ≈ 0). RMS ≈ Vrms in both cases.
+    const double expectVinMean =
+        bipolarInput ? 0.0 : 2.0 * std::sqrt(2.0) * vinRms / M_PI;
     INFO(topoName << " switching InputPort.voltage: mean=" << vinMean
          << " (expected " << expectVinMean << "), rms=" << vinRmsAct
          << " (expected " << vinRms << ")");
-    CHECK(std::fabs(vinMean   - expectVinMean) / expectVinMean < vinTol);
+    if (bipolarInput)
+        CHECK(std::fabs(vinMean) / vinRms < vinTol);   // mean ≈ 0 (signed line)
+    else
+        CHECK(std::fabs(vinMean - expectVinMean) / expectVinMean < vinTol);
     CHECK(std::fabs(vinRmsAct - vinRms)        / vinRms        < vinTol);
 
     // ---- Power-stage port: bus voltage --------------------------------------

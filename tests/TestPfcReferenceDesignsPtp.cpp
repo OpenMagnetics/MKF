@@ -109,6 +109,11 @@ OpenMagnetics::PowerFactorCorrection build(const RefDesignSpec& s) {
     if (s.variant == PfcTopologyVariants::INTERLEAVED_BOOST) {
         pfc.set_number_of_phases(s.phases);
     }
+    if (s.variant == PfcTopologyVariants::TOTEM_POLE) {
+        // CCM totem-pole requires a wide-bandgap (GaN/SiC) switch — the
+        // validate gate throws otherwise.
+        pfc.set_wide_bandgap_switch(true);
+    }
     return pfc;
 }
 
@@ -220,9 +225,13 @@ void run_ptp_gates(const RefDesignSpec& s) {
         }
         return nullptr;
     };
+    // Totem-pole is bridgeless: the genuine input-port voltage is the SIGNED
+    // AC line (v(vline)); the inductor current i(vl_sense) is likewise bipolar.
+    // The bridged boost family presents the rectified line (v(vin_rect)).
+    const bool bipolar = (s.variant == PfcTopologyVariants::TOTEM_POLE);
     const Waveform* wfTime = find_by("time");
     const Waveform* wfVbus = find_by("vbus");
-    const Waveform* wfVin  = find_by("vin_rect");
+    const Waveform* wfVin  = find_by(bipolar ? "vline" : "vin_rect");
     const Waveform* wfIL   = find_by("vl_sense");
     REQUIRE(wfTime != nullptr);
     REQUIRE(wfVbus != nullptr);
@@ -292,7 +301,10 @@ void run_ptp_gates(const RefDesignSpec& s) {
     for (size_t i = 0; i < tvec.size(); ++i) {
         if (tvec[i] < t_a || tvec[i] > t_b) continue;
         const double phase = 2.0 * M_PI * 50.0 * tvec[i];
-        const double iref  = Iin_pk * std::fabs(std::sin(phase));
+        // Bridged boost family tracks the rectified |sin| envelope; bridgeless
+        // totem-pole tracks the SIGNED sine (bipolar inductor current).
+        const double iref  = Iin_pk * (bipolar ? std::sin(phase)
+                                               : std::fabs(std::sin(phase)));
         const double e     = sliding_mean(tvec[i]) - iref;
         sse += e * e;
         sm  += iref * iref;
@@ -316,7 +328,8 @@ void run_ptp_gates(const RefDesignSpec& s) {
         for (size_t i = 0; i < tvec.size(); ++i) {
             if (tvec[i] < t_a || tvec[i] > t_b) continue;
             const double phase = 2.0 * M_PI * 50.0 * tvec[i];
-            const double iref  = Iin_pk * std::fabs(std::sin(phase));
+            const double iref  = Iin_pk * (bipolar ? std::sin(phase)
+                                                   : std::fabs(std::sin(phase)));
             f << tvec[i] << ',' << vin[i] << ',' << iref << ','
               << sliding_mean(tvec[i]) << ',' << iL[i] << '\n';
         }
@@ -384,7 +397,8 @@ void run_ptp_gates(const RefDesignSpec& s) {
         poutPhase,
         /*vinTol*/      0.05,
         /*voutMeanTol*/ s.tol_vbus_pct / 100.0,
-        /*iinMeanTol*/  s.tol_pin_pct  / 100.0);
+        /*iinMeanTol*/  s.tol_pin_pct  / 100.0,
+        /*bipolarInput*/ bipolar);
     const double tPostSim = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - tPostSim0).count();
     std::cout << "[PFC PtP " << s.name << "] tPostSim=" << tPostSim << "s\n";
@@ -512,6 +526,37 @@ TEST_CASE("PFC reference design PtP — Interleaved boost 2-phase (per-phase cel
         /*tol_walltime*/ 30.0,
         /*variant*/      PfcTopologyVariants::INTERLEAVED_BOOST,
         /*phases*/       2
+    };
+    run_ptp_gates(s);
+}
+
+TEST_CASE("PFC reference design PtP — Totem-pole 100 W (bipolar 4-switch stage)",
+          "[converter-model][pfc-topology][refdesign][ptp][totem-pole][slow]") {
+    // Bridgeless totem-pole: the boost inductor sits on the AC side and carries
+    // a SIGNED sinusoidal current. This drives the genuine bipolar power stage
+    // (floating line source + HF leg with the active boost switch + rectifying
+    // diode role-swapped by line polarity + a line-frequency LF polarity leg)
+    // through real ngspice — end-to-end proof that a totem-pole converges and
+    // tracks the signed-sine envelope. Same 100 W operating point as the
+    // NCP1654 boost reference, so the per-cycle magnitude, ripple and bus
+    // regulation are directly comparable; the only difference verified here is
+    // the bipolarity (the envelope gate compares against +Iin_pk·sin, NOT
+    // |sin|, and the input-port check expects a zero-mean signed line).
+    RefDesignSpec s{
+        /*name*/         "TotemPole-100W",
+        /*vrms*/         230.0,
+        /*vbus*/         400.0,
+        /*pout*/         100.0,
+        /*fsw*/          100e3,
+        /*cbus*/         100e-6,
+        /*L*/            3.30e-3,
+        /*cycles*/       3,
+        /*tol_vbus_pct*/ 6.0,
+        /*tol_pin_pct*/  5.0,
+        /*tol_envelope*/ 0.10,
+        /*tol_walltime*/ 30.0,
+        /*variant*/      PfcTopologyVariants::TOTEM_POLE,
+        /*phases*/       1
     };
     run_ptp_gates(s);
 }

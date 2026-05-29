@@ -206,10 +206,64 @@ TEST_CASE("Test_Pfc_Switching_Netlist_L4981_WellFormed",
     assert_netlist_well_formed(kRef3);
 }
 
-TEST_CASE("Test_Pfc_Switching_Netlist_Rejects_NonBoost_Variant",
-          "[converter-model][pfc-topology][pfc-controller][netlist]") {
-    auto pfc = build_pfc(kRef1);
+// Totem-pole takes the genuine bipolar branch: a floating line source + a
+// 4-switch totem-pole stage, with the average-current controller running in
+// the rectified domain and the PWM routed to the active HF switch by polarity.
+// The structural well-formed checks differ from the boost family: there is no
+// single "gate" node (the PWM is routed to g_lo/g_hi), the line source is
+// bipolar (vline), and the current sense is rectified (abs).
+void assert_netlist_well_formed_totempole(const RefDesign& d) {
+    INFO("Ref design (totem-pole): " << d.name);
+    auto pfc = build_pfc(d);
     pfc.set_topology_variant(PfcTopologyVariants::TOTEM_POLE);
-    pfc.set_wide_bandgap_switch(true);
-    REQUIRE_THROWS(pfc.generate_ngspice_switching_circuit(kRef1.inductance, 3));
+    pfc.set_wide_bandgap_switch(true);   // CCM totem-pole requires GaN/SiC
+    const std::string netlist =
+        pfc.generate_ngspice_switching_circuit(d.inductance, /*cycles*/3);
+
+    REQUIRE_FALSE(netlist.empty());
+
+    // Shared controller scaffolding.
+    assert_netlist_contains(netlist, ".subckt OPAMP_IDEAL", "OPAMP_IDEAL subckt");
+    assert_netlist_contains(netlist, "vl_sense",            "inductor-current sense");
+    assert_netlist_contains(netlist, ".tran",               ".tran statement");
+    assert_netlist_contains(netlist, "uic",                 "uic flag");
+    assert_netlist_contains(netlist, ".end",                ".end card");
+    assert_netlist_contains(netlist, "vea",                 "voltage-error-amp node");
+    assert_netlist_contains(netlist, "vc_i",                "current-error-amp node");
+    assert_netlist_contains(netlist, "saw",                 "sawtooth node");
+    assert_netlist_contains(netlist, "METHOD=GEAR",         "GEAR integration");
+
+    // Bipolar-stage specifics.
+    assert_netlist_contains(netlist, "B_vac",               "floating bipolar line source");
+    assert_netlist_contains(netlist, "vline",               "signed line node");
+    assert_netlist_contains(netlist, "mid_hf",              "HF-leg midpoint");
+    assert_netlist_contains(netlist, "mid_lf",              "LF-leg midpoint");
+    assert_netlist_contains(netlist, "S_hf_hi",             "HF high-side switch");
+    assert_netlist_contains(netlist, "S_hf_lo",             "HF low-side switch");
+    assert_netlist_contains(netlist, "S_lf_hi",             "LF high-side switch");
+    assert_netlist_contains(netlist, "S_lf_lo",             "LF low-side switch");
+    assert_netlist_contains(netlist, "abs(I(Vl_sense))",    "rectified |i_L| sense");
+    assert_netlist_contains(netlist, "pol_pos",             "line-polarity selector");
+}
+
+TEST_CASE("Test_Pfc_Switching_Netlist_TotemPole_WellFormed",
+          "[converter-model][pfc-topology][pfc-controller][netlist][totem-pole]") {
+    assert_netlist_well_formed_totempole(kRef1);
+}
+
+TEST_CASE("Test_Pfc_Switching_Netlist_Rejects_Unsupported_Variant",
+          "[converter-model][pfc-topology][pfc-controller][netlist]") {
+    // SEPIC/Ćuk (4th-order buck-boost class) and BUCK/BUCK_BOOST/VIENNA have
+    // no native switching controller and must still throw a loud, specific
+    // exception (no silent fallback).
+    {
+        auto pfc = build_pfc(kRef1);
+        pfc.set_topology_variant(PfcTopologyVariants::SEPIC);
+        REQUIRE_THROWS(pfc.generate_ngspice_switching_circuit(kRef1.inductance, 3));
+    }
+    {
+        auto pfc = build_pfc(kRef1);
+        pfc.set_topology_variant(PfcTopologyVariants::CUK);
+        REQUIRE_THROWS(pfc.generate_ngspice_switching_circuit(kRef1.inductance, 3));
+    }
 }

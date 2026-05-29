@@ -1055,23 +1055,34 @@ namespace OpenMagnetics {
         // we emit the netlist for ONE phase (per-phase power + per-phase
         // inductance, both already returned by process_design_requirements),
         // which is what the per-phase magnetic must be verified against.
-        // TOTEM_POLE is excluded: its inductor sits on the AC side and carries
-        // BIPOLAR current, so it needs a different (bidirectional) power stage.
+        // TOTEM_POLE takes the genuine bipolar branch below: its inductor sits
+        // on the AC side and carries BIPOLAR current, so it gets a floating
+        // line source + a 4-switch totem-pole power stage (HF leg with the
+        // active boost switch + rectifying diode role-swapped by line polarity,
+        // and a line-frequency LF polarity leg). The average-current controller
+        // runs in the rectified domain (senses |i_L|, multiplier on |vline|) and
+        // the PWM is routed to the active HF switch by polarity — exactly how
+        // industry totem-pole controllers operate. Only one active switch + one
+        // diode conduct at any instant, so it converges like the boost.
         switch (variant) {
             case PfcTopologyVariants::BOOST:
             case PfcTopologyVariants::BRIDGELESS:
             case PfcTopologyVariants::SEMI_BRIDGELESS:
             case PfcTopologyVariants::INTERLEAVED_BOOST:
-                break;  // supported by this unipolar-boost netlist
+            case PfcTopologyVariants::TOTEM_POLE:
+                break;  // supported (boost family unipolar; totem-pole bipolar)
             default:
                 throw std::runtime_error(
                     "PowerFactorCorrection::generate_ngspice_switching_circuit: "
-                    "only unipolar boost-family variants (BOOST, BRIDGELESS, "
-                    "SEMI_BRIDGELESS, INTERLEAVED_BOOST) are supported by the "
-                    "native switching controller. TOTEM_POLE needs a bipolar "
-                    "power stage; SEPIC/CUK/BUCK/BUCK_BOOST/VIENNA need their "
-                    "own switching netlists (out of scope here).");
+                    "only the boost family (BOOST, BRIDGELESS, SEMI_BRIDGELESS, "
+                    "INTERLEAVED_BOOST) and TOTEM_POLE are supported by the "
+                    "native switching controller. SEPIC/CUK/BUCK/BUCK_BOOST/"
+                    "VIENNA need their own switching netlists (out of scope here).");
         }
+        // Bipolar totem-pole vs unipolar boost family. Selects the power stage,
+        // the current-sense rectification, the PWM routing, and the saved
+        // bipolar line node below.
+        const bool bipolar = (variant == PfcTopologyVariants::TOTEM_POLE);
         if (!std::isfinite(inductance) || inductance <= 0.0) {
             throw std::invalid_argument(
                 "PowerFactorCorrection::generate_ngspice_switching_circuit: "
@@ -1122,6 +1133,7 @@ namespace OpenMagnetics {
             case PfcTopologyVariants::BRIDGELESS:        variantLabel = "Bridgeless (boost-equivalent inductor)"; break;
             case PfcTopologyVariants::SEMI_BRIDGELESS:   variantLabel = "Semi-bridgeless (boost-equivalent inductor)"; break;
             case PfcTopologyVariants::INTERLEAVED_BOOST: variantLabel = "Interleaved boost (single per-phase cell)"; break;
+            case PfcTopologyVariants::TOTEM_POLE:        variantLabel = "Totem-pole (bipolar 4-switch stage)"; break;
             default: break;
         }
         c << "* PFC " << variantLabel << " Switching Converter (native average-current-mode controller)\n";
@@ -1179,35 +1191,83 @@ namespace OpenMagnetics {
         c << "\n";
 
         // ── Power stage ─────────────────────────────────────────────────
-        c << "* ─── Power stage (Boost) ───────────────────────────────────\n";
-        c << "B_vin     vin_rect 0     V=vpk*abs(sin(2*3.141592653589793*fline*time))\n";
-        c << "Vl_sense  vin_rect l_in  0          ; in-line current sense\n";
-        c << "L1        l_in     sw    {l_ind}\n";
-        c << ".model SW1 SW (VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
-          << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << ")\n";
-        c << "S1        sw  0    gate 0 SW1\n";
-        // Series-RC snubber across the switch (R in series with C, NOT both
-        // shunted to 0).  When S1 is OFF and D1 is reverse-biased (vin_rect <
-        // vbus), the inductor current must reach 0 before the cycle ends; if
-        // the snubber R were directly to ground (the "parallel-RC" pattern
-        // used elsewhere in this codebase) it would carry vpk/Rsnub of DC
-        // current at every line-cycle peak — for Rsnub=100 Ω that's >3 A,
-        // dwarfing the 0.6 A i_ref and locking the current EA into hard
-        // anti-windup at vc_i = 0.  In a real boost the inductor *can* fully
-        // demagnetize each cycle (DCM near the line zero-crossings); in CCM
-        // the diode keeps conducting into vbus.  The series-RC pattern blocks
-        // DC and only damps switching-edge ringing, which is the textbook
-        // role of an RC snubber (Erickson §A.2; Basso 2008 §4.5).
-        c << "Rsnub_s1  sw   snub_n  " << cfg.snubR << "\n";
-        c << "Csnub_s1  snub_n 0     " << std::scientific << cfg.snubC
-          << std::defaultfloat << "\n";
-        c << ".model DIDEAL D (IS=" << std::scientific << cfg.diodeIS
-          << " RS=" << cfg.diodeRS << std::defaultfloat;
-        if (!cfg.diodeExtra.empty()) c << " " << cfg.diodeExtra;
-        c << ")\n";
-        c << "D1        sw  vbus DIDEAL\n";
-        c << "Cout      vbus 0   {cbus}  IC={ic_vbus}\n";
-        c << "Rload     vbus 0   {rload}\n\n";
+        // SW and diode models are shared by both branches.
+        const auto emitSwModel = [&]() {
+            c << ".model SW1 SW (VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+              << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << ")\n";
+        };
+        const auto emitDiodeModel = [&]() {
+            c << ".model DIDEAL D (IS=" << std::scientific << cfg.diodeIS
+              << " RS=" << cfg.diodeRS << std::defaultfloat;
+            if (!cfg.diodeExtra.empty()) c << " " << cfg.diodeExtra;
+            c << ")\n";
+        };
+        if (!bipolar) {
+            c << "* ─── Power stage (Boost) ───────────────────────────────────\n";
+            c << "B_vin     vin_rect 0     V=vpk*abs(sin(2*3.141592653589793*fline*time))\n";
+            c << "Vl_sense  vin_rect l_in  0          ; in-line current sense\n";
+            c << "L1        l_in     sw    {l_ind}\n";
+            emitSwModel();
+            c << "S1        sw  0    gate 0 SW1\n";
+            // Series-RC snubber across the switch (R in series with C, NOT both
+            // shunted to 0).  When S1 is OFF and D1 is reverse-biased (vin_rect <
+            // vbus), the inductor current must reach 0 before the cycle ends; if
+            // the snubber R were directly to ground (the "parallel-RC" pattern
+            // used elsewhere in this codebase) it would carry vpk/Rsnub of DC
+            // current at every line-cycle peak — for Rsnub=100 Ω that's >3 A,
+            // dwarfing the 0.6 A i_ref and locking the current EA into hard
+            // anti-windup at vc_i = 0.  In a real boost the inductor *can* fully
+            // demagnetize each cycle (DCM near the line zero-crossings); in CCM
+            // the diode keeps conducting into vbus.  The series-RC pattern blocks
+            // DC and only damps switching-edge ringing, which is the textbook
+            // role of an RC snubber (Erickson §A.2; Basso 2008 §4.5).
+            c << "Rsnub_s1  sw   snub_n  " << cfg.snubR << "\n";
+            c << "Csnub_s1  snub_n 0     " << std::scientific << cfg.snubC
+              << std::defaultfloat << "\n";
+            emitDiodeModel();
+            c << "D1        sw  vbus DIDEAL\n";
+            c << "Cout      vbus 0   {cbus}  IC={ic_vbus}\n";
+            c << "Rload     vbus 0   {rload}\n\n";
+        } else {
+            // Genuine bipolar totem-pole. The boost inductor is in series with
+            // the AC line (no input bridge), so it carries a SIGNED sinusoidal
+            // current. Two half-bridge legs share the bus:
+            //   • HF leg (mid_hf): switched at fsw. In each line half-cycle ONE
+            //     of its switches is the active boost switch and the OPPOSITE
+            //     leg's diode rectifies into the bus — so only one switch + one
+            //     diode conduct at a time, just like the boost. Positive half:
+            //     S_hf_lo is the boost switch, D_hf_hi rectifies (mid_hf>vbus).
+            //     Negative half: S_hf_hi is the boost switch, D_hf_lo rectifies
+            //     (mid_hf<0).
+            //   • LF leg (mid_lf = the AC return): switched at the LINE rate,
+            //     tying the return to gnd (positive half) or vbus (negative
+            //     half). Exactly one LF switch is ON at all times (no overlap,
+            //     no gap), so mid_lf is always hard-driven.
+            // vin_rect / vline are ground-referenced copies used only by the
+            // controller (feed-forward, multiplier, polarity); the power path
+            // is the FLOATING source B_vac between vac and mid_lf.
+            c << "* ─── Power stage (Totem-pole, bipolar) ─────────────────────\n";
+            c << "B_vline   vline 0      V=vpk*sin(2*3.141592653589793*fline*time)\n";
+            c << "B_vin_rect vin_rect 0  V=abs(V(vline))   ; rectified line for control\n";
+            c << "B_vac     vac mid_lf   V=vpk*sin(2*3.141592653589793*fline*time)\n";
+            c << "Vl_sense  vac  l_in    0          ; signed in-line current sense\n";
+            c << "L1        l_in mid_hf  {l_ind}\n";
+            emitSwModel();
+            emitDiodeModel();
+            c << "S_hf_hi   mid_hf vbus  g_hi 0 SW1\n";
+            c << "S_hf_lo   mid_hf 0     g_lo 0 SW1\n";
+            c << "D_hf_hi   mid_hf vbus  DIDEAL    ; rectifies positive-half boost\n";
+            c << "D_hf_lo   0 mid_hf     DIDEAL    ; rectifies negative-half boost\n";
+            c << "S_lf_hi   mid_lf vbus  g_lf_hi 0 SW1\n";
+            c << "S_lf_lo   mid_lf 0     g_lf_lo 0 SW1\n";
+            // Series-RC snubber on the HF midpoint (same role/rationale as the
+            // boost snubber above — blocks DC, damps switching-edge ringing).
+            c << "Rsnub_s1  mid_hf snub_n  " << cfg.snubR << "\n";
+            c << "Csnub_s1  snub_n 0     " << std::scientific << cfg.snubC
+              << std::defaultfloat << "\n";
+            c << "Cout      vbus 0   {cbus}  IC={ic_vbus}\n";
+            c << "Rload     vbus 0   {rload}\n\n";
+        }
 
         // ── Voltage error amp (Block 1) ─────────────────────────────────
         c << "* ─── Voltage error amp (Gv) — type-II ─────────────────────\n";
@@ -1246,7 +1306,13 @@ namespace OpenMagnetics {
 
         // ── Current sense + error amp (Block 4) ─────────────────────────
         c << "* ─── Current sense + Gi (type-II) ─────────────────────────\n";
-        c << "B_isense  i_sense  0  V=I(Vl_sense)*rs_sense\n";
+        // Totem-pole inductor current is bipolar; the average-current loop
+        // regulates its MAGNITUDE (the LF leg + HF role-swap handle polarity),
+        // so sense |i_L|. Boost current is already unipolar.
+        if (bipolar)
+            c << "B_isense  i_sense  0  V=abs(I(Vl_sense))*rs_sense\n";
+        else
+            c << "B_isense  i_sense  0  V=I(Vl_sense)*rs_sense\n";
         c << "R_in_i    i_sense  ic_n   {gi_rin}\n";
         c << "R_fb_zi   ic_n     ic_z   {gi_rz}\n";
         // Pre-bias the integrator capacitor C_fb_zi to ic_vc_i. ic_z sits at
@@ -1271,7 +1337,23 @@ namespace OpenMagnetics {
         c << "* ─── Sawtooth + PWM comparator ────────────────────────────\n";
         c << "V_saw     saw 0   PULSE(0 {v_pk_saw} 0 {tsw-pwm_t_rise} "
              "{pwm_t_rise} {pwm_t_rise} {tsw})\n";
-        c << "B_gate    gate    0  V=(V(vc_i) > V(saw)) ? v_high : 0\n\n";
+        if (!bipolar) {
+            c << "B_gate    gate    0  V=(V(vc_i) > V(saw)) ? v_high : 0\n\n";
+        } else {
+            // Bipolar totem-pole modulator. The current loop produces ONE PWM
+            // boost command (vc_i vs saw); a line-polarity selector routes it to
+            // whichever HF switch is the active boost switch this half-cycle, and
+            // drives the LF leg to tie the AC return to the correct rail. pol_pos
+            // = 1 on the positive line half-cycle, 0 on the negative.
+            //   positive half: S_hf_lo = PWM (boost), D_hf_hi rectifies, LF→gnd
+            //   negative half: S_hf_hi = PWM (boost), D_hf_lo rectifies, LF→vbus
+            c << "B_polpos  pol_pos 0  V=(V(vline) >= 0) ? 1 : 0\n";
+            c << "B_pwm     pwm     0  V=(V(vc_i) > V(saw)) ? 1 : 0\n";
+            c << "B_g_lo    g_lo    0  V=V(pol_pos)*V(pwm)*v_high\n";
+            c << "B_g_hi    g_hi    0  V=(1-V(pol_pos))*V(pwm)*v_high\n";
+            c << "B_g_lf_lo g_lf_lo 0  V=V(pol_pos)*v_high\n";
+            c << "B_g_lf_hi g_lf_hi 0  V=(1-V(pol_pos))*v_high\n\n";
+        }
 
         // ── Initial conditions ──────────────────────────────────────────
         // Note: vea / vc_i / vrms_ff are B-source outputs and CANNOT be
@@ -1289,8 +1371,17 @@ namespace OpenMagnetics {
         c << "* ─── Analysis ──────────────────────────────────────────────\n";
         c << ".tran " << sci(maxStep) << " " << sci(simTime) << " 0 "
           << sci(maxStep) << " uic\n";
-        c << ".save i(vl_sense) v(vin_rect) v(vbus) v(vea) v(vrms_ff) "
-             "v(i_ref) v(i_sense) v(vc_i) v(vref_v) v(saw) v(gate)\n";
+        if (!bipolar) {
+            c << ".save i(vl_sense) v(vin_rect) v(vbus) v(vea) v(vrms_ff) "
+                 "v(i_ref) v(i_sense) v(vc_i) v(vref_v) v(saw) v(gate)\n";
+        } else {
+            // Bipolar: also save v(vline) (the signed AC line — the genuine
+            // input-port voltage and the signed power-balance partner of the
+            // bipolar i(vl_sense)) and the routed gate signals.
+            c << ".save i(vl_sense) v(vline) v(vin_rect) v(vbus) v(vea) v(vrms_ff) "
+                 "v(i_ref) v(i_sense) v(vc_i) v(vref_v) v(saw) v(pwm) "
+                 "v(g_lo) v(g_hi)\n";
+        }
         // std::defaultfloat after std::scientific block — see the
         // IsolatedBuck commit (6f795fef) for why std::fixed would break.
         c << ".options METHOD=" << cfg.method << " TRTOL=" << cfg.trTol
@@ -1507,9 +1598,17 @@ namespace OpenMagnetics {
             return e;
         };
 
+        // Totem-pole is bridgeless: its genuine input-port voltage is the
+        // SIGNED AC line (v(vline), saved only for that variant), in phase with
+        // the bipolar inductor current. The bridged boost family presents the
+        // rectified |line| (v(vin_rect)). Pick whichever the netlist saved.
+        const bool bipolarInput =
+            (get_topology_variant_or_default() == PfcTopologyVariants::TOTEM_POLE);
+        const Waveform* inputVoltageWf =
+            bipolarInput ? findByName("vline") : findByName("vin_rect");
         OperatingPoint op;
         op.get_mutable_excitations_per_winding().push_back(
-            makeExc("InputPort",   findByName("vin_rect"), iLtrim));
+            makeExc("InputPort",   inputVoltageWf, iLtrim));
         op.get_mutable_excitations_per_winding().push_back(
             makeExc("PowerStage",  findByName("vbus"), iLtrim));
         op.get_mutable_excitations_per_winding().push_back(
