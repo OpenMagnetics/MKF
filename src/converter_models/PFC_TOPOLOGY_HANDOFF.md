@@ -180,10 +180,29 @@ tolerance. Don't "fix" a failing bus gate by loosening it.
 ## 4. Pre-existing issues observed (NOT introduced here — do not attribute)
 
 - `Test_MagneticAdviser_Inductor_Only_Toroidal_Cores` (TestMagneticAdviser.cpp
-  ~line 1325) fails on a clean baseline too (verified by reverting all my
-  files). It's an interaction with the committed "reject ferrite toroids for
-  energy-storing topologies" change (7b1517b5) and/or the uncommitted adviser
-  work — an inductor forced onto toroidal cores that all get rejected.
+  ~line 1326) — **root-caused 2026-05-30.** Pre-existing, isolated (10/11 of the
+  `[adviser][magnetic-adviser][smoke-test]` set pass; only this one fails). The
+  spec is a 110 µH inductor at 90 A_pp sinusoidal → **45 A peak** (stored energy
+  ½·L·I² ≈ 0.11 J), toroids-only with concentric cores disabled. DEBUG trace of
+  the slow path (`get_advised_magnetic` → `CoreAdviserPipeline`):
+  ```
+  After AreaProduct: 428 → Ferrite cores after pruning: 0 (toroidal→powder split)
+  After powder materials: 4000 → EnergyStored 3671 → Dimensions 3671
+  Pruned to 105 before Inductance → After Inductance (powder): 0   ← all rejected
+  Combined results: 0
+  ```
+  So **`filterMagneticInductance` (after `add_initial_turns_by_inductance`)
+  rejects every powder-toroid candidate** — the catalog toroids cannot realize
+  110 µH while carrying 45 A peak (thick wire for 45 A + many turns for 110 µH on
+  low-µ powder don't fit the toroid window). The retry then disables toroids, but
+  the test ALSO disabled concentric cores, so the retry has no shapes left → 0.
+  **NOT caused by the committed 7b1517b5 ferrite-toroid filter** (the powder path
+  fails independently at FilterInductance) **nor by the uncommitted in-flight
+  adviser work** (verified: `git stash` the `src/advisers/*` changes → rebuild →
+  identical trace + failure). So 0 results is very likely *physically correct*
+  for this spec, making the test's `REQUIRE(size > 0)` the questionable part —
+  but confirming that (vs. an over-strict toroidal inductance filter) is a
+  judgment call for the adviser owner. DO NOT silence/tag; surface for decision.
 - Running the **whole `[adviser]` suite together** shows ~tens of failures +
   an occasional SIGSEGV. This is documented test-isolation flakiness (`[!mayfail]`
   tags reference "global settings state when run after Buck/Boost tests") and
