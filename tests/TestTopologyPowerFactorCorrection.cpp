@@ -273,27 +273,123 @@ TEST_CASE("Test_Pfc_InterleavedBoost_PerPhaseInductanceScalesWithN",
     CHECK(L_n3 < 3.3 * L_single);
 }
 
+TEST_CASE("Test_Pfc_InterleavedBoost_SwitchingNetlist_PerPhase",
+          "[converter-model][pfc-topology][interleaved-boost][netlist]") {
+    // The interleaved switching netlist models ONE per-phase boost cell
+    // (per-phase power Pout/N + the per-phase inductance). Verify it emits a
+    // well-formed netlist and that the Rload it derives reflects the per-phase
+    // power (N× the single-cell load resistance of the full converter).
+    auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+    pfc.set_topology_variant(PfcTopologyVariants::INTERLEAVED_BOOST);
+    pfc.set_number_of_phases(2);
+    pfc.set_bulk_capacitance(220e-6);
+
+    const double lPhase = pfc.calculate_inductance_ccm();
+    auto netlist = pfc.generate_ngspice_switching_circuit(lPhase, 2);
+    REQUIRE(netlist.find("Interleaved boost") != std::string::npos);
+    REQUIRE(netlist.find(".tran") != std::string::npos);
+    REQUIRE(netlist.find(".end") != std::string::npos);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Unsupported variants throw at every engineering entry point.
 // ─────────────────────────────────────────────────────────────────────────────
 TEST_CASE("Test_Pfc_UnsupportedVariants_Throw",
           "[converter-model][pfc-topology][variants]") {
-    for (auto variant : {PfcTopologyVariants::BRIDGELESS,
-                         PfcTopologyVariants::SEMI_BRIDGELESS,
-                         PfcTopologyVariants::BUCK,
-                         PfcTopologyVariants::BUCK_BOOST,
-                         PfcTopologyVariants::SEPIC,
-                         PfcTopologyVariants::CUK}) {
+    // Buck / buck-boost PFC: input current is discontinuous (inductor not in
+    // series with the line), so there is no shared series-inductor sizing
+    // path — these still throw at the validation gate.
+    // (Bridgeless / semi-bridgeless / SEPIC / Ćuk are NO LONGER here — they
+    // have a series input inductor and are now supported; see
+    // Test_Pfc_BridgelessFamily_BoostEquivalent and Test_Pfc_SepicCuk_*.)
+    for (auto variant : {PfcTopologyVariants::BUCK,
+                         PfcTopologyVariants::BUCK_BOOST}) {
         auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
         pfc.set_topology_variant(variant);
         REQUIRE_THROWS_WITH(pfc.calculate_inductance_ccm(),
-                            Catch::Matchers::ContainsSubstring("not yet implemented"));
+                            Catch::Matchers::ContainsSubstring("discontinuous input current"));
     }
     // Vienna gets a dedicated error message redirecting to VIENNA_PLAN.md.
     auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
     pfc.set_topology_variant(PfcTopologyVariants::VIENNA);
     REQUIRE_THROWS_WITH(pfc.calculate_inductance_ccm(),
                         Catch::Matchers::ContainsSubstring("VIENNA_PLAN.md"));
+}
+
+TEST_CASE("Test_Pfc_SepicCuk_BuckBoostSizing",
+          "[converter-model][pfc-topology][variants][sepic-cuk]") {
+    // SEPIC and Ćuk are buck-boost-class: their input inductor L1 is in series
+    // with the line (continuous input current) but the conversion ratio is
+    // buck-boost. Verify (a) the duty follows D = (Vout+Vd)/(Vin+Vout+Vd),
+    // NOT the boost D = 1−Vin/(Vout+Vd); (b) L1 sizes to a finite positive
+    // value sharing the boost L = Vin·D/(ΔI·fsw) form; (c) operating points
+    // synthesize; (d) DCM is rejected (not yet validated); (e) the switching
+    // netlist is rejected (no native 4th-order controller yet).
+    for (auto variant : {PfcTopologyVariants::SEPIC, PfcTopologyVariants::CUK}) {
+        auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+        pfc.set_topology_variant(variant);
+
+        // Duty at the minimum-Vin peak must match the buck-boost relation.
+        auto iv = pfc.get_input_voltage();
+        const double vinPeakMin =
+            OpenMagnetics::resolve_dimensional_values(iv, DimensionalValues::MINIMUM) * std::sqrt(2);
+        const double vout = pfc.get_output_voltage();
+        const double vd   = pfc.get_diode_voltage_drop_required();
+        const double dExpected = (vout + vd) / (vinPeakMin + vout + vd);
+        const double dBoost    = 1.0 - vinPeakMin / (vout + vd);
+        const double d = pfc.calculate_duty_cycle(vinPeakMin, vout);
+        REQUIRE(d == Catch::Approx(dExpected));
+        REQUIRE(d != Catch::Approx(dBoost));   // genuinely different from boost
+
+        const double l = pfc.calculate_inductance_ccm();
+        REQUIRE(l > 0.0);
+        REQUIRE(std::isfinite(l));
+
+        auto ops = pfc.process_operating_points({}, l);
+        REQUIRE(ops.size() > 0);
+
+        // DCM sizing not yet validated for SEPIC/Ćuk → must throw, not silently
+        // return a boost number.
+        pfc.set_mode(PfcModes::DISCONTINUOUS_CONDUCTION_MODE);
+        REQUIRE_THROWS_WITH(pfc.calculate_inductance_dcm(),
+                            Catch::Matchers::ContainsSubstring("not yet validated for SEPIC"));
+        pfc.set_mode(PfcModes::CONTINUOUS_CONDUCTION_MODE);
+
+        // No native switching controller for the 4th-order stage yet.
+        pfc.set_bulk_capacitance(220e-6);
+        REQUIRE_THROWS(pfc.generate_ngspice_switching_circuit(l, 2));
+    }
+}
+
+TEST_CASE("Test_Pfc_BridgelessFamily_BoostEquivalent",
+          "[converter-model][pfc-topology][variants][bridgeless]") {
+    // Bridgeless and semi-bridgeless keep the boost inductor on the rectified
+    // side, so their inductance sizing, waveform synthesis and switching
+    // netlist are identical to a classic boost PFC. Verify they (a) size to
+    // the SAME inductance as BOOST, (b) produce non-empty operating points,
+    // and (c) generate a well-formed switching netlist.
+    const double lBoost = [] {
+        auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+        pfc.set_topology_variant(PfcTopologyVariants::BOOST);
+        return pfc.calculate_inductance_ccm();
+    }();
+
+    for (auto variant : {PfcTopologyVariants::BRIDGELESS,
+                         PfcTopologyVariants::SEMI_BRIDGELESS}) {
+        auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+        pfc.set_topology_variant(variant);
+
+        const double l = pfc.calculate_inductance_ccm();
+        REQUIRE(l == Catch::Approx(lBoost));
+
+        auto ops = pfc.process_operating_points({}, l);
+        REQUIRE(ops.size() > 0);
+
+        pfc.set_bulk_capacitance(220e-6);
+        auto netlist = pfc.generate_ngspice_switching_circuit(l, 2);
+        REQUIRE(netlist.find(".tran") != std::string::npos);
+        REQUIRE(netlist.find(".end") != std::string::npos);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

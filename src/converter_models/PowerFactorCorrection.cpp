@@ -50,6 +50,22 @@ namespace OpenMagnetics {
                 // Single-phase boost — no companion-field requirements.
                 return;
 
+            case PfcTopologyVariants::BRIDGELESS:
+            case PfcTopologyVariants::SEMI_BRIDGELESS:
+                // Bridgeless / semi-bridgeless boost. These remove (or halve)
+                // the input rectifier bridge to cut conduction loss, but the
+                // BOOST INDUCTOR itself sees the identical rectified-sine
+                // current envelope as a classic boost PFC — the only
+                // difference is which return-path devices conduct. From the
+                // magnetic-component standpoint they are boost: same
+                // inductance sizing (calculate_inductance_*), same
+                // |sin|-enveloped unipolar waveform synthesis, same switching
+                // netlist. Unlike totem-pole (which is also bridgeless but
+                // puts the inductor on the AC side → bipolar current), these
+                // keep the inductor on the rectified side, so no
+                // wide-bandgap-switch requirement and no companion fields.
+                return;
+
             case PfcTopologyVariants::TOTEM_POLE: {
                 // Bridgeless totem-pole. CCM mode requires GaN/SiC switches
                 // (no Si-MOSFET body-diode reverse-recovery tolerable).
@@ -91,17 +107,69 @@ namespace OpenMagnetics {
                     "3-phase, 3-level topology with its own dedicated model — "
                     "see VIENNA_PLAN.md.");
 
-            case PfcTopologyVariants::BRIDGELESS:
-            case PfcTopologyVariants::SEMI_BRIDGELESS:
-            case PfcTopologyVariants::BUCK:
-            case PfcTopologyVariants::BUCK_BOOST:
             case PfcTopologyVariants::SEPIC:
             case PfcTopologyVariants::CUK:
+                // Buck-boost-class with a series input inductor (continuous
+                // input current). Analytical sizing/waveforms are supported
+                // via the buck-boost duty relation + the shared L1 = Vin·D/
+                // (ΔI·fsw) form (see is_buck_boost_class). Their 4th-order
+                // power stage has no native switching controller yet, so
+                // generate_ngspice_switching_circuit still rejects them
+                // (no switching-PtP). DCM sizing is not yet validated for
+                // these and is rejected in calculate_inductance_dcm.
+                return;
+
+            case PfcTopologyVariants::BUCK:
+            case PfcTopologyVariants::BUCK_BOOST:
+                // Input current is discontinuous (inductor not in series with
+                // the line), so these are not boost-/SEPIC-class and have no
+                // shared sizing path. Unsupported.
                 throw std::runtime_error(
-                    "PowerFactorCorrection: topologyVariant is not yet "
-                    "implemented in the MKF engineering layer. Currently "
-                    "supported: BOOST, TOTEM_POLE, INTERLEAVED_BOOST.");
+                    "PowerFactorCorrection: buck / buckBoost PFC is not "
+                    "implemented (discontinuous input current — no shared "
+                    "series-inductor sizing path). Supported: BOOST, "
+                    "BRIDGELESS, SEMI_BRIDGELESS, TOTEM_POLE, "
+                    "INTERLEAVED_BOOST, SEPIC, CUK.");
         }
+    }
+
+    double PowerFactorCorrection::suggested_bulk_capacitance(double vBus,
+                                                              double vBusMin,
+                                                              double pOut,
+                                                              double holdupTime) {
+        auto check = [](const char* name, double v) {
+            if (!std::isfinite(v) || v <= 0.0) {
+                throw std::invalid_argument(
+                    std::string("PowerFactorCorrection::suggested_bulk_capacitance: ")
+                    + name + " must be positive and finite (got "
+                    + std::to_string(v) + ")");
+            }
+        };
+        check("vBus",       vBus);
+        check("vBusMin",    vBusMin);
+        check("pOut",       pOut);
+        check("holdupTime", holdupTime);
+        if (vBusMin >= vBus) {
+            throw std::invalid_argument(
+                "PowerFactorCorrection::suggested_bulk_capacitance: "
+                "vBusMin must be strictly less than vBus (got vBus=" +
+                std::to_string(vBus) + ", vBusMin=" + std::to_string(vBusMin) + ")");
+        }
+        return 2.0 * pOut * holdupTime / (vBus * vBus - vBusMin * vBusMin);
+    }
+
+    double PowerFactorCorrection::get_vrms_for_simulation() const {
+        auto inputVoltage = const_cast<PowerFactorCorrection*>(this)->get_input_voltage();
+        if (inputVoltage.get_nominal().has_value()) {
+            return inputVoltage.get_nominal().value();
+        }
+        const double v = resolve_dimensional_values(inputVoltage, DimensionalValues::MINIMUM);
+        if (!std::isfinite(v) || v <= 0.0) {
+            throw std::runtime_error(
+                "PowerFactorCorrection::get_vrms_for_simulation: inputVoltage "
+                "has neither a nominal value nor a usable minimum");
+        }
+        return v;
     }
 
     bool PowerFactorCorrection::run_checks(bool assert) {
@@ -120,15 +188,19 @@ namespace OpenMagnetics {
         double outputVoltage = get_output_voltage();
         double efficiency   = get_efficiency_required();
 
-        // Check that output voltage is greater than peak input voltage
-        double vinPeakMax = resolve_dimensional_values(inputVoltage, DimensionalValues::MAXIMUM) * std::sqrt(2);
-        if (outputVoltage <= vinPeakMax) {
-            if (assert) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                    "PFC output voltage must be greater than peak input voltage. Vout: " +
-                    std::to_string(outputVoltage) + " <= Vin_peak_max: " + std::to_string(vinPeakMax));
+        // Boost-family PFCs can only step UP, so Vout must exceed the peak
+        // input. SEPIC/Ćuk are buck-boost-class and may regulate a bus below
+        // the peak line, so this constraint does not apply to them.
+        if (!is_buck_boost_class()) {
+            double vinPeakMax = resolve_dimensional_values(inputVoltage, DimensionalValues::MAXIMUM) * std::sqrt(2);
+            if (outputVoltage <= vinPeakMax) {
+                if (assert) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "PFC output voltage must be greater than peak input voltage. Vout: " +
+                        std::to_string(outputVoltage) + " <= Vin_peak_max: " + std::to_string(vinPeakMax));
+                }
+                valid = false;
             }
-            valid = false;
         }
 
         // Check efficiency is reasonable
@@ -144,14 +216,17 @@ namespace OpenMagnetics {
     }
 
     double PowerFactorCorrection::calculate_duty_cycle(double vinPeak, double /*vout*/) {
-        // For boost PFC: D = 1 - Vin/Vout
-        // Accounting for diode drop: D = 1 - Vin/(Vout + Vd)
-        // Totem-Pole replaces the boost diode with a synchronous switch, so
-        // the conduction-path drop is essentially zero (RDS(on)·I, not Vf).
-        const double vd = (get_topology_variant_or_default() == PfcTopologyVariants::TOTEM_POLE)
-                              ? 0.0
-                              : get_diode_voltage_drop_required();
-        return 1.0 - vinPeak / (get_output_voltage() + vd);
+        const double vout = get_output_voltage();
+        const double vd   = effective_diode_voltage_drop();
+        if (is_buck_boost_class()) {
+            // SEPIC / Ćuk (buck-boost conversion ratio):
+            //   Vout/Vin = D/(1−D)  ⇒  D = (Vout+Vd)/(Vin+Vout+Vd).
+            // Consistent with Sepic::calculate_conversion_ratio().
+            return (vout + vd) / (vinPeak + vout + vd);
+        }
+        // Boost family: D = 1 − Vin/(Vout+Vd).
+        // effective_diode_voltage_drop() centralises the TOTEM_POLE → 0 policy.
+        return 1.0 - vinPeak / (vout + vd);
     }
 
     // Per-phase power (Pout/N for INTERLEAVED_BOOST, Pout otherwise). Used by
@@ -204,6 +279,16 @@ namespace OpenMagnetics {
 
     double PowerFactorCorrection::calculate_inductance_dcm() {
         validate_topology_variant();
+        // The DCM closed form below is the boost discontinuous-mode result
+        // (L = Vin²·D² / (2·P·fsw)). For SEPIC/Ćuk, DCM involves the effective
+        // inductance Le = L1‖L2 and a different energy relation, which is not
+        // validated here — reject rather than return a boost number.
+        if (is_buck_boost_class()) {
+            throw std::runtime_error(
+                "PowerFactorCorrection: DCM inductance sizing is not yet "
+                "validated for SEPIC/Ćuk (requires the Le = L1‖L2 model). "
+                "Use CONTINUOUS_CONDUCTION_MODE or CRITICAL_CONDUCTION_MODE.");
+        }
         auto inputVoltage = get_input_voltage();
         double vinRmsMin  = resolve_dimensional_values(inputVoltage, DimensionalValues::MINIMUM);
         double vinPeakMin = vinRmsMin * std::sqrt(2);
@@ -231,18 +316,40 @@ namespace OpenMagnetics {
     }
 
     double PowerFactorCorrection::calculate_peak_current(double vinPeak, double inductance) {
-        double D = calculate_duty_cycle(vinPeak, get_output_voltage());
+        double D    = calculate_duty_cycle(vinPeak, get_output_voltage());
+        double fsw  = get_switching_frequency();
+        std::string mode = determine_actual_mode(inductance);
 
-        double pinAvg = get_output_power() / get_efficiency_required();
+        if (mode == "Discontinuous Conduction Mode") {
+            // DCM peak current is set by the energy delivered per switching
+            // cycle, not by the average envelope: ipk_sw = Vin·D·Tsw / L.
+            // The CCM "envelope + ΔI/2" formula does NOT apply — it would
+            // under-report the peak by a large factor.
+            return vinPeak * D / (inductance * fsw);
+        }
+
+        // CCM (and CrCM, which is the CCM/DCM boundary): peak = envelope avg
+        // at line peak (√2·iinRms) + ΔI/2.
+        double pinAvg = per_phase_power(*this) / get_efficiency_required();
         double iinRms = pinAvg / (vinPeak / std::sqrt(2));
-        double iAvg = iinRms * std::sqrt(2);
-
-        double deltaI = vinPeak * D / (inductance * get_switching_frequency());
+        double iAvg   = iinRms * std::sqrt(2);
+        double deltaI = vinPeak * D / (inductance * fsw);
         return iAvg + deltaI / 2;
     }
 
     std::string PowerFactorCorrection::determine_actual_mode(double inductance) {
         double L_critical = calculate_inductance_crcm();
+        // ±5 % band around L_crit labels the result as Critical (boundary)
+        // mode. The exact figure is a labelling convenience, not a physics
+        // boundary — at L = L_crit the converter operates at the CCM/DCM
+        // boundary by definition. The 5 % band absorbs floating-point /
+        // tolerance noise from the sizing formulas (`calculate_inductance_*`
+        // multiply/divide √2, π, η — a few % relative drift is normal) so
+        // that a value sized as "CrCM" doesn't get re-labelled CCM/DCM
+        // purely by rounding. Tightening below ~1 % causes spurious flips;
+        // widening past ~10 % overlaps real CCM/DCM operating regions.
+        // This band is consistent with the band used in TI SLUA479 fig. 6
+        // (industry-conventional CrCM tolerance window).
         const double tolerance = 0.05;
 
         if (inductance > L_critical * (1.0 + tolerance)) {
@@ -283,7 +390,9 @@ namespace OpenMagnetics {
         } else if (mode == "Critical Conduction Mode" || mode == "Transition Mode") {
             inductance = calculate_inductance_crcm();
         } else {
-            inductance = calculate_inductance_ccm();
+            throw std::runtime_error(
+                "PowerFactorCorrection::process_design_requirements: "
+                "unsupported mode '" + mode + "'");
         }
 
         DimensionWithTolerance inductanceWithTolerance;
@@ -308,6 +417,9 @@ namespace OpenMagnetics {
         // Totem-pole has no bridge — inductor sees AC voltage / bipolar
         // current. Boost / Interleaved-Boost both have an input bridge → unipolar.
         const bool bipolar = (variant == PfcTopologyVariants::TOTEM_POLE);
+        // SEPIC/Ćuk: unipolar input current but a buck-boost OFF-time inductor
+        // voltage (−(Vout+Vd)), handled in the waveform loop below.
+        const bool buckBoostClass = is_buck_boost_class();
 
         // Calculate required inductance if not provided
         double L = magnetizingInductance;
@@ -316,8 +428,12 @@ namespace OpenMagnetics {
                 L = calculate_inductance_ccm();
             } else if (mode == "Discontinuous Conduction Mode") {
                 L = calculate_inductance_dcm();
-            } else {
+            } else if (mode == "Critical Conduction Mode" || mode == "Transition Mode") {
                 L = calculate_inductance_crcm();
+            } else {
+                throw std::runtime_error(
+                    "PowerFactorCorrection::process_operating_points: "
+                    "unsupported mode '" + mode + "'");
             }
         }
 
@@ -329,9 +445,7 @@ namespace OpenMagnetics {
         double outputPower       = per_phase_power(*this);
         double switchingFrequency= get_switching_frequency();
         double lineFrequency     = get_line_frequency_required();
-        // Totem-pole: synchronous low-side switch replaces the boost diode;
-        // conduction-path Vf is essentially zero.
-        double diodeVoltageDrop  = bipolar ? 0.0 : get_diode_voltage_drop_required();
+        double diodeVoltageDrop  = effective_diode_voltage_drop();
         double efficiency        = get_efficiency_required();
         double ambientTemperature= get_ambient_temperature();
 
@@ -394,24 +508,34 @@ namespace OpenMagnetics {
             // bridgeless totem-pole → true sine (bipolar inductor current/voltage).
             const double vinShape = bipolar ? std::sin(theta) : std::abs(std::sin(theta));
             const double vinAbs   = std::abs(vinShape);
-            double vinInst        = vinPeakMin * vinShape;
-            double vinAbsInst     = vinPeakMin * vinAbs;
-            // Floor on |Vin| to keep duty bounded near line zero-crossings.
-            if (vinAbsInst < vinPeakMin * 0.05) {
-                vinAbsInst = vinPeakMin * 0.05;
-                if (bipolar) vinInst = std::copysign(vinAbsInst, vinShape);
-                else         vinInst = vinAbsInst;
-            }
+            const double vinInst    = vinPeakMin * vinShape;
+            const double vinAbsInst = vinPeakMin * vinAbs;
 
+            // Analytical-model boundary at line zero-crossings: as Vin→0, the
+            // CCM duty D = 1 − Vin/Vout → 1, and ΔI = Vin·D·Tsw/L → 0. The
+            // model produces no usable waveform sample at exact Vin = 0
+            // (boost can't sustain output current with zero input voltage —
+            // it relies on Cbus dump-out, which this analytical surface
+            // does not model). The physical duty bound D ∈ [0, 1] holds; we
+            // clip there (NOT to [0.01, 0.95]) because [0, 1] is the true
+            // physical range. A real PFC controller will simply disable
+            // gating during the few microseconds of near-zero Vin per cycle
+            // (the same numerical behaviour you see here).
             double D = 1.0 - vinAbsInst / (outputVoltage + diodeVoltageDrop);
-            if (D < 0.01) D = 0.01;
-            if (D > 0.95) D = 0.95;
+            if (D < 0.0) D = 0.0;
+            if (D > 1.0) D = 1.0;
 
             double iAvgInst = iLinePeak * vinShape;     // signed for totem-pole
             double deltaI   = vinAbsInst * D / (L * switchingFrequency);
 
-            double tInSwitchCycle = std::fmod(t, switchingPeriod);
-            double switchPhase    = tInSwitchCycle / switchingPeriod;
+            // Integer-arithmetic switching-cycle phase (samples per switching
+            // period = 4 since timeStep = Tsw/4). Using std::fmod(t, Tsw)
+            // over ~80k samples accumulates float-rounding drift large
+            // enough to shift the triangle's vertex by a fraction of a
+            // sample late in the simulation.
+            constexpr size_t samplesPerSwCycle = 4;
+            double switchPhase = static_cast<double>(i % samplesPerSwCycle)
+                                 / static_cast<double>(samplesPerSwCycle);
 
             double ripple;
             if (switchPhase < D) {
@@ -423,10 +547,17 @@ namespace OpenMagnetics {
             currentData.push_back(iAvgInst + ripple);
 
             if (switchPhase < D) {
+                // ON-time: every supported variant's series inductor sees +Vin.
                 voltageData.push_back(vinInst);
+            } else if (buckBoostClass) {
+                // SEPIC/Ćuk OFF-time: the input inductor L1 sees −(Vout+Vd),
+                // independent of Vin (volt-second balance Vin·D = (Vout+Vd)·
+                // (1−D) gives the buck-boost ratio). Unipolar input current,
+                // so no sign flip.
+                voltageData.push_back(-(outputVoltage + diodeVoltageDrop));
             } else {
-                // Off-time: inductor sees Vin − Vout (signed); for totem-pole
-                // negative half-cycle the polarity of Vout is also reversed.
+                // Boost-family OFF-time: inductor sees Vin − Vout (signed); for
+                // totem-pole's negative half-cycle the polarity of Vout flips.
                 const double voutSigned = bipolar ? std::copysign(outputVoltage, vinShape)
                                                   : outputVoltage;
                 voltageData.push_back(vinInst - voutSigned - diodeVoltageDrop);
@@ -503,20 +634,17 @@ namespace OpenMagnetics {
         netlist << "* Generated by OpenMagnetics\n";
         netlist << "* Models ideal PFC with sinusoidal current envelope + switching ripple\n\n";
 
-        auto inputVoltage = get_input_voltage();
-        double vinRms;
-        if (inputVoltage.get_nominal().has_value()) {
-            vinRms = inputVoltage.get_nominal().value();
-        } else {
-            vinRms = resolve_dimensional_values(inputVoltage, DimensionalValues::MINIMUM);
-        }
-        double vinPeak = vinRms * std::sqrt(2);
+        const double vinRms = get_vrms_for_simulation();
+        const double vinPeak = vinRms * std::sqrt(2);
         double vout    = get_output_voltage();
         double pout    = get_output_power();
         double switchingFrequency = get_switching_frequency();
         double lineFrequency      = get_line_frequency_required();
 
-        double iPeak = std::sqrt(2) * pout / vinRms;
+        // Pin = Pout / η — the sizing path uses Pin (Erickson §17.3); use the
+        // same here so the analytical and behavioural surfaces agree.
+        const double pin = pout / get_efficiency_required();
+        double iPeak = std::sqrt(2) * pin / vinRms;
         double tSw   = 1.0 / switchingFrequency;
 
         netlist << ".param vin_peak=" << vinPeak << "\n";
@@ -559,24 +687,23 @@ namespace OpenMagnetics {
         PfcSimulationWaveforms waveforms;
         const auto variant = get_topology_variant_or_default();
         const bool bipolar = (variant == PfcTopologyVariants::TOTEM_POLE);
+        const bool buckBoostClass = is_buck_boost_class();
+        const double vd = effective_diode_voltage_drop();
         double switchingFrequency = get_switching_frequency();
         double lineFrequency      = get_line_frequency_required();
         waveforms.switchingFrequency = switchingFrequency;
         waveforms.lineFrequency      = lineFrequency;
 
-        auto inputVoltage = get_input_voltage();
-        double vinRms;
-        if (inputVoltage.get_nominal().has_value()) {
-            vinRms = inputVoltage.get_nominal().value();
-        } else {
-            vinRms = resolve_dimensional_values(inputVoltage, DimensionalValues::MINIMUM);
-        }
-        double vinPeak = vinRms * std::sqrt(2);
+        const double vinRms = get_vrms_for_simulation();
+        const double vinPeak = vinRms * std::sqrt(2);
         double vout    = get_output_voltage();
         // Per-phase power for INTERLEAVED_BOOST.
         double pout    = per_phase_power(*this);
 
-        double iPeak = std::sqrt(2) * pout / vinRms;
+        // Pin = Pout / η — sizing uses Pin, so the envelope amplitude here
+        // must too. Using Pout would under-represent the line current by 1/η.
+        const double pin = pout / get_efficiency_required();
+        double iPeak = std::sqrt(2) * pin / vinRms;
 
         double linePeriod      = 1.0 / lineFrequency;
         double switchingPeriod = 1.0 / switchingFrequency;
@@ -608,15 +735,27 @@ namespace OpenMagnetics {
             double iEnv = iPeak * shape;
             waveforms.currentEnvelope[i] = iEnv;
 
-            double duty = 1.0 - (vinPeak * absShape) / vout;
+            // Duty is bounded to its physical range [0, 1]. Near the line
+            // zero-crossing the analytical model degrades (D → 1, ripple → 0);
+            // a real controller stops gating there. See note in
+            // process_operating_points for the full rationale.
+            // Topology-aware: SEPIC/Ćuk use the buck-boost ratio, boost family
+            // the boost ratio. (The series inductor sees +Vin during ON in
+            // both, so the ripple amplitude below is the same form.)
+            const double vinInst = vinPeak * absShape;
+            double duty = buckBoostClass
+                ? (vout + vd) / (vinInst + vout + vd)
+                : 1.0 - vinInst / (vout + vd);
             if (duty < 0) duty = 0;
             if (duty > 1) duty = 1;
 
-            double rippleAmplitude = (vinPeak * absShape) * duty / (2.0 * inductance * switchingFrequency);
+            double rippleAmplitude = vinInst * duty / (2.0 * inductance * switchingFrequency);
             waveforms.currentRipple[i] = rippleAmplitude;
 
-            double tInSwitchingCycle = std::fmod(t, switchingPeriod);
-            double sawtoothPhase = tInSwitchingCycle / switchingPeriod;
+            // Integer-arithmetic phase (timeStep = Tsw/4 → 4 samples/cycle).
+            constexpr size_t samplesPerSwCycle = 4;
+            double sawtoothPhase = static_cast<double>(i % samplesPerSwCycle)
+                                   / static_cast<double>(samplesPerSwCycle);
             double triangular;
             if (sawtoothPhase < 0.5) {
                 triangular = -1.0 + 4.0 * sawtoothPhase;
@@ -626,11 +765,15 @@ namespace OpenMagnetics {
 
             waveforms.inductorCurrent[i] = iEnv + rippleAmplitude * triangular;
 
-            // Off-time inductor voltage = Vin − Vout (signed for totem-pole).
-            const double voutSigned = bipolar ? std::copysign(vout, shape) : vout;
             if (sawtoothPhase < 0.5) {
+                // ON-time: series inductor sees +Vin.
                 waveforms.inductorVoltage[i] = vin;
+            } else if (buckBoostClass) {
+                // SEPIC/Ćuk OFF-time: L1 sees −(Vout+Vd), independent of Vin.
+                waveforms.inductorVoltage[i] = -(vout + vd);
             } else {
+                // Boost-family OFF-time = Vin − Vout (signed for totem-pole).
+                const double voutSigned = bipolar ? std::copysign(vout, shape) : vout;
                 waveforms.inductorVoltage[i] = vin - voutSigned;
             }
         }
@@ -649,7 +792,11 @@ namespace OpenMagnetics {
 
         double apparentPower = vRms * iRms;
         waveforms.powerFactor = (apparentPower > 0) ? realPower / apparentPower : 1.0;
-        waveforms.efficiency  = 1.0;
+        // Reflect the spec-level efficiency used everywhere else in the
+        // sizing path (Pin = Pout/η). The analytical synthesis does not
+        // model loss explicitly, but reporting 1.0 here would silently
+        // contradict the rest of the model — use the spec value.
+        waveforms.efficiency  = get_efficiency_required();
         waveforms.operatingPointName = "PFC_analytical";
 
         return waveforms;
@@ -662,8 +809,12 @@ namespace OpenMagnetics {
         int numPeriods = (_numberOfPeriods > 0) ? _numberOfPeriods : 2;
         PfcSimulationWaveforms waveforms = simulate_and_extract_waveforms(inductance, dcResistance, numPeriods);
 
+        // Per CLAUDE.md: do not silently fall back to the analytical path
+        // when the synthesis returned no samples. That hides a bug.
         if (waveforms.inductorCurrent.empty() || waveforms.time.empty()) {
-            return process_operating_points({}, inductance);
+            throw std::runtime_error(
+                "PowerFactorCorrection::simulate_and_extract_operating_points: "
+                "simulate_and_extract_waveforms returned empty data (no samples)");
         }
 
         double switchingFrequency = get_switching_frequency();
@@ -677,31 +828,14 @@ namespace OpenMagnetics {
         SignalDescriptor current;
         current.set_waveform(currentWaveform);
 
-        try {
-            auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
-            current.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency));
-            auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true);
-            currentProcessed.set_label(WaveformLabel::CUSTOM);
-            current.set_processed(currentProcessed);
-        } catch (const std::exception&) {
-            Processed processed;
-            if (!waveforms.inductorCurrent.empty()) {
-                double iMax = *std::max_element(waveforms.inductorCurrent.begin(), waveforms.inductorCurrent.end());
-                double iMin = *std::min_element(waveforms.inductorCurrent.begin(), waveforms.inductorCurrent.end());
-                double iAvg = std::accumulate(waveforms.inductorCurrent.begin(), waveforms.inductorCurrent.end(), 0.0) /
-                              waveforms.inductorCurrent.size();
-                processed.set_peak(iMax);
-                processed.set_peak_to_peak(iMax - iMin);
-                processed.set_average(iAvg);
-
-                double sumSq = 0;
-                for (double val : waveforms.inductorCurrent) {
-                    sumSq += val * val;
-                }
-                processed.set_rms(std::sqrt(sumSq / waveforms.inductorCurrent.size()));
-            }
-            current.set_processed(processed);
-        }
+        // No try/catch swallow: if harmonics extraction fails, propagate the
+        // exception so callers see the real problem rather than a silently-
+        // analytical-only Processed.
+        auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
+        current.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency));
+        auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true);
+        currentProcessed.set_label(WaveformLabel::CUSTOM);
+        current.set_processed(currentProcessed);
 
         SignalDescriptor voltage;
         if (!waveforms.inductorVoltage.empty() && waveforms.inductorVoltage.size() == waveforms.time.size()) {
@@ -710,15 +844,11 @@ namespace OpenMagnetics {
             voltageWaveform.set_data(waveforms.inductorVoltage);
             voltage.set_waveform(voltageWaveform);
 
-            try {
-                auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
-                voltage.set_harmonics(Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency));
-                auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true);
-                voltageProcessed.set_label(WaveformLabel::CUSTOM);
-                voltage.set_processed(voltageProcessed);
-            } catch (const std::exception&) {
-                // Just use raw waveform without harmonics
-            }
+            auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
+            voltage.set_harmonics(Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency));
+            auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true);
+            voltageProcessed.set_label(WaveformLabel::CUSTOM);
+            voltage.set_processed(voltageProcessed);
         }
 
         OperatingPointExcitation excitation;
@@ -830,13 +960,23 @@ namespace OpenMagnetics {
 
                 // Triangular switching ripple superimposed on the rectified-sine envelope.
                 const double iEnv  = iLinePeak * absSin;
-                double duty = 1.0 - vinInst / vout;
+                // Physical bound only — D ∈ [0, 1]. Near line zero-crossing
+                // the analytical model degenerates; see the rationale note
+                // in process_operating_points. Topology-aware duty: SEPIC/Ćuk
+                // use the buck-boost ratio (Vd folded into vout here, which is
+                // 0 for the §5.1 ideal-port view).
+                double duty = is_buck_boost_class()
+                    ? vout / (vinInst + vout)
+                    : 1.0 - vinInst / vout;
                 if (duty < 0.0) duty = 0.0;
                 if (duty > 1.0) duty = 1.0;
                 const double rippleAmp = vinInst * duty / (2.0 * inductance * switchingFrequency);
-                const double phase     = std::fmod(t, switchingPeriod) / switchingPeriod;
-                const double tri       = (phase < 0.5) ? (-1.0 + 4.0 * phase)
-                                                       : ( 3.0 - 4.0 * phase);
+                // Integer-arithmetic phase (timeStep = Tsw/4 → 4 samples/cycle).
+                constexpr size_t samplesPerSwCycle = 4;
+                const double phase = static_cast<double>(i % samplesPerSwCycle)
+                                     / static_cast<double>(samplesPerSwCycle);
+                const double tri   = (phase < 0.5) ? (-1.0 + 4.0 * phase)
+                                                   : ( 3.0 - 4.0 * phase);
                 iinData[i] = iEnv + rippleAmp * tri;
 
                 const double vbus = vout - rippleAmpPk * std::sin(2.0 * omegaLine * t);
@@ -908,12 +1048,29 @@ namespace OpenMagnetics {
 
         validate_topology_variant();
         const auto variant = get_topology_variant_or_default();
-        if (variant != PfcTopologyVariants::BOOST) {
-            throw std::runtime_error(
-                "PowerFactorCorrection::generate_ngspice_switching_circuit: "
-                "only the BOOST variant is supported by the native switching "
-                "controller; TOTEM_POLE / INTERLEAVED_BOOST require their own "
-                "switching netlists (out of scope here).");
+        // The native average-current-mode controller drives a unipolar boost
+        // power stage. Boost, bridgeless and semi-bridgeless all present the
+        // identical rectified-sine inductor current, so they share this
+        // netlist verbatim. Interleaved boost is N independent boost cells;
+        // we emit the netlist for ONE phase (per-phase power + per-phase
+        // inductance, both already returned by process_design_requirements),
+        // which is what the per-phase magnetic must be verified against.
+        // TOTEM_POLE is excluded: its inductor sits on the AC side and carries
+        // BIPOLAR current, so it needs a different (bidirectional) power stage.
+        switch (variant) {
+            case PfcTopologyVariants::BOOST:
+            case PfcTopologyVariants::BRIDGELESS:
+            case PfcTopologyVariants::SEMI_BRIDGELESS:
+            case PfcTopologyVariants::INTERLEAVED_BOOST:
+                break;  // supported by this unipolar-boost netlist
+            default:
+                throw std::runtime_error(
+                    "PowerFactorCorrection::generate_ngspice_switching_circuit: "
+                    "only unipolar boost-family variants (BOOST, BRIDGELESS, "
+                    "SEMI_BRIDGELESS, INTERLEAVED_BOOST) are supported by the "
+                    "native switching controller. TOTEM_POLE needs a bipolar "
+                    "power stage; SEPIC/CUK/BUCK/BUCK_BOOST/VIENNA need their "
+                    "own switching netlists (out of scope here).");
         }
         if (!std::isfinite(inductance) || inductance <= 0.0) {
             throw std::invalid_argument(
@@ -924,15 +1081,13 @@ namespace OpenMagnetics {
         if (numberOfLineCycles < 1) numberOfLineCycles = 1;
 
         // ── Spec resolution ─────────────────────────────────────────────
-        auto inputVoltage = get_input_voltage();
-        double vrmsNom;
-        if (inputVoltage.get_nominal().has_value()) {
-            vrmsNom = inputVoltage.get_nominal().value();
-        } else {
-            vrmsNom = resolve_dimensional_values(inputVoltage, DimensionalValues::NOMINAL);
-        }
+        const double vrmsNom = get_vrms_for_simulation();
         const double vbusNom = get_output_voltage();
-        const double pout    = get_output_power();
+        // Per-phase power: Pout for boost/bridgeless/semi-bridgeless, Pout/N
+        // for interleaved (one cell carries 1/N of the load). The inductance
+        // argument is likewise the per-phase value, so the emitted single-cell
+        // boost netlist is self-consistent.
+        const double pout    = per_phase_power(*this);
         const double fsw     = get_switching_frequency();
         const double fline   = get_line_frequency_required();
         if (pout <= 0.0) {
@@ -962,7 +1117,14 @@ namespace OpenMagnetics {
         c.imbue(std::locale::classic());
 
         // ── Header ──────────────────────────────────────────────────────
-        c << "* PFC Boost Switching Converter (native average-current-mode controller)\n";
+        const char* variantLabel = "Boost";
+        switch (variant) {
+            case PfcTopologyVariants::BRIDGELESS:        variantLabel = "Bridgeless (boost-equivalent inductor)"; break;
+            case PfcTopologyVariants::SEMI_BRIDGELESS:   variantLabel = "Semi-bridgeless (boost-equivalent inductor)"; break;
+            case PfcTopologyVariants::INTERLEAVED_BOOST: variantLabel = "Interleaved boost (single per-phase cell)"; break;
+            default: break;
+        }
+        c << "* PFC " << variantLabel << " Switching Converter (native average-current-mode controller)\n";
         c << "* Generated by OpenMagnetics — see PfcControllerDesign.h\n";
         c << "* Vrms=" << vrmsNom << " V, Vbus=" << vbusNom << " V, Pout=" << pout
           << " W, Fsw=" << (fsw/1e3) << " kHz, fline=" << fline

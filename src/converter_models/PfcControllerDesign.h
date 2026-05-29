@@ -245,8 +245,11 @@ struct PfcControllerTuning {
     double ff_fc_hz   = 0.0;        ///< Each LP stage corner [Hz]
     double ff_r       = 100e3;      ///< RC R [Ω]
     double ff_c       = 0.0;        ///< RC C [F] — set so 2π·R·C = 1/fc_ff
-    double k_ff_sq    = 8.0 / (3.141592653589793 * 3.141592653589793);
-                                    ///< (2√2/π)² ≈ 0.811 — see design note
+    double k_ff_sq    = 0.0;        ///< (2√2/π)² ≈ 0.811 — populated by
+                                    ///< derive_pfc_controller_tuning() to keep
+                                    ///< the value in exactly one place (the
+                                    ///< canonical k2Sqrt2OverPi constant in
+                                    ///< PfcControllerDesign.cpp).
 
     // ── Block 3: multiplier ─────────────────────────────────────────────
     double g_mul      = 0.0;        ///< Multiplier gain [A] — see design note

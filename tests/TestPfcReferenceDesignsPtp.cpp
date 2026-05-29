@@ -70,15 +70,22 @@ struct RefDesignSpec {
     const char* name;
     double vrms;          // RMS line voltage [V]
     double vbus;          // nominal bus voltage [V]
-    double pout;          // nominal output power [W]
+    double pout;          // nominal TOTAL output power [W] (all phases)
     double fsw;           // switching frequency [Hz]
     double cbus;          // bulk capacitance [F]
-    double L;             // boost inductance [H]
+    double L;             // boost inductance [H] (per-phase value for
+                          //   interleaved — i.e. the single cell's L)
     int    cycles;        // # of full line cycles to simulate
     double tol_vbus_pct;  // bus regulation tolerance [%]
     double tol_pin_pct;   // power balance tolerance [%]
     double tol_envelope;  // inductor envelope NRMSE tolerance [fraction, 0..1]
     double tol_walltime;  // wall-time gate [s]
+    // Topology-variant fields (defaulted → the three classic boost ref-design
+    // specs below are unchanged). For the unipolar boost family the switching
+    // netlist is the same per-phase boost circuit; interleaved simulates ONE
+    // cell carrying Pout/phases.
+    PfcTopologyVariants variant = PfcTopologyVariants::BOOST;
+    int                 phases  = 1;
 };
 
 OpenMagnetics::PowerFactorCorrection build(const RefDesignSpec& s) {
@@ -98,6 +105,10 @@ OpenMagnetics::PowerFactorCorrection build(const RefDesignSpec& s) {
     pfc.set_bulk_capacitance(s.cbus);
     pfc.set_mode(PfcModes::CONTINUOUS_CONDUCTION_MODE);
     pfc.set_ambient_temperature(25.0);
+    pfc.set_topology_variant(s.variant);
+    if (s.variant == PfcTopologyVariants::INTERLEAVED_BOOST) {
+        pfc.set_number_of_phases(s.phases);
+    }
     return pfc;
 }
 
@@ -157,6 +168,12 @@ double mean_product(const std::vector<double>& t,
 // acceptance gates.
 void run_ptp_gates(const RefDesignSpec& s) {
     INFO("Reference design: " << s.name);
+
+    // Per-phase power: the interleaved netlist models a single cell carrying
+    // Pout/phases. For boost/bridgeless/semi-bridgeless phases==1 so this is
+    // just Pout. All envelope/power gates below compare against the per-phase
+    // quantity the simulated cell actually delivers.
+    const double poutPhase = s.pout / std::max(1, s.phases);
 
     const auto tBuild0 = std::chrono::steady_clock::now();
     auto pfc = build(s);
@@ -232,8 +249,8 @@ void run_ptp_gates(const RefDesignSpec& s) {
 
     // ---- Gate 2: power balance ------------------------------------------
     const double pin     = mean_product(tvec, vin, iL, t_a, t_b);
-    const double pin_err = 100.0 * (pin - s.pout) / s.pout;
-    INFO("Pin=" << pin << " W (target " << s.pout
+    const double pin_err = 100.0 * (pin - poutPhase) / poutPhase;
+    INFO("Pin=" << pin << " W (per-phase target " << poutPhase
          << ", err " << pin_err << " %, tol ±" << s.tol_pin_pct << " %)");
     REQUIRE(std::fabs(pin_err) < s.tol_pin_pct);
 
@@ -248,7 +265,7 @@ void run_ptp_gates(const RefDesignSpec& s) {
     // t inside segment [tvec[k-1], tvec[k]] is F[k-1] + 0.5·(iL[k-1] +
     // iL_lin(t))·(t − tvec[k-1]).  Window-edge lookup is O(log N) via
     // binary search.  Replaces the previous O(N²) inner mean_over loop.
-    const double Iin_rms = s.pout / s.vrms;
+    const double Iin_rms = poutPhase / s.vrms;
     const double Iin_pk  = std::sqrt(2.0) * Iin_rms;
     const double Tsw     = 1.0 / s.fsw;
     std::vector<double> Fcum(tvec.size(), 0.0);
@@ -364,7 +381,7 @@ void run_ptp_gates(const RefDesignSpec& s) {
         s.name,
         s.vrms,
         s.vbus,
-        s.pout,
+        poutPhase,
         /*vinTol*/      0.05,
         /*voutMeanTol*/ s.tol_vbus_pct / 100.0,
         /*iinMeanTol*/  s.tol_pin_pct  / 100.0);
@@ -435,3 +452,67 @@ TEST_CASE("PFC reference design PtP — L4981 1000 W",
     };
     run_ptp_gates(s);
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Topology-variant PtP coverage (boost family). These drive the SAME native
+// average-current-mode controller netlist as the classic boost designs and
+// must clear the identical acceptance gates.
+// ─────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("PFC reference design PtP — Bridgeless (boost-equivalent inductor)",
+          "[converter-model][pfc-topology][refdesign][ptp][bridgeless][slow]") {
+    // Bridgeless boost: the inductor current is identical to a classic boost,
+    // so this runs the SAME switching netlist as NCP1654-100W all the way
+    // through ngspice — end-to-end proof that the variant flows through the
+    // full simulation path and clears the boost gates.
+    RefDesignSpec s{
+        /*name*/         "Bridgeless-100W",
+        /*vrms*/         230.0,
+        /*vbus*/         400.0,
+        /*pout*/         100.0,
+        /*fsw*/          100e3,
+        /*cbus*/         100e-6,
+        /*L*/            3.30e-3,
+        /*cycles*/       3,
+        /*tol_vbus_pct*/ 6.0,
+        /*tol_pin_pct*/  5.0,
+        /*tol_envelope*/ 0.10,
+        /*tol_walltime*/ 30.0,
+        /*variant*/      PfcTopologyVariants::BRIDGELESS,
+        /*phases*/       1
+    };
+    run_ptp_gates(s);
+}
+
+TEST_CASE("PFC reference design PtP — Interleaved boost 2-phase (per-phase cell)",
+          "[converter-model][pfc-topology][refdesign][ptp][interleaved-boost][slow]") {
+    // 2-phase interleaved, 200 W total → 100 W per cell. The per-phase cell of
+    // this design IS a 100 W boost, so its per-phase inductance equals the
+    // NCP1654-100W reference value (3.30 mH). We simulate ONE cell and gate it
+    // against the per-phase power (Pout/2 = 100 W); this verifies the
+    // per-phase plumbing (per_phase_power = Pout/N, per-phase L) drives the
+    // switching netlist correctly. (We pin L to the reference value rather
+    // than the model's 0.17%-different computed value because the bus-
+    // regulation gate measures a still-settling 3-cycle transient and is
+    // sensitive to sub-percent L shifts — see the analytical L test
+    // Test_Pfc_InterleavedBoost_PerPhaseInductanceScalesWithN for the sizing
+    // check itself.)
+    RefDesignSpec s{
+        /*name*/         "Interleaved-2ph-200W",
+        /*vrms*/         230.0,
+        /*vbus*/         400.0,
+        /*pout*/         200.0,
+        /*fsw*/          100e3,
+        /*cbus*/         100e-6,
+        /*L*/            3.30e-3,  // per-phase L = NCP1654-100W reference
+        /*cycles*/       3,
+        /*tol_vbus_pct*/ 6.0,
+        /*tol_pin_pct*/  5.0,
+        /*tol_envelope*/ 0.10,
+        /*tol_walltime*/ 30.0,
+        /*variant*/      PfcTopologyVariants::INTERLEAVED_BOOST,
+        /*phases*/       2
+    };
+    run_ptp_gates(s);
+}
+

@@ -73,9 +73,12 @@ public:
      */
     std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
 
-    /// CCM: L = Vin_min·D·(1−D) / (ΔI·f_sw), worst-case at minimum input voltage.
+    /// CCM boost-PFC: L = Vin_peak_min · D / (ΔI · f_sw), worst-case at the
+    /// minimum-Vrms peak-of-line (where ΔI is maximum). Derived from
+    /// V_L = Vin during the switch ON-time, dt_on = D·Tsw, ΔI = V_L·dt_on/L.
+    /// (Note: the buck-converter formula has an extra (1−D); boost does not.)
     double calculate_inductance_ccm();
-    /// DCM: L = Vin²·D² / (2·P·f_sw).
+    /// DCM boost-PFC: L = Vin²·D² / (2·P·f_sw).
     double calculate_inductance_dcm();
     /// CrCM/TCM: boundary between CCM and DCM (peak ripple = 2× envelope average).
     double calculate_inductance_crcm();
@@ -120,6 +123,15 @@ public:
                 "set_efficiency() or the JSON field 'efficiency')");
         return v.value();
     }
+    /**
+     * @brief Required diode forward drop. Only meaningful for variants that
+     *        have a boost diode in the conduction path: BOOST and
+     *        INTERLEAVED_BOOST. TOTEM_POLE replaces the boost diode with a
+     *        synchronously-rectified low-side MOSFET, so the conduction drop
+     *        is RDS(on)·I (not Vf); callers MUST NOT invoke this for
+     *        TOTEM_POLE — use `effective_diode_voltage_drop()` instead, which
+     *        applies the variant-specific policy in one place.
+     */
     double get_diode_voltage_drop_required() const {
         auto v = MAS::PowerFactorCorrection::get_diode_voltage_drop();
         if (!v.has_value())
@@ -127,6 +139,42 @@ public:
                 "PowerFactorCorrection: diodeVoltageDrop is required (set via "
                 "set_diode_voltage_drop() or the JSON field 'diodeVoltageDrop')");
         return v.value();
+    }
+
+    /**
+     * @brief Conduction-path forward drop seen by the duty-cycle / off-time
+     *        formulas, taking the topology variant into account:
+     *          - TOTEM_POLE     → 0 (synchronous rectifier, no diode Vf)
+     *          - BOOST          → get_diode_voltage_drop_required()
+     *          - INTERLEAVED_BOOST → get_diode_voltage_drop_required()
+     *        Centralising the policy here avoids two-site drift (we used to
+     *        branch on variant in calculate_duty_cycle and again in
+     *        process_operating_points, which made the TOTEM_POLE-suppresses-
+     *        the-required-field invariant invisible).
+     */
+    double effective_diode_voltage_drop() const {
+        return (get_topology_variant_or_default() == PfcTopologyVariants::TOTEM_POLE)
+                   ? 0.0
+                   : get_diode_voltage_drop_required();
+    }
+
+    /**
+     * @brief True for the buck-boost-class PFC variants whose INPUT inductor
+     *        L1 sits in series with the line (continuous input current) but
+     *        whose conversion ratio is buck-boost, not boost: SEPIC and Ćuk.
+     *
+     * For these the duty relation is Vout/Vin = D/(1−D) ⇒
+     *   D = (Vout+Vd)/(Vin+Vout+Vd)   (vs boost's D = 1 − Vin/(Vout+Vd))
+     * and L1 sees +Vin during the switch ON-time (so the inductance-sizing
+     * formula L = Vin·D/(ΔI·fsw) is shared with boost) but −(Vout+Vd) during
+     * OFF (vs boost's Vin−Vout), which the operating-point voltage waveform
+     * accounts for. BUCK and BUCK_BOOST are NOT in this class: their input
+     * current is discontinuous (inductor not in series with the line), so
+     * they remain unsupported.
+     */
+    bool is_buck_boost_class() const {
+        auto v = get_topology_variant_or_default();
+        return v == PfcTopologyVariants::SEPIC || v == PfcTopologyVariants::CUK;
     }
 
     // ------------------------------------------------------------------
@@ -174,22 +222,65 @@ public:
     void validate_topology_variant() const;
 
     /**
+     * @brief Vrms to use for analytical-simulation / netlist generation.
+     *
+     * Policy (centralised so the three sim paths agree):
+     *   - If `nominal` is set → use it (the user-specified operating point).
+     *   - Else                → use the MINIMUM of the range (worst-case for
+     *                           inductance ripple / current stress).
+     * Throws if neither is populated.
+     */
+    double get_vrms_for_simulation() const;
+
+    /**
      * @brief Mode as the legacy long string used by MKF logic and JSON I/O.
+     *        Throws if the `mode` field is unset (per CLAUDE.md: no silent
+     *        default to CCM — the caller must pick a mode explicitly).
      */
     std::string get_mode_string() const {
         auto m = MAS::PowerFactorCorrection::get_mode();
-        if (!m.has_value()) return "Continuous Conduction Mode";
+        if (!m.has_value()) {
+            throw std::runtime_error(
+                "PowerFactorCorrection: mode is required (set via set_mode() "
+                "or the JSON field 'mode'). Valid values: "
+                "continuousConductionMode, discontinuousConductionMode, "
+                "criticalConductionMode, transitionMode.");
+        }
         switch (m.value()) {
             case PfcModes::CONTINUOUS_CONDUCTION_MODE:    return "Continuous Conduction Mode";
             case PfcModes::DISCONTINUOUS_CONDUCTION_MODE: return "Discontinuous Conduction Mode";
             case PfcModes::CRITICAL_CONDUCTION_MODE:      return "Critical Conduction Mode";
             case PfcModes::TRANSITION_MODE:               return "Transition Mode";
         }
-        return "Continuous Conduction Mode";
+        throw std::runtime_error(
+            "PowerFactorCorrection::get_mode_string: unknown PfcModes enum value");
     }
 
     void set_num_periods_to_extract(int value) { _numberOfPeriods = value; }
     int  get_num_periods_to_extract() const    { return _numberOfPeriods; }
+
+    /**
+     * @brief Suggest a bulk (hold-up) capacitance value from the standard
+     *        energy-balance formula:
+     *
+     *            C_bus = 2 · P_out · Δt_holdup / (V_bus² − V_bus_min²)
+     *
+     *        Derived from the energy stored in C_bus dropping from V_bus to
+     *        V_bus_min during the hold-up interval Δt_holdup with the load
+     *        drawing P_out (Erickson §17.2; TI SLUA754). Typical sizing for
+     *        a 400 V bus / 20 ms hold-up: 1–4 µF/W.
+     *
+     * @param vBus        Nominal bus voltage [V] (> 0).
+     * @param vBusMin     Minimum acceptable bus voltage during hold-up [V]
+     *                    (> 0, < vBus — typically 0.7·vBus).
+     * @param pOut        Output power [W] (> 0).
+     * @param holdupTime  Hold-up time [s] (> 0; one mains cycle = 0.02 s
+     *                    for 50 Hz, 0.0167 s for 60 Hz, common spec values
+     *                    are 10, 20 or 30 ms).
+     * @return            Required C_bus [F]. Throws on invalid arguments.
+     */
+    static double suggested_bulk_capacitance(double vBus, double vBusMin,
+                                              double pOut, double holdupTime);
 
     /**
      * @brief Generate SPICE netlist for PFC boost converter simulation.
