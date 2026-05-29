@@ -1181,9 +1181,29 @@ double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excita
         const auto& data = wf.get_data();
         const auto timeOpt = wf.get_time();
         const auto& time = timeOpt.value();
+        const size_t n = std::min(data.size(), time.size());
+        if (n < 2) return 0.0;
+
+        // Limit integration to at most ONE switching period. Multi-cycle
+        // waveforms (typically ngspice transient output) with a small
+        // numerical DC bias on V accumulate spurious drift in the running
+        // integral: max|∫V dt| grows linearly with the simulation duration
+        // instead of reflecting the per-cycle flux excursion. The relevant
+        // quantity for saturation sizing is the per-period peak flux
+        // ΔΨ = max|∫₀^T V dt| (Faraday), which is well-defined on one
+        // period regardless of how many periods the caller supplied.
+        //
+        // If frequency is unknown (legacy path), fall back to integrating
+        // the whole waveform — the historical behaviour.
+        const double frequency = excitation.get_frequency();
+        const double tStart = time.front();
+        const double tEnd = (frequency > 0.0)
+                                ? tStart + 1.0 / frequency
+                                : time.back() + 1.0;  // never reached
         double integral = 0.0;
         double maxVoltSeconds = 0.0;
-        for (size_t j = 0; j + 1 < std::min(data.size(), time.size()); ++j) {
+        for (size_t j = 0; j + 1 < n; ++j) {
+            if (time[j] >= tEnd) break;
             integral += data[j] * (time[j + 1] - time[j]);
             maxVoltSeconds = std::max(maxVoltSeconds, std::abs(integral));
         }
