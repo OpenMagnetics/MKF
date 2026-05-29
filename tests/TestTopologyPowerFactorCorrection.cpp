@@ -349,16 +349,50 @@ TEST_CASE("Test_Pfc_SepicCuk_BuckBoostSizing",
         auto ops = pfc.process_operating_points({}, l);
         REQUIRE(ops.size() > 0);
 
-        // DCM sizing not yet validated for SEPIC/Ćuk → must throw, not silently
-        // return a boost number.
+        // DCM sizing now implemented for SEPIC/Ćuk via the effective inductance
+        // Le = L1‖L2 (see Test_Pfc_SepicCuk_DcmEffectiveInductance for the value
+        // check). Must return a finite positive inductance, not throw.
         pfc.set_mode(PfcModes::DISCONTINUOUS_CONDUCTION_MODE);
-        REQUIRE_THROWS_WITH(pfc.calculate_inductance_dcm(),
-                            Catch::Matchers::ContainsSubstring("not yet validated for SEPIC"));
+        const double lDcm = pfc.calculate_inductance_dcm();
+        REQUIRE(lDcm > 0.0);
+        REQUIRE(std::isfinite(lDcm));
         pfc.set_mode(PfcModes::CONTINUOUS_CONDUCTION_MODE);
 
         // No native switching controller for the 4th-order stage yet.
         pfc.set_bulk_capacitance(220e-6);
         REQUIRE_THROWS(pfc.generate_ngspice_switching_circuit(l, 2));
+    }
+}
+
+TEST_CASE("Test_Pfc_SepicCuk_DcmEffectiveInductance",
+          "[converter-model][pfc-topology][variants][sepic-cuk]") {
+    // SEPIC/Ćuk DCM sizing uses the effective inductance Le = L1‖L2 in the
+    // boost-form energy relation Le = Vin_pk²·D²/(2·Pin·fsw) with the buck-boost
+    // duty D = (Vout+Vd)/(Vin+Vout+Vd). The PFC model designs one inductor, so it
+    // assumes the coupled/equal-inductor SEPIC L1 = L2 (Le = L1/2) and returns
+    // the input inductor L1 = 2·Le. Verify the returned value matches that
+    // closed form, and that it is genuinely the buck-boost result — NOT the
+    // boost DCM number (which would use the boost duty and no 2× Le factor).
+    for (auto variant : {PfcTopologyVariants::SEPIC, PfcTopologyVariants::CUK}) {
+        auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+        pfc.set_topology_variant(variant);
+        pfc.set_mode(PfcModes::DISCONTINUOUS_CONDUCTION_MODE);
+
+        const double vinPk  = kVinRmsNom * std::sqrt(2.0);
+        const double dSepic = (kVbus + kVdiode) / (vinPk + kVbus + kVdiode);
+        const double pin    = kPout / kEta;
+        const double LeExpected = vinPk * vinPk * dSepic * dSepic / (2.0 * pin * kFsw);
+        const double L1Expected = 2.0 * LeExpected;   // L1 = L2 ⇒ Le = L1/2
+
+        const double lDcm = pfc.calculate_inductance_dcm();
+        INFO("variant DCM L1=" << lDcm * 1e6 << " µH (expected "
+             << L1Expected * 1e6 << " µH, Le=" << LeExpected * 1e6 << " µH)");
+        REQUIRE(lDcm == Catch::Approx(L1Expected).epsilon(1e-9));
+
+        // It must NOT coincide with the boost DCM value (boost duty, no 2×).
+        const double dBoost   = 1.0 - vinPk / (kVbus + kVdiode);
+        const double lBoostDcm = vinPk * vinPk * dBoost * dBoost / (2.0 * pin * kFsw);
+        REQUIRE(lDcm != Catch::Approx(lBoostDcm));
     }
 }
 

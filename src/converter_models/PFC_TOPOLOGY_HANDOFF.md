@@ -88,8 +88,16 @@ Sim wall-time ≈ 10 s, bus lands ~382 V (−4.5 %, inside ±6 %), all gates pas
 
 ### 2b. SEPIC/Ćuk switching PtP  (highest value remaining; PARTIALLY SCOUTED 2026-05-29)
 4th-order plant (L1, L2, coupling cap, Cout). Needs its own converging
-controller. Analytical sizing is done and correct for CCM/CrCM; DCM needs the
-`Le = L1‖L2` model (currently rejected in `calculate_inductance_dcm`).
+controller. Analytical sizing is done and correct for CCM/CrCM **and now DCM**:
+`calculate_inductance_dcm` implements the effective-inductance model
+`Le = L1‖L2`, `Le = Vin_pk²·D²/(2·Pin·fsw)` with the buck-boost duty, returning
+the input inductor `L1 = 2·Le` under the coupled/equal-inductor (L1=L2)
+assumption (consistent with the CCM path, which sizes L1 from the input-current
+ripple). Guarded by `Test_Pfc_SepicCuk_DcmEffectiveInductance`. NOTE: the DCM
+*waveform* synthesis in `process_operating_points` still uses the CCM-style
+continuous triangle ripple (it does not zero the current during the idle
+sub-interval) — a pre-existing limitation shared with boost DCM, not specific
+to SEPIC; the inductance *sizing* is correct.
 
 **Scouting result — CCM SEPIC switching PtP is NOT achievable by damping +
 tuning; needs DCM or a specialist compensator (do NOT repeat the dead end):**
@@ -226,9 +234,10 @@ NRMSE) and the concrete recipe to actually land it (SEPIC-aware compensator +
 damping network + SEPIC-aware warm-start). 2b is now a well-scoped
 controller-design session for whoever picks it up.
 
-If switching-PtP isn't the priority, the highest-value PFC-adjacent work is the
-analytical SEPIC/Ćuk **DCM sizing** (`Le = L1‖L2`, currently rejected in
-`calculate_inductance_dcm`) — small, self-contained, and unblocks DCM SEPIC
-designs. Outside PFC, the pre-existing `[adviser]`-suite isolation/segfault
-flakiness and `Test_MagneticAdviser_Inductor_Only_Toroidal_Cores` baseline
-failure (see §4) remain the biggest test-health items.
+SEPIC/Ćuk **DCM sizing is now implemented** (§2b). The natural follow-on, given
+the CCM-PtP infeasibility finding, is a **DCM/boundary SEPIC switching PtP** —
+resonance-free, so far more tractable than CCM (would still need a DCM-aware
+waveform model and a boundary/DCM controller). Outside PFC, the pre-existing
+`[adviser]`-suite isolation/segfault flakiness and
+`Test_MagneticAdviser_Inductor_Only_Toroidal_Cores` baseline failure (see §4)
+remain the biggest test-health items.

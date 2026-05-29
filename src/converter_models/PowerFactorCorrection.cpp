@@ -279,24 +279,38 @@ namespace OpenMagnetics {
 
     double PowerFactorCorrection::calculate_inductance_dcm() {
         validate_topology_variant();
-        // The DCM closed form below is the boost discontinuous-mode result
-        // (L = Vin²·D² / (2·P·fsw)). For SEPIC/Ćuk, DCM involves the effective
-        // inductance Le = L1‖L2 and a different energy relation, which is not
-        // validated here — reject rather than return a boost number.
-        if (is_buck_boost_class()) {
-            throw std::runtime_error(
-                "PowerFactorCorrection: DCM inductance sizing is not yet "
-                "validated for SEPIC/Ćuk (requires the Le = L1‖L2 model). "
-                "Use CONTINUOUS_CONDUCTION_MODE or CRITICAL_CONDUCTION_MODE.");
-        }
         auto inputVoltage = get_input_voltage();
         double vinRmsMin  = resolve_dimensional_values(inputVoltage, DimensionalValues::MINIMUM);
         double vinPeakMin = vinRmsMin * std::sqrt(2);
 
         double D      = calculate_duty_cycle(vinPeakMin, get_output_voltage());
         double pinAvg = per_phase_power(*this) / get_efficiency_required();
+        double fsw    = get_switching_frequency();
 
-        double L = pow(vinPeakMin, 2) * pow(D, 2) / (2 * pinAvg * get_switching_frequency());
+        // Boost DCM closed form: Pin = Vin²·D²/(2·L·fsw) ⇒ L = Vin²·D²/(2·Pin·fsw)
+        // (peak iL = Vin·D·Tsw/L; energy ½·L·iL_pk² delivered per cycle).
+        double L = std::pow(vinPeakMin, 2) * std::pow(D, 2) / (2 * pinAvg * fsw);
+
+        if (is_buck_boost_class()) {
+            // SEPIC/Ćuk DCM. The effective inductance Le = L1‖L2 obeys the SAME
+            // energy relation, with the buck-boost duty D = (Vout+Vd)/(Vin+Vout+Vd):
+            // during ON both L1 and L2 charge, the switch current ramps at
+            // Vin/Le, and the stored energy
+            //   ½·L1·iL1_pk² + ½·L2·iL2_pk² = ½·(Vin·D·Tsw)² / Le
+            // (since iL1_pk = Vin·D·Tsw/L1, iL2_pk ≈ Vcc·D·Tsw/L2 ≈ Vin·D·Tsw/L2,
+            //  and 1/L1 + 1/L2 = 1/Le). Hence
+            //   Le = Vin_pk²·D² / (2·Pin·fsw)   — identical form, Le in place of L.
+            // `L` above already equals this Le (calculate_duty_cycle returns the
+            // buck-boost duty for this class). The PFC model designs ONE inductor,
+            // so assume the common coupled / equal-inductor SEPIC L1 = L2 ⇒
+            // Le = L1/2 ⇒ L1 = 2·Le, and return the input-inductor value L1 — the
+            // same quantity calculate_inductance_ccm sizes from the input-current
+            // ripple, so the CCM↔DCM boundary (calculate_inductance_crcm) is
+            // expressed consistently in L1. (For L1 ≠ L2 designs, scale by the
+            // chosen split; Le is the physically-binding quantity.)
+            const double Le = L;
+            return 2.0 * Le;
+        }
         return L;
     }
 
