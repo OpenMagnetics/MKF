@@ -131,14 +131,46 @@ PFCs run in **DCM / boundary-conduction mode** (no CCM resonance).
 
 **Conclusion / path forward:** do NOT ship a CCM SEPIC switching PtP (a ~22 %-
 error circuit is the "half-working circuit" the handoff forbids). The valuable
-SEPIC switching path is **DCM** — implement DCM sizing first (§2b → see Item 2 /
-`calculate_inductance_dcm`), then a DCM/boundary switching PtP (resonance-free,
-far more tractable). A CCM PtP would require a genuine resonance-canceling
-compensator (gain-scheduled complex-zero pair tracking the moving resonance) —
-a specialist multi-session project of low practical value. Also note:
-`derive_pfc_controller_tuning` is boost-specific (Kp assumes `Vbus/(sL)`;
-warm-start `ic_vc_i = 1−Vpk/Vbus` is the boost duty ~0.19 vs SEPIC's ~0.55) — a
-SEPIC controller needs its own tuning path regardless.
+SEPIC switching path is **DCM** (resonance-free) — and it WORKS (below).
+
+**DCM SEPIC switching PtP — SOLVED & VALIDATED in ngspice (2026-05-30):**
+The control is **voltage-mode variable-on-time (VOT)** — no current loop, no
+multiplier (Shen 2018 Electronics Letters; Lin et al. 2023 *Electronics*
+12(8):1807). DCM buck-boost-class converters self-shape: a slow type-II voltage
+loop sets the on-time magnitude, DCM does the current shaping.
+- Power stage: bridged SEPIC (L1, S1, Cc+ESR, L2, D1, Cout); DCM-sized via
+  `calculate_inductance_dcm` (L1 = 2·Le).
+- Modulator: `gate = (dctrl > saw)`, where
+  `dctrl = vea·(d_nom/2.5) / sqrt(1 + V(vin_rect)/V(vbus))`.
+  The `1/sqrt(1+Vin/Vo)` is the VOT feed-forward that CANCELS the DCM-COT
+  distortion. Derivation: DCM SEPIC input-current average is
+  `i_in_avg = (Vin·Ton²·fsw)/(2·L1)·(1+Vin/Vo)`; the `(1+Vin/Vo)` term distorts
+  (worst at high Vin/Vo). Setting `Ton ∝ 1/sqrt(1+Vin/Vo)` makes
+  `i_in_avg = Vin·d_nom²/(2·L1·fsw) ∝ Vin` → unity PF. Plain constant-on-time
+  (no sqrt term) floors at PF≈0.9 / THD≈25 % at 230 Vac; VOT fixes it.
+- Voltage loop: reuse the boost type-II EA (gv_* from
+  `derive_pfc_controller_tuning`), but **vea operates near 2.5 and is SCALED to
+  the duty** (`dctrl` above) — NOT used as the duty directly. vea_nom = vref =
+  2.5 keeps the EA's feedback-cap ICs self-consistent (using vea≈duty≈0.2
+  directly makes C_fb_p IC wrong → integrator wind-up/runaway). No CCM
+  soft-start / current-EA warm-start needed; just `.ic v(vbus)=Vbus_nom`,
+  `IC_FILT=2.5` on the EA. Warm-start duty `d_nom = sqrt(2·L1·fsw·Pin)/Vrms`.
+- Validated (230 Vac→400 V, 100 W, L1=L2=200 µH, Cc=470 nF, fsw=100 kHz,
+  3 line cycles): **PF=0.958, THD=10.3 %, bus=397 V** (−0.75 %), stable, converges.
+
+**PtP metric — use a DCM-appropriate gate (NOT the CCM 1-Tsw envelope NRMSE).**
+DCM input current is pulsating at switching scale (the EMI filter / line never
+sees it), so the CCM-style 1-Tsw sliding-mean envelope NRMSE is the WRONG metric
+(~20-30 %, all switching ripple). Gate instead on the actual PFC figures of
+merit computed from the *switching-averaged* (1-Tsw moving-average = EMI-filtered
+line) current: **power factor** (mean(vin·i_avg)/(rms(vin)·rms(i_avg))) and bus
+regulation. Validated harness: `/tmp/sepic_dcm.cir` + measurement in the session
+log. NEXT: wire `generate_ngspice_switching_circuit_dcm_sepic()` into the model,
+route SEPIC/CUK+DCM to it, add a PtP test gating PF (>~0.93) + bus reg (±6 %).
+Note the boost-specific tuning caveat below still applies to any CCM attempt:
+`derive_pfc_controller_tuning` Kp assumes `Vbus/(sL)` and its `ic_vc_i` is the
+boost duty — irrelevant to this voltage-mode VOT path, which uses only its
+voltage-loop (gv_*) fields.
 
 **Analytical fix shipped alongside this scouting (2026-05-29):**
 `process_operating_points` was synthesizing the SEPIC/Ćuk current waveform with
