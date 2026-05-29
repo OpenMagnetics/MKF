@@ -91,23 +91,46 @@ Sim wall-time ≈ 10 s, bus lands ~382 V (−4.5 %, inside ±6 %), all gates pas
 controller. Analytical sizing is done and correct for CCM/CrCM; DCM needs the
 `Le = L1‖L2` model (currently rejected in `calculate_inductance_dcm`).
 
-**Scouting result (do NOT repeat the dead end):** unlike totem-pole, the boost
-average-current loop CANNOT just be reused. A genuine SEPIC power stage (L1,
-switch, Cc, L2, output diode, Cout) with the boost controller driving the
-switch **converges numerically but does not control** — the input current does
-not track the `|sin|` envelope (measured steady-state envelope NRMSE ≈ **96.6 %**
-even after adding an Rd–Cd damper across the coupling-cap branch). Root causes:
-(a) the duty→iL1 transfer function carries the Cc–L2 resonance (~6 kHz with
-L1=L2=1 mH, Cc=0.66 µF) that sits below the fc_i=fsw/10 crossover and rings;
-(b) `derive_pfc_controller_tuning` is boost-specific — its current-loop Kp
-assumes the boost plant `Vbus/(sL)`, and its warm-start `ic_vc_i = (1−Vpk/Vbus)`
-is the BOOST duty (~0.19) whereas SEPIC needs ~0.55. To actually land this you
-need: a SEPIC-aware compensator (notch/extra pole for the Cc–L2 resonance), a
-proper damping network sized to `Rd ≈ √(Le/Cc)`, and a SEPIC-aware warm-start
-duty. Budget a full controller-design session; the power stage is the easy
-part. Prototype netlist that converged-but-didn't-track: `/tmp/sepic.cir`
-(throwaway). Keep SEPIC/Ćuk analytical-only until the controller is real — do
-NOT ship the non-tracking netlist.
+**Scouting result — CCM SEPIC switching PtP is NOT achievable by damping +
+tuning; needs DCM or a specialist compensator (do NOT repeat the dead end):**
+Unlike totem-pole, the boost average-current loop CANNOT just be reused. A
+genuine SEPIC power stage (L1, switch, Cc, L2, output diode, Cout) with the
+boost controller driving the switch **converges numerically but does not
+control** — the diagnosis is precise: `i_ref` tracks `|vin|` *perfectly* and the
+voltage loop is steady; the sole failure is the input current `iL1` ringing on
+the **Cc–L2 resonance** instead of following `i_ref`. This is a power-stage
+stability problem, not a control-law problem.
+
+A systematic ngspice sweep (~18 configs over 3 passes; helper
+`/tmp/sweep_sepic.py`, throwaway) varied resonance placement (L2, Cc), the
+Rd–Cd damper, the current-loop crossover, and added a physically-correct input
+bridge diode. Steady-state (cycle-3) envelope NRMSE vs the `|sin|` reference:
+
+| change | NRMSE |
+|---|---|
+| boost-loop reuse, L1=L2=1 mH, Cc=0.66 µF | 96.6 % |
+| resonances pushed > fc_i (L2=0.2 mH, Cc=0.1 µF, fc_i=5 kHz) | 50 % |
+| + smaller Cc=47 nF, fc_i=8 kHz | 32 % |
+| + input bridge, Cc=33 nF, L2=0.1 mH, fc_i=12 kHz | **21.7 %** (floor) |
+
+Clear monotonic trend: smaller Cc / higher fc_i help; lower fc_i hurts. But the
+floor is ~22 %, reached at the edge of physical viability (Cc=33 nF pushes the
+L2–Cc resonance up *near fsw*). **Damping + crossover tuning + input bridge
+cannot meet the 10 % gate.** The Cc–L2 resonance fundamentally limits CCM
+envelope tracking, and it *moves with Vin along the line cycle*, so a fixed
+compensator notch is inherently imperfect. This is exactly why industry SEPIC
+PFCs run in **DCM / boundary-conduction mode** (no CCM resonance).
+
+**Conclusion / path forward:** do NOT ship a CCM SEPIC switching PtP (a ~22 %-
+error circuit is the "half-working circuit" the handoff forbids). The valuable
+SEPIC switching path is **DCM** — implement DCM sizing first (§2b → see Item 2 /
+`calculate_inductance_dcm`), then a DCM/boundary switching PtP (resonance-free,
+far more tractable). A CCM PtP would require a genuine resonance-canceling
+compensator (gain-scheduled complex-zero pair tracking the moving resonance) —
+a specialist multi-session project of low practical value. Also note:
+`derive_pfc_controller_tuning` is boost-specific (Kp assumes `Vbus/(sL)`;
+warm-start `ic_vc_i = 1−Vpk/Vbus` is the boost duty ~0.19 vs SEPIC's ~0.55) — a
+SEPIC controller needs its own tuning path regardless.
 
 **Analytical fix shipped alongside this scouting (2026-05-29):**
 `process_operating_points` was synthesizing the SEPIC/Ćuk current waveform with
