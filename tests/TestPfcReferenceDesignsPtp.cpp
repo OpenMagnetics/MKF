@@ -561,3 +561,110 @@ TEST_CASE("PFC reference design PtP — Totem-pole 100 W (bipolar 4-switch stage
     run_ptp_gates(s);
 }
 
+TEST_CASE("PFC reference design PtP — SEPIC DCM 100 W (voltage-mode VOT)",
+          "[converter-model][pfc-topology][refdesign][ptp][sepic-cuk][dcm][slow]") {
+    // DCM SEPIC PFC with voltage-mode variable-on-time (VOT) control. CCM SEPIC
+    // is intractable for a switching PtP (Cc-L2 resonance limits average-current
+    // shaping to ~22% — handoff §2b); DCM is resonance-free and self-shaping. A
+    // slow voltage loop sets the on-time and a 1/sqrt(1+Vin/Vo) feed-forward
+    // cancels the DCM-COT distortion → unity PF (Shen 2018 EL; Lin 2023).
+    //
+    // DCM input current is PULSATING at switching scale (the EMI filter / line
+    // never sees it), so the CCM 1-Tsw envelope NRMSE is the WRONG metric. We
+    // gate on the actual PFC figures of merit computed from the switching-
+    // averaged (EMI-filtered line) current: power factor and bus regulation.
+    const double vrms = 230.0, vbus = 400.0, pout = 100.0, fsw = 100e3;
+    const double L1 = 200e-6;   // deep-DCM input inductor (pinned; the
+                                // calculate_inductance_dcm boundary value is
+                                // ~3.2 mH — far too large for deep DCM).
+    const int cycles = 3;
+
+    OpenMagnetics::PowerFactorCorrection pfc;
+    DimensionWithTolerance iv; iv.set_nominal(vrms); iv.set_minimum(vrms); iv.set_maximum(vrms);
+    pfc.set_input_voltage(iv);
+    pfc.set_output_voltage(vbus);
+    pfc.set_output_power(pout);
+    pfc.set_switching_frequency(fsw);
+    pfc.set_line_frequency(50.0);
+    pfc.set_efficiency(1.0);
+    pfc.set_diode_voltage_drop(0.0);
+    pfc.set_current_ripple_ratio(0.3);
+    pfc.set_bulk_capacitance(100e-6);
+    pfc.set_mode(PfcModes::DISCONTINUOUS_CONDUCTION_MODE);
+    pfc.set_ambient_temperature(25.0);
+    pfc.set_topology_variant(PfcTopologyVariants::SEPIC);
+
+    const std::string netlist = pfc.generate_ngspice_switching_circuit(L1, cycles);
+    // Sanity: this must be the DCM SEPIC VOT netlist, not the boost one.
+    REQUIRE(netlist.find("variable-on-time") != std::string::npos);
+    REQUIRE(netlist.find("B_dctrl") != std::string::npos);
+
+    NgspiceRunner runner;
+    if (!runner.is_available()) { WARN("ngspice not installed; skipping"); return; }
+    SimulationConfig cfg;
+    cfg.frequency = 50.0; cfg.extractOnePeriod = false;
+    cfg.numberOfPeriods = static_cast<size_t>(cycles); cfg.keepTempFiles = false;
+    cfg.timeout = 180.0;
+
+    const auto t0 = std::chrono::steady_clock::now();
+    const auto sim = runner.run_simulation(netlist, cfg);
+    const double wallTime = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - t0).count();
+    std::cout << "[PFC PtP SEPIC-DCM-100W] tSim=" << wallTime << "s\n";
+    INFO("wall_time=" << wallTime << " s  success=" << sim.success);
+    REQUIRE(sim.success);
+    REQUIRE(wallTime < 40.0);
+
+    auto find_by = [&](const std::string& key) -> const Waveform* {
+        for (size_t k = 0; k < sim.waveformNames.size(); ++k) {
+            std::string n = sim.waveformNames[k];
+            std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c){ return std::tolower(c); });
+            if (n.find(key) != std::string::npos) return &sim.waveforms[k];
+        }
+        return nullptr;
+    };
+    const Waveform* wfT = find_by("time");
+    const Waveform* wfVbus = find_by("vbus");
+    const Waveform* wfVin = find_by("vin_rect");
+    const Waveform* wfIL = find_by("vl_sense");
+    REQUIRE(wfT); REQUIRE(wfVbus); REQUIRE(wfVin); REQUIRE(wfIL);
+    const auto tvec = wfT->get_time().value();
+    const auto vbusD = wfVbus->get_data();
+    const auto vinD = wfVin->get_data();
+    const auto ilD = wfIL->get_data();
+
+    const double Tline = 1.0 / 50.0, Tsw = 1.0 / fsw;
+    const double t_a = tvec.back() - Tline, t_b = tvec.back();
+
+    // ---- Gate 1: bus regulation (last cycle) ----------------------------
+    const double vbus_mean = mean_over(tvec, vbusD, t_a, t_b);
+    INFO("vbus_mean=" << vbus_mean << " (target " << vbus << ")");
+    REQUIRE(std::fabs(vbus_mean - vbus) / vbus < 0.06);
+
+    // ---- Gate 2: power factor on the EMI-filtered (1-Tsw averaged) line --
+    // current. Build the cumulative integral of iL once, then a 1-Tsw moving
+    // average models the input EMI filter that removes the DCM switching ripple
+    // — what the grid actually draws. PF = <vin·iavg> / (rms(vin)·rms(iavg)).
+    std::vector<double> Fc(tvec.size(), 0.0);
+    for (size_t i = 1; i < tvec.size(); ++i)
+        Fc[i] = Fc[i-1] + 0.5*(ilD[i-1]+ilD[i])*(tvec[i]-tvec[i-1]);
+    auto F_at = [&](double t)->double{
+        if (t<=tvec.front()) return 0.0;
+        if (t>=tvec.back()) return Fc.back();
+        auto it=std::upper_bound(tvec.begin(),tvec.end(),t); size_t k=std::distance(tvec.begin(),it);
+        double fr=(t-tvec[k-1])/(tvec[k]-tvec[k-1]); double ilt=ilD[k-1]+fr*(ilD[k]-ilD[k-1]);
+        return Fc[k-1]+0.5*(ilD[k-1]+ilt)*(t-tvec[k-1]);
+    };
+    auto iavg=[&](double tc){ double a=std::max(tc-0.5*Tsw,tvec.front()),b=std::min(tc+0.5*Tsw,tvec.back()); return (F_at(b)-F_at(a))/(b-a); };
+    double sP=0,sV2=0,sI2=0,sW=0;
+    for (size_t i=1;i<tvec.size();++i){
+        if (tvec[i]<t_a||tvec[i]>t_b) continue;
+        double w=tvec[i]-tvec[i-1]; double v=vinD[i]; double ia=iavg(tvec[i]);
+        sP+=v*ia*w; sV2+=v*v*w; sI2+=ia*ia*w; sW+=w;
+    }
+    const double pf = (sP/sW) / (std::sqrt(sV2/sW)*std::sqrt(sI2/sW));
+    INFO("power factor (EMI-filtered line current) = " << pf);
+    std::cout << "[PFC PtP SEPIC-DCM-100W] busreg=" << vbus_mean << "V  PF=" << pf << "\n";
+    REQUIRE(pf > 0.93);
+}
+

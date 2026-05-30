@@ -27,8 +27,8 @@ Two commits:
 | SEMI_BRIDGELESS | ✅ | ✅ | inductor ≡ boost |
 | INTERLEAVED_BOOST | ✅ (per-phase) | ✅ (per-phase cell) | `numberOfPhases` ∈ {2,3} |
 | TOTEM_POLE | ✅ (bipolar waveform) | ✅ (bipolar 4-switch stage) | CCM requires `wideBandgapSwitch=true` |
-| SEPIC | ✅ (analytical, CCM/CrCM) | ❌ throws | buck-boost class; DCM rejected |
-| CUK | ✅ (analytical, CCM/CrCM) | ❌ throws | buck-boost class; DCM rejected |
+| SEPIC | ✅ (analytical, CCM/CrCM/DCM) | ✅ DCM (voltage-mode VOT); CCM ❌ | buck-boost class |
+| CUK | ✅ (analytical, CCM/CrCM/DCM) | ✅ DCM (shares SEPIC input-side); CCM ❌ | buck-boost class |
 | BUCK | ❌ throws | ❌ | discontinuous input current — no series-L path |
 | BUCK_BOOST | ❌ throws | ❌ | discontinuous input current |
 | VIENNA | ❌ throws | ❌ | 3-phase/3-level; own model — see VIENNA_PLAN.md |
@@ -158,16 +158,26 @@ loop sets the on-time magnitude, DCM does the current shaping.
 - Validated (230 Vac→400 V, 100 W, L1=L2=200 µH, Cc=470 nF, fsw=100 kHz,
   3 line cycles): **PF=0.958, THD=10.3 %, bus=397 V** (−0.75 %), stable, converges.
 
-**PtP metric — use a DCM-appropriate gate (NOT the CCM 1-Tsw envelope NRMSE).**
+**PtP metric — DCM-appropriate gate (NOT the CCM 1-Tsw envelope NRMSE).**
 DCM input current is pulsating at switching scale (the EMI filter / line never
 sees it), so the CCM-style 1-Tsw sliding-mean envelope NRMSE is the WRONG metric
-(~20-30 %, all switching ripple). Gate instead on the actual PFC figures of
-merit computed from the *switching-averaged* (1-Tsw moving-average = EMI-filtered
-line) current: **power factor** (mean(vin·i_avg)/(rms(vin)·rms(i_avg))) and bus
-regulation. Validated harness: `/tmp/sepic_dcm.cir` + measurement in the session
-log. NEXT: wire `generate_ngspice_switching_circuit_dcm_sepic()` into the model,
-route SEPIC/CUK+DCM to it, add a PtP test gating PF (>~0.93) + bus reg (±6 %).
-Note the boost-specific tuning caveat below still applies to any CCM attempt:
+(~20-30 %, all switching ripple). The test gates instead on the actual PFC
+figures of merit computed from the *switching-averaged* (1-Tsw moving-average =
+EMI-filtered line) current: **power factor** (mean(vin·i_avg)/(rms(vin)·rms(i_avg)))
+and bus regulation.
+
+**SHIPPED (2026-05-30):** `generate_ngspice_switching_circuit_dcm_sepic()` (in
+`PowerFactorCorrection.cpp`); `generate_ngspice_switching_circuit` routes
+SEPIC/CUK + DCM mode to it (CCM SEPIC/CUK still throws — Cc-L2 resonance). PtP:
+`TestPfcReferenceDesignsPtp.cpp` "SEPIC DCM 100 W" gates bus reg (±6 %) + PF
+(>0.93); measured **PF=0.962, bus=403.7 V, 13.5 s**. L1 is PINNED to a deep-DCM
+value (200 µH) in the test — note `calculate_inductance_dcm` returns the
+*boundary* Le (~3.2 mH here, using the CCM duty), which is far too large for
+deep DCM; a deep-DCM sizing helper (using the DCM duty, L ≪ L_boundary) is a
+clean follow-on. Ćuk currently reuses the SEPIC input-side stage (the input
+inductor L1 — what MKF designs — sees the identical DCM self-shaping; only the
+output stage differs); a dedicated Ćuk output stage is optional. The
+boost-specific tuning caveat below applies only to a future CCM attempt:
 `derive_pfc_controller_tuning` Kp assumes `Vbus/(sL)` and its `ic_vc_i` is the
 boost duty — irrelevant to this voltage-mode VOT path, which uses only its
 voltage-loop (gv_*) fields.
@@ -265,16 +275,16 @@ tolerance. Don't "fix" a failing bus gate by loosening it.
 
 ```bash
 ninja -C build -j5 MKF_tests        # always -j5
-build/MKF_tests "[pfc-topology]"                 # 31 cases incl 6 slow PtP
-build/MKF_tests "[pfc-topology]~[slow]"          # fast subset (25)
+build/MKF_tests "[pfc-topology]"                 # 32 cases incl 7 slow PtP
+build/MKF_tests "[pfc-topology]~[slow]"          # fast subset (26)
 build/MKF_tests "[totem-pole]"                   # totem-pole netlist + PtP only
-build/MKF_tests "[sepic-cuk]"                    # SEPIC/Ćuk sizing + duty consistency
-build/MKF_tests "[converter-model]"              # 536 cases — shared-loop regression
+build/MKF_tests "[sepic-cuk]"                    # SEPIC/Ćuk sizing + duty + DCM PtP
+build/MKF_tests "[converter-model]"              # 538 cases — shared-loop regression
 build/MKF_tests "[pfc]"                          # PFC adviser path
 ```
 
-All green as of this handoff: pfc-topology 31/31 (475 assertions, all 6 PtP
-incl totem-pole), converter-model 536/536 (8415), pfc adviser 4/4.
+All green as of this handoff: pfc-topology 32/32 (all 7 PtP incl totem-pole
+and SEPIC-DCM), converter-model 538/538 (8431), pfc adviser 4/4.
 
 ---
 

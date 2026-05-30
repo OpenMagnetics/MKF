@@ -363,6 +363,29 @@ public:
                                                     int numberOfLineCycles = 3);
 
     /**
+     * @brief Build the DCM SEPIC/Ćuk switching netlist (voltage-mode
+     *        variable-on-time control). Routed to by
+     *        generate_ngspice_switching_circuit when the variant is SEPIC/CUK
+     *        and the mode is DISCONTINUOUS_CONDUCTION_MODE.
+     *
+     * CCM SEPIC is intractable for a switching PtP (the Cc-L2 resonance limits
+     * average-current control to ~22% envelope error — see PFC_TOPOLOGY_HANDOFF
+     * §2b). DCM is resonance-free and self-shaping: a slow type-II voltage loop
+     * sets the on-time magnitude and DCM does the current shaping. A
+     * variable-on-time feed-forward Ton ∝ 1/sqrt(1+Vin/Vo) cancels the residual
+     * DCM-COT distortion, giving unity power factor (Shen 2018 Electronics
+     * Letters; Lin et al. 2023 Electronics 12(8):1807). No current loop / no
+     * multiplier.
+     *
+     * @param inductance         Input inductor L1 [H] (= 2·Le for the coupled
+     *                           L1=L2 SEPIC; from calculate_inductance_dcm).
+     * @param numberOfLineCycles Number of line cycles to simulate.
+     * @return                   Complete ngspice netlist string.
+     */
+    std::string generate_ngspice_switching_circuit_dcm_sepic(
+        double inductance, int numberOfLineCycles = 3);
+
+    /**
      * @brief Run the switching boost-PFC netlist via NgspiceRunner and
      *        return an OperatingPoint whose primary excitation contains the
      *        boost-inductor current waveform (along with vbus and
