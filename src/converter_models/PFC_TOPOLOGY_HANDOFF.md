@@ -169,14 +169,18 @@ and bus regulation.
 **SHIPPED (2026-05-30):** `generate_ngspice_switching_circuit_dcm_sepic()` (in
 `PowerFactorCorrection.cpp`); `generate_ngspice_switching_circuit` routes
 SEPIC/CUK + DCM mode to it (CCM SEPIC/CUK still throws — Cc-L2 resonance). PtP:
-`TestPfcReferenceDesignsPtp.cpp` "SEPIC DCM 100 W" gates bus reg (±6 %) + PF
-(>0.93); measured **PF=0.962, bus=403.7 V, 13.5 s**. L1 is PINNED to a deep-DCM
-value (200 µH) in the test — note `calculate_inductance_dcm` returns the
-*boundary* Le (~3.2 mH here, using the CCM duty), which is far too large for
-deep DCM; a deep-DCM sizing helper (using the DCM duty, L ≪ L_boundary) is a
-clean follow-on. Ćuk currently reuses the SEPIC input-side stage (the input
-inductor L1 — what MKF designs — sees the identical DCM self-shaping; only the
-output stage differs); a dedicated Ćuk output stage is optional. The
+`TestPfcReferenceDesignsPtp.cpp` `run_dcm_sepic_ptp()` gates bus reg (±6 %) + PF
+(>0.93) on the EMI-filtered current, across TWO well-separated design points
+(230 V/400 V/100 W → **PF=0.965**, 110 V/250 V/60 W → **PF=0.964**) — proves the
+VOT controller + the model's Cc/Resr/d_nom auto-sizing generalise. L1 is DERIVED
+from the deep-DCM power balance `L1 = Vrms²·dTarget²/(2·fsw·Pin)` (dTarget≈0.3,
+the peak on-time duty), NOT pinned. Note `calculate_inductance_dcm` returns the
+much larger CrCM *boundary* Le (~3.2 mH here, near-continuous regime) — a
+different operating point; a deep-DCM sizing helper on the model (this same
+formula) is a clean optional follow-on. Ćuk currently reuses the SEPIC input-
+side stage (the input inductor L1 — what MKF designs — sees the identical DCM
+self-shaping; only the output stage differs); a dedicated Ćuk output stage is
+optional. The
 boost-specific tuning caveat below applies only to a future CCM attempt:
 `derive_pfc_controller_tuning` Kp assumes `Vbus/(sL)` and its `ic_vc_i` is the
 boost duty — irrelevant to this voltage-mode VOT path, which uses only its
@@ -275,16 +279,16 @@ tolerance. Don't "fix" a failing bus gate by loosening it.
 
 ```bash
 ninja -C build -j5 MKF_tests        # always -j5
-build/MKF_tests "[pfc-topology]"                 # 32 cases incl 7 slow PtP
+build/MKF_tests "[pfc-topology]"                 # 33 cases incl 8 slow PtP
 build/MKF_tests "[pfc-topology]~[slow]"          # fast subset (26)
 build/MKF_tests "[totem-pole]"                   # totem-pole netlist + PtP only
 build/MKF_tests "[sepic-cuk]"                    # SEPIC/Ćuk sizing + duty + DCM PtP
-build/MKF_tests "[converter-model]"              # 538 cases — shared-loop regression
+build/MKF_tests "[converter-model]"              # 539 cases — shared-loop regression
 build/MKF_tests "[pfc]"                          # PFC adviser path
 ```
 
-All green as of this handoff: pfc-topology 32/32 (all 7 PtP incl totem-pole
-and SEPIC-DCM), converter-model 538/538 (8431), pfc adviser 4/4.
+All green as of this handoff: pfc-topology 33/33 (all 8 PtP incl totem-pole
+and 2 SEPIC-DCM design points), converter-model 539/539, pfc adviser 4/4.
 
 ---
 

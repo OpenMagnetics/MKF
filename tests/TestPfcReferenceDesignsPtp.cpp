@@ -561,22 +561,26 @@ TEST_CASE("PFC reference design PtP — Totem-pole 100 W (bipolar 4-switch stage
     run_ptp_gates(s);
 }
 
-TEST_CASE("PFC reference design PtP — SEPIC DCM 100 W (voltage-mode VOT)",
-          "[converter-model][pfc-topology][refdesign][ptp][sepic-cuk][dcm][slow]") {
-    // DCM SEPIC PFC with voltage-mode variable-on-time (VOT) control. CCM SEPIC
-    // is intractable for a switching PtP (Cc-L2 resonance limits average-current
-    // shaping to ~22% — handoff §2b); DCM is resonance-free and self-shaping. A
-    // slow voltage loop sets the on-time and a 1/sqrt(1+Vin/Vo) feed-forward
-    // cancels the DCM-COT distortion → unity PF (Shen 2018 EL; Lin 2023).
-    //
-    // DCM input current is PULSATING at switching scale (the EMI filter / line
-    // never sees it), so the CCM 1-Tsw envelope NRMSE is the WRONG metric. We
-    // gate on the actual PFC figures of merit computed from the switching-
-    // averaged (EMI-filtered line) current: power factor and bus regulation.
-    const double vrms = 230.0, vbus = 400.0, pout = 100.0, fsw = 100e3;
-    const double L1 = 200e-6;   // deep-DCM input inductor (pinned; the
-                                // calculate_inductance_dcm boundary value is
-                                // ~3.2 mH — far too large for deep DCM).
+// DCM SEPIC PFC with voltage-mode variable-on-time (VOT) control. CCM SEPIC is
+// intractable for a switching PtP (Cc-L2 resonance limits average-current
+// shaping to ~22% — handoff §2b); DCM is resonance-free and self-shaping. A slow
+// voltage loop sets the on-time and a 1/sqrt(1+Vin/Vo) feed-forward cancels the
+// DCM-COT distortion → unity PF (Shen 2018 EL; Lin 2023).
+//
+// DCM input current is PULSATING at switching scale (the EMI filter / line never
+// sees it), so the CCM 1-Tsw envelope NRMSE is the WRONG metric. We gate on the
+// actual PFC figures of merit computed from the switching-averaged (EMI-filtered
+// line) current: power factor and bus regulation. Sweeping a second design point
+// proves the controller + the model's Cc/Resr/d_nom auto-sizing generalise (not
+// tuned to one operating point).
+void run_dcm_sepic_ptp(const char* name, double vrms, double vbus, double pout,
+                       double fsw, double dTarget) {
+    INFO("DCM SEPIC design: " << name);
+    // Deep-DCM input inductor from the VOT power balance Pin = Vrms²·d²/(2·L1·fsw)
+    // ⇒ L1 = Vrms²·dTarget²/(2·fsw·Pin). dTarget is the peak on-time duty (kept
+    // ≲0.35 for solid DCM). (calculate_inductance_dcm returns the much larger
+    // CrCM *boundary* Le — a different, near-continuous regime.)
+    const double L1 = vrms * vrms * dTarget * dTarget / (2.0 * fsw * pout);
     const int cycles = 3;
 
     OpenMagnetics::PowerFactorCorrection pfc;
@@ -610,7 +614,6 @@ TEST_CASE("PFC reference design PtP — SEPIC DCM 100 W (voltage-mode VOT)",
     const auto sim = runner.run_simulation(netlist, cfg);
     const double wallTime = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t0).count();
-    std::cout << "[PFC PtP SEPIC-DCM-100W] tSim=" << wallTime << "s\n";
     INFO("wall_time=" << wallTime << " s  success=" << sim.success);
     REQUIRE(sim.success);
     REQUIRE(wallTime < 40.0);
@@ -664,7 +667,21 @@ TEST_CASE("PFC reference design PtP — SEPIC DCM 100 W (voltage-mode VOT)",
     }
     const double pf = (sP/sW) / (std::sqrt(sV2/sW)*std::sqrt(sI2/sW));
     INFO("power factor (EMI-filtered line current) = " << pf);
-    std::cout << "[PFC PtP SEPIC-DCM-100W] busreg=" << vbus_mean << "V  PF=" << pf << "\n";
+    std::cout << "[PFC PtP " << name << "] L1=" << (L1*1e6) << "uH busreg="
+              << vbus_mean << "V  PF=" << pf << "\n";
     REQUIRE(pf > 0.93);
+}
+
+TEST_CASE("PFC reference design PtP — SEPIC DCM 100 W (voltage-mode VOT)",
+          "[converter-model][pfc-topology][refdesign][ptp][sepic-cuk][dcm][slow]") {
+    run_dcm_sepic_ptp("SEPIC-DCM-230V-400V-100W", 230.0, 400.0, 100.0, 100e3, 0.275);
+}
+
+TEST_CASE("PFC reference design PtP — SEPIC DCM 110V/250V 60 W (generality)",
+          "[converter-model][pfc-topology][refdesign][ptp][sepic-cuk][dcm][slow]") {
+    // A second, well-separated design point (low line, lower bus, lower power)
+    // confirms the VOT controller and the model's component auto-sizing are not
+    // tuned to the 230 V/400 V/100 W point.
+    run_dcm_sepic_ptp("SEPIC-DCM-110V-250V-60W", 110.0, 250.0, 60.0, 100e3, 0.30);
 }
 
