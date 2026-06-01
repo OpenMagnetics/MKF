@@ -2,11 +2,16 @@
 #include "physical_models/ComplexPermeability.h"
 #include "Constants.h"
 #include "physical_models/WindingLosses.h"
+#include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/CoreLosses.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/Impedance.h"
+#include "physical_models/LeakageInductance.h"
 #include "support/Settings.h"
 #include <cmath>
+#include <numbers>
+#include <complex>
 #include "support/Exceptions.h"
 
 
@@ -25,14 +30,36 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
         throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
-    std::vector<double> impedances;
-    for (auto frequency : frequencies) {
-        auto impedance = abs(OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency));
-        impedances.push_back(impedance);
+    // For coupled magnetics (e.g. common-mode chokes) the flux that does not
+    // couple through the core appears as a leakage inductance in series with the
+    // magnetizing tank. Adding it (with the winding resistance) reproduces the
+    // high-frequency leakage resonance — the "second self-resonance" — that a
+    // bare magnetizing-tank model misses, turning the monotonic post-peak
+    // rolloff into the realistic peak → dip → rise. Leakage is geometric, so it
+    // is computed once and the jωL term applied per frequency. At low frequency
+    // ωL_leak is negligible, so the single-resonance behaviour is preserved.
+    auto coil = magnetic.get_coil();
+    double leakageInductance = 0;
+    double windingResistance = 0;
+    if (coil.get_functional_description().size() >= 2) {
+        leakageInductance = LeakageInductance()
+            .calculate_leakage_inductance(magnetic, frequencies[frequencies.size() / 2], 0, 1)
+            .get_leakage_inductance_per_winding()[0]
+            .get_nominal()
+            .value();
+        windingResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, Defaults().ambientTemperature)[0];
     }
 
-    auto core = magnetic.get_core();
-    auto coil = magnetic.get_coil();
+    std::vector<double> impedances;
+    for (auto frequency : frequencies) {
+        auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
+        if (leakageInductance > 0) {
+            auto angularFrequency = 2 * std::numbers::pi * frequency;
+            impedance += std::complex<double>(windingResistance, -angularFrequency * leakageInductance);
+        }
+        impedances.push_back(abs(impedance));
+    }
+
     return Curve2D(frequencies, impedances, title);
 }
 
