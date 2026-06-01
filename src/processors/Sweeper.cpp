@@ -36,6 +36,27 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
     return Curve2D(frequencies, impedances, title);
 }
 
+Curve2D Sweeper::sweep_differential_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw ModelNotAvailableException("Unknown spaced array mode");
+    }
+
+    std::vector<double> impedances;
+    for (auto frequency : frequencies) {
+        auto impedance = abs(OpenMagnetics::Impedance().calculate_differential_mode_impedance(magnetic, frequency));
+        impedances.push_back(impedance);
+    }
+
+    return Curve2D(frequencies, impedances, title);
+}
+
 Curve2D Sweeper::sweep_q_factor_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {
