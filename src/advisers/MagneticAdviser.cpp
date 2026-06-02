@@ -181,6 +181,20 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     // Step 3: Set turns and gap analytically (single pass, no iteration)
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
 
+    // Step 3a: Inductance-validity filter — reject cores whose ACHIEVED
+    // inductance is outside the required tolerance band. This is the slow
+    // path's MagneticCoreFilterMagneticInductance, which the fast path was
+    // missing. Without it, integer-turns rounding on small high-frequency
+    // inductors can overshoot the target L several-fold (e.g. 2.4µH target
+    // → 14µH actual); the over-inductance core then PASSES the saturation
+    // filter precisely because its (wrong) high L gives low ripple and low
+    // peak current. Saturation cannot catch wrong-inductance — only this
+    // filter can. Must run after turns are set, before saturation.
+    CoreAdviser::MagneticCoreFilterMagneticInductance filterMagneticInductance;
+    filterMagneticInductance.set_scorings(&coreAdviser._scorings);
+    filterMagneticInductance.set_filter_configuration(&coreAdviser._filterConfiguration);
+    magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+
     // Step 3b: Saturation filter — reject cores that exceed flux density saturation
     // after turns have been set. Must come after add_initial_turns_by_inductance.
     CoreAdviser::MagneticCoreFilterSaturation filterSaturation;
