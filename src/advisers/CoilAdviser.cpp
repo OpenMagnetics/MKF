@@ -250,10 +250,14 @@ namespace OpenMagnetics {
         // insulation-combinations enumeration easily exceeds the 240 s
         // Playwright @heavy timeout — and once we have a comfortable pool
         // of candidates for scoring, additional iterations add nothing.
-        // Allow 10× the caller's request so the stable_sort still has
-        // headroom to pick the top maximumNumberResults; for the typical
-        // calculate_advised_coil(mas, 1) call this caps at 10 candidates.
-        const size_t earlyTerminationCap = std::max<size_t>(maximumNumberResults * 10, 10);
+        // Allow 3× the caller's request so the stable_sort has some
+        // headroom while still letting single-result calls
+        // (calculate_advised_coil(mas, 1) from the frontend) bail out of
+        // the outer enumeration after the first 3 magnetics. The previous
+        // 10× rule kept the loop running through entire failing repetition
+        // passes on toroids where rep=1 found enough but rep=2 produced
+        // nothing for many seconds.
+        const size_t earlyTerminationCap = std::max<size_t>(maximumNumberResults * 3, 3);
 
         std::vector<Mas> masesWithCoil;
         bool earlyTerminated = false;

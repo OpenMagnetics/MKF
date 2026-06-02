@@ -14,6 +14,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <chrono>
 #include <vector>
 
 using namespace MAS;
@@ -2562,6 +2563,44 @@ TEST_CASE("Test_CoilAdviser_Web_7_Debug_No_Coil_Found", "[adviser][coil-adviser]
 
     // Verify this case correctly returns 0 results (winding window too small for requirements)
     REQUIRE(mases.size() == 0);
+    settings.reset();
+}
+
+// Reproducer for the frontend "Magnetic Builder → Wire Configuration → Advise All"
+// hang. The user reports that with the toroidal T 68/48/13 / GX 60 powder core,
+// two windings of 43 turns each, and double insulation between primary and
+// secondary, calculate_advised_coil never finishes. This payload is the exact
+// JSON the frontend sends to mkf.calculate_advised_coil (libMKF.cpp:2860).
+TEST_CASE("Test_CoilAdviser_Wire_Adviser_Hang_Toroid_Double_Insulation",
+          "[adviser][coil-adviser][bug][hang]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_delimit_and_compact(true);
+
+    auto json_path = OpenMagneticsTesting::get_test_data_path(
+        std::source_location::current(),
+        "test_coiladviser_wire_adviser_hang.json");
+    std::ifstream json_file(json_path);
+    OpenMagnetics::Mas mas(json::parse(json_file));
+
+    for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
+        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
+    }
+    mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
+
+    auto t0 = std::chrono::steady_clock::now();
+    CoilAdviser coilAdviser;
+    auto mases = coilAdviser.get_advised_coil(mas, 1);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - t0).count();
+
+    INFO("calculate_advised_coil elapsed ms = " << elapsed
+         << ", results = " << mases.size());
+    // User expects this to complete in under 8 s. Fail loudly if it spins.
+    REQUIRE(elapsed < 8000);
     settings.reset();
 }
 
