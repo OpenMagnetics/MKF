@@ -138,6 +138,9 @@ output/
 .claude/
 memory/
 
+# Playwright MCP debug logs (local-only)
+.playwright-mcp/
+
 # Test runner artifacts
 test-results/
 
