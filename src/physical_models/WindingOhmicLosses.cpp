@@ -10,8 +10,61 @@
 #include <streambuf>
 #include <vector>
 #include "support/Exceptions.h"
+#include "support/Settings.h"
 
 namespace OpenMagnetics {
+
+std::vector<double> WindingOhmicLosses::calculate_connection_resistance_per_winding(Coil coil, double temperature) {
+    auto windings = coil.get_functional_description();
+    std::vector<double> connectionResistancePerWinding(windings.size(), 0.0);
+
+    // Connections only contribute when real winding geometry is enabled (otherwise ideal mode keeps
+    // historical results untouched).
+    if (!Settings::GetInstance().get_coil_use_real_winding_geometry()) {
+        return connectionResistancePerWinding;
+    }
+
+    auto wirePerWinding = coil.get_wires();
+
+    // Provided terminal-lead lengths from the exit of the last turn to the terminal, when given.
+    std::vector<double> providedTerminalLength(windings.size(), 0.0);
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        if (windings[windingIndex].get_connections()) {
+            auto connections = windings[windingIndex].get_connections().value();
+            for (const auto& connection : connections) {
+                if (connection.get_length()) {
+                    providedTerminalLength[windingIndex] += connection.get_length().value();
+                }
+            }
+        }
+    }
+
+    // Geometric lead lengths from the reserved-space model: inter-layer crossings (radial climb) and
+    // terminal leads (routed out to the window border).
+    std::vector<double> crossingLength(windings.size(), 0.0);
+    std::vector<double> geometricTerminalLength(windings.size(), 0.0);
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        auto windingIndex = coil.get_winding_index_by_name(space.winding);
+        if (space.isTerminal) {
+            geometricTerminalLength[windingIndex] += space.dimensions[0];
+        }
+        else {
+            crossingLength[windingIndex] += space.dimensions[0];
+        }
+    }
+
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        // The terminal-lead length is taken from the design requirements when provided, otherwise
+        // from the geometric routing to the window border (never both, to avoid double counting).
+        double terminalLength = providedTerminalLength[windingIndex] > 0 ? providedTerminalLength[windingIndex] : geometricTerminalLength[windingIndex];
+        double leadLength = crossingLength[windingIndex] + terminalLength;
+        if (leadLength > 0) {
+            connectionResistancePerWinding[windingIndex] += calculate_dc_resistance_per_meter(wirePerWinding[windingIndex], temperature) * leadLength;
+        }
+    }
+
+    return connectionResistancePerWinding;
+}
 
 double WindingOhmicLosses::calculate_dc_resistance(Turn turn, const Wire& wire, double temperature) {
     double wireLength = turn.get_length();
@@ -84,13 +137,16 @@ std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil
         seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] += turnResistance;
     }
 
+    // Terminal/connection leads add series resistance to the whole winding (zero in ideal mode).
+    auto connectionResistancePerWinding = calculate_connection_resistance_per_winding(coil, temperature);
+
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         double conductance = 0;
         for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
             conductance += 1. / seriesResistancePerWindingPerParallel[windingIndex][parallelIndex];
         }
         double parallelResistance = 1. / conductance;
-        dcResistancePerWinding.push_back(parallelResistance);
+        dcResistancePerWinding.push_back(parallelResistance + connectionResistancePerWinding[windingIndex]);
     }
 
     return dcResistancePerWinding;
@@ -136,6 +192,9 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] += turnResistance;
     }
 
+    // Terminal/connection leads add series resistance and loss to the whole winding (zero in ideal mode).
+    auto connectionResistancePerWinding = calculate_connection_resistance_per_winding(coil, temperature);
+
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         double conductance = 0;
         for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
@@ -145,7 +204,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
             dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] = dcCurrentPerWinding[windingIndex] * parallelResistance / seriesResistancePerWindingPerParallel[windingIndex][parallelIndex];
         }
-        dcResistancePerWinding.push_back(parallelResistance);
+        dcResistancePerWinding.push_back(parallelResistance + connectionResistancePerWinding[windingIndex]);
     }
     std::vector<WindingLossesPerElement> windingLossesPerTurn;
     std::vector<double> currentDividerPerTurn;
@@ -181,6 +240,8 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
             windingOhmicLossesInWinding += seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] * pow(dcCurrentPerWindingPerParallel[windingIndex][parallelIndex], 2);
         }
+        // Connection leads carry the full winding current.
+        windingOhmicLossesInWinding += connectionResistancePerWinding[windingIndex] * pow(dcCurrentPerWinding[windingIndex], 2);
 
         OhmicLosses ohmicLosses;
         WindingLossesPerElement windingLossesThisWinding;

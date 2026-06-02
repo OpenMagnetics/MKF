@@ -47,6 +47,10 @@ class Settings
         bool _coilIncludeAdditionalCoordinates = true;
         bool _coilEqualizeMargins = true;
         bool _coilOnlyOneTurnPerLayerInContiguousRectangular = false;
+        // When false (default) turns/layers use their ideal positions and connection wires are
+        // ignored. When true, the winder accounts for the space reserved by connection/lead wires
+        // (affecting filling factors) and their length is included in the winding losses.
+        bool _coilUseRealWindingGeometry = false;
         size_t _coilMaximumLayersPlanar = 32;  // Keep in sync with reset()
 
         bool _useOnlyCoresInStock = true;
@@ -219,6 +223,9 @@ class Settings
 
         bool get_coil_only_one_turn_per_layer_in_contiguous_rectangular() const;
         void set_coil_only_one_turn_per_layer_in_contiguous_rectangular(bool value);
+
+        bool get_coil_use_real_winding_geometry() const;
+        void set_coil_use_real_winding_geometry(bool value);
 
         size_t get_coil_maximum_layers_planar() const;
         void set_coil_maximum_layers_planar(size_t value);

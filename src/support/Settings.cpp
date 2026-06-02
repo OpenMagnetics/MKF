@@ -60,6 +60,7 @@ namespace OpenMagnetics {
         _coilIncludeAdditionalCoordinates = true;
         _coilEqualizeMargins = true;
         _coilOnlyOneTurnPerLayerInContiguousRectangular = false;
+        _coilUseRealWindingGeometry = false;
         _coilMaximumLayersPlanar = 32;
 
         _useOnlyCoresInStock = true;
@@ -269,6 +270,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_coil_only_one_turn_per_layer_in_contiguous_rectangular(bool value) {
         _coilOnlyOneTurnPerLayerInContiguousRectangular = value;
+    }
+
+    bool Settings::get_coil_use_real_winding_geometry() const {
+        return _coilUseRealWindingGeometry;
+    }
+    void Settings::set_coil_use_real_winding_geometry(bool value) {
+        _coilUseRealWindingGeometry = value;
     }
 
     size_t Settings::get_coil_maximum_layers_planar() const {
