@@ -105,7 +105,7 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
                     continue;
                 }
             }
-            double bSatTarget = realisticBsat * defaults.maximumProportionMagneticFluxDensitySaturation; // Use configured proportion of Bsat for safety margin
+            double bSatTarget = realisticBsat * std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation); // Use configured proportion of Bsat for safety margin
             
             // Calculate gap based on energy storage requirement
             double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], realisticBsat, requiredMagneticEnergy), 5);
@@ -185,9 +185,16 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
     }
     double realisticBsat = core.get_magnetic_flux_density_saturation(opTemp, false);
 
+    // Energy-storing topologies use Bsat/margin so isat >= margin * ipeak.
+    // Transformer topologies keep the legacy 70% proportion (they don't
+    // store energy, so isat margin is not the binding constraint).
+    auto topology = inputs.get_design_requirements().get_topology();
+    double bsatProportion = is_energy_storing_topology(topology)
+        ? 1.0 / settings.get_core_adviser_saturation_margin()
+        : defaults.maximumProportionMagneticFluxDensitySaturation;
+
     // 1. Calculate minimum gap: energy storage requirement
-    // Use the maximum allowed flux density (proportional to Bsat) for energy calculation
-    double maxAllowedB = realisticBsat * defaults.maximumProportionMagneticFluxDensitySaturation;
+    double maxAllowedB = realisticBsat * bsatProportion;
     double minGap = magneticEnergy.calculate_gap_length_by_magnetic_energy(
         core.get_gapping()[0], maxAllowedB, requiredMagneticEnergy);
     constraints.minGap = minGap;
@@ -208,9 +215,9 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
         constraints.maxGap = constraints.minGap;
     }
 
-    // 3. Calculate saturation constraint gap (ensure we don't exceed 70% Bsat)
+    // 3. Calculate saturation constraint gap
     MagnetizingInductance magnetizingInductance;
-    double targetB = realisticBsat * defaults.maximumProportionMagneticFluxDensitySaturation;
+    double targetB = realisticBsat * bsatProportion;
     double peakCurrent = get_peak_current(inputs);
     
     // Account for stacked cores - current is divided among stacks
@@ -410,6 +417,7 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
 
     bool skipGapping = isTransformer && !hasNominalInductance && !hasMaxInductance;
 
+
     // Two transformer paths share the same outcome HERE — leave the core
     // ungapped — but for opposite reasons:
     //
@@ -451,6 +459,13 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
 
         // Calculate gapping constraints
         auto constraints = calculate_gapping_constraints(inputs, core);
+
+        logEntry("Gap: core=" + core.get_name().value_or("?")
+                 + " minGap=" + std::to_string(constraints.minGap)
+                 + " maxGap=" + std::to_string(constraints.maxGap)
+                 + " optGap=" + std::to_string(constraints.optimalGap)
+                 + " peakI=" + std::to_string(get_peak_current(inputs)),
+                 "CoreAdviser");
 
         // Apply the optimal gap
         core.set_ground_gapping(constraints.optimalGap);
@@ -516,7 +531,7 @@ void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, dou
         }
 
         // Target safe operating flux for this core (material Bsat curve at opTemp,
-        // capped by defaults.maximumProportionMagneticFluxDensitySaturation).
+        // capped by std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation)).
         double opTemp = 25.0;
         for (auto& op : inputs.get_operating_points()) {
             opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
@@ -734,7 +749,7 @@ std::pair<double, double> CoreAdviser::optimize_gap_and_turns_binary_search(Inpu
         DimensionalValues::NOMINAL);
     double peakCurrent = get_peak_current(inputs);
     double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
-    double maxAllowedB = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
+    double maxAllowedB = bSat * std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation);
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     
     // Define gap search bounds
@@ -795,7 +810,7 @@ std::pair<double, double> CoreAdviser::optimize_gap_and_turns_binary_search(Inpu
     if (finalCost >= std::numeric_limits<double>::max() / 2) {
         // No valid solution found in search range
         // Try using the analytical method from Option 1 as fallback
-        double maxB = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
+        double maxB = bSat * std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation);
         auto [fallbackGap, fallbackTurns] = magnetizingInductance.calculate_optimal_gap_and_turns(
             core, &inputs, maxB, peakCurrent);
         return {fallbackGap, fallbackTurns};
@@ -842,7 +857,7 @@ void CoreAdviser::add_gapping_and_turns_analytical(std::vector<std::pair<Magneti
         
         // Get Bsat for this material
         double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
-        double maxAllowedB = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
+        double maxAllowedB = bSat * std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation);
         
         // Use Option 1: Direct analytical calculation (O(1) per core)
         auto [optimalGap, optimalTurns] = magnetizingInductance.calculate_optimal_gap_and_turns(

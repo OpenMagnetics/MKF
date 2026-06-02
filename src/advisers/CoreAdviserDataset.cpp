@@ -548,7 +548,8 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 // `defaults.maximumProportionMagneticFluxDensitySaturation` —
                 // pass it straight through. The loss filter refines N upward
                 // toward the loss optimum later.
-                double bMax = core.get_magnetic_flux_density_saturation(transformerTemperature, true);
+                double bSatRaw = core.get_magnetic_flux_density_saturation(transformerTemperature, false);
+                double bMax = bSatRaw / settings.get_core_adviser_saturation_margin();
                 double nFromSaturation = magnetizingInductance
                     .calculate_turns_from_volt_seconds_and_max_flux_density(core, maxVoltSeconds, bMax);
                 initialNumberTurns = nFromSaturation > 0 ? nFromSaturation : 5;

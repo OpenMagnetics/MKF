@@ -304,7 +304,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     filterSaturationAvailable.set_filter_configuration(&_filterConfiguration);
     magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     log_stage("Saturation filter", magneticsWithScoring.size());
-
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
     log_stage("Cost filter", magneticsWithScoring.size());
 

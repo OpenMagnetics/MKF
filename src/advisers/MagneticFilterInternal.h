@@ -76,6 +76,7 @@ inline bool is_energy_storing_topology(std::optional<Topologies> topology) {
         // Cuk: the input inductor L1 stores energy in the gap; the magnetic
         // produced by the wizard is L1 (or the coupled L1-L2 inductor).
         case Topologies::CUK_CONVERTER:
+        case Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER:
             return true;
 
         // Transformer topologies (forward-derived)
