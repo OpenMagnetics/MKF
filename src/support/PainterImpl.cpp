@@ -439,6 +439,30 @@ void Painter::paint_two_piece_set_coil_sections(Magnetic magnetic) {
     paint_two_piece_set_margin(magnetic);
 }
 
+void Painter::paint_coil_connections(Magnetic magnetic) {
+    auto coil = magnetic.get_coil();
+    auto reservedSpaces = coil.get_connection_reserved_spaces();
+    if (reservedSpaces.empty()) {
+        return;
+    }
+    auto shapes = _root.add_child<SVG::Group>();
+    // Two translucent colours: inter-layer / inter-section transitions vs entrance/exit terminal
+    // leads. Transparency lets overlapping leads and the turns beneath them stay visible.
+    _root.style(".connection_transition").set_attr("opacity", "0.5").set_attr("fill", "#1E88E5");  // blue
+    _root.style(".connection_terminal").set_attr("opacity", "0.5").set_attr("fill", "#FF00FF");     // magenta
+    for (const auto& space : reservedSpaces) {
+        // Only the centre-to-centre / centre-to-border link entries (no layer) are drawn; the
+        // per-layer entries are squeeze-only book-keeping for the filling factor.
+        if (!space.layer.empty()) {
+            continue;
+        }
+        std::string cssClassName = space.isTerminal ? "connection_terminal" : "connection_transition";
+        // paint_rectangle rotates around center*_scale while scale_points flips y (y -> -y*_scale), so
+        // the rotation pivot's y must be negated to match the drawn polygon's centre.
+        paint_rectangle(space.coordinates[0], space.coordinates[1], space.dimensions[0], space.dimensions[1], cssClassName, shapes, space.rotation, {space.coordinates[0], -space.coordinates[1]});
+    }
+}
+
 void Painter::paint_toroidal_coil_sections(Magnetic magnetic) {
 
     auto processedDescription = magnetic.get_core().get_processed_description().value();

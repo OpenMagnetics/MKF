@@ -3,6 +3,7 @@
 #include "support/Settings.h"
 #include "support/Painter.h"
 #include "constructive_models/Coil.h"
+#include "physical_models/WindingOhmicLosses.h"
 #include "json.hpp"
 #include "support/Utils.h"
 #include "TestingUtils.h"
@@ -17,6 +18,7 @@
 #include <vector>
 #include <time.h>
 #include <set>
+#include <map>
 using json = nlohmann::json;
 #include <typeinfo>
 #include <chrono>
@@ -10589,7 +10591,7 @@ TEST_CASE("Test_Coil_Compacting_Tertiary_Winding", "[constructive-model][coil][b
 
 
 TEST_CASE("Test_Add_Margin_From_Json_Reconstructed_Toroidal_Reproduces_Segfault", "[constructive-model][coil][margin][toroidal][regression]") {
-    // Reproducer for el-choker frontend crash: PyMKF.add_margin_to_section_by_index segfaults
+    // Reproducer for el-choker frontend crash: PyOpenMagnetics.add_margin_to_section_by_index segfaults
     // when called on a Coil reconstructed from JSON (e.g. the output of magnetic_autocomplete),
     // because Coil(json, false) only deserializes MAS fields and never sizes
     // _marginsPerSection. The function then indexes _marginsPerSection out of bounds.
@@ -10612,7 +10614,7 @@ TEST_CASE("Test_Add_Margin_From_Json_Reconstructed_Toroidal_Reproduces_Segfault"
                                                       turnsAlignment, sectionsAlignment);
     REQUIRE(bool(coil.get_sections_description()));
 
-    // Round-trip through JSON, simulating what PyMKF bindings do
+    // Round-trip through JSON, simulating what PyOpenMagnetics bindings do
     // (and what the el-choker bake script would do):
     //   1. magnetic_autocomplete returns coil JSON
     //   2. caller constructs Coil(coilJson, false) and calls add_margin_to_section_by_index
@@ -10630,6 +10632,441 @@ TEST_CASE("Test_Add_Margin_From_Json_Reconstructed_Toroidal_Reproduces_Segfault"
     auto setMargin = std::get<std::vector<double>>(sections[0].get_margin().value());
     REQUIRE_THAT(setMargin[0], Catch::Matchers::WithinAbs(margin, 1e-9));
     REQUIRE_THAT(setMargin[1], Catch::Matchers::WithinAbs(margin, 1e-9));
+
+    settings.reset();
+}
+
+// Number of conduction turns overlapping a per-layer reserved connection slot on their own layer
+// (terminal lead or U continuation; Z dragbacks excluded — they route diagonally and don't displace
+// turns). 0 means the real-winding geometry placed every turn clear of its connections.
+static int real_geometry_collisions(OpenMagnetics::Coil& coil) {
+    if (!coil.get_turns_description()) {
+        return -1;
+    }
+    auto turns = coil.get_turns_description().value();
+    auto spaces = coil.get_connection_reserved_spaces();
+    int collisions = 0;
+    for (const auto& space : spaces) {
+        if (space.layer.empty()) {
+            continue;
+        }
+        if (!space.isTerminal && coil.get_winding_order(space.section) != WindingOrder::U) {
+            continue;
+        }
+        for (const auto& turn : turns) {
+            if (!turn.get_layer() || turn.get_layer().value() != space.layer) {
+                continue;
+            }
+            auto tc = turn.get_coordinates();
+            auto td = turn.get_dimensions().value();
+            double overlapX = (td[0] + space.dimensions[0]) / 2 - std::abs(tc[0] - space.coordinates[0]);
+            double overlapY = (td[1] + space.dimensions[1]) / 2 - std::abs(tc[1] - space.coordinates[1]);
+            if (overlapX > 1e-6 && overlapY > 1e-6) {
+                collisions++;
+                std::cout << "[RGCOLL] turn " << turn.get_name() << " (w=" << turn.get_winding()
+                          << " h=" << td[1]*1e3 << ") vs " << (space.isTerminal ? "terminal" : "continuation")
+                          << "(w=" << space.winding << " h=" << space.dimensions[1]*1e3 << " cy=" << space.coordinates[1]*1e3
+                          << ") on " << space.layer << " overlapX=" << overlapX*1e3 << " overlapY=" << overlapY*1e3 << "\n";
+            }
+        }
+    }
+    return collisions;
+}
+
+static void paint_connection_demo(OpenMagnetics::Coil coil, const std::string& shapeName, const std::string& filename, bool withConnections) {
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
+    auto outFile = outputFilePath;
+    outFile.append(filename);
+    std::filesystem::remove(outFile);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    Painter painter(outFile);
+    painter.paint_core(magnetic);
+    painter.paint_bobbin(magnetic);
+    painter.paint_coil_turns(magnetic);
+    if (withConnections) {
+        painter.paint_coil_connections(magnetic);
+    }
+    painter.export_svg();
+}
+
+TEST_CASE("Test_Winding_Order_U_Vs_Z_Reverses_Alternate_Layers", "[constructive-model][coil][winding-order]") {
+    std::vector<int64_t> numberTurns = {60};
+    std::vector<int64_t> numberParallels = {1};
+    uint8_t interleavingLevel = 1;
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", interleavingLevel);
+
+    REQUIRE(coil.get_layers_description());
+    auto conductionLayers = coil.get_layers_description_conduction();
+    REQUIRE(conductionLayers.size() >= 2);
+
+    // Default winding order is Z (historical behaviour).
+    REQUIRE(coil.get_winding_order(conductionLayers[0].get_section().value()) == WindingOrder::Z);
+
+    // The two innermost conduction layers, ordered radially.
+    std::sort(conductionLayers.begin(), conductionLayers.end(), [](const Layer& a, const Layer& b) {
+        return a.get_coordinates()[0] < b.get_coordinates()[0];
+    });
+    std::string innerLayer = conductionLayers[0].get_name();
+    std::string nextLayer = conductionLayers[1].get_name();
+
+    // y of the first-wound and last-wound turn of a layer (turns_description is in winding order).
+    auto firstWoundY = [](OpenMagnetics::Coil& c, const std::string& layerName) {
+        auto turns = c.get_turns_description().value();
+        for (auto& turn : turns) {
+            if (turn.get_layer() && turn.get_layer().value() == layerName) {
+                return turn.get_coordinates()[1];
+            }
+        }
+        throw std::runtime_error("no turns in layer " + layerName);
+    };
+    auto lastWoundY = [](OpenMagnetics::Coil& c, const std::string& layerName) {
+        auto turns = c.get_turns_description().value();
+        double y = std::nan("");
+        for (auto& turn : turns) {
+            if (turn.get_layer() && turn.get_layer().value() == layerName) {
+                y = turn.get_coordinates()[1];
+            }
+        }
+        return y;
+    };
+
+    // Z winding: every layer is wound the same direction, so the first-wound turn of the next layer
+    // sits at the same y-edge as the first-wound turn of the inner layer.
+    double zInnerFirst = firstWoundY(coil, innerLayer);
+    double zNextFirst = firstWoundY(coil, nextLayer);
+    REQUIRE_THAT(zNextFirst, Catch::Matchers::WithinAbs(zInnerFirst, 1e-9));
+
+    paint_connection_demo(coil, "PQ 28/20", "Test_WindingOrder_Z.svg", true);
+
+    // Switch the winding window default to U winding and re-wind.
+    auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+    auto processed = bobbin.get_processed_description().value();
+    auto windingWindows = processed.get_winding_windows();
+    windingWindows[0].set_winding_order(WindingOrder::U);
+    processed.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processed);
+    coil.set_bobbin(bobbin);
+    coil.wind();
+
+    REQUIRE(coil.get_winding_order(conductionLayers[0].get_section().value()) == WindingOrder::U);
+
+    // U winding: the inner layer is unchanged, but the next layer is reversed, so its first-wound
+    // turn now sits at the opposite y-edge — adjacent to the inner layer's last-wound turn.
+    double uInnerFirst = firstWoundY(coil, innerLayer);
+    double uNextFirst = firstWoundY(coil, nextLayer);
+    double uInnerLast = lastWoundY(coil, innerLayer);
+
+    REQUIRE_THAT(uInnerFirst, Catch::Matchers::WithinAbs(zInnerFirst, 1e-9));   // inner layer not reversed
+    REQUIRE(std::abs(uNextFirst - zNextFirst) > 1e-6);                          // next layer flipped
+    REQUIRE_THAT(uNextFirst, Catch::Matchers::WithinAbs(uInnerLast, 1e-9));     // now adjacent to inner's end
+
+    paint_connection_demo(coil, "PQ 28/20", "Test_WindingOrder_U.svg", true);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Vs_Ideal_Connection_Geometry", "[constructive-model][coil][winding-order][real-geometry]") {
+    std::vector<int64_t> numberTurns = {60};
+    std::vector<int64_t> numberParallels = {1};
+    uint8_t interleavingLevel = 1;
+
+    // Ideal geometry (default): connections reserve no space and contribute no loss.
+    settings.set_coil_use_real_winding_geometry(false);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", interleavingLevel);
+    REQUIRE(coil.get_layers_description_conduction().size() >= 2);
+
+    double fillingFactorIdeal = coil.get_sections_description_conduction()[0].get_filling_factor().value();
+    auto resistanceIdeal = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, 25.0);
+    // The reserved-space geometry exists independently of the flag (there are internal boundaries).
+    REQUIRE(coil.get_connection_reserved_spaces().size() >= 1);
+
+    paint_connection_demo(coil, "PQ 28/20", "Test_RealVsIdeal_Ideal.svg", false);
+
+    // Real geometry: connection leads reserve space and add series resistance.
+    settings.set_coil_use_real_winding_geometry(true);
+    coil.wind();
+    double fillingFactorReal = coil.get_sections_description_conduction()[0].get_filling_factor().value();
+    auto resistanceReal = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, 25.0);
+
+    REQUIRE(fillingFactorReal > fillingFactorIdeal);
+    REQUIRE(resistanceReal[0] > resistanceIdeal[0]);
+
+    // Plot the same (real-geometry) coil wound Z (default) and U, for comparison. In Z the adjacent
+    // layers are joined by an out-of-plane dragback (no in-plane link drawn); in U they are joined
+    // by an in-plane turnaround at alternating ends.
+    paint_connection_demo(coil, "PQ 28/20", "Test_RealVsIdeal_Real_Z.svg", true);
+
+    auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+    auto processed = bobbin.get_processed_description().value();
+    auto windingWindows = processed.get_winding_windows();
+    windingWindows[0].set_winding_order(WindingOrder::U);
+    processed.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processed);
+    coil.set_bobbin(bobbin);
+    coil.wind();
+    REQUIRE(coil.get_winding_order(coil.get_sections_description_conduction()[0].get_name()) == WindingOrder::U);
+    paint_connection_demo(coil, "PQ 28/20", "Test_RealVsIdeal_Real_U.svg", true);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Interleaved_Connection_Squeeze_Grows_Outward", "[constructive-model][coil][real-geometry]") {
+    // Interleaved primary/secondary (P-S-P-S), one parallel each, ~20 turns per layer. Connection
+    // leads (terminal entrance/exit + inter-layer transitions) route outward to the bobbin border, so
+    // they accumulate on the outer layers: the innermost conduction layer is crossed by no lead while
+    // the outermost is crossed by several. The reserved connection slots on the outermost conduction
+    // layer must therefore exceed those on the innermost.
+    std::vector<int64_t> numberTurns = {40, 40};
+    std::vector<int64_t> numberParallels = {1, 1};
+    uint8_t interleavingLevel = 2;
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", interleavingLevel);
+
+    auto conductionLayers = coil.get_layers_description_conduction();
+    REQUIRE(conductionLayers.size() >= 4);
+    std::sort(conductionLayers.begin(), conductionLayers.end(), [](const Layer& a, const Layer& b) {
+        return a.get_coordinates()[0] < b.get_coordinates()[0];
+    });
+
+    // The structure must be interleaved: both windings appear among the layers.
+    std::set<std::string> windingsPresent;
+    for (const auto& layer : conductionLayers) {
+        windingsPresent.insert(layer.get_partial_windings()[0].get_winding());
+    }
+    REQUIRE(windingsPresent.size() == 2);
+
+    std::cout << "[SPSP] conduction layers=" << conductionLayers.size()
+              << " turns in innermost layer=" << coil.get_turns_by_layer(conductionLayers[0].get_name()).size() << std::endl;
+
+    auto spaces = coil.get_connection_reserved_spaces();
+    std::map<std::string, int> reservedCountByLayer;
+    for (const auto& space : spaces) {
+        if (!space.layer.empty()) {
+            reservedCountByLayer[space.layer]++;
+        }
+    }
+
+    int reservedInnermost = reservedCountByLayer[conductionLayers.front().get_name()];
+    int reservedOutermost = reservedCountByLayer[conductionLayers.back().get_name()];
+
+    REQUIRE(reservedOutermost > reservedInnermost);
+
+    // --- Collision check: no conduction turn may overlap a per-layer reserved connection slot
+    // (terminal OR inter-layer continuation) on its own layer. ---
+    auto countRealCollisions = [&](OpenMagnetics::Coil& c, const std::string& tag) -> int {
+        auto turns = c.get_turns_description().value();
+        auto localSpaces = c.get_connection_reserved_spaces();
+        int collisions = 0;
+        for (const auto& space : localSpaces) {
+            if (space.layer.empty()) continue;  // per-layer reserved slots only (not the drawn links)
+            // A Z dragback does not displace turns in the crossed layer (only terminals + U
+            // continuations block), so turns are allowed to sit under a Z continuation squeeze.
+            if (!space.isTerminal && c.get_winding_order(space.section) != WindingOrder::U) continue;
+            for (const auto& turn : turns) {
+                if (!turn.get_layer() || turn.get_layer().value() != space.layer) continue;  // same layer
+                auto tc = turn.get_coordinates();
+                auto td = turn.get_dimensions().value();
+                double overlapX = (td[0] + space.dimensions[0]) / 2 - std::abs(tc[0] - space.coordinates[0]);
+                double overlapY = (td[1] + space.dimensions[1]) / 2 - std::abs(tc[1] - space.coordinates[1]);
+                if (overlapX > 1e-6 && overlapY > 1e-6) {
+                    collisions++;
+                    std::cout << "[COLLISION " << tag << "] " << turn.get_name() << " (cy=" << tc[1]*1e3
+                              << ") vs " << (space.isTerminal ? "terminal" : "continuation") << " reserved on "
+                              << space.layer << " (cy=" << space.coordinates[1]*1e3 << ") overlapY=" << overlapY * 1e3 << " mm\n";
+                }
+            }
+        }
+        std::cout << "[REAL COLLISIONS " << tag << "]=" << collisions << "\n";
+        return collisions;
+    };
+    CHECK(countRealCollisions(coil, "Z") == 0);
+    // --- Fullness: turns per conduction layer, inner-to-outer (orphan layers stand out) ---
+    for (const auto& layer : conductionLayers) {
+        auto tl = coil.get_turns_by_layer(layer.get_name());
+        double minY = 1e9, maxY = -1e9;
+        for (const auto& t : tl) { minY = std::min(minY, t.get_coordinates()[1]); maxY = std::max(maxY, t.get_coordinates()[1]); }
+        std::cout << "[FULLNESS] x=" << layer.get_coordinates()[0]*1e3
+                  << " " << layer.get_name() << " turns=" << tl.size()
+                  << " topY=" << maxY*1e3 << " botY=" << minY*1e3
+                  << " layerCy=" << layer.get_coordinates()[1]*1e3 << " layerH=" << layer.get_dimensions()[1]*1e3 << "\n";
+    }
+
+    // Z (default) and U variants of the same interleaved coil, for comparison.
+    paint_connection_demo(coil, "PQ 28/20", "Test_SPSP_Interleaved_Real.svg", true);
+
+    auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+    auto processed = bobbin.get_processed_description().value();
+    auto windingWindows = processed.get_winding_windows();
+    windingWindows[0].set_winding_order(WindingOrder::U);
+    processed.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processed);
+    coil.set_bobbin(bobbin);
+    coil.wind();
+    {
+        auto uLayers = coil.get_layers_description_conduction();
+        std::sort(uLayers.begin(), uLayers.end(), [](const Layer& a, const Layer& b){ return a.get_coordinates()[0] < b.get_coordinates()[0]; });
+        for (const auto& layer : uLayers) {
+            std::cout << "[U-FULLNESS] x=" << layer.get_coordinates()[0] << " w=" << layer.get_partial_windings()[0].get_winding()
+                      << " " << layer.get_name() << " turns=" << coil.get_turns_by_layer(layer.get_name()).size() << "\n";
+        }
+    }
+    CHECK(countRealCollisions(coil, "U") == 0);
+    paint_connection_demo(coil, "PQ 28/20", "Test_SPSP_Interleaved_Real_U.svg", true);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Different_Wire_Sizes", "[constructive-model][coil][real-geometry]") {
+    // Interleaved primary/secondary with QUITE different wire gauges — a thick 1.40 mm primary and a
+    // thin 0.40 mm secondary. Per-layer turn capacities and connection-slot sizes differ a lot between
+    // the windings, stressing the real-winding blocking + edge-routed connections across mismatched
+    // wires. Uses a large PQ 40/40 window so it fits comfortably.
+    std::vector<int64_t> numberTurns = {24, 60};
+    std::vector<int64_t> numberParallels = {1, 1};
+    uint8_t interleavingLevel = 2;
+    auto wires = std::vector<OpenMagnetics::Wire>({
+        find_wire_by_name("Round 1.40 - Grade 1"),
+        find_wire_by_name("Round 0.4 - Grade 1"),
+    });
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires);
+
+    REQUIRE(coil.get_turns_description());
+    std::set<std::string> windingsPresent;
+    for (const auto& layer : coil.get_layers_description_conduction()) {
+        windingsPresent.insert(layer.get_partial_windings()[0].get_winding());
+    }
+    REQUIRE(windingsPresent.size() == 2);
+    paint_connection_demo(coil, "PQ 40/40", "Test_DifferentWires_Z.svg", true);
+    CHECK(real_geometry_collisions(coil) == 0);
+
+    // Same coil wound U.
+    auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+    auto processed = bobbin.get_processed_description().value();
+    auto windingWindows = processed.get_winding_windows();
+    windingWindows[0].set_winding_order(WindingOrder::U);
+    processed.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processed);
+    coil.set_bobbin(bobbin);
+    coil.wind();
+    paint_connection_demo(coil, "PQ 40/40", "Test_DifferentWires_U.svg", true);
+    CHECK(real_geometry_collisions(coil) == 0);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Z_39_37", "[constructive-model][coil][real-geometry]") {
+    // Special-case odd turn counts in Z winding: {39, 37} interleaved. Stresses the blocking-aware
+    // section split and spillover when the per-section turns do not divide evenly into full layers.
+    std::vector<int64_t> numberTurns = {39, 37};
+    std::vector<int64_t> numberParallels = {1, 1};
+    uint8_t interleavingLevel = 2;
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", interleavingLevel);
+
+    REQUIRE(coil.get_turns_description());
+    CHECK(real_geometry_collisions(coil) == 0);
+    paint_connection_demo(coil, "PQ 28/20", "Test_Real_Z_39_37.svg", true);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_U_38_36", "[constructive-model][coil][real-geometry]") {
+    // Special-case even turn counts in U winding: {38, 36} interleaved.
+    std::vector<int64_t> numberTurns = {38, 36};
+    std::vector<int64_t> numberParallels = {1, 1};
+    uint8_t interleavingLevel = 2;
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", interleavingLevel);
+
+    auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+    auto processed = bobbin.get_processed_description().value();
+    auto windingWindows = processed.get_winding_windows();
+    windingWindows[0].set_winding_order(WindingOrder::U);
+    processed.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processed);
+    coil.set_bobbin(bobbin);
+    coil.wind();
+
+    REQUIRE(coil.get_turns_description());
+    CHECK(real_geometry_collisions(coil) == 0);
+    paint_connection_demo(coil, "PQ 28/20", "Test_Real_U_38_36.svg", true);
+
+    settings.reset();
+}
+
+TEST_CASE("Demo_Real_Vs_Ideal_Connection_Geometry", "[real-geometry-demo]") {
+    // Demonstration (not an assertion-heavy test): winds the same interleaved transformer with
+    // ideal vs real winding geometry, prints the filling-factor and DC-resistance deltas, and paints
+    // both, drawing the reserved connection rectangles (magenta) in the real one.
+    std::vector<int64_t> numberTurns = {10, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    uint8_t interleavingLevel = 2;
+    std::string shape = "PQ 28/20";
+
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
+    auto core = OpenMagneticsTesting::get_quick_core(shape, json::parse("[]"), 1, "Dummy");
+
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(false);
+    auto coilIdeal = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shape, interleavingLevel);
+    auto sectionsIdeal = coilIdeal.get_sections_description_conduction();
+    auto resistanceIdeal = WindingOhmicLosses::calculate_dc_resistance_per_winding(coilIdeal, 25.0);
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coilReal = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shape, interleavingLevel);
+    auto sectionsReal = coilReal.get_sections_description_conduction();
+    auto resistanceReal = WindingOhmicLosses::calculate_dc_resistance_per_winding(coilReal, 25.0);
+    auto reserved = coilReal.get_connection_reserved_spaces();
+
+    std::cout << "\n=== REAL vs IDEAL connection geometry (" << shape << ", interleaved, turns {10,10}) ===\n";
+    std::cout << "Conduction sections: " << sectionsIdeal.size() << "\n";
+    for (size_t i = 0; i < sectionsIdeal.size(); ++i) {
+        std::cout << "  section " << i << " (" << sectionsIdeal[i].get_name() << ") filling factor:"
+                  << "  ideal=" << sectionsIdeal[i].get_filling_factor().value()
+                  << "  real=" << sectionsReal[i].get_filling_factor().value() << "\n";
+    }
+    for (size_t w = 0; w < resistanceIdeal.size(); ++w) {
+        std::cout << "  winding " << w << " DC resistance [ohm]:"
+                  << "  ideal=" << resistanceIdeal[w]
+                  << "  real=" << resistanceReal[w]
+                  << "  (delta +" << (resistanceReal[w] - resistanceIdeal[w]) << ")\n";
+    }
+    std::cout << "  reserved connection rectangles: " << reserved.size() << "\n";
+
+    OpenMagnetics::Magnetic magneticIdeal; magneticIdeal.set_core(core); magneticIdeal.set_coil(coilIdeal);
+    OpenMagnetics::Magnetic magneticReal;  magneticReal.set_core(core);  magneticReal.set_coil(coilReal);
+
+    {
+        auto outFile = outputFilePath; outFile.append("Demo_Connection_Ideal.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_core(magneticIdeal);
+        painter.paint_bobbin(magneticIdeal);
+        painter.paint_coil_turns(magneticIdeal);
+        painter.export_svg();
+    }
+    {
+        auto outFile = outputFilePath; outFile.append("Demo_Connection_Real.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_core(magneticReal);
+        painter.paint_bobbin(magneticReal);
+        painter.paint_coil_turns(magneticReal);
+        painter.paint_coil_connections(magneticReal);
+        painter.export_svg();
+    }
+    std::cout << "  SVGs written to " << outputFilePath.string() << "/Demo_Connection_{Ideal,Real}.svg\n" << std::endl;
 
     settings.reset();
 }

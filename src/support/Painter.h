@@ -455,6 +455,10 @@ class Painter : public PainterInterface {
     void paint_bobbin(Magnetic magnetic);
     void paint_coil_sections(Magnetic magnetic);
     void paint_coil_layers(Magnetic magnetic);
+    // Debug overlay: draws the space reserved by terminal/connection leads (from
+    // Coil::get_connection_reserved_spaces) as rectangles. Empty unless there are multi-layer
+    // sections; useful to visualise real winding geometry.
+    void paint_coil_connections(Magnetic magnetic);
     void paint_wire(Wire wire);
     void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
     void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false, ColorPalette palette = ColorPalette::BLUE_TO_RED, double ambientTemperature = 25.0, const std::string& textColor = "#000000", const std::string& bgColor = "");

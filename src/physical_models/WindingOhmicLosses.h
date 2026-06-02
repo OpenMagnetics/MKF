@@ -28,6 +28,10 @@ class WindingOhmicLosses {
         static double calculate_dc_resistance(Turn turn, const Wire& wire, double temperature);
         static double calculate_dc_resistance(double wireLength, const Wire& wire, double temperature);
         static std::vector<double> calculate_dc_resistance_per_winding(Coil coil, double temperature);
+        // DC resistance contributed by each winding's terminal/connection leads (provided lead
+        // lengths plus the derived in-winding routing across layer boundaries). Returns zeros unless
+        // Settings::get_coil_use_real_winding_geometry() is enabled.
+        static std::vector<double> calculate_connection_resistance_per_winding(Coil coil, double temperature);
         static WindingLossesOutput calculate_ohmic_losses(Coil coil, OperatingPoint operatingPoint, double temperature);
         static double calculate_ohmic_losses_per_meter(Wire wire, SignalDescriptor current, double temperature);
 };

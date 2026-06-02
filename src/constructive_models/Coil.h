@@ -89,6 +89,22 @@ class Winding : public MAS::CoilFunctionalDescription {
         Wire resolve_wire();
 };
 
+// One rectangle of radial space reserved by a terminal/connection lead crossing a layer boundary,
+// used when real winding geometry is enabled (Settings::get_coil_use_real_winding_geometry). It
+// both feeds the section filling factor and is drawn by the Painter for debugging.
+struct ConnectionReservedSpace {
+    std::string section;
+    std::string layer;                // the conduction layer this lead squeezes (empty for terminal leads)
+    std::string winding;              // the winding whose lead reserves the space
+    std::vector<double> coordinates;  // centre of the reserved rectangle (same system as turns)
+    std::vector<double> dimensions;   // {width, height}
+    double rotation = 0;              // degrees, for diagonal links (Z continuations); 0 = axis-aligned
+    // A terminal lead routes a winding end out to the bobbin window border (entrance/exit). It is
+    // drawn and its length feeds the connection loss, but it does not squeeze a conduction layer.
+    // A non-terminal lead is an inter-layer transition that squeezes the crossed layer.
+    bool isTerminal = false;
+};
+
 class Coil : public MAS::Coil {
     private:
         std::map<std::pair<size_t, size_t>, Section> _insulationSections;
@@ -111,6 +127,12 @@ class Coil : public MAS::Coil {
         std::optional<Inputs> _inputs;
         std::map<std::string, CoilAlignment> _turnsAlignmentPerSection;
         std::map<std::string, WindingOrientation> _layersOrientationPerSection;
+        // Real-winding turn blocking (global to the winding window). Filled by wind() between
+        // re-wind iterations: maps a conduction layer name to the number of connection-lead slots
+        // blocked at its {top, bottom}. Consumed by wind_by_rectangular_layers when
+        // _applyConnectionBlocking is set. Both stay empty/false unless real winding geometry is on.
+        std::map<std::string, std::pair<uint64_t, uint64_t>> _connectionBlockedSlotsPerLayer;
+        bool _applyConnectionBlocking = false;
         std::string coilLog;
         InsulationCoordinator _standardCoordinator = InsulationCoordinator();
         std::vector<double> _currentProportionPerWinding;
@@ -242,6 +264,35 @@ class Coil : public MAS::Coil {
         WindingOrientation get_layers_orientation() const;
         CoilAlignment get_turns_alignment(std::optional<std::string> sectionName = std::nullopt) const;
         CoilAlignment get_section_alignment();
+
+        // Resolves the U/Z winding order for a section: the section's own windingOrder if set,
+        // else the bobbin winding window's windingOrder, else WindingOrder::Z (current behaviour).
+        WindingOrder get_winding_order(const std::string& sectionName) const;
+
+        // Real winding geometry (only meaningful when there is more than one conduction layer in a
+        // section). Returns the rectangles of space reserved by terminal/connection leads crossing
+        // layer boundaries. Computed from the wound layers; independent of the real-geometry
+        // setting so the Painter can also overlay it for debugging.
+        std::vector<ConnectionReservedSpace> get_connection_reserved_spaces();
+        // Adds the reserved-connection area into the affected section filling factors. Called at the
+        // end of wind() when Settings::get_coil_use_real_winding_geometry() is true.
+        void apply_connection_reserved_space();
+        // Counts, per conduction layer, how many connection leads cross its {top, bottom} — derived
+        // from get_connection_reserved_spaces() and the wound layer centres. This is the global
+        // (window-wide) turn-blocking incidence wind() iterates on; a lead blocks any layer it
+        // crosses regardless of section/winding.
+        std::map<std::string, std::pair<uint64_t, uint64_t>> compute_connection_blocked_slots_per_layer();
+        // Real-winding blocking makes a section's interior layers lose top/bottom slots, so an even
+        // interleaving turn split leaves orphan turns in a near-empty spillover layer. Re-split each
+        // winding's turns across its conduction sections (radial order) so interior sections fill
+        // complete blocked layers and the remainder is pushed to the outermost section. Single
+        // parallel only (bifilar needs per-parallel connections). Called in the wind() blocking pass.
+        void redistribute_section_turns_for_blocking();
+        // After delimit (which re-centres every layer), shift each blocked conduction layer's turns to
+        // the UNblocked edge, so the slots freed by turn-blocking sit exactly where the connection
+        // leads run (top edge for top-crossing leads, bottom for bottom) and no window space is wasted
+        // with an empty gap on the unblocked side. Real winding geometry only.
+        void align_blocked_layer_turns();
 
         std::vector<Section> get_sections_description_conduction() const;
         std::vector<Layer> get_layers_description_conduction() const;

@@ -1,5 +1,7 @@
 #include <cmath>
 #include "constructive_models/MasMigration.h"
+#include <algorithm>
+#include <map>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -335,6 +337,656 @@ CoilAlignment Coil::get_turns_alignment(std::optional<std::string> sectionName) 
     }
 }
 
+WindingOrder Coil::get_winding_order(const std::string& sectionName) const {
+    // Per-section override wins.
+    if (get_sections_description()) {
+        auto sections = get_sections_description().value();
+        for (const auto& section : sections) {
+            if (section.get_name() == sectionName) {
+                if (section.get_winding_order()) {
+                    return section.get_winding_order().value();
+                }
+                break;
+            }
+        }
+    }
+
+    // Else the bobbin winding window's default.
+    if (std::holds_alternative<Bobbin>(get_bobbin())) {
+        auto bobbin = std::get<Bobbin>(get_bobbin());
+        if (bobbin.get_processed_description()) {
+            auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+            if (windingWindows.size() > 0 && windingWindows[0].get_winding_order()) {
+                return windingWindows[0].get_winding_order().value();
+            }
+        }
+    }
+
+    // Default preserves the historical behaviour (every layer wound the same direction).
+    return WindingOrder::Z;
+}
+
+std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
+    // Model (first approximation, to be validated): each winding's wire routes through its
+    // conduction layers in electrical (wound) order. The lead between two electrically-consecutive
+    // layers of the same winding reserves one wire-thick rectangle on every conduction layer it
+    // passes radially. For an interleaved winding (its halves separated by another winding's layer)
+    // that continuation lead crosses, and squeezes, the intervening layer; for adjacent layers it
+    // reserves at the single boundary it steps over. Rectangular (concentric), overlapping layers
+    // only; contiguous and toroidal windows are a TODO.
+    std::vector<ConnectionReservedSpace> spaces;
+    if (!get_layers_description() || !get_sections_description() || !get_turns_description()) {
+        return spaces;
+    }
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return spaces;
+    }
+    auto wires = get_wires();
+    auto allLayersDescription = get_layers_description().value();
+    auto turns = get_turns_description().value();
+
+    // All conduction (overlapping) layers, ordered radially (inner -> outer = increasing width).
+    std::vector<Layer> allLayers;
+    for (const auto& layer : allLayersDescription) {
+        if (layer.get_type() == ElectricalType::CONDUCTION && layer.get_orientation() == WindingOrientation::OVERLAPPING) {
+            allLayers.push_back(layer);
+        }
+    }
+    if (allLayers.size() < 2) {
+        return spaces;
+    }
+    std::sort(allLayers.begin(), allLayers.end(), [](const Layer& a, const Layer& b) {
+        return a.get_coordinates()[0] < b.get_coordinates()[0];
+    });
+
+    // Electrical order of layers = the order in which their turns are first wound.
+    std::map<std::string, size_t> layerElectricalOrder;
+    size_t order = 0;
+    for (const auto& turn : turns) {
+        if (turn.get_layer() && layerElectricalOrder.find(turn.get_layer().value()) == layerElectricalOrder.end()) {
+            layerElectricalOrder[turn.get_layer().value()] = order++;
+        }
+    }
+
+    // Outer (radial) border of the winding window: where terminal leads route to their terminals.
+    auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
+    double windowOuterX = windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2;
+    // Axial extent of the window: terminal leads run along its top edge (entrance) or bottom edge
+    // (exit), i.e. above/below all the (blocking-shrunk) conduction layers.
+    double windowCenterY = windingWindow.get_coordinates().value()[1];
+    double windowTopY = windowCenterY + windingWindow.get_height().value() / 2;
+    double windowBottomY = windowCenterY - windingWindow.get_height().value() / 2;
+
+    // First-wound (entrance) and last-wound (exit) turn of each winding, in winding order.
+    std::map<std::string, Turn> entranceTurnByWinding;
+    std::map<std::string, Turn> exitTurnByWinding;
+    // First-wound and last-wound turn of each layer, used to tell a U turnaround (the connecting
+    // turns sit at the same axial end) from a Z dragback (they sit at opposite ends).
+    std::map<std::string, Turn> firstTurnByLayer;
+    std::map<std::string, Turn> lastTurnByLayer;
+    for (const auto& turn : turns) {
+        std::string windingOfTurn = turn.get_winding();
+        if (entranceTurnByWinding.find(windingOfTurn) == entranceTurnByWinding.end()) {
+            entranceTurnByWinding[windingOfTurn] = turn;
+        }
+        exitTurnByWinding[windingOfTurn] = turn;
+        if (turn.get_layer()) {
+            std::string layerOfTurn = turn.get_layer().value();
+            if (firstTurnByLayer.find(layerOfTurn) == firstTurnByLayer.end()) {
+                firstTurnByLayer[layerOfTurn] = turn;
+            }
+            lastTurnByLayer[layerOfTurn] = turn;
+        }
+    }
+
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        auto windingName = get_functional_description()[windingIndex].get_name();
+        double wireOuterWidth = wires[windingIndex].get_maximum_outer_width();
+        double wireOuterHeight = wires[windingIndex].get_maximum_outer_height();
+
+        // Entrance and exit terminal leads route the winding ends radially out to the outer window
+        // border. They run ALONG the nearest window edge — entrance along the top, exit along the
+        // bottom — so each lead occupies the extreme (top-most / bottom-most) turn slot of every layer
+        // it crosses, which is exactly the slot turn-blocking frees. The lead therefore: (1) squeezes
+        // each crossed layer at that layer's extreme edge, (2) is drawn as an L — a short vertical
+        // stub from the connecting turn up/down to its own layer's edge, then a horizontal run along
+        // the edge to the border. Routing at the connecting turn's interior level instead would clip
+        // the wound turns of the layers it crosses, since blocking only frees the edge slots.
+        auto addTerminalLead = [&](const std::map<std::string, Turn>& byWinding) {
+            auto it = byWinding.find(windingName);
+            if (it == byWinding.end()) {
+                return;
+            }
+            const Turn& connectingTurn = it->second;
+            double turnX = connectingTurn.get_coordinates()[0];
+            double turnY = connectingTurn.get_coordinates()[1];
+            if (windowOuterX <= turnX) {
+                return;
+            }
+            // External (terminal) leads route along the window edge NEAREST the connecting turn, out to
+            // the border, and must reach the BOTTOM terminal. A lead whose turn finished at the TOP runs
+            // along the TOP edge to the border and then descends on the EXTERIOR (at the border, past
+            // the outermost layer) — it must never go down through the turns. Windings start from the
+            // bottom, so the entrance is already at the bottom (a plain bottom lead).
+            bool turnAtTop = (turnY >= windowCenterY);
+            double edgeY = turnAtTop ? roundFloat(windowTopY - wireOuterHeight / 2, 9)
+                                     : roundFloat(windowBottomY + wireOuterHeight / 2, 9);
+            for (const auto& crossed : allLayers) {
+                double crossedX = crossed.get_coordinates()[0];
+                if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
+                    ConnectionReservedSpace space;
+                    space.isTerminal = true;
+                    space.winding = windingName;
+                    space.section = crossed.get_section().value_or("");
+                    space.layer = crossed.get_name();
+                    space.coordinates = {crossedX, edgeY};
+                    space.dimensions = {wireOuterWidth, wireOuterHeight};
+                    spaces.push_back(space);
+                }
+            }
+            // The lead also occupies a slot on the connecting turn's OWN layer: it departs from that
+            // turn and runs along the same edge. Without this the connecting layer (e.g. the innermost,
+            // which no other connection crosses) fills to the edge and its end turn sits under the lead.
+            if (connectingTurn.get_layer()) {
+                ConnectionReservedSpace ownSqueeze;
+                ownSqueeze.isTerminal = true;
+                ownSqueeze.winding = windingName;
+                ownSqueeze.section = connectingTurn.get_section().value_or("");
+                ownSqueeze.layer = connectingTurn.get_layer().value();
+                ownSqueeze.coordinates = {turnX, edgeY};
+                ownSqueeze.dimensions = {wireOuterWidth, wireOuterHeight};
+                spaces.push_back(ownSqueeze);
+            }
+            // Short vertical stub from the connecting turn's CENTRE to its near edge (within its own
+            // column). It starts at the turn centre (not covering the whole turn) and overlaps the
+            // horizontal by half a wire at the corner.
+            if (std::abs(edgeY - turnY) > wireOuterHeight / 2) {
+                double stubDirection = (edgeY >= turnY) ? 1.0 : -1.0;
+                double stubFarEnd = edgeY + stubDirection * wireOuterHeight / 2;
+                ConnectionReservedSpace stub;
+                stub.isTerminal = true;
+                stub.winding = windingName;
+                stub.section = connectingTurn.get_section().value_or("");
+                stub.layer = "";
+                stub.coordinates = {turnX, roundFloat((turnY + stubFarEnd) / 2, 9)};
+                stub.dimensions = {wireOuterWidth, roundFloat(std::abs(stubFarEnd - turnY), 9)};
+                spaces.push_back(stub);
+            }
+            // A top-finishing lead is simply dragged along the top edge to the border and left there:
+            // it then descends inside the core's centre opening (not part of the winding window we draw
+            // here), so no descent is rendered. A bottom lead just runs along the bottom to the terminal.
+            // Horizontal run along the edge out to the border (drawn; reserves no layer space itself).
+            // Extend it a full wire so it overlaps the vertical stub/descent at the corner (continuous
+            // bend), matching the inter-layer connection's L.
+            ConnectionReservedSpace lead;
+            lead.isTerminal = true;
+            lead.winding = windingName;
+            lead.section = connectingTurn.get_section().value_or("");
+            lead.layer = "";
+            lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), edgeY};
+            lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
+            spaces.push_back(lead);
+        };
+        addTerminalLead(entranceTurnByWinding);
+        addTerminalLead(exitTurnByWinding);
+
+        std::vector<Layer> windingLayers;
+        for (const auto& layer : allLayers) {
+            if (layer.get_partial_windings()[0].get_winding() == windingName) {
+                windingLayers.push_back(layer);
+            }
+        }
+        if (windingLayers.size() < 2) {
+            continue;
+        }
+        std::sort(windingLayers.begin(), windingLayers.end(), [&](const Layer& a, const Layer& b) {
+            size_t orderA = layerElectricalOrder.count(a.get_name()) ? layerElectricalOrder.at(a.get_name()) : 0;
+            size_t orderB = layerElectricalOrder.count(b.get_name()) ? layerElectricalOrder.at(b.get_name()) : 0;
+            return orderA < orderB;
+        });
+
+        for (size_t i = 0; i + 1 < windingLayers.size(); ++i) {
+            double radialA = windingLayers[i].get_coordinates()[0];
+            double radialB = windingLayers[i + 1].get_coordinates()[0];
+            double radialLow = std::min(radialA, radialB);
+            double radialHigh = std::max(radialA, radialB);
+
+            if (!lastTurnByLayer.count(windingLayers[i].get_name()) || !firstTurnByLayer.count(windingLayers[i + 1].get_name())) {
+                continue;
+            }
+            const auto& exitTurn = lastTurnByLayer.at(windingLayers[i].get_name());
+            const auto& entryTurn = firstTurnByLayer.at(windingLayers[i + 1].get_name());
+
+            // Convention: layer-to-layer connections route along the TOP window edge. Windings start
+            // from the bottom and wind up, so a layer finishes at the top and the connection to the
+            // next layer naturally sits there; squeeze the crossed layers at the top edge to match.
+            bool connectionAtTop = true;
+
+            // Per-layer squeeze: an interleaved continuation crosses (and squeezes) the layer(s)
+            // between its two electrically-consecutive layers. These entries (layer set) drive the
+            // filling factor and are NOT drawn — the connection itself is drawn as the centre-to-
+            // centre link below.
+            double routeEdgeY = connectionAtTop
+                ? roundFloat(windowTopY - wireOuterHeight / 2, 9)
+                : roundFloat(windowBottomY + wireOuterHeight / 2, 9);
+            bool crossesIntervening = false;
+            for (const auto& crossed : allLayers) {
+                double radial = crossed.get_coordinates()[0];
+                if (radial > radialLow + 1e-12 && radial < radialHigh - 1e-12) {
+                    // Squeeze at the WINDOW edge the connection routes along (not the crossed layer's
+                    // own edge, which — once the layer is centred/shrunk — is exactly where its end
+                    // turn sits, putting the reserved slot on top of a turn). Matches the terminal
+                    // leads and the edge that turn-blocking frees.
+                    crossesIntervening = true;
+                    ConnectionReservedSpace squeeze;
+                    squeeze.section = crossed.get_section().value();
+                    squeeze.layer = crossed.get_name();
+                    squeeze.winding = windingName;
+                    squeeze.coordinates = {crossed.get_coordinates()[0], routeEdgeY};
+                    squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
+                    spaces.push_back(squeeze);
+                }
+            }
+            // The continuation occupies a slot on BOTH the layer it DEPARTS (the source's end turn sits
+            // at that layer's connection edge) and the layer it ARRIVES at (the incoming U-turn). All
+            // connections crossing the same edge pile, so taking max(): the source's own slot frees its
+            // end turn from under the lead — without it the source layer fills to the edge and clips.
+            for (const Layer* endpoint : {&windingLayers[i], &windingLayers[i + 1]}) {
+                ConnectionReservedSpace endpointSqueeze;
+                endpointSqueeze.section = endpoint->get_section().value();
+                endpointSqueeze.layer = endpoint->get_name();
+                endpointSqueeze.winding = windingName;
+                endpointSqueeze.coordinates = {endpoint->get_coordinates()[0], routeEdgeY};
+                endpointSqueeze.dimensions = {wireOuterWidth, wireOuterHeight};
+                spaces.push_back(endpointSqueeze);
+            }
+
+            // Draw the connection from the last turn of this layer to the first turn of the next: a U
+            // winding turns around (orthogonal L), a Z winding runs straight back to the next layer's
+            // start (single diagonal — for adjacent layers this is the dragback, for interleaved the
+            // continuation). Every consecutive layer pair is drawn.
+            WindingOrder windingOrder = get_winding_order(windingLayers[i].get_section().value());
+            {
+                double x1 = exitTurn.get_coordinates()[0];
+                double y1 = exitTurn.get_coordinates()[1];
+                double x2 = entryTurn.get_coordinates()[0];
+                double y2 = entryTurn.get_coordinates()[1];
+
+                if (windingOrder == WindingOrder::Z) {
+                    // Z: the wire runs straight from one turn to the next, so draw a single diagonal
+                    // link (a rotated rectangle from centre to centre).
+                    double deltaX = x2 - x1;
+                    double deltaY = y2 - y1;
+                    double length = std::sqrt(deltaX * deltaX + deltaY * deltaY);
+                    ConnectionReservedSpace diagonal;
+                    diagonal.winding = windingName;
+                    diagonal.section = windingLayers[i].get_section().value_or("");
+                    diagonal.layer = "";  // drawn link; squeeze handled by the per-layer entries above
+                    diagonal.coordinates = {roundFloat((x1 + x2) / 2, 9), roundFloat((y1 + y2) / 2, 9)};
+                    diagonal.dimensions = {roundFloat(length, 9), wireOuterHeight};
+                    diagonal.rotation = roundFloat(std::atan2(deltaY, deltaX) * 180.0 / std::numbers::pi, 6);
+                    spaces.push_back(diagonal);
+                }
+                else if (crossesIntervening) {
+                    // U interleaved continuation: route along the window edge it reserves — a vertical
+                    // stub from each turn up/down to the edge, and a horizontal run along the edge
+                    // across the intervening layer(s) — so the wire never cuts through the crossed
+                    // layer's turns (centre-to-centre would clip them).
+                    auto pushLink = [&](double cx, double cy, double w, double h) {
+                        ConnectionReservedSpace seg;
+                        seg.winding = windingName;
+                        seg.section = windingLayers[i].get_section().value_or("");
+                        seg.layer = "";
+                        seg.coordinates = {roundFloat(cx, 9), roundFloat(cy, 9)};
+                        seg.dimensions = {roundFloat(w, 9), roundFloat(h, 9)};
+                        spaces.push_back(seg);
+                    };
+                    // Verticals start at the turn CENTRE (y1 / y2), not covering the whole turn, and
+                    // overlap the horizontal by half a wire at the corner.
+                    if (std::abs(routeEdgeY - y1) > 0.5 * wireOuterHeight) {
+                        double far1 = routeEdgeY + ((routeEdgeY >= y1) ? 1.0 : -1.0) * wireOuterHeight / 2;
+                        pushLink(x1, (y1 + far1) / 2, wireOuterWidth, std::abs(far1 - y1));
+                    }
+                    pushLink((x1 + x2) / 2, routeEdgeY, std::abs(x2 - x1) + wireOuterWidth, wireOuterHeight);
+                    if (std::abs(y2 - routeEdgeY) > 0.5 * wireOuterHeight) {
+                        double far2 = routeEdgeY + ((routeEdgeY >= y2) ? 1.0 : -1.0) * wireOuterHeight / 2;
+                        pushLink(x2, (y2 + far2) / 2, wireOuterWidth, std::abs(far2 - y2));
+                    }
+                }
+                else {
+                    // U adjacent layers: route the wire orthogonally — a horizontal stretch from the
+                    // source turn out to the destination layer's radial position, then a vertical
+                    // stretch down/up to the destination turn when the two are at different heights.
+                    // The horizontal runs half a wire past the corner and the vertical is pulled back
+                    // half a wire so the bend reads as one continuous wire.
+                    bool needVertical = std::abs(y2 - y1) > 0.5 * wireOuterHeight;
+                    ConnectionReservedSpace horizontal;
+                    horizontal.winding = windingName;
+                    horizontal.section = windingLayers[i].get_section().value_or("");
+                    horizontal.layer = "";
+                    if (needVertical) {
+                        double horizontalDirection = (x2 >= x1) ? 1.0 : -1.0;
+                        horizontal.coordinates = {roundFloat((x1 + x2) / 2 + horizontalDirection * wireOuterWidth / 4, 9), roundFloat(y1, 9)};
+                        horizontal.dimensions = {roundFloat(std::abs(x2 - x1) + wireOuterWidth / 2, 9), wireOuterHeight};
+                    }
+                    else {
+                        horizontal.coordinates = {roundFloat((x1 + x2) / 2, 9), roundFloat(y1, 9)};
+                        horizontal.dimensions = {roundFloat(std::abs(x2 - x1), 9), wireOuterHeight};
+                    }
+                    spaces.push_back(horizontal);
+
+                    if (needVertical) {
+                        double verticalDirection = (y2 >= y1) ? 1.0 : -1.0;
+                        ConnectionReservedSpace vertical;
+                        vertical.winding = windingName;
+                        vertical.section = windingLayers[i].get_section().value_or("");
+                        vertical.layer = "";
+                        vertical.coordinates = {roundFloat(x2, 9), roundFloat((y1 + y2) / 2 + verticalDirection * wireOuterHeight / 4, 9)};
+                        vertical.dimensions = {wireOuterWidth, roundFloat(std::abs(y2 - y1) - wireOuterHeight / 2, 9)};
+                        spaces.push_back(vertical);
+                    }
+                }
+            }
+        }
+    }
+    return spaces;
+}
+
+std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_blocked_slots_per_layer() {
+    std::map<std::string, std::pair<uint64_t, uint64_t>> blockedSlotsPerLayer;  // layer name -> {top, bottom}
+    if (!get_layers_description()) {
+        return blockedSlotsPerLayer;
+    }
+    auto layers = get_layers_description().value();
+    auto wires = get_wires();
+    std::map<std::string, double> layerCenterHeight;
+    std::map<std::string, double> layerWireHeight;  // crossed layer's own wire height (turn pitch)
+    for (const auto& layer : layers) {
+        layerCenterHeight[layer.get_name()] = layer.get_coordinates()[1];
+        // Insulation layers have no partial windings; only conduction layers have a wire/turn pitch.
+        if (layer.get_type() == ElectricalType::CONDUCTION && !layer.get_partial_windings().empty()) {
+            size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
+            layerWireHeight[layer.get_name()] = wires[windingIndex].get_maximum_outer_height();
+        }
+    }
+    // All connections crossing the same edge of a layer pile together along the window margin, so the
+    // height lost is the TALLEST connection there (the max), not the sum. That height is then converted
+    // to turn slots of the CROSSED layer's own wire: a thick connection over a thin layer displaces
+    // several thin turns (ceil), while a thin connection over a thick layer still costs one thick turn.
+    // Z dragbacks route diagonally and do not displace turns; only terminals block in Z.
+    std::map<std::string, std::pair<double, double>> maxConnectionHeight;  // {top, bottom}
+    for (const auto& space : get_connection_reserved_spaces()) {
+        if (space.layer.empty()) {
+            continue;
+        }
+        if (!space.isTerminal && get_winding_order(space.section) != WindingOrder::U) {
+            continue;
+        }
+        auto found = layerCenterHeight.find(space.layer);
+        if (found == layerCenterHeight.end()) {
+            continue;
+        }
+        auto& edges = maxConnectionHeight[space.layer];
+        if (space.coordinates[1] >= found->second) {
+            edges.first = std::max(edges.first, space.dimensions[1]);
+        }
+        else {
+            edges.second = std::max(edges.second, space.dimensions[1]);
+        }
+    }
+    for (const auto& [layerName, edges] : maxConnectionHeight) {
+        double crossedWireHeight = layerWireHeight.count(layerName) ? layerWireHeight.at(layerName) : 0.0;
+        if (crossedWireHeight <= 0) {
+            continue;
+        }
+        auto slots = [&](double connectionHeight) -> uint64_t {
+            return connectionHeight > 1e-12 ? uint64_t(std::ceil(connectionHeight / crossedWireHeight - 1e-9)) : 0u;
+        };
+        blockedSlotsPerLayer[layerName] = {slots(edges.first), slots(edges.second)};
+    }
+    return blockedSlotsPerLayer;
+}
+
+void Coil::redistribute_section_turns_for_blocking() {
+    if (!get_sections_description()) {
+        return;
+    }
+    auto sections = get_sections_description().value();
+    auto wirePerWinding = get_wires();
+    size_t numberWindings = get_functional_description().size();
+
+    auto blockedFor = [&](const std::string& sectionName, size_t layer) -> uint64_t {
+        auto it = _connectionBlockedSlotsPerLayer.find(sectionName + " layer " + std::to_string(layer));
+        if (it == _connectionBlockedSlotsPerLayer.end()) {
+            return 0u;
+        }
+        return it->second.first + it->second.second;
+    };
+
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        // Bifilar/multi-parallel needs a separate connection per parallel; not handled yet.
+        if (get_number_parallels(windingIndex) != 1) {
+            continue;
+        }
+        double wireHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
+        if (wireHeight <= 0) {
+            continue;
+        }
+
+        // This winding's conduction sections, in wound (radial) order.
+        std::vector<size_t> windingSections;
+        for (size_t s = 0; s < sections.size(); ++s) {
+            if (sections[s].get_type() == ElectricalType::CONDUCTION
+                && sections[s].get_layers_orientation() == WindingOrientation::OVERLAPPING
+                && get_winding_index_by_name(sections[s].get_partial_windings()[0].get_winding()) == windingIndex) {
+                windingSections.push_back(s);
+            }
+        }
+        if (windingSections.size() < 2) {
+            continue;  // nothing to redistribute
+        }
+
+        uint64_t totalTurns = get_number_turns(windingIndex);
+        uint64_t remaining = totalTurns;
+
+        for (size_t k = 0; k < windingSections.size(); ++k) {
+            auto& section = sections[windingSections[k]];
+            uint64_t maximumTurnsPerLayer = std::max<uint64_t>(1, uint64_t(std::floor(section.get_dimensions()[1] / wireHeight)));
+            size_t sectionsRemaining = windingSections.size() - k;
+
+            uint64_t sectionTurns;
+            if (sectionsRemaining == 1) {
+                // Outermost section of the winding absorbs whatever is left (a partial outer layer
+                // is acceptable; only interior orphans are the problem).
+                sectionTurns = remaining;
+            }
+            else {
+                // Fill complete blocked layers up to this section's fair share, so it ends on a layer
+                // boundary (no interior orphan). Always leave at least one turn for each later section.
+                uint64_t fairShare = uint64_t(std::round(double(remaining) / double(sectionsRemaining)));
+                uint64_t turns = 0;
+                size_t layer = 0;
+                while (true) {
+                    uint64_t blocked = std::min<uint64_t>(blockedFor(section.get_name(), layer), maximumTurnsPerLayer - 1);
+                    uint64_t capacity = maximumTurnsPerLayer - blocked;
+                    if (turns + capacity <= fairShare && (remaining - (turns + capacity)) >= (sectionsRemaining - 1)) {
+                        turns += capacity;
+                        layer++;
+                    }
+                    else {
+                        break;
+                    }
+                }
+                if (turns == 0) {
+                    // Even a single full layer exceeds the fair share: take one layer anyway so this
+                    // interior section is not left with a fractional layer.
+                    uint64_t capacity0 = maximumTurnsPerLayer - std::min<uint64_t>(blockedFor(section.get_name(), 0), maximumTurnsPerLayer - 1);
+                    turns = std::min<uint64_t>(capacity0, remaining - (sectionsRemaining - 1));
+                    if (turns == 0) {
+                        turns = 1;
+                    }
+                }
+                sectionTurns = turns;
+            }
+            remaining -= sectionTurns;
+
+            std::vector<double> proportion(get_number_parallels(windingIndex), 0);
+            proportion[0] = double(sectionTurns) / double(totalTurns);
+            auto partialWindings = section.get_partial_windings();
+            partialWindings[0].set_parallels_proportion(proportion);
+            section.set_partial_windings(partialWindings);
+        }
+    }
+    set_sections_description(sections);
+}
+
+void Coil::align_blocked_layer_turns() {
+    if (_connectionBlockedSlotsPerLayer.empty() || !get_layers_description() || !get_turns_description()) {
+        return;
+    }
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return;
+    }
+    auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
+    double windowCenterY = windingWindow.get_coordinates().value()[1];
+    double windowHalfHeight = windingWindow.get_height().value() / 2;
+    double windowTopY = windowCenterY + windowHalfHeight;
+    double windowBottomY = windowCenterY - windowHalfHeight;
+    auto wires = get_wires();
+    auto layers = get_layers_description().value();
+    auto turns = get_turns_description().value();
+
+    for (auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION || layer.get_orientation() != WindingOrientation::OVERLAPPING) {
+            continue;
+        }
+        // Pack the turns against the unblocked edge so the freed slots line up with the connection
+        // leads. Blocked-slot edges (top/bottom) match the actual lead routing for both Z (terminals
+        // at edges; dragbacks excluded) and U (terminals + continuations at the boustrophedon edge).
+        auto found = _connectionBlockedSlotsPerLayer.find(layer.get_name());
+        if (found == _connectionBlockedSlotsPerLayer.end()) {
+            continue;
+        }
+        uint64_t blockedTop = found->second.first;
+        uint64_t blockedBottom = found->second.second;
+        if (blockedTop == blockedBottom) {
+            continue;  // symmetric (or unblocked): delimit's centring already frees both ends evenly
+        }
+        size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
+        double wireHeight = wires[windingIndex].get_maximum_outer_height();
+
+        double minTurnY = std::numeric_limits<double>::max();
+        double maxTurnY = std::numeric_limits<double>::lowest();
+        uint64_t turnsInLayer = 0;
+        for (const auto& turn : turns) {
+            if (turn.get_layer() && turn.get_layer().value() == layer.get_name()) {
+                minTurnY = std::min(minTurnY, turn.get_coordinates()[1]);
+                maxTurnY = std::max(maxTurnY, turn.get_coordinates()[1]);
+                turnsInLayer++;
+            }
+        }
+        if (minTurnY > maxTurnY) {
+            continue;  // no turns in this layer
+        }
+        // Only pack FULL layers (turns fill their blocked-capacity band). A partial/spillover layer is
+        // left as spread/distributed across its height — packing it to an edge would clump it.
+        uint64_t maximumTurnsPerLayer = std::max<uint64_t>(1, uint64_t(std::floor((windowTopY - windowBottomY) / wireHeight)));
+        uint64_t capacity = maximumTurnsPerLayer - std::min<uint64_t>(blockedTop + blockedBottom, maximumTurnsPerLayer - 1);
+        if (turnsInLayer < capacity) {
+            continue;
+        }
+        // Push the turns toward the LESS-blocked edge, but still leave the blocked slots free at BOTH
+        // edges (each crossing lead needs its slot): more blocking on top -> pack the turns just above
+        // the bottom-edge leads (freeing the top); more on the bottom -> pack just below the top-edge
+        // leads (freeing the bottom).
+        double shift = (blockedTop > blockedBottom)
+            ? roundFloat((windowBottomY + blockedBottom * wireHeight + wireHeight / 2) - minTurnY, 9)
+            : roundFloat((windowTopY - blockedTop * wireHeight - wireHeight / 2) - maxTurnY, 9);
+        if (std::abs(shift) < 1e-12) {
+            continue;
+        }
+        layer.set_coordinates(std::vector<double>{layer.get_coordinates()[0], roundFloat(layer.get_coordinates()[1] + shift, 9), 0});
+        for (auto& turn : turns) {
+            if (turn.get_layer() && turn.get_layer().value() == layer.get_name()) {
+                auto coords = turn.get_coordinates();
+                coords[1] = roundFloat(coords[1] + shift, 9);
+                turn.set_coordinates(coords);
+            }
+        }
+    }
+    set_layers_description(layers);
+    set_turns_description(turns);
+}
+
+void Coil::apply_connection_reserved_space() {
+    if (!get_sections_description() || !get_layers_description()) {
+        return;
+    }
+    auto spaces = get_connection_reserved_spaces();
+    if (spaces.empty()) {
+        return;
+    }
+
+    auto layers = get_layers_description().value();
+
+    // Axial height occupied by connection leads on each conduction layer. Every reserved space that
+    // names a layer (an inter-layer transition, or a terminal lead passing over that layer) occupies
+    // one wire diameter of that layer's available height. Free-space terminal segments (no layer)
+    // are drawn but reserve no layer space.
+    std::map<std::string, double> heightReservedPerLayer;
+    for (const auto& space : spaces) {
+        if (space.layer.empty()) {
+            continue;
+        }
+        heightReservedPerLayer[space.layer] += space.dimensions[1];
+    }
+
+    // Reduce each affected layer's available height: the filling factor scales inversely with the
+    // remaining height. A value above 1 means the leads no longer fit alongside the turns (the layer
+    // is over-subscribed and the build needs more space).
+    std::map<std::string, double> reservedAreaPerSection;
+    for (auto& layer : layers) {
+        auto it = heightReservedPerLayer.find(layer.get_name());
+        if (it == heightReservedPerLayer.end()) {
+            continue;
+        }
+        double layerWidth = layer.get_dimensions()[0];
+        double layerHeight = layer.get_dimensions()[1];
+        if (layerHeight <= 0) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Non-positive layer height while applying connection reserved space to layer " + layer.get_name());
+        }
+        if (!layer.get_filling_factor()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Layer filling factor not set before applying connection reserved space to layer " + layer.get_name());
+        }
+        double reservedHeight = it->second;
+        double availableHeight = std::max(layerHeight - reservedHeight, layerHeight * 0.01);
+        layer.set_filling_factor(layer.get_filling_factor().value() * layerHeight / availableHeight);
+        if (layer.get_section()) {
+            reservedAreaPerSection[layer.get_section().value()] += reservedHeight * layerWidth;
+        }
+    }
+    set_layers_description(layers);
+
+    auto sections = get_sections_description().value();
+    for (auto& section : sections) {
+        auto it = reservedAreaPerSection.find(section.get_name());
+        if (it == reservedAreaPerSection.end()) {
+            continue;
+        }
+        double sectionArea = section.get_dimensions()[0] * section.get_dimensions()[1];
+        if (sectionArea <= 0) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Non-positive section area while applying connection reserved space to section " + section.get_name());
+        }
+        if (!section.get_filling_factor()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Section filling factor not set before applying connection reserved space to section " + section.get_name());
+        }
+        section.set_filling_factor(section.get_filling_factor().value() + it->second / sectionArea);
+    }
+    set_sections_description(sections);
+}
+
 CoilAlignment Coil::get_section_alignment() {
     auto bobbin = resolve_bobbin();
     if (!bobbin.get_processed_description()) {
@@ -456,6 +1108,10 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             set_sections_description(std::nullopt);
             set_layers_description(std::nullopt);
             set_turns_description(std::nullopt);
+            // Start every wind from the ideal geometry: real-winding turn blocking, if any, is
+            // re-derived and re-applied below only when the real-geometry setting is on.
+            _applyConnectionBlocking = false;
+            _connectionBlockedSlotsPerLayer.clear();
 
             // Special case: toroid with one physical turn whose wire OD
             // exceeds the inner-hole radius. The wire cannot be wound on
@@ -509,7 +1165,51 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             }
         }
     }
-    return are_sections_and_layers_fitting() && get_turns_description();
+    // The wind success is decided on the ideal geometry. When real winding geometry is enabled, the
+    // space reserved by connection leads is layered on afterwards (filling factors, Painter, losses)
+    // so it never changes whether the ideal winding fit.
+    bool result = are_sections_and_layers_fitting() && bool(get_turns_description());
+    if (result && settings.get_coil_use_real_winding_geometry()) {
+        // Turn blocking is GLOBAL to the winding window: a connection lead routes through the whole
+        // window and removes a turn slot from every conduction layer it crosses, regardless of which
+        // section/winding owns that layer. Derive that per-layer incidence from the wound geometry,
+        // then re-wind so each crossed layer frees its blocked top/bottom slots and the affected
+        // sections grow by extra layers to fit. Added layers shift radial positions (changing which
+        // leads cross what), so iterate to a fixpoint. Entirely gated behind the real-winding flag —
+        // ideal winding never enters this loop, so its geometry is unchanged.
+        logEntry("Applying real winding geometry (global turn blocking)", "Coil", 2);
+        const size_t maximumBlockingIterations = 8;
+        for (size_t blockingIteration = 0; blockingIteration < maximumBlockingIterations; ++blockingIteration) {
+            auto blockedSlotsPerLayer = compute_connection_blocked_slots_per_layer();
+            if (blockedSlotsPerLayer == _connectionBlockedSlotsPerLayer) {
+                break;
+            }
+            _connectionBlockedSlotsPerLayer = blockedSlotsPerLayer;
+            _applyConnectionBlocking = true;
+            wind_by_sections(proportionPerWinding, pattern, repetitions);
+            // Re-split each winding's turns across its sections so interior layers fill completely
+            // under the blocking (no orphan spillover turns); the outermost section absorbs the rest.
+            redistribute_section_turns_for_blocking();
+            wind_by_layers();
+            if (!get_layers_description()) {
+                break;
+            }
+            if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
+                wind_by_turns();
+                if (delimitAndCompact) {
+                    delimit_and_compact();
+                }
+            }
+        }
+        result = are_sections_and_layers_fitting() && bool(get_turns_description());
+        // For Z-wound layers, pack the turns against the unblocked edge so the slots freed by blocking
+        // line up with the terminal leads at the window edges (delimit otherwise centres them, leaving
+        // a turn-sized gap on the unblocked side and clipping the terminal slot on the blocked side).
+        align_blocked_layer_turns();
+        logEntry("Applying real winding geometry (connection reserved space)", "Coil", 2);
+        apply_connection_reserved_space();
+    }
+    return result;
 }
 
 bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance, std::map<size_t, double> wireToWireDistance, std::map<std::pair<size_t, size_t>, double> insulationThickness, double coreToLayerDistance) {
@@ -3933,7 +4633,51 @@ bool Coil::wind_by_rectangular_layers() {
 
             // We cannot have more layers than physical turns
             numberLayers = std::min(numberLayers, physicalTurnsInSection);
+
+            // Real winding geometry: turn blocking is GLOBAL to the winding window. wind() computes,
+            // per conduction layer, how many connection leads cross its top and bottom
+            // (_connectionBlockedSlotsPerLayer, keyed by layer name) and re-winds with
+            // _applyConnectionBlocking set. Here we size each layer around its blocked slots —
+            // iterating layer by layer with the reduced capacity of each — so the turns are known to
+            // fit before placement and the section simply grows by extra layers. Works for any
+            // winding (single or interleaved); a lead blocks whatever layer it crosses regardless of
+            // section. Overlapping, single-parallel, unconstrained-layer-count only.
+            bool realWindingBlocking = settings.get_coil_use_real_winding_geometry()
+                && _applyConnectionBlocking
+                && sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING
+                && !sections[sectionIndex].get_number_layers()
+                && get_number_parallels(windingIndex) == 1
+                && maximumNumberPhysicalTurnsPerLayer > 1;
+            double wireAxialSize = wirePerWinding[windingIndex].get_maximum_outer_height();
+            auto blockedSlotsForLayer = [&](size_t layerIndexInSection) -> std::pair<uint64_t, uint64_t> {
+                auto found = _connectionBlockedSlotsPerLayer.find(
+                    sections[sectionIndex].get_name() + " layer " + std::to_string(layerIndexInSection));
+                if (found == _connectionBlockedSlotsPerLayer.end()) {
+                    return {0u, 0u};
+                }
+                return found->second;
+            };
+            std::vector<uint64_t> realPerLayerTurns;
+            if (realWindingBlocking) {
+                uint64_t remainingTurns = physicalTurnsInSection;
+                size_t builtLayers = 0;
+                while (remainingTurns > 0) {
+                    auto blocked = blockedSlotsForLayer(builtLayers);
+                    uint64_t blockedSlots = std::min<uint64_t>(blocked.first + blocked.second, maximumNumberPhysicalTurnsPerLayer - 1);
+                    uint64_t capacity = maximumNumberPhysicalTurnsPerLayer - blockedSlots;
+                    uint64_t turnsThisLayer = std::min<uint64_t>(capacity, remainingTurns);
+                    realPerLayerTurns.push_back(turnsThisLayer);
+                    remainingTurns -= turnsThisLayer;
+                    builtLayers++;
+                }
+                numberLayers = realPerLayerTurns.size();
+            }
+
             auto turnsAlignment = get_turns_alignment(sections[sectionIndex].get_name());
+            // Real winding geometry: turns stay tightly packed; the connection leads route along the
+            // window edges and align_blocked_layer_turns() (called after delimit) shifts each blocked
+            // layer's turns to the unblocked edge so the freed slots sit exactly where the leads are
+            // (and no window space is wasted). So no per-section alignment override is needed here.
 
             double currentLayerCenterWidth;
             double currentLayerCenterHeight;
@@ -3970,16 +4714,25 @@ bool Coil::wind_by_rectangular_layers() {
                 windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
             }
 
+            // Real-winding blocking forces an exact per-layer turn count (realPerLayerTurns) through
+            // get_parallels_proportions' slotAbsolutePhysicalTurns, which is ONLY honored by the
+            // WIND_BY_CONSECUTIVE_TURNS branch — the WIND_BY_CONSECUTIVE_PARALLELS branch ignores it and
+            // reverts to an even split (losing the blocking, e.g. 17/3 → 10/10 on an interleaved
+            // section). The blocked path is gated to a single parallel, where the two styles place
+            // identically, so force consecutive-turns to keep the forced split.
+            if (realWindingBlocking) {
+                windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+            }
+
             for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
                 Layer layer;
 
-                auto parallelsProportions = get_parallels_proportions(layerIndex,
-                                                                       numberLayers,
-                                                                       get_number_turns(windingIndex),
-                                                                       get_number_parallels(windingIndex),
-                                                                       remainingParallelsProportionInSection,
-                                                                       windByConsecutiveTurns,
-                                                                       totalParallelsProportionInSection);
+                auto parallelsProportions = realWindingBlocking
+                    ? get_parallels_proportions(layerIndex, numberLayers, get_number_turns(windingIndex), get_number_parallels(windingIndex),
+                                                remainingParallelsProportionInSection, windByConsecutiveTurns, totalParallelsProportionInSection,
+                                                1.0, double(realPerLayerTurns[layerIndex]))
+                    : get_parallels_proportions(layerIndex, numberLayers, get_number_turns(windingIndex), get_number_parallels(windingIndex),
+                                                remainingParallelsProportionInSection, windByConsecutiveTurns, totalParallelsProportionInSection);
 
                 std::vector<double> layerParallelsProportion = parallelsProportions.second;
 
@@ -4002,12 +4755,33 @@ bool Coil::wind_by_rectangular_layers() {
                 layer.set_type(ElectricalType::CONDUCTION);
                 layer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
                 layer.set_orientation(sections[sectionIndex].get_layers_orientation());
-                layer.set_turns_alignment(turnsAlignment);
-                layer.set_dimensions(std::vector<double>{layerWidth, layerHeight});
-                layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+                // Real winding geometry: SPREAD every layer's turns over its (blocking-reduced) height.
+                // A full layer (turns == capacity) spreads with ~zero gap so it looks filled; a partial
+                // (spillover) layer distributes its few turns evenly. The reduced/shifted height already
+                // frees the blocked edges, so no separate edge-packing is needed.
+                auto layerTurnsAlignment = turnsAlignment;
+                if (realWindingBlocking) {
+                    layerTurnsAlignment = CoilAlignment::SPREAD;
+                }
+                layer.set_turns_alignment(layerTurnsAlignment);
+                // In real winding geometry, each layer loses the turn slots blocked by connection
+                // leads crossing it: shrink the layer height by the blocked slots and shift it away
+                // from those slots (top slots push it down, bottom slots push it up) so the turns
+                // stop before the connection area, leaving room for the leads.
+                double thisLayerHeight = layerHeight;
+                double thisLayerCenterHeight = currentLayerCenterHeight;
+                if (realWindingBlocking) {
+                    auto blocked = blockedSlotsForLayer(layerIndex);
+                    uint64_t blockedSlots = std::min<uint64_t>(blocked.first + blocked.second, maximumNumberPhysicalTurnsPerLayer - 1);
+                    thisLayerHeight = roundFloat(layerHeight - blockedSlots * wireAxialSize, 9);
+                    thisLayerCenterHeight = roundFloat(currentLayerCenterHeight
+                        + (double(blocked.second) - double(blocked.first)) * wireAxialSize / 2, 9);
+                }
+                layer.set_dimensions(std::vector<double>{layerWidth, thisLayerHeight});
+                layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, thisLayerCenterHeight, 0});
                 layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
-                layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerWidth * layerHeight));
+                layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerWidth * thisLayerHeight));
                 layer.set_winding_style(windByConsecutiveTurns);
                 layers.push_back(layer);
 
@@ -4560,6 +5334,10 @@ bool Coil::wind_by_rectangular_turns() {
 
     }
 
+    // Per-winding ordinal of each conduction layer in wound order. U winding alternates direction
+    // layer by layer across the WHOLE winding (continuously, even over interleaved section breaks),
+    // so the connection always leaves on the side the previous layer finished.
+    std::map<std::string, int64_t> windingLayerOrderCount;
     std::vector<Turn> turns;
     for (auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION) {
@@ -4638,6 +5416,26 @@ bool Coil::wind_by_rectangular_turns() {
                         currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + wireWidth / 2 + currentTurnWidthIncrement / 2, 9);
                         break;
                 }
+            }
+
+            // U/Z winding order. In U order, every other conduction layer of the winding (counted in
+            // wound order across all its sections) is wound in the opposite direction, so consecutive
+            // electrical turns stay physically adjacent across the layer boundary (back-and-forth) and
+            // the connection leaves on the side the previous layer finished. In Z order (default)
+            // every layer is wound the same direction, implying a return wire (dragback) between
+            // layers. The reversal is generic: start from the last forward position and negate the
+            // increment, which holds for any turns alignment.
+            std::string windingNameForOrder = layer.get_partial_windings()[0].get_winding();
+            int64_t windingLayerOrdinal = windingLayerOrderCount[windingNameForOrder]++;
+            // Convention: every winding STARTS FROM THE BOTTOM. The alignment above lays the first turn
+            // at the top, so reverse it to start at the bottom and wind up — for every layer EXCEPT the
+            // odd ordinals of a U winding, whose boustrophedon turnaround means they start at the top
+            // (so consecutive layers stay adjacent and the layer-to-layer connection stays on top).
+            if (!(get_winding_order(layer.get_section().value()) == WindingOrder::U && (windingLayerOrdinal % 2 == 1))) {
+                currentTurnCenterWidth = roundFloat(currentTurnCenterWidth + (int64_t(physicalTurnsInLayer) - 1) * currentTurnWidthIncrement, 9);
+                currentTurnCenterHeight = roundFloat(currentTurnCenterHeight - (int64_t(physicalTurnsInLayer) - 1) * currentTurnHeightIncrement, 9);
+                currentTurnWidthIncrement = -currentTurnWidthIncrement;
+                currentTurnHeightIncrement = -currentTurnHeightIncrement;
             }
 
             if (!layer.get_winding_style()) {
@@ -4927,6 +5725,9 @@ bool Coil::wind_by_round_turns() {
         }
     }
 
+    // Per-winding ordinal of each conduction layer in wound order, so U winding alternates direction
+    // continuously across the whole winding (see the rectangular winder for the rationale).
+    std::map<std::string, int64_t> windingLayerOrderCount;
     std::vector<Turn> turns;
     for (auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION) {
@@ -4993,6 +5794,19 @@ bool Coil::wind_by_round_turns() {
             } 
             else {
                 throw std::invalid_argument("Only overlapping layers allowed in toroids");
+            }
+
+            // U/Z winding order (toroidal). Same generic reversal as the rectangular winder: for U
+            // order, every other conduction layer in a section starts from the last forward
+            // position and winds back. Radial height and angle both advance with += here, so a
+            // single formula reverses both.
+            std::string windingNameForOrder = layer.get_partial_windings()[0].get_winding();
+            int64_t windingLayerOrdinal = windingLayerOrderCount[windingNameForOrder]++;
+            if (get_winding_order(layer.get_section().value()) == WindingOrder::U && (windingLayerOrdinal % 2 == 1)) {
+                currentTurnCenterRadialHeight = roundFloat(currentTurnCenterRadialHeight + (int64_t(physicalTurnsInLayer) - 1) * currentTurnRadialHeightIncrement, 9);
+                currentTurnCenterAngle = roundFloat(currentTurnCenterAngle + (int64_t(physicalTurnsInLayer) - 1) * currentTurnAngleIncrement, 9);
+                currentTurnRadialHeightIncrement = -currentTurnRadialHeightIncrement;
+                currentTurnAngleIncrement = -currentTurnAngleIncrement;
             }
 
             if (!layer.get_winding_style()) {
@@ -7155,7 +7969,7 @@ void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<doubl
     auto globalSectionIndex = convert_conduction_section_index_to_global(sectionIndex);
     // _marginsPerSection is only sized through set_interleaving_level() / wind_by_sections().
     // When a Coil is reconstructed from JSON (e.g. via the Coil(json, bool) constructor used by
-    // the PyMKF bindings and any caller that round-trips sectionsDescription through JSON),
+    // the PyOpenMagnetics bindings and any caller that round-trips sectionsDescription through JSON),
     // _marginsPerSection is empty even though sectionsDescription is populated, which made
     // the indexed assignment below segfault. Grow the vector to match the existing sections
     // and seed any uninitialized entries from the section's own margin, falling back to {0, 0}.
