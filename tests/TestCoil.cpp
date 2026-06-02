@@ -11005,6 +11005,230 @@ TEST_CASE("Test_Real_Geometry_U_38_36", "[constructive-model][coil][real-geometr
     settings.reset();
 }
 
+// Distinct parallels of a winding that have at least one terminal (entrance/exit) lead. For an
+// N-filar winding each parallel is its own conductor, so this should equal the parallel count.
+static int distinct_parallels_with_terminal_leads(OpenMagnetics::Coil& coil, const std::string& windingName) {
+    std::set<int64_t> parallels;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (space.isTerminal && space.winding == windingName) {
+            parallels.insert(space.parallel);
+        }
+    }
+    return int(parallels.size());
+}
+
+// True if every conduction layer of the winding holds the SAME number of turns for each of its K
+// parallels (and all K are present) — i.e. the parallels are wound side by side in lockstep.
+static bool layers_balanced_across_parallels(OpenMagnetics::Coil& coil, const std::string& windingName, int64_t numberParallels) {
+    if (!coil.get_turns_description()) {
+        return false;
+    }
+    auto turns = coil.get_turns_description().value();
+    std::map<std::string, std::map<int64_t, int>> perLayerPerParallel;
+    for (const auto& turn : turns) {
+        if (turn.get_winding() != windingName || !turn.get_layer()) {
+            continue;
+        }
+        perLayerPerParallel[turn.get_layer().value()][turn.get_parallel()]++;
+    }
+    for (const auto& [layerName, perParallel] : perLayerPerParallel) {
+        if (int64_t(perParallel.size()) != numberParallels) {
+            return false;  // not every parallel present in this layer
+        }
+        int count = -1;
+        for (const auto& [parallel, c] : perParallel) {
+            if (count < 0) count = c;
+            else if (c != count) return false;  // parallels unequal in this layer
+        }
+    }
+    return true;
+}
+
+TEST_CASE("Test_Real_Geometry_Multifilar_N_Filar", "[constructive-model][coil][real-geometry]") {
+    // N-filar (bifilar/trifilar/4-filar): each parallel is its own physical conductor with its own
+    // entrance/exit terminal leads and its own inter-layer continuation, wound side by side. For
+    // K = 2, 3, 4 check the winding stays balanced across parallels, every parallel gets its leads,
+    // and no turn collides with a connection lead — in both Z and U winding order.
+    for (int64_t K : std::vector<int64_t>{2, 3, 4}) {
+        std::vector<int64_t> numberTurns = {18};
+        std::vector<int64_t> numberParallels = {K};
+        settings.set_coil_use_real_winding_geometry(true);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", 1);
+
+        INFO("K=" << K << " Z");
+        REQUIRE(coil.get_turns_description());
+        CHECK(coil.get_turns_description().value().size() == size_t(18 * K));
+        CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == int(K));
+        CHECK(layers_balanced_across_parallels(coil, "winding 0", K));
+        CHECK(real_geometry_collisions(coil) == 0);
+        paint_connection_demo(coil, "PQ 28/20", "Test_Real_Multifilar_K" + std::to_string(K) + "_Z.svg", true);
+
+        // Same coil wound U.
+        auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+        auto processed = bobbin.get_processed_description().value();
+        auto windingWindows = processed.get_winding_windows();
+        windingWindows[0].set_winding_order(WindingOrder::U);
+        processed.set_winding_windows(windingWindows);
+        bobbin.set_processed_description(processed);
+        coil.set_bobbin(bobbin);
+        coil.wind();
+
+        INFO("K=" << K << " U");
+        REQUIRE(coil.get_turns_description());
+        CHECK(layers_balanced_across_parallels(coil, "winding 0", K));
+        CHECK(real_geometry_collisions(coil) == 0);
+        paint_connection_demo(coil, "PQ 28/20", "Test_Real_Multifilar_K" + std::to_string(K) + "_U.svg", true);
+
+        settings.reset();
+    }
+}
+
+TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][real-geometry]") {
+    // Interleaved transformer with a BIFILAR primary (2 parallels) and a single secondary, wound real.
+    // Exercises per-parallel connections together with interleaving and mixed parallel counts.
+    std::vector<int64_t> numberTurns = {20, 20};
+    std::vector<int64_t> numberParallels = {2, 1};
+    uint8_t interleavingLevel = 2;
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel);
+
+    REQUIRE(coil.get_turns_description());
+    CHECK(coil.get_turns_description().value().size() == size_t(20 * 2 + 20 * 1));
+    CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
+    CHECK(layers_balanced_across_parallels(coil, "winding 0", 2));
+    CHECK(layers_balanced_across_parallels(coil, "winding 1", 1));
+    CHECK(real_geometry_collisions(coil) == 0);
+    paint_connection_demo(coil, "PQ 40/40", "Test_Real_Bifilar_Interleaved_Z.svg", true);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Rectangular_Contiguous", "[constructive-model][coil][real-geometry]") {
+    // Contiguous layers (stacked axially, turns running horizontally) on a rectangular concentric
+    // bobbin. The connection model runs in a transposed frame, so leads are produced and drawn just
+    // like the overlapping case (rotated 90°). Bifilar, Z and U.
+    std::vector<int64_t> numberTurns = {12};
+    std::vector<int64_t> numberParallels = {2};
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", 1,
+        WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS);
+
+    REQUIRE(coil.get_turns_description());
+    CHECK(coil.get_turns_description().value().size() == size_t(12 * 2));
+    // The transposed model must produce connection leads for the contiguous winding.
+    CHECK(!coil.get_connection_reserved_spaces().empty());
+    CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
+    paint_connection_demo(coil, "PQ 28/20", "Test_Real_Rect_Contiguous_Z.svg", true);
+
+    auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+    auto processed = bobbin.get_processed_description().value();
+    auto windingWindows = processed.get_winding_windows();
+    windingWindows[0].set_winding_order(WindingOrder::U);
+    processed.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processed);
+    coil.set_bobbin(bobbin);
+    coil.wind();
+    paint_connection_demo(coil, "PQ 28/20", "Test_Real_Rect_Contiguous_U.svg", true);
+
+    settings.reset();
+}
+
+// Count pairs of turns whose centres are closer than ~one wire — i.e. physically overlapping. Toroidal
+// turns are cartesian, so this is a plain centre-distance check.
+static int toroidal_turn_overlaps(OpenMagnetics::Coil& coil) {
+    if (!coil.get_turns_description()) {
+        return -1;
+    }
+    auto turns = coil.get_turns_description().value();
+    int overlaps = 0;
+    for (size_t i = 0; i < turns.size(); ++i) {
+        for (size_t j = i + 1; j < turns.size(); ++j) {
+            auto a = turns[i].get_coordinates();
+            auto b = turns[j].get_coordinates();
+            double minSeparation = 0.9 * std::min(turns[i].get_dimensions().value()[0], turns[j].get_dimensions().value()[0]);
+            if (std::hypot(a[0] - b[0], a[1] - b[1]) < minSeparation) {
+                overlaps++;
+            }
+        }
+    }
+    return overlaps;
+}
+
+TEST_CASE("Test_Real_Geometry_Toroidal", "[constructive-model][coil][real-geometry]") {
+    // Toroidal core: concentric polar rings of cartesian turns. Connection leads run radially out to
+    // the window border (terminals) and straight between rings (inter-layer continuations), per
+    // parallel. Both section-overlapping (concentric, full angle) and section-contiguous (angular
+    // sectors) are exercised. Drawing + loss only (no angular turn blocking yet).
+    settings.set_coil_use_real_winding_geometry(true);
+    std::string shape = "T 17.3/9.7/12.7";
+
+    auto rewindAs = [&](OpenMagnetics::Coil& coil, WindingOrder order) {
+        auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+        auto processed = bobbin.get_processed_description().value();
+        auto windingWindows = processed.get_winding_windows();
+        windingWindows[0].set_winding_order(order);
+        processed.set_winding_windows(windingWindows);
+        bobbin.set_processed_description(processed);
+        coil.set_bobbin(bobbin);
+        coil.wind();
+    };
+
+    // Section-overlapping (concentric, full angle), bifilar, enough turns for more than one ring.
+    for (auto order : {WindingOrder::Z, WindingOrder::U}) {
+        std::string tag = (order == WindingOrder::Z) ? "Z" : "U";
+        auto coil = OpenMagneticsTesting::get_quick_coil({40}, {2}, shape, 1,
+            WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING);
+        if (order == WindingOrder::U) rewindAs(coil, order);
+        INFO("overlapping " << tag);
+        REQUIRE(coil.get_turns_description());
+        CHECK(coil.get_turns_description().value().size() == size_t(40 * 2));
+        CHECK(toroidal_turn_overlaps(coil) == 0);
+        CHECK(!coil.get_connection_reserved_spaces().empty());
+        CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
+        paint_connection_demo(coil, shape, "Test_Real_Toroidal_Overlapping_" + tag + ".svg", true);
+    }
+
+    // Section-contiguous (two windings side by side in angle), single parallel each.
+    for (auto order : {WindingOrder::Z, WindingOrder::U}) {
+        std::string tag = (order == WindingOrder::Z) ? "Z" : "U";
+        auto coil = OpenMagneticsTesting::get_quick_coil({30, 30}, {1, 1}, shape, 1,
+            WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING);
+        if (order == WindingOrder::U) rewindAs(coil, order);
+        INFO("section-contiguous " << tag);
+        REQUIRE(coil.get_turns_description());
+        // No two turns may overlap (the spread must respect each winding's angular sector).
+        CHECK(toroidal_turn_overlaps(coil) == 0);
+        CHECK(!coil.get_connection_reserved_spaces().empty());
+        CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 1);
+        CHECK(distinct_parallels_with_terminal_leads(coil, "winding 1") == 1);
+        paint_connection_demo(coil, shape, "Test_Real_Toroidal_SectionContiguous_" + tag + ".svg", true);
+    }
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Connection_Loss_Per_Parallel", "[constructive-model][coil][real-geometry]") {
+    // Each parallel's terminal/connection leads add DC resistance in series with that parallel, so
+    // enabling real winding geometry must raise a bifilar winding's DC resistance above ideal (and the
+    // per-parallel split keeps it a sensible parallel combination, not a single lumped series term).
+    std::vector<int64_t> numberTurns = {18};
+    std::vector<int64_t> numberParallels = {2};
+
+    settings.reset();
+    auto idealCoil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", 1);
+    double idealResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(idealCoil, 25.0)[0];
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto realCoil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", 1);
+    double realResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(realCoil, 25.0)[0];
+
+    CHECK(idealResistance > 0);
+    CHECK(realResistance > idealResistance);  // connection leads add series resistance per parallel
+    settings.reset();
+}
+
 TEST_CASE("Demo_Real_Vs_Ideal_Connection_Geometry", "[real-geometry-demo]") {
     // Demonstration (not an assertion-heavy test): winds the same interleaved transformer with
     // ideal vs real winding geometry, prints the filling-factor and DC-resistance deltas, and paints
@@ -11068,6 +11292,103 @@ TEST_CASE("Demo_Real_Vs_Ideal_Connection_Geometry", "[real-geometry-demo]") {
     }
     std::cout << "  SVGs written to " << outputFilePath.string() << "/Demo_Connection_{Ideal,Real}.svg\n" << std::endl;
 
+    settings.reset();
+}
+
+// Compact, deterministic digest of a wound coil's geometry. Pins turn/layer/section counts, the
+// per-layer turn distribution (which is exactly what get_parallels_proportions drives), and a
+// fixed-point bounding box, so any drift in the ideal winding path is caught exactly. NOTE: bind
+// get_*_description().value() to a local before iterating — ranging over the temporary dangles.
+struct IdealGeometryDigest {
+    size_t turns = 0;
+    size_t conductionLayers = 0;
+    size_t conductionSections = 0;
+    int64_t minXum = 0, maxXum = 0, minYum = 0, maxYum = 0;  // turn-centre bounding box, micrometres
+    int64_t sumDimsUm = 0;                                   // Σ round((width + height) in µm)
+    std::string perLayerTurns;                               // turns per conduction layer, radial order
+};
+
+static IdealGeometryDigest ideal_geometry_digest(OpenMagnetics::Coil& coil) {
+    IdealGeometryDigest d;
+    if (coil.get_turns_description()) {
+        auto turns = coil.get_turns_description().value();
+        double minX = std::numeric_limits<double>::max(), maxX = std::numeric_limits<double>::lowest();
+        double minY = std::numeric_limits<double>::max(), maxY = std::numeric_limits<double>::lowest();
+        std::map<std::string, size_t> turnsPerLayer;
+        for (const auto& turn : turns) {
+            d.turns++;
+            auto c = turn.get_coordinates();
+            minX = std::min(minX, c[0]); maxX = std::max(maxX, c[0]);
+            minY = std::min(minY, c[1]); maxY = std::max(maxY, c[1]);
+            if (turn.get_dimensions()) {
+                auto dim = turn.get_dimensions().value();
+                d.sumDimsUm += std::llround((dim[0] + dim[1]) * 1e6);
+            }
+            if (turn.get_layer()) {
+                turnsPerLayer[turn.get_layer().value()]++;
+            }
+        }
+        if (d.turns > 0) {
+            d.minXum = std::llround(minX * 1e6); d.maxXum = std::llround(maxX * 1e6);
+            d.minYum = std::llround(minY * 1e6); d.maxYum = std::llround(maxY * 1e6);
+        }
+        // Per-layer turn counts in radial (then axial) order, so the distribution is order-stable.
+        auto conductionLayers = coil.get_layers_description_conduction();
+        std::sort(conductionLayers.begin(), conductionLayers.end(), [](const Layer& a, const Layer& b) {
+            if (a.get_coordinates()[0] != b.get_coordinates()[0]) return a.get_coordinates()[0] < b.get_coordinates()[0];
+            return a.get_coordinates()[1] < b.get_coordinates()[1];
+        });
+        for (const auto& layer : conductionLayers) {
+            if (!d.perLayerTurns.empty()) d.perLayerTurns += ",";
+            d.perLayerTurns += std::to_string(turnsPerLayer[layer.get_name()]);
+        }
+    }
+    d.conductionLayers = coil.get_layers_description_conduction().size();
+    d.conductionSections = coil.get_sections_description_conduction().size();
+    return d;
+}
+
+TEST_CASE("Test_Ideal_Winding_Unchanged_Multifilar", "[constructive-model][coil][ideal-regression]") {
+    // Locks the ideal (real-geometry OFF) winding geometry across single- and multi-parallel
+    // (N-filar) configs. The golden digests below were captured on the Phase-1 baseline. The Phase-2
+    // bifilar/N-filar real-winding work must NOT alter the ideal path (it is gated entirely behind
+    // Settings::get_coil_use_real_winding_geometry, default false). Any drift here is a regression.
+    settings.reset();
+    REQUIRE(settings.get_coil_use_real_winding_geometry() == false);
+
+    struct Config { std::vector<int64_t> turns; std::vector<int64_t> parallels; std::string shape; uint8_t interleaving; };
+    struct Golden {
+        Config config;
+        size_t turns, layers, sections;
+        int64_t minXum, maxXum, minYum, maxYum, sumDimsUm;
+        std::string perLayerTurns;
+    };
+    // Captured on the Phase-1 baseline (real geometry off). Covers single-parallel, N-filar bifilar/
+    // trifilar/5-filar, and interleaved + mixed-parallel layouts. perLayerTurns is the turn count of
+    // each conduction layer in radial order — exactly the split get_parallels_proportions produces.
+    std::vector<Golden> golden = {
+        {{{10},     {1},    "PQ 28/20", 1}, 10, 1, 1,  7354,  7354,  -2290,  2290, 10180, "10"},
+        {{{12},     {2},    "PQ 28/20", 1}, 24, 2, 1,  7354,  7863,  -2799,  2799, 24432, "12,12"},
+        {{{12},     {3},    "PQ 28/20", 1}, 36, 2, 1,  7354,  7863,  -4326,  4326, 36648, "18,18"},
+        {{{10},     {5},    "PQ 40/40", 1}, 50, 1, 1,  9324,  9324, -12470, 12470, 50900, "50"},
+        {{{20, 20}, {1, 1}, "PQ 28/20", 2}, 40, 4, 4,  7354,  8956,  -2290,  2290, 40720, "10,10,10,10"},
+        {{{20, 20}, {2, 1}, "PQ 40/40", 2}, 60, 4, 4,  9324, 10926,  -4835,  4835, 61080, "20,10,20,10"},
+    };
+    for (size_t i = 0; i < golden.size(); ++i) {
+        const auto& g = golden[i];
+        INFO("ideal-regression config " << i << " turns=" << g.config.turns.size());
+        auto coil = OpenMagneticsTesting::get_quick_coil(g.config.turns, g.config.parallels, g.config.shape, g.config.interleaving);
+        auto d = ideal_geometry_digest(coil);
+        CHECK(d.turns == g.turns);
+        CHECK(d.conductionLayers == g.layers);
+        CHECK(d.conductionSections == g.sections);
+        CHECK(d.minXum == g.minXum);
+        CHECK(d.maxXum == g.maxXum);
+        CHECK(d.minYum == g.minYum);
+        CHECK(d.maxYum == g.maxYum);
+        CHECK(d.sumDimsUm == g.sumDimsUm);
+        CHECK(d.perLayerTurns == g.perLayerTurns);
+    }
     settings.reset();
 }
 
