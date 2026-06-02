@@ -178,6 +178,35 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
         }
     }
 
+    // Step 2d: Gap non-toroidal ferrite cores. Without a gap, high-µ
+    // ferrite achieves the target L with very few turns and B_peak
+    // immediately saturates the core — useless for any application
+    // that stores meaningful flux. Matches the slow path
+    // (CoreAdviserPipeline::add_gapping_standard_cores call at
+    // CoreAdviserPipeline.cpp:578, before add_initial_turns_by_inductance).
+    // Toroidal cores (powder) are skipped: their distributed gap is
+    // already baked into μ_eff.
+    {
+        std::vector<std::pair<Magnetic, double>> nonToroidal;
+        std::vector<std::pair<Magnetic, double>> toroidal;
+        nonToroidal.reserve(magneticsWithScoring.size());
+        for (auto& entry : magneticsWithScoring) {
+            if (entry.first.get_core().get_functional_description().get_type()
+                == CoreType::TOROIDAL) {
+                toroidal.push_back(std::move(entry));
+            } else {
+                nonToroidal.push_back(std::move(entry));
+            }
+        }
+        if (!nonToroidal.empty()) {
+            coreAdviser.add_gapping_standard_cores(&nonToroidal, inputs);
+        }
+        magneticsWithScoring = std::move(nonToroidal);
+        for (auto& entry : toroidal) {
+            magneticsWithScoring.push_back(std::move(entry));
+        }
+    }
+
     // Step 3: Set turns and gap analytically (single pass, no iteration)
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
 
