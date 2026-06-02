@@ -204,10 +204,19 @@ ScalarMatrixAtFrequency Inductance::calculate_inductance_matrix(
     size_t numWindings = functionalDescription.size();
     
     if (numWindings == 0) {
-        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS, 
+        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS,
             "Cannot calculate inductance matrix: no windings defined");
     }
-    
+    // The magnetizing-inductance/reluctance path below reads the core's processed
+    // description and resolved shape. On an unprocessed magnetic (shape/material
+    // still name strings, no effective parameters) this otherwise fails deep with
+    // a cryptic "std::get: wrong index for variant". Surface it clearly instead.
+    if (!magnetic.get_core().get_processed_description()) {
+        throw CoreNotProcessedException(
+            "Cannot calculate inductance matrix: the core has no processed description "
+            "(effective parameters/shape unresolved). Run magnetic autocomplete / process the core first.");
+    }
+
     ScalarMatrixAtFrequency result;
     result.set_frequency(frequency);
     
