@@ -208,7 +208,7 @@ double Magnetic::calculate_saturation_current(double temperature) {
     // Symptom this fixes: on a 48 → 12 V 60 W buck the CoreAdviser
     // picked an EP 17 with N = 6, L_actual ≈ 5.1 µH, ipeak ≈ 10.85 A.
     // The MagneticFilterSaturation filter accepted it correctly
-    // (B_pk = 0.21 T, B_sat·1.2 = 0.49 T, margin 1.99×). PyMKF's
+    // (B_pk = 0.21 T, B_sat·1.2 = 0.49 T, margin 1.99×). PyOpenMagnetics'
     // calculate_saturation_current reported 11.79 A — corresponding
     // to a phantom L = 9.4 µH (the EP 17's bare-core L at μ_init,
     // before gap) — so Heaviside's I_sat / I_peak realism check saw

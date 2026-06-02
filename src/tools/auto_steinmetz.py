@@ -2,7 +2,7 @@ import numpy
 import json
 import ndjson
 import math
-import PyMKF
+import PyOpenMagnetics
 import pandas
 import pathlib
 
@@ -66,7 +66,7 @@ for core_material_index, core_material in enumerate(core_materials):
                 for datum in method_data:
                     if datum["origin"] == "manufacturer":
                         filter_data.append(datum)
-                result = PyMKF.calculate_steinmetz_coefficients_with_error(filter_data, frequencies_range)
+                result = PyOpenMagnetics.calculate_steinmetz_coefficients_with_error(filter_data, frequencies_range)
 
                 average_error = sum(result["errorPerRange"]) / len(result["errorPerRange"])
 

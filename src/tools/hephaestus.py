@@ -11,7 +11,7 @@ import math
 import pandas
 import copy
 import ndjson
-import PyMKF
+import PyOpenMagnetics
 import urllib
 from datetime import date
 from difflib import SequenceMatcher
@@ -37,7 +37,7 @@ class Stocker():
             }
         }
         try:
-            core_data = PyMKF.calculate_core_data(core_data, False)
+            core_data = PyOpenMagnetics.calculate_core_data(core_data, False)
             return core_data
         except RuntimeError:
             pprint.pprint(product)
@@ -68,7 +68,7 @@ class Stocker():
     def find_shape_closest_dimensions(self, family, shape, limit=0.05):
         smallest_distance = math.inf
         smallest_distance_shape = None
-        core_data = PyMKF.get_core_shape_names(True)
+        core_data = PyOpenMagnetics.get_core_shape_names(True)
 
         dimensions = shape.split(" ")[1].split("/")
 
@@ -109,7 +109,7 @@ class Stocker():
     def find_shape_closest_effective_parameters(self, family, effective_length, effective_area, effective_volume, limit=0.05):
         smallest_distance = math.inf
         smallest_distance_shape = None
-        shape_names = PyMKF.get_core_shape_names(True)
+        shape_names = PyOpenMagnetics.get_core_shape_names(True)
         dummyCore = {
             "functionalDescription": {
                 "name": "dummy",
@@ -130,7 +130,7 @@ class Stocker():
                         core['functionalDescription']['type'] = "closed shape"
                     core['functionalDescription']['shape'] = shape_name
 
-                    core_data = PyMKF.calculate_core_data(core, False)
+                    core_data = PyOpenMagnetics.calculate_core_data(core, False)
 
                     if abs(effective_length - core_data['processedDescription']['effectiveParameters']['effectiveLength']) / effective_length < 0.4:
                         if abs(effective_area - core_data['processedDescription']['effectiveParameters']['effectiveArea']) / effective_area < 0.4:
@@ -178,7 +178,7 @@ class Stocker():
                 }
             }
             # if isinstance(shape, str):
-            #     shape = PyMKF.calculate_core_data(core, False)['functionalDescription']['shape']
+            #     shape = PyOpenMagnetics.calculate_core_data(core, False)['functionalDescription']['shape']
             #     for dimension_key, dimension in shape['dimensions'].items():
             #         new_dimension = {}
             #         for key, value in dimension.items():
@@ -219,7 +219,7 @@ class Stocker():
                           unique=False)
 
     def get_gapping(self, core_data, manufacturer_name, al_value, number_gaps=1):
-        constants = PyMKF.get_constants()
+        constants = PyOpenMagnetics.get_constants()
         inductance = 1
         previous_inductance = 1
         previous_gap_length = constants["residualGap"]
@@ -294,7 +294,7 @@ class Stocker():
                         }
                     )
             try:
-                inductance_data = PyMKF.calculate_inductance_from_number_turns_and_gapping(core_data, 
+                inductance_data = PyOpenMagnetics.calculate_inductance_from_number_turns_and_gapping(core_data, 
                                                                                            winding_data,
                                                                                            operating_point,
                                                                                            models)
@@ -318,7 +318,7 @@ class Stocker():
 
     def process_gapping(self, core_data, gapping):
         core_data['functionalDescription']['gapping'] = gapping
-        core_data = PyMKF.calculate_core_data(core_data, False)
+        core_data = PyOpenMagnetics.calculate_core_data(core_data, False)
         return core_data['functionalDescription']['gapping']
 
     def adaptive_round(self, value):
@@ -345,7 +345,7 @@ class Stocker():
 
         current_error = 1
         current_shape = None
-        for shape_name in PyMKF.get_core_shape_names(True):
+        for shape_name in PyOpenMagnetics.get_core_shape_names(True):
             error = abs(len(shape_name) - len(text)) / len(text)
             if shape_name in text and error < 0.3:
                 if error < current_error:
@@ -358,7 +358,7 @@ class Stocker():
         fixed_text = fix(text)
         current_error = 1
         current_shape = None
-        for shape_name in PyMKF.get_core_shape_names(True):
+        for shape_name in PyOpenMagnetics.get_core_shape_names(True):
             if (len(fixed_text) == 0):
                 return None
             error = abs(len(fix(shape_name)) - len(fixed_text)) / len(fixed_text)
@@ -386,7 +386,7 @@ class Stocker():
         def fix(text):
             return text.replace(" 0", " ").replace(" ", "").replace(",", ".").replace("Mµ", "Mu").replace("Hƒ", "Hf").upper()
 
-        materials = PyMKF.get_core_material_names_by_manufacturer(manufacturer)
+        materials = PyOpenMagnetics.get_core_material_names_by_manufacturer(manufacturer)
 
         materials.reverse()
         for material_name in materials:
@@ -408,7 +408,7 @@ class Stocker():
         max_ratio = 0
         best_fit = ""
 
-        for shape_name in PyMKF.get_core_shape_names(True):
+        for shape_name in PyOpenMagnetics.get_core_shape_names(True):
             s = SequenceMatcher(None, fix(shape_name), fixed_text)
             if s.ratio() > max_ratio:
                 max_ratio = s.ratio()
@@ -562,7 +562,7 @@ class FerroxcubeInventory(Stocker):
         }
 
     def process(self, data):
-        constants = PyMKF.get_constants()
+        constants = PyOpenMagnetics.get_constants()
         not_included_materials = ["3D", "3E", "3C11", "4C", "3H"]
         typos = [{"typo": "ER35W/21/11", "correction": "ER35/21/11"}]
 
@@ -816,7 +816,7 @@ class TdkInventory(Stocker):
         }
 
     def process(self, data):
-        constants = PyMKF.get_constants()
+        constants = PyOpenMagnetics.get_constants()
         # not_included_materials = ["HF60", "K1", "K10", "M33", "N22", "N45", "N48", "PC40", "PC90", "T", "PE22", "PC95", "PC50", "PC47"]
         not_included_materials = ["HF60", "PC40", "PC90", "T", "PE22", "PC50"]
         if data['shape'] is None:
@@ -1241,7 +1241,7 @@ class FairRiteInventory(Stocker):
         return material_name
 
     def process(self, data):
-        constants = PyMKF.get_constants()
+        constants = PyOpenMagnetics.get_constants()
         not_included_materials = []
         if data['shape'] is None:
             family = 'T'

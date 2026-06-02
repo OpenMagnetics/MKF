@@ -57,7 +57,6 @@ option(BUILD_TESTS "Build tests (for dependencies)" OFF)
 option(BUILD_EXAMPLES "Build examples (for dependencies)" OFF)
 option(BUILD_DEMO "Build demo (for dependencies)" OFF)
 # REMOVED: # REMOVED: option(HAVE_LAPACK "Use LAPACK" OFF) — no longer needed, levmar replaced by Eigen — no longer needed, levmar replaced by Eigen
-option(INCLUDE_PYMKF "Compile the Python interface" OFF)
 option(ENABLE_NGSPICE "Enable ngspice integration for circuit simulation" OFF)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
@@ -596,30 +595,3 @@ if(INCLUDE_MKF_TESTS)
 
 
 endif(INCLUDE_MKF_TESTS)
-
-if(INCLUDE_PYMKF)
-        FetchContent_Declare(pybind11
-                GIT_REPOSITORY https://github.com/pybind/pybind11.git)
-
-        FetchContent_Declare(pybind11_json
-                GIT_REPOSITORY https://github.com/pybind/pybind11_json.git)
-
-        FetchContent_MakeAvailable( pybind11 pybind11_json)
-        set_target_properties(pybind11_json PROPERTIES EXCLUDE_FROM_ALL True)
-        add_custom_target(PyMASGeneration
-                          /bin/echo "RUNNING PyMASGeneration"
-                          DEPENDS "${MAS_DIRECTORY}/MAS.hpp")
-        add_dependencies(MKF PyMASGeneration)
-        include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src/include/")
-        include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11_json-src/include/pybind11_json/")
-        target_link_libraries(MKF PRIVATE pybind11_json pybind11::embed)
-        include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src")
-        pybind11_add_module(PyMKF src/PyMKF/PyMKFWrapper.cpp )
-        target_link_libraries(PyMKF PRIVATE MKF pybind11_json)
-
-        # EXAMPLE_VERSION_INFO is defined by setup.py and passed into the C++ code as a
-        # define (VERSION_INFO) here.
-
-        target_compile_definitions(PyMKF
-                                   PRIVATE VERSION_INFO=${EXAMPLE_VERSION_INFO})
-endif(INCLUDE_PYMKF)
