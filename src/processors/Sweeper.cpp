@@ -18,7 +18,7 @@
 namespace OpenMagnetics {
 
 
-Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
+Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title, bool fast) {
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -38,16 +38,31 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
     // rolloff into the realistic peak → dip → rise. Leakage is geometric, so it
     // is computed once and the jωL term applied per frequency. At low frequency
     // ωL_leak is negligible, so the single-resonance behaviour is preserved.
+    //
+    // The series winding resistance is frequency-dependent. With fast=true we use
+    // DC + skin effect (resistance scaled by the analytic skin factor
+    // R_pm(f)/R_pm_dc — cheap). With fast=false we use the full field-based
+    // effective resistance, which additionally captures proximity effect and so
+    // damps the leakage resonance more accurately, at a higher per-point cost.
+    const double temperature = Defaults().ambientTemperature;
     auto coil = magnetic.get_coil();
     double leakageInductance = 0;
-    double windingResistance = 0;
+    double windingResistanceDc = 0;
+    double dcResistancePerMeter = 0;
+    Wire wire;
     if (coil.get_functional_description().size() >= 2) {
         leakageInductance = LeakageInductance()
             .calculate_leakage_inductance(magnetic, frequencies[frequencies.size() / 2], 0, 1)
             .get_leakage_inductance_per_winding()[0]
             .get_nominal()
             .value();
-        windingResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, Defaults().ambientTemperature)[0];
+        windingResistanceDc = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, temperature)[0];
+        if (fast) {
+            // Precompute the DC per-meter resistance so the per-frequency skin
+            // factor is just R_pm(f)/R_pm_dc — no coil field map needed.
+            wire = coil.resolve_wire(0);
+            dcResistancePerMeter = WindingOhmicLosses::calculate_dc_resistance_per_meter(wire, temperature);
+        }
     }
 
     std::vector<double> impedances;
@@ -55,7 +70,17 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
         auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
         if (leakageInductance > 0) {
             auto angularFrequency = 2 * std::numbers::pi * frequency;
-            impedance += std::complex<double>(windingResistance, -angularFrequency * leakageInductance);
+            double windingResistance;
+            if (fast) {
+                // DC + skin only: scale the DC resistance by the skin factor.
+                double skinFactor = WindingOhmicLosses::calculate_effective_resistance_per_meter(wire, frequency, temperature) / dcResistancePerMeter;
+                windingResistance = windingResistanceDc * skinFactor;
+            }
+            else {
+                // DC + skin + proximity: full field-based effective resistance.
+                windingResistance = WindingLosses::calculate_effective_resistance_of_winding(magnetic, 0, frequency, temperature);
+            }
+            impedance += std::complex<double>(windingResistance, angularFrequency * leakageInductance);
         }
         impedances.push_back(abs(impedance));
     }
