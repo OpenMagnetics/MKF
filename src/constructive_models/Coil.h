@@ -96,6 +96,8 @@ struct ConnectionReservedSpace {
     std::string section;
     std::string layer;                // the conduction layer this lead squeezes (empty for terminal leads)
     std::string winding;              // the winding whose lead reserves the space
+    int64_t parallel = -1;            // the parallel whose lead reserves the space (each parallel of a
+                                      // bifilar/N-filar group is its own conductor with its own leads)
     std::vector<double> coordinates;  // centre of the reserved rectangle (same system as turns)
     std::vector<double> dimensions;   // {width, height}
     double rotation = 0;              // degrees, for diagonal links (Z continuations); 0 = axis-aligned
