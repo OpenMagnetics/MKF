@@ -548,6 +548,54 @@ namespace {
         }
     }
 
+    TEST_CASE("Test_FastAdviser_Buck_Inductance_InBand", "[adviser][magnetic-adviser][fast][bug][smoke-test]") {
+        // Regression: the fast adviser used to return cores whose achieved
+        // inductance overshot the target several-fold (integer-turns rounding
+        // on small HF inductors), e.g. 2.42µH target → 14µH actual. The
+        // over-inductance core passed the saturation filter (its wrong high L
+        // gives low ripple/peak), so it was returned and later failed
+        // realism's Isat-margin. The fix adds the inductance-validity filter
+        // to the fast path. This test reproduces the EVL1653F buck
+        // (12V→3.3V, 3A, 1.1MHz, L≈2.42µH) and asserts the returned inductor's
+        // achieved inductance is within the requested ±20% band.
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+
+        double frequency = 1.1e6;
+        double magnetizingInductance = 2.42e-6;
+        double temperature = 25;
+        WaveformLabel waveShape = WaveformLabel::TRIANGULAR;
+        double peakToPeak = 0.9;     // inductor ripple (A pp)
+        double dutyCycle = 0.275;    // 3.3/12
+        double dcCurrent = 3.0;      // Iout
+        std::vector<double> turnsRatios = {};  // single-winding inductor
+
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            frequency, magnetizingInductance, temperature,
+            waveShape, peakToPeak, dutyCycle, dcCurrent, turnsRatios);
+        inputs.process();
+
+        MagneticAdviser magneticAdviser;
+        magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        auto results = magneticAdviser.get_advised_magnetic_fast(inputs, 5);
+
+        REQUIRE(results.size() > 0);
+
+        MagnetizingInductance mi;
+        auto op = inputs.get_operating_points()[0];
+        auto mag = results[0].first.get_magnetic();  // mutable copy
+        auto indOut = mi.calculate_inductance_from_number_turns_and_gapping(
+            mag.get_mutable_core(), mag.get_mutable_coil(), &op);
+        double achieved = resolve_dimensional_values(indOut.get_magnetizing_inductance());
+        INFO("Target L = " + std::to_string(magnetizingInductance * 1e6) + " µH, "
+             "achieved = " + std::to_string(achieved * 1e6) + " µH");
+        CHECK(achieved >= 0.8 * magnetizingInductance);
+        CHECK(achieved <= 1.2 * magnetizingInductance);
+    }
+
     TEST_CASE("MagneticAdviserCustomCores", "[adviser][magnetic-adviser][custom-cores][smoke-test]") {
         clear_databases();
         settings.reset();
