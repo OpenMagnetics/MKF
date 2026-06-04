@@ -157,7 +157,7 @@ private:
     std::optional<double> maximumDutyCycle = 0.95;
 
     // Internal sizing rules-of-thumb for L1 / Co.
-    double l1RipplePct = 0.20;          // ΔIL1 / IL1_per_winding,avg target
+    double l1RipplePct = 0.10;          // ΔIL1 / IL1_per_winding,avg target — tightened from 0.20 so the realised L1 keeps ipeak ≥1.2× below isat (weinberg-isat)
     double coRipplePct = 0.01;          // ΔVo  / Vo                    target
     double leakageInductanceFraction = 0.001;  // Llk = 0.1 % of Lpri_half — D3 not modelled in V1 SPICE (see Weinberg.cpp), so keep leakage low.
 

@@ -112,18 +112,31 @@ namespace OpenMagnetics {
     }
 
     double Weinberg::calculate_l1_min(double inputVoltage, double dutyCycle, double deltaIL1, double switchingFrequency) {
-        // Boost regime (D > 0.5): L1 ≥ Vin · (2D − 1) · Tsw / (4 · ΔI_L1)
-        // (per WEINBERG_PLAN.md S1; the 4 in the denominator reflects two
-        // overlap intervals per period and the per-winding ripple budget.)
-        // For D ≤ 0.5 the input inductor sees only the dead/non-overlap
-        // intervals — fall back to the classical boost  L1 = Vin·D·Tsw / ΔI.
+        // Input coupled-inductor ripple (boost-derived): each L1 winding sees
+        // Vin across it during its charging interval, so
+        //     ΔI_L1 = Vin · D_eff · Tsw / L1   →   L1 = Vin · D_eff / (ΔI_L1 · fsw)
+        // where the effective charging fraction D_eff is the longer of the
+        // switch-overlap window (2D−1, boost regime) and the per-switch on-time
+        // D. This is the SAME relation that the per-OP waveform builder inverts
+        // (process_operating_points_for_input_voltage:
+        //     deltaIL1 = Vin · max(overlap, D) / (L1 · fsw)),
+        // so the requested L1 actually delivers the budgeted ripple — and hence
+        // the budgeted peak (IL1_avg + ΔI_L1/2) — at the gate.
+        //
+        // Previously this used dEffective = overlap (ignoring the longer D
+        // window) AND an extra 1/4 factor, which left L1 ~6× too small versus
+        // its own per-OP ripple model: the realised peak current rose well
+        // above the sizing assumption and eroded the inductor_isat_margin
+        // (boost-mode 36/48/60→270V, 2A, 100kHz fell to ~1.03 vs 1.2 required).
+        // Aligning D_eff and dropping the spurious 1/4 restores honest boost-
+        // inductor ripple physics and ≥1.2× isat headroom (weinberg-isat).
         if (deltaIL1 <= 0 || switchingFrequency <= 0) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "Weinberg::calculate_l1_min: deltaIL1 and fsw must be > 0");
         }
         double overlap = calculate_overlap_fraction(dutyCycle);
-        double dEffective = (overlap > 0.0) ? overlap : dutyCycle;
-        return inputVoltage * dEffective / (4.0 * deltaIL1 * switchingFrequency);
+        double dEffective = std::max(overlap, dutyCycle);
+        return inputVoltage * dEffective / (deltaIL1 * switchingFrequency);
     }
 
     double Weinberg::calculate_dcm_K_boost(double L1, double switchingFrequency, double dutyCycle, double loadResistance) {
