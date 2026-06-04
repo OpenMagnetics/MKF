@@ -3619,6 +3619,16 @@ void Coil::devirtualize_sections_description() {
 }
 
 void Coil::devirtualize_layers_description() {
+    if (!get_layers_description()) {
+        // wind_by_round_layers()/wind_by_rectangular_layers() return false
+        // (leaving layers_description unset) when the winding does not fit
+        // the window — but wind_by_layers() still runs this devirtualization
+        // cleanup unconditionally for virtualized (wound_with) coils. Mirror
+        // the guard in devirtualize_sections_description(): a failed wind has
+        // nothing to devirtualize, so keep nullopt and let the caller treat
+        // the candidate as not-wound instead of throwing bad_optional_access.
+        return;
+    }
     std::vector<Layer> newLayersDescription;
     auto layers = get_layers_description().value();
     for (auto layer : layers) {
