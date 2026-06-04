@@ -7,6 +7,9 @@
 #include "support/Utils.h"
 #include "json.hpp"
 #include <cfloat>
+#include <cmath>
+#include <limits>
+#include <numbers>
 #include <set>
 #include "support/Exceptions.h"
 #include <magic_enum.hpp>
@@ -1303,33 +1306,192 @@ double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRad
                                                             double wireCoatingThickness, double wireCoatingRelativePermittivity,
                                                             double airGapToCore,
                                                             double coreCoatingThickness, double coreCoatingRelativePermittivity) {
-    // A turn modelled as a round conductor parallel to the equipotential ferrite
-    // surface (the ferrite's own high permittivity does not enter — it is just an
-    // electrode). The dielectric stack between conductor and ferrite is:
-    //   wire enamel (wireCoatingThickness, eps_w) | air (airGapToCore) | core coating (coreCoatingThickness, eps_c).
-    //
-    // We reuse the Massarini turn-to-turn formula with the core coating playing the
-    // role of the "insulation layers" between the two electrodes, then multiply by 2
-    // for the wire-to-plane (image) geometry vs the wire-to-wire the formula assumes.
-    // Unlike the old wire-above-plane helper (C ~ 1/acosh(h/r), which diverges as the
-    // turn touches the core), the Massarini form depends on ln(D0/Dc) — fixed by the
-    // wire coating — and the air gap only enters through the effective permittivity, so
-    // the result stays finite at zero air gap: the coating is the physical floor.
+    // Capacitance of a turn to the equipotential ferrite core, after Kovacic et al.,
+    // "Analytical Wideband Model of a Common-Mode Choke" (IEEE TPEL 2012), eqs (36)-(38).
+    // The displacement field leaves the bare conductor surface and reaches the ferrite
+    // along field lines that spread with the angle phi; each line crosses, in series, the
+    // dielectric stack
+    //   wire enamel (t_we / eps_we) | air gap | core coating (t_co / eps_co),
+    // where the air-gap length grows with phi as (phi/sin phi)*(w_s + r*(1-cos phi)).
+    // Integrating dC = eps0 * dS / sum(x_i/eps_ri), with dS = L*(d_w/2) dphi, over phi in
+    // [-pi/2, pi/2] (symmetric, so 0..pi/2 doubled). The ferrite's own permittivity does
+    // not enter — it is the electrode. Unlike the old Massarini reuse (bounded by the wire
+    // enamel and almost insensitive to the core gap/coating), this is properly sensitive to
+    // the wire-to-core air gap and the core coating thickness — the terms that set the real,
+    // sub-pF turn-to-core value. The wire enamel is kept in the stack so the element stays
+    // finite even at zero air gap and no core coating (close-wound, uncoated).
     if (conductingRadius <= 0 || turnLength <= 0) {
         return 0;
     }
-    // The Massarini formula lumps (air + insulation layers) into one layer with a single
-    // permittivity, so first combine the air gap (eps_r = 1) in series with the core
-    // coating into an effective permittivity. This keeps air at eps_r = 1 rather than
-    // the coating's value, so the element decreases monotonically as the gap grows.
-    double airAndCoatingPermittivity = get_effective_relative_permittivity(
-        airGapToCore, 1.0, coreCoatingThickness, coreCoatingRelativePermittivity);
-    StrayCapacitanceMassariniModel model;
-    double turnToTurn = model.calculate_static_capacitance_between_two_turns(
-        wireCoatingThickness, turnLength, conductingRadius,
-        coreCoatingThickness, airGapToCore,
-        wireCoatingRelativePermittivity, airAndCoatingPermittivity);
-    return 2.0 * turnToTurn;
+    const double vacuumPermittivity = Constants().vacuumPermittivity;
+    const double wireRadius = conductingRadius;  // contract: conductingRadius is the radius (Dc = 2*r)
+    const double enamelTerm = wireCoatingRelativePermittivity > 0 ? wireCoatingThickness / wireCoatingRelativePermittivity : 0.0;
+    const double coatingTerm = coreCoatingRelativePermittivity > 0 ? coreCoatingThickness / coreCoatingRelativePermittivity : 0.0;
+
+    const int steps = 400;
+    const double upper = std::numbers::pi / 2.0;
+    double integral = 0.0;
+    for (int k = 0; k <= steps; ++k) {
+        double phi = upper * k / steps;
+        double phiOverSin = phi < 1e-9 ? 1.0 : phi / std::sin(phi);
+        double airLength = phiOverSin * (airGapToCore + wireRadius * (1.0 - std::cos(phi)));
+        double denominator = enamelTerm + airLength + coatingTerm;
+        double integrand = denominator > 0 ? 1.0 / denominator : 0.0;
+        double weight = (k == 0 || k == steps) ? 0.5 : 1.0;  // trapezoidal
+        integral += weight * integrand;
+    }
+    integral *= upper / steps;   // dphi
+    integral *= 2.0;             // symmetric over [-pi/2, pi/2]
+
+    return vacuumPermittivity * turnLength * wireRadius * integral;
+}
+
+double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core core, std::string windingName) {
+    // Total capacitance from one whole winding to the (equipotential) ferrite core,
+    // = the parallel sum of every turn's turn-to-core element (all turns of the
+    // winding share the single core node). This is the building block for the
+    // through-core inter-winding coupling that sets the differential-mode resonance
+    // of a separated-winding CMC (the two windings have no adjacent turns, so the
+    // only capacitive path between them is turn -> core -> turn).
+    //
+    // The core coating is the dielectric floor that keeps the turn-to-core element
+    // finite at contact; the winding is taken as close-wound onto the coated core
+    // (air gap = 0), matching the literature shortcut C_winding-to-core ~ 2*C_turn-to-turn
+    // for bobbin-less toroids (Tu et al., CPSS 2025; Massarini & Kazimierczuk 1997).
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+
+    double coreCoatingThickness = core.get_coating_thickness();
+    // A bare (uncoated) ferrite has no coating layer; the wire enamel alone then
+    // bounds the element. get_coating_relative_permittivity() throws when there is
+    // no coating, so only resolve it when a coating actually exists.
+    double coreCoatingRelativePermittivity = 1.0;
+    if (coreCoatingThickness > 0) {
+        coreCoatingRelativePermittivity = core.get_coating_relative_permittivity();
+    }
+
+    auto turns = coil.get_turns_description().value();
+    auto wirePerWinding = coil.get_wires();
+    auto windingIndex = coil.get_winding_index_by_name(windingName);
+    auto wire = wirePerWinding[windingIndex];
+
+    if (wire.get_type() != WireType::ROUND && wire.get_type() != WireType::LITZ) {
+        throw NotImplementedException("Turn-to-core capacitance is only modelled for ROUND/LITZ wires, got: " + std::string(magic_enum::enum_name(wire.get_type())));
+    }
+
+    // calculate_turn_to_core_capacitance / the Massarini model take the conducting
+    // RADIUS (the model computes Dc = 2*conductingRadius for the bare-conductor
+    // diameter); get_maximum_conducting_width returns the diameter, so halve it.
+    // (The turn-to-turn caller's own radius/diameter handling is separate and is
+    // intentionally left untouched here.)
+    double conductingRadius = wire.get_maximum_conducting_width() / 2.0;
+    double wireCoatingThickness = wire.get_coating_thickness();
+    double wireCoatingRelativePermittivity = get_wire_insulation_relative_permittivity(wire);
+    constexpr double airGapToCore = 0.0;  // close-wound onto the coated core
+
+    double windingToCore = 0;
+    for (auto& turn : turns) {
+        if (turn.get_winding() != windingName) {
+            continue;
+        }
+        windingToCore += calculate_turn_to_core_capacitance(
+            conductingRadius, turn.get_length(),
+            wireCoatingThickness, wireCoatingRelativePermittivity,
+            airGapToCore,
+            coreCoatingThickness, coreCoatingRelativePermittivity);
+    }
+    return windingToCore;
+}
+
+double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core,
+        const std::string& firstWindingName, const std::string& secondWindingName,
+        const std::vector<double>& voltagesPerTurn) {
+    // Inter-winding capacitance between two separated windings through the floating,
+    // equipotential ferrite core. Energy method (CPSS 2025 core-potential approach):
+    //   1. each turn i has a turn-to-core element C_i and sits at potential V_i;
+    //   2. the two windings carry opposing DM currents, so the second winding's turns
+    //      enter with the opposite sign (V_i -> -V_i);
+    //   3. the core is a single floating node — its potential balances the charge:
+    //      V_core = sum(C_i V_i) / sum(C_i);
+    //   4. the energy stored in all the turn-to-core capacitors is
+    //      W = sum 0.5 C_i (V_i - V_core)^2, and the effective inter-winding
+    //      capacitance referenced to the differential terminal voltage V_dm is
+    //      C = 2W / V_dm^2.
+    // Weighting by the actual per-turn potential (instead of summing every turn at the
+    // full winding voltage) is what removes the gross overestimate of the naive sum.
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    auto turns = coil.get_turns_description().value();
+    auto wirePerWinding = coil.get_wires();
+
+    double coreCoatingThickness = core.get_coating_thickness();
+    double coreCoatingRelativePermittivity = 1.0;
+    if (coreCoatingThickness > 0) {
+        coreCoatingRelativePermittivity = core.get_coating_relative_permittivity();
+    }
+
+    std::vector<double> turnCoreCapacitance;
+    std::vector<double> turnPotential;
+    double sumCV = 0;
+    double sumC = 0;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto windingName = turns[turnIndex].get_winding();
+        double sign;
+        if (windingName == firstWindingName) {
+            sign = 1.0;
+        }
+        else if (windingName == secondWindingName) {
+            sign = -1.0;  // opposing DM current
+        }
+        else {
+            continue;
+        }
+
+        auto wire = wirePerWinding[coil.get_winding_index_by_name(windingName)];
+        if (wire.get_type() != WireType::ROUND && wire.get_type() != WireType::LITZ) {
+            throw NotImplementedException("Turn-to-core capacitance is only modelled for ROUND/LITZ wires, got: " + std::string(magic_enum::enum_name(wire.get_type())));
+        }
+        // Conducting RADIUS for the Massarini routine (Dc = 2*conductingRadius);
+        // get_maximum_conducting_width is the diameter, so halve it.
+        double capacitance = calculate_turn_to_core_capacitance(
+            wire.get_maximum_conducting_width() / 2.0, turns[turnIndex].get_length(),
+            wire.get_coating_thickness(), get_wire_insulation_relative_permittivity(wire),
+            0.0 /* air gap: close-wound */,
+            coreCoatingThickness, coreCoatingRelativePermittivity);
+        double potential = sign * voltagesPerTurn[turnIndex];
+
+        turnCoreCapacitance.push_back(capacitance);
+        turnPotential.push_back(potential);
+        sumCV += capacitance * potential;
+        sumC += capacitance;
+    }
+
+    if (sumC <= 0) {
+        return 0;
+    }
+    double corePotential = sumCV / sumC;
+
+    double energy = 0;
+    double maxFirstPotential = -std::numeric_limits<double>::max();
+    double minSecondPotential = std::numeric_limits<double>::max();
+    for (size_t k = 0; k < turnCoreCapacitance.size(); ++k) {
+        energy += 0.5 * turnCoreCapacitance[k] * std::pow(turnPotential[k] - corePotential, 2);
+        if (turnPotential[k] >= 0) {
+            maxFirstPotential = std::max(maxFirstPotential, turnPotential[k]);
+        }
+        else {
+            minSecondPotential = std::min(minSecondPotential, turnPotential[k]);
+        }
+    }
+    // Differential terminal voltage across the two windings (first winding spans
+    // [0, maxFirst]; second, negated, spans [minSecond, 0]).
+    double differentialVoltage = maxFirstPotential - minSecondPotential;
+    if (differentialVoltage <= 0) {
+        return 0;
+    }
+    return 2.0 * energy / (differentialVoltage * differentialVoltage);
 }
 
 double StrayCapacitance::calculate_energy_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil) {
@@ -1484,17 +1646,17 @@ std::pair<SixCapacitorNetworkPerWinding, TripoleCapacitancePerWinding> StrayCapa
 }
 
 
-StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, std::optional<Core> core) {
     std::map<std::string, double> voltageRmsPerWinding;
     double primaryNumberTurns = coil.get_functional_description()[0].get_number_turns();
     for (auto winding : coil.get_functional_description()) {
         double turnsRatio = primaryNumberTurns /  winding.get_number_turns();
         voltageRmsPerWinding[winding.get_name()] = 10.0 / turnsRatio;
     }
-    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding);
+    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core);
 }
 
-StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, OperatingPoint operatingPoint) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core) {
     // Extract actual RMS voltages from operating point
     std::map<std::string, double> voltageRmsPerWinding;
     
@@ -1520,11 +1682,11 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, Operat
         
         voltageRmsPerWinding[coil.get_functional_description()[windingIndex].get_name()] = rmsVoltage.value();
     }
-    
-    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding);
+
+    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core);
 }
 
-StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core) {
     std::map<std::pair<size_t, size_t>, double> electricEnergyBetweenTurnsMap;
     std::map<std::pair<size_t, size_t>, double> voltageDropBetweenTurnsMap;
     std::map<std::string, std::map<std::string, ScalarMatrixAtFrequency>> capacitanceMatrix;
@@ -1604,7 +1766,18 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
                     }
                 }
                 if (windingAreNotAdjacent) {
-                    capacitanceMapPerWindings[windingsKey] = 0;
+                    // No turn of the first winding is adjacent to any turn of the second,
+                    // so there is no direct turn-to-turn capacitive path between them (the
+                    // separated-winding CMC case: the two windings sit on opposite arcs of
+                    // the toroid). The only path is through the core: turn -> core -> turn.
+                    // The energy method (potential-weighted, floating-core node) builds it
+                    // from the per-turn turn-to-core elements. Requires the core (its coating
+                    // sets the dielectric floor); without it we fall back to 0 (old behaviour).
+                    double throughCore = 0;
+                    if (core && firstWindingName != secondWindingName) {
+                        throughCore = calculate_through_core_capacitance(coil, core.value(), firstWindingName, secondWindingName, voltagesPerTurn);
+                    }
+                    capacitanceMapPerWindings[windingsKey] = throughCore;
                     continue;
                 }
 

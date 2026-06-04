@@ -100,10 +100,18 @@ Curve2D Sweeper::sweep_differential_mode_impedance_over_frequency(Magnetic magne
         throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
+    // The leakage inductance, winding resistance and inter-winding capacitance are
+    // frequency-independent, but the stray-capacitance model behind the last one is
+    // expensive (O(N^2) over turns). Compute the parameters ONCE (leakage taken at a
+    // mid-band reference) and evaluate the impedance cheaply at each point — otherwise
+    // the whole capacitance model would run per frequency (~100x slower).
+    double referenceFrequency = std::sqrt(frequencies.front() * frequencies.back());
+    auto impedance = OpenMagnetics::Impedance();
+    auto parameters = impedance.calculate_differential_mode_parameters(magnetic.get_core(), magnetic.get_coil(), referenceFrequency);
+
     std::vector<double> impedances;
     for (auto frequency : frequencies) {
-        auto impedance = abs(OpenMagnetics::Impedance().calculate_differential_mode_impedance(magnetic, frequency));
-        impedances.push_back(impedance);
+        impedances.push_back(abs(impedance.differential_mode_impedance_from_parameters(parameters, frequency)));
     }
 
     return Curve2D(frequencies, impedances, title);

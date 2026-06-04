@@ -2,6 +2,7 @@
 #include "support/Painter.h"
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/StrayCapacitance.h"
 #include "support/Settings.h"
 #include "TestingUtils.h"
 #include "support/Utils.h"
@@ -379,6 +380,41 @@ TEST_CASE("Test_Differential_Mode_Impedance", "[physical-model][impedance][cmc]"
     auto sweep = Sweeper().sweep_differential_mode_impedance_over_frequency(magnetic, 1000, 1e8, 50);
     REQUIRE(sweep.get_x_points().size() == 50);
     REQUIRE(sweep.get_y_points().size() == 50);
+}
+
+TEST_CASE("Test_Through_Core_Inter_Winding_Capacitance", "[physical-model][impedance][cmc][stray-capacitance]") {
+    // The inter-winding capacitance of a separated-winding common-mode choke is the
+    // through-core path (turn -> core -> turn): the only capacitive coupling when the
+    // two windings have no adjacent turns. Assert the energy/core-potential model gives
+    // a finite, positive, physically bounded value, and crucially LESS than the naive
+    // parallel-sum series of the two winding-to-core capacitances — the per-turn
+    // potential weighting (CPSS core-potential method) must reduce the overestimate.
+    std::vector<int64_t> numberTurns = {20, 20};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "T 20/10/7";
+    auto wire = find_wire_by_name("Round 0.15 - Grade 1");
+    std::vector<OpenMagnetics::Wire> wires = {wire, wire};
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                     WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires, false);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, std::vector<CoreGap>{}, 1, "3C97");
+    coil.wind();
+
+    auto primaryName = coil.get_functional_description()[0].get_name();
+    auto secondaryName = coil.get_functional_description()[1].get_name();
+    std::map<std::string, double> voltageRmsPerWinding = {{primaryName, 10.0}, {secondaryName, 10.0}};
+    auto voltagesPerTurn = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding).get_voltage_per_turn().value();
+
+    double throughCore = StrayCapacitance::calculate_through_core_capacitance(coil, core, primaryName, secondaryName, voltagesPerTurn);
+    double primaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, primaryName);
+    double secondaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, secondaryName);
+    double naiveSeries = (primaryToCore * secondaryToCore) / (primaryToCore + secondaryToCore);
+
+    REQUIRE(std::isfinite(throughCore));
+    REQUIRE(throughCore > 0.0);
+    REQUIRE(throughCore < 1e-9);             // physically bounded (sub-nF), no divergence
+    REQUIRE(throughCore < naiveSeries);      // potential weighting reduces vs the naive sum
 }
 
 }  // namespace

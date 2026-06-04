@@ -72,7 +72,7 @@ class StrayCapacitance{
         StrayCapacitanceModels _modelName;
         static double calculate_area_between_two_turns_using_diagonals(Turn firstTurn, Turn secondTurn);
         static double calculate_area_between_two_turns_using_vecticals_and_horizontals(Turn firstTurn, Turn secondTurn);
-        StrayCapacitanceOutput calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding);
+        StrayCapacitanceOutput calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core = std::nullopt);
     public:
 
         StrayCapacitance(StrayCapacitanceModels strayCapacitanceModel = StrayCapacitanceModels::ALBACH){
@@ -97,17 +97,37 @@ class StrayCapacitance{
         // set by the wire coating, not an acosh that diverges at contact), with the core
         // coating as the inter-electrode insulation layer, x2 for the wire-to-plane
         // (image) geometry. The core coating gives the finite floor at zero air gap.
-        // NOTE: building block for the winding-to-core / through-core inter-winding path;
-        // not yet wired into the DM capacitance until validated against datasheet resonances.
+        // Building block for the through-core inter-winding path (separated-winding CMC
+        // differential mode): summed over a winding's turns by calculate_winding_to_core_capacitance.
         static double calculate_turn_to_core_capacitance(double conductingRadius, double turnLength,
                                                          double wireCoatingThickness, double wireCoatingRelativePermittivity,
                                                          double airGapToCore,
                                                          double coreCoatingThickness, double coreCoatingRelativePermittivity);
 
+        // Total capacitance from one winding to the (equipotential) ferrite core: the
+        // parallel sum of its turns' turn-to-core elements. Two of these in series through
+        // the core node give the inter-winding capacitance for separated windings.
+        static double calculate_winding_to_core_capacitance(Coil coil, Core core, std::string windingName);
+
+        // Inter-winding capacitance between two SEPARATED windings through the floating,
+        // equipotential ferrite core (turn -> core -> turn). Energy method: weights each
+        // turn-to-core element by the actual per-turn potential (voltagesPerTurn) and
+        // solves the floating-core node, per the CPSS 2025 core-potential method — so the
+        // turns' potential distribution is accounted for, not a naive parallel sum (which
+        // overestimates by ~3x). The two windings carry opposing DM currents, so the
+        // second winding's per-turn potentials enter with the opposite sign.
+        static double calculate_through_core_capacitance(Coil coil, Core core,
+                                                         const std::string& firstWindingName,
+                                                         const std::string& secondWindingName,
+                                                         const std::vector<double>& voltagesPerTurn);
+
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
-        StrayCapacitanceOutput calculate_capacitance(Coil coil);
-        StrayCapacitanceOutput calculate_capacitance(Coil coil, OperatingPoint operatingPoint);
+        // The optional core supplies the through-core inter-winding capacitance for
+        // separated (non-adjacent) windings; omit it to keep the legacy behaviour where
+        // separated windings have zero mutual capacitance.
+        StrayCapacitanceOutput calculate_capacitance(Coil coil, std::optional<Core> core = std::nullopt);
+        StrayCapacitanceOutput calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core = std::nullopt);
     
     // Bipolar coordinate system for round-round energy density computation
     struct BipolarParams {
