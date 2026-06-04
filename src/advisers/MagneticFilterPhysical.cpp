@@ -38,7 +38,12 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
     //
     auto topology = inputs->get_design_requirements().get_topology();
     bool isTransformer;
-    if (topology.has_value()) {
+    if (windings_on_single_isolation_side(inputs->get_design_requirements().get_isolation_sides())) {
+        // All windings on one isolation side -> (coupled) inductor, never a transformer,
+        // regardless of the converter topology (e.g. Weinberg L1 input coupled inductor).
+        // Forces the B-from-current (DC-biased) path instead of B-from-voltage.
+        isTransformer = false;
+    } else if (topology.has_value()) {
         // Use topology-based detection
         isTransformer = !is_energy_storing_topology(topology);
     } else {

@@ -44,6 +44,7 @@
 
 #include "converter_models/Weinberg.h"
 #include "processors/Inputs.h"
+#include "advisers/MagneticAdviser.h"
 #include "processors/NgspiceRunner.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
@@ -753,4 +754,22 @@ TEST_CASE("Test_Weinberg_Waveform_Plotting",
         painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
         painter.export_svg();
     }
+}
+
+// Regression (Heaviside item): the L1 input coupled inductor (2 windings, both on the
+// PRIMARY side) must be classified as an inductor, not a transformer, so the magnetic
+// adviser finds cores. Previously topology=weinbergConverter forced the transformer
+// B-from-voltage path, over-estimating B so the saturation filter rejected every core
+// -> 0 adviser picks. Fixed by windings_on_single_isolation_side() in the classifier.
+TEST_CASE("Test_Weinberg_InputCoupledInductor_GetsAdvisedMagnetic",
+          "[converter-model][weinberg-topology][adviser]") {
+    json j = make_weinberg_json(50.0, 150.0, 10.0, 50e3);
+    OpenMagnetics::Weinberg w(j);
+    w.process_operating_points(std::vector<double>{1.0/3.0}, 200e-6);
+    auto extras = w.get_extra_components_inputs(ExtraComponentsMode::IDEAL);
+    REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[0]));
+    auto l1 = std::get<OpenMagnetics::Inputs>(extras[0]);
+    OpenMagnetics::MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(l1, 1);
+    REQUIRE(results.size() > 0);
 }

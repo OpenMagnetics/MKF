@@ -99,6 +99,25 @@ inline bool is_energy_storing_topology(std::optional<Topologies> topology) {
     }
 }
 
+// A transformer must couple windings across at least two isolation sides. When every
+// winding sits on the SAME isolation side (e.g. a coupled inductor with all windings on
+// PRIMARY, like the Weinberg L1 input choke), the magnetic stores energy like an inductor
+// regardless of the converter topology, so it must NOT be classified as a transformer.
+// Misclassifying it as a transformer computes B from voltage (missing the DC bias), which
+// over-estimates B and makes the saturation filter reject every core. A single (or unknown)
+// winding returns false here so the topology / inductance heuristic decides as before.
+inline bool windings_on_single_isolation_side(const std::optional<std::vector<IsolationSide>>& isolationSides) {
+    if (!isolationSides.has_value() || isolationSides->size() < 2) {
+        return false;
+    }
+    for (size_t i = 1; i < isolationSides->size(); ++i) {
+        if ((*isolationSides)[i] != (*isolationSides)[0]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Phase 3 (F6): PQI / UI shapes use integrated windings whose layout is
 // not produced by fast_wind(), so the loss / impedance filters take a
 // per-shape policy branch. Centralised here so every site uses the same

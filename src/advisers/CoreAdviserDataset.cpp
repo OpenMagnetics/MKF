@@ -483,13 +483,21 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     // 2. Fall back to inductance field heuristic (minimum-only = transformer)
     //
     auto topology = inputs.get_design_requirements().get_topology();
-    bool isEnergyStoring = is_energy_storing_topology(topology);
-    
+    // All windings on one isolation side -> (coupled) inductor, never a transformer,
+    // regardless of the converter topology (e.g. Weinberg L1 input coupled inductor).
+    // Such a magnetic stores energy and must use the B-from-current (DC-biased) path;
+    // misclassifying it as a transformer computes B from voltage, over-estimates B, and
+    // rejects every core at the saturation filter.
+    bool singleIsolationSide = windings_on_single_isolation_side(inputs.get_design_requirements().get_isolation_sides());
+    bool isEnergyStoring = singleIsolationSide || is_energy_storing_topology(topology);
+
     // If topology is not set, use the old heuristic based on inductance specification
     // minimum-only inductance suggests transformer (want high inductance, no specific value)
     // nominal or min+max suggests inductor (need specific value for energy storage)
     bool isTransformer;
-    if (topology.has_value()) {
+    if (singleIsolationSide) {
+        isTransformer = false;
+    } else if (topology.has_value()) {
         isTransformer = !isEnergyStoring;
     } else {
         // Legacy heuristic: minimum-only = transformer

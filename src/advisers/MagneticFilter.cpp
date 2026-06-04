@@ -293,7 +293,11 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     //
     auto topology = inputs->get_design_requirements().get_topology();
     bool isTransformer;
-    if (topology.has_value()) {
+    if (windings_on_single_isolation_side(inputs->get_design_requirements().get_isolation_sides())) {
+        // All windings on one isolation side -> (coupled) inductor, never a transformer,
+        // regardless of the converter topology (e.g. Weinberg L1 input coupled inductor).
+        isTransformer = false;
+    } else if (topology.has_value()) {
         isTransformer = !is_energy_storing_topology(topology);
     } else {
         // Legacy heuristic: minimum-only inductance = transformer
