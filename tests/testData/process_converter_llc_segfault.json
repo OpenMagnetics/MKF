@@ -1,0 +1,29 @@
+{
+  "topology": "llc",
+  "converter": {
+    "inputVoltage": {
+      "minimum": 380.0,
+      "maximum": 420.0
+    },
+    "minSwitchingFrequency": 80000.0,
+    "maxSwitchingFrequency": 250000.0,
+    "inductanceRatio": 5.0,
+    "efficiency": 0.96,
+    "operatingPoints": [
+      {
+        "ambientTemperature": 25.0,
+        "outputVoltages": [
+          12.0
+        ],
+        "outputCurrents": [
+          25.0
+        ],
+        "switchingFrequency": 150000.0
+      }
+    ]
+  },
+  "use_ngspice": false,
+  "bug": "process_converter segfaults when use_ngspice=False for LLC topology",
+  "reproduce": "PyOM.process_converter('llc', converter, False)  # segfault",
+  "workaround": "PyOM.process_converter('llc', converter, True)  # works, 9.5s"
+}
