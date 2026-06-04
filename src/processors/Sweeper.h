@@ -15,7 +15,11 @@ class Sweeper {
     private:
     protected:
     public:
-    static Curve2D sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Impedance over frequency");
+    // fast=true (default): the series leakage term uses DC + skin-effect winding
+    // resistance (analytic, cheap). fast=false additionally includes proximity
+    // effect (field-based, slower) for a more accurate leakage-resonance damping.
+    static Curve2D sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Impedance over frequency", bool fast = true);
+    static Curve2D sweep_differential_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Differential-mode impedance over frequency");
     static Curve2D sweep_q_factor_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Impedance over frequency");
     static Curve2D sweep_magnetizing_inductance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature = defaults.ambientTemperature, std::string mode="log", std::string title = "Magnetizing Inductance over frequency");
     static Curve2D sweep_magnetizing_inductance_over_temperature(Magnetic magnetic, double start, double stop, size_t numberElements, double frequency = defaults.measurementFrequency, std::string mode="linear", std::string title = "Magnetizing Inductance over temperature");

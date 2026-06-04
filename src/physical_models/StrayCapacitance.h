@@ -91,6 +91,19 @@ class StrayCapacitance{
         double calculate_energy_density_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil = std::nullopt);
         static double calculate_area_between_two_turns(Turn firstTurn, Turn secondTurn);
 
+        // Capacitance of a single turn to the (equipotential) ferrite core surface,
+        // through the dielectric stack wire-enamel | air | core-coating. Reuses the
+        // Massarini turn-to-turn formula (inherently bounded — it depends on ln(D0/Dc)
+        // set by the wire coating, not an acosh that diverges at contact), with the core
+        // coating as the inter-electrode insulation layer, x2 for the wire-to-plane
+        // (image) geometry. The core coating gives the finite floor at zero air gap.
+        // NOTE: building block for the winding-to-core / through-core inter-winding path;
+        // not yet wired into the DM capacitance until validated against datasheet resonances.
+        static double calculate_turn_to_core_capacitance(double conductingRadius, double turnLength,
+                                                         double wireCoatingThickness, double wireCoatingRelativePermittivity,
+                                                         double airGapToCore,
+                                                         double coreCoatingThickness, double coreCoatingRelativePermittivity);
+
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
         StrayCapacitanceOutput calculate_capacitance(Coil coil);

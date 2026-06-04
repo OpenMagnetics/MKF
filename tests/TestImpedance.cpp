@@ -338,4 +338,47 @@ TEST_CASE("Test_Impedance_Few_Turns_Larger_Core", "[physical-model][impedance][s
 
 }
 
+TEST_CASE("Test_Differential_Mode_Impedance", "[physical-model][impedance][cmc]") {
+    // Two-winding toroid = a common-mode choke. In differential mode the core
+    // flux cancels, so the impedance is set by the (much smaller) leakage
+    // inductance resonating with the inter-winding capacitance. We assert the
+    // qualitative physics: DM impedance is finite, far below the common-mode
+    // impedance at low frequency, and inductive (rising) there.
+    std::vector<int64_t> numberTurns = {54, 54};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "T 17/10.7/6.8";
+    std::vector<OpenMagnetics::Wire> wires;
+    auto wire = find_wire_by_name("Round 0.15 - Grade 1");
+    wires.push_back(wire);
+    wires.push_back(wire);
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                     WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires, false);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, std::vector<CoreGap>{}, 1, "80");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    double frequency = 100000;
+    auto commonMode = abs(Impedance().calculate_impedance(magnetic, frequency));
+    auto differentialMode = abs(Impedance().calculate_differential_mode_impedance(magnetic, frequency));
+
+    // DM impedance must be a finite, positive number...
+    REQUIRE(std::isfinite(differentialMode));
+    REQUIRE(differentialMode > 0);
+    // ...and well below the common-mode impedance (leakage ≪ magnetizing L).
+    REQUIRE(differentialMode < commonMode);
+
+    // Below its own resonance the DM branch is inductive: |Z| rises with f.
+    auto dmLow = abs(Impedance().calculate_differential_mode_impedance(magnetic, 1e4));
+    auto dmHigh = abs(Impedance().calculate_differential_mode_impedance(magnetic, 1e5));
+    REQUIRE(dmHigh > dmLow);
+
+    // The sweep helper returns a curve of the same length as requested.
+    auto sweep = Sweeper().sweep_differential_mode_impedance_over_frequency(magnetic, 1000, 1e8, 50);
+    REQUIRE(sweep.get_x_points().size() == 50);
+    REQUIRE(sweep.get_y_points().size() == 50);
+}
+
 }  // namespace

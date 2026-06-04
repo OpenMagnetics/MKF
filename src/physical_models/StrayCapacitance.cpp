@@ -1299,6 +1299,39 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
 }
 
 
+double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRadius, double turnLength,
+                                                            double wireCoatingThickness, double wireCoatingRelativePermittivity,
+                                                            double airGapToCore,
+                                                            double coreCoatingThickness, double coreCoatingRelativePermittivity) {
+    // A turn modelled as a round conductor parallel to the equipotential ferrite
+    // surface (the ferrite's own high permittivity does not enter — it is just an
+    // electrode). The dielectric stack between conductor and ferrite is:
+    //   wire enamel (wireCoatingThickness, eps_w) | air (airGapToCore) | core coating (coreCoatingThickness, eps_c).
+    //
+    // We reuse the Massarini turn-to-turn formula with the core coating playing the
+    // role of the "insulation layers" between the two electrodes, then multiply by 2
+    // for the wire-to-plane (image) geometry vs the wire-to-wire the formula assumes.
+    // Unlike the old wire-above-plane helper (C ~ 1/acosh(h/r), which diverges as the
+    // turn touches the core), the Massarini form depends on ln(D0/Dc) — fixed by the
+    // wire coating — and the air gap only enters through the effective permittivity, so
+    // the result stays finite at zero air gap: the coating is the physical floor.
+    if (conductingRadius <= 0 || turnLength <= 0) {
+        return 0;
+    }
+    // The Massarini formula lumps (air + insulation layers) into one layer with a single
+    // permittivity, so first combine the air gap (eps_r = 1) in series with the core
+    // coating into an effective permittivity. This keeps air at eps_r = 1 rather than
+    // the coating's value, so the element decreases monotonically as the gap grows.
+    double airAndCoatingPermittivity = get_effective_relative_permittivity(
+        airGapToCore, 1.0, coreCoatingThickness, coreCoatingRelativePermittivity);
+    StrayCapacitanceMassariniModel model;
+    double turnToTurn = model.calculate_static_capacitance_between_two_turns(
+        wireCoatingThickness, turnLength, conductingRadius,
+        coreCoatingThickness, airGapToCore,
+        wireCoatingRelativePermittivity, airAndCoatingPermittivity);
+    return 2.0 * turnToTurn;
+}
+
 double StrayCapacitance::calculate_energy_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil) {
     double capacitance = calculate_static_capacitance_between_two_turns(firstTurn, firstWire, secondTurn, secondWire, coil);
     double energy = 0.5 * capacitance * pow(voltageDrop, 2);

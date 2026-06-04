@@ -1536,3 +1536,43 @@ TEST_CASE("Debug primary-primary intrawinding capacitance", "[physical-model][st
     
     REQUIRE(true);
 }
+
+TEST_CASE("Turn_To_Core_Capacitance_Bounded_And_Monotone", "[physical-model][stray-capacitance][coating]") {
+    // §7 building block: capacitance of a turn to the equipotential ferrite surface,
+    // through the wire-enamel | air | core-coating dielectric stack. It must be FINITE
+    // at zero air gap (the coating is the floor — no divergence like the old
+    // wire-above-plane helper) and decrease monotonically as the air gap grows.
+    const double r = 0.4e-3;        // conducting radius [m]
+    const double L = 30e-3;         // turn length [m]
+    const double tEnamel = 25e-6;   // wire enamel thickness [m]
+    const double epsEnamel = 3.5;
+    const double tCoating = 12.7e-6; // parylene core coating [m]
+    const double epsCoating = 3.1;
+
+    std::vector<double> gaps = {0.0, 10e-6, 50e-6, 100e-6, 300e-6, 1e-3};
+    std::vector<double> caps;
+    for (double g : gaps) {
+        double c = StrayCapacitance::calculate_turn_to_core_capacitance(r, L, tEnamel, epsEnamel, g, tCoating, epsCoating);
+        caps.push_back(c);
+        REQUIRE(std::isfinite(c));
+        REQUIRE(c > 0.0);
+        REQUIRE(c < 1e-9);  // bounded far below the old ~1.3 nF divergence
+    }
+
+    // Finite (bounded by the coating) at zero air gap — the divergence is gone.
+    REQUIRE(std::isfinite(caps.front()));
+    REQUIRE(caps.front() < 1e-9);
+
+    // Monotonic decrease with increasing air gap.
+    for (size_t i = 1; i < caps.size(); ++i) {
+        REQUIRE(caps[i] < caps[i - 1]);
+    }
+
+    // A thicker core coating lowers the contact (zero-gap) capacitance.
+    double cThinCoat = StrayCapacitance::calculate_turn_to_core_capacitance(r, L, tEnamel, epsEnamel, 0.0, 12.7e-6, epsCoating);
+    double cThickCoat = StrayCapacitance::calculate_turn_to_core_capacitance(r, L, tEnamel, epsEnamel, 0.0, 100e-6, epsCoating);
+    REQUIRE(cThickCoat < cThinCoat);
+
+    // Degenerate inputs return 0 rather than NaN/Inf.
+    REQUIRE(StrayCapacitance::calculate_turn_to_core_capacitance(0.0, L, tEnamel, epsEnamel, 0.0, tCoating, epsCoating) == 0.0);
+}

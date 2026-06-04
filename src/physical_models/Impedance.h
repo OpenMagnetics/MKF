@@ -28,6 +28,12 @@ class Impedance {
     std::complex<double> calculate_impedance(Magnetic magnetic, double frequency, double temperature = Defaults().ambientTemperature);
     std::complex<double> calculate_impedance(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);
     std::complex<double> calculate_impedance(Core core, Coil coil, double frequency, double magneticFieldDcBias, double temperature);
+    // Differential-mode impedance of a coupled (e.g. common-mode-choke) magnetic:
+    // the opposing winding currents cancel the core flux, so the inductance seen
+    // is the leakage inductance, which parallel-resonates with the inter-winding
+    // capacitance (the second self-resonance).
+    std::complex<double> calculate_differential_mode_impedance(Magnetic magnetic, double frequency, double temperature = Defaults().ambientTemperature);
+    std::complex<double> calculate_differential_mode_impedance(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);
     double calculate_q_factor(Magnetic magnetic, double frequency, double temperature = Defaults().ambientTemperature);
     double calculate_q_factor(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);
     double calculate_self_resonant_frequency(Magnetic magnetic, double temperature = Defaults().ambientTemperature);

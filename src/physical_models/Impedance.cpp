@@ -4,10 +4,13 @@
 #include "physical_models/Reluctance.h"
 #include "physical_models/StrayCapacitance.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/LeakageInductance.h"
+#include "physical_models/WindingOhmicLosses.h"
 #include "constructive_models/NumberTurns.h"
 #include "support/Utils.h"
 #include "support/Settings.h"
 #include <cmath>
+#include <numbers>
 
 
 namespace OpenMagnetics {
@@ -16,6 +19,62 @@ std::complex<double> Impedance::calculate_impedance(Magnetic magnetic, double fr
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
     return calculate_impedance(core, coil, frequency, temperature);
+}
+
+std::complex<double> Impedance::calculate_differential_mode_impedance(Magnetic magnetic, double frequency, double temperature) {
+    return calculate_differential_mode_impedance(magnetic.get_core(), magnetic.get_coil(), frequency, temperature);
+}
+
+std::complex<double> Impedance::calculate_differential_mode_impedance(Core core, Coil coil, double frequency, double temperature) {
+    // Differential mode: the two windings carry opposing currents, so the flux
+    // they drive into the core cancels. The inductance seen is therefore the
+    // *leakage* inductance (the flux that does not couple through the core),
+    // which is essentially air-cored and so frequency-flat. It parallel-
+    // resonates with the *inter-winding* capacitance — the choke's second
+    // self-resonance. Structurally this mirrors calculate_impedance() (common
+    // mode), swapping the core-amplified magnetizing inductance for the leakage
+    // inductance and the winding self-capacitance for the inter-winding one.
+    if (coil.get_functional_description().size() < 2) {
+        throw std::runtime_error("Differential-mode impedance requires at least two windings");
+    }
+
+    Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    double leakageInductance = LeakageInductance()
+        .calculate_leakage_inductance(magnetic, frequency, 0, 1)
+        .get_leakage_inductance_per_winding()[0]
+        .get_nominal()
+        .value();
+
+    auto angularFrequency = 2 * std::numbers::pi * frequency;
+
+    // The leakage path is essentially air-cored (no core permeability), so the
+    // inductive branch is purely reactive; the winding resistance is the
+    // dominant loss term. Sign convention matches calculate_impedance().
+    double windingResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, temperature)[0];
+    auto inductiveImpedance = std::complex<double>(windingResistance, angularFrequency * leakageInductance);
+
+    // Inter-winding capacitance: the off-diagonal term of the stray-capacitance
+    // matrix (between the two windings). The DM resonance is set by this, not by
+    // the per-winding self-capacitance used in common mode.
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil).get_capacitance_among_windings().value();
+    auto primaryName = coil.get_functional_description()[0].get_name();
+    auto secondaryName = coil.get_functional_description()[1].get_name();
+    double interWindingCapacitance = capacitanceMatrix[primaryName][secondaryName];
+
+    if (interWindingCapacitance <= 0) {
+        // No capacitive path: the DM impedance is purely the leakage branch.
+        return inductiveImpedance;
+    }
+    auto capacitiveImpedance = std::complex<double>(0, -1.0 / (angularFrequency * interWindingCapacitance));
+
+    auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
+    return impedance;
 }
 
 std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double frequency, double temperature) {
@@ -29,7 +88,9 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
 
     auto angularFrequency = 2 * std::numbers::pi * frequency;
     double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
-    auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
+    // Standard e^{jωt} convention: Z_L = jωL_air·µ = jωL_air·(µ' − jµ'') = ωL_air·(µ'' + jµ').
+    // So the real part (loss) is ωL_air·µ'' and the reactance is +ωL_air·µ' (positive/inductive).
+    auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, complexPermeabilityRealPart);
 
     double capacitance;
     auto& settings = Settings::GetInstance();
@@ -42,7 +103,7 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
         capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
     }
 
-    auto capacitiveImpedance = std::complex<double>(0, 1.0 / (angularFrequency * capacitance));
+    auto capacitiveImpedance = std::complex<double>(0, -1.0 / (angularFrequency * capacitance));
 
     auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
 
@@ -73,7 +134,9 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
 
     auto angularFrequency = 2 * std::numbers::pi * frequency;
     double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
-    auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
+    // Standard e^{jωt} convention: Z_L = jωL_air·µ = jωL_air·(µ' − jµ'') = ωL_air·(µ'' + jµ').
+    // So the real part (loss) is ωL_air·µ'' and the reactance is +ωL_air·µ' (positive/inductive).
+    auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, complexPermeabilityRealPart);
 
     double capacitance;
     auto& settings = Settings::GetInstance();
@@ -86,7 +149,7 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
         capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
     }
 
-    auto capacitiveImpedance = std::complex<double>(0, 1.0 / (angularFrequency * capacitance));
+    auto capacitiveImpedance = std::complex<double>(0, -1.0 / (angularFrequency * capacitance));
     auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
 
     return impedance;

@@ -53,6 +53,20 @@ struct Defaults {
     const std::string defaultConductorMaterial = "copper";
     const std::string defaultPcbInsulationMaterial = "FR4";
     const std::string defaultBobbinMaterial = "PET";
+    // Core coating thickness per surface, in m, used when a core's coating is given
+    // only by name (epoxy/parylene) with no explicit thickness — the bulk of the
+    // catalogue. Datasheet-sourced (see memory/core-coating-thicknesses.md):
+    //   - parylene: "0.0005\" Parylene C" finish, conformal/size-independent
+    //               (Micrometals datasheets, e.g. TR11-17/94; = Magnetics AY finish)
+    //   - epoxy:    derived from Magnetics 2017 Powder Core Catalog p.14 — epoxy adds
+    //               0.18 mm (0.007") more OD than parylene (0.089 mm/side) → ~0.10 mm
+    const double defaultParyleneCoreCoatingThickness = 12.7e-6;  // 0.0005"
+    const double defaultEpoxyCoreCoatingThickness = 0.1e-3;      // 0.10 mm
+    // Insulation material (in insulation_materials.ndjson) that supplies the relative
+    // permittivity / dielectric strength for each core coating type given only by name.
+    const std::string defaultEpoxyCoreCoatingMaterial = "epoxy";        // eps_r 3.6
+    const std::string defaultParyleneCoreCoatingMaterial = "parylene";  // eps_r 3.1 (Parylene C)
+    const std::string defaultNylonCoreCoatingMaterial = "Nylon 6.6";    // eps_r 3.4
     const double overlappingFactorSurroundingTurns = 0.7;
     const WireStandard commonWireStandard = WireStandard::NEMA_MW_1000_C;
     const WiringTechnology wiringTechnology = WiringTechnology::WOUND;

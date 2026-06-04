@@ -348,6 +348,7 @@ add_custom_command(
     -S ${MAS_DIR}/schemas/magnetic/core/gap.json
     -S ${MAS_DIR}/schemas/magnetic/core/shape.json
     -S ${MAS_DIR}/schemas/magnetic/core/material.json
+    -S ${MAS_DIR}/schemas/magnetic/core/coating.json
     -S ${MAS_DIR}/schemas/magnetic/insulation/material.json
     -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json
     -S ${MAS_DIR}/schemas/magnetic/bobbin.json

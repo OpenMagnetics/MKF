@@ -1947,4 +1947,97 @@ TEST_CASE("Toroid_Effective_Parameters_Different_Standards", "[constructive-mode
     REQUIRE((areaDifferent || lengthDifferent || volumeDifferent));
 }
 
+TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][coating][winding-window]") {
+    // §5 geometry: a core coating lines the bore, so the usable winding bore
+    // shrinks by the coating thickness, while the effective magnetic parameters
+    // (computed from the bare ferrite) are unchanged. Uncoated cores are a no-op.
+    auto makeToroid = [](const std::string& coating) {
+        json coreJson;
+        coreJson["functionalDescription"] = json();
+        coreJson["name"] = "core_T_40_24_16_coating";
+        coreJson["functionalDescription"]["type"] = "toroidal";
+        coreJson["functionalDescription"]["material"] = "N97";
+        coreJson["functionalDescription"]["shape"] = "T 40/24/16";
+        coreJson["functionalDescription"]["gapping"] = json::array();
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        if (!coating.empty()) {
+            coreJson["functionalDescription"]["coating"] = coating;
+        }
+        return Core(coreJson, true);
+    };
+
+    Core bare = makeToroid("");
+    Core epoxy = makeToroid("epoxy");
+    Core parylene = makeToroid("parylene");
+
+    // Coating thickness resolves: none -> 0, name-only -> datasheet default.
+    REQUIRE(bare.get_coating_thickness() == 0.0);
+    REQUIRE_THAT(epoxy.get_coating_thickness(), Catch::Matchers::WithinAbs(0.1e-3, 1e-12));
+    REQUIRE_THAT(parylene.get_coating_thickness(), Catch::Matchers::WithinAbs(12.7e-6, 1e-12));
+
+    double bareRh = bare.get_processed_description()->get_winding_windows()[0].get_radial_height().value();
+    double epoxyRh = epoxy.get_processed_description()->get_winding_windows()[0].get_radial_height().value();
+    double paryleneRh = parylene.get_processed_description()->get_winding_windows()[0].get_radial_height().value();
+
+    // The usable winding bore shrinks by exactly the coating thickness.
+    REQUIRE(epoxyRh < bareRh);
+    REQUIRE_THAT(bareRh - epoxyRh, Catch::Matchers::WithinAbs(0.1e-3, 1e-9));
+    REQUIRE_THAT(bareRh - paryleneRh, Catch::Matchers::WithinAbs(12.7e-6, 1e-9));
+    // Window area follows the reduced radius.
+    double epoxyArea = epoxy.get_processed_description()->get_winding_windows()[0].get_area().value();
+    REQUIRE_THAT(epoxyArea, Catch::Matchers::WithinRel(std::numbers::pi * epoxyRh * epoxyRh, 1e-9));
+
+    // Effective magnetic parameters are bare-ferrite and must be UNCHANGED by coating.
+    auto pb = bare.get_processed_description()->get_effective_parameters();
+    auto pe = epoxy.get_processed_description()->get_effective_parameters();
+    REQUIRE(pb.get_effective_area() == pe.get_effective_area());
+    REQUIRE(pb.get_effective_length() == pe.get_effective_length());
+    REQUIRE(pb.get_effective_volume() == pe.get_effective_volume());
+
+    // An explicit coating thickness (object form) overrides the name default.
+    json explicitJson;
+    explicitJson["functionalDescription"] = json();
+    explicitJson["name"] = "core_T_40_24_16_explicit_coating";
+    explicitJson["functionalDescription"]["type"] = "toroidal";
+    explicitJson["functionalDescription"]["material"] = "N97";
+    explicitJson["functionalDescription"]["shape"] = "T 40/24/16";
+    explicitJson["functionalDescription"]["gapping"] = json::array();
+    explicitJson["functionalDescription"]["numberStacks"] = 1;
+    explicitJson["functionalDescription"]["coating"] = {{"type", "epoxy"}, {"thickness", 0.0005}};
+    Core explicitCore(explicitJson, true);
+    REQUIRE_THAT(explicitCore.get_coating_thickness(), Catch::Matchers::WithinAbs(0.0005, 1e-12));
+    double explicitRh = explicitCore.get_processed_description()->get_winding_windows()[0].get_radial_height().value();
+    REQUIRE_THAT(bareRh - explicitRh, Catch::Matchers::WithinAbs(0.0005, 1e-9));
+}
+
+TEST_CASE("Toroid_Coating_Relative_Permittivity", "[constructive-model][core][coating]") {
+    // §7 prerequisite: the coating's relative permittivity is resolved from its
+    // insulation material — datasheet default per type, or an explicit material.
+    auto makeCore = [](const json& coating) {
+        json coreJson;
+        coreJson["functionalDescription"] = json();
+        coreJson["name"] = "core_coating_permittivity";
+        coreJson["functionalDescription"]["type"] = "toroidal";
+        coreJson["functionalDescription"]["material"] = "N97";
+        coreJson["functionalDescription"]["shape"] = "T 40/24/16";
+        coreJson["functionalDescription"]["gapping"] = json::array();
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        if (!coating.is_null()) {
+            coreJson["functionalDescription"]["coating"] = coating;
+        }
+        return Core(coreJson, true);
+    };
+
+    // Name-only coatings resolve to the datasheet default material permittivity.
+    REQUIRE_THAT(makeCore("epoxy").get_coating_relative_permittivity(), Catch::Matchers::WithinAbs(3.6, 1e-9));
+    REQUIRE_THAT(makeCore("parylene").get_coating_relative_permittivity(), Catch::Matchers::WithinAbs(3.1, 1e-9));
+
+    // An explicit material overrides the per-type default (Kapton HN = 3.4).
+    Core explicitMat = makeCore(json({{"type", "epoxy"}, {"thickness", 0.0003}, {"material", "Kapton HN"}}));
+    REQUIRE_THAT(explicitMat.get_coating_relative_permittivity(), Catch::Matchers::WithinAbs(3.4, 1e-9));
+
+    // No coating -> throws rather than inventing a permittivity.
+    REQUIRE_THROWS(makeCore(json(nullptr)).get_coating_relative_permittivity());
+}
+
 }  // namespace

@@ -122,6 +122,15 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
 }
 
 LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
+    // On an unprocessed magnetic (core shape/material still name strings, no
+    // effective parameters) the field/reluctance path fails deep with a cryptic
+    // "std::get: wrong index for variant". Surface it clearly instead.
+    if (!magnetic.get_core().get_processed_description()) {
+        throw CoreNotProcessedException(
+            "Cannot calculate leakage inductance: the core has no processed description "
+            "(effective parameters/shape unresolved). Run magnetic autocomplete / process the core first.");
+    }
+
     auto originallyIncludeFringing = settings.get_magnetic_field_include_fringing();
     settings.set_magnetic_field_include_fringing(false);
 
