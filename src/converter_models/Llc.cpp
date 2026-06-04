@@ -1363,7 +1363,13 @@ std::string Llc::generate_ngspice_circuit(
     double fsw = llcOp.get_switching_frequency();
     double period = 1.0 / fsw;
     double halfPeriod = period / 2.0;
-    double deadTime = computedDeadTime;
+    // computedDeadTime is a fixed default (1 µs) sized for low-frequency LLC.
+    // At high fsw (e.g. 250 kHz → halfPeriod = 2 µs) a 1 µs dead time leaves
+    // tOn = 0 and the VOLTAGE_CONTROLLED_SWITCH bridge aborts. Clamp it to a
+    // physically sane fraction of the half-period (≤10 %, ZVS-realistic) so
+    // the configured dead time is honoured when it fits but never exceeds the
+    // available conduction window. Mirrors Src.cpp's period-scaled dead time.
+    double deadTime = std::min(computedDeadTime, halfPeriod * 0.1);
     double tOn = halfPeriod - deadTime;
 
     size_t numOutputs = llcOp.get_output_voltages().size();
