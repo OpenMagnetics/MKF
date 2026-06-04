@@ -1109,6 +1109,93 @@ CoreShape Core::resolve_shape(CoreShapeDataOrNameUnion coreShape) {
     }
 }
 
+double Core::get_coating_thickness() const {
+    if (!get_functional_description().get_coating()) {
+        return 0;
+    }
+    auto coating = get_functional_description().get_coating().value();
+    // Explicit coating data (CoreCoating object): use its thickness directly.
+    if (std::holds_alternative<CoreCoating>(coating)) {
+        return std::get<CoreCoating>(coating).get_thickness();
+    }
+    // Name-only coating (legacy string form): resolve the datasheet default
+    // thickness for the coating type. Throw for an unknown type rather than
+    // inventing a thickness — only the types we have datasheet values for resolve.
+    auto name = std::get<std::string>(coating);
+    auto defaults = Defaults();
+    if (name == "parylene") {
+        return defaults.defaultParyleneCoreCoatingThickness;
+    }
+    if (name == "epoxy") {
+        return defaults.defaultEpoxyCoreCoatingThickness;
+    }
+    throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+        "Core coating type '" + name + "' has no known default thickness; provide an explicit coating thickness");
+}
+
+double Core::get_coating_relative_permittivity() const {
+    if (!get_functional_description().get_coating()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Core has no coating; cannot resolve coating relative permittivity");
+    }
+    auto coating = get_functional_description().get_coating().value();
+    auto defaults = Defaults();
+
+    // The coating type as a lowercase name, used to pick the default insulation
+    // material when no explicit material is given.
+    std::string typeName;
+    if (std::holds_alternative<CoreCoating>(coating)) {
+        auto coreCoating = std::get<CoreCoating>(coating);
+        // An explicit material overrides the per-type default.
+        if (coreCoating.get_material()) {
+            auto materialUnion = coreCoating.get_material().value();
+            InsulationMaterial material = std::holds_alternative<MAS::InsulationMaterial>(materialUnion)
+                ? InsulationMaterial(std::get<MAS::InsulationMaterial>(materialUnion))
+                : find_insulation_material_by_name(std::get<std::string>(materialUnion));
+            if (!material.get_relative_permittivity()) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "Core coating material has no relative permittivity");
+            }
+            return material.get_relative_permittivity().value();
+        }
+        if (!coreCoating.get_type()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Core coating has neither material nor type; cannot resolve relative permittivity");
+        }
+        switch (coreCoating.get_type().value()) {
+            case CoatingType::EPOXY:    typeName = "epoxy"; break;
+            case CoatingType::PARYLENE: typeName = "parylene"; break;
+            case CoatingType::NYLON:    typeName = "nylon"; break;
+            case CoatingType::GLASS:    typeName = "glass"; break;
+        }
+    }
+    else {
+        typeName = std::get<std::string>(coating);
+    }
+
+    // Map the coating type to the insulation material that carries its permittivity.
+    std::string materialName;
+    if (typeName == "epoxy") {
+        materialName = defaults.defaultEpoxyCoreCoatingMaterial;
+    }
+    else if (typeName == "parylene") {
+        materialName = defaults.defaultParyleneCoreCoatingMaterial;
+    }
+    else if (typeName == "nylon") {
+        materialName = defaults.defaultNylonCoreCoatingMaterial;
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Core coating type '" + typeName + "' has no default insulation material; provide an explicit coating material");
+    }
+    auto material = find_insulation_material_by_name(materialName);
+    if (!material.get_relative_permittivity()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Coating insulation material '" + materialName + "' has no relative permittivity in the database");
+    }
+    return material.get_relative_permittivity().value();
+}
+
 void Core::process_data() {
     // If the shape is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(get_functional_description().get_shape())) {
@@ -1158,14 +1245,29 @@ void Core::process_data() {
 
     switch (get_functional_description().get_type()) {
         case CoreType::TOROIDAL:
-        case CoreType::CLOSED_SHAPE:
+        case CoreType::CLOSED_SHAPE: {
             processedDescription.set_columns(coreColumns);
             processedDescription.set_effective_parameters(coreEffectiveParameters);
-            processedDescription.get_mutable_winding_windows().push_back(corePiece->get_winding_window());
+            // The coating lines the inner (bore) surface of the ring, so the bore
+            // available for winding is smaller than the bare-ferrite bore by the
+            // coating thickness. Effective magnetic parameters stay bare ferrite
+            // (set above); only the winding window shrinks. For uncoated cores
+            // get_coating_thickness() is 0, so this is a no-op. The reduced radial
+            // height propagates to turn placement via create_quick_bobbin(Core),
+            // whose round-window branch reads coreWindingWindow.get_radial_height().
+            auto windingWindow = corePiece->get_winding_window();
+            double coatingThickness = get_coating_thickness();
+            if (coatingThickness > 0 && windingWindow.get_radial_height()) {
+                double coatedRadialHeight = std::max(0.0, windingWindow.get_radial_height().value() - coatingThickness);
+                windingWindow.set_radial_height(coatedRadialHeight);
+                windingWindow.set_area(std::numbers::pi * pow(coatedRadialHeight, 2));
+            }
+            processedDescription.get_mutable_winding_windows().push_back(windingWindow);
             processedDescription.set_depth(corePiece->get_depth());
             processedDescription.set_height(corePiece->get_height());
             processedDescription.set_width(corePiece->get_width());
             break;
+        }
 
         case CoreType::TWO_PIECE_SET:
             for (auto& column : coreColumns) {

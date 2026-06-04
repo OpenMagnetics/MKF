@@ -74,6 +74,14 @@ class Core : public MAS::MagneticCore {
     std::string get_reference() const;
 
     const std::vector<CoreGap>& get_gapping() const { return get_functional_description().get_gapping(); }
+    // Coating thickness per surface, in m. 0 when the core has no coating. An explicit
+    // thickness (CoreCoating object) is used as-is; a name-only coating (legacy string
+    // form) resolves to the datasheet default thickness for that coating type.
+    double get_coating_thickness() const;
+    // Relative permittivity of the coating dielectric, from its insulation material.
+    // Explicit CoreCoating.material wins; otherwise the datasheet default material for
+    // the coating type. Throws if the core has no coating or the type has no material.
+    double get_coating_relative_permittivity() const;
     double get_initial_permeability(double temperature = Defaults().ambientTemperature);
     static double get_initial_permeability(CoreMaterial coreMaterial, double temperature = Defaults().ambientTemperature);
     double get_effective_permeability(double temperature);
