@@ -642,6 +642,22 @@ namespace {
         }
     }
 
+    TEST_CASE("Test_MagneticAdviser_Empty_Candidates_Returns_Empty", "[adviser][magnetic-adviser][bug]") {
+        // Regression for a SIGSEGV: the callers of this overload skip every
+        // catalogue magnetic whose winding count differs from the requested
+        // operating point (e.g. a 4-winding CMC request against a catalogue of
+        // only 2-/3-winding parts), which can leave the candidate vector empty.
+        // get_advised_magnetic(vector<Mas>, ...) then dereferenced
+        // catalogueMagneticsWithInputs[0] past the end and crashed in the
+        // Inputs copy constructor. "No matching candidate" is a legitimate
+        // outcome and must yield an empty result set, not a crash.
+        MagneticAdviser magneticAdviser;
+        std::vector<Mas> noCandidates;
+        std::vector<MagneticFilterOperation> filterFlow;
+        auto results = magneticAdviser.get_advised_magnetic(noCandidates, filterFlow, 5, true);
+        REQUIRE(results.empty());
+    }
+
     TEST_CASE("MagneticAdviserJsonHV", "[adviser][magnetic-adviser][smoke-test]") {
         clear_databases();
         settings.reset();

@@ -712,6 +712,17 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogueMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
 
+    // No candidate magnetics survived upstream filtering — e.g. the requested
+    // winding count has no matching parts in the catalogue (the callers above
+    // skip any magnetic whose functionalDescription size differs from the
+    // operating point's excitations-per-winding count). With an empty vector the
+    // `catalogueMagneticsWithInputs[0]` access below reads past the end and
+    // segfaults in the Inputs copy constructor. "No matching candidate" is a
+    // legitimate outcome, so return an empty result set instead of crashing.
+    if (catalogueMagneticsWithInputs.empty()) {
+        return {};
+    }
+
     // Clear the process-global _scorings map so stale entries from previous adviser
     // calls (same process, same catalog) do not pollute this run's min/max
     // normalization. Without this, top scores never reach 1.0 and identical inputs
