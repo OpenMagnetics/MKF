@@ -327,6 +327,17 @@ public:
     double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
     /** Peak Cr1 voltage of the last solved OP [V]. */
     double get_last_resonant_cap_peak_voltage() const { return lastResonantCapPeakVoltage; }
+    /**
+     * @brief Resonant tank parameters cached by the last
+     * process_operating_points() call (Lr1/Lr2, Cr1/Cr2, Lm, n, fr).
+     *
+     * generate_ngspice_circuit() takes the CllcResonantParameters explicitly
+     * rather than reading internal state, so the standalone netlist dispatch
+     * (PyMKF generate_ngspice_circuit) needs to fetch the exact same params
+     * the converter solved with — call process_operating_points() first, then
+     * pass this into generate_ngspice_circuit(). No re-derivation downstream.
+     */
+    const CllcResonantParameters& get_last_resonant_parameters() const { return lastResonantParameters; }
     /** Sub-state sequence (CllcSubState IDs) traversed in the last half-cycle. */
     const std::vector<int>& get_last_sub_state_sequence() const { return lastSubStateSequence; }
 
