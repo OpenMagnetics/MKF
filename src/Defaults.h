@@ -67,6 +67,12 @@ struct Defaults {
     const std::string defaultEpoxyCoreCoatingMaterial = "epoxy";        // eps_r 3.6
     const std::string defaultParyleneCoreCoatingMaterial = "parylene";  // eps_r 3.1 (Parylene C)
     const std::string defaultNylonCoreCoatingMaterial = "Nylon 6.6";    // eps_r 3.4
+    // When a toroid carries no coating data, the default coating TYPE is chosen by size,
+    // mirroring manufacturer practice (Micrometals: toroids with OD <= 0.20" / 5.08 mm
+    // are vacuum-coated with Parylene C, larger cores get a two-color epoxy finish — the
+    // thin parylene film does not consume the small bore). Thickness stays a flat
+    // per-type value; the buildup is not size-scaled (Fair-Rite/Magnetics catalogs).
+    const double defaultToroidParyleneMaximumOuterDiameter = 5.08e-3;  // 0.20"
     const double overlappingFactorSurroundingTurns = 0.7;
     const WireStandard commonWireStandard = WireStandard::NEMA_MW_1000_C;
     const WiringTechnology wiringTechnology = WiringTechnology::WOUND;

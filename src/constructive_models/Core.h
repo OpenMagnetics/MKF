@@ -82,6 +82,9 @@ class Core : public MAS::MagneticCore {
     // Explicit CoreCoating.material wins; otherwise the datasheet default material for
     // the coating type. Throws if the core has no coating or the type has no material.
     double get_coating_relative_permittivity() const;
+    // For an uncoated toroid, whether the default coating type is parylene (small cores)
+    // rather than epoxy (larger cores), selected by the outer diameter.
+    bool get_default_toroid_coating_is_parylene() const;
     double get_initial_permeability(double temperature = Defaults().ambientTemperature);
     static double get_initial_permeability(CoreMaterial coreMaterial, double temperature = Defaults().ambientTemperature);
     double get_effective_permeability(double temperature);

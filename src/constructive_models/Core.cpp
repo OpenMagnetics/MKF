@@ -207,7 +207,12 @@ double interp(std::vector<std::pair<double, double>> data, double temperature) {
 
 std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geometrical_description() {
     std::vector<CoreGeometricalDescriptionElement> geometricalDescription;
-    auto numberStacks = *(get_functional_description().get_number_stacks());
+    // numberStacks is optional; a missing value means a single (un-stacked) core, so
+    // default to 1 via get_number_stacks(). Dereferencing the optional directly here is
+    // a silent trap: an absent value yields 0, which then multiplies the effective area,
+    // volume and column depth down to 0 (scale_to_stacks / process_columns) and makes
+    // the magnetizing inductance collapse to a tiny fallback value with no error.
+    auto numberStacks = get_number_stacks();
     auto gapping = get_functional_description().get_gapping();
 
     auto corePiece = CorePiece::factory(std::get<CoreShape>(get_functional_description().get_shape()));
@@ -1109,8 +1114,28 @@ CoreShape Core::resolve_shape(CoreShapeDataOrNameUnion coreShape) {
     }
 }
 
+bool Core::get_default_toroid_coating_is_parylene() const {
+    // Pick the default coating type for an uncoated toroid by its outer diameter (the "A"
+    // dimension): small toroids are parylene-coated, larger ones epoxy (Micrometals/Fair-
+    // Rite). Only meaningful for toroidal shapes; callers guard on the shape family.
+    double outerDiameter = flatten_dimensions(resolve_shape().get_dimensions().value())["A"];
+    return outerDiameter <= Defaults().defaultToroidParyleneMaximumOuterDiameter;
+}
+
 double Core::get_coating_thickness() const {
     if (!get_functional_description().get_coating()) {
+        // A toroid is jacketed (epoxy/parylene) in practice even when the catalogue omits
+        // the coating — a bare-ferrite toroid wound with bare wire is rare, and the coating
+        // is part of the winding-to-core dielectric path. So an uncoated toroid falls back
+        // to a default coating, with the TYPE chosen by size as manufacturers do (small
+        // toroids -> thin parylene, larger -> epoxy). Non-toroidal cores are bobbin-wound:
+        // the winding never touches the ferrite, so there is no core coating — return 0.
+        if (get_shape_family() == CoreShapeFamily::T) {
+            auto defaults = Defaults();
+            return get_default_toroid_coating_is_parylene()
+                ? defaults.defaultParyleneCoreCoatingThickness
+                : defaults.defaultEpoxyCoreCoatingThickness;
+        }
         return 0;
     }
     auto coating = get_functional_description().get_coating().value();
@@ -1135,6 +1160,21 @@ double Core::get_coating_thickness() const {
 
 double Core::get_coating_relative_permittivity() const {
     if (!get_functional_description().get_coating()) {
+        // Mirror get_coating_thickness(): an uncoated toroid falls back to the default
+        // coating material — parylene or epoxy, chosen by size; a non-toroidal core has no
+        // coating and must not be queried for one (its thickness is 0, never reached).
+        if (get_shape_family() == CoreShapeFamily::T) {
+            auto defaults = Defaults();
+            auto materialName = get_default_toroid_coating_is_parylene()
+                ? defaults.defaultParyleneCoreCoatingMaterial
+                : defaults.defaultEpoxyCoreCoatingMaterial;
+            auto material = find_insulation_material_by_name(materialName);
+            if (!material.get_relative_permittivity()) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "Default toroid coating material '" + materialName + "' has no relative permittivity in the database");
+            }
+            return material.get_relative_permittivity().value();
+        }
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
             "Core has no coating; cannot resolve coating relative permittivity");
     }
@@ -1308,7 +1348,9 @@ void Core::process_data() {
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown type of core, available options are {TOROIDAL, TWO_PIECE_SET}");
     }
     set_processed_description(processedDescription);
-    scale_to_stacks(*(get_functional_description().get_number_stacks()));
+    // Default a missing numberStacks to 1 (single core); dereferencing the optional
+    // directly would scale the effective area/volume by 0 — see create_geometrical_description.
+    scale_to_stacks(get_number_stacks());
 }
 
 double Core::get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, double temperature, bool proportion) {
