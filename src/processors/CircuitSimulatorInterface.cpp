@@ -1677,6 +1677,37 @@ CircuitSimulationReader::CircuitSimulationReader(std::string filePathOrFile, boo
     }
 
     _time = find_time(_columns);
+
+    // Collapse repeated consecutive timestamps, keeping the LAST sample at each
+    // timestamp. Simulator exports that round the time column to a few
+    // significant figures emit several rows sharing one timestamp; without this
+    // the time axis is not strictly increasing and period extraction would fail
+    // ("no time column found"). Keeping the last value matches the most recent
+    // state at that instant.
+    {
+        const std::vector<double>& times = _time.data;
+        std::vector<size_t> keepIndexes;
+        keepIndexes.reserve(times.size());
+        for (size_t index = 0; index < times.size(); ++index) {
+            if (index + 1 == times.size() || times[index] != times[index + 1]) {
+                keepIndexes.push_back(index);
+            }
+        }
+        if (keepIndexes.size() != times.size()) {
+            for (auto& column : _columns) {
+                if (column.data.size() != times.size()) {
+                    continue;
+                }
+                std::vector<double> deduped;
+                deduped.reserve(keepIndexes.size());
+                for (size_t idx : keepIndexes) {
+                    deduped.push_back(column.data[idx]);
+                }
+                column.data = std::move(deduped);
+            }
+            _time = find_time(_columns);
+        }
+    }
 }
 
 std::vector<std::string> CircuitSimulationReader::extract_column_names() {
@@ -1696,13 +1727,20 @@ bool CircuitSimulationReader::can_be_time(std::vector<double> data) {
         return false;
     }
 
+    // Accept a monotonic non-decreasing axis. Time columns exported from
+    // circuit simulators are frequently rounded to a few significant figures,
+    // which yields repeated consecutive timestamps. Reject only a strictly
+    // decreasing step (that is not a time axis), and require an overall
+    // increase so a constant/zero column is never mistaken for time. Repeated
+    // timestamps are collapsed after detection (keeping the last sample) so
+    // downstream period extraction still sees a strictly increasing axis.
     for (size_t index = 1; index < data.size(); index++) {
-        if (data[index - 1] >= data[index]) {
+        if (data[index - 1] > data[index]) {
             return false;
         }
     }
 
-    return true;
+    return data.back() > data.front();
 }
 
 bool CircuitSimulationReader::can_be_voltage(std::vector<double> data, double limit) {

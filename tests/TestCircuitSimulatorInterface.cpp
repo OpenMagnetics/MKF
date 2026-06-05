@@ -1367,6 +1367,70 @@ TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-read
     }
 }
 
+TEST_CASE("Test_Can_Be_Time_Accepts_Repeated_Timestamps", "[processor][circuit-simulation-reader]") {
+    // A monotonic non-decreasing axis with repeated timestamps (from a time
+    // column rounded to a few significant figures) is a valid time axis.
+    REQUIRE(CircuitSimulationReader::can_be_time({0.0, 1e-6, 1e-6, 2e-6, 3e-6, 3e-6}) == true);
+    // Strictly increasing is valid.
+    REQUIRE(CircuitSimulationReader::can_be_time({0.0, 1e-6, 2e-6, 3e-6}) == true);
+    // Strictly decreasing is not a time axis.
+    REQUIRE(CircuitSimulationReader::can_be_time({3e-6, 2e-6, 1e-6}) == false);
+    // A non-monotonic step is not a time axis.
+    REQUIRE(CircuitSimulationReader::can_be_time({0.0, 2e-6, 1e-6, 3e-6}) == false);
+    // A constant column must not be mistaken for a time axis.
+    REQUIRE(CircuitSimulationReader::can_be_time({5.0, 5.0, 5.0}) == false);
+}
+
+TEST_CASE("Test_Import_Csv_Repeated_Timestamps", "[processor][circuit-simulation-reader]") {
+    // Regression: this circuit-simulator export rounds the time column to 3
+    // significant figures, producing 342 repeated consecutive timestamps. The
+    // reader used to throw "no time column found" because can_be_time required
+    // a strictly increasing axis. It now accepts a non-decreasing axis and
+    // collapses repeated timestamps (keeping the last sample at each instant),
+    // so the file loads and both windings extract. Columns are time,V1,V3,I1,I3
+    // (note the V2/I2 gap, which the winding-index detection reindexes to 0/1).
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "repeated_timestamps_two_periods.csv");
+
+    double frequency = 200000;
+
+    // Construction parses + collapses the repeated timestamps; used to throw.
+    CircuitSimulationReader reader(simulation_path.string());
+
+    auto columnNames = reader.extract_column_names();
+    REQUIRE(columnNames.size() == 5);
+    REQUIRE(columnNames[0] == "time");
+
+    std::vector<std::map<std::string, std::string>> mapColumnNames;
+    std::map<std::string, std::string> primaryColumnNames;
+    std::map<std::string, std::string> secondaryColumnNames;
+    primaryColumnNames["time"] = "time";
+    primaryColumnNames["current"] = "I1";
+    primaryColumnNames["voltage"] = "V1";
+    mapColumnNames.push_back(primaryColumnNames);
+    secondaryColumnNames["time"] = "time";
+    secondaryColumnNames["current"] = "I3";
+    secondaryColumnNames["voltage"] = "V3";
+    mapColumnNames.push_back(secondaryColumnNames);
+
+    auto operatingPoint = reader.extract_operating_point(2, frequency, mapColumnNames);
+
+    REQUIRE(operatingPoint.get_excitations_per_winding().size() == 2);
+    for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+        REQUIRE(excitation.get_current());
+        REQUIRE(excitation.get_voltage());
+        auto currentWaveform = excitation.get_current().value().get_waveform().value();
+        REQUIRE(currentWaveform.get_data().size() > 1);
+        // After collapsing repeated timestamps the extracted period must have a
+        // strictly increasing time axis (proves the duplicates were removed).
+        if (currentWaveform.get_time()) {
+            auto times = currentWaveform.get_time().value();
+            for (size_t i = 1; i < times.size(); ++i) {
+                REQUIRE(times[i] > times[i - 1]);
+            }
+        }
+    }
+}
+
 TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback_case.csv");
 
