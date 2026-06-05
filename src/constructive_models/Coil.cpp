@@ -5174,7 +5174,28 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
             }
             double currentTurnWidthIncrement = wireWidth + layerTurnsClearance;
             double currentTurnHeightIncrement = 0;
-            double currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + wireWidth / 2, 9) + borderToWireDistance;
+
+            // Center the planar turns within the layer instead of left-justifying them.
+            // The layer is already inset from the core walls by coreToLayerDistance, so
+            // splitting the remaining width evenly keeps borderToWireDistance as a per-edge
+            // minimum while giving symmetric core-to-copper clearance on BOTH sides. Without
+            // this the copper hugs the left layer edge and drifts toward (and, as
+            // coreToLayerDistance grows, past) the opposite core wall.
+            int64_t physicalTurnsThisLayer = 0;
+            for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                physicalTurnsThisLayer += round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
+            }
+            double turnsBlockWidth = 0;
+            if (physicalTurnsThisLayer > 0) {
+                turnsBlockWidth = physicalTurnsThisLayer * wireWidth + (physicalTurnsThisLayer - 1) * layerTurnsClearance;
+            }
+            double layerWidth = layer.get_dimensions()[0];
+            double layerLeftEdge = layer.get_coordinates()[0] - layerWidth / 2;
+            double turnsBlockMargin = (layerWidth - turnsBlockWidth) / 2;
+            if (turnsBlockMargin < borderToWireDistance) {
+                turnsBlockMargin = borderToWireDistance;
+            }
+            double currentTurnCenterWidth = roundFloat(layerLeftEdge + turnsBlockMargin + wireWidth / 2, 9);
             double currentTurnCenterHeight = roundFloat(layer.get_coordinates()[1], 9);
 
             if (!layer.get_winding_style()) {
