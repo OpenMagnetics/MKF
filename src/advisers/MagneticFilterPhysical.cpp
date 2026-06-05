@@ -50,6 +50,14 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
 
     const std::string magneticRef = magnetic->get_reference();
     size_t opIndex = 0;
+    // Multiplicative saturation derating shared by BOTH the flux-density test
+    // and the current-based gate below. Set via
+    // Settings::set_core_adviser_saturation_margin() — Maniktala Ch.5
+    // recommends ≥1.2 for ferrite designs to leave headroom for tolerance,
+    // temperature, and DC-bias swing. This is the SAME margin the Heaviside
+    // realism gate uses for isat ≥ margin·ipeak, so the two stay consistent.
+    const double margin = Settings::GetInstance().get_core_adviser_saturation_margin();
+
     for (auto operatingPoint : inputs->get_operating_points()) {
         double magneticFluxDensityPeak;
         // Use RAW B_sat here (proportion=false). The Maniktala-style
@@ -140,6 +148,48 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
                 return {false, 0.0};
             }
             magneticFluxDensityPeak = magneticFluxDensity.get_processed()->get_peak().value();
+
+            // Current-based saturation gate (energy-storing inductors only).
+            // ----------------------------------------------------------------
+            // The flux-density test above is the design-side B_peak ≤ margin·
+            // B_sat check at the *nominal* operating excursion. For a gapped
+            // energy-storing inductor that is NOT sufficient: a small/under-
+            // gapped core can keep steady-state B_peak under B_sat yet still
+            // run out of linear flux at the worst-case PEAK current, because
+            // the gapped-magnetic inductance (and hence I_sat = B_sat·N·A_e/L)
+            // is low enough that B reaches B_sat before the peak current does.
+            // The downstream Heaviside realism gate fails exactly such a core
+            // (isat < 1.2·ipeak). To keep core selection CONSISTENT with that
+            // gate we reject here too, using the SAME saturation-current model
+            // the realism gate calls — the nameplate overload
+            // Magnetic::calculate_saturation_current(temperature), which uses
+            // the gapped-magnetic (μ_init) inductance. The realism gate binds
+            // to this overload because the operating-point overload is not
+            // exposed in the PyOpenMagnetics binding, so picking the OP overload
+            // here would make the filter and the gate disagree (the OP overload
+            // rolls μ off with DC bias and reports a different I_sat).
+            //
+            // Only applied when the operating-point primary peak current is
+            // actually populated (ipeak > 0). On the FAST CoreAdviser path the
+            // excitation current is not yet stamped (peak == 0); there we must
+            // leave existing behavior untouched rather than fabricate a current
+            // — no silent default (CLAUDE.md).
+            {
+                auto primaryExcitation = Inputs::get_primary_excitation(operatingPoint);
+                double ipeak = 0.0;
+                if (primaryExcitation.get_current()
+                    && primaryExcitation.get_current()->get_processed()
+                    && primaryExcitation.get_current()->get_processed()->get_peak()) {
+                    ipeak = std::fabs(primaryExcitation.get_current()->get_processed()->get_peak().value());
+                }
+                if (ipeak > 0.0) {
+                    double saturationCurrent = magnetic->calculate_saturation_current(
+                        operatingPoint.get_conditions().get_ambient_temperature());
+                    if (saturationCurrent < margin * ipeak) {
+                        return {false, 0.0};
+                    }
+                }
+            }
         }
 
         // Saturation scoring: dimensionless ratio of operating peak flux density to
@@ -156,10 +206,6 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
         // Multiplicative derating: reject if Bpeak·margin > Bsat (i.e. the
         // core would saturate at `margin`× the actual operating excursion).
         // margin == 1.0 (default) reproduces the historical bare comparison.
-        // Set via Settings::set_core_adviser_saturation_margin() — Maniktala
-        // Ch.5 recommends ≥1.2 for ferrite designs to leave headroom for
-        // tolerance, temperature, and DC-bias swing.
-        const double margin = Settings::GetInstance().get_core_adviser_saturation_margin();
         bool isSaturated = magneticFluxDensityPeak * margin > magneticFluxDensitySaturation;
 
         ++opIndex;
