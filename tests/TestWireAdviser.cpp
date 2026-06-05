@@ -1,14 +1,22 @@
 #include <source_location>
 #include "support/Painter.h"
 #include "advisers/CoreAdviser.h"
+#include "advisers/CoilAdviser.h"
 #include "support/Settings.h"
 #include "advisers/WireAdviser.h"
 #include "processors/Inputs.h"
+#include "support/Utils.h"
 #include "TestingUtils.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <vector>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <future>
+#include <iostream>
+#include <sstream>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -364,6 +372,81 @@ namespace {
             painter.paint_wire(wire);
             painter.export_svg();
         }
+    }
+
+    // Repro for the Wire Configuration -> Advise All hang (was TestWireAdviserHangRepro.cpp).
+    // Fixture: tests/payloads/wire_adviser_hang.json (captured from the frontend Magnetic
+    // Builder before mkf.calculate_advised_coil). Mirrors WebLibMKF libMKF.cpp
+    // calculate_advised_coil: wires forced to "Dummy", coil descriptions cleared, then
+    // CoilAdviser::get_advised_coil(mas, 1). 60 s watchdog so a true hang doesn't block the
+    // suite. The adviser MUST return at least one design within the window.
+    TEST_CASE("Test_CoilAdviser_WireAdviser_Hang_Repro",
+              "[adviser][coil-adviser][wire-adviser][hang][bug-repro]") {
+        clear_databases();
+
+        auto path = std::filesystem::path{std::source_location::current().file_name()}
+                        .parent_path()
+                        .append("payloads")
+                        .append("wire_adviser_hang.json");
+        std::ifstream f(path);
+        if (!f.is_open()) {
+            // The captured frontend payload is not checked into the repo; this is a
+            // data-dependent repro, so skip (not fail) where the fixture is absent.
+            SKIP("wire_adviser_hang.json fixture not present; skipping captured-payload repro");
+        }
+        std::stringstream buf;
+        buf << f.rdbuf();
+        auto raw = buf.str();
+
+        json masJson = json::parse(raw);
+
+        // Mirror libMKF::calculate_advised_coil(...): wires "Dummy", clear coil descriptions.
+        auto& functional = masJson["magnetic"]["coil"]["functionalDescription"];
+        for (auto& winding : functional) {
+            winding["wire"] = "Dummy";
+        }
+        masJson["magnetic"]["coil"]["sectionsDescription"] = nullptr;
+        masJson["magnetic"]["coil"]["layersDescription"]   = nullptr;
+        masJson["magnetic"]["coil"]["turnsDescription"]    = nullptr;
+
+        OpenMagnetics::Mas mas(masJson);
+
+        auto& settings = Settings::GetInstance();
+        CoilAdviser coilAdviser;
+
+        auto start = std::chrono::steady_clock::now();
+
+        // Watchdog: run on a separate thread, kill the test if it's still grinding after 60 s.
+        std::vector<OpenMagnetics::Mas> results;
+        auto fut = std::async(std::launch::async, [&]() {
+            results = coilAdviser.get_advised_coil(mas, 1);
+        });
+
+        auto status = fut.wait_for(std::chrono::seconds(60));
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+
+        std::cout << "[HANG_REPRO] elapsed = " << elapsed << " ms" << std::endl;
+
+        auto log = read_log();
+        std::cout << "[HANG_REPRO] MKF log size = " << log.size() << std::endl;
+        if (!log.empty()) {
+            std::cout << "[HANG_REPRO] MKF log:\n" << log << std::endl;
+        }
+
+        if (status != std::future_status::ready) {
+            std::cout << "[HANG_REPRO] WATCHDOG TIMEOUT — adviser did not return in 60 s"
+                      << std::endl;
+            // Detach the future; the std::async destructor would otherwise block on the
+            // still-running task. We abort via REQUIRE next, so leaking for abort is fine.
+            std::quick_exit(124);  // 124 == GNU timeout sentinel
+        }
+
+        fut.get();
+        std::cout << "[HANG_REPRO] results.size = " << results.size() << std::endl;
+        REQUIRE(results.size() > 0);
+
+        settings.reset();
     }
 
 }  // namespace

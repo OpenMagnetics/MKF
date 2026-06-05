@@ -652,7 +652,7 @@ namespace {
         // Inputs copy constructor. "No matching candidate" is a legitimate
         // outcome and must yield an empty result set, not a crash.
         MagneticAdviser magneticAdviser;
-        std::vector<Mas> noCandidates;
+        std::vector<OpenMagnetics::Mas> noCandidates;
         std::vector<MagneticFilterOperation> filterFlow;
         auto results = magneticAdviser.get_advised_magnetic(noCandidates, filterFlow, 5, true);
         REQUIRE(results.empty());
