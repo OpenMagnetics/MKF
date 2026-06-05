@@ -495,7 +495,7 @@ else()
     add_library(MKF SHARED ${SOURCES})
 endif()
 set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
-add_dependencies(MKF MAS cci_data_gen)
+add_dependencies(MKF MAS CAS cci_data_gen)
 target_include_directories(MKF PUBLIC "${CMAKE_BINARY_DIR}/generated")
 
 cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards NAMESPACE insulationData src/data/insulation_standards/IEC_60664-1.json src/data/insulation_standards/IEC_60664-4.json src/data/insulation_standards/IEC_60664-5.json src/data/insulation_standards/IEC_62368-1.json src/data/insulation_standards/IEC_61558-1.json src/data/insulation_standards/IEC_61558-2-16.json src/data/insulation_standards/IEC_60335-1.json)
