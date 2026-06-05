@@ -1296,7 +1296,13 @@ void Core::process_data() {
             // height propagates to turn placement via create_quick_bobbin(Core),
             // whose round-window branch reads coreWindingWindow.get_radial_height().
             auto windingWindow = corePiece->get_winding_window();
-            double coatingThickness = get_coating_thickness();
+            // Only an EXPLICIT catalogue coating shrinks the winding window for turn
+            // placement. get_coating_thickness() also returns a size-based default for
+            // uncoated toroids, but that default exists for the capacitance dielectric
+            // (winding-to-core), not geometry — applying it here would shift turn placement
+            // on every uncoated toroid (no real coating displaces the winding), which is not
+            // warranted by catalogue data and breaks established turn-placement.
+            double coatingThickness = get_functional_description().get_coating() ? get_coating_thickness() : 0.0;
             if (coatingThickness > 0 && windingWindow.get_radial_height()) {
                 double coatedRadialHeight = std::max(0.0, windingWindow.get_radial_height().value() - coatingThickness);
                 windingWindow.set_radial_height(coatedRadialHeight);
