@@ -11,6 +11,21 @@
 
 namespace OpenMagnetics {
 
+    namespace {
+        // Resolve a required coating field, throwing a specific, informative
+        // exception instead of std::bad_optional_access when the field is absent
+        // (incomplete MAS coating data). Behaviour is identical to .value() when
+        // the field is present.
+        template <typename T>
+        const T& require_coating_field(const std::optional<T>& field, const char* fieldName) {
+            if (!field) {
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                    std::string("Wire coating is missing required field: ") + fieldName);
+            }
+            return field.value();
+        }
+    }
+
     WireRound Wire::convert_from_wire_to_strand(Wire wire) {
         WireRound strand;
         strand.set_type(wire.get_type());
@@ -994,7 +1009,7 @@ namespace OpenMagnetics {
         auto coating = resolve_coating().value();
         // 0.85 according to IEC 61558
         // https://www.elektrisola.com/en/Products/Fully-Insulated-Wire/Breakdown-Voltage
-        auto voltageCoveredByWire = coating.get_breakdown_voltage().value() * 0.85;
+        auto voltageCoveredByWire = require_coating_field(coating.get_breakdown_voltage(), "breakdown voltage") * 0.85;
         int timesVoltageisCovered = floor(voltageCoveredByWire / voltageToInsulate);
         int numberLayers;
         if (coating.get_number_layers()) {
@@ -1019,7 +1034,7 @@ namespace OpenMagnetics {
                         return resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::ENAMELLED) {
-                        return get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue), coating->get_grade().value(), standard);
+                        return get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue), require_coating_field(coating->get_grade(), "grade"), standard);
                     }
                     else {
                         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported coating in RECTANGULAR");
@@ -1054,7 +1069,7 @@ namespace OpenMagnetics {
                         return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::ENAMELLED) {
-                        return get_outer_width_rectangular(resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue), coating->get_grade().value(), standard);
+                        return get_outer_width_rectangular(resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue), require_coating_field(coating->get_grade(), "grade"), standard);
                     }
                     else {
                         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported coating in RECTANGULAR");
@@ -1089,13 +1104,13 @@ namespace OpenMagnetics {
                 int64_t numberConductors = wire.get_number_conductors().value();
                 if (coating) {
                     if (coating->get_type() == InsulationWireCoatingType::BARE) {
-                        return get_outer_diameter_bare_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, strandCoating->get_grade().value(), standard);
+                        return get_outer_diameter_bare_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, require_coating_field(strandCoating->get_grade(), "strand grade"), standard);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::SERVED) {
-                        return get_outer_diameter_served_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, strandCoating->get_grade().value(), coating->get_number_layers().value(), standard);
+                        return get_outer_diameter_served_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, require_coating_field(strandCoating->get_grade(), "strand grade"), require_coating_field(coating->get_number_layers(), "number of layers"), standard);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::INSULATED) {
-                        return get_outer_diameter_insulated_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, coating->get_number_layers().value(), coating->get_thickness_layers().value(), strandCoating->get_grade().value(), standard);
+                        return get_outer_diameter_insulated_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, require_coating_field(coating->get_number_layers(), "number of layers"), require_coating_field(coating->get_thickness_layers(), "thickness of layers"), require_coating_field(strandCoating->get_grade(), "strand grade"), standard);
                     }
                     else {
                         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported coating in LITZ");
@@ -1116,10 +1131,10 @@ namespace OpenMagnetics {
                         return resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::ENAMELLED) {
-                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue), coating->get_grade().value(), standard);
+                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue), require_coating_field(coating->get_grade(), "grade"), standard);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::INSULATED) {
-                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue), coating->get_number_layers().value(), coating->get_thickness_layers().value(), standard);
+                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue), require_coating_field(coating->get_number_layers(), "number of layers"), require_coating_field(coating->get_thickness_layers(), "thickness of layers"), standard);
                     }
                     else {
                         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported coating in ROUND");

@@ -6,6 +6,7 @@
 #include <limits>
 #include <cfloat>
 #include <cmath>
+#include <map>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -1942,9 +1943,16 @@ std::vector<double> get_physical_turns_proportions(std::vector<int64_t> physical
 }
 
 std::vector<double> get_length_proportions(std::vector<double> lengths, std::vector<size_t> windingIndexes) {
+    // Map each distinct RAW winding index to a compact 0-based position. The
+    // averages/numberSectionsPerWinding arrays are sized by the number of
+    // distinct windings, so they must be indexed by the compact position, NOT by
+    // the raw winding index — otherwise a non-contiguous pattern (e.g. {0,2})
+    // writes out of bounds (heap corruption) on toroidal/round windings.
     std::vector<size_t> uniqueIndexes;
+    std::map<size_t, size_t> compactPosition;
     for (size_t windingIndex = 0; windingIndex < windingIndexes.size(); ++windingIndex) {
-        if(std::find(uniqueIndexes.begin(), uniqueIndexes.end(), windingIndexes[windingIndex]) == uniqueIndexes.end()) {
+        if (compactPosition.find(windingIndexes[windingIndex]) == compactPosition.end()) {
+            compactPosition[windingIndexes[windingIndex]] = uniqueIndexes.size();
             uniqueIndexes.push_back(windingIndexes[windingIndex]);
         }
     }
@@ -1954,8 +1962,9 @@ std::vector<double> get_length_proportions(std::vector<double> lengths, std::vec
     std::vector<double> numberSectionsPerWinding(uniqueIndexes.size(), 0);
 
     for (size_t index = 0; index < lengths.size(); ++index) {
-        averages[windingIndexes[index]] += lengths[index];
-        numberSectionsPerWinding[windingIndexes[index]]++;
+        size_t pos = compactPosition[windingIndexes[index]];
+        averages[pos] += lengths[index];
+        numberSectionsPerWinding[pos]++;
     }
 
     for (size_t windingIndex = 0; windingIndex < averages.size(); ++windingIndex) {
@@ -1963,10 +1972,11 @@ std::vector<double> get_length_proportions(std::vector<double> lengths, std::vec
     }
 
     for (size_t index = 0; index < lengths.size(); ++index) {
+        size_t pos = compactPosition[windingIndexes[index]];
         if (index + 1 < lengths.size())
-            lengthProportions.push_back(lengths[index] / averages[windingIndexes[index]]);
+            lengthProportions.push_back(lengths[index] / averages[pos]);
         else
-            lengthProportions.push_back(1 + lengths[index] / averages[windingIndexes[index]]);
+            lengthProportions.push_back(1 + lengths[index] / averages[pos]);
     }
 
     return lengthProportions;
