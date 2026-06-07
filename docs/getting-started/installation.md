@@ -83,11 +83,12 @@ cd MKF
 
 ## Python Package
 
-MKF can be installed as a Python package (PyMKF):
+The Python bindings are distributed as a **separate** package, PyMKF, on
+PyPI — this repository (MKF) is the C++ engine and has no Python build at
+its root, so `pip install -e .` from here will not work.
 
 ```bash
-# From the repository root
-python3 -m pip install -e . -vvv
+python3 -m pip install PyMKF
 ```
 
 Then use it in Python:

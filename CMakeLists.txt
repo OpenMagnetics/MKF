@@ -81,7 +81,7 @@ set(FETCHCONTENT_QUIET FALSE)
 # CMakeRC - Resource compiler (use FetchContent instead of file download)
 FetchContent_Declare(cmrc
     GIT_REPOSITORY https://github.com/vector-of-bool/cmrc.git
-    GIT_TAG master)
+    GIT_TAG 952ffddba731fc110bd50409e8d2b8a06abbd237)  # was 'master' (floating); pinned to known-good
 FetchContent_MakeAvailable(cmrc)
 include("${cmrc_SOURCE_DIR}/CMakeRC.cmake")
 
@@ -126,19 +126,21 @@ if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 FetchContent_Declare(spline
-    GIT_REPOSITORY https://github.com/AlfVII/spline.git)
+    GIT_REPOSITORY https://github.com/AlfVII/spline.git
+    GIT_TAG 10b4ca336b8ad3b3b842d4a2548a94ea00355a5f)  # pin default-branch HEAD to known-good
 FetchContent_MakeAvailable(spline)
 include_directories("${CMAKE_BINARY_DIR}/_deps/spline-src/src")
 
 
 FetchContent_Declare(svg
-    GIT_REPOSITORY https://github.com/AlfVII/svg)
+    GIT_REPOSITORY https://github.com/AlfVII/svg
+    GIT_TAG b92693f84ba6bbe79ea1965b68fffbcd1b991186)  # pin default-branch HEAD to known-good
 FetchContent_MakeAvailable(svg)
 include_directories("${CMAKE_BINARY_DIR}/_deps/svg-src/src")
 
 FetchContent_Declare(rapidfuzz
   GIT_REPOSITORY https://github.com/rapidfuzz/rapidfuzz-cpp.git
-  GIT_TAG main)
+  GIT_TAG b5830af53bd1b3c7460a8de1e9f7095df99b3470)  # was 'main' (floating); pinned to known-good
 FetchContent_MakeAvailable(rapidfuzz)
 
 # Eigen - Header-only linear algebra library (for Albach 2D boundary value solver)
@@ -466,7 +468,7 @@ add_custom_command(
     VERBATIM)
 add_custom_target(cci_data_gen DEPENDS "${CCI_GENERATED_CPP}")
 
-file(GLOB SOURCES
+file(GLOB SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
     "src/advisers/*.cpp"
     "src/constructive_models/*.cpp"
@@ -559,7 +561,7 @@ target_include_directories(MKF PUBLIC
 # target_link_libraries(magnetic_adviser MKF)
 
 if(INCLUDE_MKF_TESTS)
-    file(GLOB ALL_TEST_SOURCES "tests/*.cpp")
+    file(GLOB ALL_TEST_SOURCES CONFIGURE_DEPENDS "tests/*.cpp")
     
     # TestingUtils.cpp holds shared fixtures; explicitly added below.
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestingUtils\\.cpp$")

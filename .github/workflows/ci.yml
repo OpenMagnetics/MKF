@@ -38,7 +38,7 @@ jobs:
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
     
     - name: Install quicktype
-      run: npm install -g quicktype
+      run: npm install -g quicktype@23.2.6
     
     - name: Configure CMake
       run: |
@@ -81,7 +81,7 @@ jobs:
       run: choco install ninja -y
     
     - name: Install quicktype
-      run: npm install -g quicktype
+      run: npm install -g quicktype@23.2.6
     
     - name: Configure CMake
       run: |
@@ -125,7 +125,7 @@ jobs:
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
 
     - name: Install quicktype
-      run: npm install -g quicktype
+      run: npm install -g quicktype@23.2.6
 
     - name: Configure CMake (coverage)
       run: |
@@ -191,7 +191,7 @@ jobs:
         path: docs/api/html/
 
   code-quality:
-    name: Code Quality Checks
+    name: Code Quality (advisory, non-blocking)
     runs-on: ubuntu-latest
     
     steps:
@@ -203,7 +203,7 @@ jobs:
     
     - name: Check code formatting
       run: |
-        find src -name '*.cpp' -o -name '*.h' | head -20 | xargs clang-format --dry-run --Werror || echo "Code formatting issues found. Run 'clang-format -i' on affected files."
+        find src \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format --dry-run --Werror || echo "Code formatting issues found (advisory). Run 'clang-format -i' on affected files."
       continue-on-error: true
     
     - name: Run cppcheck (optional)

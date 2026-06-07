@@ -146,3 +146,6 @@ gmon.out
 _.svg
 bobbin-visible.png
 norwe_bobbins.ndjson
+
+# Editor/backup files
+*.bak
