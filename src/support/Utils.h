@@ -75,6 +75,17 @@ struct InductanceFluxCacheEntry {
 };
 inline std::map<std::string, std::map<size_t, InductanceFluxCacheEntry>> _inductanceFluxCache;
 
+// THREAD-SAFETY (latent): these process-global catalogs are populated with a
+// lazy "if (db.empty()) load_db();" check-then-load pattern (see find_*_by_name
+// in Utils.cpp). That, and the memo caches above (_scorings,
+// _inductanceFluxCache), are NOT synchronized: concurrent callers can double-load
+// or read a map while another thread is inserting (iterator invalidation → UB).
+// This is safe today because MKF is driven single-threaded (one adviser run at a
+// time; WASM/Python bindings are single-threaded). DO NOT call into MKF from
+// multiple threads without first giving these globals a synchronization contract
+// (e.g. std::call_once per database for loads + a shared_mutex for reads).
+// Flagged in docs/technical_debt — needs a deliberate design decision, not an
+// ad-hoc lock sprinkle. See TRACKER Cluster F.
 inline std::vector<OpenMagnetics::Core> coreDatabase;
 inline std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
 inline std::map<std::string, MAS::CoreShape> coreShapeDatabase;

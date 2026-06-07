@@ -13,6 +13,7 @@
 #include <iostream>
 #include <fstream>
 #include <mutex>
+#include <atomic>
 #include <chrono>
 #include <iomanip>
 #include <functional>
@@ -323,7 +324,7 @@ private:
     }
     
     std::mutex _mutex;
-    LogLevel _level;
+    std::atomic<LogLevel> _level;
     std::vector<std::shared_ptr<LogSink>> _sinks;
 };
 

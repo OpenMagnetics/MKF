@@ -25,6 +25,7 @@ class MagneticFilter {
         static std::shared_ptr<MagneticFilter> factory(MagneticFilters filterName, std::optional<Inputs> inputs = std::nullopt);
 
         MagneticFilter() { };
+        virtual ~MagneticFilter() = default;
         virtual std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr) = 0;
 };
 

@@ -557,8 +557,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
             size_t numberElements = volumetricLossesChunk.size();
             size_t numberElements100C = 0;
 
-            double* volumetricLossesArray = new double[numberElements];
-            // double volumetricLossesArray[numberElements];
+            std::vector<double> volumetricLossesArray(numberElements);
 
             for (size_t index = 0; index < numberElements; ++index) {
                 volumetricLossesArray[index] = log10(volumetricLossesChunk[index].get_value());
@@ -571,14 +570,12 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 }
             }
 
-            double* coefficients = new double[numberUnknowns];
-            // double coefficients[numberUnknowns];
+            std::vector<double> coefficients(numberUnknowns);
             for (size_t index = 0; index < numberUnknowns; ++index) {
                 coefficients[index] = initialState;
             }
 
-            double* volumetricLossesInputs = new double[3 + numberElements * numberInputs];
-            // double volumetricLossesInputs[numberElements * numberInputs];
+            std::vector<double> volumetricLossesInputs(3 + numberElements * numberInputs);
             for (size_t index = 0; index < numberElements; ++index) {
                 volumetricLossesInputs[3 + numberInputs * index] = log10(volumetricLossesChunk[index].get_magnetic_flux_density().get_frequency());
                 volumetricLossesInputs[3 + numberInputs * index + 1] = log10(volumetricLossesChunk[index].get_magnetic_flux_density().get_magnetic_flux_density()->get_processed()->get_peak().value());
@@ -588,14 +585,13 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
             }
 
             if (numberInputs == 3 && numberElements100C >= 3) {
-                double* tempCoefficients = new double[3];
+                std::vector<double> tempCoefficients(3);
                 for (size_t index = 0; index < 3; ++index) {
                     tempCoefficients[index] = initialState;
                 }
 
-                double* tempVolumetricLossesInputs = new double[numberElements100C * 2];
-                double* tempVolumetricLossesArray = new double[numberElements100C];
-                // double tempVolumetricLossesInputs[numberElements * numberInputs];
+                std::vector<double> tempVolumetricLossesInputs(numberElements100C * 2);
+                std::vector<double> tempVolumetricLossesArray(numberElements100C);
                 size_t index100C = 0;
                 for (size_t index = 0; index < numberElements; ++index) {
                     if (volumetricLossesChunk[index].get_temperature() >= 90 && volumetricLossesChunk[index].get_temperature() <= 110) {
@@ -606,7 +602,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                     }
                 }
 
-                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_first_no_temperature_func, tempCoefficients, tempVolumetricLossesArray, 3, numberElements100C, 10000, opts, info, NULL, NULL, static_cast<void*>(tempVolumetricLossesInputs));
+                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_first_no_temperature_func, tempCoefficients.data(), tempVolumetricLossesArray.data(), 3, numberElements100C, 10000, opts, info, NULL, NULL, static_cast<void*>(tempVolumetricLossesInputs.data()));
                 coefficients[0] = tempCoefficients[0];
                 coefficients[1] = tempCoefficients[1];
                 coefficients[2] = tempCoefficients[2];
@@ -617,13 +613,13 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 for (size_t index = 0; index < 3; ++index) {
                     tempCoefficients[index] = initialState;
                 }
-                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_first_only_temperature_func, tempCoefficients, volumetricLossesArray, 3, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs));
+                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_first_only_temperature_func, tempCoefficients.data(), volumetricLossesArray.data(), 3, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs.data()));
                 coefficients[3] = tempCoefficients[0];
                 coefficients[4] = tempCoefficients[1];
                 coefficients[5] = tempCoefficients[2];
             }
             else {
-                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_with_temperature_func, coefficients, volumetricLossesArray, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs));
+                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_with_temperature_func, coefficients.data(), volumetricLossesArray.data(), numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs.data()));
             }
 
             double errorAverage = 0;
@@ -633,10 +629,10 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 double modeledVolumetricLosses = 0;
                 if (numberInputs == 3) {
                     auto temperature = volumetricLossesInputs[3 + numberInputs * index + 2];
-                    modeledVolumetricLosses = steinmetz_equation_with_temperature_and_log(coefficients, frequency, magneticFluxDensityAcPeak, temperature);
+                    modeledVolumetricLosses = steinmetz_equation_with_temperature_and_log(coefficients.data(), frequency, magneticFluxDensityAcPeak, temperature);
                 }
                 else {
-                    modeledVolumetricLosses = steinmetz_equation_log(coefficients, frequency, magneticFluxDensityAcPeak);
+                    modeledVolumetricLosses = steinmetz_equation_log(coefficients.data(), frequency, magneticFluxDensityAcPeak);
                 }
                 double error = fabs(pow(10, volumetricLossesArray[index]) - pow(10, modeledVolumetricLosses)) / pow(10, volumetricLossesArray[index]);
                 errorAverage += error;
@@ -654,10 +650,6 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 }
                 bestCoefficients[0] = pow(10, std::max(bestCoefficients[0], -15.0));
             }
-
-            delete[] volumetricLossesArray;
-            delete[] coefficients;
-            delete[] volumetricLossesInputs;
         }
         SteinmetzCoreLossesMethodRangeDatum steinmetzCoreLossesMethodRangeDatum;
         steinmetzCoreLossesMethodRangeDatum.set_k(bestCoefficients[0]);
