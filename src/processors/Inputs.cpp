@@ -1052,9 +1052,65 @@ SignalDescriptor Inputs::get_differential_mode_choke_magnetizing_current(Operati
     return magnetizingCurrent;
 }
 
+// Derive a waveform's fundamental period from its time/data vectors.
+//
+// MKF uses the half-open [0, T) FFT convention for sampled waveforms (see
+// reconstruct_signal, the CMC/DMC inputs, and the output of
+// calculate_sampled_waveform itself): N samples with step T/N, the period
+// boundary T deliberately NOT included. For such arrays the true period is
+// step*N, not time.back() - time.front() — the latter is one step short,
+// (N-1)*T/N, which biases the derived frequency high by N/(N-1). For a
+// 128-point 150 kHz CMC input that is 151181 Hz instead of 150000 Hz, the
+// mismatch that surfaces as "Invalid frequency derived from waveform" /
+// "not matching waveform time info" on stricter (e.g. Windows) builds.
+//
+// Closed breakpoint waveforms instead place the period boundary at the last
+// point, so for them the period is time.back() - time.front(). These include
+// the non-equidistant PWL forms (e.g. FLYBACK_PRIMARY {0,0,dc,dc,T}) but ALSO
+// equidistant ones such as a symmetric TRIANGULAR {0, T/2, T} — equidistance
+// alone does NOT imply the half-open convention.
+//
+// The two are distinguished by their endpoints: a closed periodic waveform
+// repeats its value at the boundary (data.front() == data.back(), e.g.
+// TRIANGULAR {min,max,min}), whereas a half-open sampled signal does not — its
+// last sample sits one step short of the wrap. So the half-open branch is taken
+// only when the array is equidistant AND the endpoints differ.
+//
+// When `outIsHalfOpen` is provided it reports which branch was taken, so a
+// caller that interpolates over the array can append the periodic wrap endpoint
+// (T, data[0]) that the [0, T) array omits.
+static double derive_waveform_period(const std::vector<double>& time,
+                                     const std::vector<double>& data,
+                                     bool* outIsHalfOpen = nullptr) {
+    bool halfOpen = false;
+    if (time.size() >= 2 && data.size() == time.size()) {
+        double step = time[1] - time[0];
+        bool equidistant = step > 0;
+        for (size_t i = 1; equidistant && i + 1 < time.size(); ++i) {
+            if (std::abs((time[i + 1] - time[i]) - step) > 1e-6 * step) {
+                equidistant = false;
+            }
+        }
+        if (equidistant) {
+            double range = *std::max_element(data.begin(), data.end()) -
+                           *std::min_element(data.begin(), data.end());
+            halfOpen = range > 0 && std::abs(data.front() - data.back()) > 1e-6 * range;
+        }
+    }
+    if (outIsHalfOpen) {
+        *outIsHalfOpen = halfOpen;
+    }
+    if (halfOpen) {
+        double step = time[1] - time[0];
+        return step * static_cast<double>(time.size());  // [0, T): full period
+    }
+    return time.back() - time.front();                    // closed: boundary at last point
+}
+
 Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency, std::optional<size_t> numberPoints) {
     std::vector<double> time;
     auto data = waveform.get_data();
+    bool isHalfOpenInput = false;
 
     // Validate input data
     if (data.size() < 2) {
@@ -1075,15 +1131,14 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
     }
     else {
         time = waveform.get_time().value();
-        // The waveform time data defines the actual period to sample over
-        // Always use the frequency derived from the waveform time data for sampling
-        // This ensures the sampled time points fall within the waveform's time range
-        double period = (time.back() - time.front());
+        // The waveform time data defines the actual period to sample over.
+        // Derive the period honouring the [0, T) convention for equidistant
+        // arrays (see derive_waveform_period); the passed frequency parameter is
+        // only used as a fallback when time data is missing.
+        double period = derive_waveform_period(time, data, &isHalfOpenInput);
         if (period <= 0) {
             throw std::invalid_argument("Invalid waveform period: " + std::to_string(period));
         }
-        // Use frequency from waveform time data for sampling purposes
-        // The passed frequency parameter is only used as fallback when time data is missing
         frequency = 1.0 / period;
         // Validate frequency after inference
         if (!std::isfinite(frequency) || frequency <= 0) {
@@ -1106,6 +1161,20 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
     }
 
     auto sampledTime = linear_spaced_array(0, 1. / roundFloat(frequency, 9), numberPointsForSampling + 1);
+
+    // For an equidistant [0, T) input the period boundary T is not present in
+    // the array, so sampling-grid points in [time.back(), T) have no segment to
+    // interpolate against. Append the periodic wrap endpoint — a sample at T
+    // equal to the first sample — so every sampled point is bracketed. This is
+    // done after numberPointsForSampling is fixed so the extra point does not
+    // inflate the sampling resolution.
+    if (isHalfOpenInput) {
+        double period = 1. / frequency;
+        if (time.back() < period) {
+            time.push_back(period);
+            data.push_back(data.front());
+        }
+    }
 
     std::vector<double> sampledData;
 
@@ -1515,7 +1584,8 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
     }
     Waveform newWaveform;
 
-    double period = signal.get_waveform()->get_time()->back() - signal.get_waveform()->get_time()->front();
+    double period = derive_waveform_period(signal.get_waveform()->get_time().value(),
+                                           signal.get_waveform()->get_data());
     double frequency = 1.0 / period;
     double peakToPeak = processed.get_peak_to_peak().value() * ratio;
     double offset = processed.get_offset() * ratio;
@@ -3526,7 +3596,7 @@ void Inputs::scale_time_to_frequency(OperatingPointExcitation& excitation, doubl
 Waveform Inputs::scale_time_to_frequency(Waveform waveform, double newFrequency){
     std::vector<double> scaledTime;
     std::vector<double> time = waveform.get_time().value();
-    double oldFrequency = 1.0 / (time.back() - time.front());
+    double oldFrequency = 1.0 / derive_waveform_period(time, waveform.get_data());
     for (auto& timePoint : time) {
         scaledTime.push_back(timePoint * oldFrequency / newFrequency);
     }

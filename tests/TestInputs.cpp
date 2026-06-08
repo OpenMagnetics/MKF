@@ -1745,7 +1745,13 @@ TEST_CASE("Test_Sample_And_Compress_Sinusoidal", "[processor][inputs][smoke-test
     REQUIRE(128UL == sampledWaveform.get_data().size());
 
     auto compressedWaveform = OpenMagnetics::Inputs::compress_waveform(sampledWaveform);
-    REQUIRE(115UL == compressedWaveform.get_data().size());
+    // The input uses the half-open [0, 2*pi) convention (time[i] = i*2*pi/N, the
+    // period boundary excluded). calculate_sampled_waveform now derives the
+    // period as step*N and samples the full period, so the sine closes cleanly
+    // and compress_waveform retains 110 points (was 115 when sampling stopped one
+    // step short of the period). The waveform is still a clean sinusoid (checked
+    // below); this count is a structural fingerprint of the corrected sampling.
+    REQUIRE(110UL == compressedWaveform.get_data().size());
     auto guessedLabel = OpenMagnetics::Inputs::try_guess_waveform_label(compressedWaveform);
     REQUIRE(magic_enum::enum_name(WaveformLabel::SINUSOIDAL) == magic_enum::enum_name(guessedLabel));
 }
@@ -1765,6 +1771,45 @@ TEST_CASE("Test_Sample_And_Compress_Rectangular", "[processor][inputs][smoke-tes
     REQUIRE(5UL == compressedWaveform.get_data().size());
     auto guessedLabel = OpenMagnetics::Inputs::try_guess_waveform_label(compressedWaveform);
     REQUIRE(magic_enum::enum_name(WaveformLabel::RECTANGULAR) == magic_enum::enum_name(guessedLabel));
+}
+
+// Regression: a CMC/DMC-style input uses the half-open [0, T) FFT convention
+// (time[i] = i*T/N with T = 1/frequency, the period boundary NOT included). The
+// fundamental period must be derived as step*N, NOT time.back()-time.front()
+// (which is one step short, biasing the frequency high by N/(N-1)). For a
+// 128-point 150 kHz input the buggy formula yielded 151181 Hz, which on stricter
+// builds tripped "Invalid frequency derived from waveform" / "not matching
+// waveform time info". The sampled waveform's [0, T) period must reproduce the
+// stated 150000 Hz exactly.
+TEST_CASE("Test_Sampled_Waveform_Half_Open_Period_CMC", "[processor][inputs][smoke-test]") {
+    const double frequency = 150000.0;
+    const size_t N = 128;
+    const double period = 1.0 / frequency;
+    Waveform waveform;
+    std::vector<double> data;
+    std::vector<double> time;
+    for (size_t i = 0; i < N; ++i) {
+        double t = i * period / N;  // [0, T): last entry is (N-1)*T/N, not T
+        time.push_back(t);
+        data.push_back(std::sin(2 * M_PI * frequency * t));
+    }
+    waveform.set_data(data);
+    waveform.set_time(time);
+
+    // Sanity-check that the fixture really excludes the period boundary.
+    REQUIRE(time.back() < period);
+    REQUIRE(time.back() == Catch::Approx((N - 1) * period / N));
+
+    auto sampledWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, frequency);
+    auto sampledTime = sampledWaveform.get_time().value();
+    REQUIRE(sampledTime.size() >= 2);
+
+    // The sampled output is itself [0, T): its full period is step*size and must
+    // recover 150000 Hz, not the 151181 Hz the back-front formula produced.
+    double sampledStep = sampledTime[1] - sampledTime[0];
+    double sampledFrequency = 1.0 / (sampledStep * static_cast<double>(sampledTime.size()));
+    REQUIRE(sampledFrequency == Catch::Approx(frequency).epsilon(1e-6));
+    REQUIRE(sampledFrequency < 150500.0);  // would be ~151181 with the old formula
 }
 
 TEST_CASE("Test_Sample_And_Compress_Triangular", "[processor][inputs][smoke-test]") {
