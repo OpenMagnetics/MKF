@@ -117,10 +117,12 @@ namespace OpenMagnetics {
         _coreAdviserIncludeMargin = false;
         _coreAdviserEnableIntermediatePruning = true;
         _coreAdviserMaximumMagneticsAfterFiltering = Defaults().coreAdviserMaximumMagneticsAfterFiltering;
-        // NB: _coreAdviserEnableTemperatureFilter and _coreAdviserMaximumTemperature
-        // are intentionally NOT reset here — preserving the pre-existing behavior
-        // that those fields persist across reset() calls. Out of scope for the
-        // saturation-margin change.
+        // These must be reset too: a test that enables the temperature filter with
+        // a low limit (e.g. Test_CoreAdviser_Temperature_Filter sets a thermally
+        // impossible 24 °C) otherwise leaks "reject every core" into every later
+        // adviser run, which returns 0 candidates. Restore to header defaults.
+        _coreAdviserEnableTemperatureFilter = false;
+        _coreAdviserMaximumTemperature = 130.0;
         _coreAdviserSaturationMargin = 1.2;
 
         _wireAdviserIncludePlanar = false;
