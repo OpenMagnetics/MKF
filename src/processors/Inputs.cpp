@@ -854,7 +854,8 @@ bool Inputs::can_be_common_mode_choke(OperatingPoint operatingPoint) {
                 return false;
             }
             double secondaryRms = secondaryCurrent->get_processed()->get_rms().value();
-            if (!is_close_enough(primaryRms, secondaryRms, 0.05)) {
+            // is_close_enough takes an absolute tolerance; the documented intent is 5% relative
+            if (!is_close_enough(primaryRms, secondaryRms, 0.05 * primaryRms)) {
                 return false;
             }
         }
@@ -1735,9 +1736,10 @@ Processed Inputs::calculate_basic_processed_data(Waveform waveform) {
                                *min_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()));
 
     if (label == WaveformLabel::FLYBACK_PRIMARY ||
-        label == WaveformLabel::FLYBACK_SECONDARY ||
-        label == WaveformLabel::UNIPOLAR_TRIANGULAR ||
-        label == WaveformLabel::UNIPOLAR_RECTANGULAR) {
+        label == WaveformLabel::FLYBACK_SECONDARY) {
+        // Flyback waveforms include a 0-level floor, so max - min overstates the
+        // ramp peak-to-peak by the offset. UNIPOLAR_* waveforms never touch 0
+        // (their minimum IS the offset), so max - min is already correct for them.
         processed.set_peak_to_peak(processed.get_peak_to_peak().value() - offset);
     }
 
@@ -3253,7 +3255,9 @@ double Inputs::calculate_waveform_coefficient(OperatingPoint* operatingPoint) {
     source = std::vector<double>(source.begin(), source.end() - source.size() / 2);
 
     for (size_t i = 0; i < source.size() - 1; i++) {
-        integral += fabs(source[i + 1] - source[i]) / 2. + source[i];
+        // Trapezoidal rule: (s[i] + s[i+1]) / 2. The previous fabs() on the
+        // difference inflated the integral on every falling segment.
+        integral += (source[i + 1] + source[i]) / 2.;
     }
     integral *= time_per_point;
 
@@ -3393,7 +3397,7 @@ WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
             is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[2] > compressedWaveform.get_data()[3] &&
             is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[0] == waveform.get_data()[4]) {
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
                 return WaveformLabel::FLYBACK_SECONDARY;
         }
         else {
@@ -3447,14 +3451,14 @@ WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
     }
 }
 
-void Inputs::scale_time_to_frequency(Inputs& inputs, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals, bool ){
+void Inputs::scale_time_to_frequency(Inputs& inputs, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals, bool useCurrentAsBase){
     for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
-        Inputs::scale_time_to_frequency(operatingPoint, newFrequency, cleanFrequencyDependentFields, processSignals);
+        Inputs::scale_time_to_frequency(operatingPoint, newFrequency, cleanFrequencyDependentFields, processSignals, useCurrentAsBase);
     }}
 
 void Inputs::scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals, bool useCurrentAsBase){
     for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
-        scale_time_to_frequency(excitation, newFrequency, cleanFrequencyDependentFields, processSignals);
+        scale_time_to_frequency(excitation, newFrequency, cleanFrequencyDependentFields, processSignals, useCurrentAsBase);
     }}
 
 void Inputs::scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals, bool useCurrentAsBase){
@@ -3759,13 +3763,12 @@ double Inputs::get_maximum_current_dc_bias(size_t windingIndex) {
         if (operatingPoint.get_excitations_per_winding().size() == 0)
             throw std::invalid_argument("There are no winding excitation in operating point");
 
-        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
-            if (!excitation.get_current()) 
-                throw std::invalid_argument("Missing current in excitation");
-            if (!excitation.get_current()->get_processed()) 
-                throw std::invalid_argument("Current has not been processed");
-            maximumDcBias = std::max(maximumDcBias, excitation.get_current()->get_processed()->get_offset());
-        }
+        auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+        if (!excitation.get_current())
+            throw std::invalid_argument("Missing current in excitation");
+        if (!excitation.get_current()->get_processed())
+            throw std::invalid_argument("Current has not been processed");
+        maximumDcBias = std::max(maximumDcBias, excitation.get_current()->get_processed()->get_offset());
     }
     return maximumDcBias;
 }
