@@ -150,11 +150,13 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
             if (_averageMarginInWindingWindow > radialHeight / 2) {
                 return {false, 0.0};
             }
-            double wireAngle = wound_distance_to_angle(_averageMarginInWindingWindow, radialHeight / 2);
-            if (std::isnan((wireAngle) / 360)) {
-                throw NaNResultException("wireAngle: " + std::to_string(wireAngle));
+            double marginAngle = wound_distance_to_angle(_averageMarginInWindingWindow, radialHeight / 2);
+            if (std::isnan((marginAngle) / 360)) {
+                throw NaNResultException("marginAngle: " + std::to_string(marginAngle));
             }
-            windingWindowArea *= (wireAngle) / 360;
+            // The margin blocks marginAngle degrees of the toroidal window; the
+            // remaining (360 - marginAngle) degrees are usable.
+            windingWindowArea *= (360 - marginAngle) / 360;
         }
     }
     double areaProductCore = windingWindowArea * windingColumn.get_area();
@@ -345,7 +347,9 @@ std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Windi
     else if (allowNotFit) {
         double extra = (neededOuterAreaNoCompact - sectionArea) / sectionArea;
         if (extra < 0.5) {
-            return {true, extra};
+            // Higher scoring must mean better: a small overflow scores close to
+            // the fitting case (1.0), a large overflow scores lower.
+            return {true, 1.0 - extra};
         }
         else {
             return {false, 0.0};

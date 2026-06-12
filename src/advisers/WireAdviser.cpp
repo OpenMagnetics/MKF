@@ -646,7 +646,7 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<Winding, dou
         }
         auto neededOuterAreaNoCompact = wire.get_maximum_outer_width() * wire.get_maximum_outer_height();
 
-        neededOuterAreaNoCompact *= (*unfilteredCoils)[coilIndex].first.get_number_parallels() * (*unfilteredCoils)[coilIndex].first.get_number_turns() / numberSections;
+        neededOuterAreaNoCompact *= (*unfilteredCoils)[coilIndex].first.get_number_parallels() * (*unfilteredCoils)[coilIndex].first.get_number_turns() / static_cast<double>(numberSections);
 
         double areaProportion = neededOuterAreaNoCompact / sectionArea;
         _maximumOuterAreaProportion = std::max(_maximumOuterAreaProportion, areaProportion);

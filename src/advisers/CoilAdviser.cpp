@@ -242,7 +242,7 @@ namespace OpenMagnetics {
         }
 
         
-        size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(maximumNumberResults / (patterns.size() * repetitions.size())));
+        size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(static_cast<double>(maximumNumberResults) / (patterns.size() * repetitions.size())));
         logEntry("Trying " + std::to_string(repetitions.size()) + " repetitions and " + std::to_string(patterns.size()) + " patterns", "CoilAdviser");
 
         // Early-termination cap. For multi-winding coils (Flyback, LLC,
@@ -1168,6 +1168,7 @@ namespace OpenMagnetics {
             stackUpString.pop_back();
 
             // B19 FIX: Calculate planar clearances using InsulationCoordinator
+            bool planarClearanceViolated = false;
             if (mas.get_mutable_inputs().get_design_requirements().get_insulation() &&
                 mas.get_mutable_inputs().get_wiring_technology() == WiringTechnology::PRINTED) {
                 try {
@@ -1191,7 +1192,8 @@ namespace OpenMagnetics {
                                         std::to_string(spacing * 1e3) + " mm < required " +
                                         std::to_string(requiredClearance * 1e3) +
                                         " mm — skipping", "CoilAdviser", 2);
-                                    continue; // skip this wire combination
+                                    planarClearanceViolated = true; // skip this wire combination
+                                    break;
                                 }
                             }
                         }
@@ -1201,7 +1203,9 @@ namespace OpenMagnetics {
                     logEntry("B19: clearance check skipped (missing data)", "CoilAdviser", 2);
                 }
             }
-            wound = mas.get_mutable_magnetic().get_mutable_coil().wind_planar(stackUp, std::nullopt, {}, {}, defaults.coreToLayerDistance);
+            if (!planarClearanceViolated) {
+                wound = mas.get_mutable_magnetic().get_mutable_coil().wind_planar(stackUp, std::nullopt, {}, {}, defaults.coreToLayerDistance);
+            }
 
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();

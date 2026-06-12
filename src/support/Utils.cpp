@@ -571,7 +571,7 @@ std::vector<CoreShapeFamily> get_core_shape_families() {
 }
 
 std::vector<std::string> get_core_material_families(std::optional<MaterialType> materialType) {
-    if (coreShapeDatabase.empty()) {
+    if (coreMaterialDatabase.empty()) {
         load_core_materials();
     }
     std::vector<std::string> families;
@@ -663,7 +663,7 @@ std::vector<std::string> get_wire_names() {
 
 
 std::vector<std::string> get_bobbin_names() {
-    if (wireDatabase.empty()) {
+    if (bobbinDatabase.empty()) {
         load_bobbins();
     }
 
@@ -678,7 +678,7 @@ std::vector<std::string> get_bobbin_names() {
 
 
 std::vector<std::string> get_insulation_material_names() {
-    if (wireDatabase.empty()) {
+    if (insulationMaterialDatabase.empty()) {
         load_insulation_materials();
     }
 
@@ -693,7 +693,7 @@ std::vector<std::string> get_insulation_material_names() {
 
 
 std::vector<std::string> get_wire_material_names() {
-    if (wireDatabase.empty()) {
+    if (wireMaterialDatabase.empty()) {
         load_wire_materials();
     }
 
@@ -795,7 +795,7 @@ std::vector<Wire> get_wires(std::optional<WireType> wireType, std::optional<Wire
 
 
 std::vector<Bobbin> get_bobbins() {
-    if (wireDatabase.empty()) {
+    if (bobbinDatabase.empty()) {
         load_bobbins();
     }
 
@@ -810,7 +810,7 @@ std::vector<Bobbin> get_bobbins() {
 
 
 std::vector<InsulationMaterial> get_insulation_materials() {
-    if (wireDatabase.empty()) {
+    if (insulationMaterialDatabase.empty()) {
         load_insulation_materials();
     }
 
@@ -825,7 +825,7 @@ std::vector<InsulationMaterial> get_insulation_materials() {
 
 
 std::vector<WireMaterial> get_wire_materials() {
-    if (wireDatabase.empty()) {
+    if (wireMaterialDatabase.empty()) {
         load_wire_materials();
     }
 
@@ -925,6 +925,12 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
     }
 
     double minimumOuterDimension = DBL_MAX;
+    if (!possibleWires.empty()) {
+        // The wire that set the current minimum distance is not in possibleWires,
+        // so seed the tie-break with its outer dimension or it would always lose
+        Wire chosenCopy = chosenWire;
+        minimumOuterDimension = chosenCopy.get_maximum_outer_dimension();
+    }
 
     for (const Wire* wirePtr : possibleWires) {
         Wire wireCopy = *wirePtr;  // get_maximum_outer_dimension is non-const
@@ -1251,7 +1257,7 @@ bool check_requirement(DimensionWithTolerance requirement, double value){
         return value > requirement.get_minimum().value();
     }
     else if (!requirement.get_minimum() && !requirement.get_nominal() && requirement.get_maximum()) {
-        return value > requirement.get_maximum().value();
+        return value < requirement.get_maximum().value();
     }
 
     return false;
@@ -2153,11 +2159,11 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
     //Inputs
     size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
     if (!inputs.get_design_requirements().get_isolation_sides()) {
+        std::vector<IsolationSide> isolationSides;
         for (size_t i = 0; i < numberWindings; i++) {
-            std::vector<IsolationSide> isolationSides;
             isolationSides.push_back(get_isolation_side_from_index(i));
-            inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         }
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
     }
     else {
         std::vector<IsolationSide> isolationSides;
@@ -2474,6 +2480,9 @@ std::map<std::string, double> normalize_scoring(std::map<std::string, double> sc
 }
 
 std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, bool invert, bool log) {
+    if (scoring.empty()) {
+        return {};
+    }
     using pair_type = decltype(scoring)::value_type;
     double maximumScoring = (*std::max_element(
         std::begin(scoring), std::end(scoring),
@@ -2522,7 +2531,7 @@ std::map<std::string, double> normalize_scoring(std::map<std::string, double> sc
             }
         }
         else {
-            normalizedScoring += 1;
+            normalizedScoring += weight;
         }
         normalizedScorings[key] = normalizedScoring;
     }
@@ -2539,6 +2548,9 @@ std::vector<double> normalize_scoring(std::vector<double> scoring, OpenMagnetics
 }
 
 std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, bool invert, bool log) {
+    if (scoring.empty()) {
+        return {};
+    }
     double maximumScoring = *std::max_element(scoring.begin(), scoring.end());
     double minimumScoring = *std::min_element(scoring.begin(), scoring.end());
     std::vector<double> normalizedScorings;
@@ -2568,7 +2580,7 @@ std::vector<double> normalize_scoring(std::vector<double> scoring, double weight
             }
         }
         else {
-            normalizedScoring += 1;
+            normalizedScoring += weight;
         }
         normalizedScorings.push_back(normalizedScoring);
     }

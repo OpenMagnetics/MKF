@@ -120,11 +120,13 @@ std::pair<bool, double> MagneticFilterEstimatedCost::evaluate_magnetic(Magnetic*
             if (_averageMarginInWindingWindow > radialHeight / 2) {
                 return {false, 0.0};
             }
-            double wireAngle = wound_distance_to_angle(_averageMarginInWindingWindow, radialHeight / 2);
-            if (std::isnan((wireAngle) / 360)) {
-                throw NaNResultException("wireAngle: " + std::to_string(wireAngle));
+            double marginAngle = wound_distance_to_angle(_averageMarginInWindingWindow, radialHeight / 2);
+            if (std::isnan((marginAngle) / 360)) {
+                throw NaNResultException("marginAngle: " + std::to_string(marginAngle));
             }
-            windingWindowArea *= (wireAngle) / 360;
+            // The margin blocks marginAngle degrees of the toroidal window; the
+            // remaining (360 - marginAngle) degrees are usable.
+            windingWindowArea *= (360 - marginAngle) / 360;
         }
     }
 
@@ -161,9 +163,12 @@ std::pair<bool, double> MagneticFilterEstimatedCost::evaluate_magnetic(Magnetic*
 
 std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     std::vector<Wire> wires = magnetic->get_mutable_coil().get_wires();
-    auto wireRelativeCosts = 0;
+    double wireRelativeCosts = 0;
     for (auto wire : wires) {
         wireRelativeCosts += wire.get_relative_cost();
+    }
+    if (!magnetic->get_mutable_coil().get_layers_description()) {
+        throw CoilNotProcessedException("Missing layers description to evaluate cost filter");
     }
     auto numberLayers = magnetic->get_mutable_coil().get_layers_description()->size();
     double scoring = numberLayers + wireRelativeCosts;

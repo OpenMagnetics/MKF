@@ -85,6 +85,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
         return b1.second < b2.second;
     });
 
+    numberCoreMaterialsTouse = std::min(numberCoreMaterialsTouse, evaluations.size());
     for (size_t magneticIndex = 0; magneticIndex < (*magneticsWithScoring).size(); ++magneticIndex) {
         for (size_t i = 0; i < numberCoreMaterialsTouse; ++i){
             auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
@@ -125,6 +126,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::fan_out_dummy_into_top_mat
     const std::vector<std::pair<CoreMaterial, double>>& sortedMaterialEvaluations,
     size_t numberCoreMaterialsTouse) {
     std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
+    numberCoreMaterialsTouse = std::min(numberCoreMaterialsTouse, sortedMaterialEvaluations.size());
     for (size_t magneticIndex = 0; magneticIndex < (*magneticsWithScoring).size(); ++magneticIndex) {
         auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
         if (magnetic.get_mutable_core().get_material_name() != DUMMY_SENTINEL_NAME) {
@@ -217,8 +219,11 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
         evaluations.push_back({coreMaterial, totalComplexPermeability});
     }
 
+    // Impedance-driven (suppression) applications want the HIGHEST complex
+    // permeability at the requirement frequencies, so sort descending (the
+    // losses-based sibling sorts ascending because lower losses are better).
     stable_sort((evaluations).begin(), (evaluations).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
-        return b1.second < b2.second;
+        return b1.second > b2.second;
     });
 
     return fan_out_dummy_into_top_materials(magneticsWithScoring, evaluations, numberCoreMaterialsTouse);
