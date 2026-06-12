@@ -115,7 +115,7 @@ class Coil : public MAS::Coil {
         InsulationCoordinator _standardCoordinator = InsulationCoordinator();
         std::vector<double> _currentProportionPerWinding;
         std::vector<size_t> _currentPattern;
-        size_t _currentRepetitions;
+        size_t _currentRepetitions = 1;
         bool _strict = true;
         bool _bobbin_resolved = false;
         Bobbin _bobbin;

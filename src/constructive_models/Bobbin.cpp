@@ -751,7 +751,7 @@ CoilAlignment Bobbin::get_winding_window_sections_alignment(size_t windingWindow
 }
 
 WindingWindowShape Bobbin::get_winding_window_shape(size_t windingWindowIndex) {
-    if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
+    if (get_processed_description() && windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
     }
     if (!get_processed_description()) {
@@ -776,8 +776,8 @@ void Bobbin::process_data() {
 }
 
 bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t windingWindowIndex) {
-    if (get_winding_window_shape() == WindingWindowShape::RECTANGULAR) {
-        auto windingWindowDimensions = get_winding_window_dimensions();
+    if (get_winding_window_shape(windingWindowIndex) == WindingWindowShape::RECTANGULAR) {
+        auto windingWindowDimensions = get_winding_window_dimensions(windingWindowIndex);
         if (isHorizontalOrRadial) {
             return dimension < windingWindowDimensions[0];
         }
@@ -785,8 +785,8 @@ bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t w
             return dimension < windingWindowDimensions[1];
         }
     }
-    else if (get_winding_window_shape() == WindingWindowShape::ROUND) {
-        auto windingWindowDimensions = get_winding_window_dimensions();
+    else if (get_winding_window_shape(windingWindowIndex) == WindingWindowShape::ROUND) {
+        auto windingWindowDimensions = get_winding_window_dimensions(windingWindowIndex);
         if (isHorizontalOrRadial) {
             return dimension < windingWindowDimensions[0];
         }
@@ -796,7 +796,7 @@ bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t w
         }
     }
     else {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unsupported winding window shape: " + to_string(get_winding_window_shape()));
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unsupported winding window shape: " + to_string(get_winding_window_shape(windingWindowIndex)));
     }
 }
 

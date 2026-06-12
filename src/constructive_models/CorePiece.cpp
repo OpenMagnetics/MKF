@@ -493,7 +493,7 @@ class CorePieceEp : public CorePieceE {
         if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
             baseArea = dimensions["A"] * dimensions["C"];
             windingArea = k * dimensions["E"] +
-                          1 / 2 * std::numbers::pi * pow(dimensions["E"] / 2, 2);
+                          1. / 2 * std::numbers::pi * pow(dimensions["E"] / 2, 2);
             apertureArea = 0;
         }
         else {
@@ -505,7 +505,7 @@ class CorePieceEp : public CorePieceE {
             apertureArea = aperture * apertureMaximumDepth - segmentArea;
             baseArea = dimensions["A"] / 2 * dimensions["C"];
             windingArea = k * dimensions["E"] / 2 +
-                          1 / 4 * std::numbers::pi * pow(dimensions["E"] / 2, 2);
+                          1. / 4 * std::numbers::pi * pow(dimensions["E"] / 2, 2);
         }
         double area = baseArea - windingArea - apertureArea;
         return area;
@@ -1500,7 +1500,7 @@ class CorePieceUr : public CorePiece {
             lateralColumn.set_shape(ColumnShape::ROUND);
             lateralColumn.set_width(roundFloat(dimensions["H"]));
             lateralColumn.set_depth(roundFloat(dimensions["H"]));
-            lateralColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+            lateralColumn.set_area(roundFloat(std::numbers::pi * pow(lateralColumn.get_width() / 2, 2)));
         }
         lateralColumn.set_height(roundFloat(dimensions["D"]));
         lateralColumn.set_coordinates({roundFloat((dimensions["A"] + windingWindowWidth) / 2), 0, 0});
@@ -2303,8 +2303,8 @@ inline void to_json(json& j, const CorePiece& x) {
     j["depth"] = x.get_depth();
     j["height"] = x.get_height();
     j["width"] = x.get_width();
-    j["shape"] = x.get_winding_window();
-    j["windingWindow"] = x.get_shape();
+    j["shape"] = x.get_shape();
+    j["windingWindow"] = x.get_winding_window();
     j["partialEffectiveParameters"] = x.get_partial_effective_parameters();
 }
 

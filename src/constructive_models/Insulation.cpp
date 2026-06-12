@@ -78,6 +78,11 @@ size_t times_withstand_voltage_is_covered_by_wires(Wire leftWire, Wire rightWire
                 if (coating.get_grade().value() > 3) {
                     times += 3;
                 }
+                else {
+                    // A graded coating whose breakdown voltage covers the withstand
+                    // voltage counts at least once, same as an ungraded coating
+                    times++;
+                }
             }
             else {
                 times++;
@@ -102,8 +107,14 @@ size_t times_withstand_voltage_is_covered_by_wires(Wire leftWire, Wire rightWire
                 times += coating.get_number_layers().value();
             }
             else if (coating.get_grade() && canFullyInsulatedWireBeUsed) {
-                if (coating.get_grade().value() > 3) 
-                times += 3;
+                if (coating.get_grade().value() > 3) {
+                    times += 3;
+                }
+                else {
+                    // A graded coating whose breakdown voltage covers the withstand
+                    // voltage counts at least once, same as an ungraded coating
+                    times++;
+                }
             }
             else {
                 times++;
@@ -291,6 +302,9 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
                 insulation.set_insulation_type(InsulationType::SUPPLEMENTARY);
                 inputs.get_mutable_design_requirements().set_insulation(insulation);
                 auto withstandVoltageSupplementary = calculate_withstand_voltage(inputs);
+                // Restore the caller's insulation type (DOUBLE) so the mutation does not leak
+                insulation.set_insulation_type(InsulationType::DOUBLE);
+                inputs.get_mutable_design_requirements().set_insulation(insulation);
                 double withstandVoltageSeparated = std::max(withstandVoltageBasic, withstandVoltageSupplementary);
                 timesWithstandVoltageIsCoveredByWires = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltageSeparated, canFullyInsulatedWireBeUsed);
                 if (timesWithstandVoltageIsCoveredByWires >= 3 && allowInsulatedWire) {
@@ -299,11 +313,11 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
                     clearanceAndCreepageDistance = 0;
                 }
                 else if (clearanceAndCreepageDistance > 0 && timesWithstandVoltageIsCoveredByWires == 2 && allowInsulatedWire) {
-                    numberInsulationLayersSeparated = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
+                    numberInsulationLayersSeparated = std::max(1.0, ceil(roundFloat(withstandVoltageSeparated / tapeDielectricStrength / tapeThickness, 1)));
                     clearanceAndCreepageDistance = 0;
                 }
                 else {
-                    numberInsulationLayersSeparated = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
+                    numberInsulationLayersSeparated = std::max(1.0, ceil(roundFloat(withstandVoltageSeparated / tapeDielectricStrength / tapeThickness, 1)));
                 }
 
                 numberInsulationLayers = std::min(numberInsulationLayersTogether, numberInsulationLayersSeparated);
@@ -1711,7 +1725,7 @@ bool InsulationCoordinator::needs_margin(std::vector<WireSolidInsulationRequirem
     for(size_t index = 0; index < pattern.size(); ++index) {
         size_t leftIndex = pattern[index];
         size_t rightIndex;
-        if (leftIndex == pattern.size() - 1) {
+        if (index == pattern.size() - 1) {
             if (repetitions == 0) {
                 break;
             }
@@ -1720,7 +1734,7 @@ bool InsulationCoordinator::needs_margin(std::vector<WireSolidInsulationRequirem
             }
         }
         else {
-            rightIndex = pattern[leftIndex + 1];
+            rightIndex = pattern[index + 1];
         }
         int64_t numberLayers = 0;
         int64_t numberGrades = 0;
@@ -1845,6 +1859,9 @@ std::vector<std::vector<WireSolidInsulationRequirements>> InsulationCoordinator:
                     insulation.set_insulation_type(InsulationType::BASIC);
                     inputs.get_mutable_design_requirements().set_insulation(insulation);
                     withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
+                    // Restore the caller's insulation type (DOUBLE) so the mutation does not leak
+                    insulation.set_insulation_type(InsulationType::DOUBLE);
+                    inputs.get_mutable_design_requirements().set_insulation(insulation);
                 }
 
                 if (insulationType == InsulationType::DOUBLE || isolationSidesRequired.size() == 1) {

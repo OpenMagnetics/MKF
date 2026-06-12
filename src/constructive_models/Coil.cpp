@@ -2054,7 +2054,8 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
 
 void Coil::apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation) {
     if (_marginsPerSection.size() < orderedSectionsWithInsulation.size()) {
-        _marginsPerSection = std::vector<std::vector<double>>(orderedSectionsWithInsulation.size(), {0, 0});
+        // Resize (not replace) so preloaded margins are preserved, matching equalize_margins
+        _marginsPerSection.resize(orderedSectionsWithInsulation.size(), {0, 0});
     }
 
     for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
@@ -3426,7 +3427,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                                                                        remainingParallelsProportion[windingIndex],
                                                                        windByConsecutiveTurns[windingIndex],
                                                                        std::vector<double>(get_number_parallels(windingIndex), 1),
-                                                                       sectionPhysicalTurnsProportions[windingIndex]);
+                                                                       sectionPhysicalTurnsProportions[conductingSectionIndex]);
 
                 std::vector<double> sectionParallelsProportion = parallelsProportions.second;
                 uint64_t physicalTurnsThisSection = parallelsProportions.first;
@@ -3556,7 +3557,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 auto insulationSection = _insulationSections[windingsMapKey];
 
                 insulationSection.set_group(group.get_name());
-                insulationSection.set_name("Insulation between " + get_name(previousWindingIndex) + " and " + get_name(previousWindingIndex) + " section " + std::to_string(sectionIndex));
+                insulationSection.set_name("Insulation between " + get_name(previousWindingIndex) + " and " + get_name(nextWindingIndex) + " section " + std::to_string(sectionIndex));
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
                     insulationSection.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + insulationSection.get_dimensions()[0] / 2,
                                                                           currentSectionCenterAngle,
@@ -3966,7 +3967,7 @@ bool Coil::wind_by_rectangular_layers() {
                 windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers);
             }
 
-            if (sections[sectionIndex].get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS && maximumNumberPhysicalTurnsPerLayer < get_number_parallels(windingIndex)) {
+            if (windByConsecutiveTurns == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS && maximumNumberPhysicalTurnsPerLayer < get_number_parallels(windingIndex)) {
                 windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
             }
 
@@ -4259,7 +4260,7 @@ bool Coil::wind_by_round_layers() {
             // each parallel we must fall back to WIND_BY_CONSECUTIVE_TURNS, which honors the
             // per-layer turn count.
             int64_t minimumLayerPhysicalTurns = layerPhysicalTurns.empty() ? 0 : *std::min_element(layerPhysicalTurns.begin(), layerPhysicalTurns.end());
-            if (sections[sectionIndex].get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS &&
+            if (windByConsecutiveTurns == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS &&
                 (maximumNumberPhysicalTurnsPerLayer < get_number_parallels(windingIndex) ||
                  (minimumLayerPhysicalTurns > 0 && uint64_t(minimumLayerPhysicalTurns) < get_number_parallels(windingIndex)))) {
                 windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
@@ -4635,7 +4636,7 @@ bool Coil::wind_by_rectangular_turns() {
 
                     case CoilAlignment::SPREAD:
                         currentTurnWidthIncrement = roundFloat(layer.get_dimensions()[0] / physicalTurnsInLayer, 9);
-                        currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + wireWidth / 2 + currentTurnWidthIncrement / 2, 9);
+                        currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + currentTurnWidthIncrement / 2, 9);
                         break;
                 }
             }
@@ -5063,13 +5064,13 @@ bool Coil::wind_by_round_turns() {
                             turn.set_coordinates(std::vector<double>{currentTurnCenterRadialHeight, currentTurnCenterAngle});
                             turn.set_layer(layer.get_name());
                             if (bobbinColumnShape == ColumnShape::ROUND) {
-                                turn.set_length(2 * std::numbers::pi * currentTurnCenterRadialHeight);
+                                turn.set_length(2 * std::numbers::pi * (currentTurnCenterRadialHeight + bobbinColumnWidth));
                                     if (turn.get_length() < 0) {
                                         return false;
                                     }
                             }
                             else if (bobbinColumnShape == ColumnShape::OBLONG) {
-                                turn.set_length(2 * std::numbers::pi * currentTurnCenterRadialHeight + 4 * (bobbinColumnDepth - bobbinColumnWidth));
+                                turn.set_length(2 * std::numbers::pi * (currentTurnCenterRadialHeight + bobbinColumnWidth) + 4 * (bobbinColumnDepth - bobbinColumnWidth));
                                     if (turn.get_length() < 0) {
                                         return false;
                                     }
@@ -5501,11 +5502,13 @@ bool Coil::wind_toroidal_additional_turns() {
                                         }
                                         if (tryAvoidingCollisionDistance && collisionDistance < 1e-6) {
                                             tryAvoidingCollisionDistance = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            double collisionAngle = ceilFloat(wound_distance_to_angle(collisionDistance, currentRadius), 3);
                                             if (collidedCoordinate[1] > newCoordinates[1]) {
-                                                newCoordinates[1] -= ceilFloat(collisionDistance / std::numbers::pi * 180, 3);
+                                                newCoordinates[1] -= collisionAngle;
                                             }
                                             else {
-                                                newCoordinates[1] += ceilFloat(collisionDistance / std::numbers::pi * 180, 3);
+                                                newCoordinates[1] += collisionAngle;
                                             }
                                         }
                                         else if (tryAngularMove) {
@@ -5519,7 +5522,7 @@ bool Coil::wind_toroidal_additional_turns() {
                                             }
                                             else {
                                                 previouslyAdditionAngularMovement = true;
-                                                if (newCoordinates[1] + increment < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                                if (newCoordinates[1] + increment < (section.get_coordinates()[1] + section.get_dimensions()[1] / 2))
                                                     newCoordinates[1] += increment;
                                             }
                                         }
@@ -5535,7 +5538,7 @@ bool Coil::wind_toroidal_additional_turns() {
                                                     newCoordinates[1] -= currentAngleMovement;
                                             }
                                             else {
-                                                if (newCoordinates[1] + currentAngleMovement < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                                if (newCoordinates[1] + currentAngleMovement < (section.get_coordinates()[1] + section.get_dimensions()[1] / 2))
                                                     newCoordinates[1] += currentAngleMovement;
                                             }
                                         }
@@ -7100,7 +7103,7 @@ void Coil::try_rewind() {
 
                         // We need to add half the insulation space after it, in case there is
                         if (sectionIndex + 1 < sections.size()) {
-                            if (sections[sectionIndex + 1].get_type() != ElectricalType::INSULATION) {
+                            if (sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
                                 // throw std::runtime_error("Consecutive layer to CONDUCTION must always be INSULATION");
                                 if (sectionIndex == 0 || sectionIndex == sections.size() - 2) {
                                     currentSpace += sections[sectionIndex + 1].get_dimensions()[1] / 2;

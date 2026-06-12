@@ -902,8 +902,11 @@ namespace OpenMagnetics {
                                                 InsulationWireCoatingType::INSULATED,
                                                 standard,
                                                 key);
-        if (packingFactor < 1 / 0.9069) {
-            // if packing if smaller than what is physically possible (https://en.wikipedia.org/wiki/Circle_packing) we use the formula. 
+        // packingFactor is a linear (diameter) factor: outerD = pf * sqrt(N) * strandOD,
+        // so the area filling factor is 1/pf^2. The hexagonal circle-packing limit
+        // (fill <= 0.9069, https://en.wikipedia.org/wiki/Circle_packing) means
+        // pf >= 1/sqrt(0.9069); anything below that is physically impossible.
+        if (packingFactor < 1 / sqrt(0.9069)) {
             packingFactor = get_packing_factor_from_standard(standard, numberConductors);
         }
 
@@ -1671,6 +1674,11 @@ namespace OpenMagnetics {
     double Wire::get_coating_thickness(Wire wire) {
         auto coating = resolve_coating(wire);
 
+        if (!coating) {
+            // Bare wire: no coating means zero coating thickness
+            return 0;
+        }
+
         if (coating->get_thickness()) {
             return resolve_dimensional_values(coating->get_thickness().value());
         }
@@ -1936,69 +1944,84 @@ namespace OpenMagnetics {
     }
 
     std::optional<InsulationWireCoating> Wire::decode_coating_label(std::string label) {
-        std::optional<InsulationWireCoating> coating;
+        InsulationWireCoating coating;
+        bool matched = false;
 
         if ((label.find("Bare") != std::string::npos) || (label.find("Unserved") != std::string::npos)) {
-            coating->set_type(InsulationWireCoatingType::BARE);
+            coating.set_type(InsulationWireCoatingType::BARE);
+            matched = true;
         }
         if (label.find("SIW") != std::string::npos) {
-            coating->set_type(InsulationWireCoatingType::INSULATED);
-            coating->set_number_layers(1);
+            coating.set_type(InsulationWireCoatingType::INSULATED);
+            coating.set_number_layers(1);
+            matched = true;
         }
         if (label.find("DIW") != std::string::npos) {
-            coating->set_type(InsulationWireCoatingType::INSULATED);
-            coating->set_number_layers(2);
+            coating.set_type(InsulationWireCoatingType::INSULATED);
+            coating.set_number_layers(2);
+            matched = true;
         }
         if (label.find("TIW") != std::string::npos) {
-            coating->set_type(InsulationWireCoatingType::INSULATED);
-            coating->set_number_layers(3);
+            coating.set_type(InsulationWireCoatingType::INSULATED);
+            coating.set_number_layers(3);
+            matched = true;
         }
 
         if (label.find("TR 155") != std::string::npos) {
-            coating->set_temperature_rating(155);
+            coating.set_temperature_rating(155);
+            matched = true;
         }
         if (label.find("TR 180") != std::string::npos) {
-            coating->set_temperature_rating(180);
+            coating.set_temperature_rating(180);
+            matched = true;
         }
 
         if (label.find(", BV ") != std::string::npos) {
             auto aux = split(label,", BV ")[1];
             if (aux.find(" kV") != std::string::npos) {
                 auto breakdownVoltage = std::stod(split(aux," kV")[0]);
-                coating->set_breakdown_voltage(breakdownVoltage * 1000);
+                coating.set_breakdown_voltage(breakdownVoltage * 1000);
+                matched = true;
             }
             if (aux.find(" V") != std::string::npos) {
                 auto breakdownVoltage = std::stod(split(aux," V")[0]);
-                coating->set_breakdown_voltage(breakdownVoltage);
+                coating.set_breakdown_voltage(breakdownVoltage);
+                matched = true;
             }
         }
 
         if (label.find("Enamel") != std::string::npos) {
-            coating->set_type(InsulationWireCoatingType::ENAMELLED);
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            matched = true;
             if ((label.find("grade 1") != std::string::npos) || (label.find("single build") != std::string::npos)) {
-                coating->set_grade(1);
+                coating.set_grade(1);
             }
             else if ((label.find("grade 2") != std::string::npos) || (label.find("heavy build") != std::string::npos)) {
-                coating->set_grade(2);
+                coating.set_grade(2);
             }
             else if ((label.find("grade 3") != std::string::npos) || (label.find("triple build") != std::string::npos)) {
-                coating->set_grade(3);
+                coating.set_grade(3);
             }
             else {
                 auto aux = split(label,"FIW")[1];
                 auto grade = std::stoi(aux);
-                coating->set_grade(grade);
+                coating.set_grade(grade);
             }
         }
         if (label.find("Single served") != std::string::npos) {
-            coating->set_type(InsulationWireCoatingType::SERVED);
-            coating->set_number_layers(1);
+            coating.set_type(InsulationWireCoatingType::SERVED);
+            coating.set_number_layers(1);
+            matched = true;
         }
         if (label.find("Double served") != std::string::npos) {
-            coating->set_type(InsulationWireCoatingType::SERVED);
-            coating->set_number_layers(2);
+            coating.set_type(InsulationWireCoatingType::SERVED);
+            coating.set_number_layers(2);
+            matched = true;
         }
 
+        if (!matched) {
+            return std::nullopt;
+        }
         return coating;
     }
     
