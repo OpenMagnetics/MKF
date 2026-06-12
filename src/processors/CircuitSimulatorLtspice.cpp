@@ -177,18 +177,18 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             }
 
             if (validLadderCoeffs && acResistanceCoefficientsPerWinding[index].size() >= 2) {
-                // Use full ladder network for AC resistance modeling
-                for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
-                    std::string ladderIndexs = std::to_string(ladderIndex);
-                    circuitString += "Lladder" + is + "_" + ladderIndexs + " P" + is + "+ Node_Lladder_" + is + "_" + ladderIndexs + " " + c[ladderIndex + 1] + "\n";
-                    if (ladderIndex == 0) {
-                        circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_R_Lmag_" + is + " " + c[ladderIndex] + "\n";
-                    }
-                    else {
-                        circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + std::to_string(ladderIndex - 2) + " " + c[ladderIndex] + "\n";
-                    }
+                // Fitted model (ladder_model): Z = Rdc + L1||(R1 + L2||(R2 + ...))
+                // Rdc in series first, then nested L||(R + rest) stages.
+                size_t numStages = acResistanceCoefficientsPerWinding[index].size() / 2;
+                circuitString += "Rdc" + is + " P" + is + "+ Node_Lladder_" + is + "_0 {Rdc_" + is + "_Value}\n";
+                for (size_t stage = 0; stage < numStages; ++stage) {
+                    std::string stageNode = "Node_Lladder_" + is + "_" + std::to_string(stage);
+                    std::string nextNode = (stage + 1 == numStages) ? ("Node_R_Lmag_" + is)
+                                                                    : ("Node_Lladder_" + is + "_" + std::to_string(stage + 1));
+                    // L_stage in parallel with (R_stage + rest of the ladder)
+                    circuitString += "Lladder" + is + "_" + std::to_string(stage) + " " + stageNode + " Node_R_Lmag_" + is + " " + c[stage * 2 + 1] + "\n";
+                    circuitString += "Rladder" + is + "_" + std::to_string(stage) + " " + stageNode + " " + nextNode + " " + c[stage * 2] + "\n";
                 }
-                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
             } else {
                 // Ladder fitting failed - use simplified model with just DC resistance
                 circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";

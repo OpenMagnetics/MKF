@@ -147,8 +147,11 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
     double magnetizingInductance = resolve_dimensional_values(
         MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
             .get_magnetizing_inductance());
+    // all_windings variant: one leakage entry per secondary winding (the pair
+    // variant always returns a single element, silently zeroing leakage for
+    // tertiary+ windings). Matches the LTspice/Ngspice exporters.
     auto leakageInductances = LeakageInductance()
-        .calculate_leakage_inductance(magnetic, Defaults().measurementFrequency)
+        .calculate_leakage_inductance_all_windings(magnetic, Defaults().measurementFrequency)
         .get_leakage_inductance_per_winding();
 
     // Get primary turns for reference
@@ -246,10 +249,11 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         double Rdc = WindingLosses::calculate_effective_resistance_of_winding(magnetic, wi, 0.1, temperature);
         double numTurns = static_cast<double>(coil.get_functional_description()[wi].get_number_turns());
 
-        // Get leakage inductance for this winding (referred to primary)
+        // Get leakage inductance for this winding (referred to primary).
+        // all_windings returns one entry per winding, indexed like LTspice/Ngspice.
         double leakageL = 0.0;
-        if (wi > 0 && wi <= leakageInductances.size()) {
-            leakageL = resolve_dimensional_values(leakageInductances[wi-1]);
+        if (wi > 0 && wi < leakageInductances.size()) {
+            leakageL = resolve_dimensional_values(leakageInductances[wi]);
             // Scale leakage to this winding's turns
             double turnsRatio = numTurns / primaryTurns;
             leakageL *= turnsRatio * turnsRatio;
@@ -286,18 +290,23 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
                       40 + static_cast<int>(net.stages.size())*16, base_y+20, 90);
             }
         } else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::LADDER
-                   && !acCoeffs.empty() && wi < acCoeffs.size()) {
-            // LADDER: R/L stages
+                   && !acCoeffs.empty() && wi < acCoeffs.size() && acCoeffs[wi].size() >= 2) {
+            // LADDER: coefficients are [R1, L1, R2, L2, ...] and the fitted model
+            // (ladder_model) is Z = Rdc + L1||(R1 + L2||(R2 + ...)). Rdc was already
+            // emitted in series (node_last). Each stage k puts L_k in parallel with
+            // (R_k + rest of the ladder); the network ends at node_end.
             const auto& c = acCoeffs[wi];
             size_t stages = c.size() / 2;
+            int node_end = 300 + is * 20 + 10;
+            int node_curr = node_last;
             for (size_t k = 0; k < stages; ++k) {
-                int node_stage = 300 + is * 20 + static_cast<int>(k);
                 int px = 40 + static_cast<int>(k) * 16;
-                add_L("Ll"+ws+"_"+std::to_string(k), node_last, node_stage, c[2*k], px, base_y);
-                add_R("Rl"+ws+"_"+std::to_string(k), node_stage, 0, c[2*k+1], px+4, base_y+20, 90);
-                node_last = node_stage;
+                int node_next = (k + 1 == stages) ? node_end : (300 + is * 20 + static_cast<int>(k) + 1);
+                add_L("Ll"+ws+"_"+std::to_string(k), node_curr, node_end, c[2*k+1], px, base_y);
+                add_R("Rl"+ws+"_"+std::to_string(k), node_curr, node_next, c[2*k], px+4, base_y+20, 90);
+                node_curr = node_next;
             }
-            // node_last already points to the last ladder stage node
+            node_last = node_end;
         } else {
             // ANALYTICAL or fallback: no AC network, node_last stays at node_after_rdc
         }
@@ -366,21 +375,36 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
                 add_C("Ccore_s3", 903, 0, C1, 188, y_base + 48);
             }
         } else {
-            // Ridley: R-L ladder from node_core to ground
-            int node_prev = 0;  // ground
+            // Ridley: fitted model is Z = R0 + L1||(R1 + L2||(R2 + L3||R3)) from
+            // node_core to ground. Coefficients are [R1, L1, ...] with a trailing
+            // R0 (measured DC core resistance) when the size is odd.
+            double coreR0 = (coreCoeffs.size() % 2 == 1) ? coreCoeffs.back() : 0.0;
             int stageCount = static_cast<int>(coreCoeffs.size() / 2);
-            for (int k = stageCount - 1; k >= 0; --k) {
+            // Collect the leading run of valid stages; a broken stage terminates
+            // the ladder instead of being skipped (skipping would rewire it).
+            std::vector<std::pair<double, double>> coreStages;
+            for (int k = 0; k < stageCount; ++k) {
                 double R = coreCoeffs[k * 2];
                 double L = coreCoeffs[k * 2 + 1];
                 if (R <= 0 || L <= 0 || R > 1e6 || L > 1) {
-                    continue;
+                    break;
                 }
-                int node_stage = 900 + k;
-                int y_offset = static_cast<int>(numWindings) * 40 + k * 16;
-                add_R("Rcore" + std::to_string(k), node_stage, node_prev, R, 180, y_offset);
-                int node_next = (k == 0) ? node_core : (900 + k - 1);
-                add_L("Lcore" + std::to_string(k), node_next, node_prev, L, 184, y_offset + 8);
-                node_prev = node_stage;
+                coreStages.push_back({R, L});
+            }
+            int node_curr = node_core;
+            int y_base_core = static_cast<int>(numWindings) * 40;
+            if (coreR0 > 0 && !coreStages.empty()) {
+                add_R("Rcore0", node_core, 910, coreR0, 176, y_base_core);
+                node_curr = 910;
+            }
+            for (size_t k = 0; k < coreStages.size(); ++k) {
+                auto [R, L] = coreStages[k];
+                int y_offset = y_base_core + static_cast<int>(k) * 16 + 8;
+                int node_next = (k + 1 == coreStages.size()) ? 0 : (900 + static_cast<int>(k) + 1);
+                // L_k in parallel with (R_k + rest): L from this node to ground
+                add_L("Lcore" + std::to_string(k), node_curr, 0, L, 184, y_offset);
+                add_R("Rcore" + std::to_string(k + 1), node_curr, node_next, R, 180, y_offset + 8);
+                node_curr = node_next;
             }
         }
     }

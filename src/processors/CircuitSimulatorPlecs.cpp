@@ -422,17 +422,20 @@ void CircuitSimulatorExporterPlecsModel::build_magnetic_schematic(
         auto gapsInColumn = core.find_gaps_by_column(columns[0]);
         int gapY = yBase + static_cast<int>(numWindings) * ySpacing + 10;
         int gapCount = 0;
+        std::vector<std::string> emittedGapNames;
         for (size_t gi = 0; gi < gapsInColumn.size(); ++gi) {
             if (gapsInColumn[gi].get_length() <= 0) continue;
             std::string gapId = "gap_c0_g" + std::to_string(gi);
             schematic << emit_p_air("P_air_" + gapId, "A_" + gapId, "l_" + gapId,
                                     {magX, gapY + gapCount * 40}, "up", true);
+            emittedGapNames.push_back("P_air_" + gapId);
             gapCount++;
         }
         if (gapCount == 0) {
             init << "l_air_equiv = l_e;\nA_air_equiv = A_e;\n";
             schematic << emit_p_air("P_airEquiv", "A_air_equiv", "l_air_equiv",
                                     {magX, gapY}, "up", true);
+            emittedGapNames.push_back("P_airEquiv");
             gapCount = 1;
         }
 
@@ -445,12 +448,15 @@ void CircuitSimulatorExporterPlecsModel::build_magnetic_schematic(
         int topMagY = yBase - 80;
         schematic << emit_connection("Magnetic", "P_satCore", 1, topMI, 3,
                                      {{pSatX, topMagY}, {magX, topMagY}});
-        std::string lastGap = (gapCount > 0 && !gapsInColumn.empty() && gapsInColumn[0].get_length() > 0)
-            ? "P_air_gap_c0_g" + std::to_string(gapsInColumn.size() - 1)
-            : "P_airEquiv";
+        // Chain consecutive gaps in series (port 2 of one to port 1 of the next);
+        // previously only the first and last gap were connected, leaving the
+        // intermediate gap terminals of distributed-gap cores floating.
+        for (size_t i = 0; i + 1 < emittedGapNames.size(); ++i) {
+            schematic << emit_connection("Magnetic", emittedGapNames[i], 2, emittedGapNames[i + 1], 1);
+        }
+        std::string lastGap = emittedGapNames.back();
         schematic << emit_connection("Magnetic", lastGap, 2, "MagInt_w0", 4);
-        std::string firstGap = (!gapsInColumn.empty() && gapsInColumn[0].get_length() > 0)
-            ? "P_air_gap_c0_g0" : "P_airEquiv";
+        std::string firstGap = emittedGapNames.front();
         int bottomY = gapY + (gapCount - 1) * 40 + 30;
         schematic << emit_connection("Magnetic", firstGap, 1, "P_satCore", 2,
                                      {{magX, bottomY}, {pSatX, bottomY}});

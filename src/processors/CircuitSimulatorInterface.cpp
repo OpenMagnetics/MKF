@@ -459,8 +459,13 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
             }
         }
 
-        // Append marker flag indicating which model was used
-        bestCoeffs.push_back(bestUseRLC ? 1.0 : 0.0);
+        // Append marker flag indicating which model was used. If the fit failed
+        // entirely, keep the vector EMPTY so exporters can detect it and fall
+        // back to Rdc-only (a lone marker used to defeat their empty() checks,
+        // producing a netlist with no path between P+ and the magnetizing node).
+        if (!bestCoeffs.empty()) {
+            bestCoeffs.push_back(bestUseRLC ? 1.0 : 0.0);
+        }
 
         acResistanceCoefficientsPerWinding.push_back(bestCoeffs);
     }
@@ -728,6 +733,13 @@ std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coeffici
                     bestCoreResistanceCoefficients.push_back(coefficient);
                 }
             }
+        }
+        // The Ridley fit pins the series DC resistance to the measured
+        // coreResistances[0], which the emitters need to reproduce the fitted
+        // impedance. Append it as a trailing odd element: layout becomes
+        // [R1, L1, R2, L2, R3, L3, R0] (odd size => last element is R0).
+        if (!bestCoreResistanceCoefficients.empty()) {
+            bestCoreResistanceCoefficients.push_back(coreResistances[0]);
         }
     }
     return bestCoreResistanceCoefficients;
@@ -1252,47 +1264,61 @@ static std::string emit_fracpole_core_spice(
 // - At low frequency: L shorts out R, so total Z is low
 // - At high frequency: L is open, so R dominates, Z is high
 // This matches the behavior needed for core losses (higher losses at higher frequency).
-// Coefficients are [R1, L1, R2, L2, R3, L3] from calculate_core_resistance_coefficients().
+// Coefficients are [R1, L1, R2, L2, R3, L3] from calculate_core_resistance_coefficients(),
+// plus a trailing R0 (measured DC core resistance) when the size is odd.
+// Fitted model (core_ladder_model): Z = R0 + L1 || (R1 + L2 || (R2 + L3 || R3))
 std::string emit_core_ladder_spice(
     const std::vector<double>& coeffs, size_t numWindings) {
-    
+
     if (coeffs.size() < 2) {
         return "";  // Not enough coefficients
     }
-    
-    std::string s;
-    s += "* Core loss R-L ladder (" + std::to_string(coeffs.size()/2) + " stages)\n";
-    
-    // Build ladder: series of (L || R) stages
-    // Z = L1 || (R1 + L2 || (R2 + L3 || R3))
-    // Start from innermost stage and work outward
-    std::string lastNode = "P1-";
-    int stageCount = static_cast<int>(coeffs.size() / 2);
-    
-    for (int k = stageCount - 1; k >= 0; --k) {
+
+    double dcResistance = 0;
+    size_t stageCount = coeffs.size() / 2;
+    if (coeffs.size() % 2 == 1) {
+        dcResistance = coeffs.back();
+    }
+
+    // Collect the leading run of valid stages; a broken stage terminates the
+    // ladder instead of being silently skipped (skipping would change the
+    // topology of the remaining stages).
+    std::vector<std::pair<double, double>> stages;
+    for (size_t k = 0; k < stageCount; ++k) {
         double R = coeffs[k * 2];
         double L = coeffs[k * 2 + 1];
-        std::string kk = std::to_string(k + 1);
-        std::string thisNode = (k == 0) ? "Node_R_Lmag_1" : ("Node_Rcore_" + std::to_string(k));
-        
-        // Validate values
         if (R <= 0 || L <= 0 || R > 1e6 || L > 1) {
-            continue;  // Skip invalid stage
+            break;
         }
-        
-        // R in series path
-        s += "Rcore" + kk + " " + thisNode + " Node_Lcore_" + kk + " " + to_string(R, 12) + "\n";
-        // L in parallel with the rest (connects to lastNode)
-        s += "Lcore" + kk + " " + thisNode + " " + lastNode + " " + to_string(L, 12) + "\n";
-        
-        lastNode = "Node_Lcore_" + kk;
+        stages.push_back({R, L});
     }
-    
-    // Connect the final node to ground (P1-)
-    if (lastNode != "P1-") {
-        s += "Rcore_final " + lastNode + " P1- 1e6\n";  // High resistance to close dangling node without creating a short
+
+    if (stages.empty() && dcResistance <= 0) {
+        return "";
     }
-    
+
+    std::string s;
+    s += "* Core loss R-L ladder (" + std::to_string(stages.size()) + " stages): Z = R0 + L1||(R1 + L2||(R2 + ...))\n";
+
+    // Series R0 from the magnetizing node into the ladder
+    std::string currentNode = "Node_R_Lmag_1";
+    if (dcResistance > 0) {
+        std::string firstLadderNode = stages.empty() ? "P1-" : "Node_Rcore_0";
+        s += "Rcore0 " + currentNode + " " + firstLadderNode + " " + to_string(dcResistance, 12) + "\n";
+        currentNode = firstLadderNode;
+    }
+
+    for (size_t k = 0; k < stages.size(); ++k) {
+        auto [R, L] = stages[k];
+        std::string kk = std::to_string(k + 1);
+        std::string nextNode = (k + 1 == stages.size()) ? "P1-" : ("Node_Rcore_" + std::to_string(k + 1));
+        // L_k in parallel with (R_k + rest): L from this node to P1-
+        s += "Lcore" + kk + " " + currentNode + " P1- " + to_string(L, 12) + "\n";
+        // R_k in the series path towards the next stage (or P1- for the last)
+        s += "Rcore" + kk + " " + currentNode + " " + nextNode + " " + to_string(R, 12) + "\n";
+        currentNode = nextNode;
+    }
+
     return s;
 }
 
@@ -1602,7 +1628,13 @@ void CircuitSimulationReader::process_line_with_context(const std::string& line,
                 token = token.substr(1, token.size() - 2);
             }
             trim_inplace(token);
-            if (token.empty()) continue;
+            if (token.empty()) {
+                // An empty cell means "no sample for this column on this row".
+                // The column index must still advance, otherwise every later
+                // value on the row lands in the wrong column.
+                currentColumnIndex++;
+                continue;
+            }
             if (currentColumnIndex >= _columns.size()) {
                 throw InvalidInputException(ErrorCode::INVALID_INPUT,
                     "Data row " + std::to_string(lineNumber) +
