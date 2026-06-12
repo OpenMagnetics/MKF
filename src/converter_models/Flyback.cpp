@@ -105,7 +105,7 @@ namespace OpenMagnetics {
                         auto outputCurrent = get_output_currents()[secondaryIndex];
                         auto outputVoltage = get_output_voltages()[secondaryIndex];
                         auto turnsRatio = turnsRatios.value()[secondaryIndex];
-                        auto dutyCycleMaximum = calculate_BMO_duty_cycle((outputVoltage + diodeVoltageDrop), outputVoltage, turnsRatio);
+                        auto dutyCycleMaximum = calculate_BMO_duty_cycle((outputVoltage + diodeVoltageDrop), inputVoltage, turnsRatio);
                         currentPeak = std::max(currentPeak, calculate_BMO_primary_current_peak(outputCurrent, efficiency, dutyCycleMaximum, turnsRatio)); // hardcoded
                         double tOn = (currentPeak * inductance.value()) / inputVoltage;
                         double tOff = (currentPeak * inductance.value()) / (turnsRatio * outputVoltage);

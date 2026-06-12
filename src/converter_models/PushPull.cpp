@@ -89,7 +89,7 @@ namespace OpenMagnetics {
         auto minimumSecondaryCurrent = mainOutputCurrent - inductorCurrentRipple / 2;
         auto maximumSecondaryCurrent = mainOutputCurrent + inductorCurrentRipple / 2;
         auto minimumPrimaryCurrent = minimumSecondaryCurrent / mainSecondaryTurnsRatio - magnetizationCurrent / 2;
-        auto maximumPrimaryCurrent = minimumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2;
+        auto maximumPrimaryCurrent = maximumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2;
 
         // ---- Per-OP diagnostics (single-secondary closed form) ----
         // D per switch = t1 / Tsw  ≤  0.5
@@ -1201,7 +1201,9 @@ namespace OpenMagnetics {
             minimumOutputInductance = get_desired_output_inductance().value();
         }
         else {
-            minimumOutputInductance = get_output_inductance(turnsRatios[0]);
+            // turnsRatios[0] is the second primary (always 1); the main secondary
+            // ratio that sets the output inductor requirement is turnsRatios[1]
+            minimumOutputInductance = get_output_inductance(turnsRatios[1]);
         }
 
         inputs.get_mutable_operating_points().clear();

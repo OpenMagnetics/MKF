@@ -439,7 +439,7 @@ namespace OpenMagnetics {
     std::vector<OperatingPoint> SingleSwitchForward::process_operating_points(Magnetic magnetic) {
         SingleSwitchForward::run_checks(_assertErrors);
 
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(settings.get_reluctance_model());
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();
         

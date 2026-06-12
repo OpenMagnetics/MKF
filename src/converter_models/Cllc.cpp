@@ -1505,8 +1505,10 @@ double get_value_or(T&& val, double default_val) {
             // generality V_Lr1 = (Lr1/Lr_eq)·(Vi_sq − vC − VLm). Likewise for Lr2.
             std::vector<double> VLr1_full(totalSamples), VLr2_full(totalSamples);
             for (int k = 0; k < totalSamples; ++k) {
-                double Vi_sq = (k * dt < Thalf_eff) ? Vi : -Vi;  // bipolar bridge
-                if (k > N) Vi_sq = -Vi;
+                // Samples k = 0..N hold the positive half-cycle solution (see the
+                // time_full construction above), so the bridge voltage is +Vi for
+                // them, including the boundary sample k = N.
+                double Vi_sq = (k <= N) ? Vi : -Vi;  // bipolar bridge
                 double V_loop = Vi_sq - Vc_full[k] - VLm_full[k];
                 VLr1_full[k] = (Lr1     / Lr_eq) * V_loop;
                 VLr2_full[k] = (Lr2_pri / Lr_eq) * V_loop / n;   // back to secondary side

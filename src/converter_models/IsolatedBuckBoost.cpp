@@ -241,6 +241,9 @@ namespace OpenMagnetics {
         }
 
         if (get_maximum_switch_current()) {
+            // Worst case across operating points is the SMALLEST ripple budget,
+            // which produces the largest needed inductance below.
+            double worstCaseRippleBudget = std::numeric_limits<double>::max();
             for (auto isolatedbuckBoostOperatingPoint : get_operating_points()) {
                 auto primaryCurrent = isolatedbuckBoostOperatingPoint.get_output_currents()[0];
                 double totalReflectedSecondaryCurrent = 0;
@@ -249,7 +252,10 @@ namespace OpenMagnetics {
                 }
                 double primaryOutputVoltage = isolatedbuckBoostOperatingPoint.get_output_voltages()[0];
                 auto dutyCycle = calculate_duty_cycle(minimumInputVoltage, primaryOutputVoltage, efficiency);
-                maximumCurrentRiple = get_maximum_switch_current().value() - (primaryCurrent + totalReflectedSecondaryCurrent) / (1 - dutyCycle);
+                worstCaseRippleBudget = std::min(worstCaseRippleBudget, get_maximum_switch_current().value() - (primaryCurrent + totalReflectedSecondaryCurrent) / (1 - dutyCycle));
+            }
+            if (!get_operating_points().empty()) {
+                maximumCurrentRiple = worstCaseRippleBudget;
             }
         }
 
@@ -351,7 +357,7 @@ namespace OpenMagnetics {
     std::vector<MAS::OperatingPoint> IsolatedBuckBoost::process_operating_points(Magnetic magnetic) {
         IsolatedBuckBoost::run_checks(_assertErrors);
 
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(settings.get_reluctance_model());
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();
         
