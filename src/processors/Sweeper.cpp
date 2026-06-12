@@ -436,9 +436,6 @@ Curve2D Sweeper::sweep_winding_losses_over_frequency(Magnetic magnetic, Operatin
         operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
         auto windingLosses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
-        auto windingLossesPerWinding =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses_per_winding().value();
-
-        auto proximityLossesPerharmonic = windingLossesPerWinding[0].get_proximity_effect_losses()->get_losses_per_harmonic();
 
         windingLossesPerFrequency.push_back(windingLosses);
     }

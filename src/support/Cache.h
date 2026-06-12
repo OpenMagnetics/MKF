@@ -118,7 +118,7 @@ class MasCache : public Cache<OpenMagnetics::Mas> {
 private:
     std::map<std::string, double> _magneticEnergyCache;
 public:
-    void autocomplete_mas();
+    void clear();
     size_t energy_cache_size();
     std::map<std::string, double> read_magnetic_energy_cache();
     double read_magnetic_energy_cache(std::string reference);

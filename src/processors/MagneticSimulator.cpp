@@ -107,7 +107,7 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         auto temperatureResult = _coreTemperatureModel->get_core_temperature(magnetic.get_core(), coreLossesOutput.get_core_losses(), operatingPoint.get_conditions().get_ambient_temperature());
         temperatureAfterLosses = temperatureResult.get_maximum_temperature();
         coreLossesOutput.set_temperature(temperatureAfterLosses);
-    } while (fabs(temperature - temperatureAfterLosses) / temperatureAfterLosses >= 0.05 && _enableTemperatureConvergence);
+    } while (fabs((temperature - temperatureAfterLosses) / temperatureAfterLosses) >= 0.05 && _enableTemperatureConvergence);
 
 
     return coreLossesOutput;

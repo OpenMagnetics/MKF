@@ -900,7 +900,7 @@ void Painter::paint_two_piece_set_core(Core core) {
         highestHeightBottomCoreMainColumn = 0;
     }
     else {
-        if (gapsInRightColumn.front().get_type() != GapType::ADDITIVE) {
+        if (gapsInMainColumn.front().get_type() != GapType::ADDITIVE) {
             lowestHeightTopCoreMainColumn = gapsInMainColumn.front().get_coordinates().value()[1] + gapsInMainColumn.front().get_length() / 2;
             highestHeightBottomCoreMainColumn = gapsInMainColumn.back().get_coordinates().value()[1] - gapsInMainColumn.back().get_length() / 2;
         }
@@ -1056,6 +1056,9 @@ void Painter::paint_two_piece_set_margin(Magnetic magnetic) {
 
 void Painter::paint_toroidal_margin(Magnetic magnetic) {
     bool drawSpacer = settings.get_painter_draw_spacer();
+    if (!magnetic.get_coil().get_sections_description()) {
+        throw CoilNotProcessedException("Winding sections not created");
+    }
     auto sections = magnetic.get_coil().get_sections_description().value();
 
     if (sections.size() == 1) {
@@ -1065,10 +1068,6 @@ void Painter::paint_toroidal_margin(Magnetic magnetic) {
     auto processedDescription = magnetic.get_core().get_processed_description().value();
 
     auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
-
-    if (!magnetic.get_coil().get_sections_description()) {
-        throw CoilNotProcessedException("Winding sections not created");
-    }
 
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
 
@@ -1193,8 +1192,8 @@ void Painter::set_image_size(Wire wire) {
 void Painter::set_image_size(Magnetic magnetic) {
     auto aux = get_image_size(magnetic);
 
-    _imageHeight = aux[0];
-    _imageWidth = aux[1];
+    _imageWidth = aux[0];
+    _imageHeight = aux[1];
 }
 
 void Painter::paint_wire(Wire wire) {
@@ -1709,6 +1708,9 @@ void Painter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> output
         }
     }
 
+    if (modulesToSort.empty()) {
+        modulesToSort.push_back(0.0);
+    }
     std::sort(modulesToSort.begin(), modulesToSort.end());
     size_t index05 = static_cast<size_t>(0.02 * (modulesToSort.size() - 1));
     size_t index95 = static_cast<size_t>(0.98 * (modulesToSort.size() - 1));

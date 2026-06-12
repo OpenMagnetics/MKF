@@ -48,6 +48,9 @@ void MagneticsCache::compute_energy_cache(double temperature, std::optional<doub
 }
 
 std::pair<std::string, double> MagneticsCache::get_maximum_magnetic_energy_in_cache() {
+    if (_magneticEnergyCache.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Energy cache is empty, call compute_energy_cache first");
+    }
     return *std::max_element(_magneticEnergyCache.begin(), _magneticEnergyCache.end(), [](const std::pair<std::string, double>& p1, const std::pair<std::string, double>& p2) {return p1.second < p2.second; });
 }
 
@@ -72,6 +75,11 @@ double MagneticsCache::read_magnetic_energy_cache(std::string reference) {
     } else {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "No value found with reference: " + reference);
     }
+}
+
+void MasCache::clear() {
+    _cache.clear();
+    _magneticEnergyCache.clear();
 }
 
 size_t MasCache::energy_cache_size(){
@@ -114,6 +122,9 @@ std::vector<std::string> MasCache::filter_magnetics_by_energy(double minimumEner
 }
 
 std::pair<std::string, double> MasCache::get_maximum_magnetic_energy_in_cache() {
+    if (_magneticEnergyCache.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Energy cache is empty, call compute_energy_cache first");
+    }
     return *std::max_element(_magneticEnergyCache.begin(), _magneticEnergyCache.end(), [](const std::pair<std::string, double>& p1, const std::pair<std::string, double>& p2) {return p1.second < p2.second; });
 }
 

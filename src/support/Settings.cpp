@@ -86,7 +86,7 @@ namespace OpenMagnetics {
         _painterColorFEP = "0x252525";
         _painterColorETFE = "0xb42811";
         _painterColorTCA = "0x696969";
-        _painterColorTCA = "0x696969";
+        _painterColorPFA = "0xedbe1c";
         _painterColorSilk = "0xe7e7e8";
         _painterColorSpacer = "0x3b3b3b";
         _painterColorLines = "0x010000";
