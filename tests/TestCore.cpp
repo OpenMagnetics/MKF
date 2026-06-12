@@ -590,8 +590,10 @@ TEST_CASE("EPX_10", "[constructive-model][core][processed-description][smoke-tes
     REQUIRE(core.get_processed_description()->get_columns().size() == 3u);
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_width(), Catch::Matchers::WithinAbs(0.00345, 0.00345 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_depth(), Catch::Matchers::WithinAbs(0.00485 * numberStacks, 0.00485 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_depth(), Catch::Matchers::WithinAbs(0.023 * numberStacks, 0.023 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_columns()[2].get_depth(), Catch::Matchers::WithinAbs(0.023 * numberStacks, 0.023 * numberStacks * 0.2));
+    // Lateral depth updated after fixing the integer-division bug that dropped
+    // the round bore term from the EP-family lateral leg area (CorePiece.cpp)
+    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_depth(), Catch::Matchers::WithinAbs(0.01027 * numberStacks, 0.01027 * numberStacks * 0.2));
+    REQUIRE_THAT(core.get_processed_description()->get_columns()[2].get_depth(), Catch::Matchers::WithinAbs(0.01027 * numberStacks, 0.01027 * numberStacks * 0.2));
     REQUIRE(core.get_processed_description()->get_columns()[0].get_shape() == ColumnShape::OBLONG);
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::IRREGULAR);
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
@@ -652,8 +654,10 @@ TEST_CASE("EPO_13", "[constructive-model][core][processed-description][smoke-tes
     REQUIRE(core.get_processed_description()->get_columns().size() == 3u);
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_width(), Catch::Matchers::WithinAbs(0.0045, 0.0045 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_depth(), Catch::Matchers::WithinAbs(0.0045 * numberStacks, 0.0045 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_depth(), Catch::Matchers::WithinAbs(0.026 * numberStacks, 0.026 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_columns()[2].get_depth(), Catch::Matchers::WithinAbs(0.026 * numberStacks, 0.026 * numberStacks * 0.2));
+    // Lateral depth updated after fixing the integer-division bug that dropped
+    // the round bore term from the EP-family lateral leg area (CorePiece.cpp)
+    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_depth(), Catch::Matchers::WithinAbs(0.01068 * numberStacks, 0.01068 * numberStacks * 0.2));
+    REQUIRE_THAT(core.get_processed_description()->get_columns()[2].get_depth(), Catch::Matchers::WithinAbs(0.01068 * numberStacks, 0.01068 * numberStacks * 0.2));
     REQUIRE(core.get_processed_description()->get_columns()[0].get_shape() == ColumnShape::ROUND);
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::IRREGULAR);
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
@@ -684,8 +688,10 @@ TEST_CASE("LP_42_25_15_8", "[constructive-model][core][processed-description][sm
     REQUIRE(core.get_processed_description()->get_columns().size() == 3u);
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_width(), Catch::Matchers::WithinAbs(0.0162, 0.0162 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_depth(), Catch::Matchers::WithinAbs(0.0162 * numberStacks, 0.0162 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_depth(), Catch::Matchers::WithinAbs(0.108 * numberStacks, 0.108 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_columns()[2].get_depth(), Catch::Matchers::WithinAbs(0.108 * numberStacks, 0.108 * numberStacks * 0.2));
+    // Lateral depth updated after fixing the integer-division bug that dropped
+    // the round bore term from the EP-family lateral leg area (CorePiece.cpp)
+    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_depth(), Catch::Matchers::WithinAbs(0.0359 * numberStacks, 0.0359 * numberStacks * 0.2));
+    REQUIRE_THAT(core.get_processed_description()->get_columns()[2].get_depth(), Catch::Matchers::WithinAbs(0.0359 * numberStacks, 0.0359 * numberStacks * 0.2));
     REQUIRE(core.get_processed_description()->get_columns()[0].get_shape() == ColumnShape::ROUND);
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::IRREGULAR);
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
@@ -716,7 +722,9 @@ TEST_CASE("EP_7", "[constructive-model][core][processed-description][smoke-test]
     REQUIRE(core.get_processed_description()->get_columns().size() == 2u);
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_width(), Catch::Matchers::WithinAbs(0.0034, 0.0034 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_depth(), Catch::Matchers::WithinAbs(0.0034 * numberStacks, 0.0034 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_width(), Catch::Matchers::WithinAbs(0.048, 0.048 * 0.2));
+    // Lateral width updated after fixing the integer-division bug that dropped
+    // the round bore term from the EP-family lateral leg area (CorePiece.cpp)
+    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_width(), Catch::Matchers::WithinAbs(0.0256, 0.0256 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_depth(), Catch::Matchers::WithinAbs(0.00095 * numberStacks, 0.00095 * numberStacks * 0.2));
     REQUIRE(core.get_processed_description()->get_columns()[0].get_shape() == ColumnShape::ROUND);
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::IRREGULAR);
@@ -747,7 +755,9 @@ TEST_CASE("EP_20", "[constructive-model][core][processed-description][smoke-test
     REQUIRE(core.get_processed_description()->get_columns().size() == 2u);
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_width(), Catch::Matchers::WithinAbs(0.009, 0.009 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_depth(), Catch::Matchers::WithinAbs(0.009 * numberStacks, 0.009 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_width(), Catch::Matchers::WithinAbs(0.129, 0.129 * 0.2));
+    // Lateral width updated after fixing the integer-division bug that dropped
+    // the round bore term from the EP-family lateral leg area (CorePiece.cpp)
+    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_width(), Catch::Matchers::WithinAbs(0.0807, 0.0807 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_depth(), Catch::Matchers::WithinAbs(0.00275 * numberStacks, 0.00275 * numberStacks * 0.2));
     REQUIRE(core.get_processed_description()->get_columns()[0].get_shape() == ColumnShape::ROUND);
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::IRREGULAR);
