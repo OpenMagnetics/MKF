@@ -966,7 +966,7 @@ double StrayCapacitanceMassariniModel::calculate_static_capacitance_between_two_
     else {
         // Bare wire - use half the air gap as effective outer boundary
         D0 = (conductingRadius + distanceThroughAir / 2) * 2;
-        epsilonR = get_effective_relative_permittivity(distanceThroughAir / 2, vacuumPermittivity, distanceThroughAir + distanceThroughLayers, relativePermittivityInsulationLayers);
+        epsilonR = get_effective_relative_permittivity(distanceThroughAir / 2, 1.0, distanceThroughAir + distanceThroughLayers, relativePermittivityInsulationLayers);
     }
     
     // Implementation of Eq. (15) from Massarini paper
@@ -1217,8 +1217,8 @@ double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns
         beta = 1.0 / alpha * (1 + distanceThroughLayers / (2 * relativePermittivityInsulationLayers * conductingRadius));
     }
     else {
-        // Gap is pure air
-        beta = 1.0 / alpha * (1 + distanceThroughAir / (2 * vacuumPermittivity * conductingRadius));
+        // Gap is pure air (relative permittivity 1)
+        beta = 1.0 / alpha * (1 + distanceThroughAir / (2 * 1.0 * conductingRadius));
     }
     
     // Handle edge case where beta is too close to 1 - use parallel plate approximation
@@ -1702,10 +1702,6 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
     for (auto firstWinding : windings) {
         auto firstWindingName = firstWinding.get_name();
         auto turnsInFirstWinding = coil.get_turns_indexes_by_winding(firstWindingName);
-        double minVoltageInFirstWinding = 1;
-        double maxVoltageInFirstWinding = 0;
-        double minVoltageInSecondWinding = 1;
-        double maxVoltageInSecondWinding = 0;
         for (auto secondWinding : windings) {
             auto secondWindingName = secondWinding.get_name();
             auto windingsKey = std::make_pair(firstWindingName, secondWindingName);
@@ -1713,18 +1709,21 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
                 continue;
             }
 
-            double V3 = 42;
-            double V3calculated = 0;
+            double minVoltageInFirstWinding = std::numeric_limits<double>::max();
+            double maxVoltageInFirstWinding = std::numeric_limits<double>::lowest();
+            double minVoltageInSecondWinding = std::numeric_limits<double>::max();
+            double maxVoltageInSecondWinding = std::numeric_limits<double>::lowest();
 
-            if (firstWindingName == secondWindingName) {
-                V3calculated = 0;
-            }
+            double V3 = 0;
+            double V3calculated = 0;
+            bool firstConvergenceIteration = true;
 
             double energyInBetweenTheseWindings = 0;
             double voltageDropBetweenWindings = 0;
             double relativeTurnsRatio = 0;
             ScalarMatrixAtFrequency capacitanceMatrixBetweenWindings;
-            while (fabs(V3 - V3calculated) / V3 > 0.001) {
+            while (firstConvergenceIteration || fabs(V3 - V3calculated) > 0.001 * std::max(fabs(V3), std::numeric_limits<double>::min())) {
+                firstConvergenceIteration = false;
                 energyInBetweenTheseWindings = 0;
                 V3 = V3calculated;
                 // double C0 = 0;
@@ -1899,13 +1898,7 @@ std::vector<ScalarMatrixAtFrequency> StrayCapacitance::calculate_maxwell_capacit
                 }
             }
             else {
-                capacitanceSum += capacitanceAmongWindings[secondWindingName][firstWindingName];
                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Old code, this should not happen");
-                if (firstWindingName != secondWindingName) {
-                    auto capacitance = capacitanceAmongWindings[secondWindingName][firstWindingName];
-                    scalarMatrixAtFrequency.get_mutable_magnitude()[firstWindingName][secondWindingName].set_nominal(-capacitance);
-                    scalarMatrixAtFrequency.get_mutable_magnitude()[secondWindingName][firstWindingName].set_nominal(-capacitance);
-                }
             }
         }
         scalarMatrixAtFrequency.get_mutable_magnitude()[firstWindingName][firstWindingName].set_nominal(capacitanceSum);

@@ -322,9 +322,9 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
     auto steinmetzData = CoreLossesModel::get_method_data(materialData, "Steinmetz");
     auto ranges = steinmetzData.get_ranges().value();
     double minimumMaterialFrequency = 100000000;
-    double minimumMaterialFrequencyIndex = -1;
+    int minimumMaterialFrequencyIndex = -1;
     double maximumMaterialFrequency = 0;
-    double maximumMaterialFrequencyIndex = -1;
+    int maximumMaterialFrequencyIndex = -1;
     for (size_t i = 0; i < ranges.size(); ++i) {
         if (!ranges[i].get_minimum_frequency()) {
             throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing minimum frequency in material");
@@ -343,15 +343,15 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
             minimumMaterialFrequencyIndex = i;
         }
         if (maximumMaterialFrequency < ranges[i].get_maximum_frequency().value()) {
-            maximumMaterialFrequency = ranges[i].get_minimum_frequency().value();
+            maximumMaterialFrequency = ranges[i].get_maximum_frequency().value();
             maximumMaterialFrequencyIndex = i;
         }
     }
 
-    if (frequency < minimumMaterialFrequency) {
+    if (frequency < minimumMaterialFrequency && minimumMaterialFrequencyIndex >= 0) {
         return ranges[minimumMaterialFrequencyIndex];
     }
-    if (frequency > maximumMaterialFrequency) {
+    if (frequency > maximumMaterialFrequency && maximumMaterialFrequencyIndex >= 0) {
         return ranges[maximumMaterialFrequencyIndex];
     }
 
@@ -1532,7 +1532,7 @@ double get_plateau_duty_cycle(std::vector<double> data) {
             numberPlateauPoints++;
         }
     }
-    auto onPoints = (data.size() / 2 - numberPlateauPoints) / data.size();
+    auto onPoints = (data.size() / 2.0 - numberPlateauPoints) / data.size();
     return onPoints;
 }
 
@@ -2126,7 +2126,7 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPo
             timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
         }
         volumetricLossesIntegration +=
-            pow(fabs(magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference, 3 / 2) *
+            pow(fabs(magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference, 1.5) *
             timeDifference;
     }
 
