@@ -544,10 +544,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 // identity downstream realism checks use). Transformers are excluded:
                 // their flux is voltage-driven and more turns LOWERS B.
                 {
-                    auto& reqs = mas.get_mutable_inputs().get_design_requirements();
-                    auto saturationTopology = reqs.get_topology();
-                    bool isInductor = windings_on_single_isolation_side(reqs.get_isolation_sides())
-                                      || (saturationTopology.has_value() && is_energy_storing_topology(saturationTopology));
+                    bool isInductor = is_inductor(mas.get_mutable_inputs());
                     if (isInductor) {
                         double saturationMargin = settings.get_core_adviser_saturation_margin();
                         bool saturates = false;

@@ -75,9 +75,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
     // the design saturates. Cap the sweep using the SAME
     // Magnetic::calculate_saturation_current the saturation filter and realism
     // gate use, so the loss-optimal turn count we return still clears the margin.
-    auto lossTopology = inputs->get_design_requirements().get_topology();
-    bool isInductor = windings_on_single_isolation_side(inputs->get_design_requirements().get_isolation_sides())
-                      || (lossTopology.has_value() && is_energy_storing_topology(lossTopology));
+    bool isInductor = is_inductor(*inputs);
     double saturationMargin = Settings::GetInstance().get_core_adviser_saturation_margin();
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
@@ -273,9 +271,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
     // the design saturates. Cap the sweep using the SAME
     // Magnetic::calculate_saturation_current the saturation filter and realism
     // gate use, so the loss-optimal turn count we return still clears the margin.
-    auto lossTopology = inputs->get_design_requirements().get_topology();
-    bool isInductor = windings_on_single_isolation_side(inputs->get_design_requirements().get_isolation_sides())
-                      || (lossTopology.has_value() && is_energy_storing_topology(lossTopology));
+    bool isInductor = is_inductor(*inputs);
     double saturationMargin = Settings::GetInstance().get_core_adviser_saturation_margin();
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {

@@ -118,6 +118,35 @@ inline bool windings_on_single_isolation_side(const std::optional<std::vector<Is
     return true;
 }
 
+// Single source of truth for "is this design an energy-storing inductor"
+// (as opposed to a transformer). This is THE classification that decides
+// whether saturation scales with turns: for an inductor at a fixed gap more
+// turns LOWER the saturation current (isat = B_sat·N·A_e/L, L ∝ N²), so the
+// saturation-aware turn/gap co-design, the loss-sweep saturation cap, and the
+// final realism gate all apply; for a transformer B is voltage-driven and more
+// turns LOWER B, so they must not. Every one of those sites — plus the
+// saturation filter and the CoreAdviser turn seeder — must use THIS predicate,
+// or they disagree on which candidates to saturation-check. Detection tiers
+// (most reliable first): (1) all windings on one isolation side ⇒ inductor;
+// (2) topology, if specified; (3) legacy heuristic — a minimum-only inductance
+// spec ("at least L") is a transformer's magnetizing inductance, anything with
+// a nominal or maximum is a specific energy-storage target ⇒ inductor.
+inline bool is_inductor(const Inputs& inputs) {
+    const auto& designRequirements = inputs.get_design_requirements();
+    if (windings_on_single_isolation_side(designRequirements.get_isolation_sides())) {
+        return true;
+    }
+    auto topology = designRequirements.get_topology();
+    if (topology.has_value()) {
+        return is_energy_storing_topology(topology);
+    }
+    const auto& magnetizingInductance = designRequirements.get_magnetizing_inductance();
+    bool minimumOnly = magnetizingInductance.get_minimum().has_value()
+                       && !magnetizingInductance.get_nominal().has_value()
+                       && !magnetizingInductance.get_maximum().has_value();
+    return !minimumOnly;
+}
+
 // Phase 3 (F6): PQI / UI shapes use integrated windings whose layout is
 // not produced by fast_wind(), so the loss / impedance filters take a
 // per-shape policy branch. Centralised here so every site uses the same
