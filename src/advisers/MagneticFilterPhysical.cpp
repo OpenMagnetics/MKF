@@ -167,11 +167,43 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
         const double margin = Settings::GetInstance().get_core_adviser_saturation_margin();
         bool isSaturated = magneticFluxDensityPeak * margin > magneticFluxDensitySaturation;
 
-        ++opIndex;
-
         if (isSaturated) {
             return {false, 0.0};
         }
+
+        if (!isTransformer) {
+            // Authoritative saturation-current gate for energy-storing
+            // inductors: enforce the SAME identity downstream realism checks
+            // use — Magnetic::calculate_saturation_current = 0.7·B_sat(T)·N·
+            // A_e/L_µinit — so the adviser and the consumer cannot disagree.
+            // The B-based check above evaluates B at the operating current
+            // with permeability rolloff and raw B_sat, which is LOOSER for
+            // gapped inductors: candidates passing it could still saturate
+            // per the contract (canonical buck 36/48/60 V→12 V/5 A/200 kHz:
+            // EQ 13/6 passed on B but had isat 2.93 A < 1.2 × ipeak 3.19 A).
+            // Pool starvation (the failure mode of the reverted hard reject
+            // 2181dd1c) is handled by the pipeline retry, which relaxes the
+            // margin to 1.0 and tags the results.
+            auto excitation = Inputs::get_primary_excitation(operatingPoint);
+            if (!excitation.get_current() || !excitation.get_current()->get_processed() ||
+                !excitation.get_current()->get_processed()->get_peak()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA,
+                    "Saturation filter needs the processed peak of the primary current to gate by saturation current");
+            }
+            double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
+            double saturationCurrent = magnetic->calculate_saturation_current(
+                operatingPoint.get_conditions().get_ambient_temperature());
+
+            // Headroom utilization (margin·ipeak/isat): < 1 clears the gate,
+            // smaller = more headroom — same direction as bRatio above.
+            scoring += (saturationCurrent > 0) ? (margin * currentPeak / saturationCurrent) : 1.0;
+
+            if (saturationCurrent < margin * currentPeak) {
+                return {false, 0.0};
+            }
+        }
+
+        ++opIndex;
     }
 
     scoring /= inputs->get_operating_points().size();

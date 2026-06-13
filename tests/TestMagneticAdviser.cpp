@@ -596,6 +596,96 @@ namespace {
         CHECK(achieved <= 1.2 * magnetizingInductance);
     }
 
+    TEST_CASE("Test_Adviser_Buck_Saturation_Margin", "[adviser][magnetic-adviser][saturation][smoke-test]") {
+        // Regression for the adviser-side saturation inconsistency: the
+        // saturation filter judges candidates by flux density while the
+        // authoritative downstream check is the gap-aware
+        // Magnetic::calculate_saturation_current — and they used to disagree.
+        // Canonical buck 36/48/60 V -> 12 V / 5 A / 200 kHz: the adviser
+        // picked cores (e.g. EQ 13/6, isat 2.93 A) whose saturation current
+        // was BELOW the worst-case peak current (3.19 A), so the part
+        // saturated in service while a valid pick (ER 14.5/3/7, isat 7.08 A)
+        // existed in the same catalogue.
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+
+        json buckInputsJson;
+        json inputVoltage;
+        inputVoltage["minimum"] = 36;
+        inputVoltage["nominal"] = 48;
+        inputVoltage["maximum"] = 60;
+        buckInputsJson["inputVoltage"] = inputVoltage;
+        buckInputsJson["diodeVoltageDrop"] = 0.7;
+        buckInputsJson["efficiency"] = 0.9;
+        buckInputsJson["maximumSwitchCurrent"] = 8;
+        buckInputsJson["operatingPoints"] = json::array();
+        {
+            json buckOperatingPointJson;
+            buckOperatingPointJson["outputVoltages"] = {12.0};
+            buckOperatingPointJson["outputCurrents"] = {5.0};
+            buckOperatingPointJson["switchingFrequency"] = 200000;
+            buckOperatingPointJson["ambientTemperature"] = 25;
+            buckInputsJson["operatingPoints"].push_back(buckOperatingPointJson);
+        }
+
+        OpenMagnetics::Buck buck(buckInputsJson);
+        auto inputs = buck.process();
+
+        double worstCasePeakCurrent = 0;
+        for (auto& operatingPoint : inputs.get_operating_points()) {
+            auto& excitation = operatingPoint.get_excitations_per_winding()[0];
+            REQUIRE(excitation.get_current()->get_processed()->get_peak());
+            worstCasePeakCurrent = std::max(worstCasePeakCurrent,
+                                            excitation.get_current()->get_processed()->get_peak().value());
+        }
+        double saturationMargin = settings.get_core_adviser_saturation_margin();
+
+        MagneticAdviser magneticAdviser;
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 3);
+        REQUIRE(masMagnetics.size() > 0);
+
+        for (auto& [masMagnetic, scoring] : masMagnetics) {
+            auto magnetic = masMagnetic.get_magnetic();
+            double saturationCurrent = magnetic.calculate_saturation_current(25);
+            INFO("Core: " << magnetic.get_core().get_name().value_or("?")
+                 << ", isat = " << saturationCurrent << " A"
+                 << ", worst-case ipeak = " << worstCasePeakCurrent << " A"
+                 << ", required margin = " << saturationMargin);
+            CHECK(saturationCurrent >= saturationMargin * worstCasePeakCurrent);
+        }
+
+        // The margin knob must demonstrably steer the gate: at a stricter
+        // margin every returned candidate has to clear the stricter bound too
+        // (the pipeline's relax-and-tag retry only ever lowers it to 1.0)
+        double stricterMargin = 2.0;
+        settings.set_core_adviser_saturation_margin(stricterMargin);
+        REQUIRE(settings.get_core_adviser_saturation_margin() == stricterMargin);
+        MagneticAdviser stricterAdviser;
+        auto stricterResults = stricterAdviser.get_advised_magnetic(inputs, 3);
+        for (auto& [masMagnetic, scoring] : stricterResults) {
+            auto magnetic = masMagnetic.get_magnetic();
+            double saturationCurrent = magnetic.calculate_saturation_current(25);
+            // Results that escaped the gate must be explicitly flagged: either
+            // the pipeline retry tagged the core (margin relaxed to 1.0) or
+            // the CoilAdviser all-filtered fallback marked the design INVALID
+            // in the manufacturer reference. Unflagged results must clear the
+            // stricter bound.
+            bool taggedRelaxed = magnetic.get_core().get_name().value_or("").find("SATURATION MARGIN RELAXED") != std::string::npos;
+            bool markedInvalid = false;
+            if (magnetic.get_manufacturer_info()) {
+                markedInvalid = magnetic.get_manufacturer_info()->get_reference().value_or("").find("INVALID") != std::string::npos;
+            }
+            INFO("Core: " << magnetic.get_core().get_name().value_or("?")
+                 << ", reference: " << (magnetic.get_manufacturer_info() ? magnetic.get_manufacturer_info()->get_reference().value_or("?") : "none")
+                 << ", isat = " << saturationCurrent << " A"
+                 << ", worst-case ipeak = " << worstCasePeakCurrent << " A"
+                 << ", required margin = " << stricterMargin);
+            CHECK((taggedRelaxed || markedInvalid || saturationCurrent >= stricterMargin * worstCasePeakCurrent));
+        }
+        settings.reset();
+    }
+
     TEST_CASE("MagneticAdviserCustomCores", "[adviser][magnetic-adviser][custom-cores][smoke-test]") {
         clear_databases();
         settings.reset();
