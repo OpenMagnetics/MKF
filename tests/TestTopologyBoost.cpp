@@ -147,7 +147,10 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltages"][0]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError));
-        REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
+        // DCM voltage is now an explicit three-level waveform labeled CUSTOM
+        // (RECTANGULAR_WITH_DEADTIME cannot express the DCM tOn split and
+        // violated volt-second balance over the conduction interval)
+        REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::CUSTOM);
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR_WITH_DEADTIME);
         // Allow small DC offset due to ngspice simulation (was == 0, now allows < 5A)
         REQUIRE(std::abs(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset()) < 5.0);

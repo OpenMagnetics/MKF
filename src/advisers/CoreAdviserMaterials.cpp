@@ -63,19 +63,31 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     auto [coreLossesModelSteinmetz, coreLossesModelProprietary] = make_default_core_losses_model_pair();
     for (auto coreMaterial : coreMaterialsToEvaluate) {
         double averageVolumetricCoreLosses = 0;
-        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
-            auto frequency = inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[0].get_frequency();
-            Inputs::scale_time_to_frequency(operatingPointExcitation, frequency, false, false);
-            auto coreLossesMethods = Core::get_available_core_losses_methods(coreMaterial);
+        try {
+            for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
+                auto frequency = inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[0].get_frequency();
+                Inputs::scale_time_to_frequency(operatingPointExcitation, frequency, false, false);
+                auto coreLossesMethods = Core::get_available_core_losses_methods(coreMaterial);
 
-            if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-                double volumetricCoreLosses = coreLossesModelSteinmetz->get_core_volumetric_losses(coreMaterial, operatingPointExcitation, temperature);
-                averageVolumetricCoreLosses += volumetricCoreLosses;
+                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
+                    double volumetricCoreLosses = coreLossesModelSteinmetz->get_core_volumetric_losses(coreMaterial, operatingPointExcitation, temperature);
+                    averageVolumetricCoreLosses += volumetricCoreLosses;
+                }
+                else {
+                    double volumetricCoreLosses = coreLossesModelProprietary->get_core_volumetric_losses(coreMaterial, operatingPointExcitation, temperature);
+                    averageVolumetricCoreLosses += volumetricCoreLosses;
+                }
             }
-            else {
-                double volumetricCoreLosses = coreLossesModelProprietary->get_core_volumetric_losses(coreMaterial, operatingPointExcitation, temperature);
-                averageVolumetricCoreLosses += volumetricCoreLosses;
-            }
+        }
+        catch (const std::exception& e) {
+            // Candidate-pool construction: a material whose loss model cannot
+            // be evaluated (e.g. no Steinmetz coefficients and no proprietary
+            // method for its manufacturer) cannot compete in the ranking —
+            // skip it loudly instead of letting one catalog gap abort the
+            // whole adviser run. Named, logged, bounded scope.
+            logEntry(std::string("Skipping core material '") + coreMaterial.get_name()
+                     + "' in powder candidate ranking: " + e.what(), "CoreAdviser");
+            continue;
         }
         averageVolumetricCoreLosses /= inputs.get_operating_points().size();
         evaluations.push_back({coreMaterial, averageVolumetricCoreLosses}); // NEW-BUG-FIX: was pushing 0, discarding computed losses
@@ -171,19 +183,29 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
     auto [coreLossesModelSteinmetz, coreLossesModelProprietary] = make_default_core_losses_model_pair();
     for (auto coreMaterial : coreMaterialsToEvaluate) {
         double averageVolumetricCoreLosses = 0;
-        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
-            auto frequency = inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[0].get_frequency();
-            Inputs::scale_time_to_frequency(operatingPointExcitation, frequency, false, false);
-            auto coreLossesMethods = Core::get_available_core_losses_methods(coreMaterial);
+        try {
+            for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
+                auto frequency = inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[0].get_frequency();
+                Inputs::scale_time_to_frequency(operatingPointExcitation, frequency, false, false);
+                auto coreLossesMethods = Core::get_available_core_losses_methods(coreMaterial);
 
-            if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-                double volumetricCoreLosses = coreLossesModelSteinmetz->get_core_volumetric_losses(coreMaterial, operatingPointExcitation, temperature);
-                averageVolumetricCoreLosses += volumetricCoreLosses;
+                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
+                    double volumetricCoreLosses = coreLossesModelSteinmetz->get_core_volumetric_losses(coreMaterial, operatingPointExcitation, temperature);
+                    averageVolumetricCoreLosses += volumetricCoreLosses;
+                }
+                else {
+                    double volumetricCoreLosses = coreLossesModelProprietary->get_core_volumetric_losses(coreMaterial, operatingPointExcitation, temperature);
+                    averageVolumetricCoreLosses += volumetricCoreLosses;
+                }
             }
-            else {
-                double volumetricCoreLosses = coreLossesModelProprietary->get_core_volumetric_losses(coreMaterial, operatingPointExcitation, temperature);
-                averageVolumetricCoreLosses += volumetricCoreLosses;
-            }
+        }
+        catch (const std::exception& e) {
+            // Same skip-loudly policy as the powder ranking above: a material
+            // with no usable loss model cannot compete; one catalog gap must
+            // not abort the whole adviser run. Named, logged, bounded scope.
+            logEntry(std::string("Skipping core material '") + coreMaterial.get_name()
+                     + "' in ferrite candidate ranking: " + e.what(), "CoreAdviser");
+            continue;
         }
         averageVolumetricCoreLosses /= inputs.get_operating_points().size();
         evaluations.push_back({coreMaterial, averageVolumetricCoreLosses});
@@ -211,10 +233,20 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
     ComplexPermeability complexPermeabilityModel;
     for (auto coreMaterial : coreMaterialsToEvaluate) {
         double totalComplexPermeability = 0;
-        for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
-            auto frequency = impedanceAtFrequency.get_frequency();
-            auto [complexPermeabilityRealPart, complexPermeabilityImaginaryPart] = complexPermeabilityModel.get_complex_permeability(coreMaterial, frequency);
-            totalComplexPermeability += hypot(complexPermeabilityRealPart, complexPermeabilityImaginaryPart);
+        try {
+            for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
+                auto frequency = impedanceAtFrequency.get_frequency();
+                auto [complexPermeabilityRealPart, complexPermeabilityImaginaryPart] = complexPermeabilityModel.get_complex_permeability(coreMaterial, frequency);
+                totalComplexPermeability += hypot(complexPermeabilityRealPart, complexPermeabilityImaginaryPart);
+            }
+        }
+        catch (const std::exception& e) {
+            // Same skip-loudly policy as the loss-based rankings: a material
+            // with no complex-permeability data cannot compete on impedance;
+            // one catalog gap must not abort the whole adviser run.
+            logEntry(std::string("Skipping core material '") + coreMaterial.get_name()
+                     + "' in impedance candidate ranking: " + e.what(), "CoreAdviser");
+            continue;
         }
         evaluations.push_back({coreMaterial, totalComplexPermeability});
     }

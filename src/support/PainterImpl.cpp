@@ -1,5 +1,6 @@
 #include "physical_models/WindingLosses.h"
 #include "support/Painter.h"
+#include "support/Utils.h"
 #include "support/CciCoordinatesData.h"
 #include <cfloat>
 #include <cmath>
@@ -1748,15 +1749,15 @@ void Painter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> output
     for (size_t i = 0; i < turns.size(); ++i){
         std::string turnName = turns[i].get_name();
         
-        // Look up loss value by turn name, fallback to index-based if not found
+        // Look up loss value by turn name only. Positional fallback colored the
+        // WRONG turn whenever per-turn losses lacked names or names mismatched.
         double lossValue;
         auto it = lossesPerTurnByName.find(turnName);
         if (it != lossesPerTurnByName.end()) {
             lossValue = it->second;
-        } else if (i < modules.size()) {
-            lossValue = modules[i];
         } else {
-            continue;  // Skip if no loss data available for this turn
+            logEntry("No named winding-loss entry for turn '" + turnName + "', leaving it uncolored", "Painter", 2);
+            continue;
         }
 
         // Check for NaN or invalid loss values and raise exception

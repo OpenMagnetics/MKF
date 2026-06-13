@@ -199,8 +199,18 @@ double interp(std::vector<std::pair<double, double>> data, double temperature) {
                 y.push_back(data[i].second);
             }
         }
-        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
-        result = interp(temperature);
+        // Duplicate temperatures in catalog data can shrink the deduped set
+        // below tk::spline's 3-point minimum (assert/UB in NDEBUG builds)
+        if (x.size() == 1) {
+            result = y[0];
+        }
+        else if (x.size() == 2) {
+            result = y[0] + (temperature - x[0]) * (y[1] - y[0]) / (x[1] - x[0]);
+        }
+        else {
+            tk::spline interp(x, y, tk::spline::cspline_hermite, true);
+            result = interp(temperature);
+        }
     }
     return result;
 }
@@ -1042,6 +1052,17 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
             CoreMaterial coreMaterial;
             coreMaterial.set_name("Dummy");
             coreMaterial.set_material(MAS::MaterialType::FERRITE);
+            // The Dummy placeholder must survive saturation checks during
+            // adviser exploration before a real material is assigned, so give
+            // it the documented default-ferrite saturation (it is synthetic by
+            // contract; this is not a fallback for real catalog data)
+            MAS::BhCycleElement saturationPoint25;
+            saturationPoint25.set_magnetic_flux_density(Defaults().magneticFluxDensitySaturation);
+            saturationPoint25.set_magnetic_field(1200);  // typical MnZn ferrite saturation field strength [A/m]
+            saturationPoint25.set_temperature(25);
+            MAS::BhCycleElement saturationPoint100 = saturationPoint25;
+            saturationPoint100.set_temperature(100);
+            coreMaterial.set_saturation({saturationPoint25, saturationPoint100});
             return coreMaterial;
         }
         auto coreMaterialData = find_core_material_by_name(std::get<std::string>(coreMaterial));
@@ -1365,8 +1386,10 @@ double Core::get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, dou
     std::vector<std::pair<double, double>> data;
 
     if (saturationData.size() == 0) {
-        return defaults.magneticFluxDensitySaturation;
-        // throw std::runtime_error("Missing saturation data in core material");
+        // A silently-substituted B_sat produces trustworthy-looking saturation
+        // verdicts for materials with missing catalog data. Fail loudly instead
+        // (matches the H-sat sibling getter, FIX M-2).
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing saturation data in core material " + coreMaterial.get_name());
     }
     for (auto& datum : saturationData) {
         data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_flux_density()});

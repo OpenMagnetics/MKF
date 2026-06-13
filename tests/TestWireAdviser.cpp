@@ -295,7 +295,11 @@ namespace {
 
         REQUIRE(masMagneticsWithCoil.size() > 0);
         REQUIRE(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
-        REQUIRE(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_number_conductors().value() < 100);
+        // Bound relaxed from 100 after activating the Albach internal-bundle
+        // proximity term (it was zeroed by a Bessel-argument bug): the adviser
+        // now picks 135 finer strands at 613 kHz, consistent with the
+        // skin-depth (~84 um) and current-density driven optimum for 2 A rms
+        REQUIRE(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_number_conductors().value() < 200);
     }
 
     TEST_CASE("Test_WireAdviser_High_Frequency_Few_Turns_High_Current", "[constructive-model][wire-adviser][smoke-test]") {

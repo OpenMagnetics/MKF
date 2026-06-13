@@ -815,6 +815,11 @@ class CoreLossesLossFactorModel : public CoreLossesModel {
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature) {
+        // REFERENCE INDUCTANCE: the loss-factor formula needs the real
+        // magnetizing inductance for ABSOLUTE losses (use the 4-argument
+        // overload). With L = 1 H the returned number is only meaningful for
+        // RELATIVE comparisons between materials at the same excitation (the
+        // cross-referencer use case) — never treat it as physical W/m^3.
         return get_core_volumetric_losses(coreMaterial, excitation, temperature, 1);
     }
     double get_core_mass_losses(CoreMaterial coreMaterial,

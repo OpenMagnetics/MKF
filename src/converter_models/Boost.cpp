@@ -17,6 +17,9 @@ namespace OpenMagnetics {
         if (dutyCycle >= 1) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Duty cycle must be smaller than 1");
         }
+        if (dutyCycle <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Boost duty cycle is not positive (input voltage above output voltage): Vin=" + std::to_string(inputVoltage) + " V, Vout=" + std::to_string(outputVoltage) + " V");
+        }
         // Explicit maxD gate (no silent clamp). 1 % tolerance absorbs
         // design-requirements rounding. Same pattern as Flyback, forward
         // family, Buck.
@@ -88,10 +91,20 @@ namespace OpenMagnetics {
                 tOn = sqrt(2 * outputCurrent * inductance * (outputVoltage + diodeVoltageDrop - inputVoltage) / (switchingFrequency * pow(inputVoltage, 2)));
                 auto tOff = tOn * ((outputVoltage + diodeVoltageDrop) / (outputVoltage + diodeVoltageDrop - inputVoltage) - 1);
                 auto deadTime = 1.0 / switchingFrequency - tOn - tOff;
+                // Recompute the ripple with the DCM tOn (the CCM value computed
+                // above is stale here and previously survived into the waveform
+                // amplitude and diagnostics)
+                primaryCurrentPeakToPeak = inputVoltage * tOn / inductance;
                 outputCurrent = primaryCurrentPeakToPeak / 2;
 
-                currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR_WITH_DEADTIME, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, outputCurrent, deadTime);
-                voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+                // DCM: timing must use the recomputed tOn, not the CCM duty
+                double dcmDutyCycle = tOn * switchingFrequency;
+                currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR_WITH_DEADTIME, primaryCurrentPeakToPeak, switchingFrequency, dcmDutyCycle, outputCurrent, deadTime);
+                // Voltage: explicit levels and times (see Buck.cpp DCM branch for
+                // why RECTANGULAR_WITH_DEADTIME cannot express the DCM split)
+                voltageWaveform.set_data(std::vector<double>{primaryVoltageMaximum, primaryVoltageMaximum, primaryVoltageMinimum, primaryVoltageMinimum, 0, 0});
+                voltageWaveform.set_time(std::vector<double>{0, tOn, tOn, tOn + tOff, tOn + tOff, 1.0 / switchingFrequency});
+                voltageWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
 
                 // ---- DCM diagnostics ----
                 // Peak current in DCM = ΔIL_pp (current ramps from 0 to peak

@@ -938,6 +938,11 @@ namespace OpenMagnetics {
 
         for (size_t vinIdx = 0; vinIdx < inputVoltages.size(); ++vinIdx) {
             const double vinRms  = inputVoltages[vinIdx];
+            if (vinRms <= 0 || vout <= 0 || pout <= 0) {
+                throw std::runtime_error(
+                    "PowerFactorCorrection waveform extraction needs positive Vin/Vout/Pout, got Vin=" + std::to_string(vinRms) +
+                    " V, Vout=" + std::to_string(vout) + " V, Pout=" + std::to_string(pout) + " W");
+            }
             const double vinPeak = vinRms * std::sqrt(2.0);
             // Average input current (RMS, ideal PF=1): I_in_rms = P_in / V_in_rms,
             // P_in = P_out / η. Peak of the |sin| envelope is √2·I_in_rms.

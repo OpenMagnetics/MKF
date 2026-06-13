@@ -300,14 +300,21 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 1;
         
+        // Expectations re-pinned (June 2026) after activating the Albach
+        // internal-bundle proximity term n(n-1)(rD/rO)^2 (it was zeroed by a
+        // Bessel-argument bug, and rO must be the BUNDLE outer radius). For
+        // this 600-strand 2.56 mm bundle the term gives Rac/Rdc ~= 1.75 at
+        // 500 kHz, matching the analytic estimate (geometric factor ~276,
+        // x = r_strand/delta = 0.38); the old pins assumed ~no internal
+        // proximity, which is implausible for a bundle this large
         config.expectedValues = {
-            {0.01, 0.00033763},
-            {25000, 0.00033732},
-            {50000, 0.00033622},
-            {100000, 0.00033887},
-            {200000, 0.00034167},
-            {250000, 0.00034373},
-            {500000, 0.00036313}
+            {0.01, 0.00037562},
+            {25000, 0.00037632},
+            {50000, 0.00037843},
+            {100000, 0.00038686},
+            {200000, 0.00042055},
+            {250000, 0.00044581},
+            {500000, 0.00065586}
         };
         
         config.createMagnetic = []() {

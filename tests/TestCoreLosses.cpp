@@ -2641,7 +2641,11 @@ TEST_CASE("Test_Manufacturer_Magnetec", "[physical-model][core-losses][smoke-tes
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(3.09, 3.09 * maxError));
+    // Expectation updated after fixing mass losses (W/kg) to multiply by the
+    // core MASS instead of its volume (the old pinned 3.09 W captured the
+    // volume-multiplied bug; the absolute number is a plumbing check only —
+    // the 1-turn setup drives B far beyond saturation)
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(29685.6, 29685.6 * maxError));
 }
 
 TEST_CASE("Test_XFlux_19", "[physical-model][core-losses][smoke-test]") {

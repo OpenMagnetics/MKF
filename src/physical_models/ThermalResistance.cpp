@@ -26,7 +26,9 @@ std::shared_ptr<CoreThermalResistanceModel> CoreThermalResistanceModel::factory(
  */
 double CoreThermalResistanceManiktalaModel::get_core_thermal_resistance_reluctance(Core core) {
     double effectiveVolume = core.get_effective_volume();
-    return 53 * pow(effectiveVolume, -0.54);
+    // Maniktala's correlation expects cm^3 (see the identical formula in
+    // CoreTemperature.cpp); without the conversion Rth was ~1740x too high
+    return 53 * pow(effectiveVolume * 1000000, -0.54);
 }
 
 //=============================================================================
@@ -245,7 +247,9 @@ double ThermalResistance::getWireMaterialThermalConductivity(const WireMaterial&
     // Interpolate based on temperature
     // thermalCond is array of {temperature, value} pairs
     if (thermalCond.size() == 0) {
-        return getMaterialThermalConductivity("copper");  // Reasonable default
+        // An empty (but present) table is malformed data: silently treating it as
+        // copper would be ~40% wrong for an aluminium wire
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Wire material " + wireMaterial.get_name() + " has an empty thermal conductivity table");
     }
     
     // Find bracketing temperatures

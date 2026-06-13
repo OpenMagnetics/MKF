@@ -697,7 +697,11 @@ CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(const Core& core,
     }
     else {
         auto massLosses = get_core_mass_losses(material, excitation, temperature);
-        result.set_core_losses(massLosses * effectiveVolume);
+        // Mass losses are W/kg: multiply by the core MASS, not its volume
+        // (the inverse Magnetec path already used get_mass(), confirming the
+        // W/kg semantics; using volume was off by the material density)
+        Core mutableCore = core;
+        result.set_core_losses(massLosses * mutableCore.get_mass());
         result.set_mass_losses(massLosses);
     }
 
@@ -1267,7 +1271,9 @@ double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMateri
                                                          double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = Inputs::get_switching_frequency(excitation);
-    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    // AC amplitude: subtract the DC offset (Steinmetz convention; the raw peak
+    // inflated the pow(B_main, beta-2) factor for DC-biased excitations)
+    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
     double magneticFluxDensityPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
     magneticFluxDensityAcPeak = std::fabs(magneticFluxDensityAcPeak);
@@ -1365,7 +1371,9 @@ double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
     double frequency = Inputs::get_switching_frequency(excitation);
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
-    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    // AC amplitude: subtract the DC offset (Steinmetz convention; the raw peak
+    // inflated the pow(B_main, beta-2) factor for DC-biased excitations)
+    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
     double magneticFluxDensityPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
@@ -1484,7 +1492,9 @@ double CoreLossesNSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = Inputs::get_switching_frequency(excitation);
-    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    // AC amplitude (DeltaB/2): subtract the DC offset like every sibling model;
+    // the raw peak inflated NSE losses for DC-biased excitations
+    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
 
     magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -1575,7 +1585,9 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = Inputs::get_switching_frequency(excitation);
     magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
-    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    // AC amplitude: subtract the DC offset (Steinmetz convention; the raw peak
+    // inflated the pow(B_main, beta-2) factor for DC-biased excitations)
+    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
     magneticFluxDensityAcPeak = std::fabs(magneticFluxDensityAcPeak);
@@ -1613,8 +1625,13 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     std::vector<double> plateauDutyCycleValues = {0.1,  0.15, 0.2,  0.25, 0.3,  0.35, 0.4,  0.45, 0.5};
     std::vector<double> factorValues = {1.45,  1.4,  1.35, 1.275, 1.25,  1.2,  1.15, 1.075, 1};
 
+    // Barg's empirical correction table only covers D in [0.1, 0.5] with factors
+    // in [1.0, 1.45]; evaluating the Hermite spline outside that domain
+    // extrapolates linearly (e.g. a negative plateau duty gave factors ~1.85).
+    // Clamp the duty into the documented domain before interpolating.
+    double clampedDutyCycle = std::clamp(dutyCycle, 0.1, 0.5);
     tk::spline interp(plateauDutyCycleValues, factorValues, tk::spline::cspline_hermite, true);
-    double dutyCycleFactor = std::max(1., interp(dutyCycle));
+    double dutyCycleFactor = std::max(1., interp(clampedDutyCycle));
 
     return dutyCycleFactor * lossesFrameT1;
 } 
@@ -2141,7 +2158,9 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
 
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = Inputs::get_switching_frequency(excitation);
-    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    // AC amplitude: subtract the DC offset (Steinmetz convention; the raw peak
+    // inflated the pow(B_main, beta-2) factor for DC-biased excitations)
+    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
 
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
     // AC peak is an amplitude (magnitude); harmonic-path of get_magnetic_flux_density_peak
@@ -2190,7 +2209,9 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
         volumetricLosses = 1000 * pow(magneticFluxDensityAcPeak * 10, a) * (b * frequency / 1000 + c * pow(frequency / 1000, d));
     }
     else {
-        // throw std::invalid_argument("No volumetric losses method for manufacturer: " + coreMaterial.get_manufacturer_info().get_name());
+        // -1 was an in-band sentinel that passed the isfinite guard downstream
+        // and propagated as negative losses
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "No proprietary volumetric losses method for manufacturer: " + coreMaterial.get_manufacturer_info().get_name());
     }
 
     return volumetricLosses;
@@ -2251,6 +2272,10 @@ double CoreLossesProprietaryModel::get_core_mass_losses(CoreMaterial coreMateria
 
     if (coreMaterial.get_manufacturer_info().get_name() == "Magnetec") {
         massLosses = 80 * pow(frequency / 100000, 1.8) * pow(magneticFluxDensityAcPeak * 2 / 0.3, 2);
+    }
+    else {
+        // -1 was an in-band sentinel that propagated as negative losses
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "No proprietary mass losses method for manufacturer: " + coreMaterial.get_manufacturer_info().get_name());
     }
     return massLosses;
 }
@@ -2349,18 +2374,21 @@ CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(const Core& core,
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double magnetizingInductance = calculate_magnetizing_inductance_from_excitation(core, excitation, temperature);
 
-    auto volumetricLosses = get_core_volumetric_losses(coreMaterial, excitation, temperature, magnetizingInductance);
+    // R_series * Irms^2 is the TOTAL dissipated power in watts (R already
+    // encodes the geometry through L); it was previously stored as W/m^3 and
+    // multiplied by the volume a second time.
+    auto totalLosses = get_core_volumetric_losses(coreMaterial, excitation, temperature, magnetizingInductance);
 
     CoreLossesOutput result;
-    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_core_losses(totalLosses);
     result.set_magnetic_flux_density(magneticFluxDensity);
     result.set_method_used(_modelName);
     result.set_origin(ResultOrigin::SIMULATION);
     result.set_temperature(temperature);
-    result.set_volumetric_losses(volumetricLosses);
+    result.set_volumetric_losses(totalLosses / effectiveVolume);
 
     return result;
-} 
+}
 
 double CoreLossesLossFactorModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                              OperatingPointExcitation excitation,
@@ -2644,8 +2672,9 @@ RoshenParameters RoshenParameters::from_material(const CoreMaterial& material, d
     // Where H1 = 0 (remanence point)
     params.b1 = (H0 / B0 + Hc / B0 - 0 / B1 - Hc / B1) / (H0 - 0);
     
-    // a1 = (Hc - B1 * b1 * Hc) / B1
-    params.a1 = (Hc - B1 * params.b1 * 0) / B1;  // H1 = 0
+    // a1 = (Hc - B1 * b1 * Hc) / B1  (from B1*(a1 + b1*Hc) = Hc at the remanence
+    // point; the duplicate used to zero the Hc factor as if it were H1)
+    params.a1 = (Hc - B1 * params.b1 * Hc) / B1;
     
     // b2 = (H2 + Hc - B2 * a1) / (B2 * |H2 + Hc|)
     params.b2 = (H2 + Hc - B2 * params.a1) / (B2 * std::fabs(H2 + Hc));
@@ -2676,10 +2705,10 @@ void RoshenParameters::apply_temperature_correction(double temperature) {
     double H2 = -H0;
     double B2 = -B0;
     
-    // Recalculate b1, a1, b2
+    // Recalculate b1, a1, b2 (same forms as from_material)
     if (B1 > 1e-12 && H0 > 1e-12) {
         b1 = (H0 / B0 + Hc / B0 - Hc / B1) / H0;
-        a1 = Hc / B1;
+        a1 = (Hc - B1 * b1 * Hc) / B1;
         b2 = (H2 + Hc - B2 * a1) / (B2 * std::fabs(H2 + Hc));
     }
 }

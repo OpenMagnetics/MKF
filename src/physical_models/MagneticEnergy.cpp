@@ -67,7 +67,10 @@ double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double m
         fringingFactorValue = reluctanceModel->get_gap_reluctance(gapInfo).get_fringing_factor();
     }
 
-    double energyStoredInGap = 0.5 / constants.vacuumPermeability * gapLength * gapArea * fringingFactorValue *
+    // E = 0.5 * Phi^2 * R_gap with Phi = Bsat * A and R_gap = lg / (mu0 * A * F):
+    // fringing LOWERS the gap reluctance, so the storable energy at core
+    // saturation scales with 1/F (it was multiplied by F, overestimating by F^2)
+    double energyStoredInGap = 0.5 / constants.vacuumPermeability * gapLength * gapArea / fringingFactorValue *
                                   pow(magneticFluxDensitySaturation, 2);
 
     return energyStoredInGap;
@@ -84,7 +87,9 @@ double MagneticEnergy::calculate_gap_length_by_magnetic_energy(CoreGap gapInfo, 
 
     double fringingFactor = reluctanceModel->get_gap_reluctance(gapInfo).get_fringing_factor();
 
-    double gapLength = 2 * energyStoredInGap * constants.vacuumPermeability / (gapArea * fringingFactor *
+    // Inverse of calculate_gap_maximum_storable_magnetic_energy:
+    // E = B^2 * A * lg / (2 * mu0 * F)  =>  lg = 2 * E * mu0 * F / (B^2 * A)
+    double gapLength = 2 * energyStoredInGap * constants.vacuumPermeability * fringingFactor / (gapArea *
                                   pow(magneticFluxDensitySaturation, 2));
 
     return gapLength;

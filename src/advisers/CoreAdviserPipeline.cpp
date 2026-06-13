@@ -334,22 +334,42 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         log_stage("Temperature filter", magneticsWithScoring.size());
     }
 
-    // Retry logic: if no cores found, try relaxing the saturation constraint
+    // Retry logic: zero results most often means the score-based intermediate
+    // pruning cut the larger (saturation-proof) cores BEFORE the saturation
+    // filter ran — scoring favors small/cheap cores. Following the classic
+    // area-product iteration ("try the next larger core", McLyman), retry with
+    // pruning disabled and the saturation filter fully active. The previous
+    // behavior (skip the saturation filter entirely) returned cores that can
+    // saturate in hardware with no marker.
     if (magneticsWithScoring.size() == 0) {
-        logEntry("No cores found with standard filters. Retrying with relaxed saturation constraint...", "CoreAdviser");
+        logEntry("No cores found with standard filters. Retrying without intermediate pruning (keeping larger cores), saturation still enforced...", "CoreAdviser");
 
-        // Start over with the original magnetics
+        // Stage 1: full candidate set, saturation enforced
         magneticsWithScoring = *magnetics;
         magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
-
-        if (settings.get_core_adviser_enable_intermediate_pruning() && magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
-            magneticsWithScoring.resize(maximumMagneticsAfterFiltering);
-        }
-
         magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
         add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+        magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+        log_stage("retry Saturation (no pruning)", magneticsWithScoring.size());
 
-        // Skip saturation filter - go directly to scoring filters
+        // Stage 2: still nothing — relax the saturation MARGIN to 1.0 (still
+        // physically non-saturating, just without the production headroom) and
+        // tag the results so the relaxation is visible downstream.
+        bool reducedSaturationMargin = false;
+        if (magneticsWithScoring.size() == 0 && settings.get_core_adviser_saturation_margin() > 1.0) {
+            double originalSaturationMargin = settings.get_core_adviser_saturation_margin();
+            logEntry("Still no cores. Relaxing saturation margin from " + std::to_string(originalSaturationMargin) + " to 1.0 (results will be tagged)...", "CoreAdviser");
+            settings.set_core_adviser_saturation_margin(1.0);
+            magneticsWithScoring = *magnetics;
+            magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+            magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+            add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+            magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+            settings.set_core_adviser_saturation_margin(originalSaturationMargin);
+            reducedSaturationMargin = !magneticsWithScoring.empty();
+            log_stage("retry Saturation (margin 1.0)", magneticsWithScoring.size());
+        }
+
         magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
         magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::DIMENSIONS], true);
         magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
@@ -361,6 +381,13 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
             filterTemperature.set_filter_configuration(&_filterConfiguration);
             magneticsWithScoring = filterTemperature.filter_magnetics(
                 &magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+        }
+
+        if (reducedSaturationMargin) {
+            for (auto& [magnetic, scoring] : magneticsWithScoring) {
+                auto coreName = magnetic.get_mutable_core().get_name().value_or("");
+                magnetic.get_mutable_core().set_name(coreName + " [SATURATION MARGIN RELAXED TO 1.0]");
+            }
         }
 
         log_stage("retry with relaxed constraints", magneticsWithScoring.size());
@@ -543,6 +570,14 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     bool usingPowderCores = should_include_powder(inputs);
 
+    // User weights scale the tuned per-stage constants (missing entry = 1.0,
+    // which reproduces the historical hardcoded behavior). Validity gates
+    // (AreaProduct, EnergyStored, Saturation, TurnCount) are not user-scaled.
+    auto userWeight = [&weights](CoreAdviserFilters filter) {
+        auto it = weights.find(filter);
+        return it == weights.end() ? 1.0 : it->second;
+    };
+
     // ========================================================================
     // STEP 1: Area Product filter on all cores
     // ========================================================================
@@ -578,11 +613,11 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         log_stage("gapping ferrite", ferriteCores.size());
 
         // Filter by fringing factor
-        ferriteCores = filterFringingFactor.filter_magnetics(&ferriteCores, inputs, 1, true);
+        ferriteCores = filterFringingFactor.filter_magnetics(&ferriteCores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
         log_stage("FringingFactor", ferriteCores.size());
 
         // Filter by dimensions
-        ferriteCores = filterDimensions.filter_magnetics(&ferriteCores, inputs, 1, true);
+        ferriteCores = filterDimensions.filter_magnetics(&ferriteCores, inputs, 1 * userWeight(CoreAdviserFilters::DIMENSIONS), true);
         log_stage("Dimensions (ferrite)", ferriteCores.size());
 
         // Assign concrete ferrite materials
@@ -593,7 +628,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         add_initial_turns_by_inductance(&ferriteCores, inputs);
 
         // Filter by inductance
-        ferriteCores = filterMagneticInductance.filter_magnetics(&ferriteCores, inputs, 0.1, true);
+        ferriteCores = filterMagneticInductance.filter_magnetics(&ferriteCores, inputs, 0.1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
         log_stage("Inductance (ferrite)", ferriteCores.size());
 
         // Filter by saturation
@@ -612,7 +647,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         }
 
         // Filter by losses
-        ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1, true);
+        ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
         log_stage("Losses (ferrite)", ferriteCores.size());
 
         if (settings.get_core_adviser_enable_temperature_filter()) {
@@ -621,7 +656,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             filterTemperature.set_scorings(&_scorings);
             filterTemperature.set_filter_configuration(&_filterConfiguration);
             filterTemperature.set_cache_usage(false);
-            ferriteCores = filterTemperature.filter_magnetics(&ferriteCores, inputs, 1, true);
+            ferriteCores = filterTemperature.filter_magnetics(&ferriteCores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
             log_stage("Temperature (ferrite)", ferriteCores.size());
         }
     }
@@ -653,7 +688,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             log_stage("EnergyStored (powder)", powderCores.size());
             
             // Filter by dimensions
-            powderCores = filterDimensions.filter_magnetics(&powderCores, inputs, 1, true);
+            powderCores = filterDimensions.filter_magnetics(&powderCores, inputs, 1 * userWeight(CoreAdviserFilters::DIMENSIONS), true);
             log_stage("Dimensions (powder)", powderCores.size());
 
             // Prune to top candidates by accumulated score before the
@@ -678,7 +713,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             add_initial_turns_by_inductance(&powderCores, inputs);
 
             // Filter by inductance
-            powderCores = filterMagneticInductance.filter_magnetics(&powderCores, inputs, 0.1, true);
+            powderCores = filterMagneticInductance.filter_magnetics(&powderCores, inputs, 0.1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
             log_stage("Inductance (powder)", powderCores.size());
             
             // Filter by saturation
@@ -695,7 +730,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             }
 
             // Filter by losses
-            powderCores = filterLosses.filter_magnetics(&powderCores, inputs, 1, true);
+            powderCores = filterLosses.filter_magnetics(&powderCores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
             log_stage("Losses (powder)", powderCores.size());
 
             if (settings.get_core_adviser_enable_temperature_filter()) {
@@ -704,7 +739,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
                 filterTemperature.set_scorings(&_scorings);
                 filterTemperature.set_filter_configuration(&_filterConfiguration);
                 filterTemperature.set_cache_usage(false);
-                powderCores = filterTemperature.filter_magnetics(&powderCores, inputs, 1, true);
+                powderCores = filterTemperature.filter_magnetics(&powderCores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
                 log_stage("Temperature (powder)", powderCores.size());
             }
         }
@@ -799,13 +834,20 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
 
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
 
+    // User weights scale the tuned per-stage constants (missing entry = 1.0,
+    // reproducing the historical hardcoded behavior).
+    auto userWeight = [&weights](CoreAdviserFilters filter) {
+        auto it = weights.find(filter);
+        return it == weights.end() ? 1.0 : it->second;
+    };
+
     // Same logic as filter_available_cores_suppression_application: use a tiny
     // weight so the impedance filter is a pure gate (no score contribution).
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 0.001, true);
-    magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, 1 * userWeight(CoreAdviserFilters::COST), true);
+    magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, 1 * userWeight(CoreAdviserFilters::DIMENSIONS), true);
+    magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
+    magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
     // Manufacturability proxy — see filter_available_cores_suppression_application
     // for rationale. Same internal weight (1.0) here.
     magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);

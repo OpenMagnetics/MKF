@@ -114,8 +114,8 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
         if (index > 0) {
             double leakageInductance = resolve_dimensional_values(leakageInductances[index]);
-            if (leakageInductance >= magnetizingInductance) {
-                leakageInductance = magnetizingInductance * 0.1;
+            if (leakageInductance < 0 || leakageInductance >= magnetizingInductance) {
+                throw std::runtime_error("Unphysical leakage inductance (" + std::to_string(leakageInductance) + " H vs Lmag " + std::to_string(magnetizingInductance) + " H) for winding " + is);
             }
             double couplingCoefficient = sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance);
             parametersString += ".param Llk_" + is + "_Value=" + std::to_string(leakageInductance) + "\n";

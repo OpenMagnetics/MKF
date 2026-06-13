@@ -42,14 +42,13 @@ std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel::factory(CoreTemperat
 TemperatureOutput CoreTemperatureManiktalaModel::get_core_temperature(Core core,
                                                                       double coreLosses,
                                                                       double ambientTemperature) {
-    double cubeVolume = core.get_processed_description().value().get_depth() * core.get_processed_description().value().get_width() * core.get_processed_description().value().get_height();
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     double thermalResistance = 53 * pow(effectiveVolume * 1000000, -0.54);
     double temperatureRise = coreLosses * thermalResistance;
     double maximumTemperature = ambientTemperature + temperatureRise;
 
     TemperatureOutput result;
-    result.set_bulk_thermal_resistance((maximumTemperature - ambientTemperature) / cubeVolume);
+    result.set_bulk_thermal_resistance(coreLosses > 0 ? (maximumTemperature - ambientTemperature) / coreLosses : 0); // K/W per MAS schema (was divided by volume)
     result.set_initial_temperature(ambientTemperature);
     result.set_maximum_temperature(maximumTemperature);
     result.set_method_used("Maniktala");
@@ -63,13 +62,12 @@ TemperatureOutput CoreTemperatureKazimierczukModel::get_core_temperature(Core co
     double width = core.get_processed_description().value().get_width();
     double height = core.get_processed_description().value().get_height();
     double depth = core.get_processed_description().value().get_depth();
-    double cubeVolume = depth * width * height;
     double coreSurface = 2 * depth * height + 2 * height * width + 2 * width * depth;
     double temperatureRise = pow(0.1 * coreLosses / coreSurface, 0.826);
     double maximumTemperature = ambientTemperature + temperatureRise;
 
     TemperatureOutput result;
-    result.set_bulk_thermal_resistance((maximumTemperature - ambientTemperature) / cubeVolume);
+    result.set_bulk_thermal_resistance(coreLosses > 0 ? (maximumTemperature - ambientTemperature) / coreLosses : 0); // K/W per MAS schema (was divided by volume)
     result.set_initial_temperature(ambientTemperature);
     result.set_maximum_temperature(maximumTemperature);
     result.set_method_used("Kazimierczuk");
@@ -81,14 +79,13 @@ TemperatureOutput CoreTemperatureKazimierczukModel::get_core_temperature(Core co
 TemperatureOutput CoreTemperatureTdkModel::get_core_temperature(Core core,
                                                                 double coreLosses,
                                                                 double ambientTemperature) {
-    double cubeVolume = core.get_processed_description().value().get_depth() * core.get_processed_description().value().get_width() * core.get_processed_description().value().get_height();
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     double thermalResistance = 1 / sqrt(effectiveVolume * 1000000);
     double temperatureRise = coreLosses * thermalResistance;
     double maximumTemperature = ambientTemperature + temperatureRise;
 
     TemperatureOutput result;
-    result.set_bulk_thermal_resistance((maximumTemperature - ambientTemperature) / cubeVolume);
+    result.set_bulk_thermal_resistance(coreLosses > 0 ? (maximumTemperature - ambientTemperature) / coreLosses : 0); // K/W per MAS schema (was divided by volume)
     result.set_initial_temperature(ambientTemperature);
     result.set_maximum_temperature(maximumTemperature);
     result.set_method_used("Tdk");
@@ -100,7 +97,6 @@ TemperatureOutput CoreTemperatureTdkModel::get_core_temperature(Core core,
 TemperatureOutput CoreTemperatureDixonModel::get_core_temperature(Core core,
                                                                   double coreLosses,
                                                                   double ambientTemperature) {
-    double cubeVolume = core.get_processed_description().value().get_depth() * core.get_processed_description().value().get_width() * core.get_processed_description().value().get_height();
     double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
     double windingWindowArea = core.get_processed_description().value().get_winding_windows()[0].get_area().value();
     double areaProduct = centralColumnArea * windingWindowArea * 100000000;
@@ -109,7 +105,7 @@ TemperatureOutput CoreTemperatureDixonModel::get_core_temperature(Core core,
     double maximumTemperature = ambientTemperature + temperatureRise;
 
     TemperatureOutput result;
-    result.set_bulk_thermal_resistance((maximumTemperature - ambientTemperature) / cubeVolume);
+    result.set_bulk_thermal_resistance(coreLosses > 0 ? (maximumTemperature - ambientTemperature) / coreLosses : 0); // K/W per MAS schema (was divided by volume)
     result.set_initial_temperature(ambientTemperature);
     result.set_maximum_temperature(maximumTemperature);
     result.set_method_used("Dixon");
@@ -124,13 +120,12 @@ TemperatureOutput CoreTemperatureAmidonModel::get_core_temperature(Core core,
     double width = core.get_processed_description().value().get_width();
     double height = core.get_processed_description().value().get_height();
     double depth = core.get_processed_description().value().get_depth();
-    double cubeVolume = depth * width * height;
     double coreSurface = 2 * depth * height + 2 * height * width + 2 * width * depth;
     double temperatureRise = pow(coreLosses * 1000 / (coreSurface * 10000), 0.833);
     double maximumTemperature = ambientTemperature + temperatureRise;
 
     TemperatureOutput result;
-    result.set_bulk_thermal_resistance((maximumTemperature - ambientTemperature) / cubeVolume);
+    result.set_bulk_thermal_resistance(coreLosses > 0 ? (maximumTemperature - ambientTemperature) / coreLosses : 0); // K/W per MAS schema (was divided by volume)
     result.set_initial_temperature(ambientTemperature);
     result.set_maximum_temperature(maximumTemperature);
     result.set_method_used("Amidon");

@@ -942,8 +942,11 @@ class CorePiecePq : public CorePiece {
         double J;
         double L;
         if ((dimensions.find("J") == dimensions.end()) || (dimensions["J"] == 0)) {
-            J = dimensions["F"] / 2; // Totally made up base on drawings
-            L = F + (C - F) / 3; // Totally made up base on drawings
+            // DOCUMENTED APPROXIMATION: 24 catalog PQ shapes lack J/L. These
+            // proportions were derived from PQ drawings and are load-bearing for
+            // their published Ae/le; replace only with datasheet values.
+            J = dimensions["F"] / 2;
+            L = F + (C - F) / 3;
         }
         else {
             J = dimensions["J"];
@@ -2254,12 +2257,9 @@ CoreLossFractions CorePiece::calculate_core_loss_fractions() {
                           + v.bottomYoke;
 
     if (fullCoreVolume < 1e-18) {
-        // Degenerate geometry guard
-        f.centralColumn = 0.4;
-        f.lateralColumn = 0.2;
-        f.topYoke       = 0.2;
-        f.bottomYoke    = 0.2;
-        return f;
+        // A zero/degenerate core volume means the upstream geometry is broken;
+        // substituting made-up loss fractions would mask that bug.
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Degenerate core volume (" + std::to_string(fullCoreVolume) + " m^3) while computing core loss fractions");
     }
 
     // =========================================================================

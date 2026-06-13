@@ -156,6 +156,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(
         // pass the trimmed shape set in and rely on the existing material
         // selection logic. (Future refinement: thread coreMaterialType into
         // those helpers explicitly.)
+        _weights = weights; // the shapes overload consumes _weights
         return get_advised_core(inputs, &shapes, maximumNumberResults);
     }
 
@@ -197,6 +198,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
             }
             shapes.push_back(shape);
         }
+        _weights = weights; // the shapes overload consumes _weights
         return get_advised_core(inputs, &shapes, maximumNumberResults);
     }
     else if (get_mode() == CoreAdviserModes::CUSTOM_CORES) {
@@ -207,6 +209,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
             load_core_shapes();
         }
         auto customShapes = create_custom_core_shapes(inputs);
+        _weights = weights; // the shapes overload consumes _weights
         return get_advised_core(inputs, &customShapes, maximumNumberResults);
     }
     else {

@@ -124,8 +124,11 @@ namespace OpenMagnetics {
 
             double minimumSecondarySideTransformerCurrentT1OfFET = minimumSecondaryCurrent;
             double maximumSecondarySideTransformerCurrentT1OfFET = maximumSecondaryCurrent;
-            double minimumSecondarySideTransformerCurrentT2OtherFET = (minimumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio - inductorCurrentRipple / 2;
-            double maximumSecondarySideTransformerCurrentT2OtherFET = (minimumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio;
+            // T2 freewheel starts where the inductor current peaked at the end of
+            // T1, so the per-half share is anchored to the MAXIMUM secondary
+            // current: i_half = i_L/2 +/- n*i_m/2 (KCL + MMF balance with i_pri=0).
+            double minimumSecondarySideTransformerCurrentT2OtherFET = (maximumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio - inductorCurrentRipple / 2;
+            double maximumSecondarySideTransformerCurrentT2OtherFET = (maximumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio;
             double minimumSecondarySideTransformerCurrentT2OfFET = minimumSecondaryCurrent - minimumSecondarySideTransformerCurrentT2OtherFET;
             double maximumSecondarySideTransformerCurrentT2OfFET = maximumSecondaryCurrent - maximumSecondarySideTransformerCurrentT2OtherFET;
             double minimumSecondarySideTransformerVoltage = -inputVoltage / mainSecondaryTurnsRatio;
@@ -374,8 +377,11 @@ namespace OpenMagnetics {
 
                 double minimumAuxiliarySecondarySideTransformerCurrentT1OfFET = minimumAuxiliarySecondaryCurrent;
                 double maximumAuxiliarySecondarySideTransformerCurrentT1OfFET = maximumAuxiliarySecondaryCurrent;
-                double minimumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (minimumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary - inductorCurrentRipple / 2;
-                double maximumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (minimumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary;
+                // Anchored to the maximum (start-of-T2) current like the main
+                // secondary; the decay term uses the AUXILIARY inductor ripple
+                // (previously the main inductor's ripple by mistake).
+                double minimumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (maximumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary - auxiliaryInductorCurrentRipple / 2;
+                double maximumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (maximumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary;
                 double minimumAuxiliarySecondarySideTransformerCurrentT2OfFET = minimumAuxiliarySecondaryCurrent - minimumAuxiliarySecondarySideTransformerCurrentT2OtherFET;
                 double maximumAuxiliarySecondarySideTransformerCurrentT2OfFET = maximumAuxiliarySecondaryCurrent - maximumAuxiliarySecondarySideTransformerCurrentT2OtherFET;
                 double minimumAuxiliarySecondarySideTransformerVoltage = -inputVoltage / turnsRatioAuxiliarySecondary;
@@ -466,8 +472,11 @@ namespace OpenMagnetics {
             double maximumPrimarySideTransformerVoltage = inputVoltage;
 
             double maximumSecondarySideTransformerCurrentT1OfFET = maximumSecondaryCurrent;
-            double minimumSecondarySideTransformerCurrentT2OtherFET = (minimumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio - inductorCurrentRipple / 2;
-            double maximumSecondarySideTransformerCurrentT2OtherFET = (minimumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio;
+            // T2 freewheel starts where the inductor current peaked at the end of
+            // T1, so the per-half share is anchored to the MAXIMUM secondary
+            // current: i_half = i_L/2 +/- n*i_m/2 (KCL + MMF balance with i_pri=0).
+            double minimumSecondarySideTransformerCurrentT2OtherFET = (maximumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio - inductorCurrentRipple / 2;
+            double maximumSecondarySideTransformerCurrentT2OtherFET = (maximumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio;
             double minimumSecondarySideTransformerCurrentT2OfFET = 0;
             double maximumSecondarySideTransformerCurrentT2OfFET = maximumSecondaryCurrent - maximumSecondarySideTransformerCurrentT2OtherFET;
             double minimumSecondarySideTransformerVoltage = -inputVoltage / mainSecondaryTurnsRatio;
@@ -760,8 +769,11 @@ namespace OpenMagnetics {
                 maximumPrimaryCurrent += maximumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary;
 
                 double maximumAuxiliarySecondarySideTransformerCurrentT1OfFET = maximumAuxiliarySecondaryCurrent;
-                double minimumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (minimumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary - inductorCurrentRipple / 2;
-                double maximumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (minimumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary;
+                // Anchored to the maximum (start-of-T2) current like the main
+                // secondary; the decay term uses the AUXILIARY inductor ripple
+                // (previously the main inductor's ripple by mistake).
+                double minimumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (maximumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary - auxiliaryInductorCurrentRipple / 2;
+                double maximumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (maximumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary;
                 double minimumAuxiliarySecondarySideTransformerCurrentT2OfFET = 0;
                 double maximumAuxiliarySecondarySideTransformerCurrentT2OfFET = maximumAuxiliarySecondaryCurrent - maximumAuxiliarySecondarySideTransformerCurrentT2OtherFET;
                 double minimumAuxiliarySecondarySideTransformerVoltage = -inputVoltage / turnsRatioAuxiliarySecondary;

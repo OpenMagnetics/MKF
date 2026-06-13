@@ -47,7 +47,7 @@ class Settings
         bool _coilIncludeAdditionalCoordinates = true;
         bool _coilEqualizeMargins = true;
         bool _coilOnlyOneTurnPerLayerInContiguousRectangular = false;
-        size_t _coilMaximumLayersPlanar = 4;
+        size_t _coilMaximumLayersPlanar = 32;  // Keep in sync with reset()
 
         bool _useOnlyCoresInStock = true;
         bool _usePowderCores = true;
@@ -97,7 +97,7 @@ class Settings
         double _leakageInductanceGridPrecisionLevelPlanar = 3;
         double _leakageInductanceGridPrecisionLevelWound = 1;
 
-        size_t _coilAdviserMaximumNumberWires = 100;
+        size_t _coilAdviserMaximumNumberWires = 30;  // Keep in sync with reset() (reduced from 100 for web frontend performance)
         bool _coreAdviserIncludeStacks = true;
         bool _coreAdviserIncludeDistributedGaps = true;
         bool _coreAdviserIncludeMargin = false;

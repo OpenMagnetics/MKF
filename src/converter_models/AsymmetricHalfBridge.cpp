@@ -173,9 +173,10 @@ DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
             "AsymmetricHalfBridge::process_design_requirements: inputVoltage "
             "must specify nominal, minimum, or maximum");
 
-    const double Vin_nom = inputVoltage.get_nominal().value_or(
-        (inputVoltage.get_minimum().value_or(0.0) +
-         inputVoltage.get_maximum().value_or(0.0)) / 2.0);
+    // resolve_dimensional_values handles nominal -> (min+max)/2 -> max -> min;
+    // the previous nested value_or(0.0) returned HALF the real value when only
+    // one of min/max was given.
+    const double Vin_nom = resolve_dimensional_values(inputVoltage, DimensionalValues::NOMINAL);
     const double Vin_min = inputVoltage.get_minimum().value_or(Vin_nom);
     const double Vin_max = inputVoltage.get_maximum().value_or(Vin_nom);
 

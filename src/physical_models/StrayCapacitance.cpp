@@ -653,7 +653,9 @@ double get_wire_insulation_relative_permittivity(Wire wire) {
         try {
             return wire.get_coating_relative_permittivity();
         }
-        catch (...) {
+        catch (const InvalidInputException&) {
+            // Only missing coating/permittivity DATA falls back to the typical
+            // film value; any other failure must propagate.
             return 3.5; // Default: typical polyester/polyimide film
         }
     }

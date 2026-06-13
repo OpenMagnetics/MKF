@@ -93,8 +93,19 @@ namespace OpenMagnetics {
                 primaryCurrentPeakToPeak = (inputVoltage - outputVoltage) * tOn / inductance;
                 outputCurrent = primaryCurrentPeakToPeak / 2;
 
-                currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR_WITH_DEADTIME, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, outputCurrent, deadTime);
-                voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+                // DCM: the waveform timing must use the recomputed tOn, not the
+                // CCM duty cycle (which is larger and at light load even pushed
+                // the triangle peak past period - deadTime, producing a
+                // non-monotonic time vector).
+                double dcmDutyCycle = tOn * switchingFrequency;
+                currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR_WITH_DEADTIME, primaryCurrentPeakToPeak, switchingFrequency, dcmDutyCycle, outputCurrent, deadTime);
+                // Voltage: explicit levels and times. A single duty parameter
+                // cannot express both the tOn transition and the physical level
+                // split in DCM (RECTANGULAR_WITH_DEADTIME would violate
+                // volt-second balance over the conduction interval).
+                voltageWaveform.set_data(std::vector<double>{primaryVoltageMaximum, primaryVoltageMaximum, primaryVoltageMinimum, primaryVoltageMinimum, 0, 0});
+                voltageWaveform.set_time(std::vector<double>{0, tOn, tOn, tOn + tOff, tOn + tOff, 1.0 / switchingFrequency});
+                voltageWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
 
                 // DCM diagnostic capture: peak current is the full ΔIL (waveform
                 // returns to zero each cycle). Conduction ratio < 1.

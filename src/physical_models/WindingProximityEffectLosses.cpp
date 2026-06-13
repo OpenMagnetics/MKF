@@ -274,20 +274,24 @@ double WindingProximityEffectLossesRossmanithModel::calculate_proximity_factor(W
         double wireWidth = resolve_dimensional_values(wire.get_conducting_width().value());
         double wireHeight = resolve_dimensional_values(wire.get_conducting_height().value());
 
-        factor = wireHeight * wireWidth / skinDepth * (sinh(wireWidth / skinDepth) - sin(wireWidth / skinDepth)) / (cosh(wireWidth / skinDepth) + cos(wireWidth / skinDepth));
+        // 1D slab: 2*breadth/delta * G0(thickness/delta); the previous
+        // height*width/delta prefactor was dimensionally off by thickness/2
+        factor = 2 * wireHeight / skinDepth * (sinh(wireWidth / skinDepth) - sin(wireWidth / skinDepth)) / (cosh(wireWidth / skinDepth) + cos(wireWidth / skinDepth));
     }
     else if (wire.get_type() == WireType::ROUND ) {
         double wireRadius;
         wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
         alpha *= wireRadius / skinDepth;
-        factor = 2 * std::numbers::pi * (alpha * modified_bessel_first_kind(1, alpha) / modified_bessel_first_kind(0, alpha)).real();
+        // Ratio helper has the large-argument asymptotic branch (the raw series
+        // silently diverges for |alpha| >~ 20)
+        factor = 2 * std::numbers::pi * (alpha * modified_bessel_ratio_I1_I0(alpha)).real();
     }
     else if (wire.get_type() == WireType::LITZ) {
         double wireRadius;
         auto strand = wire.resolve_strand();
         wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
         alpha *= wireRadius / skinDepth;
-        factor = 2 * std::numbers::pi * (alpha * modified_bessel_first_kind(1, alpha) / modified_bessel_first_kind(0, alpha)).real();
+        factor = 2 * std::numbers::pi * (alpha * modified_bessel_ratio_I1_I0(alpha)).real();
     }
     else {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
@@ -413,8 +417,12 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
         // to avoid cosh overflow according to https://cpp-lang.net/docs/std/math/mathematical_functions/cosh/
         cTerm = 710;
     }
-    turnLosses += c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
-    turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
+    // 1D slab proximity per unit length is 2*width*rho/delta * G0(thickness/delta)
+    // * He^2; the previous width*thickness*rho/delta prefactor was dimensionally
+    // Ohm*m^2 (off by thickness/2 vs the verified LF-lamination and HF
+    // surface-impedance limits)
+    turnLosses += 2 * c * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
+    turnLosses += 2 * h * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
 
     // BUG-003 FIX: Normalize nonPlanarHe by data.size()
     if (nonPlanarHe != 0 && !data.empty()) {
@@ -474,7 +482,10 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
 
         double xi = std::min(h, w) / skinDepth;
 
-        factor = w * xi * resistivity * (sinh(xi) - sin(xi)) / (cosh(xi) + cos(xi));
+        // 1D slab: G = 2*breadth*rho/delta * G0(xi), with breadth = the LARGER
+        // dimension (the previous w*xi*rho double-used the thin dimension for
+        // foils and was dimensionally off by thickness/2)
+        factor = 2 * std::max(h, w) * resistivity / skinDepth * (sinh(xi) - sin(xi)) / (cosh(xi) + cos(xi));
         if (std::isnan(factor)) {
             throw NaNResultException("NaN found in Ferreira's proximity factor");
         }
@@ -489,7 +500,10 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
             wireDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
         }
         double gamma = wireDiameter / (skinDepth * sqrt(2));
-        factor = - 2 * gamma * resistivity * (kelvin_function_real(2, gamma) * derivative_kelvin_function_real(0, gamma) + kelvin_function_imaginary(2, gamma) * derivative_kelvin_function_imaginary(0, gamma)) / (pow(kelvin_function_real(0, gamma), 2) + pow(kelvin_function_imaginary(0, gamma), 2));
+        // Eq. A8: G = -2*PI*gamma * [...] — the pi was missing, underestimating
+        // round/litz proximity losses by exactly pi (numerically verified against
+        // the modified-Bessel form 2*pi*rho*Re[alpha*I1(alpha)/I0(alpha)])
+        factor = - 2 * std::numbers::pi * gamma * resistivity * (kelvin_function_real(2, gamma) * derivative_kelvin_function_real(0, gamma) + kelvin_function_imaginary(2, gamma) * derivative_kelvin_function_imaginary(0, gamma)) / (pow(kelvin_function_real(0, gamma), 2) + pow(kelvin_function_imaginary(0, gamma), 2));
 
 
     }
@@ -511,7 +525,9 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
         proximityFactor = calculate_proximity_factor(wire, frequency, temperature);
         set_proximity_factor(wire, frequency, temperature, proximityFactor);
     }
-    double He = 0;
+    // BUG-002 convention (matches every other proximity model): mean of |H|^2
+    // over the turn's field points; this model still used the PEAK field point.
+    double He2_sum = 0;
 
     for (auto& datum : data) {
         if (std::isnan(datum.get_real())) {
@@ -520,8 +536,9 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
         if (std::isnan(datum.get_imaginary())) {
             throw NaNResultException("NaN found in Ferreira proximity losses calculation");
         }
-        He = std::max(He, hypot(datum.get_real(), datum.get_imaginary()));
+        He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
     }
+    double He = data.empty() ? 0 : sqrt(He2_sum / data.size());
 
     double turnLosses = proximityFactor * pow(He, 2);
     if (!wire.get_number_conductors()) {
@@ -607,7 +624,9 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
         He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
     }
     double He2_rms = He2_sum / data.size();
-    double turnLosses = c * resistivity * He2_rms * (alpha * d * tanh(alpha * d / 2.0)).real();
+    // 1D slab: 2*breadth*rho*Re[alpha*tanh(alpha*d/2)] (= 2*c*rho/delta*G0(d/delta));
+    // the previous extra factor d made the result Ohm*m^2 (off by d/2)
+    double turnLosses = 2 * c * resistivity * He2_rms * (alpha * tanh(alpha * d / 2.0)).real();
 
     turnLosses *= wire.get_number_conductors().value();
 
@@ -949,29 +968,32 @@ double WindingProximityEffectLossesWojdaModel::calculate_proximity_factor(Wire w
         // R_pe/l = ηh²·μ₀²·ω²·h / (12·ρ·b)  where ηh = h/p ≈ 1 for dense foil
         double h = resolve_dimensional_values(wire.get_conducting_height().value());
         double bw = resolve_dimensional_values(wire.get_conducting_width().value());
-        // factor = μ₀²·ω²·h³ / (12·ρ·bw)
-        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3)
-               / (12.0 * resistivity * bw);
+        // Low-frequency slab limit (lamination form): mu0^2*omega^2*h^3*bw/(12*rho)
+        // — the width belongs in the NUMERATOR; dividing made the factor Ohm/m
+        // instead of Ohm*m
+        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3) * bw
+               / (12.0 * resistivity);
     }
     else if (wt == WireType::RECTANGULAR) {
         // Same form as foil (Eq. 42/45):
         double h  = resolve_dimensional_values(wire.get_conducting_height().value());
         double bw = resolve_dimensional_values(wire.get_conducting_width().value());
-        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3)
-               / (12.0 * resistivity * bw);
+        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3) * bw
+               / (12.0 * resistivity);
     }
     else if (wt == WireType::ROUND) {
         // Eq. 70: R_pe = ηb²·π²·μ₀²·ω²·Nl²·lT·d² / (576·ρ)
         // Per-conductor per-metre, single layer (Nl=1):
-        //   factor = π²·μ₀²·ω²·d⁴ / (128·ρ)  (consistent with Sullivan SFD at low freq)
+        //   factor = π·μ₀²·ω²·d⁴ / (128·ρ)  (consistent with Sullivan SFD at low
+        //   freq, which matches the exact LF cylinder result — π² was π too high)
         double d = resolve_dimensional_values(wire.get_conducting_diameter().value());
-        factor = std::pow(std::numbers::pi, 2) * std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(d, 4)
+        factor = std::numbers::pi * std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(d, 4)
                / (128.0 * resistivity);
     }
     else if (wt == WireType::LITZ) {
         auto strand = wire.resolve_strand();
         double d = resolve_dimensional_values(strand.get_conducting_diameter());
-        factor = std::pow(std::numbers::pi, 2) * std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(d, 4)
+        factor = std::numbers::pi * std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(d, 4)
                / (128.0 * resistivity);
     }
     else {

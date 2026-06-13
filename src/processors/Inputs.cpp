@@ -1213,6 +1213,9 @@ double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excita
     // Sinusoidal fallback from processed peak: V·t_max = V_peak / ω.
     const auto processedOpt = voltage.get_processed();
     if (processedOpt.has_value() && processedOpt.value().get_peak().has_value()) {
+        // DOCUMENTED DEFAULT: with no usable frequency this rough estimator
+        // assumes 100 kHz (typical SMPS); the result is only a sizing heuristic
+        // and callers needing exactness must provide the frequency.
         double frequency = excitation.get_frequency() > 0 ? excitation.get_frequency() : 100000.0;
         double omega = 2.0 * std::numbers::pi * frequency;
         if (omega > 0) {
@@ -2008,9 +2011,13 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
 
     std::vector<OperatingPointExcitation> newExcitationsPerWinding;
     for (auto excitation : operatingPoint.get_excitations_per_winding()) {
-        OperatingPointExcitation newExcitation;
-        // Copy the name from the original excitation
-        newExcitation.set_name(excitation.get_name());
+        // Start from a full copy of the original excitation so every field that
+        // pruning does not touch (frequency, magneticFluxDensity,
+        // magneticFieldStrength, ...) survives. Rebuilding field-by-field
+        // silently dropped `frequency` (left at its default of 0), which zeroed
+        // the frequency of every analytical operating point produced by
+        // Topology::process() and broke all downstream frequency-derived math.
+        OperatingPointExcitation newExcitation = excitation;
         // Current
         if (allExcitationsHaveCurrent) {
             auto current = excitation.get_current().value();

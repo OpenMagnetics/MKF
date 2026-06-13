@@ -135,8 +135,13 @@ namespace OpenMagnetics {
                 lastSecondaryPeakCurrent = secPeak;
             }
 
-            auto secondaryVoltaveMaximum = inputVoltage / turnsRatios[secondaryIndex] - diodeVoltageDrop;
-            auto secondaryVoltaveMinimum = (primaryOutputVoltage - diodeVoltageDrop) / turnsRatios[secondaryIndex] + diodeVoltageDrop;
+            // Secondary winding levels follow the primary winding (+Vin during ON,
+            // clamped to -(Vout_pri + Vd) during OFF, see the comment block above)
+            // scaled by 1/n with inverted dot. The diode only conducts during OFF,
+            // so its drop applies to the maximum (OFF) level, not to the blocking
+            // (ON) level. Volt-second balance: D*(-Vin/n) + (1-D)*((Vout_pri+Vd)/n) = 0.
+            auto secondaryVoltaveMaximum = (primaryOutputVoltage + diodeVoltageDrop) / turnsRatios[secondaryIndex] - diodeVoltageDrop;
+            auto secondaryVoltaveMinimum = -inputVoltage / turnsRatios[secondaryIndex];
             auto secondaryVoltavePeaktoPeak = secondaryVoltaveMaximum - secondaryVoltaveMinimum;
 
             currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, secondaryCurrentPeakToPeak, switchingFrequency, 1.0 - dutyCycle, secondaryOutputCurrent, 0, tOn);

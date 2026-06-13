@@ -63,6 +63,9 @@ namespace OpenMagnetics {
         _coilMaximumLayersPlanar = 32;
 
         _useOnlyCoresInStock = true;
+        _usePowderCores = true;
+        _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
+        _nanocrystallineStackingFactor = 0.80;
     _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
 
         _painterNumberPointsX = 25;
@@ -150,6 +153,15 @@ namespace OpenMagnetics {
         _electricFieldOutputUnit = ElectricFieldOutputUnit::JOULES_PER_CUBIC_METER;
 
         _coilEnableUserWindingLossesModels = false;
+
+        // Previously these survived reset(), leaking setter state across
+        // tests/sessions (one cause of order-dependent adviser test results)
+        _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+        _circuitSimulatorCurveFittingMode = 0;
+        _circuitSimulatorFracpoleOptions = std::nullopt;
+        _circuitSimulatorIncludeSaturation = false;
+        _circuitSimulatorIncludeMutualResistance = false;
+        _circuitSimulatorCoreLossTopology = 1;
     }
 
     bool Settings::get_verbose() const {

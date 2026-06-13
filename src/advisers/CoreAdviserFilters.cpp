@@ -240,6 +240,25 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
     if (weight <= 0) {
         return *unfilteredMagnetics;
     }
+    // CAPABILITY GAP (tracked in FALLBACKS_REVIEW.md): the per-candidate loss
+    // evaluators only support single-winding candidates, and the dataset stage
+    // builds 1-winding dummy coils for everything except CMCs
+    // (CoreAdviserDataset.cpp). For a multi-winding input every candidate
+    // would be rejected by the evaluator's winding-count guard, so this filter
+    // has never actually scored transformer candidates — it used to hide that
+    // behind a silent all-rejected -> return-everything fallback. Keep the
+    // pass-through but say so loudly until transformer-aware loss scoring
+    // (secondaries populated from the requirement turns ratios) exists.
+    if (!inputs.get_operating_points().empty() &&
+        inputs.get_operating_points()[0].get_excitations_per_winding().size() > 1 &&
+        !(*unfilteredMagnetics).empty() &&
+        (*unfilteredMagnetics)[0].first.get_coil().get_functional_description().size() !=
+            inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
+        logEntry("Losses filter cannot score multi-winding inputs against single-winding candidate coils; passing " +
+                     std::to_string((*unfilteredMagnetics).size()) + " candidates through unscored",
+                 "CoreAdviser");
+        return *unfilteredMagnetics;
+    }
     std::vector<std::pair<Magnetic, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
 
@@ -257,10 +276,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
         }
     }
 
-    if ((*unfilteredMagnetics).size() == listOfIndexesToErase.size()) {
-        settings.set_coil_delimit_and_compact(coilDelimitAndCompactOld);
-        return *unfilteredMagnetics;
-    }
+    // NOTE: previously, when the loss model rejected EVERY candidate, this filter
+    // silently returned the whole set unscored. That routed cores with
+    // uncomputable losses into the ranking; now it returns empty like every
+    // other filter (the pipeline's retry handles genuine zero-result cases).
 
     for (size_t i = 0; i < (*unfilteredMagnetics).size(); ++i) {
 

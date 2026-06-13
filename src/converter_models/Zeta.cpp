@@ -30,9 +30,10 @@ namespace OpenMagnetics {
         // 1% rounding tolerance — the user-set maximumDutyCycle is the
         // hard ceiling the converter is allowed to operate at; bail out
         // loudly so the caller can either raise maximumDutyCycle or fix
-        // the operating point. Mirrors Cuk / Sepic / Flyback.
+        // the operating point. Mirrors Cuk / Sepic / Flyback
+        // (multiplicative tolerance: allow up to Dmax * 1.01).
         const double dutyTolerance = 0.01;
-        if (dutyCycle >= maximumDutyCycle - dutyTolerance) {
+        if (dutyCycle > maximumDutyCycle * (1.0 + dutyTolerance)) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "Zeta::calculate_duty_cycle: duty cycle " + std::to_string(dutyCycle) +
                 " exceeds maximumDutyCycle " + std::to_string(maximumDutyCycle) +

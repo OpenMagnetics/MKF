@@ -103,7 +103,7 @@ namespace OpenMagnetics {
         }
     }
 
-    std::vector<std::pair<Mas, double>> CoilAdviser::score_magnetics(std::vector<Mas> masMagnetics, std::vector<MagneticFilterOperation> filterFlow) {
+    std::vector<std::pair<Mas, double>> CoilAdviser::score_magnetics(std::vector<Mas> masMagnetics, std::vector<MagneticFilterOperation> filterFlow, std::vector<std::pair<Mas, double>>* invalidMagneticsWithScoring) {
         std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
         std::vector<bool> masValidFlags(masMagnetics.size(), true);
         for (auto mas : masMagnetics) {
@@ -132,6 +132,9 @@ namespace OpenMagnetics {
                 validMasMagneticsWithScoring.push_back(masMagneticsWithScoring[i]);
             }
             else {
+                if (invalidMagneticsWithScoring != nullptr) {
+                    invalidMagneticsWithScoring->push_back(masMagneticsWithScoring[i]);
+                }
                 invalidCount++;
             }
         }
@@ -332,7 +335,8 @@ namespace OpenMagnetics {
         }
 
         logEntry("Found " + std::to_string(masesWithCoil.size()) + " magnetics", "CoilAdviser");
-        auto masMagneticsWithScoring = score_magnetics(masesWithCoil, _loadedFilterFlow);
+        std::vector<std::pair<Mas, double>> invalidMagneticsWithScoring;
+        auto masMagneticsWithScoring = score_magnetics(masesWithCoil, _loadedFilterFlow, &invalidMagneticsWithScoring);
 
         stable_sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
             return b1.second > b2.second;
@@ -343,15 +347,24 @@ namespace OpenMagnetics {
             masesWithoutScoring.push_back(mas);
         }
 
-        // Fallback: If all designs were filtered out but we had valid windings, return the best available
-        if (masesWithoutScoring.empty() && !masesWithCoil.empty()) {
+        // Fallback: If all designs were filtered out but we had valid windings,
+        // return the best-scored of the FAILED designs, clearly marked as such.
+        if (masesWithoutScoring.empty() && !invalidMagneticsWithScoring.empty()) {
             logEntry("WARNING: All " + std::to_string(masesWithCoil.size()) + " designs were filtered out by criteria. " +
-                     "Returning best available design as fallback.", "CoilAdviser", 1);
-            
-            // Return up to maximumNumberResults from the original unfiltered designs
-            size_t numToReturn = std::min(masesWithCoil.size(), maximumNumberResults);
+                     "Returning best-scored designs marked INVALID as fallback.", "CoilAdviser", 1);
+
+            stable_sort(invalidMagneticsWithScoring.begin(), invalidMagneticsWithScoring.end(), [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
+                return b1.second > b2.second;
+            });
+            size_t numToReturn = std::min(invalidMagneticsWithScoring.size(), maximumNumberResults);
             for (size_t i = 0; i < numToReturn; ++i) {
-                masesWithoutScoring.push_back(masesWithCoil[i]);
+                auto mas = invalidMagneticsWithScoring[i].first;
+                if (mas.get_magnetic().get_manufacturer_info()) {
+                    auto info = mas.get_magnetic().get_manufacturer_info().value();
+                    info.set_reference("INVALID (failed validity filters): " + info.get_reference().value_or(""));
+                    mas.get_mutable_magnetic().set_manufacturer_info(info);
+                }
+                masesWithoutScoring.push_back(mas);
             }
         }
 

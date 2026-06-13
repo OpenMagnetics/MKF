@@ -7408,6 +7408,9 @@ InsulationMaterial Coil::resolve_insulation_layer_insulation_material(Layer laye
             return insulationMaterialData;
         }
         catch (...) {
+            // A NAMED material that fails to resolve is bad data; keep the
+            // default so rendering/insulation flows continue, but make it visible
+            logEntry("Insulation material '" + std::get<std::string>(insulationMaterial) + "' for layer " + layer.get_name() + " not found, falling back to " + defaults.defaultInsulationMaterial, "Coil", 1);
             return find_insulation_material_by_name(defaults.defaultInsulationMaterial);
         }
 

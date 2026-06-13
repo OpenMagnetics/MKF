@@ -1078,6 +1078,9 @@ namespace OpenMagnetics {
         if (!get_maximum_drain_source_voltage() && !get_maximum_duty_cycle()) {
             throw std::invalid_argument("Missing both maximum duty cycle and maximum drain source voltage");
         }
+        if (get_operating_points().empty()) {
+            throw std::invalid_argument("Flyback requires at least one operating point");
+        }
         double globalNeededInductance = 0;
         std::vector<double> turnsRatios(get_operating_points()[0].get_output_voltages().size(), 0);
 

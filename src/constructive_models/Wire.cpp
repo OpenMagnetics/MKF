@@ -554,7 +554,12 @@ namespace OpenMagnetics {
         else {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire dimension");
         }
-        if (wireConductingDimension < minWireConductingDimensions[key])
+        if (!wireFillingFactorInterps.contains(key)) {
+            // create_interpolators returned without building this key: invoking a
+            // default-constructed spline reads out of bounds (same guard as
+            // get_packing_factor)
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "No wires in the database match the specification for filling factor key: " + key);
+        }
         wireConductingDimension = std::max(wireConductingDimension, minWireConductingDimensions[key]);
         wireConductingDimension = std::min(wireConductingDimension, maxWireConductingDimensions[key]);
         double fillingFactor = wireFillingFactorInterps[key](wireConductingDimension);
@@ -607,6 +612,12 @@ namespace OpenMagnetics {
         }
         else {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire dimension");
+        }
+        if (!wireCoatingThicknessProportionInterps.contains(key)) {
+            // create_interpolators returned without building this key: invoking a
+            // default-constructed spline reads out of bounds (same guard as
+            // get_packing_factor)
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "No wires in the database match the specification for outer dimension key: " + key);
         }
         double wireConductingDimensionForInterpolator = wireConductingDimension;
         wireConductingDimensionForInterpolator = std::max(wireConductingDimensionForInterpolator, minWireConductingDimensions[key]);
@@ -1724,6 +1735,9 @@ namespace OpenMagnetics {
             if (coatingTypeEnum == InsulationWireCoatingType::INSULATED) {
                 // Polyimide, polyurethane, etc.
                 return 0.25;  // W/(m·K) - typical for polyimide
+            } else if (coatingTypeEnum == InsulationWireCoatingType::ENAMELLED) {
+                // The most common coating; typical polyurethane/polyesterimide enamel
+                return 0.25;  // W/(m·K)
             } else if (coatingTypeEnum == InsulationWireCoatingType::BARE) {
                 return 0.0;  // No coating
             } else if (coatingTypeEnum == InsulationWireCoatingType::SERVED) {

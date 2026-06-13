@@ -47,14 +47,16 @@ SaturationParameters get_saturation_parameters(const Magnetic& magnetic, double 
                 .get_magnetizing_inductance());
         
         // Validate
-        if (params.Bsat > 0 && params.mu_r > 0 && params.Ae > 0 && 
+        if (params.Bsat > 0 && params.mu_r > 0 && params.Ae > 0 &&
             params.le > 0 && params.primaryTurns > 0 && params.Lmag > 0) {
             params.valid = true;
         }
-    } catch (...) {
-        params.valid = false;
+    } catch (const std::exception& e) {
+        // Silently exporting a LINEAR inductor when saturation was requested hid
+        // real data/model failures. Surface them instead.
+        throw std::runtime_error(std::string("get_saturation_parameters failed (saturation modeling was requested): ") + e.what());
     }
-    
+
     return params;
 }
 
@@ -2439,17 +2441,13 @@ FractionalPoleNetwork CircuitSimulatorExporter::calculate_core_fracpole_network(
     if (opts.f1 <= opts.f0) opts.f1 = settingsOpts ? (*settingsOpts)["f1"] : 1e7;
     if (opts.lumpsPerDecade <= 0) opts.lumpsPerDecade = settingsOpts ? (*settingsOpts)["lumpsPerDecade"] : 1.5;
 
-    // Extract Steinmetz alpha from core material
-    double steinmetzAlpha = 1.5;  // Default for typical ferrite
-    try {
-        auto core = magnetic.get_core();
-        auto material = core.resolve_material();
-        double refFreq = std::sqrt(opts.f0 * opts.f1);
-        auto steinmetzDatum = CoreLossesModel::get_steinmetz_coefficients(material, refFreq);
-        steinmetzAlpha = steinmetzDatum.get_alpha();
-    } catch (...) {
-        // Use default if material data unavailable
-    }
+    // Extract Steinmetz alpha from core material. A material without Steinmetz
+    // data cannot be silently modeled as "typical ferrite" — let it throw.
+    auto core = magnetic.get_core();
+    auto material = core.resolve_material();
+    double refFreq = std::sqrt(opts.f0 * opts.f1);
+    auto steinmetzDatum = CoreLossesModel::get_steinmetz_coefficients(material, refFreq);
+    double steinmetzAlpha = steinmetzDatum.get_alpha();
 
     // alpha for fracpole: core resistance R_core ∝ f^(steinmetz_alpha - 1)
     opts.alpha = std::clamp(steinmetzAlpha - 1.0, 0.05, 0.95);
@@ -2463,8 +2461,7 @@ FractionalPoleNetwork CircuitSimulatorExporter::calculate_core_fracpole_network(
     auto freqVec    = coreResData.get_x_points();
 
     if (coreResVec.empty()) {
-        // Return default network if no data
-        return FractionalPole::generate(opts);
+        throw std::runtime_error("calculate_core_fracpole_network: core resistance sweep returned no data, cannot fit the fracpole network");
     }
 
     size_t midIdx = coreResVec.size() / 2;

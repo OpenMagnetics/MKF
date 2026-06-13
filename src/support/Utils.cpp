@@ -143,11 +143,29 @@ std::optional<double> get_scoring(std::string name, MagneticFilters filter) {
     return _scorings[filter][name];
 }
         
+namespace {
+// Capture sink behind read_log(). Registered lazily on the first read_log()
+// call (opt-in), so library users that never read the log don't pay an
+// unbounded in-memory buffer. Drained on every read: each caller sees only
+// the entries logged since the previous read_log().
+std::shared_ptr<StringSink> _readLogSink;
+std::once_flag _readLogOnce;
+}
+
 std::string read_log() {
-    // Use the StringSink from Logger if available
-    // auto& logger = Logger::getInstance();
-    // For now, return empty - logs should be accessed via Logger
-    return "";
+    std::call_once(_readLogOnce, [] {
+        _readLogSink = std::make_shared<StringSink>();
+        auto& logger = Logger::getInstance();
+        logger.addSink(_readLogSink);
+        // Stage/progress entries are logged at WARNING (logEntry verbosity 1);
+        // the default ERROR level would filter them out before any sink.
+        if (logger.getLevel() > LogLevel::WARNING) {
+            logger.setLevel(LogLevel::WARNING);
+        }
+    });
+    auto contents = _readLogSink->getContents();
+    _readLogSink->clear();
+    return contents;
 }
 
 void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {
@@ -350,8 +368,10 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
             CoreMaterial coreMaterial(jf);
             coreMaterialDatabase[jf["name"]] = coreMaterial;
         }
-        catch (...) {
-            continue;
+        catch (const std::exception& e) {
+            // Malformed catalog entries must not be silently dropped (matches the
+            // LibraryContext copy of this loop)
+            throw std::runtime_error("Failed to load core material '" + jf.value("name", std::string("<unnamed>")) + "': " + e.what());
         }
     }
 
@@ -956,9 +976,13 @@ Bobbin find_bobbin_by_name(std::string name) {
     if (bobbinDatabase.count(name)) {
         return bobbinDatabase[name];
     }
-    else {
+    if (name == "basic" || name == "Basic" || name == "Dummy" || name == "None") {
+        // Documented sentinel names: an unresolved placeholder bobbin that
+        // magnetic_autocomplete later replaces with a quick bobbin built from
+        // the core (it has neither functional nor processed description)
         return json::parse("{}");
     }
+    throw InvalidInputException(ErrorCode::MISSING_DATA, "Bobbin not found in database: " + name);
 }
 
 InsulationMaterial find_insulation_material_by_name(std::string name) {
@@ -969,7 +993,7 @@ InsulationMaterial find_insulation_material_by_name(std::string name) {
         return insulationMaterialDatabase[name];
     }
     else {
-        return json::parse("{}");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Insulation material not found in database: " + name);
     }
 }
 
@@ -981,7 +1005,7 @@ WireMaterial find_wire_material_by_name(std::string name) {
         return wireMaterialDatabase[name];
     }
     else {
-        return json::parse("{}");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Wire material not found in database: " + name);
     }
 }
 
@@ -1857,9 +1881,25 @@ std::string to_title_case(std::string text) {
     return titleText;
 }
 
+std::complex<double> modified_bessel_ratio_I1_I0(std::complex<double> z) {
+    // The truncated series in modified_bessel_first_kind (float tgammaf overflow
+    // at k~21) silently diverges for |z| >~ 20-25, producing NEGATIVE skin
+    // factors. Beyond that, use the asymptotic expansion
+    //   I1(z)/I0(z) = 1 - 1/(2z) - 1/(8z^2) - ...
+    // which is accurate to <0.1% at |z| = 20.
+    if (std::abs(z) < 20.0) {
+        return modified_bessel_first_kind(1, z) / modified_bessel_first_kind(0, z);
+    }
+    return std::complex<double>(1.0, 0) - 1.0 / (2.0 * z) - 1.0 / (8.0 * z * z);
+}
+
 double wound_distance_to_angle(double distance, double radius) {
     double angle = 2 * asin((distance / 2) / radius) * 180 / std::numbers::pi;
     if (std::isnan(angle)) {
+        // DOCUMENTED CONVENTION: a chord can subtend at most 180 degrees, so 360
+        // is an out-of-band "this distance does not fit on this circumference"
+        // sentinel. Toroidal capacity math and adviser exploration rely on it to
+        // reject candidates without exception-driven control flow.
         return 360;
     }
     return angle;
@@ -2271,7 +2311,9 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
         shape.set_magnetic_circuit(MagneticCircuit::OPEN);
         for (size_t i = 0; i < magnetic.get_core().get_functional_description().get_gapping().size(); i++) {
             double gapLength = magnetic.get_core().get_functional_description().get_gapping()[i].get_length();
-            gapLength = std::max(0.0, gapLength);
+            if (gapLength < 0) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Gap " + std::to_string(i) + " has a negative length: " + std::to_string(gapLength));
+            }
             magnetic.get_mutable_core().get_mutable_functional_description().get_mutable_gapping()[i].set_length(gapLength);
         }
     }

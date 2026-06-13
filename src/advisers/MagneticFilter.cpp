@@ -262,6 +262,15 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
         if (!lmReq.get_minimum() && !lmReq.get_nominal() && !lmReq.get_maximum()) {
             return {true, 0};
         }
+        // Lm = 0 means "not specified" (same convention as pre_process_inputs
+        // in CoreAdviserPipeline.cpp): LLC inputs export nominal 0 when Lm is
+        // left free. Zero inductance is not a designable target, and a literal
+        // check would build an empty [0, 0] acceptance band and reject every
+        // core (Test_FastAdviser_LLC_Lm_Zero).
+        if (lmReq.get_nominal() && lmReq.get_nominal().value() <= 0 &&
+            !lmReq.get_minimum() && !lmReq.get_maximum()) {
+            return {true, 0};
+        }
     }
 
     // For interference-suppression topologies (CMC, DMC), the inductance requirement was

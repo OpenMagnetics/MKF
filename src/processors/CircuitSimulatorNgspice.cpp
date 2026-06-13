@@ -138,8 +138,8 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
         if (index > 0) {
             double leakageInductance = resolve_dimensional_values(leakageInductances[index]);
-            if (leakageInductance >= magnetizingInductance) {
-                leakageInductance = magnetizingInductance * 0.1;
+            if (leakageInductance < 0 || leakageInductance >= magnetizingInductance) {
+                throw std::runtime_error("Unphysical leakage inductance (" + std::to_string(leakageInductance) + " H vs Lmag " + std::to_string(magnetizingInductance) + " H) for winding " + is);
             }
             double couplingCoefficient = sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance);
             couplingCoeffs.push_back(couplingCoefficient);
@@ -238,32 +238,25 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         // For 3+ windings, calculate coupling for each pair
         for (size_t i = 0; i < numWindings; i++) {
             for (size_t j = i + 1; j < numWindings; j++) {
-                // Calculate leakage inductance between winding i and j
-                double leakageIJ = 0.0;
-                try {
-                    auto leakageResult = LeakageInductance().calculate_leakage_inductance(
-                        magnetic, Defaults().measurementFrequency, i, j);
-                    auto leakagePerWinding = leakageResult.get_leakage_inductance_per_winding();
-                    if (leakagePerWinding.size() > 0) {
-                        leakageIJ = resolve_dimensional_values(leakagePerWinding[0]);
-                    }
-                } catch (...) {
-                    // Fallback: use high coupling if calculation fails
-                    leakageIJ = magnetizingInductance * 0.02;  // ~99% coupling
+                // Calculate leakage inductance between winding i and j. A failed
+                // or unphysical computation must surface, not silently become
+                // "99% coupling".
+                auto leakageResult = LeakageInductance().calculate_leakage_inductance(
+                    magnetic, Defaults().measurementFrequency, i, j);
+                auto leakagePerWinding = leakageResult.get_leakage_inductance_per_winding();
+                if (leakagePerWinding.empty()) {
+                    throw std::runtime_error("Leakage inductance calculation returned no value for windings " + std::to_string(i) + "-" + std::to_string(j));
                 }
+                double leakageIJ = resolve_dimensional_values(leakagePerWinding[0]);
 
-                // Clamp leakage inductance to avoid negative or very low coupling
-                if (leakageIJ >= magnetizingInductance) {
-                    leakageIJ = magnetizingInductance * 0.1;  // Limit to ~95% coupling minimum
-                }
-                if (leakageIJ < 0) {
-                    leakageIJ = magnetizingInductance * 0.02;  // ~99% coupling
+                if (leakageIJ < 0 || leakageIJ >= magnetizingInductance) {
+                    throw std::runtime_error("Unphysical leakage inductance (" + std::to_string(leakageIJ) + " H vs Lmag " + std::to_string(magnetizingInductance) + " H) for windings " + std::to_string(i) + "-" + std::to_string(j));
                 }
 
                 double kij = sqrt((magnetizingInductance - leakageIJ) / magnetizingInductance);
-                // Ensure coupling is in valid range
-                // Cap at 0.98 for numerical stability (matches IDEAL mode default)
-                kij = std::max(0.5, std::min(0.98, kij));
+                // Cap at 0.98 for SPICE numerical stability only (matches IDEAL
+                // mode default); genuinely loose coupling passes through.
+                kij = std::min(0.98, kij);
 
                 std::string kName = "K" + std::to_string(i + 1) + std::to_string(j + 1);
                 circuitString += kName + " Lmag_" + std::to_string(i + 1) + " Lmag_" + std::to_string(j + 1) + " " + std::to_string(kij) + "\n";

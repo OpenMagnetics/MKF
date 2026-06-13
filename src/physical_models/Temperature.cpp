@@ -12,6 +12,7 @@
 #include <set>
 #include <numbers>
 #include <stdexcept>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 using namespace ThermalDefaults; // IMP-2
@@ -176,10 +177,12 @@ TemperatureConfig TemperatureConfig::fromMasOperatingConditions(
 // ============================================================================
 
 double Temperature::getCoreThermalConductivity() const {
+    // Only fall back to the config default when the material genuinely lacks the
+    // data; any other failure (bad core data, lookup bugs) must propagate.
+    auto coreMaterial = Core(_magnetic.get_core()).resolve_material();
     try {
-        auto coreMaterial = Core(_magnetic.get_core()).resolve_material();
         return ThermalResistance::getCoreMaterialThermalConductivity(coreMaterial);
-    } catch (...) {
+    } catch (const MaterialException&) {
         return _config.coreThermalConductivity;
     }
 }
@@ -209,7 +212,9 @@ double Temperature::getBobbinThermalConductivity() const {
         // No material on bobbin: use default bobbin material (PET)
         auto defaultMaterial = find_insulation_material_by_name(Defaults().defaultBobbinMaterial);
         return ThermalResistance::getInsulationMaterialThermalConductivity(defaultMaterial);
-    } catch (...) {
+    } catch (const MaterialException&) {
+        // Only material-data-missing falls back to the constant; other failures
+        // (bad bobbin data, lookup bugs) must propagate.
         return kBobbin_ThermalConductivity;
     }
 }

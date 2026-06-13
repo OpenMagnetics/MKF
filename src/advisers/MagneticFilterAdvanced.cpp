@@ -147,8 +147,6 @@ std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_magnetic(Magne
 MagneticFilterTemperature::MagneticFilterTemperature(Inputs inputs, double maximumTemperature)
     : _maximumTemperature(maximumTemperature)
 {
-    _coreLossesModel = CoreLossesModel::factory(
-        std::map<std::string, std::string>{{"coreLosses", "Steinmetz"}});
 }
 
 std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
@@ -187,16 +185,11 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
             magneticFluxDensity = B;
         }
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        auto coreLossesMethods = core.get_available_core_losses_methods();
-        CoreLossesOutput cl;
-        if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(),
-                      VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-            cl = _coreLossesModel->get_core_losses(core, excitation, ambientTemperature);
-        } else {
-            auto proprietaryModel = CoreLossesModel::factory(
-                std::map<std::string, std::string>{{"coreLosses", "Proprietary"}});
-            cl = proprietaryModel->get_core_losses(core, excitation, ambientTemperature);
-        }
+        // Delegate model selection to the orchestrator: the old
+        // Steinmetz-else-proprietary dispatch sent every material without a
+        // Steinmetz method to the proprietary model, which throws for
+        // materials (e.g. Fair-Rite loss-factor ones) with no proprietary data
+        CoreLossesOutput cl = _coreLosses.calculate_core_losses(core, excitation, ambientTemperature);
         coreLosses += cl.get_core_losses();
         ++opIndex;
     }

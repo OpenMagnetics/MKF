@@ -39,7 +39,11 @@ namespace PwmBridgeSolver {
 /// Andreycak, Unitrode U-136A.
 inline double compute_duty_cycle_loss(double Vbus, double Lk, double Io,
                                       double n, double Fs) {
-    if (Vbus <= 0 || n <= 0 || Fs <= 0) return 0.0;
+    if (Vbus <= 0 || n <= 0 || Fs <= 0) {
+        // Returning 0 here silently reported "no duty-cycle loss" for invalid
+        // inputs — a non-conservative in-band sentinel
+        throw std::invalid_argument("compute_duty_cycle_loss requires positive Vbus/n/Fs, got Vbus=" + std::to_string(Vbus) + ", n=" + std::to_string(n) + ", Fs=" + std::to_string(Fs));
+    }
     return 4.0 * Lk * Io * Fs / (n * Vbus);
 }
 
@@ -72,7 +76,10 @@ inline double compute_zvs_margin_lagging(double Lk, double Ip, double Coss,
 /// gate-driver dead-time is shorter, the transition is incomplete and
 /// hard switching occurs even with sufficient ZVS energy.
 inline double compute_resonant_transition_time(double Lk, double Coss) {
-    if (Lk <= 0 || Coss <= 0) return 0.0;
+    if (Lk <= 0 || Coss <= 0) {
+        // Returning 0 silently reported "no dead-time needed" for invalid inputs
+        throw std::invalid_argument("compute_resonant_transition_time requires positive Lk/Coss, got Lk=" + std::to_string(Lk) + ", Coss=" + std::to_string(Coss));
+    }
     return (M_PI / 2.0) * std::sqrt(2.0 * Lk * Coss);
 }
 
@@ -81,7 +88,10 @@ inline double compute_resonant_transition_time(double Lk, double Coss) {
 ///     Ip_min = Vbus · √(2·Coss / Lk)
 inline double compute_zvs_primary_current_min(double Lk, double Coss,
                                               double Vbus) {
-    if (Lk <= 0) return 0.0;
+    if (Lk <= 0) {
+        // Returning 0 silently reported "ZVS at any current" for invalid inputs
+        throw std::invalid_argument("compute_zvs_primary_current_min requires positive Lk, got Lk=" + std::to_string(Lk));
+    }
     return Vbus * std::sqrt(2.0 * Coss / Lk);
 }
 

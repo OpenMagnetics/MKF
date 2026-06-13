@@ -51,7 +51,10 @@ namespace {
         MagneticEnergy magneticEnergy(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
-        double expectedValue = 1.34;
+        // Expectation updated after fixing the gap-energy fringing factor:
+        // E = 0.5 * Phi^2 * R_gap scales with 1/F (it was multiplied by F,
+        // overestimating by F^2; the old pin 1.34 captured that bug)
+        double expectedValue = 0.5569;
 
         double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, operatingPoint);
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(totalMagneticEnergy, max_error * expectedValue));
@@ -75,7 +78,9 @@ namespace {
         MagneticEnergy magneticEnergy(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
-        double expectedValue = 0.124;
+        // Expectation updated after the fringing-factor fix (see the iron
+        // powder test above; the old pin 0.124 captured the F^2 overestimate)
+        double expectedValue = 0.0392;
 
         double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, operatingPoint);
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(totalMagneticEnergy, max_error * expectedValue));
@@ -95,7 +100,10 @@ namespace {
         MagneticEnergy magneticEnergy(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
-        std::vector<double> expectedValues = {0.07, 0.045, 0.045};
+        // Expectations updated after the fringing-factor fix (energy scales
+        // with 1/F; the old pins {0.07, 0.045, 0.045} captured the F^2
+        // overestimate)
+        std::vector<double> expectedValues = {0.02775, 0.01095, 0.01095};
 
         for (size_t i = 0; i < core.get_functional_description().get_gapping().size(); ++i)
         {

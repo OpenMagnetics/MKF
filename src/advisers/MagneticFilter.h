@@ -387,7 +387,9 @@ class MagnetomotiveForce : public MagneticFilter {
 
 class MagneticFilterTemperature : public MagneticFilter {
     double _maximumTemperature = 130.0;
-    std::shared_ptr<CoreLossesModel> _coreLossesModel;
+    // Orchestrator, not a fixed model: selects per material from its available
+    // volumetric-losses methods (Steinmetz family, proprietary, loss factor)
+    CoreLosses _coreLosses;
     MagnetizingInductance _magnetizingInductance;
 public:
     MagneticFilterTemperature() {};

@@ -747,7 +747,12 @@ SimulationResult NgspiceRunner::parse_raw_file(const std::string& rawFilePath, c
                         currentVar++;
                     }
                 } catch (...) {
-                    // Skip invalid values
+                    // An unparseable value must not be skipped silently: not
+                    // advancing currentVar shifted every later value into the
+                    // wrong variable column.
+                    result.success = false;
+                    result.errorMessage = "Unparseable value in raw file (variable " + std::to_string(currentVar) + "): \"" + valueStr + "\"";
+                    return result;
                 }
             }
         } else if (!trimmedLine.empty() && (line[0] == '\t' || line[0] == ' ')) {
@@ -765,7 +770,12 @@ SimulationResult NgspiceRunner::parse_raw_file(const std::string& rawFilePath, c
                     currentVar++;
                 }
             } catch (...) {
-                // Skip invalid values
+                // An unparseable value must not be skipped silently: not
+                // advancing currentVar shifted every later value into the
+                // wrong variable column.
+                result.success = false;
+                result.errorMessage = "Unparseable continuation value in raw file (variable " + std::to_string(currentVar) + "): \"" + valueStr + "\"";
+                return result;
             }
         }
     }
@@ -829,21 +839,21 @@ SimulationResult NgspiceRunner::parse_csv_output(const std::string& csvFilePath,
     
     try {
         CircuitSimulationReader reader(csvFilePath);
-        
+
         // Use CircuitSimulationReader's functionality to parse
         auto columnNames = reader.extract_column_names();
-        
-        result.success = true;
         result.waveformNames = columnNames;
-        
-        // The reader stores waveforms internally; we need to extract them
-        // For now, we'll use the existing infrastructure
-        
+
+        // This path never extracted the waveform data; reporting success with
+        // zero waveforms made callers fail later with unrelated errors.
+        result.success = false;
+        result.errorMessage = "parse_csv_output does not extract waveform data yet; use the raw-file output path";
+
     } catch (const std::exception& e) {
         result.success = false;
         result.errorMessage = std::string("Failed to parse CSV: ") + e.what();
     }
-    
+
     return result;
 }
 
@@ -997,6 +1007,12 @@ OperatingPoint NgspiceRunner::extract_operating_point(
                 voltage.set_harmonics(Inputs::calculate_harmonics_data(voltageWaveform, frequency));
                 excitation.set_voltage(voltage);
             }
+            else {
+                // A mapped name missing from the simulation output is a wiring
+                // error; silently omitting the voltage produced excitations that
+                // fail much later with unrelated errors.
+                throw std::runtime_error("Mapped voltage waveform '" + voltageName + "' not found in simulation output");
+            }
         }
         
         // Look for current waveform
@@ -1029,6 +1045,11 @@ OperatingPoint NgspiceRunner::extract_operating_point(
                 // Harmonics required by downstream consumers (see voltage path above).
                 current.set_harmonics(Inputs::calculate_harmonics_data(currentWaveform, frequency));
                 excitation.set_current(current);
+            }
+            else {
+                // See the voltage path: a mapped-but-missing waveform is a
+                // wiring error that must surface here.
+                throw std::runtime_error("Mapped current waveform '" + currentName + "' not found in simulation output");
             }
         }
         

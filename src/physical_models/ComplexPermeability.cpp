@@ -53,7 +53,11 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
     // expanded into real and imaginary parts, anchored at the frequency
     // where the bare-material µ' has dropped to ~67.78 % of its DC value
     // (the value of the closed-form at normalized frequency = 1).
-    double frequencyFor67Point78Drop = InitialPermeability::calculate_frequency_for_initial_permeability_drop(coreMaterial, 0.6778);
+    // calculate_frequency_for_initial_permeability_drop takes the drop FRACTION
+    // (targets reference * (1 - drop)), so anchoring where u' has dropped TO
+    // 67.78% means passing 1 - 0.6778 = 0.3222. Passing 0.6778 anchored at
+    // u' = 0.32*u_DC, far too high in frequency.
+    double frequencyFor67Point78Drop = InitialPermeability::calculate_frequency_for_initial_permeability_drop(coreMaterial, 0.3222);
     double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial);
 
     // Distributed-air-gap correction (paper eqs 10-12). Powder cores have

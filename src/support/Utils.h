@@ -174,6 +174,9 @@ std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension
 
 double try_get_duty_cycle(Waveform waveform, double frequency);
 std::complex<double> modified_bessel_first_kind(double order, std::complex<double> x);
+// I1(z)/I0(z) with an asymptotic branch for |z| >= 20, where the series above
+// silently diverges (negative skin factors). Use this for skin/proximity ratios.
+std::complex<double> modified_bessel_ratio_I1_I0(std::complex<double> z);
 std::complex<double> modified_bessel_second_kind(double order, std::complex<double> x);
 std::complex<double> bessel_first_kind(double order, std::complex<double> z);
 std::complex<double> bessel_second_kind(double order, std::complex<double> z);

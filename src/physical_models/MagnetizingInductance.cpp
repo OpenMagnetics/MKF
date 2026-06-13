@@ -464,9 +464,12 @@ double MagnetizingInductance::calculate_gap_from_saturation_constraint(Core core
     from_json(_models["gapReluctance"], reluctanceModelEnum);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
     
-    // Start with energy-based gap as initial guess
+    // Start with energy-based gap as initial guess:
+    // 0.5*L*I^2 = B^2/(2*mu0) * A * g  =>  g = mu0*L*I^2 / (A*B^2)
+    // (a spurious factor 2 here used to double the initial guess, and since the
+    // search below only ever GROWS the gap, it was returned as-is)
     auto constants = OpenMagnetics::Constants();
-    double initialGap = (2 * desiredMagnetizingInductance * pow(magnetizingCurrentPeak, 2) * constants.vacuumPermeability) / 
+    double initialGap = (desiredMagnetizingInductance * pow(magnetizingCurrentPeak, 2) * constants.vacuumPermeability) /
                         (effectiveArea * pow(targetMagneticFluxDensity, 2));
     
     double gapLength = initialGap;
@@ -498,9 +501,12 @@ double MagnetizingInductance::calculate_gap_from_saturation_constraint(Core core
         testCore.process_gap();
         
         // Calculate total reluctance manually (classic formula)
-        // Core reluctance: R_core = l_e / (μ₀ * μ_r * A_e)
+        // Core reluctance: R_core = l_e / (μ₀ * μ_r * A_e), using the MATERIAL's
+        // initial permeability (a hardcoded 2000 skewed the search for powder
+        // cores with μr 14-125 and high-permeability MnZn ferrites alike)
         double effectiveLength = testCore.get_processed_description()->get_effective_parameters().get_effective_length();
-        double coreReluctance = effectiveLength / (constants.vacuumPermeability * 2000 * effectiveArea);
+        double initialPermeabilityValue = InitialPermeability::get_initial_permeability(testCore.resolve_material());
+        double coreReluctance = effectiveLength / (constants.vacuumPermeability * initialPermeabilityValue * effectiveArea);
         
         // Gap reluctance: R_gap = l_gap / (μ₀ * A_gap)
         double gapArea = columns[0].get_area();

@@ -190,7 +190,10 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     auto turns = coil.get_turns_description().value();
     auto currentDividerPerTurn = windingLossesOutput.get_current_divider_per_turn().value();
     auto operatingPoint = windingLossesOutput.get_current_per_winding().value();
-    if (!operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform() || 
+    if (operatingPoint.get_excitations_per_winding().empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Operating point has no excitations for skin effect losses");
+    }
+    if (!operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform() ||
         operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform()->get_data().size() == 0)
     {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Input has no waveform. TODO: get waveform from processed data");
@@ -208,6 +211,11 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
         auto wire = coil.resolve_wire(windingIndex);
         double wireLength = turn.get_length();
 
+        if (static_cast<size_t>(windingIndex) >= operatingPoint.get_excitations_per_winding().size() ||
+            !operatingPoint.get_excitations_per_winding()[windingIndex].get_current()) {
+            // Matches the ohmic-loss path's handling of windings without excitation
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current excitation for winding " + std::to_string(windingIndex) + " in skin effect losses");
+        }
         SignalDescriptor current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
 
         auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], modelOverride).second;
@@ -382,7 +390,10 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
  */
 double WindingSkinEffectLossesWojdaModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
     auto penetrationRatio = calculate_penetration_ratio(wire, frequency, temperature);
-    auto factor = penetrationRatio / 2 * (sinh(penetrationRatio) + sin(penetrationRatio)) / (cosh(penetrationRatio) - cos(penetrationRatio));
+    // Cited Eq. (7): Fs = A*(sinh 2A + sin 2A)/(cosh 2A - cos 2A), HF limit
+    // Fs -> A. The previous (A/2)*g(A) was the same function evaluated at half
+    // the argument, giving a high-frequency factor of A/2 (2x underestimate).
+    auto factor = penetrationRatio * (sinh(2 * penetrationRatio) + sin(2 * penetrationRatio)) / (cosh(2 * penetrationRatio) - cos(2 * penetrationRatio));
     return factor;
 }
 
@@ -469,10 +480,14 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
     else if (wire.get_type() == WireType::LITZ) {
         auto strand = Wire::resolve_strand(wire);
         wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
-        if (!strand.get_outer_diameter()) {
-            wireOuterRadius = Wire::calculate_outer_diameter(strand, OpenMagnetics::DimensionalValues::NOMINAL) / 2;
+        // The bundle term n(n-1)*(rD/rO)^2 needs rO = outer radius of the whole
+        // BUNDLE (it encodes the strand distribution inside the bundle). Using
+        // the strand's own outer radius makes rD/rO ~ 1 and inflates the term
+        // by (rO_bundle/rO_strand)^2, independent of packing.
+        if (!wire.get_outer_diameter()) {
+            wireOuterRadius = Wire::calculate_outer_diameter(wire, OpenMagnetics::DimensionalValues::NOMINAL) / 2;
         } else {
-            wireOuterRadius = resolve_dimensional_values(strand.get_outer_diameter().value()) / 2;
+            wireOuterRadius = resolve_dimensional_values(wire.get_outer_diameter().value()) / 2;
         }
     }
     else {
@@ -493,53 +508,16 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
             "wireOuterRadius must be positive in Albach model: " + std::to_string(wireOuterRadius));
     }
 
-    // For large alpha values, Bessel functions can overflow. Cap alpha to prevent NaN.
-    // The asymptotic behavior for large alpha is I_n(alpha) ~ exp(alpha)/sqrt(2*pi*alpha)
-    // so we cap alpha at a reasonable value where the ratio stabilizes
-    const double MAX_ALPHA_MAGNITUDE = 100.0;
-    std::complex<double> alphaCapped = alpha;
-    double alphaMag = std::abs(alpha);
-    if (alphaMag > MAX_ALPHA_MAGNITUDE) {
-        // Scale alpha down to MAX_ALPHA_MAGNITUDE
-        alphaCapped *= MAX_ALPHA_MAGNITUDE / alphaMag;
-    }
-    
-    std::complex<double> bessel0 = modified_bessel_first_kind(0, alphaCapped);
-    std::complex<double> bessel1 = modified_bessel_first_kind(1, alphaCapped);
-    
-    // Check for NaN/Inf in Bessel results and cap if needed
-    if (std::isnan(bessel0.real()) || std::isnan(bessel0.imag()) || 
-        std::isnan(bessel1.real()) || std::isnan(bessel1.imag()) ||
-        std::isinf(bessel0.real()) || std::isinf(bessel0.imag()) || 
-        std::isinf(bessel1.real()) || std::isinf(bessel1.imag())) {
-        // For very large arguments, I_0(x)/I_1(x) -> 1 and I_1(x)/I_0(x) -> 1
-        // Use asymptotic approximation
-        bessel0 = std::complex<double>(1e100, 0);
-        bessel1 = std::complex<double>(1e100, 0);
-    }
-    
-    std::complex<double> besselRatio1 = bessel0 / bessel1;
-    
-    // For the second term with alpha * wireRadius, also check bounds
-    std::complex<double> alpha2 = alpha * wireRadius;
-    std::complex<double> alpha2Capped = alpha2;
-    double alpha2Mag = std::abs(alpha2);
-    if (alpha2Mag > MAX_ALPHA_MAGNITUDE) {
-        alpha2Capped *= MAX_ALPHA_MAGNITUDE / alpha2Mag;
-    }
-
-    std::complex<double> bessel0_2 = modified_bessel_first_kind(0, alpha2Capped);
-    std::complex<double> bessel1_2 = modified_bessel_first_kind(1, alpha2Capped);
-
-    if (std::isnan(bessel0_2.real()) || std::isnan(bessel0_2.imag()) ||
-        std::isnan(bessel1_2.real()) || std::isnan(bessel1_2.imag()) ||
-        std::isinf(bessel0_2.real()) || std::isinf(bessel0_2.imag()) ||
-        std::isinf(bessel1_2.real()) || std::isinf(bessel1_2.imag())) {
-        bessel0_2 = std::complex<double>(1e100, 0);
-        bessel1_2 = std::complex<double>(1e100, 0);
-    }
-
-    std::complex<double> besselRatio2 = bessel1_2 / bessel0_2;
+    // I1/I0 with a large-argument asymptotic branch (Utils helper). This replaces
+    // the previous cap-at-100 + inf-substitution machinery, and fixes the bundle
+    // term: its argument used to be alpha * wireRadius — alpha is ALREADY
+    // (1+j)*r/delta (dimensionless), so the extra radius made the argument
+    // meters-valued (~1e-7) and the n(n-1)(rD/rO)^2 strand-proximity term
+    // vanished identically (Re[(1+j)^2] = 0). The documented bundle ratio
+    // I1(alpha*rD)/I0(alpha*rD) uses the SAME normalized argument.
+    std::complex<double> ratioI1I0 = modified_bessel_ratio_I1_I0(alpha);
+    std::complex<double> besselRatio1 = 1.0 / ratioI1I0;
+    std::complex<double> besselRatio2 = ratioI1I0;
     
     if (!wire.get_number_conductors()) {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing number of conductors for wire");
@@ -628,13 +606,10 @@ double WindingSkinEffectLossesPayneModel::calculate_turn_losses(Wire wire, doubl
 
     double p = pow(A, 0.5) / (1.26 * skinDepth * 1000);
     double Ff = 1.0 - exp(-0.026 * p);
-    double Kc;
-    try {
-        Kc = 1.0 + Ff * (1.2 / exp(2.1 * thickDimension / thinDimension) + 1.2 / exp(2.1 * thinDimension / thickDimension));
-    }
-    catch (...) {
-        Kc = 1.0;
-    }
+    // Floating-point arithmetic never throws, so the previous try/catch around
+    // this expression was dead code (and would have silently zeroed the AC
+    // resistance correction had it ever fired).
+    double Kc = 1.0 + Ff * (1.2 / exp(2.1 * thickDimension / thinDimension) + 1.2 / exp(2.1 * thinDimension / thickDimension));
     double x = (2.0 * skinDepth / thickDimension * (1.0 + thickDimension / thinDimension) + 8.0 * pow(skinDepth / thickDimension, 3) / (thinDimension / thickDimension)) / (pow(thinDimension / thickDimension, 0.33) * exp(-3.5 * thickDimension / skinDepth) + 1.0);
     // double acResistanceFactor =  (Kc / (1.0 - exp(-x))) - 1.0;
     double acResistanceFactor =  (Kc / (1.0 - exp(-x)));
@@ -687,7 +662,10 @@ double WindingSkinEffectLossesFerreiraModel::calculate_skin_factor(const Wire& w
     }
 
     double xi = wireHeight / skinDepth;
-    double factor = xi / 4 * (sinh(xi) + sin(xi)) / (cosh(xi) - cos(xi));
+    // Standalone-foil Dowell skin factor: Fs = (xi/2)*(sinh xi + sin xi)/(cosh xi
+    // - cos xi), which tends to 1 at DC (the previous xi/4 tended to 0.5,
+    // fabricating loss at low frequency once combined with the dcLoss below)
+    double factor = xi / 2 * (sinh(xi) + sin(xi)) / (cosh(xi) - cos(xi));
 
     return factor;
 }
@@ -705,7 +683,9 @@ double WindingSkinEffectLossesFerreiraModel::calculate_turn_losses(Wire wire, do
         set_skin_factor(wire, frequency, temperature, skinFactor);
     }
 
-    auto turnLosses = dcLossTurn * skinFactor;
+    // Return only the AC increment: the DC part is already accounted for by
+    // WindingOhmicLosses on the full waveform RMS (matches every sibling model)
+    auto turnLosses = dcLossTurn * (skinFactor - 1);
     return turnLosses;
 }
 
@@ -959,7 +939,9 @@ double WindingSkinEffectLossesDimitrakakisModel::calculate_skin_factor(const Wir
         // Exact Bessel: FR = Re[α·I₀(α)/I₁(α)] / 2,  α = (1+j)·r/δ
         std::complex<double> alpha(1.0, 1.0);
         alpha *= wireRadius / skinDepth;
-        return 0.5 * (alpha * (modified_bessel_first_kind(0, alpha) / modified_bessel_first_kind(1, alpha))).real();
+        // Ratio helper has a large-argument asymptotic branch; the raw truncated
+        // series gave NEGATIVE skin factors for r/delta >~ 25
+        return 0.5 * (alpha / modified_bessel_ratio_I1_I0(alpha)).real();
     }
     else {
         // Rectangular/foil/planar: Dowell 1D fallback
@@ -1012,7 +994,9 @@ double WindingSkinEffectLossesMuehlethalerModel::calculate_skin_factor(const Wir
         // Bessel form of Eq. (4.7): FR = Re[α·I₀(α)/I₁(α)] / 2
         std::complex<double> alpha(1.0, 1.0);
         alpha *= wireRadius / skinDepth;
-        return 0.5 * (alpha * (modified_bessel_first_kind(0, alpha) / modified_bessel_first_kind(1, alpha))).real();
+        // Ratio helper has a large-argument asymptotic branch; the raw truncated
+        // series gave NEGATIVE skin factors for r/delta >~ 25
+        return 0.5 * (alpha / modified_bessel_ratio_I1_I0(alpha)).real();
     }
     else {
         // Foil/rectangular/planar: Eq. (4.20)
@@ -1210,7 +1194,9 @@ double WindingSkinEffectLossesHolguinModel::calculate_skin_factor(const Wire& wi
         // Exact Bessel solution: FR = Re[α·I₀(α)/I₁(α)] / 2,  α = (1+j)·r₀/δ
         std::complex<double> alpha(1.0, 1.0);
         alpha *= wireRadius / skinDepth;
-        return 0.5 * (alpha * (modified_bessel_first_kind(0, alpha) / modified_bessel_first_kind(1, alpha))).real();
+        // Ratio helper has a large-argument asymptotic branch; the raw truncated
+        // series gave NEGATIVE skin factors for r/delta >~ 25
+        return 0.5 * (alpha / modified_bessel_ratio_I1_I0(alpha)).real();
     }
     else {
         // Rectangular/foil: Dowell 1D skin factor
