@@ -2852,10 +2852,19 @@ std::string Painter::export_svg() {
     }
     
     if (!_filepath.empty()) {
+        // _filepath is the target directory (the ctor strips the filename).
+        // create_directories (plural) builds any missing nested components, not
+        // just one level; and an unchecked ofstream silently dropped the SVG on
+        // an open failure (read-only dir, bad path).
         if (!std::filesystem::exists(_filepath)) {
-            std::filesystem::create_directory(_filepath);
+            std::filesystem::create_directories(_filepath);
         }
-        std::ofstream outfile(_filepath.replace_filename(_filename));
+        auto outputPath = _filepath;
+        outputPath.replace_filename(_filename);
+        std::ofstream outfile(outputPath);
+        if (!outfile.is_open()) {
+            throw std::runtime_error("Failed to open SVG output file for writing: " + outputPath.string());
+        }
         outfile << svgString;
     }
     return svgString;
