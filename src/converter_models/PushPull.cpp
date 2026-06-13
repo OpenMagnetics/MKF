@@ -910,10 +910,7 @@ namespace OpenMagnetics {
         double diodeVoltageDrop = get_diode_voltage_drop();
         double dutyCycle = get_maximum_duty_cycle();
 
-        double efficiency = 1;
-        if (get_efficiency()) {
-            efficiency = get_efficiency().value();
-        }
+        double efficiency = require_input(get_efficiency(), "PushPull", "efficiency");
 
         // Turns ratio calculation
         std::vector<double> turnsRatios;

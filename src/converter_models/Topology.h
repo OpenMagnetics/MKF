@@ -250,6 +250,29 @@ inline double require_spice_field(const std::optional<double>& opt,
 }
 
 /**
+ * @brief Resolve a required scalar converter input, throwing a specific
+ *        exception when the underlying MAS optional is unset.
+ *
+ * Use this anywhere converter math assumes a field is populated, instead of
+ * silently substituting a default (`value_or(<constant>)`, `= 1` lossless,
+ * etc.). Per the project policy (CLAUDE.md "no fallbacks — throw"), missing
+ * required input must surface loudly rather than produce plausible-but-wrong
+ * numbers. Mirrors the `*_required()` accessors in PowerFactorCorrection.h.
+ * Free function (not a Topology member) so converters that don't inherit
+ * Topology (e.g. DifferentialModeChoke) can use it too.
+ */
+inline double require_input(const std::optional<double>& value,
+                            const std::string& topology,
+                            const std::string& field) {
+    if (!value.has_value()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            topology + ": '" + field + "' is required but was not provided. "
+            "Set it on the converter inputs (no default is substituted).");
+    }
+    return value.value();
+}
+
+/**
  * @brief Central registry of per-topology default `SpiceSimulationConfig`s.
  *
  * Every concrete topology that emits ngspice netlists must have an entry
@@ -320,6 +343,19 @@ public:
      *        waveforms.
      */
     virtual bool is_bridge_topology() const { return false; }
+
+    /**
+     * @brief True when this converter requires N identical, separately-wound
+     *        single-winding inductors that its operating points pack as N
+     *        excitations in one operating point (e.g. a 3-phase Vienna
+     *        rectifier's per-phase boost inductors La/Lb/Lc — commercial
+     *        designs use three independent inductors, not one coupled
+     *        3-winding magnetic). The from-converter MagneticAdviser designs
+     *        ONE such inductor (the phases are identical) and records the
+     *        multiplicity on the result. Default false (single magnetic whose
+     *        winding count equals the excitation count).
+     */
+    virtual bool uses_identical_per_phase_inductors() const { return false; }
 
     /**
      * @brief Set the bridge model (PULSE vs SW1) on this topology. Throws

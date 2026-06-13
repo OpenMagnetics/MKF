@@ -32,6 +32,21 @@ struct Defaults {
     const double maximumCurrentDensityPlanar = 2000000;
     const double maximumEffectiveCurrentDensity = 12000000;
     const int maximumNumberParallels = 5;
+
+    // ---- Converter defensible defaults (used when the optional input is unset) ----
+    // These are documented design defaults / standard references, centralized
+    // here instead of as scattered magic literals. They are NOT silent
+    // fallbacks for missing *required* engineering data (efficiency, fsw, etc.,
+    // which throw via Topology::require_input); they are conventional defaults
+    // for genuinely-optional refinements, each matching the topology's JSON
+    // schema default or a cited recommendation.
+    const double resonantQualityFactorDefaultLlc = 0.4;   // LLC / CLLLC schema default
+    const double resonantQualityFactorDefaultCllc = 0.3;  // CLLC: Infineon AN (Q in 0.2-0.4); matches cllcResonant.json
+    const double resonantQualityFactorDefaultSrc = 2.0;   // SRC schema default
+    const double commonModeChokeLineImpedanceDefault = 50.0;  // CISPR-16 / LISN reference impedance per line [Ohm]
+    const double currentTransformerMinimumMagnetizingInductance = 1e-6;  // CT magnetizing-inductance design floor [H]
+    const double coupledInductorCouplingCoefficientDefault = 0.999;  // near-unity coupling (Zeta etc.) when unspecified
+
     const double magneticFluxDensitySaturation = 0.5;
     const double ferriteInitialPermeability = 2000;
     const double ferriteSaturationFluxDensity = 0.35;  // Typical ferrite Bsat ~350 mT (e.g., 3C95, N95)

@@ -132,7 +132,7 @@ DesignRequirements Llc::process_design_requirements() {
 
     double Rload = mainOutputVoltage / mainOutputCurrent;
     double Rac = (8.0 * mainTurnsRatio * mainTurnsRatio) / (M_PI * M_PI) * Rload;
-    double Q = get_quality_factor().value_or(0.4);
+    double Q = get_quality_factor().value_or(defaults.resonantQualityFactorDefaultLlc);
     double fr = get_effective_resonant_frequency();
     if (fr <= 0)
         throw std::runtime_error("LLC: resonant frequency must be positive");
@@ -571,7 +571,7 @@ static LlcStateVector solve_steady_state(
     auto F = eval_F(x0);
     double r = norm(F);
 
-    constexpr int MAX_ITERS = 25;
+    constexpr int MAX_ITERS = 50;  // monotone acceptance below, so extra iters only help
     constexpr double TOL = 1e-7;
 
     // Reasonable perturbation scales for finite differences (in physical
@@ -582,6 +582,13 @@ static LlcStateVector solve_steady_state(
     double damping = 1.0;
     double prev_r = r;
     int stagnant = 0;
+
+    // Track the best (lowest-residual) iterate seen. The damped-Newton /
+    // Picard iteration is non-monotone (it can transiently jump the residual
+    // up), so returning the *last* iterate threw away good solutions already
+    // found. Return the best instead.
+    LlcStateVector bestX0 = x0;
+    double bestR = r;
 
     for (int iter = 0; iter < MAX_ITERS && r > TOL; ++iter) {
         // Build Jacobian by central differences.
@@ -670,6 +677,14 @@ static LlcStateVector solve_steady_state(
                 r_new = norm(F_new);
             }
         }
+        // Commit the step (Newton line-search step when accepted; otherwise the
+        // Picard fallback). The Picard jump is deliberately allowed to move
+        // *uphill* — it escapes line-search stalls and lets the search explore
+        // other basins (empirically it reaches much lower residuals a few
+        // iterations later). We DON'T return this last iterate, though: we track
+        // the best iterate seen and return that, so the exploration never throws
+        // away a good solution it already found (the old code returned the last
+        // iterate, which could be far worse than the best).
         x0 = x_new;
         F = F_new;
         if (r_new >= prev_r * 0.999) {
@@ -681,12 +696,17 @@ static LlcStateVector solve_steady_state(
         }
         prev_r = r_new;
         r = r_new;
+        if (std::isfinite(r) && r < bestR) {
+            bestR = r;
+            bestX0 = x0;
+        }
         if (stagnant >= 4) break;
     }
 
-    outSegments = propagate_half_cycle(x0, Thalf, Vi, Vo, Ls, L, C);
-    outResidual = r;
-    return x0;
+    // Return the best iterate found (not the last), re-propagated for waveforms.
+    outSegments = propagate_half_cycle(bestX0, Thalf, Vi, Vo, Ls, L, C);
+    outResidual = bestR;
+    return bestX0;
 }
 
 // Map a sub-state segment chain to Nielsen's mode-1..6 numbering.
@@ -776,8 +796,15 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
     double fsw = llcOpPoint.get_switching_frequency();
     if (fsw <= 0) {
+        // Operating near resonance when the switching frequency is unspecified
+        // is a legitimate LLC design choice (the resonant frequency is derived
+        // from the min/max switching-frequency requirements). But fabricating a
+        // bare 100 kHz constant when even that is unavailable produces untrustworthy
+        // currents/voltages — throw instead (siblings Cllc/Dab/PSHB do the same).
         fsw = get_effective_resonant_frequency();
-        if (fsw <= 0) fsw = 100000.0;
+        if (fsw <= 0)
+            throw std::runtime_error("LLC: switching frequency is non-positive and no resonant "
+                                     "frequency is available to derive it");
     }
 
     double k_bridge = get_bridge_voltage_factor();
@@ -819,7 +846,8 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         Vo *= 0.5;
     }
 
-    if (magnetizingInductance <= 0) magnetizingInductance = 200e-6;
+    if (magnetizingInductance <= 0)
+        throw std::runtime_error("LLC: magnetizing inductance must be positive (got non-positive)");
 
     double Ls = computedResonantInductance;
     double C  = computedResonantCapacitance;
@@ -827,11 +855,14 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
     if (Ls <= 0 || C <= 0) {
         double fr = get_effective_resonant_frequency();
-        double Q_val = get_quality_factor().value_or(0.4);
+        double Q_val = get_quality_factor().value_or(defaults.resonantQualityFactorDefaultLlc);
         double Ln_val = get_inductance_ratio();
         double Vout = llcOpPoint.get_output_voltages()[0];
         double Iout_fb = llcOpPoint.get_output_currents()[0];
-        double Rload = (Iout_fb > 0) ? Vout / Iout_fb : 100.0;
+        if (Iout_fb <= 0)
+            throw std::runtime_error("LLC: output current must be positive to size the resonant tank "
+                                     "(cannot derive load resistance)");
+        double Rload = Vout / Iout_fb;
         double Rac = (8.0 * n_main * n_main) / (M_PI * M_PI) * Rload;
         double Zr = Q_val * Rac;
         Ls = Zr / (2.0 * M_PI * fr);
@@ -856,9 +887,12 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     // post-stretch.
     double Thalf_eff = Thalf;
 
-    if (!std::isfinite(Vo) || Vo < 0) Vo = 1.0;
-    if (!std::isfinite(Thalf_eff) || Thalf_eff <= 0) Thalf_eff = 5e-6;
-    if (!std::isfinite(L) || L <= 0) L = 200e-6;
+    if (!std::isfinite(Vo) || Vo < 0)
+        throw std::runtime_error("LLC: reflected output voltage Vo is invalid (non-finite or negative)");
+    if (!std::isfinite(Thalf_eff) || Thalf_eff <= 0)
+        throw std::runtime_error("LLC: half switching period is invalid (non-finite or non-positive)");
+    if (!std::isfinite(L) || L <= 0)
+        throw std::runtime_error("LLC: magnetizing inductance L is invalid (non-finite or non-positive)");
 
     // LIP frequency and LIP input voltage (Nielsen's f1 and Vinlip).
     // f1 = 1/(2π·√(Ls·Cr)) is the load-independent point — the frequency at
@@ -967,13 +1001,22 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     double ILs0 = x0.iLs;
     double IL0  = x0.iL;
 
-    // Convergence warning: scaled to physical units. Tighter than before.
+    // Convergence diagnostic. The genuinely-dangerous outcomes are already
+    // guarded upstream: an unbounded / NaN Newton iterate is caught by the
+    // sanity check (Llc.cpp ~932) and replaced by the bounded FHA closed-form
+    // seed (flagged residual == -1.0). What remains is a *bounded-but-imperfect*
+    // Newton residual: the Nielsen TDA half-cycle symmetry condition isn't met
+    // tightly (residual ~1-10 A on some designs), but the resulting waveform is
+    // still close to physical — the PtP reference-design tests validate these
+    // against measured hardware and pass. So this is an analytical-model accuracy
+    // limitation, NOT a silent-fabrication bug; warn (don't throw) so the signal
+    // is visible without rejecting validated-usable waveforms. (Tightening the
+    // TDA solver to drive this residual down is tracked separately.)
     double i_thresh = std::max(0.5, 0.02 * std::abs(Iload_reflected));
     if (residual > i_thresh) {
-        std::cerr << "[LLC] Nielsen TDA solver did not fully converge: "
-                  << "residual=" << residual << " A"
-                  << " (Vi=" << Vi << "V, Vo=" << Vo << "V, fsw=" << fsw << "Hz)"
-                  << " — analytical waveform may be inaccurate for this op. point"
+        std::cerr << "[LLC] Nielsen TDA solver did not fully converge: residual="
+                  << residual << " A (Vi=" << Vi << "V, Vo=" << Vo << "V, fsw=" << fsw
+                  << "Hz) — analytical waveform is bounded but may be imperfect for this op point."
                   << std::endl;
     }
 

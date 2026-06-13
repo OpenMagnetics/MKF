@@ -389,7 +389,28 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_from_c
     // Step 3: Run ngspice simulation with calculated parameters to get accurate waveforms
     // SFINAE automatically selects the correct method based on converter type
     std::vector<OperatingPoint> operatingPoints = run_ngspice_simulation(converter, turnsRatios, magnetizingInductance);
-    
+
+    // Step 3b: Converters that use N identical, separately-wound per-phase
+    // inductors (e.g. 3-phase Vienna's La/Lb/Lc) pack those N inductors as N
+    // excitations in one operating point. They are NOT one N-winding magnetic
+    // (commercial designs use three independent inductors), so design ONE of
+    // them: collapse each operating point to a single winding and drop the
+    // multi-winding turns-ratio list. The multiplicity is recorded on the
+    // result below so downstream knows N identical parts are required.
+    size_t identicalInductorCount = 1;
+    if (converter.uses_identical_per_phase_inductors() && !operatingPoints.empty()) {
+        identicalInductorCount = operatingPoints[0].get_excitations_per_winding().size();
+        if (identicalInductorCount > 1) {
+            designReqs.get_mutable_turns_ratios().clear();  // single-winding inductor
+            for (auto& op : operatingPoints) {
+                auto& excitations = op.get_mutable_excitations_per_winding();
+                if (excitations.size() > 1) {
+                    excitations.resize(1);
+                }
+            }
+        }
+    }
+
     // Step 4: Build Inputs object with design requirements and simulated operating points
     Inputs inputs;
     inputs.set_design_requirements(designReqs);
@@ -405,6 +426,19 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_from_c
         results = get_advised_magnetic(inputs, maximumNumberResults);
     } else {
         results = get_advised_magnetic(inputs, weights, maximumNumberResults);
+    }
+
+    // Step 7: For per-phase-inductor converters, note that N identical units
+    // are required (one designed, N built).
+    if (identicalInductorCount > 1) {
+        const std::string note = "Design represents ONE of " + std::to_string(identicalInductorCount) +
+                                 " identical inductors required (one per phase).";
+        for (auto& [mas, score] : results) {
+            auto& magnetic = mas.get_mutable_magnetic();
+            MagneticManufacturerInfo info = magnetic.get_manufacturer_info().value_or(MagneticManufacturerInfo());
+            info.set_description(note);
+            magnetic.set_manufacturer_info(info);
+        }
     }
     return results;
 }

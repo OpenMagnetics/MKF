@@ -100,8 +100,7 @@ namespace OpenMagnetics {
         double outputVoltage      = outputOperatingPoint.get_output_voltages()[0];
         double outputCurrent      = outputOperatingPoint.get_output_currents()[0];
         double diodeVoltageDrop   = get_diode_voltage_drop();
-        double efficiency = 1.0;
-        if (get_efficiency()) efficiency = get_efficiency().value();
+        double efficiency = require_input(get_efficiency(), "Sepic", "efficiency");
 
         double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
 
@@ -247,8 +246,7 @@ namespace OpenMagnetics {
     DesignRequirements Sepic::process_design_requirements() {
         double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
-        double efficiency = 1.0;
-        if (get_efficiency()) efficiency = get_efficiency().value();
+        double efficiency = require_input(get_efficiency(), "Sepic", "efficiency");
 
         if (!get_current_ripple_ratio() && !get_maximum_switch_current()) {
             throw std::invalid_argument("Sepic::process_design_requirements: missing both currentRippleRatio and maximumSwitchCurrent");
@@ -467,8 +465,7 @@ namespace OpenMagnetics {
         double outputCurrent      = opPoint.get_output_currents()[0];
         double switchingFrequency = opPoint.get_switching_frequency();
         double diodeVoltageDrop   = get_diode_voltage_drop();
-        double efficiency = 1.0;
-        if (get_efficiency()) efficiency = get_efficiency().value();
+        double efficiency = require_input(get_efficiency(), "Sepic", "efficiency");
 
         double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
 

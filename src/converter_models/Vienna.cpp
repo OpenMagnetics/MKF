@@ -374,12 +374,12 @@ DesignRequirements Vienna::process_design_requirements() {
 
     double Vdc = get_output_dc_voltage();
     double Fsw = get_switching_frequency();
-    double Lf  = get_line_frequency().value_or(50.0);
+    double Lf  = require_input(get_line_frequency(), "Vienna", "lineFrequency");
     if (Lf <= 0)
         throw std::runtime_error("Vienna: lineFrequency must be > 0");
-    double eff = get_efficiency().value_or(0.97);
-    double pf  = get_power_factor().value_or(0.99);
-    double rippleRatio = get_current_ripple_ratio().value_or(0.25);
+    double eff = require_input(get_efficiency(), "Vienna", "efficiency");
+    double pf  = require_input(get_power_factor(), "Vienna", "powerFactor");
+    double rippleRatio = require_input(get_current_ripple_ratio(), "Vienna", "currentRippleRatio");
     if (rippleRatio <= 0 || rippleRatio >= 1.0)
         throw std::runtime_error("Vienna: currentRippleRatio must be in (0, 1)");
 
@@ -578,8 +578,8 @@ OperatingPoint Vienna::process_operating_point_for_input_voltage(
             "Vienna: modulation index M=" + std::to_string(M) +
             " > 1 (over-modulation). Increase outputDcVoltage above sqrt(2)*V_LL.");
 
-    double eff = get_efficiency().value_or(0.97);
-    double pf  = get_power_factor().value_or(0.99);
+    double eff = require_input(get_efficiency(), "Vienna", "efficiency");
+    double pf  = require_input(get_power_factor(), "Vienna", "powerFactor");
 
     double Vout = viennaOpPoint.get_output_voltages()[0];
     double Iout = viennaOpPoint.get_output_currents()[0];
@@ -653,7 +653,7 @@ OperatingPoint Vienna::process_operating_point_for_input_voltage(
     //   which the adviser doesn't use). The adviser sizes ONE channel
     //   inductor; user builds 3·N physical units.
     static const char* phaseNames[3] = { "Phase A", "Phase B", "Phase C" };
-    const double F_line = get_line_frequency().value_or(50.0);
+    const double F_line = require_input(get_line_frequency(), "Vienna", "lineFrequency");
     const bool fullLineCycle =
         get_sampling_strategy().value_or(ViennaSamplingStrategy::PEAK_OF_LINE_ONLY)
             == ViennaSamplingStrategy::FULL_LINE_CYCLE;
@@ -758,8 +758,8 @@ OperatingPoint Vienna::emit_switching_period_op_at_line_angle(
             "Vienna: modulation index M=" + std::to_string(M) +
             " > 1 (over-modulation).");
 
-    double eff = get_efficiency().value_or(0.97);
-    double pf  = get_power_factor().value_or(0.99);
+    double eff = require_input(get_efficiency(), "Vienna", "efficiency");
+    double pf  = require_input(get_power_factor(), "Vienna", "powerFactor");
 
     double Vout = viennaOpPoint.get_output_voltages()[0];
     double Iout = viennaOpPoint.get_output_currents()[0];
@@ -888,8 +888,8 @@ std::string Vienna::generate_ngspice_circuit(
             "Vienna generate_ngspice_circuit: M=" + std::to_string(M) +
             " > 1 (over-modulation).");
 
-    double eff = get_efficiency().value_or(0.97);
-    double pf  = get_power_factor().value_or(0.99);
+    double eff = require_input(get_efficiency(), "Vienna", "efficiency");
+    double pf  = require_input(get_power_factor(), "Vienna", "powerFactor");
 
     double Vout_total = vOp.get_output_voltages()[0];
     double Iout_total = vOp.get_output_currents()[0];
@@ -1136,7 +1136,7 @@ std::vector<ConverterWaveforms> Vienna::simulate_and_extract_topology_waveforms(
         }
         double Pout_total = ops[opIdx].get_output_voltages()[0] *
                             ops[opIdx].get_output_currents()[0];
-        double effLocal   = get_efficiency().value_or(0.97);
+        double effLocal   = require_input(get_efficiency(), "Vienna", "efficiency");
         // Per-phase DC-equivalent input current at the frozen peak (one of three).
         const double Iin_dc = (Vphase_local > 0.0)
             ? (Pout_total / (effLocal * Vphase_local * 3.0)) : 0.0;

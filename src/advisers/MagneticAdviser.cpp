@@ -369,6 +369,29 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     bool savedUseConcentricCores = settings.get_use_concentric_cores();
     bool savedUseOnlyCoresInStock = settings.get_use_only_cores_in_stock();
 
+    // RAII restore of the three core-filter settings + the cached core DB. The
+    // body below mutates these globals (high-voltage / interference-suppression
+    // paths) and runs many throwing operations (get_advised_core, coil adviser,
+    // simulate, score_magnetics); a manual restore at the end leaks the mutated
+    // flags into every later call if any of them throws. The destructor restores
+    // the snapshot on every exit path and drops the cached DB if a filter
+    // actually changed, so the next consumer rebuilds it from the restored set.
+    struct CoreFilterSettingsRestorer {
+        Settings& settings;
+        bool toroidal, concentric, onlyInStock;
+        ~CoreFilterSettingsRestorer() {
+            bool changed = settings.get_use_toroidal_cores() != toroidal ||
+                           settings.get_use_concentric_cores() != concentric ||
+                           settings.get_use_only_cores_in_stock() != onlyInStock;
+            settings.set_use_toroidal_cores(toroidal);
+            settings.set_use_concentric_cores(concentric);
+            settings.set_use_only_cores_in_stock(onlyInStock);
+            if (changed) {
+                clear_loaded_cores();
+            }
+        }
+    } coreFilterSettingsRestorer{settings, savedUseToroidalCores, savedUseConcentricCores, savedUseOnlyCoresInStock};
+
     // Check if high voltage requirements make toroids impractical
     // High voltage (>600V) with strict insulation requirements rarely works with toroids
     double maxVoltage = 0;
@@ -407,7 +430,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     }
 
     bool previousCoilIncludeAdditionalCoordinates = settings.get_coil_include_additional_coordinates();
-    settings.set_coil_include_additional_coordinates(false);
+    // RAII: keep the bool for the in-loop flag check below, but restore the
+    // setting on every exit path (the body has throwing call paths).
+    SettingsGuard<bool> coilIncludeCoordinatesGuard(settings,
+        &Settings::get_coil_include_additional_coordinates,
+        &Settings::set_coil_include_additional_coordinates, false);
 
     std::map<CoreAdviser::CoreAdviserFilters, double> coreWeights;
     for (auto flowStep : filterFlow) {
@@ -699,24 +726,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         }
     }
 
-    settings.set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
-
-    // Restore the three core-filter settings we may have mutated above so that
-    // subsequent callers (e.g. tests sharing the process-global `settings`
-    // singleton) see the same configuration they had before this call.
-    // Also drop the cached core DB if any of them actually changed, so the
-    // next consumer rebuilds it from the restored filter set.
-    bool coreFiltersChanged =
-        settings.get_use_toroidal_cores() != savedUseToroidalCores ||
-        settings.get_use_concentric_cores() != savedUseConcentricCores ||
-        settings.get_use_only_cores_in_stock() != savedUseOnlyCoresInStock;
-    settings.set_use_toroidal_cores(savedUseToroidalCores);
-    settings.set_use_concentric_cores(savedUseConcentricCores);
-    settings.set_use_only_cores_in_stock(savedUseOnlyCoresInStock);
-    if (coreFiltersChanged) {
-        clear_loaded_cores();
-    }
-
+    // coil_include_additional_coordinates and the three core-filter settings
+    // (plus the cached core DB) are restored on scope exit by
+    // coilIncludeCoordinatesGuard and coreFilterSettingsRestorer (declared
+    // above), so they survive exceptions thrown anywhere in the body.
     return masMagneticsWithScoring;
 }
 

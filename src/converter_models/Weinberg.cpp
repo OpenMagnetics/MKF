@@ -176,8 +176,7 @@ namespace OpenMagnetics {
         double outputVoltage      = outputOperatingPoint.get_output_voltages()[0];
         double outputCurrent      = outputOperatingPoint.get_output_currents()[0];
         double diodeVoltageDrop   = get_diode_voltage_drop();
-        double efficiency = 1.0;
-        if (get_efficiency()) efficiency = get_efficiency().value();
+        double efficiency = require_input(get_efficiency(), "Weinberg", "efficiency");
 
         double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, turnsRatio,
                                                 diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
@@ -402,8 +401,7 @@ namespace OpenMagnetics {
         double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
         double diodeVoltageDrop    = get_diode_voltage_drop();
-        double efficiency = 1.0;
-        if (get_efficiency()) efficiency = get_efficiency().value();
+        double efficiency = require_input(get_efficiency(), "Weinberg", "efficiency");
 
         if (!get_current_ripple_ratio() && !get_maximum_switch_current()) {
             throw std::invalid_argument(
@@ -671,8 +669,7 @@ namespace OpenMagnetics {
         double outputCurrent      = opPoint.get_output_currents()[0];
         double switchingFrequency = opPoint.get_switching_frequency();
         double diodeVoltageDrop   = get_diode_voltage_drop();
-        double efficiency = 1.0;
-        if (get_efficiency()) efficiency = get_efficiency().value();
+        double efficiency = require_input(get_efficiency(), "Weinberg", "efficiency");
 
         double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, turnsRatio,
                                                 diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));

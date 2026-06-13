@@ -48,7 +48,9 @@ double Dab::compute_power(double V1, double V2, double N,
 // =========================================================================
 double Dab::compute_series_inductance(double V1, double V2, double N,
                                       double D3, double Fs, double P) {
-    if (P <= 0) return 1e-3; // fallback
+    if (P <= 0)
+        throw std::runtime_error("DAB: output power must be positive to size the series "
+                                 "inductance (got non-positive); no fallback inductance is substituted");
     return N * V1 * V2 * D3 * (M_PI - std::abs(D3))
            / (2.0 * M_PI * M_PI * Fs * P);
 }

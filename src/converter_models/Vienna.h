@@ -116,6 +116,12 @@ public:
         return MAS::Topologies::VIENNA_RECTIFIER_CONVERTER;
     }
 
+    // A 3-phase Vienna uses three identical, separately-wound per-phase boost
+    // inductors (La/Lb/Lc) — modeled here as N excitations in one operating
+    // point. The from-converter adviser designs ONE of them and notes that N
+    // identical inductors are required. See Topology::uses_identical_per_phase_inductors.
+    bool uses_identical_per_phase_inductors() const override { return true; }
+
     // Computed-design accessors
     double get_computed_boost_inductance()      const { return computedBoostInductance; }
     double get_computed_modulation_index()      const { return computedModulationIndex; }

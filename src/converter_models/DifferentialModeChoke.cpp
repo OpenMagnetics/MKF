@@ -131,12 +131,12 @@ namespace OpenMagnetics {
         // Operating frequency is the line frequency (for loss calculation)
         // The ripple is at the switching frequency
         double operatingFrequency = get_line_frequency();
-        double rippleFrequency = get_switching_frequency().value_or(100000);
+        double rippleFrequency = require_input(get_switching_frequency(), "DifferentialModeChoke", "switchingFrequency");
 
         double operatingCurrent = get_operating_current();
 
         // Determine peak current
-        double peakCurrent = get_peak_current().value_or(operatingCurrent * 1.2);  // 20% margin if not specified
+        double peakCurrent = require_input(get_peak_current(), "DifferentialModeChoke", "peakCurrent");  // 20% margin if not specified
 
         // Calculate current ripple (difference between peak and operating)
         double currentRipple = peakCurrent - operatingCurrent;
@@ -490,7 +490,7 @@ namespace OpenMagnetics {
         }
 
         if (frequencies.empty()) {
-            double freq = get_switching_frequency().value_or(100000);
+            double freq = require_input(get_switching_frequency(), "DifferentialModeChoke", "switchingFrequency");
             frequencies = {freq, freq * 2, freq * 5};  // Fundamental and harmonics
         }
 
@@ -560,7 +560,7 @@ namespace OpenMagnetics {
 
         // If no capacitance provided, calculate based on switching frequency
         if (filterCapacitance <= 0) {
-            double noiseFrequency = get_switching_frequency().value_or(100000);
+            double noiseFrequency = require_input(get_switching_frequency(), "DifferentialModeChoke", "switchingFrequency");
             double cutoffFrequency = noiseFrequency / 10;  // fc = fsw/10 for good attenuation
             filterCapacitance = 1.0 / (4.0 * std::numbers::pi * std::numbers::pi *
                                        cutoffFrequency * cutoffFrequency * inductance);
@@ -593,7 +593,7 @@ namespace OpenMagnetics {
 
         if (testPoints.empty()) {
             // Use default test frequencies if no requirements specified
-            double fsw = get_switching_frequency().value_or(100000);
+            double fsw = require_input(get_switching_frequency(), "DifferentialModeChoke", "switchingFrequency");
             testPoints = {{fsw, 20.0}, {fsw * 2, 30.0}, {fsw * 5, 40.0}};
         }
 
@@ -661,7 +661,7 @@ namespace OpenMagnetics {
         double loadImpedance = operatingVoltage / operatingCurrent;
 
         // Determine target frequency and attenuation
-        double targetFrequency = get_switching_frequency().value_or(100000);
+        double targetFrequency = require_input(get_switching_frequency(), "DifferentialModeChoke", "switchingFrequency");
         double targetAttenuation = 40.0;  // Default 40dB attenuation at switching frequency
 
         auto minImpedance = get_minimum_impedance();
@@ -707,7 +707,7 @@ namespace OpenMagnetics {
         }
 
         // Calculate peak current for saturation requirement
-        double peakCurrent = get_peak_current().value_or(operatingCurrent * 1.4);  // 40% margin
+        double peakCurrent = require_input(get_peak_current(), "DifferentialModeChoke", "peakCurrent");  // 40% margin
 
         // Energy storage requirement
         double energyStorage = 0.5 * inductance * peakCurrent * peakCurrent;

@@ -191,7 +191,7 @@ double get_value_or(T&& val, double default_val) {
         if (get_quality_factor()) {
             Q = get_quality_factor().value();
         } else {
-            Q = 0.3;  // Default from Infineon AN recommendation (between 0.2 and 0.4)
+            Q = defaults.resonantQualityFactorDefaultCllc;  // Default from Infineon AN recommendation (between 0.2 and 0.4)
         }
         params.qualityFactor = Q;
 
@@ -1015,6 +1015,11 @@ double get_value_or(T&& val, double default_val) {
         constexpr double TOL = 1e-6;
         const double alpha = 0.4;
         double r = std::numeric_limits<double>::infinity();
+        // Track the best (lowest-residual) iterate. The relaxed Picard iteration
+        // is non-monotone, so returning the *last* iterate could discard a better
+        // solution already found (same bug as the LLC solver). Return the best.
+        CllcState4 bestX0 = x0;
+        double bestR = r;
         for (int iter = 0; iter < MAX_ITERS; ++iter) {
             auto segs = cllc4_propagate_half_cycle(x0, Thalf, Vi, Vo, tp);
             if (segs.empty()) break;
@@ -1031,11 +1036,15 @@ double get_value_or(T&& val, double default_val) {
             x0 = x_new;
             auto F = eval_F(x0);
             r = norm(F);
+            if (std::isfinite(r) && r < bestR) {
+                bestR = r;
+                bestX0 = x0;
+            }
             if (r < TOL) break;
         }
-        outSegments = cllc4_propagate_half_cycle(x0, Thalf, Vi, Vo, tp);
-        outResidual = r;
-        return x0;
+        outSegments = cllc4_propagate_half_cycle(bestX0, Thalf, Vi, Vo, tp);
+        outResidual = bestR;
+        return bestX0;
     }
 
     /// Sample the 4-state segment chain onto a uniform N+1-long grid.
@@ -1318,6 +1327,39 @@ double get_value_or(T&& val, double default_val) {
             cllc_sample_segments(segments, Thalf_eff, N,
                                    Vi, Vo, Lr_eq, Lm, Cr_eq,
                                    ILs_pos, IL_pos, Vc_pos);
+        }
+
+        // Guard against the degenerate "no seed converged" case (#5): when none
+        // of the multi-start seeds converge, best_residual stays +inf and x0_4 is
+        // left all-zero, which the freewheel propagator turns into a benign-
+        // looking ZERO-POWER waveform that is silently emitted as if valid. Throw
+        // on that (non-finite residual) instead of returning fabricated zeros.
+        //
+        // A *finite* residual means a seed did win (non-degenerate waveform); the
+        // asymmetric CLLC analytical TDA model is known to plateau well above the
+        // Newton TOL on many designs (residual ~ several A; see HANDOFF CLLC shape
+        // gap), so we do NOT throw on finite-but-imperfect residuals here — that
+        // is a model-accuracy limitation to address separately, not the silent-
+        // zero-power bug. residual == -1.0 is the sanctioned symmetric-path seed
+        // fallback.
+        if (residual != -1.0 && !std::isfinite(residual)) {
+            throw std::runtime_error(
+                "CLLC: steady-state solver found no converging seed (all multi-start seeds failed); "
+                "the all-zero state would emit a fabricated zero-power waveform. Vi=" +
+                std::to_string(Vi) + " V, Vo=" + std::to_string(Vo) + " V.");
+        }
+        // Bounded-but-imperfect convergence: the asymmetric 4-state TDA model
+        // plateaus above the Newton TOL on some designs (residual ~ several A).
+        // The waveform is non-degenerate (a seed won) and bounded, so emit it but
+        // warn — analytical-model accuracy limitation, tracked separately (same
+        // policy as the LLC TDA solver).
+        if (residual != -1.0) {
+            double i_thresh = std::max(0.5, 0.02 * std::abs(Iload_reflected));
+            if (residual > i_thresh) {
+                std::cerr << "[CLLC] steady-state solver did not fully converge: residual="
+                          << residual << " A (Vi=" << Vi << "V, Vo=" << Vo
+                          << "V) — analytical waveform is bounded but may be imperfect." << std::endl;
+            }
         }
 
         // VLm at each sample (closed-form per sub-state).

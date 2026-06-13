@@ -199,7 +199,6 @@ public:
     OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const BaseOperatingPoint& outputOperatingPoint, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
-    double resolve_efficiency();
 
     /**
      * @brief Generate an ngspice circuit for this Boost converter

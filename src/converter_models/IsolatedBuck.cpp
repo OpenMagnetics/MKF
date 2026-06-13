@@ -50,10 +50,7 @@ namespace OpenMagnetics {
             totalReflectedSecondaryCurrent += outputOperatingPoint.get_output_currents()[secondaryIndex + 1] / turnsRatios[secondaryIndex];
         }
 
-        double efficiency = 1;
-        if (get_efficiency()) {
-            efficiency = get_efficiency().value();
-        }
+        double efficiency = require_input(get_efficiency(), "IsolatedBuck", "efficiency");
 
 
         auto dutyCycle = calculate_duty_cycle(inputVoltage, primaryOutputVoltage, efficiency);
@@ -699,10 +696,7 @@ namespace OpenMagnetics {
         double primaryOutputVoltage = opPoint.get_output_voltages()[0];
         double primaryOutputCurrent = opPoint.get_output_currents()[0];
 
-        double efficiency = 1;
-        if (get_efficiency()) {
-            efficiency = get_efficiency().value();
-        }
+        double efficiency = require_input(get_efficiency(), "IsolatedBuck", "efficiency");
 
         double dutyCycle = calculate_duty_cycle(inputVoltage, primaryOutputVoltage, efficiency);
 

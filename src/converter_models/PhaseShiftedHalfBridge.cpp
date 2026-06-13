@@ -324,20 +324,29 @@ OperatingPoint Pshb::process_operating_point_for_input_voltage(
     OperatingPoint operatingPoint;
 
     double Fs = pshbOpPoint.get_switching_frequency();
+    // Guard unconditionally before any 1/Fs division (direct callers bypass
+    // run_checks — same rationale as PSFB).
+    if (Fs <= 0)
+        throw std::runtime_error("PSHB: switching frequency must be positive");
     double Vin = inputVoltage;
     double Vhb = Vin * BRIDGE_VOLTAGE_FACTOR;
     double Vo  = pshbOpPoint.get_output_voltages()[0];
     double Io  = pshbOpPoint.get_output_currents()[0];
     double n   = turnsRatios[0];
     double Lm  = magnetizingInductance;
-    double Lr  = computedSeriesInductance > 0 ? computedSeriesInductance : 1e-6;
+    if (computedSeriesInductance <= 0)
+        throw std::runtime_error("PSHB: series (resonant) inductance must be positive; "
+                                 "it was not computed/provided");
+    double Lr  = computedSeriesInductance;
 
     BRectifierType rectType = get_rectifier_type().value_or(BRectifierType::CENTER_TAPPED);
 
     double phi_deg = pshbOpPoint.get_phase_shift();
     double D_cmd = (phi_deg > 1e-6) ? compute_effective_duty_cycle(phi_deg)
                                     : computedEffectiveDutyCycle;
-    if (D_cmd <= 0) D_cmd = 0.75;
+    if (D_cmd <= 0)
+        throw std::runtime_error("PSHB: effective duty cycle is non-positive; provide a phase "
+                                 "shift or valid design requirements (no default duty substituted)");
 
     double dcl_duty = PwmBridgeSolver::compute_duty_cycle_loss(Vhb, Lr, Io, n, Fs);
     double Deff = PwmBridgeSolver::compute_effective_duty_cycle(D_cmd, dcl_duty);

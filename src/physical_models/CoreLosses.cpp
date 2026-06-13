@@ -2286,17 +2286,47 @@ double CoreLossesSteinmetzModel::get_frequency_from_core_losses(Core core,
     double alpha = steinmetzDatum.get_alpha();
     double convergeAlpha = 0;
 
-    do {
+    // Fixed-point iteration: recompute frequency from the Steinmetz coefficients
+    // of the current frequency range, then re-look-up the coefficients. The old
+    // `while (convergeAlpha != alpha)` exit could loop forever when the
+    // recomputed frequency straddles a Steinmetz range boundary and alpha
+    // toggles between two ranges (verified hang on catalog materials). Bound the
+    // loop, accept either alpha-stability OR relative-frequency convergence, and
+    // throw (never hang / never return a non-finite frequency).
+    constexpr size_t maximumIterations = 50;
+    constexpr double frequencyRelativeTolerance = 1e-6;
+    size_t iteration = 0;
+    while (true) {
         double k = steinmetzDatum.get_k();
         alpha = steinmetzDatum.get_alpha();
         double beta = steinmetzDatum.get_beta();
         double volumetricLosses = coreLosses / effectiveVolume / CoreLossesModel::apply_temperature_coefficients(1, steinmetzDatum, temperature);
 
+        double previousFrequency = frequency;
         frequency = pow(volumetricLosses / (k * pow(magneticFluxDensityAcPeak, beta)), 1 / alpha);
+        if (!std::isfinite(frequency)) {
+            throw InvalidInputException(ErrorCode::CALCULATION_NAN_RESULT,
+                "Steinmetz get_frequency_from_core_losses produced a non-finite frequency");
+        }
         steinmetzDatum = get_steinmetz_coefficients(core.resolve_material(), frequency);
         convergeAlpha = steinmetzDatum.get_alpha();
+
+        // Converged: the recomputed frequency stays in the same Steinmetz range
+        // (alpha stable) or the frequency itself has settled.
+        if (convergeAlpha == alpha) {
+            break;
+        }
+        if (previousFrequency > 0 &&
+            std::abs(frequency - previousFrequency) / previousFrequency < frequencyRelativeTolerance) {
+            break;
+        }
+        if (++iteration >= maximumIterations) {
+            throw CalculationException(ErrorCode::CALCULATION_DIVERGED,
+                "Steinmetz get_frequency_from_core_losses did not converge in " +
+                std::to_string(maximumIterations) + " iterations (frequency oscillating across a "
+                "Steinmetz range boundary near " + std::to_string(frequency) + " Hz)");
+        }
     }
-    while (convergeAlpha != alpha);
 
     return frequency;
 }
@@ -3207,7 +3237,16 @@ RoshenParameters RoshenHysteresisModel::fit_parameters_to_data(
         
         bestError = newError;
     }
-    
+
+    // Quality check: the loop is bounded (maxIterations) and returns the
+    // best-effort fit, which is correct for an optimizer — a finite-but-
+    // imperfect fit is a valid result, not an error. But non-finite parameters
+    // (gradient blow-up) are a genuine failure and must not be returned
+    // silently.
+    if (!std::isfinite(bestParams.a1) || !std::isfinite(bestParams.b1) || !std::isfinite(bestParams.b2)) {
+        throw InvalidInputException(ErrorCode::CALCULATION_NAN_RESULT,
+            "Roshen fit_parameters_to_data produced non-finite parameters");
+    }
     return bestParams;
 }
 

@@ -180,7 +180,7 @@ DesignRequirements Src::process_design_requirements() {
     // metrics still match between analytical and SPICE because both share
     // the same FHA assumption. See FIXME-src-3.
     double Rac   = (8.0 * mainTurnsRatio * mainTurnsRatio) / (M_PI * M_PI) * Rload;
-    double Q     = get_quality_factor().value_or(2.0);  // schema default
+    double Q     = get_quality_factor().value_or(defaults.resonantQualityFactorDefaultSrc);  // schema default
     if (Q <= 0)
         throw std::runtime_error("SRC: qualityFactor must be > 0");
     double fr = get_effective_resonant_frequency();

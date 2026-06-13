@@ -100,7 +100,7 @@ public:
     // ── Convenience pass-throughs for legacy MKF call sites ────────
     // These thin wrappers exist so the .cpp keeps using the same API
     // while the *storage* lives in MAS::CommonModeChoke.
-    double get_line_impedance_or_default(double fallback = 50.0) const {
+    double get_line_impedance_or_default(double fallback = defaults.commonModeChokeLineImpedanceDefault) const {
         return MAS::CommonModeChoke::get_line_impedance().value_or(fallback);
     }
     double get_maximum_dc_resistance_or_default(double fallback = 0.0) const {

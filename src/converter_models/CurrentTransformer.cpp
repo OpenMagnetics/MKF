@@ -27,7 +27,7 @@ namespace OpenMagnetics {
         designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
 
         DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_minimum(roundFloat(1e-6, 10));
+        inductanceWithTolerance.set_minimum(roundFloat(defaults.currentTransformerMinimumMagnetizingInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         std::vector<IsolationSide> isolationSides;
 

@@ -113,7 +113,7 @@ CommonModeChoke::CommonModeChoke(const json& j) : Topology(j) {
     set_line_frequency(j.at("lineFrequency").get<double>());
     set_ambient_temperature(j.at("ambientTemperature").get<double>());
 
-    set_line_impedance(j.value("lineImpedance", 50.0));
+    set_line_impedance(j.value("lineImpedance", defaults.commonModeChokeLineImpedanceDefault));
     if (j.contains("maximumDcResistance"))      set_maximum_dc_resistance(j.at("maximumDcResistance").get<double>());
     if (j.contains("maximumLeakageInductance")) set_maximum_leakage_inductance(j.at("maximumLeakageInductance").get<double>());
     numberOfWindings = j.value("numberOfWindings", 2);

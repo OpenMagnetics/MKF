@@ -47,6 +47,15 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
         return {false, 0.0};
     }
 
+    // This filter winds candidates with fast_wind() (no delimit/compact) for
+    // speed. The flag lives on the process-global Settings singleton, so it must
+    // be restored on every exit path — including the many throwing/early-return
+    // paths below — or it leaks into all later code that reads it. RAII instead
+    // of manual save/restore (which previously had no restore at all).
+    SettingsGuard<bool> coilDelimitGuard(settings,
+        &Settings::get_coil_delimit_and_compact,
+        &Settings::set_coil_delimit_and_compact, false);
+
     std::string shapeName = core.get_shape_name();
     prepare_bobbin_for_non_pqi(magnetic, shapeName);
 
@@ -90,8 +99,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
             currentTotalLosses = newTotalLosses;
             auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
             coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
-            // coil = Coil(coil);
-            settings.set_coil_delimit_and_compact(false);
+            // coil = Coil(coil);  delimit/compact disabled by coilDelimitGuard above
             coil.fast_wind();
 
             // Saturation cap for energy-storing inductors: this (higher) turn count
@@ -117,8 +125,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                 if (resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) < resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                     coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
-                    // coil = Coil(coil);
-                    settings.set_coil_delimit_and_compact(false);
+                    // coil = Coil(coil);  delimit/compact disabled by coilDelimitGuard above
                     coil.fast_wind();
                     break;
                 }
@@ -236,6 +243,15 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
         return {false, 0.0};
     }
 
+    // This filter winds candidates with fast_wind() (no delimit/compact) for
+    // speed. The flag lives on the process-global Settings singleton, so it must
+    // be restored on every exit path — including the many throwing/early-return
+    // paths below — or it leaks into all later code that reads it. RAII instead
+    // of manual save/restore (which previously had no restore at all).
+    SettingsGuard<bool> coilDelimitGuard(settings,
+        &Settings::get_coil_delimit_and_compact,
+        &Settings::set_coil_delimit_and_compact, false);
+
     std::string shapeName = core.get_shape_name();
     prepare_bobbin_for_non_pqi(magnetic, shapeName);
 
@@ -296,8 +312,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
             currentTotalLosses = newTotalLosses;
             auto numberTurnsCombination = numberTurns.get_next_number_turns_combination(numberTurnsStep);
             coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
-            settings.set_coil_delimit_and_compact(false);
-            coil.fast_wind();
+            coil.fast_wind();  // delimit/compact disabled by coilDelimitGuard above
 
             // Saturation cap for energy-storing inductors: this (higher) turn count
             // is checked against the gap-aware saturation current; once it dips
@@ -322,8 +337,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                 if (resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) < resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                     coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
-                    settings.set_coil_delimit_and_compact(false);
-                    coil.fast_wind();
+                    coil.fast_wind();  // delimit/compact disabled by coilDelimitGuard above
                     break;
                 }
             }
@@ -408,8 +422,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
         if (std::isfinite(bestTotalLosses) &&
             coil.get_functional_description()[0].get_number_turns() != static_cast<double>(bestNumberTurnsPrimary)) {
             coil.get_mutable_functional_description()[0].set_number_turns(bestNumberTurnsPrimary);
-            settings.set_coil_delimit_and_compact(false);
-            coil.fast_wind();
+            coil.fast_wind();  // delimit/compact disabled by coilDelimitGuard above
         }
 
         if (std::isfinite(bestTotalLosses)) {

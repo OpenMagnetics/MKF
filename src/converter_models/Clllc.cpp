@@ -276,7 +276,7 @@ DesignRequirements Clllc::process_design_requirements() {
     double Rload = Vlv_design / Iload;
     double Rac_pri = (8.0 * n * n) / (M_PI * M_PI) * Rload;
 
-    double Q  = get_quality_factor().value_or(0.4);
+    double Q  = get_quality_factor().value_or(defaults.resonantQualityFactorDefaultLlc);
     double K  = MAS::ClllcResonant::get_inductance_ratio_k().value_or(5.0);
     double fr = get_effective_resonant_frequency();
 

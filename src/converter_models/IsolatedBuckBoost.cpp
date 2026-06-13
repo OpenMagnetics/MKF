@@ -56,10 +56,7 @@ namespace OpenMagnetics {
             totalReflectedSecondaryCurrent += outputOperatingPoint.get_output_currents()[secondaryIndex + 1] / turnsRatios[secondaryIndex];
         }
 
-        double efficiency = 1;
-        if (get_efficiency()) {
-            efficiency = get_efficiency().value();
-        }
+        double efficiency = require_input(get_efficiency(), "IsolatedBuckBoost", "efficiency");
 
 
         auto dutyCycle = calculate_duty_cycle(inputVoltage, primaryOutputVoltage, efficiency);
@@ -201,10 +198,7 @@ namespace OpenMagnetics {
     DesignRequirements IsolatedBuckBoost::process_design_requirements() {
         double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
-        double efficiency = 1;
-        if (get_efficiency()) {
-            efficiency = get_efficiency().value();
-        }
+        double efficiency = require_input(get_efficiency(), "IsolatedBuckBoost", "efficiency");
 
         if (!get_current_ripple_ratio() && !get_maximum_switch_current()) {
             throw std::invalid_argument("Missing both current ripple ratio and maximum swtich current");
@@ -467,10 +461,7 @@ namespace OpenMagnetics {
         double primaryOutputVoltage = opPoint.get_output_voltages()[0];
         double primaryOutputCurrent = opPoint.get_output_currents()[0];
         
-        double efficiency = 1;
-        if (get_efficiency()) {
-            efficiency = get_efficiency().value();
-        }
+        double efficiency = require_input(get_efficiency(), "IsolatedBuckBoost", "efficiency");
         
         double dutyCycle = calculate_duty_cycle(inputVoltage, primaryOutputVoltage, efficiency);
         
