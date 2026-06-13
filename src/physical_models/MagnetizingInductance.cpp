@@ -406,6 +406,29 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     return std::max(1, numberTurnsPrimary);
 }
 
+int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Core core, Inputs* inputs, DimensionalValues preferredValue) {
+    // Legacy 3-argument shim (no coil) — see header. Builds the single-primary-
+    // winding coil the old coil-less implementation implicitly assumed (one
+    // winding on this core's bobbin) and forwards to the canonical coil-aware
+    // overload. Magnetizing inductance referred to the primary (N^2 / R_core) is
+    // independent of wire gauge and winding layout, so the placeholder winding
+    // does not bias the result; the canonical version overwrites its turn count
+    // while solving. Multi-winding callers must use the coil-taking overload.
+    Coil coil;
+    coil.set_bobbin(Bobbin::create_quick_bobbin(core));
+    Winding winding;
+    winding.set_name("winding 0");
+    winding.set_number_turns(1);
+    winding.set_number_parallels(1);
+    winding.set_isolation_side_from_index(0);
+    winding.set_wire("Round 0.475 - Grade 1");
+    coil.get_mutable_functional_description().push_back(winding);
+    // No wind() needed: the canonical path derives Lm from the core reluctance and
+    // functional_description turn count, never from wound turn positions (the
+    // coil-aware tests pass an unwound coil too).
+    return calculate_number_turns_from_gapping_and_inductance(core, coil, inputs, preferredValue);
+}
+
 double MagnetizingInductance::calculate_gap_from_saturation_constraint(Core core,
                                                                        Inputs* inputs,
                                                                        double targetMagneticFluxDensity,

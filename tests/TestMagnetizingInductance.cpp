@@ -338,6 +338,37 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(numberTurns, max_error * expectedValue));
     }
 
+    TEST_CASE("Test_NumberTurns_Legacy_NoCoil_Overload_Matches_SingleWinding",
+              "[physical-model][magnetizing-inductance][smoke-test]") {
+        // The legacy 3-argument overload (no coil) must reproduce the coil-aware
+        // result for a single primary winding — it synthesizes exactly that coil
+        // internally. Magnetizing inductance is N^2 / R_core (primary-referred,
+        // wire-independent), so the two paths must agree to integer rounding.
+        settings.reset();
+        clear_databases();
+
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double desiredMagnetizingInductance = 23.3e-3;
+        double frequency = 20000;
+        std::string coreShape = "ETD 29";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
+
+        Core core;
+        OpenMagnetics::Coil winding;
+        OpenMagnetics::Inputs inputs;
+        MagnetizingInductance magnetizing_inductance("ZHANG");
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, -1, desiredMagnetizingInductance, gapping,
+                                coreShape, coreMaterial, core, winding, inputs);
+
+        int withCoil = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, winding, &inputs);
+        int legacyNoCoil = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs);
+
+        REQUIRE(legacyNoCoil == withCoil);
+    }
+
     TEST_CASE("Test_Gapping_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();

@@ -53,6 +53,15 @@ class MagnetizingInductance {
 
     int calculate_number_turns_from_gapping_and_inductance(Core core, Coil coil, Inputs* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
+    // Legacy 3-argument entry point (the pre-coil signature). Kept ONLY for
+    // binding backward-compatibility (PyOM / WASM callers that never passed a
+    // coil). It synthesizes the single-primary-winding coil the old coil-less
+    // implementation implicitly assumed and forwards to the canonical
+    // coil-aware overload above — which every internal caller should use, since
+    // magnetizing inductance referred to a real multi-winding coil needs the
+    // actual winding. New code: prefer the coil-taking overload.
+    int calculate_number_turns_from_gapping_and_inductance(Core core, Inputs* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
+
     /**
      * @brief Calculate gap length to prevent saturation given current and target B-field
      * 
