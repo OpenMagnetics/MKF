@@ -147,10 +147,16 @@ TEST_CASE("Test_Weinberg_DetectOperatingRegime",
 
 TEST_CASE("Test_Weinberg_L1_Min_Sizing",
           "[converter-model][weinberg-topology][unit]") {
-    // Boost regime (overlap dominates): L1 = Vin · (2D-1) / (4·ΔIL1·fsw)
+    // Input coupled-inductor sizing: L1 = Vin · D_eff / (ΔIL1·fsw), where
+    // D_eff = max(overlap, D) is the longer charging fraction. This is the exact
+    // inverse of the per-OP ripple builder (ΔIL1 = Vin·max(overlap,D)/(L1·fsw)),
+    // so the requested L1 delivers the budgeted ripple/peak (fix f3bf29dc). Here
+    // overlap = max(0, 2·0.6−1) = 0.2 < D = 0.6, so D_eff = 0.6.
+    // (Was Vin·overlap/(4·ΔIL1·fsw), which disagreed with the builder ~6× and
+    // eroded the inductor_isat_margin; verified against the builder, not a pin.)
     double L1 = OpenMagnetics::Weinberg::calculate_l1_min(/*Vin*/ 50.0, /*D*/ 0.6,
                                             /*ΔIL1*/ 1.0, /*fsw*/ 50e3);
-    REQUIRE_THAT(L1, WithinRel(50.0 * 0.2 / (4.0 * 1.0 * 50e3), 1e-12));
+    REQUIRE_THAT(L1, WithinRel(50.0 * std::max(0.2, 0.6) / (1.0 * 50e3), 1e-12));
     REQUIRE_THROWS(OpenMagnetics::Weinberg::calculate_l1_min(50.0, 0.6, /*ΔIL1*/ 0.0, 50e3));
     REQUIRE_THROWS(OpenMagnetics::Weinberg::calculate_l1_min(50.0, 0.6, 1.0, /*fsw*/ 0.0));
 }
