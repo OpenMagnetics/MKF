@@ -332,122 +332,75 @@ MagnetizingInductanceOutput MagnetizingInductance::calculate_inductance_from_num
     return inductance_and_magnetic_flux_density.first;
 }
 
-int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Core core, Inputs* inputs, DimensionalValues preferredValue) {
-    double desiredMagnetizingInductance = resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance(), preferredValue);
-    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Core core, Coil coil, Inputs* inputs, DimensionalValues preferredValue) {
+    // Single source of truth for "turns for a target inductance": the EXACT
+    // inverse of calculate_inductance_from_number_turns_and_gapping (the model
+    // the inductance filter uses), so the two can never disagree. The previous
+    // implementation ran its own DC-bias permeability-refinement loop that was
+    // ill-conditioned for gapped cores under heavy bias — it drove the looked-up
+    // permeability toward (and below) zero and over-counted N ~100x (a gapped
+    // ferrite flyback E-core: N 13 -> 1631). Instead: seed from the unbiased
+    // reluctance, then Newton-step on L proportional to N^2 against the canonical
+    // operating-point inductance, then ensure it clears the (rounded) target.
+    double desiredMagnetizingInductance = resolve_dimensional_values(
+        inputs->get_design_requirements().get_magnetizing_inductance(), preferredValue);
+
+    if (desiredMagnetizingInductance <= 0 || coil.get_functional_description().empty()) {
+        // Lm = 0 means "not specified" (see pre_process_inputs); nothing to size.
+        return std::max<int>(1, coil.get_functional_description().empty()
+                                ? 1 : static_cast<int>(coil.get_functional_description()[0].get_number_turns()));
+    }
+
     double frequency = Defaults().coreAdviserFrequencyReference;
     double temperature = Defaults().ambientTemperature;
     OperatingPoint operatingPoint;
-
+    OperatingPoint* operatingPointPtr = nullptr;
     if (inputs->get_operating_points().size() > 0) {
         operatingPoint = inputs->get_operating_point(0);
         temperature = operatingPoint.get_conditions().get_ambient_temperature();
         frequency = operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency();
-    }
-    OpenMagnetics::InitialPermeability initialPermeability;
-    int numberTurnsPrimary;
-    size_t timeout = 10;
-    double currentInitialPermeability;
-    double modifiedInitialPermeability;
-
-    ReluctanceModels reluctanceModelEnum;
-    from_json(_models["gapReluctance"], reluctanceModelEnum);
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
-    double totalReluctance;
-
-    currentInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
-    if (inputs->get_operating_points().size() > 0) {
         OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
         if (!excitation.get_magnetizing_current() && !excitation.get_voltage()) {
             Inputs::set_current_as_magnetizing_current(&operatingPoint);
-            inputs->set_operating_point_by_index(operatingPoint, 0);
         }
+        operatingPointPtr = &operatingPoint;
     }
 
-    while (true) {
+    // Unbiased reluctance seed: N0 = round(sqrt(L * R_core(mu_initial))).
+    OpenMagnetics::InitialPermeability initialPermeability;
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
+    double initialMu = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
+    double seedReluctance = reluctanceModel->get_core_reluctance(core, initialMu).get_core_reluctance();
+    int numberTurnsPrimary = std::max(1, static_cast<int>(std::round(std::sqrt(desiredMagnetizingInductance * seedReluctance))));
 
-        auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
-        totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
-        numberTurnsPrimary = std::round(sqrt(desiredMagnetizingInductance * totalReluctance));
-
-        if (inputs->get_operating_points().size() == 0) {
-            // No operating points: no H-bias refinement needed.
-            // N = round(sqrt(Lm * reluctance)) is the exact answer — exit.
-            break;
-        }
-
-        if (inputs->get_operating_points().size() > 0) {
-            // PERF: only the magnetic-field-strength DC offset is needed below to
-            // refine the H-biased initial permeability. The full waveform pipeline
-            // (calculate_magnetic_flux -> _flux_density -> _field_strength) copies
-            // every sample of the magnetizing-current waveform three times and
-            // re-runs Inputs::calculate_basic_processed_data twice (which calls the
-            // sin/cos-heavy try_guess_waveform_label). Doing this per iteration ×
-            // up to 10 iterations × thousands of candidate cores dominates DMC/CMC
-            // core selection wall time. Flux/B/H are purely linear scalings of
-            // the source current waveform, so the H offset can be derived
-            // algebraically from the already-pre-processed current offset:
-            //   B_offset = (I_offset * N / R) / A_eff
-            //   H_offset = B_offset / (µ₀ * µᵢ)
-            auto magnetizingCurrent = operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value();
-            double currentOffset = 0.0;
-            // The DC bias of the magnetizing current is the mean (harmonic 0), NOT
-            // processed->get_offset(): the latter is the AC-only midpoint with DC
-            // removed (see Inputs::calculate_magnetizing_current, where the offset
-            // is stored as `waveformMidpoint - dcCurrent`). Using only the AC
-            // offset here under-counts the H bias and yields too few turns for
-            // strongly DC-biased designs (e.g. powder cores).
-            if (magnetizingCurrent.get_harmonics() &&
-                !magnetizingCurrent.get_harmonics()->get_amplitudes().empty()) {
-                currentOffset = magnetizingCurrent.get_harmonics()->get_amplitudes()[0];
-                if (magnetizingCurrent.get_processed()) {
-                    // Add the AC midpoint offset on top of the DC bias.
-                    currentOffset += magnetizingCurrent.get_processed()->get_offset();
-                }
-            }
-            else if (magnetizingCurrent.get_processed()) {
-                currentOffset = magnetizingCurrent.get_processed()->get_offset();
-            }
-            else {
-                // Fallback: the rare case where pre-processed data is missing.
-                auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(magnetizingCurrent, totalReluctance, numberTurnsPrimary);
-                auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
-                auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
-                auto Hoffset = magneticFieldStrength.get_processed().value().get_mutable_offset();
-                modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, Hoffset, frequency);
-                if (fabs(currentInitialPermeability - modifiedInitialPermeability) < 1 || timeout == 0) {
-                    break;
-                }
-                currentInitialPermeability = modifiedInitialPermeability;
-                timeout--;
-                continue;
-            }
-            auto constants = OpenMagnetics::Constants();
-            double bOffset = (numberTurnsPrimary > 0 && totalReluctance > 0 && effectiveArea > 0)
-                ? (currentOffset * numberTurnsPrimary / totalReluctance) / effectiveArea
-                : 0.0;
-            double hOffsetValue = (currentInitialPermeability > 0)
-                ? bOffset / (currentInitialPermeability * constants.vacuumPermeability)
-                : 0.0;
-            std::optional<double> Hoffset = hOffsetValue;
-            modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, Hoffset, frequency);
-
-            if (fabs(currentInitialPermeability - modifiedInitialPermeability) < 1 || timeout == 0) {
-                break;
-            }
-            else {
-                currentInitialPermeability = modifiedInitialPermeability;
-                timeout--;
-            }
-        }
+    if (operatingPointPtr == nullptr) {
+        // No operating point: the unbiased seed is the exact answer.
+        return numberTurnsPrimary;
     }
 
-    if (inputs->get_operating_points().size() > 0) {
-        OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
-        if (!excitation.get_voltage()) {
-            operatingPoint.get_mutable_excitations_per_winding()[0].set_voltage(Inputs::calculate_induced_voltage(excitation, desiredMagnetizingInductance));
-            inputs->set_operating_point_by_index(operatingPoint, 0);
-        }
+    // Evaluate the canonical operating-point inductance at a trial turn count.
+    auto inductanceAtTurns = [&](int n) -> double {
+        coil.get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(n));
+        auto out = calculate_inductance_from_number_turns_and_gapping(core, coil, operatingPointPtr);
+        return resolve_dimensional_values(out.get_magnetizing_inductance());
+    };
+
+    // Newton on L proportional to N^2: corrects the seed up or down.
+    for (int iteration = 0; iteration < 6; ++iteration) {
+        double inductance = inductanceAtTurns(numberTurnsPrimary);
+        if (inductance <= 0) break;
+        int next = std::max(1, static_cast<int>(std::round(numberTurnsPrimary * std::sqrt(desiredMagnetizingInductance / inductance))));
+        if (next == numberTurnsPrimary) break;
+        numberTurnsPrimary = next;
+    }
+    // Ensure the operating inductance actually clears the target (integer
+    // rounding and real permeability rolloff can leave it just under).
+    for (int bump = 0; bump < 100; ++bump) {
+        double inductance = inductanceAtTurns(numberTurnsPrimary);
+        if (inductance <= 0 || inductance >= desiredMagnetizingInductance) break;
+        numberTurnsPrimary += 1;
     }
 
     return std::max(1, numberTurnsPrimary);

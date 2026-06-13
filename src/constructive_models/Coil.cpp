@@ -4959,8 +4959,16 @@ bool Coil::wind_by_round_turns() {
                 wireRadius = windingWindowRadialHeight - layer.get_coordinates()[0];
             }
             double wireAngle = wound_distance_to_angle(wireHeight, wireRadius);
-            if (_strict && (wireRadius <= 0 || wireAngle > 180 || std::isnan(wireAngle))) {
-                // Turns won't fit 
+            // Physically-impossible placement is never a valid "loose fit": a
+            // non-positive winding radius means the layer sits at or past the
+            // toroid centre, and wireAngle > 180 (or NaN) means a single turn's
+            // chord exceeds the diameter at this radius. Either way the wire
+            // cannot be laid here, so reject regardless of _strict — otherwise
+            // the non-strict adviser path emits turns at negative radii with a
+            // 360 deg fallback angle that pile onto adjacent windings and only
+            // get caught downstream by the collision check.
+            if (wireRadius <= 0 || wireAngle > 180 || std::isnan(wireAngle)) {
+                // Turns won't fit
                 return false;
             }
 

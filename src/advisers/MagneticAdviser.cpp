@@ -500,6 +500,16 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 if (!sectionsOpt || sectionsOpt->empty()) {
                     continue;
                 }
+                // A candidate whose turns never wound (sections laid out but
+                // turn placement bailed — e.g. a toroid whose turns can't
+                // physically fit) must not enter the result pool: downstream
+                // simulate()/painter throw COIL_NOT_PROCESSED on the missing
+                // turns. The retry-without-toroids loop below already applies
+                // this same guard; the main loop was missing it, so an
+                // unwindable core leaked through as a turns-less magnetic.
+                if (!mas.get_magnetic().get_coil().get_turns_description()) {
+                    continue;
+                }
                 size_t numberSections = sectionsOpt->size();
 
                 double margin = 0;

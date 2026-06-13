@@ -306,7 +306,7 @@ namespace {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, -1, desiredMagnetizingInductance, gapping,
                                 coreShape, coreMaterial, core, winding, inputs);
 
-        double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs);
+        double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, winding, &inputs);
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(numberTurns, max_error * expectedValue));
     }
@@ -333,7 +333,7 @@ namespace {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, -1, desiredMagnetizingInductance, gapping,
                                 coreShape, coreMaterial, core, winding, inputs);
 
-        double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs);
+        double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, winding, &inputs);
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(numberTurns, max_error * expectedValue));
     }

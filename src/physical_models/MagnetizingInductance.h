@@ -51,7 +51,7 @@ class MagnetizingInductance {
                                                                       GappingType gappingType,
                                                                       size_t decimals = 4);
 
-    int calculate_number_turns_from_gapping_and_inductance(Core core, Inputs* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
+    int calculate_number_turns_from_gapping_and_inductance(Core core, Coil coil, Inputs* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
     /**
      * @brief Calculate gap length to prevent saturation given current and target B-field

@@ -619,7 +619,7 @@ void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, dou
                     currentGap = newGap;
                     // Recalculate turns for the new gap to maintain inductance
                     double newTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
-                        core, &inputs, DimensionalValues::MINIMUM);
+                        core, (*magneticsWithScoring)[i].first.get_coil(), &inputs, DimensionalValues::MINIMUM);
                     (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(newTurns);
                 }
             }

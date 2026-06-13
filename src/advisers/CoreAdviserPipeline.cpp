@@ -411,8 +411,19 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     std::vector<std::pair<Mas, double>> masWithScoring;
 
     for (const auto& [magnetic, scoring] : magneticsWithScoring) {
-        auto mas = post_process_core(magnetic, inputs);
-        masWithScoring.push_back({mas, scoring});
+        try {
+            auto mas = post_process_core(magnetic, inputs);
+            masWithScoring.push_back({mas, scoring});
+        } catch (const std::exception& e) {
+            // A scored core that cannot actually host the winding (e.g. a
+            // toroid whose turns don't physically fit) throws during
+            // post-processing — fast_wind() yields no turns, then the ohmic-loss
+            // calculation throws CoilNotProcessedException. Drop that single
+            // core instead of letting the exception abort the entire core
+            // search (which previously discarded every still-feasible core,
+            // including E-cores, after one unwindable toroid).
+            logEntry(std::string("CoreAdviser: dropping core that failed post-processing: ") + e.what(), "CoreAdviser", 2);
+        }
     }
 
     return masWithScoring;
@@ -521,8 +532,19 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     std::vector<std::pair<Mas, double>> masWithScoring;
 
     for (const auto& [magnetic, scoring] : magneticsWithScoring) {
-        auto mas = post_process_core(magnetic, inputs);
-        masWithScoring.push_back({mas, scoring});
+        try {
+            auto mas = post_process_core(magnetic, inputs);
+            masWithScoring.push_back({mas, scoring});
+        } catch (const std::exception& e) {
+            // A scored core that cannot actually host the winding (e.g. a
+            // toroid whose turns don't physically fit) throws during
+            // post-processing — fast_wind() yields no turns, then the ohmic-loss
+            // calculation throws CoilNotProcessedException. Drop that single
+            // core instead of letting the exception abort the entire core
+            // search (which previously discarded every still-feasible core,
+            // including E-cores, after one unwindable toroid).
+            logEntry(std::string("CoreAdviser: dropping core that failed post-processing: ") + e.what(), "CoreAdviser", 2);
+        }
     }
 
     return masWithScoring;
@@ -786,8 +808,19 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     std::vector<std::pair<Mas, double>> masWithScoring;
 
     for (const auto& [magnetic, scoring] : magneticsWithScoring) {
-        auto mas = post_process_core(magnetic, inputs);
-        masWithScoring.push_back({mas, scoring});
+        try {
+            auto mas = post_process_core(magnetic, inputs);
+            masWithScoring.push_back({mas, scoring});
+        } catch (const std::exception& e) {
+            // A scored core that cannot actually host the winding (e.g. a
+            // toroid whose turns don't physically fit) throws during
+            // post-processing — fast_wind() yields no turns, then the ohmic-loss
+            // calculation throws CoilNotProcessedException. Drop that single
+            // core instead of letting the exception abort the entire core
+            // search (which previously discarded every still-feasible core,
+            // including E-cores, after one unwindable toroid).
+            logEntry(std::string("CoreAdviser: dropping core that failed post-processing: ") + e.what(), "CoreAdviser", 2);
+        }
     }
 
     return masWithScoring;
@@ -871,8 +904,19 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
     std::vector<std::pair<Mas, double>> masWithScoring;
 
     for (const auto& [magnetic, scoring] : magneticsWithScoring) {
-        auto mas = post_process_core(magnetic, inputs);
-        masWithScoring.push_back({mas, scoring});
+        try {
+            auto mas = post_process_core(magnetic, inputs);
+            masWithScoring.push_back({mas, scoring});
+        } catch (const std::exception& e) {
+            // A scored core that cannot actually host the winding (e.g. a
+            // toroid whose turns don't physically fit) throws during
+            // post-processing — fast_wind() yields no turns, then the ohmic-loss
+            // calculation throws CoilNotProcessedException. Drop that single
+            // core instead of letting the exception abort the entire core
+            // search (which previously discarded every still-feasible core,
+            // including E-cores, after one unwindable toroid).
+            logEntry(std::string("CoreAdviser: dropping core that failed post-processing: ") + e.what(), "CoreAdviser", 2);
+        }
     }
 
     return masWithScoring;

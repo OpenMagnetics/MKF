@@ -635,48 +635,89 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 reqCopy.set_magnetizing_inductance(lmSpec);
                 Inputs tempInputs(inputs);
                 tempInputs.set_design_requirements(reqCopy);
-                initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &tempInputs, DimensionalValues::MINIMUM);
+                initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, (*magneticsWithScoring)[i].first.get_coil(), &tempInputs, DimensionalValues::MINIMUM);
             } else {
-                // For inductors/flybacks, calculate from inductance requirement.
-                // calculate_number_turns_from_gapping_and_inductance takes Inputs*
-                // (legacy signature); pass a local mutable alias so the outer
-                // signature can stay const-ref.
+                // Inductors / flybacks. Turns for the target inductance come from
+                // the single source of truth: the canonical inverse of the
+                // inductance model (calculate_number_turns_from_gapping_and_inductance),
+                // which is consistent with the downstream inductance filter.
                 Inputs inputsCopy(inputs);
-                initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputsCopy, DimensionalValues::MINIMUM);
+                initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
+                    core, (*magneticsWithScoring)[i].first.get_coil(), &inputsCopy, DimensionalValues::MINIMUM);
 
-                // Powder cores: the reluctance-based seed rounds N to the
-                // nearest integer at the minimum-L target. Rounding DOWN (and
-                // the operating-point permeability rolloff, which is real for
-                // powder under load) makes the validated inductance land just
-                // below the [min] floor, so the inductance filter rejects every
-                // ungapped powder toroid even when a valid design needs only
-                // one more turn. Ferrite/gapped cores don't have this rolloff
-                // and are pinned by characterization tests, so bump only for
-                // powder: increment N until the OPERATING inductance (the same
-                // value the inductance filter checks) actually meets L_min.
-                if (core.resolve_material().get_material() == MAS::MaterialType::POWDER &&
-                    !inputs.get_operating_points().empty()) {
-                    double minimumInductance = resolve_dimensional_values(
-                        inputs.get_design_requirements().get_magnetizing_inductance(), DimensionalValues::MINIMUM);
-                    if (minimumInductance > 0) {
-                        auto operatingPoint = inputsCopy.get_operating_point(0);
-                        Coil seedCoil = (*magneticsWithScoring)[i].first.get_coil();
-                        const size_t maxBump = 100;  // bounded: prevents runaway on an unreachable target
-                        for (size_t bump = 0; bump < maxBump; ++bump) {
-                            seedCoil.get_mutable_functional_description()[0].set_number_turns(initialNumberTurns);
-                            double operatingInductance;
+                // Energy-storing topologies (flyback / buck / boost / …): the
+                // inductance-determined N minimises turns, which maximises peak flux
+                // density and can leave the design saturating (isat < margin·I_pk).
+                // The CoreAdviser — not the CoilAdviser, which only lays out turns and
+                // never re-gaps — owns the final (N, gap), so size them here against the
+                // GAP-AWARE saturation current (Magnetic::calculate_saturation_current,
+                // the very identity the inductance filter's isat gate and the realism
+                // gate use). Intervene only when the as-seeded design actually saturates
+                // (zero perturbation otherwise); then raise N — re-solving the gap to
+                // hold the target L, so at fixed L isat rises ∝ N — until it clears the
+                // margin, and persist that exact (N, gap). Powder toroids (shape T) take
+                // no discrete gap and keep the seed.
+                if (isEnergyStoring && core.get_shape_family() != CoreShapeFamily::T && !inputs.get_operating_points().empty()) {
+                    auto operatingPoint = inputsCopy.get_operating_point(0);
+                    double peakCurrent = 0;
+                    for (auto& op : inputs.get_operating_points()) {
+                        auto exc = Inputs::get_primary_excitation(op);
+                        if (exc.get_current() && exc.get_current()->get_processed() && exc.get_current()->get_processed()->get_peak()) {
+                            peakCurrent = std::max(peakCurrent, std::abs(exc.get_current()->get_processed()->get_peak().value()));
+                        }
+                    }
+                    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+                    double requiredIsat = settings.get_core_adviser_saturation_margin() * peakCurrent;
+
+                    std::optional<double> seededIsat;
+                    if (peakCurrent > 0 && requiredIsat > 0) {
+                        Magnetic seeded = (*magneticsWithScoring)[i].first;
+                        seeded.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(std::llround(initialNumberTurns)));
+                        try { seededIsat = seeded.calculate_saturation_current(temperature); }
+                        catch (const std::exception&) { seededIsat = std::nullopt; }
+                    }
+
+                    if (seededIsat && seededIsat.value() > 0 && seededIsat.value() < requiredIsat) {
+                        Inputs lmInputs;
+                        lmInputs.set_design_requirements(inputs.get_design_requirements());
+                        auto regapAndIsat = [&](double n, Core& outCore) -> std::optional<double> {
+                            Coil tempCoil = (*magneticsWithScoring)[i].first.get_coil();
+                            tempCoil.get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(std::llround(n)));
+                            outCore = core;
                             try {
-                                auto inductanceOutput = magnetizingInductance
-                                    .calculate_inductance_from_number_turns_and_gapping(core, seedCoil, &operatingPoint);
-                                operatingInductance = resolve_dimensional_values(inductanceOutput.get_magnetizing_inductance());
-                            }
-                            catch (const std::exception&) {
-                                break;  // can't evaluate this candidate; leave the seed and let the filter reject it
-                            }
-                            if (operatingInductance >= minimumInductance) {
-                                break;
-                            }
-                            initialNumberTurns += 1;
+                                auto gaps = magnetizingInductance.calculate_gapping_from_number_turns_and_inductance(outCore, tempCoil, &lmInputs, GappingType::GROUND);
+                                if (gaps.empty()) return std::nullopt;
+                                outCore.set_gapping(gaps);
+                                outCore.process_gap();
+                            } catch (const std::exception&) { return std::nullopt; }
+                            Magnetic tm = (*magneticsWithScoring)[i].first;
+                            tm.set_core(outCore);
+                            tm.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(std::llround(n)));
+                            try { return tm.calculate_saturation_current(temperature); }
+                            catch (const std::exception&) { return std::nullopt; }
+                        };
+
+                        double n = initialNumberTurns;
+                        double isatAtN = seededIsat.value();
+                        Core acceptedCore;
+                        bool accepted = false;
+                        const size_t maxSatSteps = 30;
+                        for (size_t step = 0; step < maxSatSteps; ++step) {
+                            double nextN = std::ceil(n * (requiredIsat / isatAtN));
+                            if (std::llround(nextN) <= std::llround(n)) nextN = n + 1;
+                            n = nextN;
+                            Core trialCore;
+                            auto isat = regapAndIsat(n, trialCore);
+                            if (!isat || isat.value() <= 0) break;
+                            accepted = true;
+                            acceptedCore = trialCore;
+                            isatAtN = isat.value();
+                            if (isatAtN >= requiredIsat) break;
+                        }
+                        if (accepted) {
+                            initialNumberTurns = n;
+                            core = acceptedCore;
+                            (*magneticsWithScoring)[i].first.set_core(core);
                         }
                     }
                 }
