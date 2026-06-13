@@ -28,6 +28,11 @@
 
 namespace OpenMagnetics {
 
+// maximum_allowed_magnetic_flux_density() — the single source of truth for the
+// gapping code's "maximum allowed peak flux density" target — lives in
+// MagneticFilterInternal.h so the CoreAdviserDataset turn seeder uses the SAME
+// conservative ceiling (min(1/margin, maxProportion)) and the two cannot drift.
+
 void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     MagneticEnergy magneticEnergy;
     
@@ -105,7 +110,7 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
                     continue;
                 }
             }
-            double bSatTarget = realisticBsat * std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation); // Use configured proportion of Bsat for safety margin
+            double bSatTarget = maximum_allowed_magnetic_flux_density(realisticBsat);
             
             // Calculate gap based on energy storage requirement
             double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], realisticBsat, requiredMagneticEnergy), 5);
@@ -185,16 +190,8 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
     }
     double realisticBsat = core.get_magnetic_flux_density_saturation(opTemp, false);
 
-    // Energy-storing topologies use Bsat/margin so isat >= margin * ipeak.
-    // Transformer topologies keep the legacy 70% proportion (they don't
-    // store energy, so isat margin is not the binding constraint).
-    auto topology = inputs.get_design_requirements().get_topology();
-    double bsatProportion = is_energy_storing_topology(topology)
-        ? 1.0 / settings.get_core_adviser_saturation_margin()
-        : defaults.maximumProportionMagneticFluxDensitySaturation;
-
     // 1. Calculate minimum gap: energy storage requirement
-    double maxAllowedB = realisticBsat * bsatProportion;
+    double maxAllowedB = maximum_allowed_magnetic_flux_density(realisticBsat);
     double minGap = magneticEnergy.calculate_gap_length_by_magnetic_energy(
         core.get_gapping()[0], maxAllowedB, requiredMagneticEnergy);
     constraints.minGap = minGap;
@@ -215,9 +212,9 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
         constraints.maxGap = constraints.minGap;
     }
 
-    // 3. Calculate saturation constraint gap
+    // 3. Calculate saturation constraint gap (same limit as the energy-gap target)
     MagnetizingInductance magnetizingInductance;
-    double targetB = realisticBsat * bsatProportion;
+    double targetB = maxAllowedB;
     double peakCurrent = get_peak_current(inputs);
     
     // Account for stacked cores - current is divided among stacks
@@ -530,13 +527,14 @@ void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, dou
             continue;
         }
 
-        // Target safe operating flux for this core (material Bsat curve at opTemp,
-        // capped by std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation)).
+        // Target safe operating flux for this core (topology-aware, single source
+        // of truth — see maximum_allowed_magnetic_flux_density).
         double opTemp = 25.0;
         for (auto& op : inputs.get_operating_points()) {
             opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
         }
-        double maxB = core.get_magnetic_flux_density_saturation(opTemp, /*proportion=*/true);
+        double rawBsat = core.get_magnetic_flux_density_saturation(opTemp, /*proportion=*/false);
+        double maxB = maximum_allowed_magnetic_flux_density(rawBsat);
 
         // Get current gap
         double currentGap = 0;
@@ -693,8 +691,10 @@ double CoreAdviser::calculate_gap_cost_analytical(double gap, Inputs& inputs, Co
     // Calculate flux density using MagnetizingInductance method
     double bPeak = magnetizingInductance.calculate_flux_density_peak(core, turns, peakCurrent, temperature, frequency);
     
-    // Safe operating flux cap for this material at the operating temperature.
-    double maxAllowedB = core.get_magnetic_flux_density_saturation(temperature, /*proportion=*/true);
+    // Safe operating flux for this material at the operating temperature
+    // (topology-aware, single source of truth).
+    double rawBsat = core.get_magnetic_flux_density_saturation(temperature, /*proportion=*/false);
+    double maxAllowedB = maximum_allowed_magnetic_flux_density(rawBsat);
 
     // Check saturation constraint
     if (bPeak > maxAllowedB) {
@@ -749,7 +749,7 @@ std::pair<double, double> CoreAdviser::optimize_gap_and_turns_binary_search(Inpu
         DimensionalValues::NOMINAL);
     double peakCurrent = get_peak_current(inputs);
     double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
-    double maxAllowedB = bSat * std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation);
+    double maxAllowedB = maximum_allowed_magnetic_flux_density(bSat);
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     
     // Define gap search bounds
@@ -810,7 +810,7 @@ std::pair<double, double> CoreAdviser::optimize_gap_and_turns_binary_search(Inpu
     if (finalCost >= std::numeric_limits<double>::max() / 2) {
         // No valid solution found in search range
         // Try using the analytical method from Option 1 as fallback
-        double maxB = bSat * std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation);
+        double maxB = maximum_allowed_magnetic_flux_density(bSat);
         auto [fallbackGap, fallbackTurns] = magnetizingInductance.calculate_optimal_gap_and_turns(
             core, &inputs, maxB, peakCurrent);
         return {fallbackGap, fallbackTurns};
@@ -857,8 +857,8 @@ void CoreAdviser::add_gapping_and_turns_analytical(std::vector<std::pair<Magneti
         
         // Get Bsat for this material
         double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
-        double maxAllowedB = bSat * std::min(1.0 / settings.get_core_adviser_saturation_margin(), defaults.maximumProportionMagneticFluxDensitySaturation);
-        
+        double maxAllowedB = maximum_allowed_magnetic_flux_density(bSat);
+
         // Use Option 1: Direct analytical calculation (O(1) per core)
         auto [optimalGap, optimalTurns] = magnetizingInductance.calculate_optimal_gap_and_turns(
             core, &inputs, maxAllowedB, peakCurrent);

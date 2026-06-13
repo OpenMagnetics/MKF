@@ -536,13 +536,14 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
         if (initialNumberTurns == 1) {
             if (isTransformer) {
                 // Feasibility seed: fewest turns that keep B_peak under the
-                // material's safe operating flux. `get_magnetic_flux_density_
-                // saturation(temp, /*proportion=*/true)` already applies
-                // `defaults.maximumProportionMagneticFluxDensitySaturation` —
-                // pass it straight through. The loss filter refines N upward
-                // toward the loss optimum later.
+                // material's safe operating flux. Use the shared single-source
+                // ceiling maximum_allowed_magnetic_flux_density() — the smaller
+                // of Bsat/margin and the maximumProportion cap — so the seed
+                // sizes to exactly the same limit the gapping code targets (they
+                // must not diverge). The loss filter refines N upward toward the
+                // loss optimum later.
                 double bSatRaw = core.get_magnetic_flux_density_saturation(transformerTemperature, false);
-                double bMax = bSatRaw / settings.get_core_adviser_saturation_margin();
+                double bMax = maximum_allowed_magnetic_flux_density(bSatRaw);
                 double nFromSaturation = magnetizingInductance
                     .calculate_turns_from_volt_seconds_and_max_flux_density(core, maxVoltSeconds, bMax);
                 initialNumberTurns = nFromSaturation > 0 ? nFromSaturation : 5;

@@ -147,6 +147,21 @@ inline bool is_inductor(const Inputs& inputs) {
     return !minimumOnly;
 }
 
+// Single source of truth for the saturation-safe "maximum allowed peak flux
+// density" used as the SIZING target by the CoreAdviser gapping code
+// (gap/turn selection, refinement, golden-section / binary-search) AND by the
+// CoreAdviserDataset transformer turn seeder. Conservative ceiling: the smaller
+// of the Maniktala saturation-margin limit (Bsat/margin) and the
+// maximumProportion flux cap, so the gapping and the seeder size to exactly the
+// SAME limit and cannot drift (previously the seeder used Bsat/margin = 0.833
+// while the gapping capped at min(1/margin, maxProportion) = 0.7). `rawBsat`
+// must be the proportion=false saturation flux at the operating temperature.
+// The saturation filter independently rejects Bpeak·margin > Bsat.
+inline double maximum_allowed_magnetic_flux_density(double rawBsat) {
+    return rawBsat * std::min(1.0 / settings.get_core_adviser_saturation_margin(),
+                              defaults.maximumProportionMagneticFluxDensitySaturation);
+}
+
 // Phase 3 (F6): PQI / UI shapes use integrated windings whose layout is
 // not produced by fast_wind(), so the loss / impedance filters take a
 // per-shape policy branch. Centralised here so every site uses the same
