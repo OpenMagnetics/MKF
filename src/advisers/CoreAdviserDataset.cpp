@@ -582,8 +582,14 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 // if AL_ungapped is too high for the target Lm, which
                 // is the correct behaviour).
                 auto lmDim = inputs.get_design_requirements().get_magnetizing_inductance();
-                bool hasNominalLm = lmDim.get_nominal().has_value();
-                bool hasMaxLm = lmDim.get_maximum().has_value();
+                // Lm = 0 means "not specified" (same convention as
+                // pre_process_inputs in CoreAdviserPipeline.cpp). Solving the
+                // gap for a literal 0 H target makes the needed reluctance
+                // infinite: the search grows the gap until it no longer fits
+                // any column and every candidate dies with "Gap Area is not
+                // set" (Test_FastAdviser_LLC_Lm_Zero).
+                bool hasNominalLm = lmDim.get_nominal().has_value() && lmDim.get_nominal().value() > 0;
+                bool hasMaxLm = lmDim.get_maximum().has_value() && lmDim.get_maximum().value() > 0;
                 if ((hasNominalLm || hasMaxLm) && core.get_shape_family() != CoreShapeFamily::T) {
                     // Build a temporary coil with the saturation-safe N for the
                     // gap calculation. The wire is unimportant; only N matters
@@ -637,6 +643,43 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 // signature can stay const-ref.
                 Inputs inputsCopy(inputs);
                 initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputsCopy, DimensionalValues::MINIMUM);
+
+                // Powder cores: the reluctance-based seed rounds N to the
+                // nearest integer at the minimum-L target. Rounding DOWN (and
+                // the operating-point permeability rolloff, which is real for
+                // powder under load) makes the validated inductance land just
+                // below the [min] floor, so the inductance filter rejects every
+                // ungapped powder toroid even when a valid design needs only
+                // one more turn. Ferrite/gapped cores don't have this rolloff
+                // and are pinned by characterization tests, so bump only for
+                // powder: increment N until the OPERATING inductance (the same
+                // value the inductance filter checks) actually meets L_min.
+                if (core.resolve_material().get_material() == MAS::MaterialType::POWDER &&
+                    !inputs.get_operating_points().empty()) {
+                    double minimumInductance = resolve_dimensional_values(
+                        inputs.get_design_requirements().get_magnetizing_inductance(), DimensionalValues::MINIMUM);
+                    if (minimumInductance > 0) {
+                        auto operatingPoint = inputsCopy.get_operating_point(0);
+                        Coil seedCoil = (*magneticsWithScoring)[i].first.get_coil();
+                        const size_t maxBump = 100;  // bounded: prevents runaway on an unreachable target
+                        for (size_t bump = 0; bump < maxBump; ++bump) {
+                            seedCoil.get_mutable_functional_description()[0].set_number_turns(initialNumberTurns);
+                            double operatingInductance;
+                            try {
+                                auto inductanceOutput = magnetizingInductance
+                                    .calculate_inductance_from_number_turns_and_gapping(core, seedCoil, &operatingPoint);
+                                operatingInductance = resolve_dimensional_values(inductanceOutput.get_magnetizing_inductance());
+                            }
+                            catch (const std::exception&) {
+                                break;  // can't evaluate this candidate; leave the seed and let the filter reject it
+                            }
+                            if (operatingInductance >= minimumInductance) {
+                                break;
+                            }
+                            initialNumberTurns += 1;
+                        }
+                    }
+                }
             }
         }
         if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
