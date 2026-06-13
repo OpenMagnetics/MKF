@@ -525,6 +525,44 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
                 processedCoils++;
 
+                // Final saturation gate on the ASSEMBLED magnetic. score_magnetics
+                // only scores (it discards the validity flag), and the CoreAdviser
+                // saturation gate ran on the SEED turns — but the coil adviser /
+                // loss optimisation can finalise a higher turn count, lowering the
+                // gap-aware saturation current below the margin. Drop inductor
+                // designs whose FINAL isat no longer clears margin * ipeak (the same
+                // identity downstream realism checks use). Transformers are excluded:
+                // their flux is voltage-driven and more turns LOWERS B.
+                {
+                    auto& reqs = mas.get_mutable_inputs().get_design_requirements();
+                    auto saturationTopology = reqs.get_topology();
+                    bool isInductor = windings_on_single_isolation_side(reqs.get_isolation_sides())
+                                      || (saturationTopology.has_value() && is_energy_storing_topology(saturationTopology));
+                    if (isInductor) {
+                        double saturationMargin = settings.get_core_adviser_saturation_margin();
+                        bool saturates = false;
+                        for (auto& op : mas.get_mutable_inputs().get_operating_points()) {
+                            auto excitation = op.get_excitations_per_winding()[0];
+                            if (!excitation.get_current() || !excitation.get_current()->get_processed()
+                                || !excitation.get_current()->get_processed()->get_peak()) {
+                                continue;
+                            }
+                            double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
+                            double temperature = op.get_conditions().get_ambient_temperature();
+                            double saturationCurrent = mas.get_mutable_magnetic().calculate_saturation_current(temperature);
+                            if (saturationCurrent < saturationMargin * currentPeak) {
+                                saturates = true;
+                                break;
+                            }
+                        }
+                        if (saturates) {
+                            logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference()
+                                     + "' — final saturation current below margin", "MagneticAdviser", 2);
+                            continue;
+                        }
+                    }
+                }
+
                 masData.push_back(mas);
                 if (masData.size() >= globalCandidateCap) {
                     logEntry("Reached globalCandidateCap (" + std::to_string(globalCandidateCap) + ")", "MagneticAdviser", 2);
