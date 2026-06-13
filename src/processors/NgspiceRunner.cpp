@@ -26,6 +26,9 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <cstring>
+#include <cerrno>
+#include <vector>
 #endif
 
 namespace OpenMagnetics {
@@ -204,12 +207,22 @@ std::string NgspiceRunner::create_temp_directory() {
     char tempPath[MAX_PATH];
     GetTempPathA(MAX_PATH, tempPath);
     tempDir = std::string(tempPath) + "ngspice_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-    _mkdir(tempDir.c_str());
+    if (_mkdir(tempDir.c_str()) != 0) {
+        throw std::runtime_error("Failed to create temporary directory for ngspice: " + tempDir);
+    }
 #else
-    tempDir = "/tmp/ngspice_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-    mkdir(tempDir.c_str(), 0755);
+    // mkdtemp creates a uniquely-named directory atomically with 0700
+    // permissions, avoiding the predictable-name/symlink race and the silently
+    // ignored mkdir failure of the old "/tmp/ngspice_<counter>" + mkdir(0755).
+    std::string templatePath = "/tmp/ngspice_XXXXXX";
+    std::vector<char> templateBuffer(templatePath.begin(), templatePath.end());
+    templateBuffer.push_back('\0');
+    if (mkdtemp(templateBuffer.data()) == nullptr) {
+        throw std::runtime_error("Failed to create temporary directory for ngspice: " + std::string(std::strerror(errno)));
+    }
+    tempDir = templateBuffer.data();
 #endif
-    
+
     return tempDir;
 }
 
