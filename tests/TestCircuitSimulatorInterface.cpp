@@ -2427,7 +2427,8 @@ TEST_CASE("Converter_Basic_Simulation_Tests", "[converter][basic-simulation][smo
         inputVoltage.set_nominal(12.0);
         buck.set_input_voltage(inputVoltage);
         buck.set_diode_voltage_drop(0.5);
-        
+        buck.set_efficiency(0.9);  // efficiency is required (sets the duty cycle); no silent default
+
         auto opPoint = BaseOperatingPoint();
         opPoint.set_output_voltages({5.0});
         opPoint.set_output_currents({3.0});
@@ -2448,7 +2449,8 @@ TEST_CASE("Converter_Basic_Simulation_Tests", "[converter][basic-simulation][smo
         inputVoltage.set_nominal(5.0);
         boost.set_input_voltage(inputVoltage);
         boost.set_diode_voltage_drop(0.5);
-        
+        boost.set_efficiency(0.9);  // efficiency is required (sets the duty cycle); no silent default
+
         auto opPoint = BaseOperatingPoint();
         opPoint.set_output_voltages({12.0});
         opPoint.set_output_currents({1.0});
