@@ -1151,6 +1151,46 @@ double get_value_or(T&& val, double default_val) {
             Vo = n * outputVoltage;               // reflected output (pri-referred)
         }
 
+        // -------------------------------------------------------------------
+        // Feasibility pre-check (abt#1). A resonant CLLC tank operates around
+        // its load-independent point, where the primary-referred voltage gain
+        // is exactly 1.0; the turns ratio absorbs the nominal step-up/down and
+        // the tank only trims it over a narrow window. So a well-matched design
+        // has M_req = |Vo|/|Vi| = (k_bridge·)n·Vout/Vin ≈ 1 (≈2 for a
+        // half-bridge, where the bridge factor halves Vi). If M_req is far
+        // outside the band the tank can reach, NO bounded power-transferring
+        // steady state exists: the solver converges only to a fabricated
+        // zero-power waveform, which the observable-residual gate (commit
+        // 25170b5) no longer rejects — it now passes with a tiny finite
+        // residual. Throw a specific, actionable error instead of emitting
+        // fabricated zeros (CLAUDE.md no-fallback).
+        //
+        // The reported failure is a turns ratio inconsistent with Vin/Vout
+        // (e.g. n=1 for a 48→12 V 4:1 step-down gives M_req≈0.25, well below
+        // anything a resonant tank supplies). The [0.5, 3.0] band clears every
+        // matched full-bridge (M≈0.9–1.1) and half-bridge (M≈1.9–2.1) design
+        // across its input range while rejecting the 4×-off turns ratio.
+        double M_req = (std::abs(Vi) > 0.0)
+            ? std::abs(Vo) / std::abs(Vi)
+            : std::numeric_limits<double>::infinity();
+        if (M_req < 0.5 || M_req > 3.0) {
+            double gainAtFsw = get_voltage_gain(switchingFrequency, params);
+            std::string msg =
+                "CLLC: operating point is infeasible for this resonant tank — the "
+                "requested conversion gain n*Vout/Vin = " + std::to_string(M_req) +
+                " is outside the range a resonant tank can supply (it operates near "
+                "unity gain; tank FHA gain at fsw=" + std::to_string(switchingFrequency) +
+                " Hz is " + std::to_string(gainAtFsw) + "). The solver would only "
+                "converge to a fabricated zero-power waveform. Vin=" +
+                std::to_string(inputVoltage) + " V, Vout=" + std::to_string(outputVoltage) +
+                " V, n=" + std::to_string(n) + ".";
+            if (!isReverse && outputVoltage > 0.0) {
+                msg += " For this conversion the turns ratio should be ~Vin/Vout = " +
+                       std::to_string(inputVoltage / outputVoltage) + ".";
+            }
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, msg);
+        }
+
         double period = 1.0 / switchingFrequency;
         double Thalf  = period / 2.0;
         // Dead time is not represented by the TDA model (would require a 5th
@@ -1353,6 +1393,8 @@ double get_value_or(T&& val, double default_val) {
         // left all-zero, which the freewheel propagator turns into a benign-
         // looking ZERO-POWER waveform that is silently emitted as if valid. Throw
         // on that (non-finite residual) instead of returning fabricated zeros.
+        // The infeasible-conversion-ratio case (turns ratio inconsistent with
+        // Vin/Vout) is caught earlier by the M_req feasibility pre-check.
         //
         // A *finite* residual means a seed did win (non-degenerate waveform); the
         // asymmetric CLLC analytical TDA model is known to plateau well above the
@@ -1362,7 +1404,7 @@ double get_value_or(T&& val, double default_val) {
         // zero-power bug. residual == -1.0 is the sanctioned symmetric-path seed
         // fallback.
         if (residual != -1.0 && !std::isfinite(residual)) {
-            throw std::runtime_error(
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS,
                 "CLLC: steady-state solver found no converging seed (all multi-start seeds failed); "
                 "the all-zero state would emit a fabricated zero-power waveform. Vi=" +
                 std::to_string(Vi) + " V, Vo=" + std::to_string(Vo) + " V.");

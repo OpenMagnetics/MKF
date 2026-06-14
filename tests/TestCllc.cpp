@@ -122,6 +122,47 @@ namespace {
     }
 
     // =========================================================================
+    // Regression (abt#1): an infeasible operating point — a turns ratio
+    // inconsistent with Vin/Vout (n=1 for a 48->12 V, 4:1 step-down) — has no
+    // power-transferring steady state (required tank gain n*Vout/Vin = 0.25 is
+    // below the tank's asymptotic minimum gain ~0.69). MKF must throw a clear
+    // INVALID_DESIGN_REQUIREMENTS error naming the gain mismatch and the correct
+    // turns ratio, NOT silently emit a fabricated zero-power waveform. The
+    // observable-only convergence gate (commit 25170b5) would otherwise accept
+    // the near-zero state as "converged".
+    // =========================================================================
+    TEST_CASE("Test_CllcConverter_Infeasible_TurnsRatio_Throws",
+              "[converter-model][cllc-topology][infeasible][smoke-test]") {
+        json j;
+        j["inputVoltage"] = {{"minimum", 36}, {"maximum", 60}, {"nominal", 48}};
+        j["maxSwitchingFrequency"] = 300000;
+        j["minSwitchingFrequency"] = 80000;
+        j["efficiency"] = 0.95;
+        j["operatingPoints"] = json::array();
+        json op;
+        op["outputVoltages"] = {12.0};
+        op["outputCurrents"] = {5.0};
+        op["switchingFrequency"] = 150000.0;
+        op["ambientTemperature"] = 25.0;
+        op["powerFlow"] = "forward";
+        j["operatingPoints"].push_back(op);
+
+        OpenMagnetics::CllcConverter cllc(j);
+        // Forcing n=1 on a 4:1 step-down must be rejected as infeasible.
+        REQUIRE_THROWS_AS(cllc.process_operating_points({1.0}, 1e-3),
+                          InvalidInputException);
+
+        // Sanity: the physically-correct turns ratio (n = Vin/Vout = 4) converges
+        // and delivers real power.
+        auto params = cllc.calculate_resonant_parameters();
+        REQUIRE_THAT(params.turnsRatio, Catch::Matchers::WithinAbs(4.0, 0.05));
+        std::vector<OperatingPoint> ops;
+        REQUIRE_NOTHROW(ops = cllc.process_operating_points({params.turnsRatio},
+                                                            params.magnetizingInductance));
+        REQUIRE(!ops.empty());
+    }
+
+    // =========================================================================
     // TEST 1: Forward Mode at Resonance (fs = fr)
     // =========================================================================
 
