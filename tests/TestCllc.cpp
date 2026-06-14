@@ -1542,3 +1542,30 @@ namespace {
     }
 
 } // anonymous namespace
+
+// Captured from the WebFrontend CLLC scenario suite (2026-06-14): 400 V in,
+// 400 V / 8.25 A out, fr = 120 kHz, n = 1, Lm = 200 µH. The steady-state Newton
+// solve must converge to at or below MKF's own gate floor across the input-
+// voltage corners; on capture the residual was ~2.44 A / 1.39 A and the solver
+// printed a non-convergence warning the frontend treats as an error.
+TEST_CASE("Test_Cllc_FrontendRepro_SteadyState_Converges", "[converter-model][cllc-topology][frontend-repro]") {
+    const std::string CLLC_INPUT = R"JSON(
+{"inputVoltage":{"nominal":400,"tolerance":0.1},"bridgeType":"fullBridge","minSwitchingFrequency":80000,"maxSwitchingFrequency":200000,"resonantFrequency":120000,"qualityFactor":0.4,"inductanceRatio":5,"integratedResonantInductor1":true,"integratedResonantInductor2":false,"bidirectional":false,"resonantInductorRatio":1,"resonantCapacitorRatio":1,"operatingPoints":[{"outputVoltages":[400],"outputCurrents":[8.25],"switchingFrequency":120000,"ambientTemperature":25,"powerFlow":"forward"}],"desiredTurnsRatios":[1],"desiredMagnetizingInductance":0.0002,"numberOfPeriods":2}
+)JSON";
+    constexpr double convergenceFloorA = 0.5;  // Cllc.cpp gate floor
+
+    OpenMagnetics::CllcConverter cllc(json::parse(CLLC_INPUT));
+    REQUIRE_NOTHROW(cllc.process_design_requirements());
+
+    const std::vector<double> turnsRatios = {1.0};   // from desiredTurnsRatios
+    const double magnetizingInductance = 200e-6;     // from desiredMagnetizingInductance
+    REQUIRE_NOTHROW(cllc.process_operating_points(turnsRatios, magnetizingInductance));
+
+    const double residual = cllc.get_last_steady_state_residual();
+    INFO("CLLC last steady-state residual = " << residual << " A (gate floor "
+         << convergenceFloorA << " A; observed on capture ~2.44 A / 1.39 A)");
+    for (double r : cllc.get_per_op_steady_state_residual()) {
+        CHECK(r <= convergenceFloorA);
+    }
+    CHECK(residual <= convergenceFloorA);
+}

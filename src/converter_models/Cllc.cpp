@@ -1177,13 +1177,14 @@ double get_value_or(T&& val, double default_val) {
                                    std::abs(Iload_reflected) * 1.5);
         CllcStateVector x0_seed{ -Ires_est, -Im_pk_est, 0.0 };
 
-        // LIP perturbation (mirrors LLC) to avoid the singular-Jacobian ridge
-        // when Vi ≈ Vo and fsw ≈ fr.
+        // No LIP perturbation for the 4-state path: that trick (mirrored from
+        // LLC) only existed to keep a Newton Jacobian non-singular at Vi ≈ Vo,
+        // but this path uses the damped-Picard solver, which inverts no Jacobian.
+        // Perturbing Vi here only injects a ~0.5% inconsistency between the seed
+        // (solved at Vi·1.005) and the waveform (re-propagated at the true Vi),
+        // which shows up directly as steady-state antisymmetry residual. Solve at
+        // the true Vi so the converged state is self-consistent.
         double Vi_solver = Vi;
-        double denom_vo = std::max(std::abs(Vi), std::abs(Vo));
-        if (denom_vo > 0 && std::abs(Vi - Vo) / denom_vo < 0.005) {
-            Vi_solver = Vi * 1.005;
-        }
 
         // -------------------------------------------------------------------
         // ASYMMETRIC vs SYMMETRIC TANK BRANCH
@@ -1287,6 +1288,24 @@ double get_value_or(T&& val, double default_val) {
             // safely and yields a benign no-power waveform.
             // Re-propagate with the authoritative Vi (drop the LIP perturbation).
             segs4 = cllc4_propagate_half_cycle(x0_4, Thalf_eff, Vi, Vo, tp4);
+
+            // Re-measure convergence on the OBSERVABLE states. The 4-state model
+            // tracks the two series resonant caps (vCr1, vCr2) independently, but
+            // the tank only ever sees their SUM (Vc_pos = vCr1 + vCr2 below) — the
+            // common-mode split between the caps is a gauge freedom that does not
+            // affect any emitted waveform. The raw 4-D residual penalizes that
+            // unobservable split, so it can read several "A" (actually volts, the
+            // norm mixes A and V) at the resonant Load-Independent Point even when
+            // the physical waveform is fully converged (and matches SPICE). Gate
+            // and report on the antisymmetry of the observables only: the tank
+            // current, the magnetizing current, and the TOTAL cap voltage.
+            if (!segs4.empty() && residual >= 0.0) {
+                const CllcState4& xe = segs4.back().x_end;
+                double rI1 = xe.iLr1 + x0_4.iLr1;
+                double rIm = xe.iLm  + x0_4.iLm;
+                double rVsum = (xe.vCr1 + xe.vCr2) + (x0_4.vCr1 + x0_4.vCr2);
+                residual = std::sqrt(rI1 * rI1 + rIm * rIm + rVsum * rVsum);
+            }
             // Sample 4-state segments, then collapse vCr1+vCr2 → Vc_pos so
             // the downstream symmetric-aware code path works unchanged.
             std::vector<double> vCr1_pos(N + 1, 0.0), vCr2_pos(N + 1, 0.0);
