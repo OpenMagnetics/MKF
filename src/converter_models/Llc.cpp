@@ -943,9 +943,46 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     if (denom_vo > 0 && std::abs(Vi - Vo) / denom_vo < 0.005) {
         Vi_solver = Vi * 1.005;
     }
-    LlcStateVector x0 = solve_steady_state(x0_seed, Thalf_eff,
-                                           Vi_solver, Vo, Ls, L, C,
-                                           segments, residual);
+    // Multi-start: the half-cycle steady-state map is piecewise (the sub-state
+    // switching sequence depends on x0), so ‖F‖ has several basins. At the
+    // Load-Independent Point the basin around the default seed can leave a large
+    // antisymmetry residual. Seed the solver from several physically-plausible
+    // start points — scaled tank-current magnitudes and non-zero cap-voltage
+    // phases (vC0 ≈ ±I·Z, the resonant 90° quadrature) — and keep the result
+    // with the lowest residual. Each individual solve already returns its best
+    // iterate, so this only ever lowers the residual.
+    double Zr = (C > 0) ? std::sqrt(Ls / C) : 0.0;
+    std::vector<LlcStateVector> seeds = {
+        x0_seed,
+        { -0.7 * Ires_est, -Im_pk_est, 0.0 },
+        { -1.4 * Ires_est, -Im_pk_est, 0.0 },
+        { -Ires_est, -Im_pk_est,  Ires_est * Zr },
+        { -Ires_est, -Im_pk_est, -Ires_est * Zr },
+        {  Ires_est, -Im_pk_est, 0.0 },
+        { -Ires_est,  Im_pk_est, 0.0 },
+    };
+    LlcStateVector x0 = x0_seed;
+    residual = std::numeric_limits<double>::max();
+    for (const auto& seed : seeds) {
+        std::vector<LlcSubStateSegment> segTry;
+        double rTry = 0.0;
+        LlcStateVector xTry = solve_steady_state(seed, Thalf_eff,
+                                                 Vi_solver, Vo, Ls, L, C,
+                                                 segTry, rTry);
+        // A flagged residual (-1) means the solver bailed; skip it.
+        if (rTry >= 0.0 && rTry < residual) {
+            residual = rTry;
+            x0 = xTry;
+            segments = segTry;
+        }
+        // Short-circuit: the common (off-LIP) case converges to ~0 on the first
+        // seed, so don't pay for the remaining starts. Only the ill-conditioned
+        // LIP basin needs the extra seeds.
+        if (residual < 1e-3) break;
+    }
+    if (segments.empty()) {  // all starts bailed — fall back to the default solve
+        x0 = solve_steady_state(x0_seed, Thalf_eff, Vi_solver, Vo, Ls, L, C, segments, residual);
+    }
 
     // Sanity check: if the solver converged to an unphysical null-space
     // direction, fall back to the FHA closed-form estimate.

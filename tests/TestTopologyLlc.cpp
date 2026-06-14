@@ -2393,3 +2393,27 @@ TEST_CASE("Test_Llc_Spice_Probe_Contract",
     runOne(OpenMagnetics::LlcBridgeType::HALF_BRIDGE,
            OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH, "HB_SW1");
 }
+
+// Captured from the WebFrontend LLC scenario suite (2026-06-14): 400 V in,
+// 48 V / 10.42 A out, fr = 100 kHz, Q = 0.4, Ln = 5, full bridge. The Nielsen
+// TDA steady-state solve must converge to at or below MKF's own gate floor
+// (max(0.5, 0.02*|Iload|)); on capture the residual was ~4.32 A and the solver
+// printed a non-convergence warning the frontend treats as an error.
+TEST_CASE("Test_Llc_FrontendRepro_NielsenTDA_Converges", "[converter-model][llc-topology][frontend-repro]") {
+    const std::string LLC_INPUT = R"JSON(
+{"inputVoltage":{"nominal":400,"tolerance":0.1},"bridgeType":"fullBridge","minSwitchingFrequency":80000,"maxSwitchingFrequency":120000,"resonantFrequency":100000,"qualityFactor":0.4,"inductanceRatio":5,"integratedResonantInductor":true,"rectifierType":"fullBridge","operatingPoints":[{"outputVoltages":[48],"outputCurrents":[10.416666666666666],"switchingFrequency":100000,"ambientTemperature":25}],"numberOfPeriods":2}
+)JSON";
+    constexpr double convergenceFloorA = 0.5;  // Llc.cpp gate floor
+
+    OpenMagnetics::Llc llc(json::parse(LLC_INPUT));
+    llc.set_num_periods_to_extract(2);
+    REQUIRE_NOTHROW(llc.process());
+
+    const double residual = llc.get_last_steady_state_residual();
+    INFO("LLC last steady-state residual = " << residual << " A (gate floor "
+         << convergenceFloorA << " A; observed on capture ~4.32 A)");
+    for (double r : llc.get_per_op_steady_state_residual()) {
+        CHECK(r <= convergenceFloorA);
+    }
+    CHECK(residual <= convergenceFloorA);
+}

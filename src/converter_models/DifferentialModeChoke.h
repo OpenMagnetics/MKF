@@ -78,6 +78,19 @@ public:
     std::vector<OperatingPoint> process_operating_points();
 
     /**
+     * @brief Resolve the peak winding current.
+     *
+     * Returns the explicitly provided peakCurrent when present. Otherwise the
+     * DMC was sized in "help me with the design" mode (impedance + operating
+     * current, no converter peak current), so derive the peak from the operating
+     * current using the supplied, explicit ripple/margin fraction:
+     *     peak = operatingCurrent * (1 + rippleFraction)
+     * Throws [MISSING_DATA] only when neither a peakCurrent nor a positive
+     * operatingCurrent is available — i.e. there is genuinely no current info.
+     */
+    double resolve_peak_current(double rippleFraction) const;
+
+    /**
      * @brief Get the number of windings based on configuration.
      */
     int get_number_of_windings() const {

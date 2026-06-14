@@ -125,6 +125,23 @@ namespace OpenMagnetics {
         return designRequirements;
     }
 
+    double DifferentialModeChoke::resolve_peak_current(double rippleFraction) const {
+        // Explicit peak current always wins.
+        if (get_peak_current().has_value()) {
+            return get_peak_current().value();
+        }
+        // "Help me with the design" flow: no converter peak current is given,
+        // so derive it from the operating (line) current with an explicit ripple
+        // assumption. This is a documented sizing model, not a silent fallback.
+        double operatingCurrent = get_operating_current();
+        if (!(operatingCurrent > 0)) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "DifferentialModeChoke: neither 'peakCurrent' nor a positive "
+                "'operatingCurrent' was provided — cannot size the choke.");
+        }
+        return operatingCurrent * (1.0 + rippleFraction);
+    }
+
     std::vector<OperatingPoint> DifferentialModeChoke::process_operating_points() {
         std::vector<OperatingPoint> operatingPoints;
 
@@ -135,8 +152,11 @@ namespace OpenMagnetics {
 
         double operatingCurrent = get_operating_current();
 
-        // Determine peak current
-        double peakCurrent = require_input(get_peak_current(), "DifferentialModeChoke", "peakCurrent");  // 20% margin if not specified
+        // Determine peak current. If not given explicitly, derive it from the
+        // operating current with a 20% ripple assumption (the value the ripple
+        // calculation below already assumes for the unspecified case).
+        constexpr double kOperatingRippleFraction = 0.20;
+        double peakCurrent = resolve_peak_current(kOperatingRippleFraction);
 
         // Calculate current ripple (difference between peak and operating)
         double currentRipple = peakCurrent - operatingCurrent;
@@ -706,8 +726,11 @@ namespace OpenMagnetics {
                                  cutoffFrequency * cutoffFrequency * inductance);
         }
 
-        // Calculate peak current for saturation requirement
-        double peakCurrent = require_input(get_peak_current(), "DifferentialModeChoke", "peakCurrent");  // 40% margin
+        // Calculate peak current for saturation requirement. If not given
+        // explicitly, derive it from the operating current with a 40% margin
+        // (saturation sizing wants more headroom than the operating ripple).
+        constexpr double kSaturationMarginFraction = 0.40;
+        double peakCurrent = resolve_peak_current(kSaturationMarginFraction);
 
         // Energy storage requirement
         double energyStorage = 0.5 * inductance * peakCurrent * peakCurrent;
