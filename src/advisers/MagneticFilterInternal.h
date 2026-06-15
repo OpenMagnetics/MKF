@@ -263,6 +263,23 @@ inline CoreLossesPick compute_core_losses_with_negative_guard(
         pick.value = pick.output.get_core_losses();
         pick.ok = true;
     } else {
+        // The proprietary model only has formulas for a few manufacturers
+        // (Magnetics/Micrometals/Poco/TDG). Materials characterised solely by a
+        // loss factor or complex permeability — e.g. Fair-Rite suppression
+        // ferrites (75/76/…) — have neither Steinmetz nor a proprietary formula,
+        // so calling the proprietary model would throw MATERIAL_DATA_MISSING.
+        // Treat such a candidate as loss-unscorable (ok=false) instead: the caller
+        // rejects it, and the suppression pipeline's pass-through keeps it as a
+        // candidate (losses aren't its ranking criterion).
+        bool hasProprietaryFormula =
+            std::find(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::MAGNETICS) != methods.end() ||
+            std::find(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::MICROMETALS) != methods.end() ||
+            std::find(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::POCO) != methods.end() ||
+            std::find(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::TDG) != methods.end();
+        if (!hasProprietaryFormula) {
+            pick.ok = false;
+            return pick;
+        }
         pick.output = proprietary->get_core_losses(core, excitation, temperature);
         pick.value = pick.output.get_core_losses();
         pick.ok = pick.value >= 0;

@@ -1739,6 +1739,12 @@ TEST_CASE("Test_CoreAdviserStandardCores_Common_Mode_Choke_Low_Frequency", "[adv
     inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
 
     OperatingPoint operatingPoint;
+    // Common-mode-choke design: declare the topology so the adviser restricts to
+    // toroidal cores (the only geometry giving the tight inter-winding coupling a
+    // CMC needs, and what the TOROIDAL assertions below require). Without it the
+    // Interference-Suppression path treats the query as a generic suppression
+    // inductor and honours use_toroidal_cores.
+    inputs.get_mutable_design_requirements().set_topology(Topologies::COMMON_MODE_CHOKE);
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
@@ -1794,6 +1800,12 @@ TEST_CASE("Test_CoreAdviserStandardCores_Common_Mode_Choke_Low_Frequency_With_Dc
     inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
 
     OperatingPoint operatingPoint;
+    // Common-mode-choke design: declare the topology so the adviser restricts to
+    // toroidal cores (the only geometry giving the tight inter-winding coupling a
+    // CMC needs, and what the TOROIDAL assertions below require). Without it the
+    // Interference-Suppression path treats the query as a generic suppression
+    // inductor and honours use_toroidal_cores.
+    inputs.get_mutable_design_requirements().set_topology(Topologies::COMMON_MODE_CHOKE);
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
@@ -1848,6 +1860,12 @@ TEST_CASE("Test_CoreAdviserStandardCores_Common_Mode_Choke_High_Frequency", "[ad
     inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
 
     OperatingPoint operatingPoint;
+    // Common-mode-choke design: declare the topology so the adviser restricts to
+    // toroidal cores (the only geometry giving the tight inter-winding coupling a
+    // CMC needs, and what the TOROIDAL assertions below require). Without it the
+    // Interference-Suppression path treats the query as a generic suppression
+    // inductor and honours use_toroidal_cores.
+    inputs.get_mutable_design_requirements().set_topology(Topologies::COMMON_MODE_CHOKE);
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
