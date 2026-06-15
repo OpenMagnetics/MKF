@@ -795,14 +795,12 @@ namespace {
         }
     }
 
-    // NOT [smoke-test]: the adviser's core pick is RNG-seed dependent, so this
-    // fixed-input fixture intermittently lands on a colliding toroidal pick
-    // (SM 60 T) and trips check_turns_description. It stays here as an
-    // exploratory bug-finder — the collision check is intact and the real
-    // toroidal-winder spillover bug it surfaces is tracked separately. Do not
-    // re-add [smoke-test] until the winder collision is fixed and the pick is
-    // deterministic.
-    TEST_CASE("MagneticAdviserJsonLV", "[adviser][magnetic-adviser]") {
+    // [smoke-test] restored after b13f9d78 (single source of truth for
+    // turn/gap/saturation sizing) made the flyback core pick deterministic and
+    // fixed the toroidal-winder collision that previously tripped
+    // check_turns_description on the SM 60 T pick. Verified deterministic across
+    // many random seeds; re-demote only if it flaps again.
+    TEST_CASE("MagneticAdviserJsonLV", "[adviser][magnetic-adviser][smoke-test]") {
         clear_databases();
         settings.reset();
         settings.set_use_only_cores_in_stock(true);
