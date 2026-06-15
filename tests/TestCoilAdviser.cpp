@@ -2604,4 +2604,80 @@ TEST_CASE("Test_CoilAdviser_Wire_Adviser_Hang_Toroid_Double_Insulation",
     settings.reset();
 }
 
+// Repro/regression for ABT #2 (from WebFrontend): the coil/wire adviser used to
+// pick insulated (reinforced) wire for a NON-isolated single-winding inductor,
+// where it is unnecessary and harmful (worse copper fill, larger OD, higher
+// cost). With no isolation barrier (turnsRatios empty, insulation/isolationSides
+// absent) reinforced/insulated wire must never be selected — plain enamelled or
+// bare/served wire is correct. For litz the offending insulation lives in the
+// OUTER serving (strands stay enamelled), which the insulation filter used to
+// ignore (only the strand was checked against the maximum). See
+// MagneticFilterSolidInsulationRequirements::evaluate_magnetic.
+TEST_CASE("Test_CoilAdviser_NonIsolatedInductor_NotInsulatedWire",
+          "[adviser][coil-adviser][insulation][smoke-test]") {
+    clear_databases();
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+
+    // Single-winding inductor: one turns count, empty turnsRatios -> 1 winding.
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<double> turnsRatios = {};
+    int64_t numberStacks = 1;
+
+    double inductorFrequency = 100000;
+    double magnetizingInductance = 100e-6;
+    double temperature = 25;
+    WaveformLabel waveShape = WaveformLabel::TRIANGULAR;
+    double peakToPeak = 5;
+    double dutyCycle = 0.5;
+    double dcCurrent = 0;
+
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 29/16/10", gapping, numberTurns, numberStacks, "3C91");
+
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(inductorFrequency,
+                                                                                   magnetizingInductance,
+                                                                                   temperature,
+                                                                                   waveShape,
+                                                                                   peakToPeak,
+                                                                                   dutyCycle,
+                                                                                   dcCurrent,
+                                                                                   turnsRatios);
+    // Reproduce the reported MAS: a plain inductor with NO insulation /
+    // isolation requirement (the quick-builder injects a default BASIC block).
+    {
+        auto designRequirements = inputs.get_design_requirements();
+        designRequirements.set_insulation(std::nullopt);
+        designRequirements.set_isolation_sides(std::nullopt);
+        inputs.set_design_requirements(designRequirements);
+    }
+    inputs.process();
+
+    REQUIRE(inputs.get_design_requirements().get_turns_ratios().size() == 0);
+    REQUIRE_FALSE(inputs.get_design_requirements().get_insulation().has_value());
+
+    OpenMagnetics::Mas masMagnetic;
+    masMagnetic.set_inputs(inputs);
+    masMagnetic.set_magnetic(magnetic);
+
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 3);
+
+    REQUIRE(masMagneticsWithCoil.size() > 0);
+
+    auto advisedCoil = masMagneticsWithCoil[0].get_magnetic().get_coil();
+    auto wire = OpenMagnetics::Coil::resolve_wire(advisedCoil.get_functional_description()[0]);
+
+    auto outerCoating = wire.resolve_coating();
+    INFO("advised wire = " << wire.get_name().value_or("<unnamed>")
+         << ", coating.type = "
+         << (outerCoating && outerCoating->get_type() ? static_cast<int>(outerCoating->get_type().value()) : -1)
+         << " (INSULATED=" << static_cast<int>(InsulationWireCoatingType::INSULATED) << ")");
+
+    if (outerCoating && outerCoating->get_type()) {
+        REQUIRE(outerCoating->get_type().value() != InsulationWireCoatingType::INSULATED);
+    }
+    settings.reset();
+}
+
 }  // namespace

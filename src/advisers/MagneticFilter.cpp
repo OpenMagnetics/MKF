@@ -226,7 +226,23 @@ std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magn
     else if (wireSolidInsulationRequirements.get_minimum_number_layers() || wireSolidInsulationRequirements.get_minimum_grade()) {
         return {false, 0.0};
     }
-    
+
+    // A maximum-insulation restriction is set (see CoilAdviser, needsMargin path)
+    // to forbid reinforced/insulated wire on designs with no isolation barrier,
+    // which will use margin tape instead. For litz the `coating` resolved above
+    // is a single strand's enamel, never the OUTER serving, so a fully-insulated
+    // (reinforced) serving would slip through the strand-based maximum checks
+    // below. Whenever any maximum is in effect, reject a fully-insulated outer
+    // coating explicitly (this also covers fully-insulated round wire).
+    if (wireSolidInsulationRequirements.get_maximum_number_layers() ||
+        wireSolidInsulationRequirements.get_maximum_grade()) {
+        auto outerCoating = wire.resolve_coating();
+        if (outerCoating && outerCoating->get_type() &&
+            outerCoating->get_type().value() == InsulationWireCoatingType::INSULATED) {
+            return {false, 0.0};
+        }
+    }
+
     if (wireSolidInsulationRequirements.get_maximum_grade() && coating.get_grade()) {
         if (coating.get_grade().value() > wireSolidInsulationRequirements.get_maximum_grade().value()) {
             return {false, 0.0};
