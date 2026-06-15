@@ -280,15 +280,18 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     try {
         double referenceVolumetricLossesWithTemperature = calculate_average_volumetric_losses(referenceCoreMaterial, temperature, models);
         if (std::isnan(referenceVolumetricLossesWithTemperature)) {
-            // Phase 1: explicit, named diagnostic rather than a generic
-            // "scoring cannot be nan" from deep inside normalize_scoring.
-            // NaN comes from calculate_average_volumetric_losses's documented
-            // "uncomputable" sentinel (ModelNotAvailable / InvalidInput).
-            throw std::invalid_argument(
-                "CoreMaterialCrossReferencer: reference material '"
-                + referenceCoreMaterial.get_name()
-                + "' has uncomputable volumetric losses at "
-                + std::to_string(temperature) + " degC — cross-reference cannot proceed");
+            // The reference material has no usable volumetric-loss model (e.g. an
+            // interference-suppression ferrite characterised only by a loss factor
+            // or complex permeability). Rather than abort the whole cross-reference,
+            // skip the loss dimension and let the remaining dimensions (initial
+            // permeability, etc.) rank the alternatives. Logged, scoped pass-through.
+            logEntry("CoreMaterialCrossReferencer: reference material '"
+                         + referenceCoreMaterial.get_name()
+                         + "' has uncomputable volumetric losses at "
+                         + std::to_string(temperature) + " degC; skipping the loss "
+                         "dimension and cross-referencing on the remaining filters",
+                     "CoreMaterialCrossReferencer");
+            return *unfilteredCoreMaterials;
         }
         add_scored_value("Reference", CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, referenceVolumetricLossesWithTemperature);
 
