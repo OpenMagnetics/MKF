@@ -1337,8 +1337,15 @@ bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByNam
                 }
             }
             else {
-                if (roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) < roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) &&
-                    roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9) < roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9)) {
+                // Require the overlap to exceed a small tolerance on BOTH axes, mirroring the
+                // round-window branch above (which already uses < -1e-8). Turns wound tightly sit
+                // at pitch == wire diameter, i.e. exactly tangent; the pitch and the turn dimension
+                // are resolved through slightly different roundings, so a strict "<" flags tangent
+                // turns as colliding on sub-nanometre (~1e-9 m) differences. 1e-8 m = 10 nm is far
+                // below any real manufacturing/geometry scale, so it only discards tangency noise.
+                double overlapX = roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) - roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9);
+                double overlapY = roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9) - roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9);
+                if (overlapX > 1e-8 && overlapY > 1e-8) {
                     std::cerr << "leftName: " << leftName << std::endl;
                     std::cerr << "rightName: " << rightName << std::endl;
                     std::cerr << "roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9): " << roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) << std::endl;
