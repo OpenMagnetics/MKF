@@ -530,7 +530,25 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
 
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
 
-    magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+    {
+        // Interference-suppression materials are characterised by complex
+        // permeability (for impedance), not by a power-loss model, so the loss
+        // evaluator rejects all of them as unscorable. Losses are not the ranking
+        // criterion for suppression designs (impedance/dimensions/cost/turns are),
+        // so if the loss filter wipes out the entire set, pass the pre-loss
+        // candidates through unscored rather than returning zero results. This is
+        // scoped to the suppression pipeline and logged loudly — NOT the silent
+        // global "all-rejected -> return everything" fallback removed earlier.
+        auto beforeLosses = magneticsWithScoring;
+        magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+        if (magneticsWithScoring.empty() && !beforeLosses.empty()) {
+            logEntry("Losses filter could not score any suppression candidate (no power-loss "
+                     "model for impedance-characterised materials); passing " +
+                         std::to_string(beforeLosses.size()) + " candidates through unscored",
+                     "CoreAdviser");
+            magneticsWithScoring = std::move(beforeLosses);
+        }
+    }
 
     if (magneticsWithScoring.size() == 0) {
         return {};
@@ -989,7 +1007,21 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, 1 * userWeight(CoreAdviserFilters::COST), true);
     magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, 1 * userWeight(CoreAdviserFilters::DIMENSIONS), true);
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
-    magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
+    {
+        // See filter_available_cores_suppression_application: suppression materials
+        // have no power-loss model, so the loss filter can reject every candidate.
+        // Losses don't rank suppression designs — pass the pre-loss set through
+        // unscored (logged) rather than returning zero results.
+        auto beforeLosses = magneticsWithScoring;
+        magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
+        if (magneticsWithScoring.empty() && !beforeLosses.empty()) {
+            logEntry("Losses filter could not score any suppression candidate (no power-loss "
+                     "model for impedance-characterised materials); passing " +
+                         std::to_string(beforeLosses.size()) + " candidates through unscored",
+                     "CoreAdviser");
+            magneticsWithScoring = std::move(beforeLosses);
+        }
+    }
     // Manufacturability proxy — see filter_available_cores_suppression_application
     // for rationale. Same internal weight (1.0) here.
     magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
