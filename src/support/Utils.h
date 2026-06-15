@@ -134,6 +134,7 @@ double get_error_by_effective_parameters(CoreShape shape, double effectiveLength
 
 
 void clear_loaded_cores();
+void clear_loaded_core_shapes();
 void clear_databases();
 void load_cores(std::optional<std::string> fileToLoad=std::nullopt);
 void load_core_materials(std::optional<std::string> fileToLoad=std::nullopt);
