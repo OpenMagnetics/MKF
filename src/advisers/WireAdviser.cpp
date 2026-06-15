@@ -7,6 +7,8 @@
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include <list>
+#include <sstream>
+#include <iomanip>
 #include <magic_enum.hpp>
 #include "support/Exceptions.h"
 #include "support/Logger.h"
@@ -576,6 +578,69 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Windi
     return windings;
 }
 
+// ABT #5: synthesize fine-strand litz candidates per Sullivan (strand << skin
+// depth) so the WireAdviser pool contains low-proximity options for HF AC
+// designs. The existing proximity/skin-aware scoring already PREFERS such litz
+// when it is present — the bug was that no fine-enough litz was ever in the pool
+// (catalog litz is too coarse or doesn't fit small cores). Each synthesized
+// bundle carries ~the per-bundle copper; create_dataset's parallels logic sizes
+// the rest. Cheap: a few wire constructions, no extra simulation. Gated to the
+// regime where a solid conductor would exceed the skin depth (AC losses matter),
+// so DC/LF designs are unaffected. The exact Sullivan closed-form optimum is not
+// hard-coded; the strand grid spans delta/2..delta/4 and the loss-aware scoring
+// (and #4's core re-rank simulate) select the empirical optimum.
+static std::vector<Wire> synthesize_litz_candidates(const SignalDescriptor& current,
+                                                    double temperature,
+                                                    double maximumEffectiveCurrentDensity) {
+    std::vector<Wire> out;
+    auto& settings = Settings::GetInstance();
+    if (!settings.get_wire_adviser_include_litz()) return out;
+    if (!current.get_processed()) return out;
+    auto processed = current.get_processed().value();
+    if (!processed.get_effective_frequency() || !processed.get_rms()) return out;
+    double effectiveFrequency = processed.get_effective_frequency().value();
+    double rms = processed.get_rms().value();
+    if (effectiveFrequency <= 0 || rms <= 0 || maximumEffectiveCurrentDensity <= 0) return out;
+
+    // Skin depth in copper at the effective frequency (lightly temp-corrected).
+    const double rhoCu = 1.724e-8 * (1.0 + 0.00393 * (temperature - 20.0));
+    const double mu0 = 4e-7 * std::numbers::pi;
+    double skinDepth = std::sqrt(rhoCu / (std::numbers::pi * effectiveFrequency * mu0));
+
+    // Copper one bundle should carry (parallels multiply to meet the current).
+    double targetCopperArea = rms / maximumEffectiveCurrentDensity;
+    if (targetCopperArea <= 0) return out;
+
+    // Gate: only when a solid conductor of that area would exceed the skin depth
+    // (skin/proximity actually matter). Below that, solid round is already fine.
+    double solidDiameter = std::sqrt(4.0 * targetCopperArea / std::numbers::pi);
+    if (solidDiameter <= skinDepth) return out;
+
+    // Sullivan-seeded grid: strand diameter = skinDepth/k (k=2..4), strand count
+    // chosen to fill the bundle copper area. Strand << skin depth -> low proximity.
+    for (int k : {2, 3, 4}) {
+        double strandDiameter = skinDepth / k;
+        if (strandDiameter < 25e-6) continue;                 // impractically fine
+        double strandArea = std::numbers::pi * strandDiameter * strandDiameter / 4.0;
+        int64_t numberStrands = std::max<int64_t>(3, static_cast<int64_t>(std::ceil(targetCopperArea / strandArea)));
+        if (numberStrands > 2000) continue;                   // unbuildable bundle
+        try {
+            auto litz = Wire::create_quick_litz_wire(strandDiameter, numberStrands);
+            // Name it so MAS/frontend show a meaningful label (create_quick_litz_wire
+            // leaves the name unset). e.g. "Synthesized Litz 76x0.070mm".
+            std::ostringstream name;
+            name << "Synthesized Litz " << numberStrands << "x"
+                 << std::fixed << std::setprecision(3) << (strandDiameter * 1e3) << "mm";
+            litz.set_name(name.str());
+            out.push_back(litz);
+        }
+        catch (const std::exception&) {
+            // create_quick_litz_wire may reject a non-standard strand size; skip it.
+        }
+    }
+    return out;
+}
+
 std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding winding,
                                                                                       std::vector<Wire>* wires,
                                                                                       Section section,
@@ -584,13 +649,22 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding wind
     auto& settings = Settings::GetInstance();
     std::vector<std::pair<Winding, double>> windings;
 
-    for (auto& wire : *wires){
+    // Extend the candidate pool with synthesized fine-strand litz (ABT #5). Work
+    // on a local copy so the caller's wire list is not mutated. Gated by the
+    // caller to single-winding inductors (see _synthesizeLitz).
+    std::vector<Wire> extendedWires = *wires;
+    if (_synthesizeLitz) {
+        auto synthesizedLitz = synthesize_litz_candidates(current, temperature, _maximumEffectiveCurrentDensity);
+        extendedWires.insert(extendedWires.end(), synthesizedLitz.begin(), synthesizedLitz.end());
+    }
+
+    for (auto& wire : extendedWires){
         if (wire.get_type() == WireType::LITZ) {
             wire.set_strand(wire.resolve_strand());
         }
     }
 
-    for (auto& wire : *wires){
+    for (auto& wire : extendedWires){
         if ((!settings.get_wire_adviser_include_foil() && wire.get_type() == WireType::FOIL) ||
             (!settings.get_wire_adviser_include_planar() &&  wire.get_type() == WireType::PLANAR) ||
             (!(settings.get_wire_adviser_include_rectangular() && (settings.get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) && wire.get_type() == WireType::RECTANGULAR) ||

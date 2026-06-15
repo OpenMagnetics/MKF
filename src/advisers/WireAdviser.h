@@ -95,6 +95,11 @@ class WireAdviser {
         double _maximumOuterAreaProportion;
         double _wireToWireDistance = defaults.minimumWireToWireDistance;
         double _borderToWireDistance = defaults.minimumBorderToWireDistance;
+        // ABT #5: synthesize fine-strand litz candidates for HF AC designs. Gated
+        // by the caller to single-winding inductors — fitting synthesized (bulkier)
+        // litz across a tight multi-winding window can overrun the window, and the
+        // multi-winding litz-fit problem is out of ABT #5's scope.
+        bool _synthesizeLitz = false;
         std::string _log;
     public:
 
@@ -121,6 +126,13 @@ class WireAdviser {
         }
         double get_border_to_wire_distance() {
             return _borderToWireDistance;
+        }
+
+        void set_synthesize_litz(bool value) {
+            _synthesizeLitz = value;
+        }
+        bool get_synthesize_litz() {
+            return _synthesizeLitz;
         }
 
         void set_maximum_effective_current_density(double maximumEffectiveCurrentDensity) {

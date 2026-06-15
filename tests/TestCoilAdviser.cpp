@@ -6,6 +6,7 @@
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
 #include "processors/Inputs.h"
+#include "processors/MagneticSimulator.h"
 #include "physical_models/StrayCapacitance.h"
 #include <magic_enum.hpp>
 #include "TestingUtils.h"
@@ -2677,6 +2678,59 @@ TEST_CASE("Test_CoilAdviser_NonIsolatedInductor_NotInsulatedWire",
     if (outerCoating && outerCoating->get_type()) {
         REQUIRE(outerCoating->get_type().value() != InsulationWireCoatingType::INSULATED);
     }
+    settings.reset();
+}
+
+// Regression for ABT #5 (from WebFrontend): for a 100 kHz inductor the
+// WireAdviser used to pick SOLID ROUND wire (chosen on small OD/cost), leaving
+// large winding PROXIMITY loss (~15 W here). Per Sullivan, litz with strands far
+// below the skin depth collapses that loss — but catalog litz is too coarse or
+// doesn't fit, so it was never picked. The WireAdviser now SYNTHESIZES
+// fine-strand litz (create_dataset -> synthesize_litz_candidates) for HF AC
+// designs; the existing proximity-aware scoring then prefers it. The advised
+// wire must be litz with low single-digit winding loss.
+TEST_CASE("Test_WireAdviser_HFInductor_SynthesizesLitz", "[adviser][coil-adviser][litz][abt5]") {
+    clear_databases();
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_use_toroidal_cores(false);
+    settings.set_use_concentric_cores(true);
+
+    std::vector<int64_t> numberTurns = {30};
+    std::vector<double> turnsRatios = {};
+    double frequency = 100000;
+    double magnetizingInductance = 100e-6;
+    double temperature = 25;
+
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.0002);
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("PQ 26/25", gapping, numberTurns, 1, "3C97");
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        frequency, magnetizingInductance, temperature, WaveformLabel::TRIANGULAR, 10, 0.5, 0, turnsRatios);
+    { auto dr = inputs.get_design_requirements(); dr.set_insulation(std::nullopt); dr.set_isolation_sides(std::nullopt); inputs.set_design_requirements(dr); }
+    inputs.process();
+
+    OpenMagnetics::Mas mas;
+    mas.set_inputs(inputs);
+    mas.set_magnetic(magnetic);
+
+    CoilAdviser coilAdviser;
+    auto advised = coilAdviser.get_advised_coil(mas, 1);
+    REQUIRE(!advised.empty());
+
+    auto wire = OpenMagnetics::Coil::resolve_wire(advised[0].get_magnetic().get_coil().get_functional_description()[0]);
+    auto sim = MagneticSimulator().simulate(advised[0]);
+    double winding = sim.get_outputs()[0].get_winding_losses()
+                   ? sim.get_outputs()[0].get_winding_losses()->get_winding_losses() : -1;
+
+    std::cout << "[ABT5] advised wire=" << wire.get_name().value_or("?")
+              << " type=" << static_cast<int>(wire.get_type())
+              << " (4=round,1=litz) winding=" << winding << "W" << std::endl;
+
+    // The HF inductor must now be advised litz, not solid round, and the winding
+    // loss must be low single digits (was ~15 W on solid round).
+    REQUIRE(wire.get_type() == WireType::LITZ);
+    REQUIRE(winding > 0);
+    REQUIRE(winding < 5.0);
     settings.reset();
 }
 

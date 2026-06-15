@@ -627,6 +627,16 @@ namespace OpenMagnetics {
 
         _wireAdviser.set_common_wire_standard(_commonWireStandard);  // TODO, rethink this
 
+        // ABT #5: synthesize fine-strand litz for HF AC single-winding inductors,
+        // where they collapse the winding proximity loss (solid round ~15W ->
+        // litz ~1W). Restricted to single-winding for now: a synthesized litz is
+        // bulkier than solid for the same copper, and in a tight multi-winding
+        // window the winder's area-based fit check (are_sections_and_layers_fitting)
+        // does not catch the resulting cross-section overflow, so it can return a
+        // colliding coil. Extending to transformers needs a correct group-level
+        // fit check in the winder (tracked separately).
+        _wireAdviser.set_synthesize_litz(numberWindings == 1);
+
         if (needsMargin) {
             // If we want to use margin, we set the maximum so the wires chosen will need margin (and be faster)
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
