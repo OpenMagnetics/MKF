@@ -9,6 +9,9 @@
 #include "TestingUtils.h"
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/WindingLosses.h"
+#include "processors/MagneticSimulator.h"
+#include "advisers/CoilAdviser.h"
 #include "converter_models/IsolatedBuck.h"
 #include "converter_models/Flyback.h"
 #include "converter_models/DifferentialModeChoke.h"
@@ -5666,6 +5669,69 @@ TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug
         double totalLosses = results[0].second;
         INFO("Total losses: " + std::to_string(totalLosses) + " W");
         CHECK(totalLosses > 0);
+    }
+
+    // Measurement repro for ABT #4 (from WebFrontend): the CoreAdviser ranks
+    // cores on DC+skin winding losses only and never scores PROXIMITY, so for a
+    // gapped HF inductor it picks a small core whose gap-fringing field drives
+    // huge proximity loss into solid round wire. Default inductor: L=100uH,
+    // 100kHz, 10App triangular, no isolation. Reported total winding loss ~40W
+    // (proximity ~39.7W). This case MEASURES + logs the breakdown so we can size
+    // the fix; the final regression bound is added once the fix lands.
+    TEST_CASE("Test_MagneticAdviser_GappedHFInductor_ProximityLoss", "[adviser][magnetic-adviser][proximity][abt4]") {
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+
+        std::vector<double> turnsRatios = {};
+        double frequency = 100000;
+        double magnetizingInductance = 100e-6;
+        double temperature = 25;
+        WaveformLabel waveShape = WaveformLabel::TRIANGULAR;
+        double peakToPeak = 10;
+        double dutyCycle = 0.5;
+        double dcCurrent = 0;
+
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            frequency, magnetizingInductance, temperature,
+            waveShape, peakToPeak, dutyCycle, dcCurrent, turnsRatios);
+        {
+            auto dr = inputs.get_design_requirements();
+            dr.set_insulation(std::nullopt);
+            dr.set_isolation_sides(std::nullopt);
+            inputs.set_design_requirements(dr);
+        }
+        inputs.process();
+
+        // Regression: CoreAdviser's proximity-aware re-rank
+        // (rerank_top_candidates_by_proximity_losses) must NOT return a small
+        // gapped core whose solid-wire gap-fringing proximity loss is tens of W.
+        // Before the fix get_advised_core(inputs, 1) returned "95 E 20/10/5
+        // gapped" at ~44 W total; the re-rank lands a sane design (~5.6 W).
+        CoreAdviser coreAdviser;
+        coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        auto cores = coreAdviser.get_advised_core(inputs, 1);
+        REQUIRE(cores.size() > 0);
+
+        // Wind + full-simulate the advised core to measure its real total loss.
+        CoilAdviser coilAdviser;
+        auto wound = coilAdviser.get_advised_coil(cores[0].first, 1);
+        REQUIRE(!wound.empty());
+        auto sim = MagneticSimulator().simulate(wound[0]);
+        double winding = sim.get_outputs()[0].get_winding_losses()
+                       ? sim.get_outputs()[0].get_winding_losses()->get_winding_losses() : 0;
+        double core = sim.get_outputs()[0].get_core_losses()
+                    ? sim.get_outputs()[0].get_core_losses()->get_core_losses() : 0;
+        double totalLoss = winding + core;
+
+        std::cout << "[ABT4] advised core=" << cores[0].first.get_magnetic().get_core().get_name().value_or("?")
+                  << " total=" << totalLoss << "W (winding=" << winding << " core=" << core << ")" << std::endl;
+
+        // 15 W is a generous ceiling (the proximity-blind pick was ~44 W; the
+        // re-ranked good pick is ~5.6 W).
+        REQUIRE(totalLoss < 15.0);
     }
 
 

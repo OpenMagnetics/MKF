@@ -286,6 +286,27 @@ class CoreAdviser {
         void reject_winding_killing_gaps(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
 
         /**
+         * @brief Proximity-aware re-rank of the top-K candidates (ABT #4).
+         *
+         * The loss filters in the power pipeline score DC+skin losses only
+         * (MagneticFilterCoreDcAndSkinLosses), so they are blind to gap-fringing
+         * PROXIMITY loss. For a single-winding inductor this lets a small gapped
+         * core whose fringing field drives tens of watts of proximity loss into
+         * solid round wire rank top. This pass winds a representative coil on the
+         * top-K candidates (CoilAdviser), full-simulates each (MagneticSimulator,
+         * proximity included), and reorders those K by ascending total loss
+         * (core + winding) so the lowest-loss core is promoted to the front.
+         *
+         * GATED to single-winding inductors: gap-fringing proximity dominates
+         * there, and the pass costs ~K coil windings (the winding, not the
+         * simulate, is the cost). Transformers/CMCs are skipped (no-op).
+         * @param magneticsWithScoring Final scored candidates (reordered in place).
+         * @param inputs Operating conditions.
+         * @param maximumNumberResults Sets K = max(maximumNumberResults, 8).
+         */
+        void rerank_top_candidates_by_proximity_losses(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs, size_t maximumNumberResults);
+
+        /**
          * @brief Calculate optimal gap and turns using binary search with analytical cost function (Option 2).
          * 
          * Uses golden section search on gap, with analytical calculation of turns and flux density
