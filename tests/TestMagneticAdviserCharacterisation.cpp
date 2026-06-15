@@ -154,22 +154,27 @@ void check_top_n(const std::string& label,
 // every winding here now resolves to Single Build. Top-2 also swapped
 // rankings because the new wire selection changed the magnetic-level
 // scoring.
-// Refreshed after the saturation-margin default flipped 1.0 → 1.2.
-// At the tighter Bpeak·1.2 ≤ Bsat gate, the 8/2 3-stack candidate is
-// rejected (saturation-edge under no-derate, over-margin under 1.2);
-// the next-larger 8.3/4 2-stack candidate wins both rectifier rounds
-// and the slightly larger 10/3 fills the third slot at a lower score
-// (margin pushes its loss budget tighter too).
+// Refreshed 2026-06-16 (ABT #10) after the 2026-06 saturation rework
+// (5000909f inductor reclassification + 60fe7c79 gap-aware isat gate). The
+// former winner — 96 E 8.3/4 2 stacks at only 10 turns — now FAILS the
+// saturation gate (under-turned → B_peak too high), so the adviser promotes
+// the 79 E 10/3 at 20 turns, which has the headroom to stay valid (top-1
+// score exactly 2.0). NOTE: the stricter gate thinned the valid 3-winding
+// pool for this 507 kHz spec to two designs, so slot 2 is now an
+// INVALID-penalised candidate (score 0.85) — that is the magnetic adviser's
+// documented thin-pool fallback, not a silenced failure; top-1/top-2 are
+// both valid. If the valid pool should be deeper here, that is a separate
+// investigation (the saturation gate is correct; the query is demanding).
 const std::vector<MagneticEntry> kTopThreeWinding = {
-    {"96 E 8.3/4 2 stacks, Turns: 10, Order: 102, Non-Interleaved, Margin Taped 00",
-     "Round 33.0 - Single Build || Round 38.0 - Single Build || Round 38.0 - Single Build",
-     1.7391079152509736},
-    {"96 E 8.3/4 2 stacks, Turns: 10, Order: 102, Non-Interleaved, Margin Taped 01",
-     "Round 33.0 - Single Build || Round 38.0 - Heavy Build || Round 38.0 - Single Build",
-     1.5356432403340934},
-    {"96 E 10/3, Turns: 23, Order: 012, Non-Interleaved, Margin Taped 00",
-     "Round 33.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Heavy Build",
-     1.1470545003241872},
+    {"79 E 10/3, Turns: 20, Order: 012, Non-Interleaved, Margin Taped 00",
+     "Round 33.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
+     2.0},
+    {"79 E 10/3, Turns: 20, Order: 012, Non-Interleaved, Margin Taped 01",
+     "Round 33.0 - Single Build || Round 41.0 - Heavy Build || Round 41.0 - Single Build",
+     1.8855006474886866},
+    {"INVALID (failed validity filters): 95 E 8.3/4 2 stacks, Turns: 34, Order: 102, Interleaved, Margin Taped 01",
+     "Round 39.0 - Single Build || Round 44.0 - Single Build || Round 43.5 - Single Build",
+     0.84999999999999998},
 };
 
 } // namespace

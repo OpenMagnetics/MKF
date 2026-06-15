@@ -167,19 +167,22 @@ void check_top_n(const std::string& label,
 // Baselines captured 2026-05-19. Top entries are ordering-sensitive; scores
 // are within 1e-6 relative tolerance.
 // ----------------------------------------------------------------------------
-// Refreshed after the saturation-margin default flipped 1.0 → 1.2
-// (Maniktala Ch.5 production safety). Slot 2 now hosts an EP 20 3C91
-// gapped 0.605 mm that previously scored below the EFD 25/13/9 entry —
-// at margin 1.2 the EFD candidate hits the saturation-rejection gate
-// for its higher Bpeak/Bsat ratio and drops out of the top-5. PQ 20/20
-// 3C97 stays top-1 with a small score shift (4.030 → 3.929) reflecting
-// the tightened acceptance window.
+// Refreshed 2026-06-16 (ABT #10) after the proximity-aware re-rank landed
+// (5bd45414 "feat(core-adviser): proximity-aware re-rank for single-winding
+// inductors"). This POWER query is a single-winding inductor, so the adviser
+// now winds+simulates the top-K and re-orders them by proximity-inclusive
+// loss. That promotes EP 20 3C91 0.605 mm from slot 2 → slot 1 (its score
+// jumps 3.830 → 3.992 once its lower real winding-proximity loss is counted)
+// while PQ 20/20 3C97 is essentially unchanged (3.929 → 3.930) and slips to
+// slot 2. The Kool Mµ Hƒ 40 toroid also enters the top-5. EP 20 winning by
+// ~1.6 % over PQ 20/20 is the more-accurate ranking, not a regression.
+// (Previous refresh was the saturation-margin 1.0 → 1.2 flip.)
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          3.9291496909131993},
-    {"EP 20 - 3C91 - Gapped 0.382 mm",             3.8653763355963369},
-    {"EP 20 - 3C91 - Gapped 0.605 mm",             3.8298752301770511},
-    {"T 21/12/7.1 - Kool Mµ Hƒ 60 - Ungapped",     3.8224660990687345},
-    {"PQ 20/20 - 3C95 - Gapped 0.477 mm",          3.8009258949850238},
+    {"EP 20 - 3C91 - Gapped 0.605 mm",             3.9918167530621829},
+    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          3.9301728472909492},
+    {"T 21/12/7.1 - Kool Mµ Hƒ 40 - Ungapped",     3.8811377987041928},
+    {"T 21/12/7.1 - Kool Mµ Hƒ 60 - Ungapped",     3.8604853384926003},
+    {"PQ 20/20 - 3C95 - Gapped 0.477 mm",          3.8580496485195876},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
@@ -189,18 +192,31 @@ const std::vector<TopEntry> kTopAvailablePower = {
 // (previously slots 0-2 were three identical copies of
 // "95 PQ 27/15 gapped 0.36 mm"). See CoreAdviser.cpp get_advised_core
 // dispatch path for the canonical-name dedupe.
+// Refreshed 2026-06-16 (ABT #10): same proximity-aware re-rank as the
+// AVAILABLE_CORES_POWER table above promotes 95 EP 20 (gapped 0.32 mm) to
+// slot 1 over 95 PQ 27/15, and the post-rerank gap selection on PQ 27/15
+// settles at 0.18 mm. Single-winding-inductor re-rank, intended.
 const std::vector<TopEntry> kTopStandardPower = {
-    {"95 PQ 27/15 gapped 0.36 mm",                 3.8839874324577632},
-    {"95 EQ 26/19/7 gapped 0.39 mm",               3.6405809245945537},
-    {"95 PQ 26/20 gapped 0.39 mm",                 3.4445103127181436},
-    {"95 RM 12/17 gapped 0.36 mm",                 3.4194800188185512},
-    {"95 PQ 28/20 gapped 0.38 mm",                 3.3998371194660173},
+    {"95 EP 20 gapped 0.32 mm",                    3.9366311157847029},
+    {"95 PQ 27/15 gapped 0.18 mm",                 3.8943328027343398},
+    {"95 RM 10/ILP gapped 0.24 mm",                3.8317384650663673},
+    {"95 E 21/9/5 2 stacks gapped 0.21 mm",        3.8316279736954892},
+    {"98 RM 10/ILP gapped 0.24 mm",                3.7865863909666828},
 };
 
+// Refreshed 2026-06-16 (ABT #10) after landing the suppression returns-0 fix
+// (3-layer: a905fd2 pipeline pass-through + 957c516 unscorable-material +
+// 3be26c6 cross-ref loss-skip, cherry-picked from
+// feat/wideband-impedance-resonances). Before the fix this scenario returned
+// ZERO candidates on main — the losses filter rejected/threw on every complex-
+// permeability suppression ferrite and the adviser produced an empty set. With
+// the fix the SAME three cores as the 2026-05-19 baseline flow again (XFlux 26
+// toroids, identical identities + order); only the scores nudged < 0.6 % from
+// the 2026-06 loss/saturation recompute.
 const std::vector<TopEntry> kTopAvailableInterference = {
-    {"T 134/77/155 - XFlux 26 - Ungapped",         1.9491685553595064},
-    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8605239944178327},
-    {"T 167/87/27 - XFlux 26 - Ungapped",          1.5147561009882304},
+    {"T 134/77/155 - XFlux 26 - Ungapped",         1.9451312382492831},
+    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8563034258168774},
+    {"T 167/87/27 - XFlux 26 - Ungapped",          1.5057090764821521},
 };
 
 } // namespace

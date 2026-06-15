@@ -140,7 +140,15 @@ const std::map<std::string, Snapshot> kSnapshots = {
     // Round 2.00 - Grade 1 wire, 100 kHz triangular, ±√3 A, 25 °C.
     // ---------------------------------------------------------------
     {"AREA_PRODUCT",                                    {true,  1.8374733304713626e-08}},
-    {"ENERGY_STORED",                                   {true,  0.00018855126491439841}},
+    // ENERGY_STORED / TEMPERATURE / SATURATION refreshed 2026-06-16 (ABT #10).
+    // The reference 40+20-turn fixture has no isolation sides set, so the
+    // 2026-06 saturation rework now classifies it as an INDUCTOR
+    // (5000909f "classify all-one-isolation-side magnetics as inductors")
+    // and gates it by gap-aware saturation current (60fe7c79). An ungapped
+    // E35 ferrite at ~1.73 A peak has isat << margin·ipeak, so SATURATION
+    // flips valid true→false (was {true, 0.1185}). ENERGY_STORED (-0.4 %) and
+    // TEMPERATURE (-1.4 %) drift from the same reclassified flux/B recompute.
+    {"ENERGY_STORED",                                   {true,  0.00018781148528340766}},
     {"ESTIMATED_COST",                                  {true,  1.7774692926005085}},
     {"COST",                                            {true,  7.0}},
     // CORE_AND_DC_LOSSES returns (false, 0) here because the reference
@@ -160,7 +168,7 @@ const std::map<std::string, Snapshot> kSnapshots = {
     {"PROXIMITY_FACTOR",                                {false, 0.0}},
     {"TURNS_RATIOS",                                    {true,  0.0}},
     {"MAXIMUM_DIMENSIONS",                              {true,  0.0}},
-    {"SATURATION",                                      {true,  0.11848164108564301}},
+    {"SATURATION",                                      {false, 0.0}},  // 2026-06-16 ABT #10: now isat-gated inductor, rejected (see ENERGY_STORED note)
     {"DC_CURRENT_DENSITY",                              {false, 0.0}},
     {"EFFECTIVE_CURRENT_DENSITY",                       {false, 0.0}},
     {"IMPEDANCE",                                       {true,  0.0}},
@@ -174,7 +182,7 @@ const std::map<std::string, Snapshot> kSnapshots = {
     // LEAKAGE_INDUCTANCE no longer returns DBL_MAX sentinel — the error path
     // is now a throws-contract test below (see TEST_CASE "LEAKAGE_INDUCTANCE
     // throws on missing turns description"). No snapshot entry needed.
-    {"TEMPERATURE",                                     {true,  27.548577138623852}},
+    {"TEMPERATURE",                                     {true,  27.158311798960909}},  // 2026-06-16 ABT #10: -1.4 % from reclassified B recompute
     {"TURN_COUNT",                                      {true,  2.1000000000000001}},
     // FRINGING_FACTOR returns score=1.0 on every non-crashing path
     // (MagneticFilter.cpp:2079, 2082, 2089, 2092). After fix A the factory

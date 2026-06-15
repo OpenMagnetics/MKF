@@ -164,10 +164,16 @@ void check_structural_topN(const std::string& label,
 // Note: requested top-3 but pipeline only produces 2 candidates for this
 // fixture — locked as the current behaviour. If a future refactor unlocks
 // more candidates this snapshot will fail loudly and need regeneration.
+// Refreshed 2026-06-16 (ABT #10 / ABT #3): top[1] primary re-ranked from
+// Round T20A01TXXX-1 to Round T25A01TXXX-1.5 (12 layers, was 10). Both are
+// insulated 3-layer reinforced wires (bdv 4500 → 6000) — the expected wire
+// class for this BASIC isolated flyback — so this is a benign within-class
+// re-rank from the wire-scoring shift, verified pre-existing in ABT #3, not a
+// regression. top[0] unchanged.
 const std::vector<CoilStructural> kTopFlyback = {
     // wires                                                              sections layers totalTurns
     {"Round T25A01PXXX-1.5 || Litz SXXL825/44FX-3(MWXX)",                  8,       12,    87},
-    {"Round T20A01TXXX-1 || Litz SXXL825/44FX-3(MWXX)",                    8,       10,    87},
+    {"Round T25A01TXXX-1.5 || Litz SXXL825/44FX-3(MWXX)",                  8,       12,    87},
 };
 
 } // namespace

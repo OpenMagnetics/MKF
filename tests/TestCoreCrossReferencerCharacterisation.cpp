@@ -112,31 +112,41 @@ void check_top_n(const std::string& label,
 // contribution downward by ~3 % for several powder toroids. The top-1 ferrite
 // is unaffected; powder slots 1-4 keep the same identities and order but
 // with lower scores.
+// Refreshed 2026-06-16 (ABT #10): the 2026-06 saturation/loss recompute
+// reshuffled the powder cross-references below the (unchanged, score-stable)
+// EC 35/17/10 3C94 top-1 ferrite — Kool Mµ MAX 75 rises to slot 1, Edge 75
+// drops to slot 2, and two T 27 parylene powders (OE 75 / Mix 66) displace
+// the former Kool Mµ 75 / XFlux 75 in slots 3-4. The actual cross-reference
+// winner (the ferrite) is unchanged; only the powder ordering moved.
 const std::vector<TopEntry> kTopDefault = {
     {"EC 35/17/10 - 3C94 - Gapped 1.000 mm",                       3.0915469239085107},
-    {"T 28/14/12 - epoxy coated - Edge 75 - Ungapped",             2.5332385934426584},
-    {"T 28/14/12 - epoxy coated - Kool Mµ 75 - Ungapped",          2.4637902771095823},
-    {"T 28/14/12 - epoxy coated - Kool Mµ MAX 75 - Ungapped",      2.3482690546043852},
-    {"T 28/14/12 - epoxy coated - XFlux 75 - Ungapped",            2.02063120011971},
+    {"T 28/14/12 - epoxy coated - Kool Mµ MAX 75 - Ungapped",      2.5524218280737472},
+    {"T 28/14/12 - epoxy coated - Edge 75 - Ungapped",             2.4306644789891148},
+    {"T 27/14.7/14.0 - parylene coated - OE 75 - Ungapped",        2.3440327755042603},
+    {"T 27/14.5/14.6 - parylene coated - Mix 66 - Ungapped",       2.052278908151667},
 };
 
+// Refreshed 2026-06-16 (ABT #10): identical ordering, scores nudged < 0.3 %
+// by the 2026-06 loss/saturation recompute.
 const std::vector<TopEntry> kTopSameMaterial = {
-    {"EP 20 - 3C91 - Gapped 0.605 mm",                             2.3260884808139326},
-    {"EC 41/19/12 - 3C91 - Gapped 1.000 mm",                       2.2891873964853477},
-    {"EP 17 - 3C91 - Gapped 0.414 mm",                             1.6374042631675698},
-    {"RM 8/I - 3C91 - Gapped 0.480 mm",                            1.5642380256468966},
-    {"EP 17 - 3C91 - Gapped 0.255 mm",                             1.414304619475435},
+    {"EP 20 - 3C91 - Gapped 0.605 mm",                             2.326855381298027},
+    {"EC 41/19/12 - 3C91 - Gapped 1.000 mm",                       2.2856989762412012},
+    {"EP 17 - 3C91 - Gapped 0.414 mm",                             1.6353493768514515},
+    {"RM 8/I - 3C91 - Gapped 0.480 mm",                            1.5594438851744803},
+    {"EP 17 - 3C91 - Gapped 0.255 mm",                             1.4153519258586909},
 };
 
 // Refreshed 2026-05-24: 3c851744 reshuffled slots 1 and 4 — the
 // EC 35/17/10 distributed-gap N27 moved from slot 4 up past
 // E 32/16/9 N87, which dropped to slot 4. ETD 29/16/10 stays on top.
+// Refreshed 2026-06-16 (ABT #10): identical ordering, scores nudged < 0.1 %
+// by the 2026-06 loss/saturation recompute.
 const std::vector<TopEntry> kTopOnlyTdk = {
-    {"ETD 29/16/10 - N87 - Gapped 1.000 mm",                       2.8472835377128982},
-    {"EC 35/17/10 - N27 - Distributed gapped 0.500 mm",            2.6366007138718883},
-    {"ETD 29/16/10 - N27 - Gapped 1.000 mm",                       2.6094871648192499},
-    {"ETD 29/16/10 - N27 - Distributed gapped 0.500 mm",           2.5227157465982319},
-    {"E 32/16/9 - N27 - Gapped 1.000 mm",                          1.9199033881211673},
+    {"ETD 29/16/10 - N87 - Gapped 1.000 mm",                       2.8471783659710788},
+    {"EC 35/17/10 - N27 - Distributed gapped 0.500 mm",            2.6358944598653742},
+    {"ETD 29/16/10 - N27 - Gapped 1.000 mm",                       2.609290926957466},
+    {"ETD 29/16/10 - N27 - Distributed gapped 0.500 mm",           2.5223183281041655},
+    {"E 32/16/9 - N27 - Gapped 1.000 mm",                          1.9187849608198064},
 };
 
 // Phase 1 fix landed: with SATURATION now active, the powder ordering
