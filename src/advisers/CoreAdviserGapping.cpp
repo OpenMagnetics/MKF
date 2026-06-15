@@ -491,170 +491,49 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
     }
 }
 
-void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring,
+void CoreAdviser::reject_winding_killing_gaps(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring,
                                               Inputs inputs) {
     if (magneticsWithScoring->empty()) {
         return;
     }
 
-    MagnetizingInductance magnetizingInductance;
-    MagneticSimulator magneticSimulator;
-    const int MAX_ITERATIONS = 5;  // Reduced from 10 to improve performance
+    // The early fringing pass (in the standard pipeline) only sees the gap that
+    // add_gapping_standard_cores applied. add_initial_turns_by_inductance then
+    // finalizes the gap — for energy-storing designs it raises N and re-solves
+    // the gap to hold the target L while clearing saturation, which can balloon
+    // the gap (e.g. a tiny E core ending up with a multi-mm gap to hit 100 µH at
+    // high peak current). That huge gap's fringing field dominates winding
+    // (proximity) losses — the design renders but is unusable.
+    //
+    // This is a PURE, hard reject: evaluate the fringing factor on the FINAL gap
+    // and erase the offenders in place, preserving the surviving candidates'
+    // existing scores and order. We deliberately do NOT route through the
+    // MagneticCoreFilter wrapper's filter_magnetics() — that would re-normalize
+    // and re-sort, injecting an extra EFFICIENCY scoring term for a constraint
+    // that is not an efficiency preference. The limit is the winding-killer
+    // ceiling (higher than the early-pass 1.2): legitimate small-inductor designs
+    // reach a fringing factor of ~1.47, so only the catastrophic gaps are cut.
+    MagneticFilterFringingFactor fringingFilter(inputs, _models);
+    fringingFilter.set_fringing_factor_limit(defaults.coreAdviserWindingKillingFringingFactorLimit);
 
-    for (size_t i = 0; i < magneticsWithScoring->size();) {
-        Core core = (*magneticsWithScoring)[i].first.get_core();
-        
-        if (core.get_shape_family() == CoreShapeFamily::T) {
-            // Toroidal cores don't have gaps to refine
-            ++i;
-            continue;
-        }
-
-        // Skip powder cores - they have distributed gaps and are designed for high DC current
-        // Powder cores are identified by their material type
-        auto materialName = core.get_material_name();
-        std::string mat = materialName;
-        if (mat.find("Kool M") != std::string::npos || 
-            mat.find("High Flux") != std::string::npos ||
-            mat.find("XFlux") != std::string::npos ||
-            mat.find("Edge") != std::string::npos ||
-            mat.find("Fluxsan") != std::string::npos ||
-            mat.find("FS ") == 0 ||  // Fluxsan prefix
-            mat.find("HF ") == 0 ||  // High Flux prefix
-            mat.find("GX ") == 0) {  // Another powder series
-            // Powder core - skip gap refinement, keep as-is
-            ++i;
-            continue;
-        }
-
-        // Target safe operating flux for this core (topology-aware, single source
-        // of truth — see maximum_allowed_magnetic_flux_density).
-        double opTemp = 25.0;
-        for (auto& op : inputs.get_operating_points()) {
-            opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
-        }
-        double rawBsat = core.get_magnetic_flux_density_saturation(opTemp, /*proportion=*/false);
-        double maxB = maximum_allowed_magnetic_flux_density(rawBsat);
-
-        // Get current gap
-        double currentGap = 0;
-        if (!core.get_functional_description().get_gapping().empty()) {
-            currentGap = core.get_functional_description().get_gapping()[0].get_length();
-        }
-
-        // Iterative refinement to achieve target saturation
-        int iteration = 0;
-        double bPeak = 0;
-        bool converged = false;
-        bool shouldRemove = false;
-
-        while (iteration < MAX_ITERATIONS && !converged && !shouldRemove) {
-            // Apply current gap
-            core.set_ground_gapping(currentGap);
-            core.process_gap();
-
-
-            // Simulate to get actual Bpeak
-            bool gotBpeak = false;
-            try {
-                // Wind the coil first
-                auto magnetic = (*magneticsWithScoring)[i].first;
-                magnetic.get_mutable_coil().wind();
-                
-                auto tempMas = Mas();
-                tempMas.set_magnetic(magnetic);
-                tempMas.set_inputs(inputs);
-                auto simulatedMas = magneticSimulator.simulate(tempMas, true);  // fastMode = true
-                
-                // Get Bpeak from the excitation after simulation
-                if (!simulatedMas.get_inputs().get_operating_points().empty()) {
-                    auto& op = simulatedMas.get_inputs().get_operating_points()[0];
-                    auto excitation = Inputs::get_primary_excitation(op);
-                    if (excitation.get_magnetic_flux_density().has_value()) {
-                        auto bField = excitation.get_magnetic_flux_density().value();
-                        if (bField.get_processed().has_value() && 
-                            bField.get_processed()->get_peak().has_value()) {
-                            bPeak = bField.get_processed()->get_peak().value();
-                            gotBpeak = true;
-                        }
-                    }
-                }
-            } catch (const std::exception& e) {
-                // Phase 1 fix: previously silently set `converged = true`
-                // (mislabelled an unhandled exception as convergence with no
-                // logging). We cannot certify this candidate's Bpeak stays
-                // below Bsat for the iterated gap — the conservative response
-                // is to drop the candidate rather than ship an unverified
-                // design. Logged so the underlying simulator failure is
-                // visible.
-                logEntry(std::string("Gap-iteration simulator failed for core ")
-                         + core.get_name().value_or("unnamed") + ": " + e.what()
-                         + " — removing candidate (Bsat could not be verified)",
-                         "CoreAdviser");
-                shouldRemove = true;
-                break;
-            }
-            
-            if (!gotBpeak) {
-                converged = true;
-                break;
-            }
-
-            // Check if we're at or below the safe operating flux.
-            if (bPeak <= maxB * 1.01) {  // Allow 1% tolerance
-                converged = true;
-            } else {
-                // Increase gap proportionally to the overshoot, with a 10% margin.
-                double newGap = currentGap * (bPeak / maxB) * 1.1;
-                
-                // Check practical limits
-                double columnWidth = core.get_columns()[0].get_width();
-                double maxPracticalGap = columnWidth * defaults.coreAdviserMaxPracticalGapColumnWidthFraction;  // fraction of column width
-                
-                if (newGap > maxPracticalGap) {
-                    shouldRemove = true;
-                } else {
-                    currentGap = newGap;
-                    // Recalculate turns for the new gap to maintain inductance
-                    double newTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
-                        core, (*magneticsWithScoring)[i].first.get_coil(), &inputs, DimensionalValues::MINIMUM);
-                    (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(newTurns);
-                }
-            }
-
-            iteration++;
-        }
-
-        if (shouldRemove) {
-            // Remove this core from the list
-            magneticsWithScoring->erase(magneticsWithScoring->begin() + i);
-        } else {
-            // Apply final gap and update name (avoid duplicates)
-            core.set_ground_gapping(currentGap);
-            core.process_gap();
-            
-            std::stringstream ss;
-            ss << std::fixed << std::setprecision(2) << (currentGap * 1000);
-            auto currentName = core.get_name().value_or("unnamed");
-            // Remove existing gap info if present to avoid duplicates
-            size_t gappedPos = currentName.find(" gapped ");
-            if (gappedPos != std::string::npos) {
-                currentName = currentName.substr(0, gappedPos);
-            }
-            size_t ungappedPos = currentName.find(" ungapped");
-            if (ungappedPos != std::string::npos) {
-                currentName = currentName.substr(0, ungappedPos);
-            }
-            if (currentGap > 0) {
-                core.set_name(currentName + " gapped " + ss.str() + " mm");
-            } else {
-                core.set_name(currentName + " ungapped");
-            }
-            
-            (*magneticsWithScoring)[i].first.set_core(core);
-            ++i;
+    size_t before = magneticsWithScoring->size();
+    std::vector<std::pair<Magnetic, double>> kept;
+    kept.reserve(before);
+    for (auto& entry : *magneticsWithScoring) {
+        Magnetic magnetic = entry.first;
+        auto [valid, scoring] = fringingFilter.evaluate_magnetic(&magnetic, &inputs);
+        if (valid) {
+            kept.push_back(entry);  // keep original score + position untouched
         }
     }
+    if (kept.size() < before) {
+        logEntry("Post-gap fringing guard rejected "
+                 + std::to_string(before - kept.size())
+                 + " core(s) whose finalized gap exceeded the fringing-factor limit "
+                   "(winding/proximity-loss risk).",
+                 "CoreAdviser");
+    }
+    *magneticsWithScoring = std::move(kept);
 }
 
 // ============================================================================

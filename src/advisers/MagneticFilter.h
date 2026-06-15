@@ -302,6 +302,8 @@ class MagneticFilterFringingFactor : public MagneticFilter {
         MagneticFilterFringingFactor() {};
         MagneticFilterFringingFactor(Inputs inputs);
         MagneticFilterFringingFactor(Inputs inputs, std::map<std::string, std::string> models);
+        void set_fringing_factor_limit(double limit) { _fringingFactorLitmit = limit; }
+        double get_fringing_factor_limit() const { return _fringingFactorLitmit; }
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
         // OPTIMIZATION: Clear cache when needed (e.g., between different design runs)
         static void clear_cache();

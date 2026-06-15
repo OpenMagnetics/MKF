@@ -7,6 +7,7 @@
 #include "TestingUtils.h"
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/Reluctance.h"
 #include "converter_models/Flyback.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -2964,6 +2965,68 @@ TEST_CASE("Test_CoreAdviser_DMC_Default_Wizard_Hang_Repro",
     CHECK(elapsedMs < 10000);
 
     Settings::GetInstance().reset();
+}
+
+// Regression: the adviser must never return a core whose finalized gap is so large
+// that its fringing field would dominate winding (proximity) losses and render the
+// design unusable. Reproduces the field-reported bug where a default-ish 100 µH
+// inductor at high peak current was advised onto a tiny E core with a multi-mm gap
+// (fringing factor > 1.7), producing > 150 W of proximity winding loss. The gap is
+// finalized in add_initial_turns_by_inductance (raising N + re-solving for L to
+// clear saturation), AFTER the early fringing pass — so it is the post-gap fringing
+// guard (reject_winding_killing_gaps) that must catch it. See CoreAdviserGapping.cpp.
+TEST_CASE("Test_CoreAdviser_RejectsWindingKillingGaps", "[adviser][core-adviser][fringing]") {
+    clear_databases();
+    // Very demanding energy-storing inductor: 100 µH, 100 kHz, 1200 V pk-pk drive
+    // (large derived magnetizing current). Hitting 100 µH on the available (small)
+    // cores at this current forces the gap-finalizing step
+    // (add_initial_turns_by_inductance — raises N + re-solves the gap to clear
+    // saturation) to balloon the gap. Without the post-gap fringing guard the adviser
+    // returns tiny cores with fringing factors up to ~1.82 — winding-killers whose
+    // fringing field dominates proximity losses (the field-reported bug sat at ~1.71).
+    // The guard (reject_winding_killing_gaps) must drop everything above the
+    // winding-killer ceiling and fall through to cores that reach L with a sane gap.
+    double dcCurrent = 0;
+    double ambientTemperature = 25;
+    double frequency = 100000;
+    double desiredMagnetizingInductance = 100e-6;
+    std::vector<double> turnsRatios = {};
+    OpenMagnetics::Inputs inputs;
+
+    prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios,
+                            desiredMagnetizingInductance, inputs, /*voltagePeakToPeak=*/1200);
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+    settings.set_use_toroidal_cores(false);
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto cores = load_test_data();
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 10);
+
+    REQUIRE(masMagnetics.size() > 0);
+
+    // Every returned gapped core must honour the winding-killer fringing ceiling
+    // (Defaults::coreAdviserWindingKillingFringingFactorLimit = 1.6); small tolerance
+    // for gap/geometry discretization. Without the fix this set contains FF ~1.8 cores.
+    auto reluctanceModel = ReluctanceModel::factory();
+    const double maxAllowedFringingFactor = 1.65;
+    for (auto& [mas, scoring] : masMagnetics) {
+        auto core = mas.get_magnetic().get_core();
+        auto gapping = core.get_gapping();
+        if (gapping.empty()) {
+            continue;  // ungapped / toroidal: no fringing concern
+        }
+        double fringingFactor = reluctanceModel->get_gap_reluctance(gapping[0]).get_fringing_factor();
+        INFO("core=" << core.get_name().value_or("?")
+             << " centralGap=" << gapping[0].get_length() * 1000.0 << "mm"
+             << " fringingFactor=" << fringingFactor);
+        CHECK(fringingFactor <= maxAllowedFringingFactor);
+    }
+    settings.reset();
 }
 
 }  // namespace

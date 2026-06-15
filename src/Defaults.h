@@ -138,6 +138,18 @@ struct Defaults {
     const double coreAdviserMaxPracticalGapColumnWidthFraction = 0.5;
     const double coreAdviserMaxFringingFactor = 0.25;
 
+    // Hard ceiling on a gapped core's fringing factor for the POST-GAP
+    // winding-killer guard (reject_winding_killing_gaps). The gap is finalized
+    // after the early fringing pass (add_initial_turns_by_inductance can balloon
+    // it to clear saturation), so a second, hard reject runs on the final gap.
+    // This is deliberately HIGHER than the early-pass limit (1.2): measured
+    // fringing factors of legitimate small-inductor designs reach ~1.47, while
+    // the field-reported winding-killer (a tiny E core whose fringing field
+    // produced >150 W of proximity loss) sat at ~1.71. 1.6 clears the normal
+    // designs and rejects the catastrophic ones. Above this, the fringing field
+    // dominates winding (proximity) losses and the design is unusable.
+    const double coreAdviserWindingKillingFringingFactorLimit = 1.6;
+
     // Phase 4 (Group B): cross-referencer scoring-normalisation floors.
     //
     // crossReferencerScoringAbsoluteFloor:

@@ -304,6 +304,13 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     filterSaturationAvailable.set_filter_configuration(&_filterConfiguration);
     magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     log_stage("Saturation filter", magneticsWithScoring.size());
+
+    // The available-cores path has no fringing filter of its own; the gap is
+    // finalized in add_initial_turns_by_inductance above and can be huge for a
+    // small core forced to hit L without saturating. Reject those winding-killers.
+    reject_winding_killing_gaps(&magneticsWithScoring, inputs);
+    log_stage("FringingFactor (post-gap)", magneticsWithScoring.size());
+
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
     log_stage("Cost filter", magneticsWithScoring.size());
 
@@ -369,6 +376,11 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
             reducedSaturationMargin = !magneticsWithScoring.empty();
             log_stage("retry Saturation (margin 1.0)", magneticsWithScoring.size());
         }
+
+        // Same winding-killing-gap guard as the main flow (the retry re-seeds the
+        // gap via add_initial_turns_by_inductance, so it must re-check fringing).
+        reject_winding_killing_gaps(&magneticsWithScoring, inputs);
+        log_stage("retry FringingFactor (post-gap)", magneticsWithScoring.size());
 
         magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
         magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::DIMENSIONS], true);
@@ -648,6 +660,12 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
         // Calculate turns
         add_initial_turns_by_inductance(&ferriteCores, inputs);
+
+        // Re-check fringing on the FINALIZED gap: add_initial_turns_by_inductance
+        // can grow the gap (raising N + re-solving for L) to clear saturation, so
+        // the gap the early fringing pass saw is stale. Reject winding-killers here.
+        reject_winding_killing_gaps(&ferriteCores, inputs);
+        log_stage("FringingFactor (post-gap, ferrite)", ferriteCores.size());
 
         // Filter by inductance
         ferriteCores = filterMagneticInductance.filter_magnetics(&ferriteCores, inputs, 0.1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);

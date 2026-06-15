@@ -268,12 +268,22 @@ class CoreAdviser {
         void add_gapping_standard_cores(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
 
         /**
-         * @brief Iteratively refine gaps to achieve target saturation (70% of Bsat).
-         * Must be called AFTER materials and turns are assigned.
-         * @param magneticsWithScoring Vector of magnetics to refine.
+         * @brief Reject candidates whose finalized gap exceeds the fringing-factor
+         * limit (winding/proximity-loss risk).
+         *
+         * `add_initial_turns_by_inductance` finalizes the gap AFTER the early
+         * fringing pass: for energy-storing designs it can grow the gap (raising N
+         * and re-solving for the target L) to clear saturation, producing a huge
+         * final gap whose fringing field dominates winding (proximity) losses. This
+         * re-applies the fringing filter as a HARD reject on the finalized gap so
+         * the adviser never returns a winding-killing core; rejected cores are
+         * dropped and selection falls through to larger cores that hit L with a
+         * sane gap. Hard (weight-independent) — it is a physical safety constraint,
+         * not an efficiency preference.
+         * @param magneticsWithScoring Candidates with finalized (N, gap).
          * @param inputs Operating conditions.
          */
-        void refine_gaps_for_saturation(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
+        void reject_winding_killing_gaps(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
 
         /**
          * @brief Calculate optimal gap and turns using binary search with analytical cost function (Option 2).
