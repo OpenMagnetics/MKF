@@ -6,6 +6,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/WindingLosses.h"
 #include "constructive_models/NumberTurns.h"
 #include "support/Utils.h"
 #include "support/Settings.h"
@@ -84,20 +85,11 @@ std::complex<double> Impedance::calculate_differential_mode_impedance(Core core,
     return differential_mode_impedance_from_parameters(parameters, frequency);
 }
 
-std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double frequency, double temperature) {
+ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     double numberTurns = coil.get_functional_description()[0].get_number_turns();
     double reluctanceCoreUnityPermeability = reluctanceModel->get_core_reluctance(core, 1).get_core_reluctance();
-
-    OpenMagnetics::ComplexPermeability complexPermeabilityObj;
-    auto coreMaterial = core.resolve_material();
-    auto [complexPermeabilityRealPart, complexPermeabilityImaginaryPart] = complexPermeabilityObj.get_complex_permeability(coreMaterial, frequency);
-
-    auto angularFrequency = 2 * std::numbers::pi * frequency;
     double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
-    // Standard e^{jωt} convention: Z_L = jωL_air·µ = jωL_air·(µ' − jµ'') = ωL_air·(µ'' + jµ').
-    // So the real part (loss) is ωL_air·µ'' and the reactance is +ωL_air·µ' (positive/inductive).
-    auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, complexPermeabilityRealPart);
 
     double capacitance;
     auto& settings = Settings::GetInstance();
@@ -110,11 +102,169 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
         capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
     }
 
-    auto capacitiveImpedance = std::complex<double>(0, -1.0 / (angularFrequency * capacitance));
+    return ImpedanceTank{airCoredInductance, capacitance, true};
+}
 
-    auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
+std::complex<double> Impedance::impedance_from_model(const WidebandImpedanceModel& model, double frequency) {
+    auto angularFrequency = 2 * std::numbers::pi * frequency;
+
+    // Core complex permeability for the magnetizing tank, evaluated once.
+    // Standard e^{jωt} convention: Z_L = jωL_air·µ = jωL_air·(µ' − jµ'') = ωL_air·(µ'' + jµ').
+    // So the real part (loss) is ωL_air·µ'' and the reactance is +ωL_air·µ' (inductive).
+    double complexPermeabilityRealPart = 1.0;
+    double complexPermeabilityImaginaryPart = 0.0;
+    if (model.coreMaterial) {
+        auto [muReal, muImag] = OpenMagnetics::ComplexPermeability().get_complex_permeability(model.coreMaterial.value(), frequency);
+        complexPermeabilityRealPart = muReal * model.permeabilityScaling;
+        complexPermeabilityImaginaryPart = muImag * model.permeabilityScaling;
+    }
+
+    // The leakage tanks are damped by their winding resistance, which is
+    // frequency-dependent (skin/proximity). Evaluate one winding's resistance at
+    // this frequency: fast => DC × analytic skin factor; slow => full field-based
+    // effective resistance (adds proximity).
+    auto windingResistanceAt = [&](size_t windingIndex) -> double {
+        if (!model.fast && model.hasProximityModel && model.magnetic) {
+            return WindingLosses::calculate_effective_resistance_of_winding(model.magnetic.value(), windingIndex, frequency, model.temperature);
+        }
+        if (model.hasWindingResistanceModel
+                && windingIndex < model.windingDcResistancePerMeter.size()
+                && model.windingDcResistancePerMeter[windingIndex] > 0) {
+            double skinFactor = WindingOhmicLosses::calculate_effective_resistance_per_meter(model.windingWire[windingIndex], frequency, model.temperature) / model.windingDcResistancePerMeter[windingIndex];
+            return model.windingResistanceDc[windingIndex] * skinFactor;
+        }
+        if (windingIndex < model.windingResistanceDc.size()) {
+            return model.windingResistanceDc[windingIndex];  // no skin model for this wire -> DC
+        }
+        return 0.0;
+    };
+
+    // Winding 0's resistance is common to every leakage loop, so evaluate it once.
+    bool hasLeakageTank = false;
+    for (const auto& tank : model.tanks) {
+        if (!tank.usesCorePermeability) {
+            hasLeakageTank = true;
+            break;
+        }
+    }
+    double primaryResistance = hasLeakageTank ? windingResistanceAt(0) : 0.0;
+
+    // Series cascade of parallel-RLC tanks (Foster ladder): each tank adds one
+    // resonance. At low frequency the leakage tanks reduce to their series
+    // R + jωL_leak arm (their shunt capacitance is negligible), so the dominant
+    // magnetizing resonance is preserved; near each leakage resonance the shunt
+    // inter-winding capacitance produces the corresponding higher self-resonance.
+    std::complex<double> impedance = 0.0;
+    for (const auto& tank : model.tanks) {
+        std::complex<double> seriesArm;
+        if (tank.usesCorePermeability) {
+            seriesArm = angularFrequency * tank.inductance * std::complex<double>(complexPermeabilityImaginaryPart, complexPermeabilityRealPart);
+        }
+        else {
+            // Leakage loop resistance referred to winding 0: R_0 + (N_0/N_j)²·R_j.
+            double leakageResistance = primaryResistance + tank.turnsRatioSquared * windingResistanceAt(tank.secondaryWindingIndex);
+            seriesArm = std::complex<double>(leakageResistance, angularFrequency * tank.inductance);
+        }
+
+        if (tank.capacitance > 0) {
+            auto capacitiveArm = std::complex<double>(0, -1.0 / (angularFrequency * tank.capacitance));
+            impedance += 1.0 / (1.0 / seriesArm + 1.0 / capacitiveArm);
+        }
+        else {
+            impedance += seriesArm;
+        }
+    }
 
     return impedance;
+}
+
+WidebandImpedanceModel Impedance::build_wideband_impedance_model(Magnetic magnetic, double referenceFrequency, double temperature, bool fast) {
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+
+    WidebandImpedanceModel model;
+    model.coreMaterial = core.resolve_material();
+    model.temperature = temperature;
+    model.fast = fast;
+
+    // Tank 0: the magnetizing resonance (core µ(f) ∥ winding self-capacitance),
+    // present for every magnetic — the same first resonance as calculate_impedance.
+    model.tanks.push_back(build_magnetizing_tank(core, coil));
+
+    // For coupled magnetics each additional winding adds a leakage resonance: the
+    // leakage inductance between winding 0 and winding j (the flux that does not
+    // couple through the core, essentially air-cored and frequency-flat) resonates
+    // with the inter-winding capacitance between them. This is the choke "second
+    // resonance", generalized to one tank per extra winding. A single-winding
+    // inductor adds no such tank and keeps its single resonance.
+    size_t numberWindings = coil.get_functional_description().size();
+    if (numberWindings >= 2) {
+        if (!coil.get_turns_description()) {
+            coil.wind();
+            magnetic.set_coil(coil);
+        }
+
+        // Inter-winding capacitances: the off-diagonal terms of the stray-capacitance
+        // matrix (the through-core path on a separated-winding choke). The whole
+        // matrix is computed once here, not per frequency.
+        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core).get_capacitance_among_windings().value();
+        auto primaryName = coil.get_functional_description()[0].get_name();
+        double primaryTurns = coil.get_functional_description()[0].get_number_turns();
+
+        // Per-winding resistance data. The leakage path is air-cored (purely
+        // reactive), so the winding resistance is its dominant loss term, matching
+        // calculate_differential_mode_parameters(). Each leakage loop runs through
+        // winding 0 and one secondary, so the evaluator damps it with both
+        // windings' resistances (referred to winding 0).
+        model.windingResistanceDc = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, temperature);
+        if (fast) {
+            // Precompute the DC per-meter resistance so the per-frequency skin factor
+            // is just R_pm(f)/R_pm_dc — no coil field map needed.
+            model.windingWire.reserve(numberWindings);
+            model.windingDcResistancePerMeter.reserve(numberWindings);
+            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                auto wire = coil.resolve_wire(windingIndex);
+                model.windingWire.push_back(wire);
+                model.windingDcResistancePerMeter.push_back(WindingOhmicLosses::calculate_dc_resistance_per_meter(wire, temperature));
+            }
+            model.hasWindingResistanceModel = true;
+        }
+        else {
+            // DC + skin + proximity: the per-point field-based effective resistance
+            // needs the magnetic, so keep it for the evaluator.
+            model.hasProximityModel = true;
+            model.magnetic = magnetic;
+        }
+
+        for (size_t windingIndex = 1; windingIndex < numberWindings; ++windingIndex) {
+            double leakageInductance = LeakageInductance()
+                .calculate_leakage_inductance(magnetic, referenceFrequency, 0, windingIndex)
+                .get_leakage_inductance_per_winding()[0]
+                .get_nominal()
+                .value();
+            if (leakageInductance <= 0) {
+                continue;  // no leakage path to this winding -> no extra resonance
+            }
+            auto secondaryName = coil.get_functional_description()[windingIndex].get_name();
+            double interWindingCapacitance = capacitanceMatrix[primaryName][secondaryName];
+            // Referral factor (N_0/N_j)² for the secondary resistance in this leakage loop.
+            double secondaryTurns = coil.get_functional_description()[windingIndex].get_number_turns();
+            double turnsRatioSquared = (secondaryTurns > 0) ? std::pow(primaryTurns / secondaryTurns, 2) : 1.0;
+            model.tanks.push_back(ImpedanceTank{leakageInductance, interWindingCapacitance, false, windingIndex, turnsRatioSquared});
+        }
+    }
+
+    return model;
+}
+
+std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double frequency, double temperature) {
+    // Single-point common-mode/terminal impedance: just the magnetizing tank (the
+    // first resonance). The wideband sweep adds the leakage tanks on top of this.
+    WidebandImpedanceModel model;
+    model.coreMaterial = core.resolve_material();
+    model.temperature = temperature;
+    model.tanks.push_back(build_magnetizing_tank(core, coil));
+    return impedance_from_model(model, frequency);
 }
 
 std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double frequency, double magneticFieldDcBias, double temperature) {
@@ -128,38 +278,14 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
     double muBiased = InitialPermeability::get_initial_permeability(coreMaterial, temperature, magneticFieldDcBias, frequency);
     double biasRatio = (muInitial > 0) ? (muBiased / muInitial) : 1.0;
 
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
-    double numberTurns = coil.get_functional_description()[0].get_number_turns();
-    double reluctanceCoreUnityPermeability = reluctanceModel->get_core_reluctance(core, 1).get_core_reluctance();
-
-    OpenMagnetics::ComplexPermeability complexPermeabilityObj;
-    auto [complexPermeabilityRealPart, complexPermeabilityImaginaryPart] = complexPermeabilityObj.get_complex_permeability(coreMaterial, frequency);
-
-    // Apply DC bias scaling to both real and imaginary parts
-    complexPermeabilityRealPart *= biasRatio;
-    complexPermeabilityImaginaryPart *= biasRatio;
-
-    auto angularFrequency = 2 * std::numbers::pi * frequency;
-    double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
-    // Standard e^{jωt} convention: Z_L = jωL_air·µ = jωL_air·(µ' − jµ'') = ωL_air·(µ'' + jµ').
-    // So the real part (loss) is ωL_air·µ'' and the reactance is +ωL_air·µ' (positive/inductive).
-    auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, complexPermeabilityRealPart);
-
-    double capacitance;
-    auto& settings = Settings::GetInstance();
-    if (_fastCapacitance) {
-        capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
-    }
-    else {
-        auto strayCapacitanceModel = settings.get_stray_capacitance_model();
-        auto capacitanceMatrix = StrayCapacitance(strayCapacitanceModel).calculate_capacitance(coil).get_capacitance_among_windings().value();
-        capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
-    }
-
-    auto capacitiveImpedance = std::complex<double>(0, -1.0 / (angularFrequency * capacitance));
-    auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
-
-    return impedance;
+    // Same magnetizing tank as the unbiased path, with the complex permeability
+    // scaled by µ(H_dc)/µ(0) to account for permeability rolloff under DC bias.
+    WidebandImpedanceModel model;
+    model.coreMaterial = coreMaterial;
+    model.permeabilityScaling = biasRatio;
+    model.temperature = temperature;
+    model.tanks.push_back(build_magnetizing_tank(core, coil));
+    return impedance_from_model(model, frequency);
 }
 
 int64_t Impedance::calculate_minimum_number_turns(Magnetic magnetic, Inputs inputs) {
