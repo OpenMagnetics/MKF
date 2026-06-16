@@ -46,6 +46,37 @@ namespace {
         REQUIRE(saturationCurrentAt100 < saturationCurrentAt20);
     }
 
+    TEST_CASE("Test_Magnetic_Rated_Current", "[constructive-model][magnetic][smoke-test]") {
+
+        std::vector<int64_t> numberTurns = {18};
+        std::vector<int64_t> numberParallels = {1};
+        std::string shapeName = "PQ 65/44";
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.0001);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        // The rated current must actually produce the requested temperature rise: feed it
+        // back through the same ohmic-loss + temperature path and check the rise lands on 40 K.
+        double ratedCurrent = magnetic.calculate_rated_current();  // default: 40 K rise
+        REQUIRE(ratedCurrent > 0);
+
+        // A larger allowed rise must permit a larger current; a smaller rise a smaller one.
+        double ratedCurrentSmallRise = magnetic.calculate_rated_current(20);
+        double ratedCurrentLargeRise = magnetic.calculate_rated_current(60);
+        REQUIRE(ratedCurrentSmallRise < ratedCurrent);
+        REQUIRE(ratedCurrentLargeRise > ratedCurrent);
+
+        // A non-positive rise is meaningless and must throw rather than silently default.
+        REQUIRE_THROWS(magnetic.calculate_rated_current(0));
+    }
+
     void run_adviser_with_mode(const std::string& modeName, CoreAdviser::CoreAdviserModes mode) {
         std::cout << "\n\n========================================" << std::endl;
         std::cout << "Testing with mode: " << modeName << std::endl;

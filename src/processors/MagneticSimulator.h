@@ -1,7 +1,6 @@
 #pragma once
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/CoreLosses.h"
-#include "physical_models/CoreTemperature.h"
 #include "physical_models/WindingLosses.h"
 #include "support/Utils.h"
 #include "support/Settings.h"
@@ -16,10 +15,8 @@ class MagneticSimulator {
     private:
         bool _enableTemperatureConvergence = false;
 
-        CoreTemperatureModels _coreTemperatureModelName;
         ReluctanceModels _reluctanceModelName;
 
-        std::shared_ptr<CoreTemperatureModel> _coreTemperatureModel;
         MagnetizingInductance _magnetizingInductanceModel;
         CoreLosses _coreLossesModel;
 
@@ -28,16 +25,11 @@ class MagneticSimulator {
         MagneticSimulator() {
             // Use Settings instead of defaults
             auto& settings = Settings::GetInstance();
-            _coreTemperatureModelName = settings.get_core_temperature_model();
             _reluctanceModelName = settings.get_reluctance_model();
 
-            _coreTemperatureModel = CoreTemperatureModel::factory(_coreTemperatureModelName);
             _magnetizingInductanceModel = MagnetizingInductance(to_string(_reluctanceModelName));
         }
 
-        void set_core_temperature_model_name(CoreTemperatureModels model) {
-            _coreTemperatureModelName = model;
-        }
         void set_reluctance_model_name(ReluctanceModels model) {
             _reluctanceModelName = model;
         }
@@ -47,6 +39,13 @@ class MagneticSimulator {
 
         Mas simulate(Mas mas, bool fastMode=false);
         Mas simulate(const Inputs& inputs, const Magnetic& magnetic, bool fastMode=false);
+
+        // Builds a manufacturer-style datasheet (MagneticManufacturerInfo.datasheetInfo) from an
+        // already-simulated MAS, reading the per-operating-point Outputs and the magnetic geometry.
+        // Existing manufacturerInfo fields (name, reference, description, family, ...) are preserved;
+        // only the datasheetInfo block is populated/overwritten. The result is also attached to
+        // mas.magnetic.manufacturerInfo. Requires mas to carry simulation outputs (run simulate first).
+        MagneticManufacturerInfo build_datasheet(Mas& mas);
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic);
         LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
         static LeakageInductanceOutput calculate_leakage_inductance(Magnetic magnetic, double frequency);

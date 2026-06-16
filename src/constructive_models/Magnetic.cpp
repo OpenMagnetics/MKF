@@ -4,8 +4,12 @@
 #include "processors/Outputs.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/Reluctance.h"
+#include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/Temperature.h"
 #include "support/Utils.h"
 #include "support/Exceptions.h"
+
+#include <cmath>
 
 namespace OpenMagnetics {
 
@@ -240,6 +244,96 @@ double Magnetic::calculate_saturation_current(double temperature, bool proportio
 
     return magneticFluxDensitySaturation * numberTurns * effectiveArea
          / inductanceActual;
+}
+
+double Magnetic::calculate_rated_current(double temperatureRise, double ambientTemperature) {
+    // Datasheet "Irms" / rated current: the DC current that heats the part by
+    // `temperatureRise` K above ambient through the primary winding's ohmic loss
+    // (core loss excluded — a DC bias has no flux swing). See the header for the
+    // DC-vs-AC convention and references.
+    if (temperatureRise <= 0) {
+        throw std::invalid_argument("calculate_rated_current: temperatureRise must be positive");
+    }
+
+    // The full thermal-network model needs a wound coil to place the turn nodes; wind a
+    // local copy so the call is non-mutating.
+    Magnetic magnetic = *this;
+    if (!magnetic.get_coil().get_turns_description()) {
+        magnetic.get_mutable_coil().wind();
+    }
+    auto coil = magnetic.get_coil();
+
+    // Per-turn DC winding losses for a primary current `dcCurrent` at copper temperature
+    // `temperature`, via the MKF ohmic-loss model (R_dc is resolved at `temperature`). The
+    // full Temperature model needs this per-turn distribution, not just a total.
+    auto ohmicLossesForCurrent = [&](double dcCurrent, double temperature) {
+        Processed processed;
+        processed.set_offset(dcCurrent);
+        processed.set_rms(dcCurrent);
+        SignalDescriptor currentSignal;
+        currentSignal.set_processed(processed);
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(0);  // DC bias
+        excitation.set_current(currentSignal);
+        OperatingPoint dcOperatingPoint;
+        dcOperatingPoint.set_excitations_per_winding({excitation});  // primary only; others carry no current
+        return WindingOhmicLosses::calculate_ohmic_losses(coil, dcOperatingPoint, temperature);
+    };
+
+    // Steady-state hot-spot temperature for a DC current `dcCurrent` in the primary winding,
+    // from the full Temperature thermal-network model fed with the per-turn DC ohmic losses.
+    // R_dc rises with copper temperature, so loss and temperature are solved together by a
+    // short fixed-point iteration (copper tempco is small, so it converges in a few passes).
+    auto steadyStateTemperature = [&](double dcCurrent) {
+        double windingTemperature = ambientTemperature;
+        double maximumTemperature = ambientTemperature;
+        for (size_t iteration = 0; iteration < 6; ++iteration) {
+            auto losses = ohmicLossesForCurrent(dcCurrent, windingTemperature);
+
+            TemperatureConfig config;
+            config.ambientTemperature = ambientTemperature;
+            config.coreLosses = 0;            // pure DC bias: no flux swing, no core loss
+            config.windingLosses = losses.get_winding_losses();
+            config.windingLossesOutput = losses;
+            config.plotSchematic = false;     // no SVG side effect per evaluation
+
+            auto result = Temperature(magnetic, config).calculateTemperatures();
+            maximumTemperature = result.maximumTemperature;
+            if (std::abs(result.averageCoilTemperature - windingTemperature) < 0.05) {
+                break;
+            }
+            windingTemperature = result.averageCoilTemperature;
+        }
+        return maximumTemperature;
+    };
+
+    // The rise is monotonically increasing in current, so bisect. First grow an upper
+    // bound until its rise exceeds the target.
+    double lowerCurrent = 0;
+    double upperCurrent = 1;
+    while (steadyStateTemperature(upperCurrent) - ambientTemperature < temperatureRise) {
+        upperCurrent *= 2;
+        if (upperCurrent > 1e6) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR,
+                "calculate_rated_current: could not reach the target temperature rise below 1 MA");
+        }
+    }
+
+    for (size_t iteration = 0; iteration < 40; ++iteration) {
+        double midCurrent = 0.5 * (lowerCurrent + upperCurrent);
+        double rise = steadyStateTemperature(midCurrent) - ambientTemperature;
+        if (std::abs(rise - temperatureRise) < 0.1) {
+            return midCurrent;
+        }
+        if (rise < temperatureRise) {
+            lowerCurrent = midCurrent;
+        }
+        else {
+            upperCurrent = midCurrent;
+        }
+    }
+
+    return 0.5 * (lowerCurrent + upperCurrent);
 }
 
 void to_file(std::filesystem::path filepath, const Magnetic & x) {

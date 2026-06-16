@@ -83,6 +83,26 @@ class Magnetic : public MAS::Magnetic {
         double calculate_saturation_current(OperatingPoint& operatingPoint,
                                             double temperature = Defaults().ambientTemperature);
 
+        /**
+         * @brief Rated (heat-limited) current: the steady DC current that raises the
+         * component temperature by @p temperatureRise degrees above @p ambientTemperature.
+         *
+         * This is the datasheet "Irms" / rated-current figure. By industry convention
+         * (Coilcraft, Würth, TDK, ...) it is a *DC* current and the heating is the
+         * winding's ohmic loss I²·R_dc(T) only — core loss is excluded because a pure DC
+         * bias produces no flux swing. AC operation must be derated against this number.
+         * The standard rise is 40 K for power inductors (smaller, e.g. 15-20 K, for chip
+         * inductors); the default here is 40 K.
+         *
+         * The current is taken to flow in the primary winding (index 0). The per-turn R_dc
+         * ohmic loss comes from WindingOhmicLosses and the temperature rise from the full
+         * Temperature thermal-network model, so the value stays consistent with the rest of
+         * MKF. The copper-temperature dependence of R_dc is resolved by an inner fixed-point;
+         * the rated current itself is found by bisection on the rise.
+         */
+        double calculate_rated_current(double temperatureRise = 40,
+                                       double ambientTemperature = Defaults().ambientTemperature);
+
 };
 
 bool operator==(Magnetic lhs, Magnetic rhs);
