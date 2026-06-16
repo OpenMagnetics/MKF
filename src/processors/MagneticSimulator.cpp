@@ -216,24 +216,28 @@ MagneticManufacturerInfo MagneticSimulator::build_datasheet(Mas& mas) {
     // computed from the winding ohmic loss and the core temperature model.
     electrical.set_rated_current(magnetic.calculate_rated_current());
 
-    // Self-resonant frequency and an impedance-vs-frequency sweep, via the Impedance model
-    // (which folds in the winding's stray capacitance). The sweep is anchored on the SRF so
-    // the published curve straddles the resonance peak, ~10 points/decade.
+    // Self-resonant frequency and an impedance-vs-frequency sweep. The sweep uses the wideband
+    // Foster-ladder model (the magnetizing resonance plus one leakage resonance per extra
+    // winding), built once and evaluated per frequency; stray capacitance and winding
+    // resistance are folded in by the model. Anchored on the SRF and spanning several decades
+    // above it so the published curve captures the higher (leakage) resonances too.
     {
         Impedance impedanceModel;
         double selfResonantFrequency = impedanceModel.calculate_self_resonant_frequency(magnetic, dcResistanceTemperature);
         electrical.set_self_resonant_frequency(selfResonantFrequency);
 
-        const size_t numberPoints = 41;
+        auto widebandModel = impedanceModel.build_wideband_impedance_model(magnetic, selfResonantFrequency, dcResistanceTemperature);
+
+        const size_t numberPoints = 51;
         double startFrequency = selfResonantFrequency / 1000;
-        double stopFrequency = selfResonantFrequency * 10;
+        double stopFrequency = selfResonantFrequency * 100;
         double logStep = std::log10(stopFrequency / startFrequency) / (numberPoints - 1);
 
         std::vector<DatasheetImpedancePoint> impedancePoints;
         double maximumImpedanceMagnitude = std::numeric_limits<double>::lowest();
         for (size_t pointIndex = 0; pointIndex < numberPoints; ++pointIndex) {
             double frequency = startFrequency * std::pow(10.0, logStep * pointIndex);
-            auto impedance = impedanceModel.calculate_impedance(magnetic, frequency, dcResistanceTemperature);
+            auto impedance = impedanceModel.impedance_from_model(widebandModel, frequency);
 
             ImpedancePoint impedancePoint;
             impedancePoint.set_magnitude(std::abs(impedance));
