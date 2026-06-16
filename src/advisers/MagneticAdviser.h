@@ -282,22 +282,28 @@ class MagneticAdviser{
         template<typename ConverterType>
         std::vector<std::pair<Mas, double>> get_advised_magnetic_from_converter(
             ConverterType& converter,
-            size_t maximumNumberResults = 1);
+            size_t maximumNumberResults = 1,
+            bool fast = false);
 
         /**
          * @brief Design magnetics from a converter with custom weights.
-         * 
+         *
          * @tparam ConverterType The converter type
          * @param converter The converter instance
          * @param weights Map of filter types to weight values
          * @param maximumNumberResults Maximum number of designs to return
+         * @param fast When true, use the fast core-only adviser
+         *        (get_advised_magnetic_fast) instead of the full
+         *        winding+simulation adviser. The fast adviser ignores
+         *        per-filter weights.
          * @return Vector of (Mas, score) pairs sorted by descending score
          */
         template<typename ConverterType>
         std::vector<std::pair<Mas, double>> get_advised_magnetic_from_converter(
             ConverterType& converter,
             std::map<MagneticFilters, double> weights,
-            size_t maximumNumberResults);
+            size_t maximumNumberResults,
+            bool fast = false);
 };
 
 // Template method implementations
@@ -366,15 +372,17 @@ std::vector<OperatingPoint> run_ngspice_simulation(ConverterType& converter,
 template<typename ConverterType>
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_from_converter(
     ConverterType& converter,
-    size_t maximumNumberResults) {
-    return get_advised_magnetic_from_converter(converter, std::map<MagneticFilters, double>{}, maximumNumberResults);
+    size_t maximumNumberResults,
+    bool fast) {
+    return get_advised_magnetic_from_converter(converter, std::map<MagneticFilters, double>{}, maximumNumberResults, fast);
 }
 
 template<typename ConverterType>
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_from_converter(
     ConverterType& converter,
     std::map<MagneticFilters, double> weights,
-    size_t maximumNumberResults) {
+    size_t maximumNumberResults,
+    bool fast) {
     
     // Step 1: Get design requirements from converter (calculates optimal turns ratios, inductance, etc.)
     DesignRequirements designReqs = converter.process_design_requirements();
@@ -420,9 +428,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_from_c
     // ngspice returns raw sampled waveforms; process() computes harmonics and other derived data
     inputs.process();
     
-    // Step 6: Get magnetics from adviser
+    // Step 6: Get magnetics from adviser. The fast path uses the core-only
+    // adviser (get_advised_magnetic_fast), which does not take per-filter
+    // weights; weights only apply to the full adviser.
     std::vector<std::pair<Mas, double>> results;
-    if (weights.empty()) {
+    if (fast) {
+        results = get_advised_magnetic_fast(inputs, maximumNumberResults);
+    } else if (weights.empty()) {
         results = get_advised_magnetic(inputs, maximumNumberResults);
     } else {
         results = get_advised_magnetic(inputs, weights, maximumNumberResults);
