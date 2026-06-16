@@ -542,7 +542,10 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 // sizes to exactly the same limit the gapping code targets (they
                 // must not diverge). The loss filter refines N upward toward the
                 // loss optimum later.
-                double bSatRaw = core.get_magnetic_flux_density_saturation(transformerTemperature, false);
+                // Evaluate B_sat at the hot junction corner (ABT #13), consistent
+                // with the saturation filter and the gapping sizing.
+                double bSatRaw = core.get_magnetic_flux_density_saturation(
+                    saturation_derating_temperature(transformerTemperature), false);
                 double bMax = maximum_allowed_magnetic_flux_density(bSatRaw);
                 double nFromSaturation = magnetizingInductance
                     .calculate_turns_from_volt_seconds_and_max_flux_density(core, maxVoltSeconds, bMax);
@@ -652,14 +655,19 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                             peakCurrent = std::max(peakCurrent, std::abs(exc.get_current()->get_processed()->get_peak().value()));
                         }
                     }
-                    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+                    // Derating (ABT #13): size against the gap-aware saturation
+                    // current evaluated at the hot junction corner and with RAW
+                    // B_sat (proportion=false), matching the saturation filter's
+                    // inductor gate exactly — total derating is (hot temp × margin),
+                    // with no 0.7 flux-proportion stacked on top.
+                    double temperature = saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature());
                     double requiredIsat = settings.get_core_adviser_saturation_margin() * peakCurrent;
 
                     std::optional<double> seededIsat;
                     if (peakCurrent > 0 && requiredIsat > 0) {
                         Magnetic seeded = (*magneticsWithScoring)[i].first;
                         seeded.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(std::llround(initialNumberTurns)));
-                        try { seededIsat = seeded.calculate_saturation_current(temperature); }
+                        try { seededIsat = seeded.calculate_saturation_current(temperature, /*proportion=*/false); }
                         catch (const std::exception&) { seededIsat = std::nullopt; }
                     }
 
@@ -679,7 +687,7 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                             Magnetic tm = (*magneticsWithScoring)[i].first;
                             tm.set_core(outCore);
                             tm.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(std::llround(n)));
-                            try { return tm.calculate_saturation_current(temperature); }
+                            try { return tm.calculate_saturation_current(temperature, /*proportion=*/false); }
                             catch (const std::exception&) { return std::nullopt; }
                         };
 

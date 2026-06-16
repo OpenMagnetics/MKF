@@ -93,7 +93,7 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
                     for (auto& op : inputs.get_operating_points()) {
                         opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
                     }
-                    realisticBsat = Core::get_magnetic_flux_density_saturation(coreMat, opTemp);
+                    realisticBsat = Core::get_magnetic_flux_density_saturation(coreMat, saturation_derating_temperature(opTemp));
                 }
                 catch (const std::exception& e) {
                     // Real material's Bsat lookup failed → cannot compute a
@@ -188,7 +188,7 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
     for (auto& op : inputs.get_operating_points()) {
         opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
     }
-    double realisticBsat = core.get_magnetic_flux_density_saturation(opTemp, false);
+    double realisticBsat = core.get_magnetic_flux_density_saturation(saturation_derating_temperature(opTemp), false);
 
     // 1. Calculate minimum gap: energy storage requirement
     double maxAllowedB = maximum_allowed_magnetic_flux_density(realisticBsat);
@@ -572,7 +572,7 @@ double CoreAdviser::calculate_gap_cost_analytical(double gap, Inputs& inputs, Co
     
     // Safe operating flux for this material at the operating temperature
     // (topology-aware, single source of truth).
-    double rawBsat = core.get_magnetic_flux_density_saturation(temperature, /*proportion=*/false);
+    double rawBsat = core.get_magnetic_flux_density_saturation(saturation_derating_temperature(temperature), /*proportion=*/false);
     double maxAllowedB = maximum_allowed_magnetic_flux_density(rawBsat);
 
     // Check saturation constraint
@@ -627,7 +627,7 @@ std::pair<double, double> CoreAdviser::optimize_gap_and_turns_binary_search(Inpu
         inputs.get_design_requirements().get_magnetizing_inductance(),
         DimensionalValues::NOMINAL);
     double peakCurrent = get_peak_current(inputs);
-    double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
+    double bSat = core.get_magnetic_flux_density_saturation(saturation_derating_temperature(temperature), false);
     double maxAllowedB = maximum_allowed_magnetic_flux_density(bSat);
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     
@@ -734,8 +734,8 @@ void CoreAdviser::add_gapping_and_turns_analytical(std::vector<std::pair<Magneti
             core.process_data();
         }
         
-        // Get Bsat for this material
-        double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
+        // Get Bsat for this material at the hot junction corner (ABT #13)
+        double bSat = core.get_magnetic_flux_density_saturation(saturation_derating_temperature(temperature), false);
         double maxAllowedB = maximum_allowed_magnetic_flux_density(bSat);
 
         // Use Option 1: Direct analytical calculation (O(1) per core)

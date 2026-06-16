@@ -58,7 +58,14 @@ class Magnetic : public MAS::Magnetic {
         std::vector<double> get_maximum_dimensions();
         bool fits(MaximumDimensions maximumDimensions, bool allowRotation);
 
-        double calculate_saturation_current(double temperature = Defaults().ambientTemperature);
+        // I_sat = B_sat(T)·N·A_e/L. By default B_sat is the PROPORTION-derated
+        // (0.7·B_sat_raw) usable value the realism gate expects. Pass
+        // proportion=false for the RAW saturation current — the CoreAdviser
+        // saturation gate uses raw B_sat so its derating is exactly
+        // (hot temperature × margin), with no flux-proportion factor stacked on
+        // top of the margin (ABT #13).
+        double calculate_saturation_current(double temperature = Defaults().ambientTemperature,
+                                            bool proportion = true);
 
         /**
          * @brief Saturation current evaluated at a specific operating point.

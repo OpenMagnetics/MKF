@@ -582,8 +582,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                                 continue;
                             }
                             double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
-                            double temperature = op.get_conditions().get_ambient_temperature();
-                            double saturationCurrent = mas.get_mutable_magnetic().calculate_saturation_current(temperature);
+                            // Derating (ABT #13): hot junction corner + RAW B_sat,
+                            // matching the saturation filter's inductor gate.
+                            double temperature = saturation_derating_temperature(op.get_conditions().get_ambient_temperature());
+                            double saturationCurrent = mas.get_mutable_magnetic().calculate_saturation_current(temperature, /*proportion=*/false);
                             if (saturationCurrent < saturationMargin * currentPeak) {
                                 saturates = true;
                                 break;

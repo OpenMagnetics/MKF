@@ -643,6 +643,12 @@ namespace {
                                             excitation.get_current()->get_processed()->get_peak().value());
         }
         double saturationMargin = settings.get_core_adviser_saturation_margin();
+        // ABT #13: the gate evaluates saturation at the HOT junction corner with
+        // RAW B_sat, so its derating is exactly (hot temperature × margin) — no
+        // 0.7 flux-proportion stacked on top. Assert that same contract here
+        // rather than the old calculate_saturation_current(25) (0.7·B_sat at
+        // ambient), which is a different — and now divergent — quantity.
+        double deratingTemperature = settings.get_core_adviser_saturation_derating_temperature();
 
         MagneticAdviser magneticAdviser;
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 3);
@@ -650,9 +656,9 @@ namespace {
 
         for (auto& [masMagnetic, scoring] : masMagnetics) {
             auto magnetic = masMagnetic.get_magnetic();
-            double saturationCurrent = magnetic.calculate_saturation_current(25);
+            double saturationCurrent = magnetic.calculate_saturation_current(deratingTemperature, /*proportion=*/false);
             INFO("Core: " << magnetic.get_core().get_name().value_or("?")
-                 << ", isat = " << saturationCurrent << " A"
+                 << ", isat (raw @ " << deratingTemperature << " C) = " << saturationCurrent << " A"
                  << ", worst-case ipeak = " << worstCasePeakCurrent << " A"
                  << ", required margin = " << saturationMargin);
             CHECK(saturationCurrent >= saturationMargin * worstCasePeakCurrent);
@@ -668,7 +674,7 @@ namespace {
         auto stricterResults = stricterAdviser.get_advised_magnetic(inputs, 3);
         for (auto& [masMagnetic, scoring] : stricterResults) {
             auto magnetic = masMagnetic.get_magnetic();
-            double saturationCurrent = magnetic.calculate_saturation_current(25);
+            double saturationCurrent = magnetic.calculate_saturation_current(deratingTemperature, /*proportion=*/false);
             // Results that escaped the gate must be explicitly flagged: either
             // the pipeline retry tagged the core (margin relaxed to 1.0) or
             // the CoilAdviser all-filtered fallback marked the design INVALID
@@ -685,6 +691,33 @@ namespace {
                  << ", worst-case ipeak = " << worstCasePeakCurrent << " A"
                  << ", required margin = " << stricterMargin);
             CHECK((taggedRelaxed || markedInvalid || saturationCurrent >= stricterMargin * worstCasePeakCurrent));
+        }
+        settings.reset();
+
+        // ABT #13: the derating-temperature knob must round-trip and demonstrably
+        // steer the gate. Evaluate at a hotter corner: every unflagged candidate
+        // must still clear margin·ipeak with its RAW saturation current at that
+        // hotter temperature (which is the contract the gate enforced when it
+        // selected them). This proves the setting feeds the saturation gate
+        // rather than being a silent no-op (the historical coreAdviserSaturationMargin bug).
+        double hotterDerating = 120.0;
+        settings.set_core_adviser_saturation_derating_temperature(hotterDerating);
+        REQUIRE(settings.get_core_adviser_saturation_derating_temperature() == hotterDerating);
+        double hotterMargin = settings.get_core_adviser_saturation_margin();
+        MagneticAdviser hotterAdviser;
+        auto hotterResults = hotterAdviser.get_advised_magnetic(inputs, 3);
+        REQUIRE(hotterResults.size() > 0);
+        for (auto& [masMagnetic, scoring] : hotterResults) {
+            auto magnetic = masMagnetic.get_magnetic();
+            double saturationCurrent = magnetic.calculate_saturation_current(hotterDerating, /*proportion=*/false);
+            bool taggedRelaxed = magnetic.get_core().get_name().value_or("").find("SATURATION MARGIN RELAXED") != std::string::npos;
+            bool markedInvalid = magnetic.get_manufacturer_info() &&
+                magnetic.get_manufacturer_info()->get_reference().value_or("").find("INVALID") != std::string::npos;
+            INFO("Core: " << magnetic.get_core().get_name().value_or("?")
+                 << ", isat (raw @ " << hotterDerating << " C) = " << saturationCurrent << " A"
+                 << ", worst-case ipeak = " << worstCasePeakCurrent << " A"
+                 << ", required margin = " << hotterMargin);
+            CHECK((taggedRelaxed || markedInvalid || saturationCurrent >= hotterMargin * worstCasePeakCurrent));
         }
         settings.reset();
     }

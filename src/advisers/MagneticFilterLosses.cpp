@@ -89,7 +89,9 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
-        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        // Derating (ABT #13): hot junction corner, consistent with the saturation
+        // filter's inductor gate (raw B_sat below).
+        double temperature = saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature());
         OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
         double saturationPeakCurrent = (isInductor && excitation.get_current() && excitation.get_current()->get_processed()
                                         && excitation.get_current()->get_processed()->get_peak())
@@ -110,7 +112,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                 Magnetic saturationMagnetic = *magnetic;
                 saturationMagnetic.set_coil(coil);
                 double saturationCurrent = 0;
-                try { saturationCurrent = saturationMagnetic.calculate_saturation_current(temperature); }
+                try { saturationCurrent = saturationMagnetic.calculate_saturation_current(temperature, /*proportion=*/false); }
                 catch (const std::exception&) { saturationCurrent = 0; }
                 if (saturationCurrent > 0 && saturationCurrent < saturationMargin * saturationPeakCurrent) {
                     coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
@@ -292,7 +294,9 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
-        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        // Derating (ABT #13): hot junction corner, consistent with the saturation
+        // filter's inductor gate (raw B_sat below).
+        double temperature = saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature());
         OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
         double saturationPeakCurrent = (isInductor && excitation.get_current() && excitation.get_current()->get_processed()
                                         && excitation.get_current()->get_processed()->get_peak())
@@ -322,7 +326,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 Magnetic saturationMagnetic = *magnetic;
                 saturationMagnetic.set_coil(coil);
                 double saturationCurrent = 0;
-                try { saturationCurrent = saturationMagnetic.calculate_saturation_current(temperature); }
+                try { saturationCurrent = saturationMagnetic.calculate_saturation_current(temperature, /*proportion=*/false); }
                 catch (const std::exception&) { saturationCurrent = 0; }
                 if (saturationCurrent > 0 && saturationCurrent < saturationMargin * saturationPeakCurrent) {
                     coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);

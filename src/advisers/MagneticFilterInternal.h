@@ -162,6 +162,22 @@ inline double maximum_allowed_magnetic_flux_density(double rawBsat) {
                               defaults.maximumProportionMagneticFluxDensitySaturation);
 }
 
+// Single source of truth for the temperature at which saturation (B_sat / I_sat)
+// is EVALUATED across every CoreAdviser/MagneticAdviser saturation site (filter
+// gate, transformer turn seeder, inductor turn seeder, fast-path final gate,
+// loss-sweep cap, gap sizing). Ferrite B_sat falls with temperature, so the hot
+// junction corner — not the 25 C ambient — is the real operating point and the
+// one downstream derating checks use (Heaviside's isat sweep evaluates at 100 C).
+// Returns max(operatingTemperature, derating floor) so a spec hotter than the
+// floor is never made cooler. This is a TEMPERATURE derating, orthogonal to the
+// multiplicative saturation margin — the two are deliberately NOT stacked with
+// the 0.7 flux-proportion factor (ABT #13): the inductor gate uses RAW B_sat at
+// this temperature, so its total derating is exactly (hot temperature × margin).
+inline double saturation_derating_temperature(double operatingTemperature) {
+    return std::max(operatingTemperature,
+                    settings.get_core_adviser_saturation_derating_temperature());
+}
+
 // Phase 3 (F6): PQI / UI shapes use integrated windings whose layout is
 // not produced by fast_wind(), so the loss / impedance filters take a
 // per-shape policy branch. Centralised here so every site uses the same

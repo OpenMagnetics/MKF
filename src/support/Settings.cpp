@@ -125,6 +125,7 @@ namespace OpenMagnetics {
         _coreAdviserEnableTemperatureFilter = false;
         _coreAdviserMaximumTemperature = 130.0;
         _coreAdviserSaturationMargin = 1.2;
+        _coreAdviserSaturationDeratingTemperature = 100.0;
 
         _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;
@@ -662,6 +663,17 @@ namespace OpenMagnetics {
                 "use 1.0 to disable, 1.2-1.5 for engineering headroom.");
         }
         _coreAdviserSaturationMargin = value;
+    }
+    double Settings::get_core_adviser_saturation_derating_temperature() const {
+        return _coreAdviserSaturationDeratingTemperature;
+    }
+    void Settings::set_core_adviser_saturation_derating_temperature(double value) {
+        if (value < -273.15) {
+            throw std::invalid_argument(
+                "core_adviser_saturation_derating_temperature must be a physical "
+                "temperature in C (got " + std::to_string(value) + ").");
+        }
+        _coreAdviserSaturationDeratingTemperature = value;
     }
 
     GappingOptimizationStrategy Settings::get_gapping_strategy() const {

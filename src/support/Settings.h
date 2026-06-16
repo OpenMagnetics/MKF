@@ -117,6 +117,17 @@ class Settings
         // the historical "reject only if Bpeak > Bsat" no-derate behaviour
         // (the snapshot-anchor for tests written before this default landed).
         double _coreAdviserSaturationMargin = 1.2;
+        // Hot-junction temperature (deg C) at which saturation is EVALUATED in the
+        // CoreAdviser/MagneticAdviser saturation sites. Ferrite B_sat falls with
+        // temperature, so the hot corner — not the 25 C ambient — is the real
+        // operating point and the one every downstream derating check uses
+        // (Heaviside's isat sweep evaluates at 100 C). This is a TEMPERATURE
+        // derating, ORTHOGONAL to the multiplicative _coreAdviserSaturationMargin:
+        // the gate is B_sat_raw(Tderate)*N*Ae/L >= margin*Ipeak — temperature +
+        // margin only, with NO hidden flux-proportion factor stacked on top
+        // (ABT #13). The evaluation temperature is max(operating, this), so an
+        // already-hotter spec is never made cooler. Default 100 C (Maniktala Ch.5).
+        double _coreAdviserSaturationDeratingTemperature = 100.0;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
@@ -383,6 +394,8 @@ class Settings
         void   set_core_adviser_maximum_temperature(double value);
         double get_core_adviser_saturation_margin() const;
         void   set_core_adviser_saturation_margin(double value);
+        double get_core_adviser_saturation_derating_temperature() const;
+        void   set_core_adviser_saturation_derating_temperature(double value);
 
         GappingOptimizationStrategy get_gapping_strategy() const;
         void set_gapping_strategy(GappingOptimizationStrategy value);

@@ -190,7 +190,7 @@ double Magnetic::calculate_saturation_current(OperatingPoint& operatingPoint,
          / inductanceNominal.value();
 }
 
-double Magnetic::calculate_saturation_current(double temperature) {
+double Magnetic::calculate_saturation_current(double temperature, bool proportion) {
     // Saturation current of the as-designed magnetic:
     //
     //   I_sat = B_sat(T) · N · A_e / L_actual
@@ -221,7 +221,7 @@ double Magnetic::calculate_saturation_current(double temperature) {
     // L. That L is then inverted into the saturation current via the
     // same B_sat·N·A_e/L identity the realism gate expects.
     auto magneticFluxDensitySaturation =
-        get_mutable_core().get_magnetic_flux_density_saturation(temperature);
+        get_mutable_core().get_magnetic_flux_density_saturation(temperature, proportion);
     auto numberTurns = get_mutable_coil().get_number_turns(0);
     auto effectiveArea = get_mutable_core().get_effective_area();
 

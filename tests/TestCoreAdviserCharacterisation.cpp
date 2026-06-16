@@ -177,12 +177,19 @@ void check_top_n(const std::string& label,
 // slot 2. The Kool Mµ Hƒ 40 toroid also enters the top-5. EP 20 winning by
 // ~1.6 % over PQ 20/20 is the more-accurate ranking, not a regression.
 // (Previous refresh was the saturation-margin 1.0 → 1.2 flip.)
+// Refreshed 2026-06-16 (ABT #13) after the saturation-derating rework: the
+// inductor saturation gate/sizing now evaluate at the 100 C hot junction corner
+// with RAW B_sat (derating = hot temperature × margin, no 0.7 flux-proportion
+// stacked). Raw B_sat at 100 C is ~1.14x looser than the former 0.7·B_sat@25 C
+// gate, so the saturation-headroom scoring reshuffles the top-5 toward cores
+// with real headroom (EP 20 3C96, EFD 25/13/9, E 25/13/7). All five are valid
+// power ferrites; scores nudged < 1.5 %.
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"EP 20 - 3C91 - Gapped 0.605 mm",             3.9918167530621829},
-    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          3.9301728472909492},
-    {"T 21/12/7.1 - Kool Mµ Hƒ 40 - Ungapped",     3.8811377987041928},
-    {"T 21/12/7.1 - Kool Mµ Hƒ 60 - Ungapped",     3.8604853384926003},
-    {"PQ 20/20 - 3C95 - Gapped 0.477 mm",          3.8580496485195876},
+    {"EP 20 - 3C96 - Gapped 0.375 mm",             4.0394759597245846},
+    {"EFD 25/13/9 - 97 - Gapped 0.5 mm",           4.0371918250916554},
+    {"E 25/13/7 - 3C90 - Gapped 1.0 mm",           4.0259647054204928},
+    {"PQ 20/20 - 3C94 - Gapped 0.472 mm",          3.9958256614081851},
+    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.9508508473488773},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
@@ -196,12 +203,16 @@ const std::vector<TopEntry> kTopAvailablePower = {
 // AVAILABLE_CORES_POWER table above promotes 95 EP 20 (gapped 0.32 mm) to
 // slot 1 over 95 PQ 27/15, and the post-rerank gap selection on PQ 27/15
 // settles at 0.18 mm. Single-winding-inductor re-rank, intended.
+// Refreshed 2026-06-16 (ABT #13): same saturation-derating rework as
+// kTopAvailablePower above (RAW B_sat at the 100 C hot corner). The
+// saturation-headroom rescoring promotes 95 RM 10/13 to slot 1 and reshuffles
+// the standard-shape top-5; all valid, scores nudged < 1.5 %.
 const std::vector<TopEntry> kTopStandardPower = {
-    {"95 EP 20 gapped 0.32 mm",                    3.9366311157847029},
-    {"95 PQ 27/15 gapped 0.18 mm",                 3.8943328027343398},
-    {"95 RM 10/ILP gapped 0.24 mm",                3.8317384650663673},
-    {"95 E 21/9/5 2 stacks gapped 0.21 mm",        3.8316279736954892},
-    {"98 RM 10/ILP gapped 0.24 mm",                3.7865863909666828},
+    {"95 RM 10/13 gapped 0.27 mm",                 3.8963165812464418},
+    {"98 E 19/8/9 2 stacks gapped 0.12 mm",        3.7753243780925869},
+    {"98 EP 20 gapped 0.32 mm",                    3.7471654879366123},
+    {"95 E 21/9/5 2 stacks gapped 0.21 mm",        3.715779819799347},
+    {"98 E 21/9/5 2 stacks gapped 0.21 mm",        3.701426173763287},
 };
 
 // Refreshed 2026-06-16 (ABT #10) after landing the suppression returns-0 fix

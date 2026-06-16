@@ -60,8 +60,13 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
         // Net effect was every PSFB / LLC FB / SRC transformer that depended
         // on the saturation-aware seed losing its entire candidate set at
         // this filter (HANDOFF_HEAVY_TEST_GAPS.md §Gap 3 PSFB diagnosis).
+        // Evaluate B_sat at the hot junction corner (ABT #13), not the 25 C
+        // ambient: ferrite B_sat falls with temperature, so the hot corner is the
+        // real operating point. RAW B_sat (proportion=false) — the multiplicative
+        // `margin` below is the only safety factor on this gate; the 0.7
+        // flux-proportion is a SIZING target, not stacked here.
         auto magneticFluxDensitySaturation = magnetic->get_mutable_core().get_magnetic_flux_density_saturation(
-            operatingPoint.get_conditions().get_ambient_temperature(),
+            saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature()),
             /*proportion=*/false);
         
         if (isTransformer) {
@@ -162,14 +167,20 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
 
         if (!isTransformer) {
             // Authoritative saturation-current gate for energy-storing
-            // inductors: enforce the SAME identity downstream realism checks
-            // use — Magnetic::calculate_saturation_current = 0.7·B_sat(T)·N·
-            // A_e/L_µinit — so the adviser and the consumer cannot disagree.
-            // The B-based check above evaluates B at the operating current
-            // with permeability rolloff and raw B_sat, which is LOOSER for
+            // inductors: require the gap-aware saturation current to clear the
+            // peak current by the margin. The B-based check above evaluates B at
+            // the operating current with permeability rolloff, which is LOOSER for
             // gapped inductors: candidates passing it could still saturate
-            // per the contract (canonical buck 36/48/60 V→12 V/5 A/200 kHz:
-            // EQ 13/6 passed on B but had isat 2.93 A < 1.2 × ipeak 3.19 A).
+            // (canonical buck 36/48/60 V→12 V/5 A/200 kHz: EQ 13/6 passed on B but
+            // had isat 2.93 A < 1.2 × ipeak 3.19 A).
+            //
+            // Derating (ABT #13): evaluate I_sat at the hot junction corner and
+            // with RAW B_sat (proportion=false). The total derating on this gate
+            // is exactly (hot temperature × margin) — the 0.7 flux-proportion that
+            // calculate_saturation_current applies by default is a SIZING target
+            // and is deliberately NOT stacked here, so temperature + margin don't
+            // compound into a runaway combined margin.
+            //
             // Pool starvation (the failure mode of the reverted hard reject
             // 2181dd1c) is handled by the pipeline retry, which relaxes the
             // margin to 1.0 and tags the results.
@@ -181,7 +192,8 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             }
             double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
             double saturationCurrent = magnetic->calculate_saturation_current(
-                operatingPoint.get_conditions().get_ambient_temperature());
+                saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature()),
+                /*proportion=*/false);
 
             // Headroom utilization (margin·ipeak/isat): < 1 clears the gate,
             // smaller = more headroom — same direction as bRatio above.
