@@ -13,27 +13,48 @@ namespace OpenMagnetics {
 
 class Magnetic : public MAS::Magnetic {
     private:
-        Core core;
+        // core/coil are optional because, as of the MAS chip_beads_datasheet_schema
+        // change, a Magnetic may describe a component (e.g. a chip bead specified
+        // purely by its datasheet impedance/model) that has no physical core or
+        // coil construction. The accessors below throw when the value is absent
+        // rather than returning a fabricated default — callers that need a core or
+        // coil must gate on has_core()/has_coil() first.
+        std::optional<Core> core;
         std::optional<std::vector<DistributorInfo>> distributors_info;
         std::optional<ManufacturerInfo> manufacturer_info;
         std::optional<std::vector<double>> _maximumDimensions;
-        Coil coil;
+        std::optional<Coil> coil;
     public:
         Magnetic() = default;
         virtual ~Magnetic() = default;
 
+        bool has_coil() const { return coil.has_value(); }
+        bool has_core() const { return core.has_value(); }
+
         /**
          * Data describing the coil
          */
-        const Coil & get_coil() const { return coil; }
-        Coil & get_mutable_coil() { return coil; }
+        const Coil & get_coil() const {
+            if (!coil) throw std::runtime_error("Magnetic has no coil (e.g. a chip-bead datasheet entry with no winding construction)");
+            return coil.value();
+        }
+        Coil & get_mutable_coil() {
+            if (!coil) throw std::runtime_error("Magnetic has no coil (e.g. a chip-bead datasheet entry with no winding construction)");
+            return coil.value();
+        }
         void set_coil(const Coil & value) { this->coil = value; }
 
         /**
          * Data describing the magnetic core.
          */
-        const Core & get_core() const { return core; }
-        Core & get_mutable_core() { return core; }
+        const Core & get_core() const {
+            if (!core) throw std::runtime_error("Magnetic has no core (e.g. a chip-bead datasheet entry with no core construction)");
+            return core.value();
+        }
+        Core & get_mutable_core() {
+            if (!core) throw std::runtime_error("Magnetic has no core (e.g. a chip-bead datasheet entry with no core construction)");
+            return core.value();
+        }
         void set_core(const Core & value) { this->core = value; }
 
         Magnetic(const MAS::Magnetic magnetic) {
@@ -108,20 +129,33 @@ class Magnetic : public MAS::Magnetic {
 bool operator==(Magnetic lhs, Magnetic rhs);
 
 inline bool operator==(Magnetic lhs, Magnetic rhs) {
-    bool isEqual = lhs.get_reference() == rhs.get_reference() && 
-                   lhs.get_mutable_core().get_shape_name() == rhs.get_mutable_core().get_shape_name() && 
-                   lhs.get_mutable_core().get_material_name() == rhs.get_mutable_core().get_material_name() && 
-                   lhs.get_mutable_core().get_number_stacks() == rhs.get_mutable_core().get_number_stacks() && 
-                   lhs.get_coil().get_functional_description().size() == rhs.get_coil().get_functional_description().size();
-    if (isEqual) {
-        for (size_t i = 0; i < lhs.get_coil().get_functional_description().size(); ++i) {
-            auto lhsWinding = lhs.get_coil().get_functional_description()[i];
-            auto rhsWinding = rhs.get_coil().get_functional_description()[i];
-            auto lhsWire = lhsWinding.resolve_wire();
-            auto rhsWire = rhsWinding.resolve_wire();
-            isEqual &= lhsWinding.get_number_turns() == rhsWinding.get_number_turns() &&
-                       lhsWinding.get_number_parallels() == rhsWinding.get_number_parallels() &&
-                       lhsWire.get_type() == rhsWire.get_type();
+    // A magnetic without a core/coil (e.g. a chip-bead datasheet entry) can only
+    // be equal to another that is missing the same parts; guard before touching
+    // the accessors, which throw when the value is absent.
+    if (lhs.has_core() != rhs.has_core() || lhs.has_coil() != rhs.has_coil()) {
+        return false;
+    }
+
+    bool isEqual = lhs.get_reference() == rhs.get_reference();
+
+    if (lhs.has_core()) {
+        isEqual &= lhs.get_mutable_core().get_shape_name() == rhs.get_mutable_core().get_shape_name() &&
+                   lhs.get_mutable_core().get_material_name() == rhs.get_mutable_core().get_material_name() &&
+                   lhs.get_mutable_core().get_number_stacks() == rhs.get_mutable_core().get_number_stacks();
+    }
+
+    if (lhs.has_coil()) {
+        isEqual &= lhs.get_coil().get_functional_description().size() == rhs.get_coil().get_functional_description().size();
+        if (isEqual) {
+            for (size_t i = 0; i < lhs.get_coil().get_functional_description().size(); ++i) {
+                auto lhsWinding = lhs.get_coil().get_functional_description()[i];
+                auto rhsWinding = rhs.get_coil().get_functional_description()[i];
+                auto lhsWire = lhsWinding.resolve_wire();
+                auto rhsWire = rhsWinding.resolve_wire();
+                isEqual &= lhsWinding.get_number_turns() == rhsWinding.get_number_turns() &&
+                           lhsWinding.get_number_parallels() == rhsWinding.get_number_parallels() &&
+                           lhsWire.get_type() == rhsWire.get_type();
+            }
         }
     }
 
@@ -147,8 +181,12 @@ inline void from_file(std::filesystem::path filepath, Magnetic & x) {
 }
 
 inline void from_json(const json & j, Magnetic& x) {
-    x.set_coil(j.at("coil").get<Coil>());
-    x.set_core(j.at("core").get<Core>());
+    if (j.contains("coil") && !j.at("coil").is_null()) {
+        x.set_coil(j.at("coil").get<Coil>());
+    }
+    if (j.contains("core") && !j.at("core").is_null()) {
+        x.set_core(j.at("core").get<Core>());
+    }
     x.set_distributors_info(get_stack_optional<std::vector<DistributorInfo>>(j, "distributorsInfo"));
     x.set_manufacturer_info(get_stack_optional<MagneticManufacturerInfo>(j, "manufacturerInfo"));
     x.set_rotation(get_stack_optional<std::vector<double>>(j, "rotation"));
@@ -156,8 +194,12 @@ inline void from_json(const json & j, Magnetic& x) {
 
 inline void to_json(json & j, const Magnetic & x) {
     j = json::object();
-    j["coil"] = x.get_coil();
-    j["core"] = x.get_core();
+    if (x.has_coil()) {
+        j["coil"] = x.get_coil();
+    }
+    if (x.has_core()) {
+        j["core"] = x.get_core();
+    }
     j["distributorsInfo"] = x.get_distributors_info();
     j["manufacturerInfo"] = x.get_manufacturer_info();
     j["rotation"] = x.get_rotation();
@@ -166,8 +208,12 @@ inline void to_json(json & j, const Magnetic & x) {
 inline void from_json(const json& j, std::vector<Magnetic>& v) {
     for (auto e : j) {
         Magnetic x;
-        x.set_coil(e.at("coil").get<Coil>());
-        x.set_core(e.at("core").get<Core>());
+        if (e.contains("coil") && !e.at("coil").is_null()) {
+            x.set_coil(e.at("coil").get<Coil>());
+        }
+        if (e.contains("core") && !e.at("core").is_null()) {
+            x.set_core(e.at("core").get<Core>());
+        }
         x.set_distributors_info(get_stack_optional<std::vector<DistributorInfo>>(e, "distributorsInfo"));
         x.set_manufacturer_info(get_stack_optional<MagneticManufacturerInfo>(e, "manufacturerInfo"));
         x.set_rotation(get_stack_optional<std::vector<double>>(e, "rotation"));
@@ -179,8 +225,12 @@ inline void to_json(json& j, const std::vector<Magnetic>& v) {
     j = json::array();
     for (auto x : v) {
         json e;
-        e["coil"] = x.get_coil();
-        e["core"] = x.get_core();
+        if (x.has_coil()) {
+            e["coil"] = x.get_coil();
+        }
+        if (x.has_core()) {
+            e["core"] = x.get_core();
+        }
         e["distributorsInfo"] = x.get_distributors_info();
         e["manufacturerInfo"] = x.get_manufacturer_info();
         e["rotation"] = x.get_rotation();

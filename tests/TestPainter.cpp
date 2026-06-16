@@ -4285,6 +4285,66 @@ namespace {
         REQUIRE(fileSize > 0);
     }
 
+    TEST_CASE("Test_Painter_Coil_Only_No_Core", "[support][painter][coil-only][chip-bead]") {
+        // A Magnetic may legitimately have no core (a chip bead, or a coil drawn
+        // in isolation). Painting the coil must derive its geometry from the
+        // bobbin winding window instead of throwing on the missing core (it threw
+        // before the core/coil were made optional). Verified for both two-piece
+        // and toroidal layouts: painting only the coil with vs without a core
+        // draws the same elements, so the output sizes track closely.
+        clear_databases();
+
+        std::vector<std::string> shapeNames = {"PQ 26/25", "T 20/10/7"};
+
+        for (const auto& shapeName : shapeNames) {
+            std::vector<int64_t> numberTurns({20});
+            std::vector<int64_t> numberParallels({1});
+            uint8_t interleavingLevel = 1;
+            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                             numberParallels,
+                                                             shapeName,
+                                                             interleavingLevel,
+                                                             WindingOrientation::OVERLAPPING,
+                                                             WindingOrientation::OVERLAPPING,
+                                                             CoilAlignment::INNER_OR_TOP,
+                                                             CoilAlignment::INNER_OR_TOP);
+            auto gapping = json::array();
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "3C97");
+            coil.wind();
+
+            OpenMagnetics::Magnetic withCore;
+            withCore.set_core(core);
+            withCore.set_coil(coil);
+            REQUIRE(withCore.has_core());
+
+            OpenMagnetics::Magnetic coilOnly;
+            coilOnly.set_coil(coil);
+            REQUIRE_FALSE(coilOnly.has_core());
+
+            auto paintCoil = [&](OpenMagnetics::Magnetic magnetic, const std::string& suffix) -> uintmax_t {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Painter_Coil_Only_" + suffix + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile);
+                painter.paint_coil_sections(magnetic);
+                painter.paint_coil_turns(magnetic);
+                painter.export_svg();
+                REQUIRE(std::filesystem::exists(outFile));
+                return std::filesystem::file_size(outFile);
+            };
+
+            std::string safeSuffix = std::regex_replace(shapeName, std::regex("[ /]"), "_");
+            auto referenceSize = paintCoil(withCore, safeSuffix + "_with_core");
+            auto coilOnlySize = paintCoil(coilOnly, safeSuffix + "_coil_only");
+
+            // Coil-only must actually render the coil (this would have thrown before).
+            REQUIRE(coilOnlySize > 1000);
+            // Same coil, drawn the same way: the bobbin-derived geometry matches
+            // the core-derived geometry, so the two renders track within tolerance.
+            REQUIRE(std::abs(double(coilOnlySize) - double(referenceSize)) / double(referenceSize) < 0.25);
+        }
+    }
+
     TEST_CASE("Test_Painter_Bug_Toroidal_One_Turn_H_Field", "[support][painter][magnetic-field-painter][toroidal][h-field][bug]") {
         // Test case for plotting H field in a toroidal inductor with one turn
         // This test loads a MAS file and plots the magnetic field strength (H field)
