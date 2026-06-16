@@ -27,8 +27,12 @@ std::vector<double> Magnetic::get_turns_ratios() const {
 
 std::vector<double> Magnetic::get_turns_ratios(MAS::Magnetic magnetic) {
     std::vector<double> turnsRatios;
-    for (size_t windingIndex = 1; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-        turnsRatios.push_back(double(magnetic.get_coil().get_functional_description()[0].get_number_turns()) / magnetic.get_coil().get_functional_description()[windingIndex].get_number_turns());
+    if (!magnetic.get_coil()) {
+        throw std::runtime_error("Magnetic has no coil; cannot compute turns ratios");
+    }
+    auto coil = magnetic.get_coil().value();
+    for (size_t windingIndex = 1; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        turnsRatios.push_back(double(coil.get_functional_description()[0].get_number_turns()) / coil.get_functional_description()[windingIndex].get_number_turns());
     }
     return turnsRatios;
 }

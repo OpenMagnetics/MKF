@@ -1255,7 +1255,7 @@ TEST_CASE("Test_Cmc_AdviserKnowsItsACmc",
                 // value. Engineers who want a stricter margin should raise
                 // safetyMargin_dB in the CMC wizard.
                 double achievedZ = std::abs(
-                    Impedance().calculate_impedance(mag, c.impedanceAtFreq_f));
+                    OpenMagnetics::Impedance().calculate_impedance(mag, c.impedanceAtFreq_f));
                 // Lower bound only — overshoot is good engineering, undershoot
                 // within 5% is absorbed by the 6 dB safety margin the frontend
                 // bakes in before the spec reaches MKF.

@@ -262,11 +262,11 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
     bool foundCoreMeetingImpedance = false;
     for (auto [mas, scoring] : masMagnetics) {
         auto magnetic = mas.get_magnetic();
-        auto selfResonantFrequencyFast = Impedance().calculate_self_resonant_frequency(magnetic);
+        auto selfResonantFrequencyFast = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
 
         bool meetsImpedance = true;
         for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
-            auto impedance = Impedance().calculate_impedance(magnetic, frequencyPoint);
+            auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequencyPoint);
             if (frequencyPoint >= selfResonantFrequencyFast * 0.50 || abs(impedance) < impedanceMagnitudePoint) {
                 meetsImpedance = false;
                 break;
