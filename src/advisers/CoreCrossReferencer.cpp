@@ -352,14 +352,8 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
     if (models.find("coreLosses") != models.end()) {
         from_json(models["coreLosses"], coreLossesModelName);
     }
-    auto coreTemperatureModelName = defaults.coreTemperatureModelDefault;
-    if (models.find("coreTemperature") != models.end()) {
-        from_json(models["coreTemperature"], coreTemperatureModelName);
-    }
-
     OpenMagnetics::MagneticSimulator magneticSimulator;
     magneticSimulator.set_core_losses_model_name(coreLossesModelName);
-    magneticSimulator.set_core_temperature_model_name(coreTemperatureModelName);
     magneticSimulator.set_reluctance_model_name(reluctanceModelName);
 
     try {

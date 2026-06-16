@@ -1283,4 +1283,101 @@ namespace {
         run_example_simulation("24_margin_interleaved_flyback_pq3230_3c94.json");
     }
 
+    // =========================================================================
+    // Datasheet builder: build_datasheet() turns a simulated MAS into a
+    // manufacturer-style datasheetInfo block populated from the Outputs and the
+    // magnetic geometry.
+    // =========================================================================
+
+    static OpenMagnetics::Mas simulate_example(const std::string& filename) {
+        auto path = get_examples_dir() / filename;
+        REQUIRE(std::filesystem::exists(path));
+
+        auto mas = OpenMagneticsTesting::mas_loader(path.string());
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+        mas.set_magnetic(magnetic);
+        mas.set_inputs(inputs);
+
+        MagneticSimulator simulator;
+        return simulator.simulate(mas.get_inputs(), mas.get_magnetic());
+    }
+
+    TEST_CASE("Build_Datasheet_Inductor", "[processor][magnetic-simulator][datasheet][smoke-test]") {
+        auto mas = simulate_example("01_simple_inductor_etd34_n87.json");
+
+        MagneticSimulator simulator;
+        auto manufacturerInfo = simulator.build_datasheet(mas);
+
+        // Attached back onto the magnetic.
+        REQUIRE(mas.get_magnetic().get_manufacturer_info());
+        REQUIRE(mas.get_magnetic().get_manufacturer_info()->get_datasheet_info());
+        auto datasheet = mas.get_magnetic().get_manufacturer_info()->get_datasheet_info().value();
+
+        // Part: single winding, material populated.
+        REQUIRE(datasheet.get_part());
+        REQUIRE(datasheet.get_part()->get_number_of_windings().value() == 1);
+        REQUIRE(datasheet.get_part()->get_material());
+
+        // Electrical: single-winding part uses dcResistance (not dcResistances), inductance > 0.
+        REQUIRE(datasheet.get_electrical());
+        auto electrical = datasheet.get_electrical().value();
+        REQUIRE(electrical.get_inductance());
+        REQUIRE(resolve_dimensional_values(electrical.get_inductance().value()) > 0);
+        REQUIRE(electrical.get_dc_resistance());
+        REQUIRE(resolve_dimensional_values(electrical.get_dc_resistance().value()) > 0);
+        REQUIRE_FALSE(electrical.get_dc_resistances());
+        REQUIRE(electrical.get_saturation_current_peak().value() > 0);
+
+        // Rated (heat-limited) current and SRF / impedance sweep are populated.
+        REQUIRE(electrical.get_rated_current().value() > 0);
+        REQUIRE(electrical.get_self_resonant_frequency().value() > 0);
+        REQUIRE(electrical.get_impedance_points());
+        REQUIRE(electrical.get_impedance_points()->size() > 1);
+        REQUIRE(electrical.get_impedance_points()->front().get_impedance().get_magnitude() > 0);
+        REQUIRE(electrical.get_maximum_impedance().value() > 0);
+
+        // Mechanical: all three body dimensions in metres and positive.
+        REQUIRE(datasheet.get_mechanical());
+        auto mechanical = datasheet.get_mechanical().value();
+        REQUIRE(resolve_dimensional_values(mechanical.get_width().value()) > 0);
+        REQUIRE(resolve_dimensional_values(mechanical.get_height().value()) > 0);
+        REQUIRE(resolve_dimensional_values(mechanical.get_length().value()) > 0);
+
+        // Thermal: a temperature rise relative to ambient.
+        REQUIRE(datasheet.get_thermal());
+        REQUIRE(datasheet.get_thermal()->get_operating_temperature());
+        REQUIRE(datasheet.get_thermal()->get_temperature_rise());
+
+        // Application: switching frequency recorded.
+        REQUIRE(datasheet.get_application());
+        REQUIRE(datasheet.get_application()->get_switching_frequency().value() > 0);
+    }
+
+    TEST_CASE("Build_Datasheet_Transformer", "[processor][magnetic-simulator][datasheet][smoke-test]") {
+        auto mas = simulate_example("02_flyback_efd25_3c95.json");
+
+        MagneticSimulator simulator;
+        simulator.build_datasheet(mas);
+
+        auto datasheet = mas.get_magnetic().get_manufacturer_info()->get_datasheet_info().value();
+        auto electrical = datasheet.get_electrical().value();
+
+        // Multi-winding part: per-winding dcResistances, a turns ratio, no scalar dcResistance.
+        REQUIRE(datasheet.get_part()->get_number_of_windings().value() > 1);
+        REQUIRE(electrical.get_dc_resistances());
+        REQUIRE(electrical.get_dc_resistances()->size() == static_cast<size_t>(datasheet.get_part()->get_number_of_windings().value()));
+        REQUIRE_FALSE(electrical.get_dc_resistance());
+        REQUIRE(electrical.get_turns_ratio());
+    }
+
+    TEST_CASE("Build_Datasheet_Throws_Without_Outputs", "[processor][magnetic-simulator][datasheet]") {
+        auto path = get_examples_dir() / "01_simple_inductor_etd34_n87.json";
+        auto mas = OpenMagneticsTesting::mas_loader(path.string());
+        mas.set_outputs({});
+
+        MagneticSimulator simulator;
+        REQUIRE_THROWS(simulator.build_datasheet(mas));
+    }
+
 }  // namespace
