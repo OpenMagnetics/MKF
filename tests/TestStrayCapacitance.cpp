@@ -1112,8 +1112,8 @@ TEST_CASE("Investigate capacitance calculation from bug_capacitance_error_2.json
                          std::istreambuf_iterator<char>());
     
     auto masJson = nlohmann::json::parse(jsonStr);
-    MAS::Mas mas;
-    MAS::from_json(masJson, mas);
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_json(masJson, mas);
     auto magnetic = mas.get_mutable_magnetic();
     auto coil = magnetic.get_mutable_coil();
     
@@ -1179,8 +1179,8 @@ TEST_CASE("Investigate negative C3 in bug_capacitance_error_3", "[physical-model
                          std::istreambuf_iterator<char>());
     
     auto masJson = nlohmann::json::parse(jsonStr);
-    MAS::Mas mas;
-    MAS::from_json(masJson, mas);
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_json(masJson, mas);
     auto magnetic = mas.get_mutable_magnetic();
     auto coil = magnetic.get_mutable_coil();
     
@@ -1315,8 +1315,8 @@ TEST_CASE("Investigate missing energy between Tertiary and Secondary turns", "[p
                          std::istreambuf_iterator<char>());
     
     auto masJson = nlohmann::json::parse(jsonStr);
-    MAS::Mas mas;
-    MAS::from_json(masJson, mas);
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_json(masJson, mas);
     auto magnetic = mas.get_mutable_magnetic();
     auto coil = magnetic.get_mutable_coil();
     
@@ -1456,8 +1456,8 @@ TEST_CASE("Debug primary-primary intrawinding capacitance", "[physical-model][st
                          std::istreambuf_iterator<char>());
     
     auto masJson = nlohmann::json::parse(jsonStr);
-    MAS::Mas mas;
-    MAS::from_json(masJson, mas);
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_json(masJson, mas);
     auto magnetic = mas.get_mutable_magnetic();
     auto coil = magnetic.get_mutable_coil();
     

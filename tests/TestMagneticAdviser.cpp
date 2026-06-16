@@ -92,7 +92,7 @@ namespace {
         REQUIRE(masMagnetics.size() > 0);
 
         for (auto [masMagnetic, scoring] : masMagnetics) {
-            auto impedance = Impedance().calculate_impedance(masMagnetic.get_mutable_magnetic(), 1e6);
+            auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetic.get_mutable_magnetic(), 1e6);
             REQUIRE(abs(impedance) >= 5000);
 
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
@@ -187,7 +187,7 @@ namespace {
         REQUIRE(masMagnetics.size() > 0);
 
         for (auto [masMagnetic, scoring] : masMagnetics) {
-            auto impedance = Impedance().calculate_impedance(masMagnetic.get_mutable_magnetic(), 1e6);
+            auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetic.get_mutable_magnetic(), 1e6);
             REQUIRE(abs(impedance) >= 5000);
 
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
@@ -2328,10 +2328,10 @@ namespace {
         // REQUIRE(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 25.3/14.8/20 - N30 - Ungapped");
         // auto magnetic = masMagnetics[0].first.get_magnetic();
 
-        // auto selfResonantFrequencyFast = Impedance().calculate_self_resonant_frequency(masMagnetics[0].first.get_magnetic());
+        // auto selfResonantFrequencyFast = OpenMagnetics::Impedance().calculate_self_resonant_frequency(masMagnetics[0].first.get_magnetic());
 
         // for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
-        //     auto impedance = Impedance().calculate_impedance(masMagnetics[0].first.get_magnetic(), frequencyPoint);
+        //     auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetics[0].first.get_magnetic(), frequencyPoint);
         //     REQUIRE(frequencyPoint < selfResonantFrequencyFast * 0.50);
         //     REQUIRE(abs(impedance) >= impedanceMagnitudePoint);
         // }
@@ -2867,7 +2867,7 @@ namespace {
         // fail loudly rather than silently passing on identical scores.
         std::set<double> distinctImpedances;
         for (auto& [mas, _] : masMagnetics) {
-            auto z = abs(Impedance().calculate_impedance(mas.get_mutable_magnetic(), 150000));
+            auto z = abs(OpenMagnetics::Impedance().calculate_impedance(mas.get_mutable_magnetic(), 150000));
             distinctImpedances.insert(std::round(z * 1e6) / 1e6);
         }
         REQUIRE(distinctImpedances.size() >= 2);

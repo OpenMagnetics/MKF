@@ -58,8 +58,12 @@ class Magnetic : public MAS::Magnetic {
         void set_core(const Core & value) { this->core = value; }
 
         Magnetic(const MAS::Magnetic magnetic) {
-            set_core(magnetic.get_core());
-            set_coil(magnetic.get_coil());
+            if (magnetic.get_core()) {
+                set_core(magnetic.get_core().value());
+            }
+            if (magnetic.get_coil()) {
+                set_coil(magnetic.get_coil().value());
+            }
 
             if (magnetic.get_distributors_info()) {
                 set_distributors_info(magnetic.get_distributors_info());

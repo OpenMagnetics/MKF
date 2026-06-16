@@ -50,7 +50,7 @@ TEST_CASE("Test_Impedance_0", "[physical-model][impedance][smoke-test]") {
     magnetic.set_coil(coil);
     double expectedSelfResonantFrequency = 1400000;
     settings._debug = true;
-    auto selfResonantFrequency = Impedance().calculate_self_resonant_frequency(magnetic);
+    auto selfResonantFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
     REQUIRE_THAT(expectedSelfResonantFrequency, Catch::Matchers::WithinAbs(selfResonantFrequency, expectedSelfResonantFrequency * maximumError));
     settings._debug = false;
 
@@ -138,7 +138,7 @@ TEST_CASE("Test_Impedance_Many_Turns", "[physical-model][impedance][smoke-test]"
     settings._debug = true;
 
     for (auto [frequency, expectedImpedance] : expectedImpedances) {
-        auto impedance = Impedance().calculate_impedance(magnetic, frequency);
+        auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
         REQUIRE_THAT(expectedImpedance, Catch::Matchers::WithinAbs(abs(impedance), expectedImpedance * maximumError));
     }
 
@@ -192,7 +192,7 @@ TEST_CASE("Test_Self_Resonant_Frequency_Many_Turns", "[physical-model][impedance
     magnetic.set_core(core);
     magnetic.set_coil(coil);
     double expectedSelfResonantFrequency = 180000;
-    auto selfResonantFrequency = Impedance().calculate_self_resonant_frequency(magnetic);
+    auto selfResonantFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
     REQUIRE_THAT(expectedSelfResonantFrequency, Catch::Matchers::WithinAbs(selfResonantFrequency, expectedSelfResonantFrequency * maximumError));
 
 }
@@ -238,7 +238,7 @@ TEST_CASE("Test_Impedance_Few_Turns", "[physical-model][impedance][smoke-test]")
     };
 
     for (auto [frequency, expectedImpedance] : expectedImpedances) {
-        auto impedance = Impedance().calculate_impedance(magnetic, frequency);
+        auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
         REQUIRE_THAT(expectedImpedance, Catch::Matchers::WithinAbs(abs(impedance), expectedImpedance * maximumError));
     }
 
@@ -286,7 +286,7 @@ TEST_CASE("Test_Impedance_Many_Turns_Larger_Core", "[physical-model][impedance][
     };
 
     for (auto [frequency, expectedImpedance] : expectedImpedances) {
-        auto impedance = Impedance().calculate_impedance(magnetic, frequency);
+        auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
         REQUIRE_THAT(expectedImpedance, Catch::Matchers::WithinAbs(abs(impedance), expectedImpedance * maximumError));
     }
 }
@@ -333,7 +333,7 @@ TEST_CASE("Test_Impedance_Few_Turns_Larger_Core", "[physical-model][impedance][s
     };
 
     for (auto [frequency, expectedImpedance] : expectedImpedances) {
-        auto impedance = Impedance().calculate_impedance(magnetic, frequency);
+        auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
         REQUIRE_THAT(expectedImpedance, Catch::Matchers::WithinAbs(abs(impedance), expectedImpedance * maximumError));
     }
 
@@ -362,8 +362,8 @@ TEST_CASE("Test_Differential_Mode_Impedance", "[physical-model][impedance][cmc]"
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    auto commonMode = abs(Impedance().calculate_impedance(magnetic, frequency));
-    auto differentialMode = abs(Impedance().calculate_differential_mode_impedance(magnetic, frequency));
+    auto commonMode = abs(OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency));
+    auto differentialMode = abs(OpenMagnetics::Impedance().calculate_differential_mode_impedance(magnetic, frequency));
 
     // DM impedance must be a finite, positive number...
     REQUIRE(std::isfinite(differentialMode));
@@ -372,8 +372,8 @@ TEST_CASE("Test_Differential_Mode_Impedance", "[physical-model][impedance][cmc]"
     REQUIRE(differentialMode < commonMode);
 
     // Below its own resonance the DM branch is inductive: |Z| rises with f.
-    auto dmLow = abs(Impedance().calculate_differential_mode_impedance(magnetic, 1e4));
-    auto dmHigh = abs(Impedance().calculate_differential_mode_impedance(magnetic, 1e5));
+    auto dmLow = abs(OpenMagnetics::Impedance().calculate_differential_mode_impedance(magnetic, 1e4));
+    auto dmHigh = abs(OpenMagnetics::Impedance().calculate_differential_mode_impedance(magnetic, 1e5));
     REQUIRE(dmHigh > dmLow);
 
     // The sweep helper returns a curve of the same length as requested.
