@@ -295,8 +295,16 @@ class MagneticFilterFringingFactor : public MagneticFilter {
         double _requiredMagneticEnergy;
         double _fringingFactorLitmit = 1.2;
         std::shared_ptr<ReluctanceModel> _reluctanceModel;
-        // OPTIMIZATION: Cache for fringing factor calculations to avoid redundant computation
-        static std::map<std::string, double> _fringingFactorCache;
+        // Memoizes get_gapping_by_fringing_factor (a ≤100-iteration bisection)
+        // keyed by core GEOMETRY + fringing limit. That solver overwrites the gap
+        // length with its own search variable and reads only gap/column geometry
+        // (fringing factor is purely geometric — vacuum permeability, gap area,
+        // gap length), so its result is independent of material, turns, and the
+        // incoming gap length. The ferrite standard-cores path expands one shape
+        // into many materials with identical geometry, so without this the bisection
+        // is recomputed identically per material. Instance-scoped (not static) so
+        // there is no cross-run / cross-test shared state.
+        std::map<std::string, double> _fringingFactorCache;
 
     public:
         MagneticFilterFringingFactor() {};
@@ -305,8 +313,6 @@ class MagneticFilterFringingFactor : public MagneticFilter {
         void set_fringing_factor_limit(double limit) { _fringingFactorLitmit = limit; }
         double get_fringing_factor_limit() const { return _fringingFactorLitmit; }
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
-        // OPTIMIZATION: Clear cache when needed (e.g., between different design runs)
-        static void clear_cache();
 };
 
 class MagneticFilterVolume : public MagneticFilter {
