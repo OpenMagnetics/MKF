@@ -609,7 +609,24 @@ void CoreAdviser::rerank_top_candidates_by_proximity_losses(std::vector<std::pai
         return;
     }
 
-    const size_t K = std::min(list.size(), std::max(maximumNumberResults, size_t(8)));
+    // Cap the proximity re-rank at the top-8 by core-score. Each candidate here
+    // costs a full coil winding + simulation (~0.5 s), and the caller's
+    // maximumNumberResults is inflated upstream (MagneticAdviser pads the core
+    // search by +20 per retry), so the old max(maximumNumberResults, 8) ballooned
+    // K to ~21 and dominated inductor-advise walltime (~10 s of a 16 s advise).
+    // 8 matches the documented design intent ("top-K=8") and the proximity
+    // winner is virtually always within the top-8 by core-score.
+    //
+    // RISK (accepted, see ABT #4 follow-up): a genuinely low-proximity-loss core
+    // ranked >8 on core-score will NOT be promoted. That trade-off buys ~37% off
+    // the advise; the coverage shortfall is logged below so it is never silent.
+    const size_t K = std::min(list.size(), size_t(8));
+    if (list.size() > K) {
+        logEntry("CoreAdviser proximity re-rank: proximity-checking only the top-" +
+                 std::to_string(K) + " of " + std::to_string(list.size()) +
+                 " candidates; cores ranked beyond top-" + std::to_string(K) +
+                 " by core-score keep their proximity-blind order.", "CoreAdviser");
+    }
 
     CoilAdviser coilAdviser;
     MagneticSimulator magneticSimulator;
