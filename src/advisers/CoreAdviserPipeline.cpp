@@ -510,13 +510,26 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     // — without hard-coding a material-type rule that may exclude legitimate
     // candidates in other suppression flows.)
 
-    add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
-
+    // NOTE: no add_initial_turns_by_inductance() here, unlike the power/energy
+    // paths. For suppression the impedance requirement — not an inductance
+    // target — sets the turn count, and filterMinimumImpedance below derives N
+    // from scratch (NumberTurns(1) + the analytical Z∝N² jump) and overwrites
+    // whatever N a candidate carries. Seeding turns by inductance first was
+    // therefore pure waste: it never reached the output yet cost a full
+    // per-candidate magnetizing-inductance/gapping solve (~157 ms each) on the
+    // entire ~4.6k-core suppression set — minutes of work, and the hang behind
+    // ABT #9. The cheap impedance filter (~0.3 ms/core) does the real culling.
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 0.001, true);
 
     magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 1.0, false);
 
-    constexpr size_t kMaxCandidatesAfterImpedance = 50;
+    // Cap before the two expensive per-candidate physical filters below
+    // (saturation and losses each cost ~0.1 s/core: they wind the coil and run
+    // the full magnetizing/loss model). The impedance survivors are already
+    // sorted best-first (least over-dimensioned |Z|), so keeping a bounded
+    // shortlist preserves the strongest candidates while keeping the default
+    // suppression wizard inside its few-second budget. ABT #9.
+    const size_t kMaxCandidatesAfterImpedance = std::max<size_t>(maximumNumberResults * 5, 20);
     if (magneticsWithScoring.size() > kMaxCandidatesAfterImpedance) {
         magneticsWithScoring.resize(kMaxCandidatesAfterImpedance);
     }
