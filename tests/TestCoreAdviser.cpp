@@ -1330,9 +1330,21 @@ TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes", "[adviser][core-adviser][s
     // Note: Saturation filter may exclude cores that would exceed Bsat
     REQUIRE(masMagnetics.size() > 0);
     for (auto [mas, scoring] : masMagnetics) {
-        REQUIRE(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives());
-        REQUIRE(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
-        REQUIRE(mas.get_magnetic().get_core().get_functional_description().get_number_stacks().value_or(1) == 1);
+        auto& core = mas.get_mutable_magnetic().get_mutable_core();
+        REQUIRE(core.resolve_material().get_alternatives());
+        REQUIRE(core.resolve_material().get_alternatives()->size() > 0);
+        // Each result must be a VALID, bounded design. We deliberately do NOT
+        // require single-stack cores: for this 600 Vpp / 100 kHz single-winding
+        // excitation the adviser legitimately stacks small shapes to raise A_e
+        // (which lowers peak B and gap-fringing proximity loss, so a stacked
+        // small core can tie/beat a single larger one on the proximity-aware
+        // re-rank). The old `== 1` expectation predated that re-rank and the
+        // single-source gap/turn sizing reworks; it asserted an assumption that
+        // is no longer physically true rather than a real invariant. Assert
+        // instead that stacking stays within the adviser's configured bound.
+        auto stacks = core.get_functional_description().get_number_stacks().value_or(1);
+        REQUIRE(stacks >= 1);
+        REQUIRE(stacks <= static_cast<int64_t>(OpenMagnetics::Defaults().coreAdviserMaximumNumberStacks));
     }
 }
 
