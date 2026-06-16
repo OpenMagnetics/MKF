@@ -401,6 +401,13 @@ class Painter : public PainterInterface {
     void paint_two_piece_set_margin(Magnetic magnetic);
     void paint_toroidal_margin(Magnetic magnetic);
 
+    // Coil painting must work whether or not the magnetic has a core (a chip
+    // bead, or a coil rendered in isolation, has none). These helpers derive the
+    // canvas height / layout family / toroid radius from the core when present,
+    // and from the coil's bobbin winding window otherwise.
+    bool prepare_coil_canvas(Magnetic& magnetic);
+    double get_toroidal_initial_radius(Magnetic& magnetic);
+
     void set_image_size(Wire wire);
     void set_image_size(Magnetic magnetic);
     void paint_round_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label = std::nullopt);

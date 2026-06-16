@@ -466,15 +466,11 @@ void Painter::paint_coil_connections(Magnetic magnetic) {
 
 void Painter::paint_toroidal_coil_sections(Magnetic magnetic) {
 
-    auto processedDescription = magnetic.get_core().get_processed_description().value();
-
-    auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
-
     if (!magnetic.get_coil().get_sections_description()) {
         throw CoilNotProcessedException("Winding sections not created");
     }
 
-    double initialRadius = processedDescription.get_width() / 2 - mainColumn.get_width();
+    double initialRadius = get_toroidal_initial_radius(magnetic);
 
     auto sections = magnetic.get_coil().get_sections_description().value();
 
@@ -560,8 +556,7 @@ void Painter::paint_two_piece_set_coil_layers(Magnetic magnetic) {
 
 void Painter::paint_toroidal_coil_layers(Magnetic magnetic) {
     Coil winding = magnetic.get_coil();
-    Core core = magnetic.get_core();
-    if (!core.get_processed_description()) {
+    if (magnetic.has_core() && !magnetic.get_core().get_processed_description()) {
         throw CoreNotProcessedException("Core has not been processed");
     }
 
@@ -569,12 +564,8 @@ void Painter::paint_toroidal_coil_layers(Magnetic magnetic) {
         throw CoilNotProcessedException("Winding layers not created");
     }
 
-    auto processedDescription = magnetic.get_core().get_processed_description().value();
-
-    auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
-
     auto layers = winding.get_layers_description().value();
-    double initialRadius = processedDescription.get_width() / 2 - mainColumn.get_width();
+    double initialRadius = get_toroidal_initial_radius(magnetic);
 
     for (size_t i = 0; i < layers.size(); ++i){
         {
@@ -712,11 +703,7 @@ void Painter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLay
     Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
 
-    auto processedDescription = magnetic.get_core().get_processed_description().value();
-
-    auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
-
-    double initialRadius = processedDescription.get_width() / 2 - mainColumn.get_width();
+    double initialRadius = get_toroidal_initial_radius(magnetic);
 
     if (!winding.get_turns_description()) {
         throw CoilNotProcessedException("Winding turns not created");
@@ -1090,17 +1077,13 @@ void Painter::paint_toroidal_margin(Magnetic magnetic) {
         return;
     }
 
-    auto processedDescription = magnetic.get_core().get_processed_description().value();
-
-    auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
-
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
 
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
     auto sectionOrientation = windingWindows[0].get_sections_orientation();
 
-    double windingWindowRadialHeight = processedDescription.get_width() / 2 - mainColumn.get_width();
+    double windingWindowRadialHeight = get_toroidal_initial_radius(magnetic);
     for (size_t i = 0; i < sections.size(); ++i){
         if (sections[i].get_margin()) {
             auto margins = Coil::resolve_margin(sections[i]);
@@ -1272,53 +1255,67 @@ void Painter::paint_bobbin(Magnetic magnetic) {
     }
 }
 
-void Painter::paint_coil_sections(Magnetic magnetic) {
-    Core core = magnetic.get_core();
-    CoreShape shape = core.resolve_shape();
-    _imageHeight = core.get_processed_description()->get_height();
-    auto windingWindows = core.get_winding_windows();
-    switch(shape.get_family()) {
-        case CoreShapeFamily::T:
-            return paint_toroidal_coil_sections(magnetic);
-            break;
-        default:
-            return paint_two_piece_set_coil_sections(magnetic);
-            break;
+bool Painter::prepare_coil_canvas(Magnetic& magnetic) {
+    // Sets _imageHeight for a coil paint and reports whether the coil should be
+    // laid out as a toroid. When a core is present its geometry drives both, as
+    // before. When the magnetic has no core (a chip bead, or a coil painted in
+    // isolation) the canvas height and layout family are taken from the coil's
+    // bobbin winding window instead.
+    if (magnetic.has_core()) {
+        Core core = magnetic.get_core();
+        _imageHeight = core.get_processed_description()->get_height();
+        return core.resolve_shape().get_family() == CoreShapeFamily::T;
     }
+
+    auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+    auto windingWindowDimensions = bobbin.get_winding_window_dimensions();
+    if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
+        // Round winding window => toroidal. dimensions = {radialHeight, angle};
+        // the drawing spans roughly the inner diameter (2 x inner radius).
+        _imageHeight = windingWindowDimensions[0] * 2;
+        return true;
+    }
+    // Rectangular winding window => two-piece. dimensions = {width, height}.
+    _imageHeight = windingWindowDimensions[1];
+    return false;
+}
+
+double Painter::get_toroidal_initial_radius(Magnetic& magnetic) {
+    // The toroid inner radius (D_inner / 2) about which toroidal sections and
+    // turns are positioned. With a core: outer radius minus the radial thickness
+    // of the main column. Without a core: the coil bobbin's round winding-window
+    // radial height, which is that same inner radius.
+    if (magnetic.has_core()) {
+        auto processedDescription = magnetic.get_core().get_processed_description().value();
+        auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
+        return processedDescription.get_width() / 2 - mainColumn.get_width();
+    }
+    auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+    return bobbin.get_winding_window_dimensions()[0];
+}
+
+void Painter::paint_coil_sections(Magnetic magnetic) {
+    if (prepare_coil_canvas(magnetic)) {
+        return paint_toroidal_coil_sections(magnetic);
+    }
+    return paint_two_piece_set_coil_sections(magnetic);
 }
 
 void Painter::paint_coil_layers(Magnetic magnetic) {
-    Core core = magnetic.get_core();
-    if (!core.get_processed_description()) {
+    if (magnetic.has_core() && !magnetic.get_core().get_processed_description()) {
         throw CoreNotProcessedException("Core has not been processed");
     }
-    _imageHeight = core.get_processed_description()->get_height();
-
-    CoreShape shape = core.resolve_shape();
-    auto windingWindows = core.get_winding_windows();
-    switch(shape.get_family()) {
-        case CoreShapeFamily::T:
-            return paint_toroidal_coil_layers(magnetic);
-            break;
-        default:
-            return paint_two_piece_set_coil_layers(magnetic);
-            break;
+    if (prepare_coil_canvas(magnetic)) {
+        return paint_toroidal_coil_layers(magnetic);
     }
+    return paint_two_piece_set_coil_layers(magnetic);
 }
 
 void Painter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
-    Core core = magnetic.get_core();
-    CoreShape shape = core.resolve_shape();
-    auto windingWindows = core.get_winding_windows();
-    _imageHeight = core.get_processed_description()->get_height();
-    switch(shape.get_family()) {
-        case CoreShapeFamily::T:
-            return paint_toroidal_coil_turns(magnetic, skipMarginAndLayers);
-            break;
-        default:
-            return paint_two_piece_set_coil_turns(magnetic, skipMarginAndLayers);
-            break;
+    if (prepare_coil_canvas(magnetic)) {
+        return paint_toroidal_coil_turns(magnetic, skipMarginAndLayers);
     }
+    return paint_two_piece_set_coil_turns(magnetic, skipMarginAndLayers);
 }
 
 std::string Painter::get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value) {
