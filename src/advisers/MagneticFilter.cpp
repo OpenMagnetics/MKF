@@ -401,7 +401,40 @@ std::pair<bool, double> MagneticFilterFringingFactor::evaluate_magnetic(Magnetic
         return {true, 1};
     }
     else {
-        double maximumGapLength = _reluctanceModel->get_gapping_by_fringing_factor(core, _fringingFactorLitmit);
+        // get_gapping_by_fringing_factor depends only on gap/column GEOMETRY and
+        // the fringing limit (it overwrites the gap length internally), so its
+        // result is identical across all materials/turns of a given shape. Cache
+        // it by (name, stacks, gap count, limit); the per-core gapLength comparison
+        // below is unchanged, so the accept/reject decision is byte-identical.
+        // Key on the SHAPE name (geometry), NOT the core name — the latter embeds
+        // the assigned material/gap, which would make every material of a shape a
+        // distinct key and defeat the cache. An empty shape name can't disambiguate
+        // geometry, so such cores skip the cache and compute directly.
+        const std::string shapeName = core.get_shape_name();
+        const bool cacheable = !shapeName.empty();
+        std::string key;
+        if (cacheable) {
+            key = shapeName + "|"
+                + std::to_string(core.get_functional_description().get_number_stacks().value_or(1)) + "|"
+                + std::to_string(core.get_gapping().size()) + "|"
+                + std::to_string(_fringingFactorLitmit);
+        }
+
+        double maximumGapLength;
+        if (cacheable) {
+            auto it = _fringingFactorCache.find(key);
+            if (it != _fringingFactorCache.end()) {
+                maximumGapLength = it->second;
+            }
+            else {
+                maximumGapLength = _reluctanceModel->get_gapping_by_fringing_factor(core, _fringingFactorLitmit);
+                _fringingFactorCache[key] = maximumGapLength;
+            }
+        }
+        else {
+            maximumGapLength = _reluctanceModel->get_gapping_by_fringing_factor(core, _fringingFactorLitmit);
+        }
+
         double gapLength = core.get_gapping()[0].get_length();
         bool valid = gapLength <= maximumGapLength;
         if (!valid) {

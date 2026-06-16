@@ -81,42 +81,51 @@ std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLossesModel::fact
 
 
 std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model(WireType wireType, std::optional<WindingSkinEffectLossesModels> modelOverride) {
-    // If an explicit model override is provided, use it
+    // Resolve which model to use (unchanged selection logic): explicit override
+    // first, then the user-selected model if manual selection is enabled, else
+    // the wire-type default.
+    WindingSkinEffectLossesModels resolvedModel;
     if (modelOverride.has_value()) {
-        return WindingSkinEffectLossesModel::factory(modelOverride.value());
+        resolvedModel = modelOverride.value();
+    }
+    else if (Settings::GetInstance().get_coil_enable_user_winding_losses_models()) {
+        resolvedModel = Settings::GetInstance().get_winding_skin_effect_losses_model();
+    }
+    else {
+        switch(wireType) {
+            case WireType::ROUND:
+            case WireType::LITZ:
+            case WireType::PLANAR:
+                resolvedModel = WindingSkinEffectLossesModels::ALBACH;
+                break;
+            case WireType::RECTANGULAR:
+            case WireType::FOIL:
+                resolvedModel = WindingSkinEffectLossesModels::KUTKUT;
+                break;
+            default:
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
+        }
     }
 
-    // Check if user has enabled manual model selection
-    auto& settings = Settings::GetInstance();
-    bool userModelsEnabled = settings.get_coil_enable_user_winding_losses_models();
-
-    if (userModelsEnabled) {
-        // Use the user's selected model from Settings
-        auto userSelectedModel = settings.get_winding_skin_effect_losses_model();
-        return WindingSkinEffectLossesModel::factory(userSelectedModel);
+    // Reuse one persistent instance per resolved model so its skin-factor cache
+    // (_skinFactorPerWirePerFrequencyPerTemperature) survives across calls.
+    // calculate_skin_factor (wire, frequency, temperature) is a pure, deterministic
+    // function and the models hold no other mutable state, so a process-lifetime
+    // per-model cache is correct and keeps each model's results separate.
+    //
+    // Previously get_model built a fresh model on every call, discarding the cache,
+    // so the (expensive, Bessel-based) skin factor was recomputed for every wire ×
+    // harmonic on every wire-advise pass. Profiled with callgrind: that path was
+    // ~45% of CoreAdviser time. Single-threaded per the library's documented
+    // threading contract (see Utils.h), consistent with the other model caches.
+    static std::map<WindingSkinEffectLossesModels, std::shared_ptr<WindingSkinEffectLossesModel>> persistentModels;
+    auto cached = persistentModels.find(resolvedModel);
+    if (cached != persistentModels.end()) {
+        return cached->second;
     }
-
-    // Otherwise, auto-select based on wire type (default behavior)
-    switch(wireType) {
-        case WireType::ROUND: {
-            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
-        }
-        case WireType::LITZ: {
-            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
-        }
-        case WireType::PLANAR: {
-            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
-        }
-        case WireType::RECTANGULAR:
-        {
-            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::KUTKUT);
-        }
-        case WireType::FOIL: {
-            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::KUTKUT);
-        }
-        default:
-            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
-    }
+    auto model = WindingSkinEffectLossesModel::factory(resolvedModel);
+    persistentModels[resolvedModel] = model;
+    return model;
 }
 
 double WindingSkinEffectLosses::calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature) {
