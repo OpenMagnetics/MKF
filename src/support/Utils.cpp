@@ -211,6 +211,11 @@ void clear_loaded_cores() {
     coreDatabase.clear();
 }
 
+void clear_loaded_core_shapes() {
+    coreShapeDatabase.clear();
+    coreShapeFamiliesInDatabase.clear();
+}
+
 void clear_databases() {
     coreDatabase.clear();
     coreMaterialDatabase.clear();

@@ -1306,6 +1306,11 @@ TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes", "[adviser][core-adviser][s
     settings.reset();
     clear_databases();
     load_core_shapes();
+    // This test asserts every advised core is single-stack (number_stacks == 1),
+    // so disable the adviser's stack-variant expansion (enabled by default after
+    // reset()); otherwise it legitimately returns 2-/3-stack variants and the
+    // single-stack assertion below fails.
+    settings.set_core_adviser_include_stacks(false);
     double voltagePeakToPeak = 600;
     double dcCurrent = 0;
     double ambientTemperature = 25;

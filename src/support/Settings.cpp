@@ -41,6 +41,15 @@ namespace OpenMagnetics {
 
 
     void Settings::reset() {
+        // Capture the core-catalog filter settings before restoring defaults: the
+        // core/shape databases are lazily loaded under whatever these settings were
+        // at first access, so if any of them changes here the cached catalog is
+        // stale and must be invalidated (see set_use_toroidal_cores). reset()
+        // assigns the members directly rather than through the setters, so it has
+        // to do the invalidation itself.
+        bool previousToroidalCores = _useToroidalCores;
+        bool previousConcentricCores = _useConcentricCores;
+        bool previousOnlyCoresInStock = _useOnlyCoresInStock;
 
         _useToroidalCores = true;
         _useConcentricCores = true;
@@ -166,6 +175,13 @@ namespace OpenMagnetics {
         _circuitSimulatorIncludeSaturation = false;
         _circuitSimulatorIncludeMutualResistance = false;
         _circuitSimulatorCoreLossTopology = 1;
+
+        if (previousToroidalCores != _useToroidalCores
+                || previousConcentricCores != _useConcentricCores
+                || previousOnlyCoresInStock != _useOnlyCoresInStock) {
+            clear_loaded_cores();
+            clear_loaded_core_shapes();
+        }
     }
 
     bool Settings::get_verbose() const {
@@ -179,6 +195,13 @@ namespace OpenMagnetics {
         return _useToroidalCores;
     }
     void Settings::set_use_toroidal_cores(bool value) {
+        // NOTE: deliberately does NOT invalidate the cached core/shape catalogs.
+        // Many callers (and tests) load the catalog, flip this flag, then read the
+        // already-loaded global database; clearing here would empty it under them.
+        // Cache invalidation happens at safe boundaries instead — Settings::reset()
+        // and the adviser's controlled clear points (MagneticAdviser's
+        // CoreFilterSettingsRestorer). Code needing a re-filtered catalog after a
+        // toggle must clear the relevant database explicitly.
         _useToroidalCores = value;
     }
 
@@ -186,6 +209,8 @@ namespace OpenMagnetics {
         return _useConcentricCores;
     }
     void Settings::set_use_concentric_cores(bool value) {
+        // See set_use_toroidal_cores: no implicit cache invalidation (would empty
+        // the catalog under callers that load-then-toggle-then-read).
         _useConcentricCores = value;
     }
 

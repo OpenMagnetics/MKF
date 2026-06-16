@@ -388,6 +388,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             settings.set_use_only_cores_in_stock(onlyInStock);
             if (changed) {
                 clear_loaded_cores();
+                // The core-SHAPE catalog is filtered by the toroidal/concentric flags
+                // too, so it must be dropped alongside the cores — otherwise a run
+                // that narrowed to one family (e.g. an Interference-Suppression query
+                // forcing toroidal-only) leaves a stale, partial shape catalog behind
+                // for the next, differently-filtered consumer.
+                clear_loaded_core_shapes();
             }
         }
     } coreFilterSettingsRestorer{settings, savedUseToroidalCores, savedUseConcentricCores, savedUseOnlyCoresInStock};
@@ -411,15 +417,18 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         settings.set_use_toroidal_cores(false);
         toroidsOriginallyEnabled = false; // Don't retry since we proactively disabled
         clear_loaded_cores();
+        clear_loaded_core_shapes();
     }
 
     if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
         settings.set_use_toroidal_cores(true);
         settings.set_use_only_cores_in_stock(false);
         settings.set_use_concentric_cores(false);
-        // Force the global core DB to be rebuilt with the new filter settings
-        // (it's filtered at load time and otherwise only reloaded when empty).
+        // Force the global core + shape DBs to be rebuilt with the new filter
+        // settings (both are filtered at load time and otherwise only reloaded
+        // when empty).
         clear_loaded_cores();
+        clear_loaded_core_shapes();
     }
 
     if (coreDatabase.empty()) {
