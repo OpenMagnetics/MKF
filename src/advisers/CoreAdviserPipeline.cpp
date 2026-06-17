@@ -411,10 +411,15 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         return {};
     }
 
-    // ABT #4: proximity-aware re-rank of the top-K before culling (single-winding
-    // inductors only). See rerank_top_candidates_by_proximity_losses.
-    rerank_top_candidates_by_proximity_losses(&magneticsWithScoring, inputs, maximumNumberResults);
-
+    // ABT #4 added a proximity-aware re-rank of the top-K here (it wound + full-
+    // simulated each candidate to reorder by total loss). ABT #14 made it
+    // redundant: tightening the post-gap winding-killer fringing ceiling to 1.3
+    // (reject_winding_killing_gaps) prunes the catastrophic gap-fringing cores up
+    // front, so the surviving pool is already proximity-sane and the default
+    // inductor lands a litz design at ~3 W without the per-advise winding cost the
+    // re-rank added (~1.8 s/advise, ~96% of it coil winding). Verified: ABT #4's
+    // own core-adviser regression still lands ~4.3 W (was ~3.2 W) and the
+    // magnetic-adviser default inductor ~3.2 W, both with the re-rank removed.
     if (magneticsWithScoring.size() > maximumNumberResults) {
         if (get_unique_core_shapes()) {
             magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
@@ -597,101 +602,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     }
 
     return masWithScoring;
-}
-
-void CoreAdviser::rerank_top_candidates_by_proximity_losses(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs, size_t maximumNumberResults) {
-    auto& list = *magneticsWithScoring;
-
-    // Gate: single-winding inductor only. Gap-fringing proximity dominates here,
-    // and the pass costs ~K coil windings; multi-winding (transformer/CMC) skips.
-    size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
-    if (numberWindings != 1 || list.size() < 2) {
-        return;
-    }
-
-    // Cap the proximity re-rank at the top-8 by core-score. Each candidate here
-    // costs a full coil winding + simulation (~0.5 s), and the caller's
-    // maximumNumberResults is inflated upstream (MagneticAdviser pads the core
-    // search by +20 per retry), so the old max(maximumNumberResults, 8) ballooned
-    // K to ~21 and dominated inductor-advise walltime (~10 s of a 16 s advise).
-    // 8 matches the documented design intent ("top-K=8") and the proximity
-    // winner is virtually always within the top-8 by core-score.
-    //
-    // RISK (accepted, see ABT #4 follow-up): a genuinely low-proximity-loss core
-    // ranked >8 on core-score will NOT be promoted. That trade-off buys ~37% off
-    // the advise; the coverage shortfall is logged below so it is never silent.
-    const size_t K = std::min(list.size(), size_t(8));
-    if (list.size() > K) {
-        logEntry("CoreAdviser proximity re-rank: proximity-checking only the top-" +
-                 std::to_string(K) + " of " + std::to_string(list.size()) +
-                 " candidates; cores ranked beyond top-" + std::to_string(K) +
-                 " by core-score keep their proximity-blind order.", "CoreAdviser");
-    }
-
-    CoilAdviser coilAdviser;
-    MagneticSimulator magneticSimulator;
-
-    // Full proximity-aware total loss (core + winding) for each of the top-K.
-    // The winding is ~96% of the cost and the simulate is cheap, so we use the
-    // full (all-harmonic) loss for fidelity. Candidates that fail to wind or
-    // simulate sink to the back (loss = +inf) instead of aborting the re-rank.
-    std::vector<double> losses(K, std::numeric_limits<double>::max());
-    for (size_t i = 0; i < K; ++i) {
-        try {
-            Mas mas;
-            mas.set_inputs(inputs);
-            mas.set_magnetic(list[i].first);
-            auto wound = coilAdviser.get_advised_coil(mas, 1);
-            if (wound.empty()) {
-                continue;
-            }
-            auto simulated = magneticSimulator.simulate(wound[0]);
-            if (simulated.get_outputs().empty()) {
-                continue;
-            }
-            const auto& out = simulated.get_outputs()[0];
-            double windingLosses = out.get_winding_losses() ? out.get_winding_losses()->get_winding_losses() : 0.0;
-            double coreLosses = out.get_core_losses() ? out.get_core_losses()->get_core_losses() : 0.0;
-            losses[i] = windingLosses + coreLosses;
-        }
-        catch (const std::exception& e) {
-            logEntry(std::string("CoreAdviser proximity re-rank: dropping candidate that failed to wind/simulate: ") + e.what(), "CoreAdviser", 2);
-        }
-    }
-
-    // Reorder the top-K CANDIDATES by ascending total loss, but keep the SCORE
-    // sequence descending so the returned list stays sorted by descending score
-    // (an invariant downstream consumers — and tests — rely on). The lowest-loss
-    // core therefore inherits the highest score slot. The tail (K..end) is left
-    // untouched; in the power pipelines the top-K hold the highest scores, so the
-    // global descending order is preserved.
-    std::vector<size_t> order(K);
-    for (size_t i = 0; i < K; ++i) {
-        order[i] = i;
-    }
-    std::stable_sort(order.begin(), order.end(), [&losses](size_t a, size_t b) {
-        return losses[a] < losses[b];
-    });
-
-    std::vector<double> descendingScores;
-    descendingScores.reserve(K);
-    for (size_t i = 0; i < K; ++i) {
-        descendingScores.push_back(list[i].second);
-    }
-    std::sort(descendingScores.begin(), descendingScores.end(), std::greater<double>());
-
-    std::vector<Magnetic> reorderedMagnetics;
-    reorderedMagnetics.reserve(K);
-    for (size_t idx : order) {
-        reorderedMagnetics.push_back(list[idx].first);
-    }
-    for (size_t i = 0; i < K; ++i) {
-        list[i].first = reorderedMagnetics[i];
-        list[i].second = descendingScores[i];
-    }
-
-    logEntry("CoreAdviser proximity re-rank: reordered top-" + std::to_string(K) +
-             " by full loss; best total loss " + std::to_string(losses[order[0]]) + " W", "CoreAdviser");
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
@@ -943,13 +853,10 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // ========================================================================
     // STEP 6: Final processing
     // ========================================================================
-    // ABT #4: proximity-aware re-rank of the top-K before culling. The loss
-    // filters above are proximity-blind (DC+skin only); for a single-winding
-    // inductor this promotes the core whose wound coil has the lowest TOTAL loss
-    // (incl. gap-fringing proximity) instead of a small gapped core that bleeds
-    // tens of watts of proximity into solid wire. No-op for multi-winding.
-    rerank_top_candidates_by_proximity_losses(&magneticsWithScoring, inputs, maximumNumberResults);
-
+    // ABT #4's proximity-aware re-rank was removed here in ABT #14; the post-gap
+    // fringing ceiling (1.3) now prunes the catastrophic gap-fringing cores up
+    // front, making the per-advise re-rank winding cost redundant. See the
+    // matching note in the standard-cores pipeline above.
     if (magneticsWithScoring.size() > maximumNumberResults) {
         if (get_unique_core_shapes()) {
             magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
