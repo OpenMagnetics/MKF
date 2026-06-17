@@ -142,13 +142,24 @@ struct Defaults {
     // winding-killer guard (reject_winding_killing_gaps). The gap is finalized
     // after the early fringing pass (add_initial_turns_by_inductance can balloon
     // it to clear saturation), so a second, hard reject runs on the final gap.
-    // This is deliberately HIGHER than the early-pass limit (1.2): measured
-    // fringing factors of legitimate small-inductor designs reach ~1.47, while
-    // the field-reported winding-killer (a tiny E core whose fringing field
-    // produced >150 W of proximity loss) sat at ~1.71. 1.6 clears the normal
-    // designs and rejects the catastrophic ones. Above this, the fringing field
-    // dominates winding (proximity) losses and the design is unusable.
-    const double coreAdviserWindingKillingFringingFactorLimit = 1.6;
+    //
+    // ABT #14: the original single 1.6 ceiling let tiny gapped cores with a
+    // fringing factor in (1.3, 1.6) survive, and the magnetic-adviser's final
+    // scoring then preferred those small/cheap cores even though their solid-wire
+    // gap-fringing proximity loss was ~18-20 W (litz does not fit their tiny
+    // winding window). Tightening the primary ceiling to 1.3 prunes those
+    // catastrophic cores up front, so the surviving pool fills with sane P/PQ/RM
+    // cores that take litz at ~3 W — without any scoring change.
+    //
+    // 1.3 can be too strict for legitimate high-energy designs that genuinely
+    // need a large gap (measured fringing factors of legitimate small inductors
+    // reach ~1.47). To avoid returning ZERO cores in that case, the guard relaxes
+    // to the looser ceiling below ONLY when the strict pass would reject every
+    // candidate (logged, never silent — see reject_winding_killing_gaps). The
+    // looser 1.6 still rejects the genuinely catastrophic gaps (the field-reported
+    // winding-killer sat at ~1.71).
+    const double coreAdviserWindingKillingFringingFactorLimit = 1.3;
+    const double coreAdviserWindingKillingFringingFactorLimitRelaxed = 1.6;
 
     // Phase 4 (Group B): cross-referencer scoring-normalisation floors.
     //

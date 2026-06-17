@@ -513,19 +513,44 @@ void CoreAdviser::reject_winding_killing_gaps(std::vector<std::pair<Magnetic, do
     // that is not an efficiency preference. The limit is the winding-killer
     // ceiling (higher than the early-pass 1.2): legitimate small-inductor designs
     // reach a fringing factor of ~1.47, so only the catastrophic gaps are cut.
-    MagneticFilterFringingFactor fringingFilter(inputs, _models);
-    fringingFilter.set_fringing_factor_limit(defaults.coreAdviserWindingKillingFringingFactorLimit);
+    // Filter the candidate set against a fringing-factor ceiling, preserving each
+    // survivor's original score and position. Pure predicate, no re-normalisation.
+    auto filterAtLimit = [&](double limit) {
+        MagneticFilterFringingFactor fringingFilter(inputs, _models);
+        fringingFilter.set_fringing_factor_limit(limit);
+        std::vector<std::pair<Magnetic, double>> kept;
+        kept.reserve(magneticsWithScoring->size());
+        for (auto& entry : *magneticsWithScoring) {
+            Magnetic magnetic = entry.first;
+            auto [valid, scoring] = fringingFilter.evaluate_magnetic(&magnetic, &inputs);
+            if (valid) {
+                kept.push_back(entry);  // keep original score + position untouched
+            }
+        }
+        return kept;
+    };
 
     size_t before = magneticsWithScoring->size();
-    std::vector<std::pair<Magnetic, double>> kept;
-    kept.reserve(before);
-    for (auto& entry : *magneticsWithScoring) {
-        Magnetic magnetic = entry.first;
-        auto [valid, scoring] = fringingFilter.evaluate_magnetic(&magnetic, &inputs);
-        if (valid) {
-            kept.push_back(entry);  // keep original score + position untouched
-        }
+
+    // ABT #14: primary (strict) ceiling prunes catastrophic gap-fringing cores.
+    auto kept = filterAtLimit(defaults.coreAdviserWindingKillingFringingFactorLimit);
+
+    // Graceful relaxation (NOT a silent fallback): if the strict ceiling rejected
+    // EVERY candidate, a legitimate high-energy design likely needs a larger gap
+    // than 1.3 allows. Returning zero cores is the worse outcome, so re-run at the
+    // looser ceiling, which still cuts the genuinely catastrophic gaps. Always
+    // logged so the relaxation is visible.
+    if (kept.empty() && before > 0) {
+        logEntry("Post-gap fringing guard: all " + std::to_string(before) +
+                 " candidate(s) exceeded the strict fringing-factor limit (" +
+                 std::to_string(defaults.coreAdviserWindingKillingFringingFactorLimit) +
+                 "); relaxing to " +
+                 std::to_string(defaults.coreAdviserWindingKillingFringingFactorLimitRelaxed) +
+                 " to avoid returning zero cores.",
+                 "CoreAdviser", 0);
+        kept = filterAtLimit(defaults.coreAdviserWindingKillingFringingFactorLimitRelaxed);
     }
+
     if (kept.size() < before) {
         logEntry("Post-gap fringing guard rejected "
                  + std::to_string(before - kept.size())

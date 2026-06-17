@@ -184,12 +184,20 @@ void check_top_n(const std::string& label,
 // gate, so the saturation-headroom scoring reshuffles the top-5 toward cores
 // with real headroom (EP 20 3C96, EFD 25/13/9, E 25/13/7). All five are valid
 // power ferrites; scores nudged < 1.5 %.
+// Refreshed 2026-06-17 (ABT #14): the ABT #10 proximity-aware re-rank was
+// removed (the post-gap fringing ceiling tightened to 1.3 prunes the
+// catastrophic gap-fringing cores up front, making the per-advise re-rank
+// winding redundant). Without the re-rank the ordering follows the raw
+// cost/loss/dimensions score again: EP 20 3C96 keeps slot 1 (score 4.039 →
+// 3.954 once the re-rank's proximity bonus is gone) and the tail fills with
+// PQ 20/20 variants instead of EFD/E. All valid small-and-sane power ferrites
+// (no tiny winding-killer cores).
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"EP 20 - 3C96 - Gapped 0.375 mm",             4.0394759597245846},
-    {"EFD 25/13/9 - 97 - Gapped 0.5 mm",           4.0371918250916554},
-    {"E 25/13/7 - 3C90 - Gapped 1.0 mm",           4.0259647054204928},
-    {"PQ 20/20 - 3C94 - Gapped 0.472 mm",          3.9958256614081851},
-    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.9508508473488773},
+    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.9537973838027973},
+    {"PQ 20/20 - 3C94 - Gapped 0.472 mm",          3.9041828560647911},
+    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.9037914203219195},
+    {"PQ 20/20 - 3C90 - Gapped 0.472 mm",          3.8895346331612464},
+    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          3.876475147783558},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
@@ -207,12 +215,17 @@ const std::vector<TopEntry> kTopAvailablePower = {
 // kTopAvailablePower above (RAW B_sat at the 100 C hot corner). The
 // saturation-headroom rescoring promotes 95 RM 10/13 to slot 1 and reshuffles
 // the standard-shape top-5; all valid, scores nudged < 1.5 %.
+// Refreshed 2026-06-17 (ABT #14): re-rank removal + 1.3 fringing ceiling (see
+// kTopAvailablePower note). 95 EQ 25/6 and 95 RM 10/13 were tied on score
+// (3.8963…); without the re-rank the lexicographic tiebreak now seats EQ 25/6
+// at slot 1, and the tail fills with EP 20 / RM 10 variants in place of the
+// E 19/E 21 2-stacks. All valid small-and-sane power ferrites.
 const std::vector<TopEntry> kTopStandardPower = {
-    {"95 RM 10/13 gapped 0.27 mm",                 3.8963165812464418},
-    {"98 E 19/8/9 2 stacks gapped 0.12 mm",        3.7753243780925869},
-    {"98 EP 20 gapped 0.32 mm",                    3.7471654879366123},
-    {"95 E 21/9/5 2 stacks gapped 0.21 mm",        3.715779819799347},
-    {"98 E 21/9/5 2 stacks gapped 0.21 mm",        3.701426173763287},
+    {"95 EQ 25/6 gapped 0.26 mm",                  3.8963165812464418},
+    {"98 EP 20 gapped 0.32 mm",                    3.7753243780925869},
+    {"98 RM 10/ILP gapped 0.24 mm",                3.701426173763287},
+    {"98 RM 10/13 gapped 0.27 mm",                 3.6502929639973449},
+    {"95 RM 10/13 gapped 0.27 mm",                 3.6478045073553771},
 };
 
 // Refreshed 2026-06-16 (ABT #10) after landing the suppression returns-0 fix
