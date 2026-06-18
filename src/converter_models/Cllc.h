@@ -10,6 +10,7 @@
 namespace OpenMagnetics {
 using namespace MAS;
 
+
 /**
  * @brief Resonant tank parameters for the CLLC converter.
  *
@@ -285,6 +286,7 @@ private:
     mutable std::vector<double>      perOpPrimaryPeakCurrent;
     mutable std::vector<double>      perOpResonantCapPeakVoltage;
 
+
 public:
     bool _assertErrors = false;
 
@@ -400,7 +402,7 @@ public:
     /** Per-input-voltage analytical worker. */
     OperatingPoint process_operating_point_for_input_voltage(
         double inputVoltage,
-        const CllcOperatingPoint& cllcOperatingPoint,
+        const MAS::CllcOperatingPoint& cllcOperatingPoint,
         double turnsRatio,
         double magnetizingInductance,
         const CllcResonantParameters& params);
@@ -516,7 +518,7 @@ inline void from_json(const json& j, AdvancedCllcConverter& x) {
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_max_switching_frequency(j.at("maxSwitchingFrequency").get<double>());
     x.set_min_switching_frequency(j.at("minSwitchingFrequency").get<double>());
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<CllcOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<MAS::CllcOperatingPoint>>());
     x.set_quality_factor(get_stack_optional<double>(j, "qualityFactor"));
     x.set_symmetric_design(get_stack_optional<bool>(j, "symmetricDesign"));
     // v2 additions (optional, defaults preserved by absence)

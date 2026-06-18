@@ -9,6 +9,7 @@
 namespace OpenMagnetics {
 using namespace MAS;
 
+
 /**
  * @brief Dual Active Bridge (DAB) DC-DC Converter
  *
@@ -149,6 +150,7 @@ private:
     mutable std::vector<Waveform> extraIndVoltageWaveforms;  // Vab waveform per OP
     mutable std::vector<Waveform> extraIndCurrentWaveforms;  // iL waveform per OP
 
+
 public:
     bool _assertErrors = false;
 
@@ -220,7 +222,7 @@ public:
     // Per-operating-point analytical waveforms
     OperatingPoint process_operating_point_for_input_voltage(
         double inputVoltage,
-        const DabOperatingPoint& dabOpPoint,
+        const MAS::DabOperatingPoint&dabOpPoint,
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 
@@ -271,7 +273,7 @@ public:
     // the "DPS implicit symmetry" (D2 = D1 if the user only supplied D1).
 
     /** D1 — primary-bridge intra-leg shift in radians. */
-    static double get_D1_rad(const DabOperatingPoint& op) {
+    static double get_D1_rad(const MAS::DabOperatingPoint&op) {
         double deg = op.get_inner_phase_shift1().value_or(0.0);
         return deg * M_PI / 180.0;
     }
@@ -280,12 +282,12 @@ public:
      *  DPS special case: if innerPhaseShift2 is absent, enforce D2 = D1
      *  (Huang 2018 / Rosano-Maniktala symmetric DPS).
      *  Other modes: returns innerPhaseShift2 if present, else 0. */
-    static double get_D2_rad(const DabOperatingPoint& op) {
+    static double get_D2_rad(const MAS::DabOperatingPoint&op) {
         if (op.get_inner_phase_shift2().has_value()) {
             return op.get_inner_phase_shift2().value() * M_PI / 180.0;
         }
         auto modTypeOpt = op.get_modulation_type();
-        if (modTypeOpt.has_value() && modTypeOpt.value() == ModulationType::DPS) {
+        if (modTypeOpt.has_value() && modTypeOpt.value() == MAS::ModulationType::DPS) {
             return get_D1_rad(op);
         }
         return 0.0;
@@ -295,7 +297,7 @@ public:
      *  directly from innerPhaseShift3; callers decide how to interpret "no
      *  user value" (typically fall back to computedD3Rad from the design
      *  step). Positive = forward power flow. */
-    static double get_D3_rad(const DabOperatingPoint& op) {
+    static double get_D3_rad(const MAS::DabOperatingPoint&op) {
         double deg = op.get_inner_phase_shift3().value_or(0.0);
         return deg * M_PI / 180.0;
     }
@@ -405,7 +407,7 @@ inline void from_json(const json& j, AdvancedDab& x) {
     // DualActiveBridge base fields
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<DabOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<MAS::DabOperatingPoint>>());
     x.set_series_inductance(get_stack_optional<double>(j, "seriesInductance"));
     x.set_use_leakage_inductance(get_stack_optional<bool>(j, "useLeakageInductance"));
 

@@ -9,6 +9,7 @@
 namespace OpenMagnetics {
 using namespace MAS;
 
+
 /**
  * @brief Phase-Shifted Full Bridge (PSFB) DC-DC Converter
  *
@@ -126,6 +127,7 @@ private:
     mutable std::vector<Waveform> extraLrVoltageWaveforms;
     mutable std::vector<Waveform> extraLrCurrentWaveforms;
 
+
 public:
     bool _assertErrors = false;
 
@@ -192,7 +194,7 @@ public:
 
     OperatingPoint process_operating_point_for_input_voltage(
         double inputVoltage,
-        const PsfbOperatingPoint& psfbOpPoint,
+        const MAS::PsfbOperatingPoint& psfbOpPoint,
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 
@@ -279,7 +281,7 @@ inline void from_json(const json& j, AdvancedPsfb& x) {
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_phase_shift(get_stack_optional<double>(j, "maximumPhaseShift"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<PsfbOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<MAS::PsfbOperatingPoint>>());
     x.set_output_inductance(get_stack_optional<double>(j, "outputInductance"));
     x.set_rectifier_type(get_stack_optional<BRectifierType>(j, "rectifierType"));
     x.set_series_inductance(get_stack_optional<double>(j, "seriesInductance"));

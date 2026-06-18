@@ -531,7 +531,7 @@ DesignRequirements Dab::process_design_requirements() {
         L = get_series_inductance().value();
         if (std::abs(D3_rad) < 1e-6 && mainOutputPower > 0) {
             auto modTypeOpt = ops[0].get_modulation_type();
-            bool isSPS = !modTypeOpt.has_value() || modTypeOpt.value() == ModulationType::SPS;
+            bool isSPS = !modTypeOpt.has_value() || modTypeOpt.value() == MAS::ModulationType::SPS;
             if (isSPS) {
                 D3_rad = compute_phase_shift(Vin_nom, mainOutputVoltage, N, Fs, L, mainOutputPower);
             } else {
@@ -700,7 +700,7 @@ std::vector<OperatingPoint> Dab::process_operating_points(Magnetic magnetic) {
 // =========================================================================
 OperatingPoint Dab::process_operating_point_for_input_voltage(
     double inputVoltage,
-    const DabOperatingPoint& dabOpPoint,
+    const MAS::DabOperatingPoint&dabOpPoint,
     const std::vector<double>& turnsRatios,
     double magnetizingInductance)
 {
@@ -988,7 +988,7 @@ std::string Dab::generate_ngspice_circuit(
         D2_deg = dabOp.get_inner_phase_shift2().value();
     } else {
         auto modTypeOpt = dabOp.get_modulation_type();
-        D2_deg = (modTypeOpt.has_value() && modTypeOpt.value() == ModulationType::DPS) ? D1_deg : 0.0;
+        D2_deg = (modTypeOpt.has_value() && modTypeOpt.value() == MAS::ModulationType::DPS) ? D1_deg : 0.0;
     }
     double D1_rad = D1_deg * M_PI / 180.0;
     double D2_rad = D2_deg * M_PI / 180.0;

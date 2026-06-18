@@ -10,6 +10,7 @@
 namespace OpenMagnetics {
 using namespace MAS;
 
+
 /**
  * @brief Cuk (inverting, fourth-order) DC-DC Converter.
  *
@@ -218,6 +219,7 @@ protected:
     mutable std::vector<Waveform> extraCoVoltageWaveforms;
     mutable std::vector<Waveform> extraCoCurrentWaveforms;
 
+
 public:
     bool _assertErrors = false;
 
@@ -286,7 +288,7 @@ public:
     DesignRequirements process_design_requirements() override;
     std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const CukOperatingPoint& outputOperatingPoint, double inductanceL1);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const MAS::CukOperatingPoint& outputOperatingPoint, double inductanceL1);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
     /**
@@ -391,7 +393,7 @@ inline void from_json(const json & j, AdvancedCuk& x) {
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_switch_current(get_stack_optional<double>(j, "maximumSwitchCurrent"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<CukOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<MAS::CukOperatingPoint>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
 }
 

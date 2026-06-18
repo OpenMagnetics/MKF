@@ -33,7 +33,7 @@ double get_value_or(T&& val, double default_val) {
         set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
         set_max_switching_frequency(j.at("maxSwitchingFrequency").get<double>());
         set_min_switching_frequency(j.at("minSwitchingFrequency").get<double>());
-        set_operating_points(j.at("operatingPoints").get<std::vector<CllcOperatingPoint>>());
+        set_operating_points(j.at("operatingPoints").get<std::vector<MAS::CllcOperatingPoint>>());
         set_quality_factor(get_stack_optional<double>(j, "qualityFactor"));
         set_symmetric_design(get_stack_optional<bool>(j, "symmetricDesign"));
 
@@ -1086,7 +1086,7 @@ double get_value_or(T&& val, double default_val) {
 
     OperatingPoint CllcConverter::process_operating_point_for_input_voltage(
         double inputVoltage,
-        const CllcOperatingPoint& cllcOpPoint,
+        const MAS::CllcOperatingPoint& cllcOpPoint,
         double turnsRatio,
         double magnetizingInductance,
         const CllcResonantParameters& params) {
@@ -1140,7 +1140,7 @@ double get_value_or(T&& val, double default_val) {
         // returns iLs as the physical primary winding tank current — same
         // signal SPICE measures via Vpri_sense — so reverse PtP NRMSE
         // compares apples to apples without further conversion.
-        bool isReverse = (cllcOpPoint.get_power_flow() == CllcPowerFlow::REVERSE);
+        bool isReverse = (cllcOpPoint.get_power_flow() == MAS::PowerFlowDirection::REVERSE);
         double Vi, Vo;
         if (isReverse) {
             Vi = k_bridge * n * outputVoltage;   // sec inverter, pri-referred
@@ -1757,7 +1757,7 @@ double get_value_or(T&& val, double default_val) {
                 if (get_operating_points().size() > 1) {
                     name += " with op. point " + std::to_string(opIndex);
                 }
-                std::string flowStr = (cllcOpPoint.get_power_flow() == CllcPowerFlow::FORWARD) ?
+                std::string flowStr = (cllcOpPoint.get_power_flow() == MAS::PowerFlowDirection::FORWARD) ?
                     " (forward)" : " (reverse)";
                 name += flowStr;
                 operatingPoint.set_name(name);
@@ -1857,7 +1857,7 @@ double get_value_or(T&& val, double default_val) {
         // (FIXME-P8b: implement physically reverse propagator + reverse PtP
         // NRMSE fixture). This branch only re-physics the SPICE netlist so a
         // power-balance sanity test can confirm energy actually flows back.
-        bool isReverse = (opPoint.get_power_flow() == CllcPowerFlow::REVERSE);
+        bool isReverse = (opPoint.get_power_flow() == MAS::PowerFlowDirection::REVERSE);
 
         double L1 = params.primaryResonantInductance;
         double C1 = params.primaryResonantCapacitance;
@@ -2414,7 +2414,7 @@ double get_value_or(T&& val, double default_val) {
                 // switching-instant overshoot we want to keep visible).
                 // This is a numerical guard against the ngspice
                 // idealised-switch di/dt artifact, not a physical bound.
-                bool isReverse = (opPoint.get_power_flow() == CllcPowerFlow::REVERSE);
+                bool isReverse = (opPoint.get_power_flow() == MAS::PowerFlowDirection::REVERSE);
                 wf.set_input_voltage(getWaveform("vin_p"));
 
                 Waveform iInWf;
