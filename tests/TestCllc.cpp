@@ -60,7 +60,7 @@ namespace {
      *   fr = 73 kHz, Pout = 11 kW, forward mode
      */
     json create_standard_cllc_json(double fsw = 73000.0,
-                                    CllcPowerFlow powerFlow = CllcPowerFlow::FORWARD) {
+                                    PowerFlowDirection powerFlow = PowerFlowDirection::FORWARD) {
         json cllcJson;
         json inputVoltage;
         inputVoltage["minimum"] = 700;
@@ -82,7 +82,7 @@ namespace {
             opJson["outputCurrents"] = {18.33};  // ~11 kW at 600V
             opJson["switchingFrequency"] = fsw;
             opJson["ambientTemperature"] = 25.0;
-            opJson["powerFlow"] = (powerFlow == CllcPowerFlow::FORWARD) ? "forward" : "reverse";
+            opJson["powerFlow"] = (powerFlow == PowerFlowDirection::FORWARD) ? "forward" : "reverse";
             cllcJson["operatingPoints"].push_back(opJson);
         }
         return cllcJson;
@@ -93,7 +93,7 @@ namespace {
      *   Vin = 400V, Vout = 48V, ~500W, 200 kHz
      */
     json create_small_power_cllc_json(double fsw = 200000.0,
-                                       CllcPowerFlow powerFlow = CllcPowerFlow::FORWARD) {
+                                       PowerFlowDirection powerFlow = PowerFlowDirection::FORWARD) {
         json cllcJson;
         json inputVoltage;
         inputVoltage["minimum"] = 360;
@@ -115,7 +115,7 @@ namespace {
             opJson["outputCurrents"] = {10.0};  // ~480W
             opJson["switchingFrequency"] = fsw;
             opJson["ambientTemperature"] = 25.0;
-            opJson["powerFlow"] = (powerFlow == CllcPowerFlow::FORWARD) ? "forward" : "reverse";
+            opJson["powerFlow"] = (powerFlow == PowerFlowDirection::FORWARD) ? "forward" : "reverse";
             cllcJson["operatingPoints"].push_back(opJson);
         }
         return cllcJson;
@@ -175,7 +175,7 @@ namespace {
          *
          * Reference: Infineon AN Section 2.1, Table 1 (fs = fr → Resonant mode)
          */
-        json cllcJson = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
+        json cllcJson = create_standard_cllc_json(73000.0, PowerFlowDirection::FORWARD);
         OpenMagnetics::CllcConverter cllc(cllcJson);
         cllc._assertErrors = true;
 
@@ -296,7 +296,7 @@ namespace {
          * Reference: Infineon AN Table 1, fs < fr → Boost mode
          */
         // Use a switching frequency well below the natural resonant frequency
-        json cllcJson = create_standard_cllc_json(50000.0, CllcPowerFlow::FORWARD);
+        json cllcJson = create_standard_cllc_json(50000.0, PowerFlowDirection::FORWARD);
         OpenMagnetics::CllcConverter cllc(cllcJson);
 
         auto params = cllc.calculate_resonant_parameters();
@@ -332,7 +332,7 @@ namespace {
          *
          * Reference: Infineon AN Table 1, fs > fr → Buck mode
          */
-        json cllcJson = create_standard_cllc_json(150000.0, CllcPowerFlow::FORWARD);
+        json cllcJson = create_standard_cllc_json(150000.0, PowerFlowDirection::FORWARD);
         OpenMagnetics::CllcConverter cllc(cllcJson);
 
         auto params = cllc.calculate_resonant_parameters();
@@ -361,7 +361,7 @@ namespace {
          *
          * Reference: Infineon AN Section 2.2.2 (discharging mode)
          */
-        json cllcJson = create_standard_cllc_json(73000.0, CllcPowerFlow::REVERSE);
+        json cllcJson = create_standard_cllc_json(73000.0, PowerFlowDirection::REVERSE);
 
         // For reverse mode, swap the voltage/current references
         cllcJson["operatingPoints"][0]["powerFlow"] = "reverse";
@@ -671,7 +671,7 @@ namespace {
             SKIP("ngspice not available on this system");
         }
 
-        json cllcJson = create_small_power_cllc_json(200000.0, CllcPowerFlow::FORWARD);
+        json cllcJson = create_small_power_cllc_json(200000.0, PowerFlowDirection::FORWARD);
         OpenMagnetics::CllcConverter cllc(cllcJson);
 
         auto params = cllc.calculate_resonant_parameters();
@@ -1031,7 +1031,7 @@ namespace {
     // ====================================================================
     TEST_CASE("Test_Cllc_Operating_Modes",
               "[converter-model][cllc-topology][tda][modes][smoke-test]") {
-        json baseJson = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
+        json baseJson = create_standard_cllc_json(73000.0, PowerFlowDirection::FORWARD);
         OpenMagnetics::CllcConverter c(baseJson);
         auto params = c.calculate_resonant_parameters();
         double fr = params.resonantFrequency;
@@ -1042,12 +1042,12 @@ namespace {
             // Build a one-shot operating point at the requested Vin/fsw and
             // call the per-input-voltage worker directly so the FROZEN tank
             // params from the baseline are reused.
-            CllcOperatingPoint op;
+            MAS::CllcOperatingPoint op;
             op.set_output_voltages({600.0});
             op.set_output_currents({18.33});
             op.set_switching_frequency(fsw);
             op.set_ambient_temperature(25.0);
-            op.set_power_flow(CllcPowerFlow::FORWARD);
+            op.set_power_flow(PowerFlowDirection::FORWARD);
             (void)c.process_operating_point_for_input_voltage(
                 Vin, op, params.turnsRatio, params.magnetizingInductance, params);
             INFO("Vin=" << Vin << " V, fsw=" << fsw << " Hz — mode="
@@ -1098,7 +1098,7 @@ namespace {
     // ====================================================================
     TEST_CASE("Test_Cllc_LIP_Frequency",
               "[converter-model][cllc-topology][tda][lip][smoke-test]") {
-        json j = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
+        json j = create_standard_cllc_json(73000.0, PowerFlowDirection::FORWARD);
         OpenMagnetics::CllcConverter c(j);
         auto p = c.calculate_resonant_parameters();
         std::vector<double> tr = {p.turnsRatio};
@@ -1142,7 +1142,7 @@ namespace {
     // ====================================================================
     TEST_CASE("Test_Cllc_ZVS_Boundaries_Forward",
               "[converter-model][cllc-topology][tda][zvs][smoke-test]") {
-        json baseJson = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
+        json baseJson = create_standard_cllc_json(73000.0, PowerFlowDirection::FORWARD);
         OpenMagnetics::CllcConverter c(baseJson);
         auto params = c.calculate_resonant_parameters();
         double td   = c.get_dead_time();
@@ -1158,12 +1158,12 @@ namespace {
              << " ns, Coss=" << Coss*1e12 << " pF, fs=" << fs << " Hz)");
 
         auto sweep = [&](double Lm) -> double {
-            CllcOperatingPoint op;
+            MAS::CllcOperatingPoint op;
             op.set_output_voltages({600.0});
             op.set_output_currents({18.33});
             op.set_switching_frequency(fs);
             op.set_ambient_temperature(25.0);
-            op.set_power_flow(CllcPowerFlow::FORWARD);
+            op.set_power_flow(PowerFlowDirection::FORWARD);
             (void)c.process_operating_point_for_input_voltage(
                 750.0, op, params.turnsRatio, Lm, params);
             return c.get_last_zvs_margin_primary();
@@ -1194,7 +1194,7 @@ namespace {
     // ====================================================================
     TEST_CASE("Test_Cllc_ZVS_Boundaries_Reverse",
               "[converter-model][cllc-topology][tda][zvs][smoke-test]") {
-        json baseJson = create_standard_cllc_json(73000.0, CllcPowerFlow::REVERSE);
+        json baseJson = create_standard_cllc_json(73000.0, PowerFlowDirection::REVERSE);
         OpenMagnetics::CllcConverter c(baseJson);
         auto params = c.calculate_resonant_parameters();
         double td   = c.get_dead_time();
@@ -1203,12 +1203,12 @@ namespace {
         double Lm_eq28 = td / (16.0 * Coss * fs);
 
         auto sweep = [&](double Lm) -> std::pair<double, double> {
-            CllcOperatingPoint op;
+            MAS::CllcOperatingPoint op;
             op.set_output_voltages({600.0});
             op.set_output_currents({18.33});
             op.set_switching_frequency(fs);
             op.set_ambient_temperature(25.0);
-            op.set_power_flow(CllcPowerFlow::REVERSE);
+            op.set_power_flow(PowerFlowDirection::REVERSE);
             (void)c.process_operating_point_for_input_voltage(
                 750.0, op, params.turnsRatio, Lm, params);
             return { c.get_last_zvs_margin_primary(),
@@ -1323,7 +1323,7 @@ namespace {
     // ---------------------------------------------------------------------
     TEST_CASE("Test_Cllc_ExtraComponents_Cr1_Cr2_Lr1_Lr2",
               "[converter-model][cllc-topology][extra-components][p5][smoke-test]") {
-        json cllcJson = create_standard_cllc_json(100000.0, CllcPowerFlow::FORWARD);
+        json cllcJson = create_standard_cllc_json(100000.0, PowerFlowDirection::FORWARD);
         OpenMagnetics::CllcConverter cllc(cllcJson);
         cllc._assertErrors = true;
 
@@ -1391,7 +1391,7 @@ namespace {
     // ---------------------------------------------------------------------
     TEST_CASE("Test_Cllc_AsymmetricRatios_V2Schema",
               "[converter-model][cllc-topology][asymmetric][p7][smoke-test]") {
-        json cllcJson = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
+        json cllcJson = create_standard_cllc_json(73000.0, PowerFlowDirection::FORWARD);
         cllcJson["resonantInductorRatio"] = 0.90;
         cllcJson["resonantCapacitorRatio"] = 1.111;  // a·b = 1.0 (fr1 = fr2)
         OpenMagnetics::CllcConverter cllc(cllcJson);
@@ -1422,7 +1422,7 @@ namespace {
     // ---------------------------------------------------------------------
     TEST_CASE("Test_Cllc_BridgeType_HB_vs_FB",
               "[converter-model][cllc-topology][bridge-type][p7][smoke-test]") {
-        json fbJson = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
+        json fbJson = create_standard_cllc_json(73000.0, PowerFlowDirection::FORWARD);
         json hbJson = fbJson;
         hbJson["bridgeType"] = "halfBridge";
 
@@ -1473,7 +1473,7 @@ namespace {
         // Use the small-power fixture in REVERSE — fast (200 kHz) and the
         // forward variant is already known to converge (Test 11/12).
         json cllcJson = create_small_power_cllc_json(200000.0,
-                                                     CllcPowerFlow::REVERSE);
+                                                     PowerFlowDirection::REVERSE);
         OpenMagnetics::CllcConverter cllc(cllcJson);
         auto params = cllc.calculate_resonant_parameters();
 

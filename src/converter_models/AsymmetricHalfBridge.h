@@ -9,6 +9,7 @@
 namespace OpenMagnetics {
 using namespace MAS;
 
+
 /**
  * @brief Asymmetric Half-Bridge (AHB) DC-DC Converter
  *
@@ -244,6 +245,7 @@ private:
     mutable std::vector<Waveform> extraCbVoltageWaveforms;
     mutable std::vector<Waveform> extraCbCurrentWaveforms;
 
+
 public:
     bool _assertErrors = false;
 
@@ -368,7 +370,7 @@ public:
 
     OperatingPoint process_operating_point_for_input_voltage(
         double inputVoltage,
-        const AhbOperatingPoint& opPoint,
+        const MAS::AhbOperatingPoint& opPoint,
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 
@@ -475,7 +477,7 @@ inline void from_json(const json& j, AdvancedAsymmetricHalfBridge& x) {
     x.set_rectifier_type(get_stack_optional<AhbRectifierType>(j, "rectifierType"));
     x.set_maximum_duty_cycle(get_stack_optional<double>(j, "maximumDutyCycle"));
     x.set_input_voltage_step_range(get_stack_optional<double>(j, "inputVoltageStepRange"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<AhbOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<MAS::AhbOperatingPoint>>());
 
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
     x.set_desired_magnetizing_inductance(j.at("desiredMagnetizingInductance").get<double>());

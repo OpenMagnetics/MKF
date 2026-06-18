@@ -317,7 +317,7 @@ std::vector<OperatingPoint> Pshb::process_operating_points(Magnetic magnetic) {
 // =========================================================================
 OperatingPoint Pshb::process_operating_point_for_input_voltage(
     double inputVoltage,
-    const PshbOperatingPoint& pshbOpPoint,
+    const MAS::PshbOperatingPoint&pshbOpPoint,
     const std::vector<double>& turnsRatios,
     double magnetizingInductance)
 {

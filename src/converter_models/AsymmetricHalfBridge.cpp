@@ -15,9 +15,6 @@ namespace OpenMagnetics {
 // Constructors
 // =========================================================================
 AsymmetricHalfBridge::AsymmetricHalfBridge(const json& j) {
-    // Range-bounded fields (e.g. dutyCycle ∈ [0,1]) are validated by the
-    // schema-generated setters in MAS.hpp via CheckConstraint(...), which
-    // throw on out-of-range JSON during from_json deserialization.
     from_json(j, *static_cast<MAS::AsymmetricHalfBridge*>(this));
 }
 
@@ -462,7 +459,7 @@ inline double rms_of(const std::vector<double>& y, size_t i0, size_t i1,
 
 OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     double inputVoltage,
-    const AhbOperatingPoint& opPoint,
+    const MAS::AhbOperatingPoint& opPoint,
     const std::vector<double>& turnsRatios,
     double magnetizingInductance)
 {

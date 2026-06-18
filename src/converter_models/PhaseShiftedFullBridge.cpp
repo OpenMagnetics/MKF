@@ -358,7 +358,7 @@ std::vector<OperatingPoint> Psfb::process_operating_points(Magnetic magnetic) {
 // =========================================================================
 OperatingPoint Psfb::process_operating_point_for_input_voltage(
     double inputVoltage,
-    const PsfbOperatingPoint& psfbOpPoint,
+    const MAS::PsfbOperatingPoint&psfbOpPoint,
     const std::vector<double>& turnsRatios,
     double magnetizingInductance)
 {

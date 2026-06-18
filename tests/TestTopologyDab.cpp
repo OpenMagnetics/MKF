@@ -1828,7 +1828,7 @@ TEST_CASE("Test_Dab_ConverterPortWaveforms",
     dab.set_input_voltage(iv);
     dab.set_efficiency(0.95);
 
-    OpenMagnetics::DabOperatingPoint op;
+    MAS::DabOperatingPoint op;
     op.set_output_voltages({Vout});
     op.set_output_currents({Iout});
     op.set_switching_frequency(100e3);

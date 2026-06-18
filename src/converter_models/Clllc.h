@@ -39,6 +39,7 @@
 namespace OpenMagnetics {
 using namespace MAS;
 
+
 class Clllc : public MAS::ClllcResonant, public Topology {
 public:
     enum class PowerFlowDirection { FORWARD, REVERSE };
@@ -125,6 +126,7 @@ private:
     mutable std::vector<Waveform> extraCr2VoltageWaveforms;
     mutable std::vector<Waveform> extraLmCurrentWaveforms;
     mutable std::vector<std::vector<double>> extraTimeVectors;
+
 
 public:
     bool _assertErrors = false;
@@ -226,7 +228,7 @@ public:
 
     OperatingPoint process_operating_point_for_input_voltage(
         double inputVoltage,
-        const ClllcOperatingPoint& op,
+        const MAS::ClllcOperatingPoint& op,
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 
@@ -311,7 +313,7 @@ inline void from_json(const json& j, AdvancedClllc& x) {
     x.set_integrated_resonant_inductors(get_stack_optional<bool>(j, "integratedResonantInductors"));
     x.set_max_switching_frequency(j.at("maxSwitchingFrequency").get<double>());
     x.set_min_switching_frequency(j.at("minSwitchingFrequency").get<double>());
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<ClllcOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<MAS::ClllcOperatingPoint>>());
     x.set_primary_resonant_capacitance(get_stack_optional<double>(j, "primaryResonantCapacitance"));
     x.set_primary_resonant_frequency(get_stack_optional<double>(j, "primaryResonantFrequency"));
     x.set_primary_series_inductance(get_stack_optional<double>(j, "primarySeriesInductance"));

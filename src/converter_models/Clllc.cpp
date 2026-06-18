@@ -565,7 +565,7 @@ std::vector<OperatingPoint> Clllc::process_operating_points(
 
     for (auto& op : ops) {
         auto dir = op.get_power_flow_direction();
-        bool reverse = dir.has_value() && dir.value() == CllcPowerFlow::REVERSE;
+        bool reverse = dir.has_value() && dir.value() == MAS::PowerFlowDirection::REVERSE;
         // Pick the input voltage spec corresponding to the active side.
         const auto& inVoltages = reverse ? lvVoltages : hvVoltages;
         for (const auto& [Vin, name] : inVoltages) {
@@ -605,7 +605,7 @@ std::vector<OperatingPoint> Clllc::process_operating_points(
 // =====================================================================
 OperatingPoint Clllc::process_operating_point_for_input_voltage(
         double inputVoltage,
-        const ClllcOperatingPoint& op,
+        const MAS::ClllcOperatingPoint& op,
         const std::vector<double>& turnsRatios,
         double magnetizingInductance) {
     OperatingPoint operatingPoint;
@@ -630,7 +630,7 @@ OperatingPoint Clllc::process_operating_point_for_input_voltage(
             "Clllc::process_operating_point_for_input_voltage: turns ratio must be > 0");
 
     auto dirOpt = op.get_power_flow_direction();
-    bool reverse = dirOpt.has_value() && dirOpt.value() == CllcPowerFlow::REVERSE;
+    bool reverse = dirOpt.has_value() && dirOpt.value() == MAS::PowerFlowDirection::REVERSE;
 
     // In reverse direction we exploit the symmetric tank: swap "primary" and
     // "secondary" labels for the solver. The schema's outputVoltages/currents
@@ -949,7 +949,7 @@ std::string Clllc::generate_ngspice_circuit(
 
     auto& clllcOp = ops[std::min(operatingPointIndex, ops.size() - 1)];
     bool reverse = clllcOp.get_power_flow_direction().has_value() &&
-                   clllcOp.get_power_flow_direction().value() == MAS::CllcPowerFlow::REVERSE;
+                   clllcOp.get_power_flow_direction().value() == MAS::PowerFlowDirection::REVERSE;
 
     auto pickVoltages = [](const DimensionWithTolerance& spec) {
         std::vector<double> out;
@@ -1300,7 +1300,7 @@ std::vector<OperatingPoint> Clllc::simulate_and_extract_operating_points(
     for (size_t opIdx = 0; opIdx < ops.size(); ++opIdx) {
         bool reverse = ops[opIdx].get_power_flow_direction().has_value() &&
                        ops[opIdx].get_power_flow_direction().value() ==
-                           MAS::CllcPowerFlow::REVERSE;
+                           MAS::PowerFlowDirection::REVERSE;
         const auto& inputVoltages = reverse ? lvVoltages : hvVoltages;
         for (size_t vinIdx = 0; vinIdx < inputVoltages.size(); ++vinIdx) {
             std::string netlist = generate_ngspice_circuit(
@@ -1408,7 +1408,7 @@ std::vector<ConverterWaveforms> Clllc::simulate_and_extract_topology_waveforms(
         // Input port: HV bus in forward, LV bus in reverse.
         bool reverse = ops[opIdx].get_power_flow_direction().has_value() &&
                        ops[opIdx].get_power_flow_direction().value() ==
-                           MAS::CllcPowerFlow::REVERSE;
+                           MAS::PowerFlowDirection::REVERSE;
         Waveform vIn = getWf(reverse ? "vdc_LV" : "vdc_HV");
         if (!vIn.get_data().empty()) wf.set_input_voltage(vIn);
 

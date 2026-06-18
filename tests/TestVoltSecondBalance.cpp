@@ -123,7 +123,7 @@ TEST_CASE("Test_VoltSecondBalance_Dab", "[volt-second-balance][dab-topology]") {
     dab.set_input_voltage(iv);
     dab.set_efficiency(0.95);
 
-    OpenMagnetics::DabOperatingPoint op;
+    MAS::DabOperatingPoint op;
     op.set_output_voltages({48.0});
     op.set_output_currents({10.0});
     op.set_switching_frequency(100e3);

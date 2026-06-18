@@ -15,6 +15,7 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+
 /**
  * @brief Migrate old-format operating-point JSON (singular outputVoltage/
  *        outputCurrent) to the new plural format (outputVoltages array /
