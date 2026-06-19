@@ -62,7 +62,7 @@ namespace OpenMagnetics {
         // this class IS a DMC, so the topology of the resulting design is
         // the DMC topology. Downstream code (e.g. MagneticFilterSaturation)
         // routes inductor- vs transformer-style B calculation off this field.
-        designRequirements.set_application(Application::INTERFERENCE_SUPPRESSION);
+        designRequirements.set_application(std::string("interferenceSuppression"));
         designRequirements.set_sub_application(SubApplication::DIFFERENTIAL_MODE_NOISE_FILTERING);
         designRequirements.set_topology(Topologies::DIFFERENTIAL_MODE_CHOKE);
 

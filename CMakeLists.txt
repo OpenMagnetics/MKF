@@ -338,6 +338,10 @@ if(NOT DEFINED MAS_DIR)
     set(MAS_DIR "${PROJECT_SOURCE_DIR}/MAS")
 endif(NOT DEFINED MAS_DIR)
 
+if(NOT DEFINED PEAS_DIR)
+    set(PEAS_DIR "${PROJECT_SOURCE_DIR}/PEAS")
+endif()
+
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/MAS")
 
 add_custom_command(
@@ -399,6 +403,11 @@ add_custom_command(
     -S ${MAS_DIR}/schemas/inputs/topologies/fourSwitchBuckBoost.json
     -S ${MAS_DIR}/schemas/inputs/topologies/seriesResonant.json
     -S ${MAS_DIR}/schemas/inputs/topologies/vienna.json
+    -S ${PEAS_DIR}/schemas/utils.json
+    -S ${PEAS_DIR}/schemas/inputs/operatingPointExcitation.json
+    -S ${PEAS_DIR}/schemas/inputs/operatingConditions.json
+    -S ${PEAS_DIR}/schemas/outputs/insulationCoordination.json
+    -S ${PEAS_DIR}/schemas/outputs/lossElementPerHarmonic.json
     -o ${MAS_DIRECTORY}/MAS.hpp --namespace MAS --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
   USES_TERMINAL)
 

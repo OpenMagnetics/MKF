@@ -343,9 +343,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     // the shelf, not blanks you grind a gap into.
     {
         auto reqAppOpt = inputs.get_design_requirements().get_application();
+        // DesignRequirements.application is now a plain string (PEAS-sourced schema).
         if (reqAppOpt.has_value() && _application == Application::POWER) {
-            set_application(reqAppOpt.value());
-            if (reqAppOpt.value() == Application::INTERFERENCE_SUPPRESSION &&
+            set_application(magnetic_application_from_string(reqAppOpt.value()));
+            if (reqAppOpt.value() == "interferenceSuppression" &&
                 _coreAdviserMode == CoreAdviser::CoreAdviserModes::STANDARD_CORES) {
                 set_core_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
             }

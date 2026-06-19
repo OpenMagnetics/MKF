@@ -176,11 +176,11 @@ MagneticManufacturerInfo MagneticSimulator::build_datasheet(Mas& mas) {
         auto existing = magnetic.get_manufacturer_info().value();
         if (existing.get_reference())   part.set_part_number(existing.get_reference());
         if (existing.get_description()) part.set_description(existing.get_description());
-        if (existing.get_family())      part.set_family(existing.get_family());
     }
 
     // ----------------------------------------------------------- Electrical
-    Electrical electrical;
+    MagneticDatasheetElectrical electrical;
+    electrical.set_subtype(numberWindings > 1 ? ElectricalSubtype::COUPLED_INDUCTOR : ElectricalSubtype::INDUCTOR);
 
     // Magnetizing inductance and leakage inductance are taken from the nominal (first) operating point.
     if (outputs[0].get_inductance()) {
@@ -202,19 +202,16 @@ MagneticManufacturerInfo MagneticSimulator::build_datasheet(Mas& mas) {
         electrical.set_dc_resistance(nominal_dimension(dcResistancePerWinding[0], "Ohm"));
     }
     else if (dcResistancePerWinding.size() == numberWindings) {
-        std::vector<DcResistance> dcResistances;
+        std::vector<DimensionWithTolerance> dcResistances;
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-            DcResistance dcResistance;
-            dcResistance.set_winding(windings[windingIndex].get_name());
-            dcResistance.set_resistance(dcResistancePerWinding[windingIndex]);
-            dcResistances.push_back(dcResistance);
+            dcResistances.push_back(nominal_dimension(dcResistancePerWinding[windingIndex], "Ohm"));
         }
         electrical.set_dc_resistances(dcResistances);
     }
 
     // Rated current: the heat-limited DC current for the standard 40 K rise (datasheet Irms),
     // computed from the winding ohmic loss and the core temperature model.
-    electrical.set_rated_current(magnetic.calculate_rated_current());
+    electrical.set_rated_currents(std::vector<double>{magnetic.calculate_rated_current()});
 
     // Self-resonant frequency and an impedance-vs-frequency sweep. The sweep uses the wideband
     // Foster-ladder model (the magnetizing resonance plus one leakage resonance per extra
@@ -260,7 +257,7 @@ MagneticManufacturerInfo MagneticSimulator::build_datasheet(Mas& mas) {
     if (numberWindings > 1) {
         auto turnsRatios = magnetic.get_turns_ratios();
         if (!turnsRatios.empty()) {
-            electrical.set_turns_ratio(turnsRatios[0]);
+            electrical.set_turns_ratios(std::vector<DimensionWithTolerance>{nominal_dimension(turnsRatios[0], "")});
         }
     }
 
@@ -399,7 +396,7 @@ MagneticManufacturerInfo MagneticSimulator::build_datasheet(Mas& mas) {
     // ------------------------------------------------- Assemble datasheetInfo
     DatasheetInfo datasheetInfo;
     datasheetInfo.set_part(part);
-    datasheetInfo.set_electrical(electrical);
+    datasheetInfo.set_electrical(std::vector<MagneticDatasheetElectrical>{electrical});
     datasheetInfo.set_thermal(thermal);
     datasheetInfo.set_mechanical(mechanical);
     datasheetInfo.set_application(application);

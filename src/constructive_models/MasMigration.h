@@ -31,6 +31,7 @@
 #if __has_include(<MAS.hpp>)
 #include <MAS.hpp>
 namespace MAS {
+    // RFC 0006: six topologies merged into TopologyExcitation base
     using BaseOperatingPoint              = TopologyExcitation;
     using ForwardOperatingPoint           = TopologyExcitation;
     using PushPullOperatingPoint          = TopologyExcitation;
@@ -38,8 +39,41 @@ namespace MAS {
     using IsolatedBuckOperatingPoint      = TopologyExcitation;
     using IsolatedBuckBoostOperatingPoint = TopologyExcitation;
     using FlybuckOperatingPoint           = TopologyExcitation;
+
+    // PEAS integration (ae4414f): several types moved from MAS to PEAS utils.json
+    // or renamed to avoid collisions with the broader PEAS vocabulary.
+    using Application                  = MagneticApplication;
+    using Topologies                   = Topology;
+    using InsulationType               = IsolationClass;
+    using InsulationCoordinationOutput = InsulationCoordination;
+    using DistributorInfo              = Utils;
+    // LossElementPerHarmonic (from PEAS outputs schema) replaces WindingLossElement
+    using WindingLossElement           = LossElementPerHarmonic;
+
+    // SubApplication was a MAS enum class; it is now a plain string field in
+    // PEAS designRequirementsBase.  Define it as a namespace of string constants
+    // so existing comparisons (value() == SubApplication::COMMON_MODE_NOISE_FILTERING)
+    // continue to compile as std::string comparisons.
+    namespace SubApplication {
+        constexpr const char* COMMON_MODE_NOISE_FILTERING      = "commonModeNoiseFiltering";
+        constexpr const char* DIFFERENTIAL_MODE_NOISE_FILTERING = "differentialModeNoiseFiltering";
+        constexpr const char* POWER_FILTERING                   = "powerFiltering";
+        constexpr const char* TRANSFORMING                      = "transforming";
+        constexpr const char* ISOLATION                         = "isolation";
+    }
+
 }
+
 #endif
+
+// Convert the DesignRequirements.application string (PEAS-sourced, camelCase JSON value)
+// to a MagneticApplication enum.  Throws if the string is not a valid application.
+inline MAS::MagneticApplication magnetic_application_from_string(const std::string& s) {
+    MAS::MagneticApplication x;
+    nlohmann::json j = s;
+    MAS::from_json(j, x);
+    return x;
+}
 
 namespace OpenMagnetics::compat {
 

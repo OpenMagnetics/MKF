@@ -388,7 +388,7 @@ namespace OpenMagnetics {
         designRequirements.set_isolation_sides(isolationSides);
 
         // Set application - PFC uses POWER application for low-loss materials
-        designRequirements.set_application(Application::POWER);
+        designRequirements.set_application(std::string("power"));
         // Tag the topology so downstream advisers (CoreAdviser, MagneticFilter,
         // CoilAdviser) can distinguish PFC from generic boost/buck inductors and
         // apply the correct routing — same as CMC/DMC.

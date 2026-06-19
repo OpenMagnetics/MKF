@@ -1321,7 +1321,9 @@ namespace {
 
         // Electrical: single-winding part uses dcResistance (not dcResistances), inductance > 0.
         REQUIRE(datasheet.get_electrical());
-        auto electrical = datasheet.get_electrical().value();
+        auto electricalVec1 = datasheet.get_electrical().value();
+        REQUIRE(!electricalVec1.empty());
+        auto& electrical = electricalVec1[0];
         REQUIRE(electrical.get_inductance());
         REQUIRE(resolve_dimensional_values(electrical.get_inductance().value()) > 0);
         REQUIRE(electrical.get_dc_resistance());
@@ -1330,7 +1332,8 @@ namespace {
         REQUIRE(electrical.get_saturation_current_peak().value() > 0);
 
         // Rated (heat-limited) current and SRF / impedance sweep are populated.
-        REQUIRE(electrical.get_rated_current().value() > 0);
+        REQUIRE(electrical.get_rated_currents());
+        REQUIRE(electrical.get_rated_currents()->at(0) > 0);
         REQUIRE(electrical.get_self_resonant_frequency().value() > 0);
         REQUIRE(electrical.get_impedance_points());
         REQUIRE(electrical.get_impedance_points()->size() > 1);
@@ -1361,14 +1364,16 @@ namespace {
         simulator.build_datasheet(mas);
 
         auto datasheet = mas.get_magnetic().get_manufacturer_info()->get_datasheet_info().value();
-        auto electrical = datasheet.get_electrical().value();
+        auto electricalVec = datasheet.get_electrical().value();
+        REQUIRE(!electricalVec.empty());
+        auto& electrical = electricalVec[0];
 
         // Multi-winding part: per-winding dcResistances, a turns ratio, no scalar dcResistance.
         REQUIRE(datasheet.get_part()->get_number_of_windings().value() > 1);
         REQUIRE(electrical.get_dc_resistances());
         REQUIRE(electrical.get_dc_resistances()->size() == static_cast<size_t>(datasheet.get_part()->get_number_of_windings().value()));
         REQUIRE_FALSE(electrical.get_dc_resistance());
-        REQUIRE(electrical.get_turns_ratio());
+        REQUIRE(electrical.get_turns_ratios());
     }
 
     TEST_CASE("Build_Datasheet_Throws_Without_Outputs", "[processor][magnetic-simulator][datasheet]") {

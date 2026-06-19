@@ -1188,7 +1188,7 @@ TEST_CASE("Test_Cmc_AdviserKnowsItsACmc",
 
         REQUIRE(req.get_application().has_value());
         REQUIRE(req.get_sub_application().has_value());
-        CHECK(req.get_application().value() == Application::INTERFERENCE_SUPPRESSION);
+        CHECK(req.get_application().value() == std::string("interferenceSuppression"));
         CHECK(req.get_sub_application().value() == SubApplication::COMMON_MODE_NOISE_FILTERING);
     }
 

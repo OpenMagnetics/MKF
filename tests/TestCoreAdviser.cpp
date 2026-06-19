@@ -2972,7 +2972,7 @@ TEST_CASE("Test_CoreAdviser_DMC_Default_Wizard_Hang_Repro",
 
     auto dr = inputs.get_design_requirements();
     REQUIRE(dr.get_application().has_value());
-    CHECK(dr.get_application().value() == Application::INTERFERENCE_SUPPRESSION);
+    CHECK(dr.get_application().value() == std::string("interferenceSuppression"));
     CHECK(dr.get_topology().has_value());
     CHECK(dr.get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE);
 

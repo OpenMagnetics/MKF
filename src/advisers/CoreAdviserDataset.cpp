@@ -523,7 +523,8 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
         }
     }
     auto reqAppOpt = inputs.get_design_requirements().get_application();
-    bool isSuppression = reqAppOpt.has_value() && reqAppOpt.value() == Application::INTERFERENCE_SUPPRESSION;
+    // DesignRequirements.application is a plain JSON string in the new PEAS-backed schema.
+    bool isSuppression = reqAppOpt.has_value() && reqAppOpt.value() == "interferenceSuppression";
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
 
         Core core = (*magneticsWithScoring)[i].first.get_core();

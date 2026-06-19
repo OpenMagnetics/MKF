@@ -3093,7 +3093,7 @@ TEST_CASE("Temperature: Heatsink Cooling", "[temperature][cooling][smoke-test]")
     heatsinkCooling.set_thermal_resistance(2.5);  // 2.5 K/W heatsink
     heatsinkCooling.set_interface_thermal_resistance(3.0);  // 3 W/mK TIM
     heatsinkCooling.set_interface_thickness(0.0001);  // 100 microns
-    heatsinkCooling.set_dimensions(std::vector<double>{0.05, 0.05, 0.02});  // 50x50x20mm
+    { MAS::Dimensions d; d.set_width(0.05); d.set_height(0.05); d.set_depth(0.02); heatsinkCooling.set_dimensions(d); }  // 50x50x20mm
     config.masCooling = heatsinkCooling;
     
     Temperature temp(magnetic, config);
@@ -3146,7 +3146,7 @@ TEST_CASE("Temperature: Cold Plate Cooling", "[temperature][cooling][smoke-test]
     coldPlateCooling.set_maximum_temperature(40.0);  // 40°C cold plate
     coldPlateCooling.set_interface_thermal_resistance(3.0);  // 3 W/mK TIM
     coldPlateCooling.set_interface_thickness(0.0002);  // 200 microns
-    coldPlateCooling.set_dimensions(std::vector<double>{0.06, 0.06, 0.01});  // 60x60x10mm
+    { MAS::Dimensions d; d.set_width(0.06); d.set_height(0.06); d.set_depth(0.01); coldPlateCooling.set_dimensions(d); }  // 60x60x10mm
     config.masCooling = coldPlateCooling;
     
     Temperature temp(magnetic, config);

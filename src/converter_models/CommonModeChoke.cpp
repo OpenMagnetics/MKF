@@ -275,7 +275,7 @@ DesignRequirements CommonModeChoke::process_design_requirements() {
     //   - CoilAdviser lays out a bifilar/paired winding
     //   - MagneticFilterLeakageInductance scores tight coupling higher
     // Without these tags, the output is designed like a generic transformer.
-    designRequirements.set_application(Application::INTERFERENCE_SUPPRESSION);
+    designRequirements.set_application(std::string("interferenceSuppression"));
     designRequirements.set_sub_application(SubApplication::COMMON_MODE_NOISE_FILTERING);
 
     // ── Turns ratios: all 1:1 ───────────────────────────────────────

@@ -21,7 +21,7 @@ class Magnetic : public MAS::Magnetic {
         // coil must gate on has_core()/has_coil() first.
         std::optional<Core> core;
         std::optional<std::vector<DistributorInfo>> distributors_info;
-        std::optional<ManufacturerInfo> manufacturer_info;
+        std::optional<MagneticManufacturerInfo> manufacturer_info;
         std::optional<std::vector<double>> _maximumDimensions;
         std::optional<Coil> coil;
     public:
@@ -64,7 +64,6 @@ class Magnetic : public MAS::Magnetic {
             if (magnetic.get_coil()) {
                 set_coil(magnetic.get_coil().value());
             }
-
             if (magnetic.get_distributors_info()) {
                 set_distributors_info(magnetic.get_distributors_info());
             }
@@ -73,6 +72,9 @@ class Magnetic : public MAS::Magnetic {
             }
         }
 
+        // MagneticManufacturerInfo accessors (shadow MAS::Magnetic's field with the same type).
+        const std::optional<MagneticManufacturerInfo>& get_manufacturer_info() const { return manufacturer_info; }
+        void set_manufacturer_info(std::optional<MagneticManufacturerInfo> v) { manufacturer_info = v; }
 
         Bobbin get_bobbin();
         std::vector<Wire> get_wires();

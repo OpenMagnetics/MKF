@@ -161,16 +161,18 @@ void migrate_pre_1_0(nlohmann::json& j) {
         }
     } else if (j.is_object()) {
         for (auto it = j.begin(); it != j.end(); ++it) {
-            // cost was a bare number (distributorInfo) or string (manufacturerInfo)
-            // in pre-1.0; upgrade to {value, currency} struct.
+            // PEAS schema (ae4414f) reverted cost back to a plain number (USD).
+            // Pre-1.0: cost was a bare number or string.
+            // MAS 1.0: cost was {value, currency} object.
+            // PEAS: cost is a plain number again.
+            // Migration: flatten {value,currency} → plain number; string → null; number stays as-is.
             if (it.key() == "cost") {
-                if (it.value().is_number()) {
-                    double v = it.value().get<double>();
-                    it.value() = nlohmann::json{{"value", v}, {"currency", "EUR"}};
+                if (it.value().is_object() && it.value().contains("value")) {
+                    it.value() = it.value()["value"];
                 } else if (it.value().is_string()) {
                     it.value() = nlohmann::json(nullptr);
                 }
-                // null and already-object forms pass through unchanged
+                // null and number forms pass through unchanged
             } else {
                 migrate_pre_1_0(it.value());
             }
