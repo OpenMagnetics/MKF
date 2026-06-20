@@ -3715,6 +3715,50 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_WithWeights", "[adviser][fr
 }
 
 // ============================================================================
+// ABT #12 regression — 3.3V/3A/300kHz buck must NOT return saturating cores.
+// The reported failure was every returned core having isat < DC+ripple peak
+// (PQ 16/11.6 isat@25C=2.85A vs ipeak~3.1A). With the gap-aware, hot-corner,
+// RAW-Bsat saturation gate (ABT #13) every advised inductor must clear ipeak
+// by the configured margin even at the 100C hot junction corner.
+// ============================================================================
+TEST_CASE("Test_ABT12_Buck_3v3_3A_SaturationMargin", "[adviser][from-converter][abt12]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 9}, {"nominal", 12}, {"maximum", 16}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["currentRippleRatio"] = 0.3;
+    converterJson["efficiency"] = 0.92;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltage", 3.3},
+            {"outputCurrent", 3},
+            {"switchingFrequency", 300000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::Buck converter(converterJson);
+    converter._assertErrors = true;
+
+    auto inputs = converter.process();
+    auto excitation = OpenMagnetics::Inputs::get_primary_excitation(inputs.get_operating_points()[0]);
+    double ipeak = excitation.get_current()->get_processed()->get_peak().value();
+
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic_from_converter(converter, 10);
+    REQUIRE(results.size() > 0);
+
+    for (auto& [mas, score] : results) {
+        auto magnetic = mas.get_mutable_magnetic();
+        // RAW Bsat (proportion=false), evaluated at the 100C hot junction corner.
+        double isat100 = magnetic.calculate_saturation_current(100.0, false);
+        INFO(magnetic.get_mutable_core().get_shape_name()
+             << " ipeak=" << ipeak << " isat100=" << isat100);
+        // Every advised inductor must carry the peak current at the hot corner.
+        REQUIRE(isat100 > ipeak);
+    }
+}
+
+// ============================================================================
 // Buck — webfrontend defaults
 // Input: 10-12V, output: 5V@2A, fsw=100kHz
 // ============================================================================
