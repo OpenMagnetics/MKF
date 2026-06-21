@@ -7,6 +7,24 @@
 [submodule "CAS"]
 	path = CAS
 	url = https://github.com/Power-Supply-Manufacturers-Association/CAS.git
+	branch = main
 [submodule "PEAS"]
 	path = PEAS
 	url = https://github.com/Power-Supply-Manufacturers-Association/PEAS.git
+	branch = main
+[submodule "CIAS"]
+	path = CIAS
+	url = https://github.com/Power-Supply-Manufacturers-Association/CIAS.git
+	branch = main
+[submodule "TAS"]
+	path = TAS
+	url = https://github.com/Power-Supply-Manufacturers-Association/TAS.git
+	branch = main
+[submodule "RAS"]
+	path = RAS
+	url = https://github.com/Power-Supply-Manufacturers-Association/RAS.git
+	branch = main
+[submodule "SAS"]
+	path = SAS
+	url = https://github.com/Power-Supply-Manufacturers-Association/SAS.git
+	branch = main
