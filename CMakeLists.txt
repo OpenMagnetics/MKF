@@ -569,6 +569,11 @@ target_include_directories(MKF PUBLIC
 # add_executable(magnetic_adviser "src/advisers/MagneticAdviser.cpp")
 # target_link_libraries(magnetic_adviser MKF)
 
+option(INCLUDE_MKF_EXAMPLES "Build small standalone example binaries under examples/" ON)
+if(INCLUDE_MKF_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
 if(INCLUDE_MKF_TESTS)
     file(GLOB ALL_TEST_SOURCES CONFIGURE_DEPENDS "tests/*.cpp")
     
