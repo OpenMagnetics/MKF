@@ -1,3 +1,4 @@
+#include <set>
 #include <cmath>
 #include "constructive_models/MasMigration.h"
 #include <algorithm>
@@ -9164,7 +9165,42 @@ Coil Coil::create_quick_coil(std::string coreShapeName, std::vector<int64_t> num
     coil.set_turns_alignment(turnsAlignment);
     coil.set_section_alignment(sectionsAlignment);
 
-    coil.wind();
+    // wind() returns false when the windings do not fit. A mild overflow still yields a valid
+    // best-effort layout (sensible turn coordinates), which is historically usable. A severe
+    // overflow, however, used to be returned SILENTLY with a turns description full of
+    // uninitialized garbage — denormal/huge coordinates and corrupted winding names — which
+    // downstream models then consumed and turned into nonsense. Detect that garbage and fail
+    // loudly so it can never be silently consumed.
+    bool wound = coil.wind();
+    if (!wound && coil.get_turns_description()) {
+        // A non-fitting wind that still placed turns: a mild overflow yields a valid best-effort
+        // layout (historically usable), but a severe overflow used to be returned SILENTLY with a
+        // turns description full of uninitialized garbage — non-finite/absurd coordinates or
+        // corrupted winding names — which downstream models then turned into nonsense. Reject only
+        // that garbage; valid best-effort layouts, and clean "no turns" non-fits (handled
+        // downstream by CoilNotProcessedException), pass through unchanged.
+        std::set<std::string> validNames;
+        for (auto& winding : coil.get_functional_description()) {
+            validNames.insert(winding.get_name());
+        }
+        for (auto& turn : coil.get_turns_description().value()) {
+            auto coordinates = turn.get_coordinates();
+            bool coordinatesSane = coordinates.size() >= 2 &&
+                                   std::isfinite(coordinates[0]) && std::isfinite(coordinates[1]) &&
+                                   std::abs(coordinates[0]) < 1.0 && std::abs(coordinates[1]) < 1.0;
+            if (!coordinatesSane || validNames.find(turn.get_winding()) == validNames.end()) {
+                size_t totalTurns = 0;
+                for (auto turns : numberTurns) {
+                    totalTurns += turns;
+                }
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                    "create_quick_coil: winding produced an invalid turn (garbage coordinates or "
+                    "winding name) — the " + std::to_string(totalTurns) + " turns across " +
+                    std::to_string(numberTurns.size()) + " windings could not be laid out in core shape '" +
+                    coreShapeName + "'. Use a larger core or thinner wire.");
+            }
+        }
+    }
     return coil;
 }
 
