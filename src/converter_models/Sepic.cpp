@@ -506,10 +506,13 @@ namespace OpenMagnetics {
         double samplesPerPeriod = (switchingFrequency >= 1e6) ? 500.0 : cfg.samplesPerPeriod;
         double stepTime = period / samplesPerPeriod;
 
-        const double dcrL1 = 50e-3;
-        const double dcrL2 = 50e-3;
-        const double esrCs = 5e-3;
-        const double esrCo = 5e-3;
+        // Ideal reference: zero winding DCR + cap ESR (consistent with the other converters' ideal
+        // decks, which use pure L/C). Real parasitics belong to a designed magnetic / real cap, not
+        // to the "ideal" topology reference. (Were 50 mOhm / 5 mOhm hardcoded.)
+        const double dcrL1 = 0.0;
+        const double dcrL2 = 0.0;
+        const double esrCs = 0.0;
+        const double esrCo = 0.0;
 
         circuit << "* SEPIC Converter ("
                 << (isCoupled ? "V2 coupled-inductor" : "V1 uncoupled")
@@ -538,7 +541,8 @@ namespace OpenMagnetics {
         circuit << "Vpwm pwm_ctrl 0 PULSE(0 " << cfg.pwmHigh << " 0 "
                 << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
                 << tOn << " " << period << std::fixed << ")\n";
-        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH << "\n";
+        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
         circuit << "S1 node_A_int 0 pwm_ctrl 0 SW1\n";
         circuit << "Rsnub_s1 node_A_int 0 " << cfg.snubR << "\n"
                 << "Csnub_s1 node_A_int snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
@@ -565,7 +569,8 @@ namespace OpenMagnetics {
             circuit << "Vpwm_inv pwm_ctrl_inv 0 PULSE(" << cfg.pwmHigh << " 0 0 "
                     << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
                     << tOn << " " << period << std::fixed << ")\n";
-            circuit << ".model SW2 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH << "\n";
+            circuit << ".model SW2 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                    << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
             circuit << "Vrect_sense node_B_int rect_in 0\n";
             circuit << "S2 rect_in vout pwm_ctrl_inv 0 SW2\n";
             circuit << "Rsnub_d1 rect_in 0 " << cfg.snubR << "\n"

@@ -859,10 +859,11 @@ namespace OpenMagnetics {
         double stepTime = period / samplesPerPeriod;
 
         // Parasitic series R for SPICE conditioning (CUK_PLAN.md §6.2).
-        const double dcrL1 = 50e-3;          // 50 mΩ DCR
-        const double dcrL2 = 50e-3;
-        const double esrC1 = 5e-3;           // 5 mΩ ESR
-        const double esrCo = 5e-3;
+        // Ideal reference: zero winding DCR + cap ESR (consistent with the other ideal decks).
+        const double dcrL1 = 0.0;
+        const double dcrL2 = 0.0;
+        const double esrC1 = 0.0;
+        const double esrCo = 0.0;
 
         // Cuk node convention (CUK_PLAN.md §6.1):
         //   vin_dc → Vin_sense → l1_in →[L1]→ node_A
@@ -917,7 +918,8 @@ namespace OpenMagnetics {
         circuit << "Vpwm pwm_ctrl 0 PULSE(0 " << cfg.pwmHigh << " 0 "
                 << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
                 << tOn << " " << period << std::fixed << ")\n";
-        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH << "\n";
+        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
         circuit << "S1 node_A_int 0 pwm_ctrl 0 SW1\n";
         circuit << "Rsnub_s1 node_A_int 0 " << cfg.snubR << "\n"
                 << "Csnub_s1 node_A_int snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
@@ -971,7 +973,8 @@ namespace OpenMagnetics {
             circuit << "Vpwm_inv pwm_ctrl_inv 0 PULSE(" << cfg.pwmHigh << " 0 0 "
                     << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
                     << tOn << " " << period << std::fixed << ")\n";
-            circuit << ".model SW2 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH << "\n";
+            circuit << ".model SW2 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                    << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
             circuit << "S2 node_B d_cath pwm_ctrl_inv 0 SW2\n";
             circuit << "Rsnub_d1 node_B 0 " << cfg.snubR << "\n"
                     << "Csnub_d1 node_B snub_d1_int " << std::scientific << cfg.snubC << std::fixed << "\n"

@@ -515,10 +515,11 @@ namespace OpenMagnetics {
         double samplesPerPeriod = (switchingFrequency >= 1e6) ? 500.0 : cfg.samplesPerPeriod;
         double stepTime = period / samplesPerPeriod;
 
-        const double dcrL1 = 50e-3;
-        const double dcrL2 = 50e-3;
-        const double esrCc = 5e-3;
-        const double esrCo = 5e-3;
+        // Ideal reference: zero winding DCR + cap ESR (consistent with the other ideal decks).
+        const double dcrL1 = 0.0;
+        const double dcrL2 = 0.0;
+        const double esrCc = 0.0;
+        const double esrCo = 0.0;
 
         circuit << "* Zeta Converter ("
                 << (isCoupled ? "V2 coupled-inductor" : "V1 uncoupled")
@@ -540,7 +541,8 @@ namespace OpenMagnetics {
         circuit << "Vpwm pwm_ctrl 0 PULSE(0 " << cfg.pwmHigh << " 0 "
                 << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
                 << tOn << " " << period << std::fixed << ")\n";
-        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH << "\n";
+        circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
         circuit << "S1 sw_top node_SW pwm_ctrl 0 SW1\n";
         circuit << "Rsnub_s1 sw_top node_SW " << cfg.snubR << "\n"
                 << "Csnub_s1 sw_top snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
@@ -570,7 +572,8 @@ namespace OpenMagnetics {
             circuit << "Vpwm_inv pwm_ctrl_inv 0 PULSE(" << cfg.pwmHigh << " 0 0 "
                     << std::scientific << cfg.pwmRise << " " << cfg.pwmFall << " "
                     << tOn << " " << period << std::fixed << ")\n";
-            circuit << ".model SW2 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH << "\n";
+            circuit << ".model SW2 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+                    << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
             circuit << "Vrect_sense rect_in node_X 0\n";
             circuit << "S2 0 rect_in pwm_ctrl_inv 0 SW2\n";
             circuit << "Rsnub_d1 0 node_X " << cfg.snubR << "\n"

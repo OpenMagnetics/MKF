@@ -197,7 +197,7 @@ namespace OpenMagnetics {
                 SpiceSimulationConfig cuk;
                 cuk.swModelVT = 2.5;       cuk.swModelVH = 0.5;
                 cuk.snubR = 100.0;         cuk.snubC = 100e-12;
-                cuk.diodeIS = 1e-12;       cuk.diodeRS = 0.05;
+                cuk.diodeIS = 1e-14;       cuk.diodeRS = 1e-6;   // ideal-diode reference (was 1e-12 / 0.05)
                 cuk.outputCapacitance = 10e-6;  // unused; Cuk overrides per-OP
                 cuk.relTol = 0.01;         cuk.absTol = 1e-7;
                 cuk.vnTol = 1e-4;
@@ -214,7 +214,7 @@ namespace OpenMagnetics {
                 SpiceSimulationConfig sepic;
                 sepic.swModelVT = 2.5;       sepic.swModelVH = 0.5;
                 sepic.snubR = 100.0;         sepic.snubC = 100e-12;
-                sepic.diodeIS = 1e-12;       sepic.diodeRS = 0.05;
+                sepic.diodeIS = 1e-14;       sepic.diodeRS = 1e-6;   // ideal-diode reference (was 1e-12 / 0.05 Ohm)
                 sepic.outputCapacitance = 10e-6;
                 sepic.relTol = 0.01;         sepic.absTol = 1e-7;
                 sepic.vnTol = 1e-4;
@@ -232,7 +232,7 @@ namespace OpenMagnetics {
                 SpiceSimulationConfig zeta;
                 zeta.swModelVT = 2.5;        zeta.swModelVH = 0.5;
                 zeta.snubR = 100.0;          zeta.snubC = 100e-12;
-                zeta.diodeIS = 1e-12;        zeta.diodeRS = 0.05;
+                zeta.diodeIS = 1e-14;        zeta.diodeRS = 1e-6;   // ideal-diode reference (was 1e-12 / 0.05)
                 zeta.outputCapacitance = 10e-6;
                 zeta.relTol = 0.01;          zeta.absTol = 1e-7;
                 zeta.vnTol = 1e-4;
@@ -326,7 +326,7 @@ namespace OpenMagnetics {
             {
                 SpiceSimulationConfig ssf;
                 ssf.swModelVT = 2.5;            ssf.swModelVH = 0.5;
-                ssf.swModelRON = 1.0;           ssf.swModelROFF = 1e12;
+                ssf.swModelRON = 0.01;          ssf.swModelROFF = 1e6;
                 ssf.snubR = 1e3;                ssf.snubC = 1e-9;
                 ssf.diodeIS = 1e-14;            ssf.diodeRS = 1e-6;
                 ssf.outputCapacitance = 100e-6;
@@ -342,7 +342,7 @@ namespace OpenMagnetics {
             {
                 SpiceSimulationConfig tsf;
                 tsf.swModelVT = 2.5;            tsf.swModelVH = 0.5;
-                tsf.swModelRON = 0.1;           tsf.swModelROFF = 1e6;
+                tsf.swModelRON = 0.01;          tsf.swModelROFF = 1e6;
                 tsf.snubR = 1e3;                tsf.snubC = 1e-9;
                 tsf.diodeIS = 1e-14;            tsf.diodeRS = 1e-6;
                 tsf.outputCapacitance = 100e-6;
