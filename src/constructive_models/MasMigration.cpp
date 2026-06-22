@@ -161,18 +161,22 @@ void migrate_pre_1_0(nlohmann::json& j) {
         }
     } else if (j.is_object()) {
         for (auto it = j.begin(); it != j.end(); ++it) {
-            // PEAS schema (ae4414f) reverted cost back to a plain number (USD).
-            // Pre-1.0: cost was a bare number or string.
-            // MAS 1.0: cost was {value, currency} object.
-            // PEAS: cost is a plain number again.
-            // Migration: flatten {value,currency} → plain number; string → null; number stays as-is.
+            // Current schema: distributorInfo.cost is a {value, currency} object (CurrencyAmount).
+            // Normalize legacy forms UP to it so old data still loads:
+            //   bare number   -> {value: <number>, currency: "USD"}  (pre-CurrencyAmount / PEAS-number era)
+            //   string        -> null
+            //   object / null -> pass through UNCHANGED
+            // The object form is the norm, so the common path does only a couple of cheap type checks
+            // and never copies/rewrites — the fast path is not slowed. (Previously this FLATTENED the
+            // {value,currency} object back to a number, which then crashed from_json(CurrencyAmount).)
             if (it.key() == "cost") {
-                if (it.value().is_object() && it.value().contains("value")) {
-                    it.value() = it.value()["value"];
+                if (it.value().is_number()) {
+                    const double costValue = it.value().get<double>();
+                    it.value() = nlohmann::json{{"value", costValue}, {"currency", "USD"}};
                 } else if (it.value().is_string()) {
                     it.value() = nlohmann::json(nullptr);
                 }
-                // null and number forms pass through unchanged
+                // object and null forms pass through unchanged
             } else {
                 migrate_pre_1_0(it.value());
             }

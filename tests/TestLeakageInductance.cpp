@@ -797,6 +797,57 @@ TEST_CASE("Leakage inductance H-field model comparison study", "[physical-model]
     }
     std::cout << std::endl;
     std::cout << "====================================================================================\n" << std::endl;
-    
+
+    settings.reset();
+}
+
+TEST_CASE("Leakage inductance matrix is symmetric and reproduces pairwise leakage", "[physical-model][leakage-inductance][multi-winding]") {
+    // The full N×N leakage inductance matrix Λ is assembled from the energy quadratic form.
+    // It must be (1) symmetric, (2) positive on the diagonal, and (3) consistent with the
+    // validated pairwise calculate_leakage_inductance: for an ampere-turn-balanced pair
+    // (winding 0 sourcing, winding k returning with ratio r=N0/Nk), the short-circuit leakage
+    // referred to winding 0 is  Λ00 + r²·Λkk − 2r·Λ0k,  which must equal calculate_leakage_inductance(0,k).
+    settings.reset();
+    std::vector<int64_t> numberTurns({50, 100, 25});
+    std::vector<int64_t> numberParallels({1, 1, 1});
+    std::string shapeName = "E 42/21/15";
+
+    std::vector<OpenMagnetics::Wire> wires;
+    for (int i = 0; i < 3; ++i) wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 200));
+    auto coil = OpenMagnetics::Coil::create_quick_coil(shapeName, numberTurns, numberParallels, wires);
+    auto gapping = OpenMagnetics::Core::create_ground_gapping(2e-5, 3);
+    auto core = OpenMagnetics::Core::create_quick_core(shapeName, "3C97", gapping);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    double frequency = 100000;
+
+    LeakageInductance li;
+    auto leakageMatrix = li.calculate_leakage_inductance_matrix(magnetic, frequency);
+
+    REQUIRE(leakageMatrix.size() == 3);
+    for (auto& row : leakageMatrix) REQUIRE(row.size() == 3);
+
+    // (1) symmetry and (2) positive diagonal
+    for (size_t i = 0; i < 3; ++i) {
+        CHECK(leakageMatrix[i][i] > 0);
+        for (size_t j = i + 1; j < 3; ++j) {
+            CHECK_THAT(leakageMatrix[i][j], WithinRel(leakageMatrix[j][i], 1e-9));
+        }
+    }
+
+    // (3) reproduce the validated pairwise leakage for EVERY balanced pair (a,b) — including
+    // pairs that do not involve winding 0. This last point matters: the pairwise solver used to
+    // mis-compute the leakage between two non-reference windings (its default current-direction
+    // vector made their ampere-turns ADD instead of oppose), which a 0-pair-only check missed.
+    for (size_t a = 0; a < 3; ++a) {
+        for (size_t b = a + 1; b < 3; ++b) {
+            double r = double(numberTurns[a]) / double(numberTurns[b]);
+            double fromMatrix = leakageMatrix[a][a] + r * r * leakageMatrix[b][b] - 2.0 * r * leakageMatrix[a][b];
+            double pairwise = li.calculate_leakage_inductance(magnetic, frequency, a, b).get_leakage_inductance_per_winding()[0].get_nominal().value();
+            CHECK_THAT(fromMatrix, WithinRel(pairwise, 0.02));
+        }
+    }
+
     settings.reset();
 }

@@ -2132,12 +2132,11 @@ double amplitude_to_decibels(double amplitude) {
 }
 
 std::string fix_filename(std::string filename) {
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex(" "), "_")).string();
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\,"), "_")).string();
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\."), "_")).string();
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\:"), "_")).string();
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\/"), "_")).string();
-    return filename;
+    // Sanitize to an identifier/filename-safe token: any character outside [A-Za-z0-9_] becomes '_'.
+    // This subsumes the previous space/comma/./:/ replacements AND covers the hyphen (and any other
+    // stray character). It matters for spice subcircuit names: ngspice/LTspice parse a '-' (or '.')
+    // in a .subckt name as an operator, corrupting the X-instance line that references it.
+    return std::regex_replace(filename, std::regex("[^A-Za-z0-9_]"), "_");
 }
 
 SignalDescriptor standardize_signal_descriptor(SignalDescriptor signalDescriptor, double frequency) {
