@@ -1,6 +1,7 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include "processors/CircuitSimulatorExporterHelpers.h"
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/ExtendedCantilever.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingLosses.h"
 #include "support/Settings.h"
@@ -154,6 +155,18 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         .calculate_leakage_inductance_all_windings(magnetic, Defaults().measurementFrequency)
         .get_leakage_inductance_per_winding();
 
+    // For 3+ windings the per-secondary leakage above is only the primary-referred (star)
+    // value, which ignores secondary-to-secondary coupling. The NL5 topology is an ideal
+    // transformer per winding into a shared magnetizing inductance with a series leakage per
+    // secondary — exactly the Erickson/Maksimovic N-port form — so the rigorous series leakage
+    // is the short-circuit output inductance at each winding (all others shorted). Use the
+    // extended-cantilever model to supply it. The 2-winding path keeps its validated value.
+    ExtendedCantileverModel cantileverModel;
+    bool useCantileverLeakage = numWindings >= 3;
+    if (useCantileverLeakage) {
+        cantileverModel = ExtendedCantilever::calculate(magnetic, Defaults().measurementFrequency);
+    }
+
     // Get primary turns for reference
     double primaryTurns = static_cast<double>(coil.get_functional_description()[0].get_number_turns());
 
@@ -252,11 +265,18 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         // Get leakage inductance for this winding (referred to primary).
         // all_windings returns one entry per winding, indexed like LTspice/Ngspice.
         double leakageL = 0.0;
-        if (wi > 0 && wi < leakageInductances.size()) {
-            leakageL = resolve_dimensional_values(leakageInductances[wi]);
-            // Scale leakage to this winding's turns
-            double turnsRatio = numTurns / primaryTurns;
-            leakageL *= turnsRatio * turnsRatio;
+        if (wi > 0) {
+            if (useCantileverLeakage) {
+                // Short-circuit output inductance at this winding (all others shorted), already
+                // referred to this winding — the consistent N-port series leakage L_ok.
+                leakageL = ExtendedCantilever::short_circuit_output_inductance(cantileverModel, wi);
+            }
+            else if (wi < leakageInductances.size()) {
+                leakageL = resolve_dimensional_values(leakageInductances[wi]);
+                // Scale primary-referred leakage to this winding's turns.
+                double turnsRatio = numTurns / primaryTurns;
+                leakageL *= turnsRatio * turnsRatio;
+            }
         }
 
         // Add port labels (external terminals for SubCir pin mapping)

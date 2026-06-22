@@ -1,6 +1,7 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include "processors/CircuitSimulatorExporterHelpers.h"
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/ExtendedCantilever.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingLosses.h"
 #include "support/Settings.h"
@@ -442,7 +443,18 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     // Core losses (calculate coefficients for positioning)
     auto coreLossTopology_sb_pos = static_cast<CoreLossTopology>(Settings::GetInstance().get_circuit_simulator_core_loss_topology());
     auto coreResistanceCoefficients_sb = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology_sb_pos);
-    double leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0]);
+    // Simba places a single leakage inductor on the primary. The total leakage referred to the
+    // primary is its short-circuit inductance (all other windings shorted). For 2 windings that is
+    // exactly calculate_leakage_inductance(0,1); for 3+ windings that pairwise value ignores the
+    // other secondaries, so use the consistent extended-cantilever short-circuit output inductance.
+    double leakageInductance;
+    if (coil.get_functional_description().size() >= 3) {
+        auto cantileverModel = ExtendedCantilever::calculate(magnetic, frequency);
+        leakageInductance = ExtendedCantilever::short_circuit_output_inductance(cantileverModel, 0);
+    }
+    else {
+        leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0]);
+    }
     int numberLadderPairElements = acResistanceCoefficientsPerWinding[0].size() / 2 - 1;
     int numberCoreLadderPairElements = (coreLossTopology_sb_pos == CoreLossTopology::ROSANO)
         ? 5  // R, RL(2), RLC(3) branches ~ 5 visual rows
