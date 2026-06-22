@@ -250,6 +250,42 @@ class MagneticFilterEffectiveCurrentDensity : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
+/**
+ * @class MagneticFilterDatasheetLimits
+ * @brief Gate a catalogue part against its OWN datasheet-published electrical
+ *        limits (rated current / voltage / saturation-current peak).
+ *
+ * Semantics — "only if it exists":
+ *   - No `manufacturerInfo.datasheetInfo.electrical` (every designed/custom
+ *     magnetic) → {valid=true, score=1.0}: a pure pass-through, never affects
+ *     non-catalogue parts.
+ *   - Catalogue parts → validate the operating point against EACH datasheet
+ *     limit that is present, skipping limits that are absent. A part that
+ *     publishes only `inductance` is not gated on current.
+ *
+ * No analytical physics: operating values are read from `Inputs`
+ * (current/voltage processed RMS/peak/offset), datasheet values from the MAS
+ * model. score ∈ [0,1] is the worst (smallest) headroom margin across the
+ * checked limits — clamp((limit − operating)/limit, 0, 1) — so the filter can
+ * also RANK by how comfortably a part clears its ratings. Pass-through parts
+ * score 1.0 (neutral). valid=false rejects when used strictlyRequired.
+ *
+ * `electrical` is a vector (one entry per connection configuration). The entry
+ * whose `numberTurns` matches the candidate coil's turns is used; if none
+ * matches (or `numberTurns` is unset) the most conservative entry — smallest
+ * published rated current — is used rather than guessing.
+ *
+ * Note (ABT #19): the MKF-pinned MAS uses `ratedCurrents` (array). Catalogues
+ * still on the older `ratedCurrent` (scalar) schema deserialise to
+ * get_rated_currents()==nullopt ⇒ this filter is a silent no-op on them until
+ * the consumer's catalogue is migrated (asgard-side follow-up).
+ */
+class MagneticFilterDatasheetLimits : public MagneticFilter {
+    public:
+        MagneticFilterDatasheetLimits() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
 class MagneticFilterImpedance : public MagneticFilter {
     public:
         MagneticFilterImpedance() {};

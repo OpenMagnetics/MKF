@@ -519,6 +519,182 @@ TEST_CASE("MagneticFilter TURN_COUNT snapshot",
 }
 
 // =============================================================================
+// DATASHEET_LIMITS (ABT #19)
+// =============================================================================
+// Gate catalogue parts by their OWN datasheet electrical limits; pure
+// pass-through (valid=true, score=1.0) for designed/custom magnetics and for
+// any limit a part does not publish. These tests build catalogue-style fixtures
+// by attaching a DatasheetInfo with one MagneticDatasheetElectrical entry, and
+// drive operating values straight into the excitations' processed signals (no
+// physics path). The worked-example numbering matches the ABT #19 handoff.
+
+namespace {
+
+struct WindingExcitationSpec {
+    std::optional<double> currentRms;
+    std::optional<double> currentPeak;
+    std::optional<double> voltageRms;
+    std::optional<double> voltageDc;
+};
+
+// Build a single-operating-point Inputs whose per-winding excitations carry the
+// requested processed RMS/peak/offset values directly.
+OpenMagnetics::Inputs make_datasheet_inputs(const std::vector<WindingExcitationSpec>& windings) {
+    OpenMagnetics::Inputs inputs;
+    OperatingPoint operatingPoint;
+    for (const auto& w : windings) {
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(100000);
+        if (w.currentRms || w.currentPeak) {
+            SignalDescriptor current;
+            Processed processed;
+            if (w.currentRms) processed.set_rms(w.currentRms.value());
+            if (w.currentPeak) processed.set_peak(w.currentPeak.value());
+            current.set_processed(processed);
+            excitation.set_current(current);
+        }
+        if (w.voltageRms || w.voltageDc) {
+            SignalDescriptor voltage;
+            Processed processed;
+            if (w.voltageRms) processed.set_rms(w.voltageRms.value());
+            if (w.voltageDc) processed.set_offset(w.voltageDc.value());
+            voltage.set_processed(processed);
+            excitation.set_voltage(voltage);
+        }
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    }
+    inputs.get_mutable_operating_points().push_back(operatingPoint);
+    return inputs;
+}
+
+// Attach a catalogue datasheet (one electrical entry) to the reference magnetic.
+OpenMagnetics::Magnetic make_datasheet_magnetic(const MagneticDatasheetElectrical& electrical) {
+    auto magnetic = make_reference_magnetic();
+    DatasheetInfo datasheetInfo;
+    datasheetInfo.set_electrical(std::vector<MagneticDatasheetElectrical>{electrical});
+    MagneticManufacturerInfo manufacturerInfo;
+    manufacturerInfo.set_datasheet_info(datasheetInfo);
+    magnetic.set_manufacturer_info(manufacturerInfo);
+    return magnetic;
+}
+
+}  // namespace
+
+TEST_CASE("MagneticFilter DATASHEET_LIMITS rejects over-rated current (the bug)",
+          "[magnetic-filter][datasheet-limits]") {
+    // #1: ratedCurrents=[1.0], operating RMS 1.5 A ⇒ reject.
+    settings.reset();
+    MagneticDatasheetElectrical electrical;
+    electrical.set_rated_currents(std::vector<double>{1.0});
+    auto magnetic = make_datasheet_magnetic(electrical);
+    auto inputs = make_datasheet_inputs({{1.5, std::nullopt, std::nullopt, std::nullopt}});
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+    auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
+    REQUIRE(valid == false);
+    REQUIRE(score == 0.0);  // headroom clamped to 0 when over the limit
+}
+
+TEST_CASE("MagneticFilter DATASHEET_LIMITS passes comfortable current and scores headroom",
+          "[magnetic-filter][datasheet-limits]") {
+    // #2: ratedCurrents=[2.0], operating RMS 1.0 A ⇒ valid, score ≈ 0.5.
+    settings.reset();
+    MagneticDatasheetElectrical electrical;
+    electrical.set_rated_currents(std::vector<double>{2.0});
+    auto magnetic = make_datasheet_magnetic(electrical);
+    auto inputs = make_datasheet_inputs({{1.0, std::nullopt, std::nullopt, std::nullopt}});
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+    auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
+    REQUIRE(valid == true);
+    REQUIRE_THAT(score, WithinRel(0.5, kRelTol));
+}
+
+TEST_CASE("MagneticFilter DATASHEET_LIMITS is a no-op for custom magnetics",
+          "[magnetic-filter][datasheet-limits]") {
+    // #3: no manufacturerInfo/datasheetInfo ⇒ neutral pass. Proves zero effect
+    // on designed parts even when the operating current is enormous.
+    settings.reset();
+    auto magnetic = make_reference_magnetic();  // no manufacturer info
+    auto inputs = make_datasheet_inputs({{999.0, 999.0, std::nullopt, std::nullopt}});
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+    auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
+    REQUIRE(valid == true);
+    REQUIRE(score == 1.0);
+}
+
+TEST_CASE("MagneticFilter DATASHEET_LIMITS skips limits the datasheet omits",
+          "[magnetic-filter][datasheet-limits]") {
+    // #4: datasheet present but only publishes inductance (no current/voltage
+    // limit) ⇒ nothing to gate on ⇒ neutral pass.
+    settings.reset();
+    MagneticDatasheetElectrical electrical;
+    DimensionWithTolerance inductance;
+    inductance.set_nominal(100e-6);
+    electrical.set_inductance(inductance);
+    auto magnetic = make_datasheet_magnetic(electrical);
+    auto inputs = make_datasheet_inputs({{999.0, 999.0, 999.0, 999.0}});
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+    auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
+    REQUIRE(valid == true);
+    REQUIRE(score == 1.0);
+}
+
+TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces rated AC voltage",
+          "[magnetic-filter][datasheet-limits]") {
+    // #5: ratedVoltageAc=250, operating 400 V RMS ⇒ reject.
+    settings.reset();
+    MagneticDatasheetElectrical electrical;
+    electrical.set_rated_voltage_ac(250.0);
+    auto magnetic = make_datasheet_magnetic(electrical);
+    auto inputs = make_datasheet_inputs({{std::nullopt, std::nullopt, 400.0, std::nullopt}});
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+    auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
+    REQUIRE(valid == false);
+    REQUIRE(score == 0.0);
+}
+
+TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces saturation current peak",
+          "[magnetic-filter][datasheet-limits]") {
+    // #6: saturationCurrentPeak=1.5, operating peak 2.0 A ⇒ reject.
+    settings.reset();
+    MagneticDatasheetElectrical electrical;
+    electrical.set_saturation_current_peak(1.5);
+    auto magnetic = make_datasheet_magnetic(electrical);
+    auto inputs = make_datasheet_inputs({{std::nullopt, 2.0, std::nullopt, std::nullopt}});
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+    auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
+    REQUIRE(valid == false);
+    REQUIRE(score == 0.0);
+}
+
+TEST_CASE("MagneticFilter DATASHEET_LIMITS gates each winding against its own rated current",
+          "[magnetic-filter][datasheet-limits]") {
+    // #7: ratedCurrents=[1.0, 3.0] (multi-entry ⇒ per winding).
+    settings.reset();
+    MagneticDatasheetElectrical electrical;
+    electrical.set_rated_currents(std::vector<double>{1.0, 3.0});
+    auto magnetic = make_datasheet_magnetic(electrical);
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+
+    SECTION("both windings within their own rating ⇒ valid") {
+        auto inputs = make_datasheet_inputs({
+            {0.5, std::nullopt, std::nullopt, std::nullopt},
+            {2.0, std::nullopt, std::nullopt, std::nullopt},
+        });
+        auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
+        REQUIRE(valid == true);
+    }
+
+    SECTION("second winding exceeds its own rating ⇒ invalid") {
+        auto inputs = make_datasheet_inputs({
+            {0.5, std::nullopt, std::nullopt, std::nullopt},
+            {4.0, std::nullopt, std::nullopt, std::nullopt},
+        });
+        auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
+        REQUIRE(valid == false);
+    }
+}
+
+// =============================================================================
 // FACTORY CONTRACT TESTS
 // =============================================================================
 // Filters that require Inputs at construction must throw if none is provided.
