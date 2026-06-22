@@ -1,6 +1,7 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include "processors/CircuitSimulatorExporterHelpers.h"
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/ExtendedCantilever.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingLosses.h"
 #include "support/Settings.h"
@@ -107,6 +108,23 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
         }
     }
 
+    // For 3+ windings, replace the star coupling (each secondary to the primary only, which
+    // ignores secondary-to-secondary coupling) and the leakage-derived coefficients with the
+    // consistent full inductance matrix L = M + Λ: inductors are emitted as the self-inductances
+    // L_ii and every pair is coupled by k_ij = L_ij/sqrt(L_ii·L_jj). LTspice has no 3-inductor
+    // subckt bug, so a full pairwise coupling is emitted after the winding loop.
+    size_t numWindingsLt = coil.get_functional_description().size();
+    std::vector<std::vector<double>> inductanceMatrix;
+    if (numWindingsLt >= 3) {
+        inductanceMatrix = ExtendedCantilever::calculate_inductance_matrix(magnetic, Defaults().measurementFrequency);
+    }
+    auto magnetizingInductorValue = [&](size_t windingIdx, const std::string& is) -> std::string {
+        if (numWindingsLt >= 3) {
+            return to_string(inductanceMatrix[windingIdx][windingIdx], 12);  // full self-inductance L_ii
+        }
+        return "NumberTurns_" + is + "**2*Permeance";
+    };
+
     for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
         auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, 0.1, temperature);
         std::string is = std::to_string(index + 1);
@@ -135,7 +153,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             if (includeSaturation && satParams.valid) {
                 circuitString += emit_saturating_inductor_ltspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
             } else {
-                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {" + magnetizingInductorValue(index, is) + "}\n";
             }
         }
         else if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
@@ -144,7 +162,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             if (includeSaturation && satParams.valid) {
                 circuitString += emit_saturating_inductor_ltspice(satParams, is, "P" + is + "-", "Node_R_Lmag_" + is);
             } else {
-                circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+                circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {" + magnetizingInductorValue(index, is) + "}\n";
             }
         }
         else if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::ROSANO ||
@@ -158,7 +176,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             if (includeSaturation && satParams.valid) {
                 circuitString += emit_saturating_inductor_ltspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
             } else {
-                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {" + magnetizingInductorValue(index, is) + "}\n";
             }
         }
         else {
@@ -197,16 +215,37 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             if (includeSaturation && satParams.valid) {
                 circuitString += emit_saturating_inductor_ltspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
             } else {
-                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {" + magnetizingInductorValue(index, is) + "}\n";
             }
         }
-        if (index > 0) {
-            // Each K statement needs a unique name in LTspice (K1, K2, etc.)
+        // 2-winding: keep the validated star coupling (single secondary to primary). For 3+
+        // windings the full pairwise coupling is emitted after the loop from the inductance matrix.
+        if (index > 0 && numWindingsLt == 2) {
             circuitString += "K" + is + " Lmag_1 Lmag_" + is + " {CouplingCoefficient_1" + is + "_Value}\n";
         }
 
         headerString += " P" + is + "+ P" + is + "-";
 
+    }
+
+    // 3+ windings: consistent full pairwise coupling from L = M + Λ (k_ij = L_ij/sqrt(L_ii·L_jj)).
+    if (numWindingsLt >= 3) {
+        for (size_t i = 0; i < numWindingsLt; i++) {
+            for (size_t j = i + 1; j < numWindingsLt; j++) {
+                double Lii = inductanceMatrix[i][i];
+                double Ljj = inductanceMatrix[j][j];
+                double Mij = inductanceMatrix[i][j];
+                if (Lii <= 0 || Ljj <= 0) {
+                    throw std::runtime_error("Non-positive self-inductance building coupling for windings " + std::to_string(i) + "-" + std::to_string(j));
+                }
+                double kij = Mij / std::sqrt(Lii * Ljj);
+                if (std::abs(kij) >= 1.0) {
+                    throw std::runtime_error("Inconsistent coupling coefficient (|k|=" + std::to_string(std::abs(kij)) + " >= 1) for windings " + std::to_string(i) + "-" + std::to_string(j) + "; inductance matrix is not positive-definite");
+                }
+                std::string kName = "K" + std::to_string(i + 1) + std::to_string(j + 1);
+                circuitString += kName + " Lmag_" + std::to_string(i + 1) + " Lmag_" + std::to_string(j + 1) + " " + std::to_string(kij) + "\n";
+            }
+        }
     }
 
     // Core losses: frequency-dependent resistance network in parallel with Lmag

@@ -54,6 +54,17 @@ public:
         const std::vector<double>& turnsRatios);
 
     /**
+     * @brief Full N×N inductance matrix L = M + Λ (henries), referred to winding 0.
+     *
+     * M_jk = L11·n_j·n_k is the ideal (rank-1) magnetizing coupling and Λ is the leakage matrix.
+     * The diagonal L_ii is the self-inductance of winding i; the off-diagonal L_ij the mutual.
+     * Because the real leakage matrix is included, L is positive-definite, so the coupling
+     * coefficients k_ij = L_ij/√(L_ii·L_jj) derived from it are all strictly below 1 — no
+     * stability cap is needed when emitting coupled inductors for a circuit simulator.
+     */
+    static std::vector<std::vector<double>> calculate_inductance_matrix(Magnetic magnetic, double frequency);
+
+    /**
      * @brief Diagonal element b_jj of the inverse inductance matrix B = L⁻¹ (paper eq. 5).
      *
      * b_jj = (1/n_j²) [ Σ_{i≠j} 1/l_ji + 1/l_jj ],  with 1/l_jj = 1/L11 for the reference

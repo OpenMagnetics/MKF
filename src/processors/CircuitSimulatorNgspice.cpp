@@ -1,6 +1,7 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include "processors/CircuitSimulatorExporterHelpers.h"
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/ExtendedCantilever.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingLosses.h"
 #include "support/Settings.h"
@@ -131,6 +132,23 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     std::vector<double> couplingCoeffs;
     size_t numWindings = coil.get_functional_description().size();
 
+    // For 3+ windings the historical pairwise-K approach computed each coupling from an
+    // independently-measured leakage and then CAPPED it at 0.98 — a fallback that is neither
+    // self-consistent nor physical. Instead build the full inductance matrix L = M + Λ once
+    // (Erickson/Maksimovic extended-cantilever foundation); it is positive-definite, so each
+    // self-inductance L_ii and coupling k_ij = L_ij/sqrt(L_ii·L_jj) is consistent and |k_ij| < 1
+    // with no cap. The 2-winding path is left on its validated formula.
+    std::vector<std::vector<double>> inductanceMatrix;
+    if (numWindings >= 3) {
+        inductanceMatrix = ExtendedCantilever::calculate_inductance_matrix(magnetic, Defaults().measurementFrequency);
+    }
+    auto magnetizingInductorValue = [&](size_t windingIdx, const std::string& is) -> std::string {
+        if (numWindings >= 3) {
+            return to_string(inductanceMatrix[windingIdx][windingIdx], 12);  // full self-inductance L_ii
+        }
+        return "NumberTurns_" + is + "**2*Permeance";
+    };
+
     for (size_t index = 0; index < numWindings; index++) {
         auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, 0.1, temperature);
         std::string is = std::to_string(index + 1);
@@ -160,7 +178,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             if (includeSaturation && satParams.valid) {
                 circuitString += emit_saturating_inductor_ngspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
             } else {
-                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {" + magnetizingInductorValue(index, is) + "}\n";
             }
         }
         else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
@@ -183,7 +201,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             if (includeSaturation && satParams.valid) {
                 circuitString += emit_saturating_inductor_ngspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
             } else {
-                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {" + magnetizingInductorValue(index, is) + "}\n";
             }
         }
         else {
@@ -218,7 +236,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             if (includeSaturation && satParams.valid) {
                 circuitString += emit_saturating_inductor_ngspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
             } else {
-                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {" + magnetizingInductorValue(index, is) + "}\n";
             }
         }
 
@@ -235,29 +253,23 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         double k12 = couplingCoeffs.size() > 0 ? std::min(0.98, couplingCoeffs[0]) : 0.98;
         circuitString += "K Lmag_1 Lmag_2 " + std::to_string(k12) + "\n";
     } else if (numWindings >= 3) {
-        // For 3+ windings, calculate coupling for each pair
+        // Consistent coupling from the full inductance matrix L = M + Λ (positive-definite):
+        //   k_ij = L_ij / sqrt(L_ii · L_jj),  with the inductors emitted as L_ii above.
+        // This is self-consistent across all pairs and yields |k_ij| < 1 inherently, so no
+        // stability cap is applied. (ngspice still needs pairwise K statements rather than a
+        // single coupling matrix because of its 3+-inductor-in-subckt path-prefix bug.)
         for (size_t i = 0; i < numWindings; i++) {
             for (size_t j = i + 1; j < numWindings; j++) {
-                // Calculate leakage inductance between winding i and j. A failed
-                // or unphysical computation must surface, not silently become
-                // "99% coupling".
-                auto leakageResult = LeakageInductance().calculate_leakage_inductance(
-                    magnetic, Defaults().measurementFrequency, i, j);
-                auto leakagePerWinding = leakageResult.get_leakage_inductance_per_winding();
-                if (leakagePerWinding.empty()) {
-                    throw std::runtime_error("Leakage inductance calculation returned no value for windings " + std::to_string(i) + "-" + std::to_string(j));
+                double Lii = inductanceMatrix[i][i];
+                double Ljj = inductanceMatrix[j][j];
+                double Mij = inductanceMatrix[i][j];
+                if (Lii <= 0 || Ljj <= 0) {
+                    throw std::runtime_error("Non-positive self-inductance building coupling for windings " + std::to_string(i) + "-" + std::to_string(j));
                 }
-                double leakageIJ = resolve_dimensional_values(leakagePerWinding[0]);
-
-                if (leakageIJ < 0 || leakageIJ >= magnetizingInductance) {
-                    throw std::runtime_error("Unphysical leakage inductance (" + std::to_string(leakageIJ) + " H vs Lmag " + std::to_string(magnetizingInductance) + " H) for windings " + std::to_string(i) + "-" + std::to_string(j));
+                double kij = Mij / std::sqrt(Lii * Ljj);
+                if (std::abs(kij) >= 1.0) {
+                    throw std::runtime_error("Inconsistent coupling coefficient (|k|=" + std::to_string(std::abs(kij)) + " >= 1) for windings " + std::to_string(i) + "-" + std::to_string(j) + "; inductance matrix is not positive-definite");
                 }
-
-                double kij = sqrt((magnetizingInductance - leakageIJ) / magnetizingInductance);
-                // Cap at 0.98 for SPICE numerical stability only (matches IDEAL
-                // mode default); genuinely loose coupling passes through.
-                kij = std::min(0.98, kij);
-
                 std::string kName = "K" + std::to_string(i + 1) + std::to_string(j + 1);
                 circuitString += kName + " Lmag_" + std::to_string(i + 1) + " Lmag_" + std::to_string(j + 1) + " " + std::to_string(kij) + "\n";
             }

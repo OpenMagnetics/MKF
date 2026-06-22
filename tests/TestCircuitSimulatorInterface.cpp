@@ -2305,11 +2305,13 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_Runnable_Netlist", "[
     REQUIRE(netlistContent.find(".end") != std::string::npos);
     REQUIRE(netlistContent.find("X1") != std::string::npos);  // Instance of the subcircuit
     
-    // Check that mutual coupling K statements have unique names
-    size_t k2_pos = netlistContent.find("K2 Lmag_1 Lmag_2");
-    size_t k3_pos = netlistContent.find("K3 Lmag_1 Lmag_3");
-    REQUIRE(k2_pos != std::string::npos);
-    REQUIRE(k3_pos != std::string::npos);
+    // Check the mutual coupling K statements. For 3+ windings the export now emits the full
+    // pairwise coupling derived from the consistent inductance matrix (uniquely named K12, K13,
+    // K23) instead of the old star coupling (K2, K3 to the primary only) — so the previously
+    // missing secondary-to-secondary coupling K23 is present.
+    REQUIRE(netlistContent.find("K12 Lmag_1 Lmag_2") != std::string::npos);
+    REQUIRE(netlistContent.find("K13 Lmag_1 Lmag_3") != std::string::npos);
+    REQUIRE(netlistContent.find("K23 Lmag_2 Lmag_3") != std::string::npos);
 }
 
 // ============================================================================

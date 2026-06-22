@@ -59,6 +59,25 @@ std::vector<std::vector<double>> invert_matrix(const std::vector<std::vector<dou
     return inverse;
 }
 
+// Full inductance matrix L = M + Λ, referred to winding 0:
+//   M_jk = L11 · n_j · n_k   (rank-1 ideal magnetizing coupling)
+//   Λ                         (leakage matrix from the energy method)
+// With the real leakage matrix added, L is only mildly conditioned (~L11/leakage) and
+// inverts cleanly — unlike the leakage-free ideal matrix, which is singular.
+std::vector<std::vector<double>> assemble_inductance_matrix(
+    const std::vector<std::vector<double>>& leakageMatrix,
+    double magnetizingInductance,
+    const std::vector<double>& turnsRatios) {
+    size_t numberWindings = turnsRatios.size();
+    std::vector<std::vector<double>> inductanceMatrix(numberWindings, std::vector<double>(numberWindings, 0.0));
+    for (size_t j = 0; j < numberWindings; ++j) {
+        for (size_t k = 0; k < numberWindings; ++k) {
+            inductanceMatrix[j][k] = magnetizingInductance * turnsRatios[j] * turnsRatios[k] + leakageMatrix[j][k];
+        }
+    }
+    return inductanceMatrix;
+}
+
 } // anonymous namespace
 
 ExtendedCantileverModel ExtendedCantilever::build_from_leakage_matrix(
@@ -80,17 +99,7 @@ ExtendedCantileverModel ExtendedCantilever::build_from_leakage_matrix(
             "Cannot build extended-cantilever model: magnetizing inductance must be positive");
     }
 
-    // Full inductance matrix L = M + Λ, referred to winding 0:
-    //   M_jk = L11 · n_j · n_k   (rank-1 ideal magnetizing coupling)
-    //   Λ                         (leakage matrix from the energy method)
-    // With the real leakage matrix added, L is only mildly conditioned (~L11/leakage) and
-    // inverts cleanly — unlike the leakage-free ideal matrix, which is singular.
-    std::vector<std::vector<double>> inductanceMatrix(numberWindings, std::vector<double>(numberWindings, 0.0));
-    for (size_t j = 0; j < numberWindings; ++j) {
-        for (size_t k = 0; k < numberWindings; ++k) {
-            inductanceMatrix[j][k] = magnetizingInductance * turnsRatios[j] * turnsRatios[k] + leakageMatrix[j][k];
-        }
-    }
+    auto inductanceMatrix = assemble_inductance_matrix(leakageMatrix, magnetizingInductance, turnsRatios);
 
     auto inverseInductanceMatrix = invert_matrix(inductanceMatrix);
 
@@ -167,6 +176,28 @@ ExtendedCantileverModel ExtendedCantilever::calculate(Magnetic magnetic, double 
     }
 
     return build_from_leakage_matrix(leakageMatrix, magnetizingInductance, turnsRatios);
+}
+
+std::vector<std::vector<double>> ExtendedCantilever::calculate_inductance_matrix(Magnetic magnetic, double frequency) {
+    auto& functionalDescription = magnetic.get_coil().get_functional_description();
+    size_t numberWindings = functionalDescription.size();
+    if (numberWindings == 0) {
+        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS,
+            "Cannot build inductance matrix: no windings defined");
+    }
+
+    auto leakageMatrix = LeakageInductance().calculate_leakage_inductance_matrix(magnetic, frequency);
+    double magnetizingInductance = MagnetizingInductance()
+        .calculate_inductance_from_number_turns_and_gapping(magnetic)
+        .get_magnetizing_inductance().get_nominal().value();
+
+    double referenceTurns = functionalDescription[0].get_number_turns();
+    std::vector<double> turnsRatios(numberWindings);
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        turnsRatios[windingIndex] = functionalDescription[windingIndex].get_number_turns() / referenceTurns;
+    }
+
+    return assemble_inductance_matrix(leakageMatrix, magnetizingInductance, turnsRatios);
 }
 
 } // namespace OpenMagnetics
