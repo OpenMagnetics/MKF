@@ -39,8 +39,14 @@ else ()
     # codebase whose results (and pinned characterization tests) depend on IEEE FP semantics, NaN/Inf
     # handling and operation ordering, all of which -ffast-math breaks. -march=native tunes for the
     # build machine's CPU (binaries are not portable to older CPUs); -funroll-loops + -O3 + NDEBUG.
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops")
-    set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops")
+    # -march=native is x86/native-only; it is invalid for the wasm32 (Emscripten) target.
+    if(EMSCRIPTEN)
+        set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops")
+        set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops")
+    else()
+        set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops")
+        set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops")
+    endif()
 endif()
 
 
