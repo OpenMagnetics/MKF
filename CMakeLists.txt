@@ -35,9 +35,12 @@ else ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-switch -Wno-format-truncation")
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-    # Set flags for Debug builds (no ASan, no profiling for faster test execution)
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g")
+    # Maximum-speed optimized build. NOTE: deliberately NO -ffast-math — this is a numeric/physics
+    # codebase whose results (and pinned characterization tests) depend on IEEE FP semantics, NaN/Inf
+    # handling and operation ordering, all of which -ffast-math breaks. -march=native tunes for the
+    # build machine's CPU (binaries are not portable to older CPUs); -funroll-loops + -O3 + NDEBUG.
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops")
+    set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops")
 endif()
 
 
@@ -104,6 +107,20 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include/magic_enum
 # Make profiling and ASan opt-in so users can build fast Release binaries by default
 option(ENABLE_PROFILING "Enable gprof profiling (-pg)" OFF)
 option(ENABLE_ASAN "Enable AddressSanitizer in Debug builds" OFF)
+
+# Link-time optimization for the last few % of runtime speed. OFF by default because LTO linking of
+# a library this size is memory-hungry and can OOM on machines that need a low -j (e.g. -j2). Turn
+# it on (-DENABLE_LTO=ON) when the build host has the RAM to spare.
+option(ENABLE_LTO "Enable link-time optimization (-flto) in Release builds" OFF)
+if(ENABLE_LTO AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_msg)
+    if(_ipo_ok)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    else()
+        message(WARNING "LTO requested but not supported: ${_ipo_msg}")
+    endif()
+endif()
 
 if(ENABLE_PROFILING)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pg")
@@ -180,7 +197,7 @@ if(ENABLE_NGSPICE)
         include(ExternalProject)
         
         set(NGSPICE_VERSION "45.2")
-        set(NGSPICE_URL "https://sourceforge.net/projects/ngspice/files/ng-spice-rework/${NGSPICE_VERSION}/ngspice-${NGSPICE_VERSION}.tar.gz/download")
+        set(NGSPICE_URL "file:///home/alf/OpenMagnetics/ngspice-45.2.tar.gz")
         
         # Configure options for ngspice shared library build
     # Basic configuration - NO CIDER, NO XSPICE for minimal build
