@@ -308,7 +308,7 @@ TEST_CASE("CoreAdviser AVAILABLE_CORES x INTERFERENCE_SUPPRESSION top-3 snapshot
 
     CoreAdviser adviser;
     adviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
-    adviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+    adviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto results = adviser.get_advised_core(inputs, weights, &cores, 3);
 
     check_top_n("AVAILABLE_CORES_INTERFERENCE_SUPPRESSION", results, kTopAvailableInterference);
@@ -387,7 +387,7 @@ TEST_CASE("Benchmark CoreAdviser AVAILABLE_CORES x INTERFERENCE_SUPPRESSION (ful
     BENCHMARK("get_advised_core AVAILABLE x IS full DB top-10") {
         CoreAdviser adviser;
         adviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
-        adviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+        adviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
         return adviser.get_advised_core(inputs, weights, &cores, 10);
     };
 }

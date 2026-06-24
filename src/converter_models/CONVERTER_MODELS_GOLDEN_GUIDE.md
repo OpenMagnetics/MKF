@@ -880,7 +880,7 @@ JS routing, and serialization all desync:
 |---|---|---|
 | `designRequirements.json::topology` enum value | `<x>Converter` | `flybackConverter`, `boostConverter` |
 | `inputs.json::supportedTopologies` map key | `<x>` (no `Converter` suffix) | `flyback`, `boost` |
-| `MAS::Topologies` C++ enum | `<X>_CONVERTER` | `FLYBACK_CONVERTER`, `BOOST_CONVERTER` |
+| `MAS::Topology` C++ enum | `<X>_CONVERTER` | `FLYBACK_CONVERTER`, `BOOST_CONVERTER` |
 | `MAS::SupportedTopologies` C++ field | `<x>` | `flyback`, `boost` |
 | `<X>Wizard.vue::getTopology()` return value | `<x>Converter` (matches enum) | `flybackConverter` |
 | `defaults.js` topology default value | `<x>Converter` | `flybackConverter` |
@@ -908,7 +908,7 @@ never against raw string literals.
 ### 16.5 The `is_energy_storing_topology` switch
 
 `CoreAdviser::is_energy_storing_topology` (around line 102) gates gap
-selection. Every new topology added to the `Topologies` enum **must**
+selection. Every new topology added to the `MAS::Topology` enum **must**
 get an explicit case. Do not rely on the `default: return false;`
 branch — silent miss-classification produces ungapped designs for
 buck/boost-class topologies and gapped designs for transformer-class
@@ -958,7 +958,7 @@ Before opening a PR adding a new converter:
 **MKF:**
 - [ ] `class <X> : public MAS::<X>, public Topology` — inherits, does
       not duplicate fields.
-- [ ] `set_topology(Topologies::<X>_CONVERTER)` called in
+- [ ] `set_topology(MAS::Topology::<X>_CONVERTER)` called in
       `process_design_requirements`.
 - [ ] `set_application` and `set_sub_application` set explicitly.
 - [ ] Added a case to `CoreAdviser::is_energy_storing_topology`.
@@ -1007,7 +1007,7 @@ without a converter model should be removed, not left as a stub.
 
 Before adding a new topology, run a cross-reference audit:
 - `git grep "<x>Converter"` in MAS, MKF, WebLibMKF, WebFrontend.
-- `git grep "Topologies::<X>"` in MKF.
+- `git grep "MAS::Topology::<X>"` in MKF.
 - `git grep "MAS::<X>"` in MKF, WebLibMKF.
 - `git grep "<x>Wizard"` in WebFrontend.
 

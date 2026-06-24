@@ -315,7 +315,7 @@ DesignRequirements Clllc::process_design_requirements() {
         compute_magnetizing_resonant_frequency_rev(Lr2, Lm, n, Cr2);
 
     DesignRequirements designRequirements;
-    designRequirements.set_topology(Topologies::CLLLC_RESONANT_CONVERTER);
+    designRequirements.set_topology(MAS::Topology::CLLLC_RESONANT_CONVERTER);
 
     std::vector<double> turnsRatios = { n };
     DimensionWithTolerance turnsRatioDim;
@@ -1515,7 +1515,6 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Clllc::get_extra_components_input
         // during direction-reversal transients).
         dr.set_rated_voltage(peakV * 1.5);
         dr.set_role(CAS::Application::RESONANT);
-        dr.set_name(name);
         casInputs.set_design_requirements(dr);
 
         std::vector<CAS::TwoTerminalOperatingPoint> casOps;
@@ -1568,7 +1567,6 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Clllc::get_extra_components_input
             dr.set_capacitance(c);
             dr.set_rated_voltage(Vbus_max * 1.2);
             dr.set_role(CAS::Application::DC_LINK);
-            dr.set_name(name);
             busCap.set_design_requirements(dr);
             result.emplace_back(std::move(busCap));
         };
@@ -1609,7 +1607,7 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Clllc::get_extra_components_input
             inductance.set_nominal(L);
             dr.set_magnetizing_inductance(inductance);
             dr.set_name(name);
-            dr.set_topology(Topologies::CLLLC_RESONANT_CONVERTER);
+            dr.set_topology(MAS::Topology::CLLLC_RESONANT_CONVERTER);
             dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
             dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
             masInputs.set_design_requirements(dr);

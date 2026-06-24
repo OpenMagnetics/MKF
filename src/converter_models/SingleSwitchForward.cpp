@@ -9,7 +9,7 @@
 
 namespace OpenMagnetics {
 
-    double SingleSwitchForward::get_total_reflected_secondary_current(ForwardOperatingPoint forwardOperatingPoint, std::vector<double> turnsRatios, double rippleRatio) {
+    double SingleSwitchForward::get_total_reflected_secondary_current(TopologyExcitation forwardOperatingPoint, std::vector<double> turnsRatios, double rippleRatio) {
         double totalReflectedSecondaryCurrent = 0;
 
         if (turnsRatios.size() != forwardOperatingPoint.get_output_currents().size() + 1) {
@@ -40,7 +40,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint SingleSwitchForward::process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance) {
+    OperatingPoint SingleSwitchForward::process_operating_points_for_input_voltage(double inputVoltage, TopologyExcitation outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -241,7 +241,7 @@ namespace OpenMagnetics {
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         designRequirements.set_isolation_sides(
             Topology::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), true));
-        designRequirements.set_topology(Topologies::SINGLE_SWITCH_FORWARD_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::SINGLE_SWITCH_FORWARD_CONVERTER);
 
         // ---- Diagnostics ----
         // Stable per-call values (peak currents are populated later in
@@ -412,7 +412,7 @@ namespace OpenMagnetics {
 
             std::string inductorName = (numSecondaries == 1) ? "outputInductor" : ("outputInductor_" + std::to_string(s + 1));
             dr.set_name(inductorName);
-            dr.set_topology(Topologies::SINGLE_SWITCH_FORWARD_CONVERTER);
+            dr.set_topology(MAS::Topology::SINGLE_SWITCH_FORWARD_CONVERTER);
             dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
             dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::SECONDARY});
             masInputs.set_design_requirements(dr);
@@ -520,7 +520,7 @@ namespace OpenMagnetics {
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         designRequirements.set_isolation_sides(
             Topology::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), true));
-        designRequirements.set_topology(Topologies::SINGLE_SWITCH_FORWARD_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::SINGLE_SWITCH_FORWARD_CONVERTER);
         return designRequirements;
     }
 

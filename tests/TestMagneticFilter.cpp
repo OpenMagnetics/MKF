@@ -547,7 +547,7 @@ OpenMagnetics::Inputs make_datasheet_inputs(const std::vector<WindingExcitationS
         excitation.set_frequency(100000);
         if (w.currentRms || w.currentPeak) {
             SignalDescriptor current;
-            Processed processed;
+            ProcessedWaveform processed;
             if (w.currentRms) processed.set_rms(w.currentRms.value());
             if (w.currentPeak) processed.set_peak(w.currentPeak.value());
             current.set_processed(processed);
@@ -555,7 +555,7 @@ OpenMagnetics::Inputs make_datasheet_inputs(const std::vector<WindingExcitationS
         }
         if (w.voltageRms || w.voltageDc) {
             SignalDescriptor voltage;
-            Processed processed;
+            ProcessedWaveform processed;
             if (w.voltageRms) processed.set_rms(w.voltageRms.value());
             if (w.voltageDc) processed.set_offset(w.voltageDc.value());
             voltage.set_processed(processed);

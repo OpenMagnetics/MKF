@@ -1212,7 +1212,7 @@ namespace OpenMagnetics {
             isolationSides.push_back(get_isolation_side_from_index(windingIndex));
         }
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::FLYBACK_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::FLYBACK_CONVERTER);
         return designRequirements;
     }
 
@@ -1294,7 +1294,7 @@ namespace OpenMagnetics {
             isolationSides.push_back(get_isolation_side_from_index(windingIndex));
         }
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::FLYBACK_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::FLYBACK_CONVERTER);
         return designRequirements;
     }
 
@@ -1328,7 +1328,7 @@ namespace OpenMagnetics {
             isolationSides.push_back(get_isolation_side_from_index(windingIndex));
         }
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::FLYBACK_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::FLYBACK_CONVERTER);
 
         inputs.set_design_requirements(designRequirements);
 

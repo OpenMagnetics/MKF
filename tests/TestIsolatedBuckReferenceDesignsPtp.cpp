@@ -65,12 +65,12 @@ OpenMagnetics::IsolatedBuck build(const RefDesignSpec& s) {
     ib.set_diode_voltage_drop(0.0);    // ideal diode for closed-form anchor
     ib.set_efficiency(1.0);             // lossless analytical reference
     ib.set_current_ripple_ratio(0.3);
-    IsolatedBuckOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({s.Vout, s.Vout / s.n});  // primary + isolated bias
     op.set_output_currents({s.Iout, s.Iout2});
     op.set_switching_frequency(s.Fs);
     op.set_ambient_temperature(25.0);
-    ib.set_operating_points(std::vector<IsolatedBuckOperatingPoint>{op});
+    ib.set_operating_points(std::vector<TopologyExcitation>{op});
     return ib;
 }
 

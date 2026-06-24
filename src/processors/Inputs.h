@@ -57,9 +57,9 @@ class Inputs : public MAS::Inputs {
     static bool can_be_differential_mode_choke(OperatingPoint operatingPoint, bool isDmcTopology = false);
 
     static Waveform calculate_sampled_waveform(Waveform waveform, double frequency=0, std::optional<size_t> numberPoints=std::nullopt);
-    static Processed calculate_processed_data(Waveform waveform, std::optional<double> frequency=std::nullopt, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
-    static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
-    static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
+    static ProcessedWaveform calculate_processed_data(Waveform waveform, std::optional<double> frequency=std::nullopt, bool includeAdvancedData=true, std::optional<ProcessedWaveform> processed=std::nullopt);
+    static ProcessedWaveform calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData=true, std::optional<ProcessedWaveform> processed=std::nullopt);
+    static ProcessedWaveform calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData=true, std::optional<ProcessedWaveform> processed=std::nullopt);
     static Harmonics calculate_harmonics_data(Waveform waveform, double frequency);
     static OperatingPointExcitation prune_harmonics(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex=std::nullopt);
     static SignalDescriptor prune_harmonics(SignalDescriptor signalDescriptor, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex=std::nullopt);
@@ -160,13 +160,13 @@ class Inputs : public MAS::Inputs {
                                                                               double currentOffset = 0);
 
     static WaveformLabel try_guess_waveform_label(Waveform waveform);
-    static Waveform create_waveform(Processed processed, double frequency);
+    static Waveform create_waveform(ProcessedWaveform processed, double frequency);
     // phase: radians, applied to SINUSOIDAL waveforms only (positive phase
     // advances the waveform — e.g. phase=pi/2 turns sin(wt) into sin(wt+pi/2)=cos(wt),
     // so the resulting signal leads the same-frequency sine by 90 degrees).
     // Ignored for non-sinusoidal labels (use `skew` for those).
     static Waveform create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle=0.5, double offset=0, double deadTime=0, double skew=0, double phase=0);
-    static Processed calculate_basic_processed_data(Waveform waveform);
+    static ProcessedWaveform calculate_basic_processed_data(Waveform waveform);
     static Waveform compress_waveform(const Waveform& waveform);
 
     static Waveform calculate_derivative_waveform(Waveform waveform);
@@ -213,7 +213,7 @@ class Inputs : public MAS::Inputs {
 
     DimensionWithTolerance get_altitude();
     Cti get_cti();
-    InsulationType get_insulation_type();
+    IsolationClass get_insulation_type();
     DimensionWithTolerance get_main_supply_voltage();
     OvervoltageCategory get_overvoltage_category();
     PollutionDegree get_pollution_degree();

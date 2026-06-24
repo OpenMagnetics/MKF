@@ -503,7 +503,7 @@ flag):
 After schema edit, regenerate `MAS.hpp` and copy to `build/MAS/MAS.hpp`
 (per user-memory staging gotcha).
 
-Add `"WEINBERG_CONVERTER"` to the `Topologies` enum (alongside
+Add `"WEINBERG_CONVERTER"` to the `MAS::Topology` enum (alongside
 BUCK_CONVERTER, BOOST_CONVERTER, etc.).
 
 ---
@@ -666,7 +666,7 @@ NRMSE helpers (`ptp_nrmse`, `ptp_interp`, `ptp_current`,
 
 | # | Scope | Files | Tests added | Effort |
 |---|---|---|---|---|
-| **P1** | MAS schema (`weinberg.json`, `Topologies` enum entry), regenerate MAS.hpp, stub `Weinberg.h`/`Weinberg.cpp` (constructors + run_checks only, throws on the rest), `from_json`/`to_json` for `AdvancedWeinberg` | schema, `Weinberg.h`, `Weinberg.cpp` | none | 0.5 d |
+| **P1** | MAS schema (`weinberg.json`, `MAS::Topology` enum entry), regenerate MAS.hpp, stub `Weinberg.h`/`Weinberg.cpp` (constructors + run_checks only, throws on the rest), `from_json`/`to_json` for `AdvancedWeinberg` | schema, `Weinberg.h`, `Weinberg.cpp` | none | 0.5 d |
 | **P2** | Static analytical helpers (`compute_duty_cycle`, `compute_conversion_ratio_*`, `compute_switch_peak_voltage`, `compute_overlap_fraction`, `compute_l1_min`, `compute_lm_min`, `compute_dcm_K_boost`, `compute_rhp_zero_freq`, `detect_operating_regime`); unit tests | `Weinberg.cpp`, tests | `Operating_Regimes`, `Overlap_Fraction`, `Switch_Peak_Voltage`, `RHP_Zero_Frequency` | 0.5 d |
 | **P3** | `process_design_requirements` (size n, Lm, L1, Co); `process_operating_point_for_input_voltage` (CCM piecewise-linear waveforms for main xfmr + input coupled L, with overlap handling); `process_operating_points` (loop) | `Weinberg.cpp` | `Weinberg_Reference_Design`, `BDR_Reference_Design`, `Design_Requirements`, `OperatingPoints_Generation`, `Diagnostics_Populated` | 2 d |
 | **P4** | DCM detection & flag; flux-balance / flux-walk math + tests | `Weinberg.cpp`, tests | `CCM_DCM_Boundary`, `Flux_Balance_Symmetric_Drive`, `Flux_Walk_Asymmetric_Drive` | 1 d |
@@ -698,7 +698,7 @@ P8 needs P5; P9/P10 need P5+P8; P11 last.
       ±5 %.
 - [ ] Symmetric-drive flux balance test passes (drift < 1 %).
 - [ ] Asymmetric-drive flux walk test passes (drift detected).
-- [ ] Schema documented; `Topologies::WEINBERG_CONVERTER` added.
+- [ ] Schema documented; `MAS::Topology::WEINBERG_CONVERTER` added.
 - [ ] Header has ASCII art, equations §4 with citations,
       accuracy disclaimer (Coss neglected, body-diode reverse-recovery
       neglected, leakage spike clamped only by D3), **Watkins-Johnson

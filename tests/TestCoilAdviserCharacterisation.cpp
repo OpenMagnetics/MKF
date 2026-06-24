@@ -81,7 +81,7 @@ OpenMagnetics::Mas make_flyback_fixture() {
     auto standards = std::vector<InsulationStandards>{
         InsulationStandards::IEC_606641, InsulationStandards::IEC_623681};
     auto insulationRequirements = OpenMagneticsTesting::get_quick_insulation_requirements(
-        altitude, Cti::GROUP_I, InsulationType::BASIC, mainSupplyVoltage,
+        altitude, Cti::GROUP_I, IsolationClass::BASIC, mainSupplyVoltage,
         OvervoltageCategory::IV, PollutionDegree::PD1, standards);
     inputs.get_mutable_design_requirements().set_insulation(insulationRequirements);
 

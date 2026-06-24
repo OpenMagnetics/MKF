@@ -82,7 +82,7 @@ public:
     CommonModeChoke(const json& j);
     CommonModeChoke() {}
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::COMMON_MODE_CHOKE; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::COMMON_MODE_CHOKE; }
 
     // ── MKF-only accessors ─────────────────────────────────────────
     int    get_num_periods_to_extract()   const { return numPeriodsToExtract; }

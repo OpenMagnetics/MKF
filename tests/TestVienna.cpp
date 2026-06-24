@@ -59,7 +59,7 @@ TEST_CASE("Vienna: JSON parses and run_checks accepts a valid 10 kW design", "[v
     Vienna v(j);
     REQUIRE(v.run_checks(false));
     REQUIRE_FALSE(v.is_bridge_topology());
-    REQUIRE(v.topology_kind() == MAS::Topologies::VIENNA_RECTIFIER_CONVERTER);
+    REQUIRE(v.topology_kind() == MAS::Topology::VIENNA_RECTIFIER_CONVERTER);
 }
 
 
@@ -89,7 +89,7 @@ TEST_CASE("Vienna: process_design_requirements derives L, I_pk and switch stress
     Vienna v(j);
     auto dr = v.process_design_requirements();
 
-    REQUIRE(dr.get_topology() == Topologies::VIENNA_RECTIFIER_CONVERTER);
+    REQUIRE(dr.get_topology() == MAS::Topology::VIENNA_RECTIFIER_CONVERTER);
     REQUIRE(dr.get_turns_ratios().size() == 1);
     REQUIRE_THAT(dr.get_turns_ratios()[0].get_nominal().value(), WithinRel(1.0, 1e-9));
 
@@ -453,7 +453,7 @@ TEST_CASE("Vienna: peakOfLinePlusSectors emits 6 OPs with per-sector physics",
     const auto& peakOp     = inputs2.get_operating_points()[0];
     const auto& sectorOp90 = ops[1];
 
-    // Average from the Processed.offset field — Inputs::calculate_processed_data
+    // Average from the ProcessedWaveform.offset field — Inputs::calculate_processed_data
     // computes the DC offset robustly from the FFT (bin 0). Summing the raw
     // sampled-waveform data array directly is unreliable: power-of-2 resampling
     // of the 3-point triangular can land sample points unevenly across the

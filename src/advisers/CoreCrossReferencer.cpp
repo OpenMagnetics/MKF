@@ -338,7 +338,7 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
 
     OperatingPointExcitation excitation;
     SignalDescriptor magneticFluxDensity;
-    Processed magneticFluxDensityProcessed;
+    ProcessedWaveform magneticFluxDensityProcessed;
     magneticFluxDensityProcessed.set_label(WaveformLabel::SINUSOIDAL);
     magneticFluxDensityProcessed.set_offset(0);
     magneticFluxDensityProcessed.set_duty_cycle(0.5);
@@ -438,7 +438,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
 
     OperatingPointExcitation excitation;
     SignalDescriptor magneticFluxDensity;
-    Processed magneticFluxDensityProcessed;
+    ProcessedWaveform magneticFluxDensityProcessed;
     magneticFluxDensityProcessed.set_label(WaveformLabel::SINUSOIDAL);
     magneticFluxDensityProcessed.set_offset(0);
     magneticFluxDensityProcessed.set_duty_cycle(0.5);

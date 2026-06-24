@@ -157,7 +157,7 @@ public:
     Dab(const json& j);
     Dab() {};
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::DUAL_ACTIVE_BRIDGE_CONVERTER; }
     bool is_bridge_topology() const override { return true; }
 
     // ---- Simulation tuning ----

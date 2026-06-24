@@ -349,7 +349,7 @@ DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
         designRequirements.set_leakage_inductance(leakageReqs);
     }
 
-    designRequirements.set_topology(Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+    designRequirements.set_topology(MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
     // Isolation sides:
     //   - For all rectifier types the primary takes side 0.
     //   - For CENTER_TAPPED there are TWO physical secondary windings
@@ -1570,7 +1570,7 @@ AsymmetricHalfBridge::get_extra_components_inputs(
         loInductance.set_nominal(computedOutputInductance);
         dr.set_magnetizing_inductance(loInductance);
         dr.set_name("outputInductor");
-        dr.set_topology(Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+        dr.set_topology(MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
         dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
         dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
         masInputs.set_design_requirements(dr);
@@ -1601,7 +1601,7 @@ AsymmetricHalfBridge::get_extra_components_inputs(
         lo2Inductance.set_nominal(computedOutputInductance);  // CD: Lo1 == Lo2
         dr.set_magnetizing_inductance(lo2Inductance);
         dr.set_name("outputInductor2");
-        dr.set_topology(Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+        dr.set_topology(MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
         dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
         dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
         masInputs.set_design_requirements(dr);

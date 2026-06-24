@@ -28,7 +28,7 @@ bool CoreAdviser::should_include_powder(Inputs inputs) {
         return false;
     }
     
-    if (get_application() != Application::POWER) {
+    if (get_application() != MAS::MagneticApplication::POWER) {
         return false;
     }
     double maximumCurrentDcBias = inputs.get_maximum_current_dc_bias();

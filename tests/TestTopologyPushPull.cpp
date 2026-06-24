@@ -376,7 +376,7 @@ namespace {
         pushPull.set_current_ripple_ratio(0.3);
         
         // Operating point: 12V @ 5A output, 100kHz
-        PushPullOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({12.0});
         opPoint.set_output_currents({5.0});
         opPoint.set_switching_frequency(100000.0);
@@ -481,7 +481,7 @@ namespace {
         pushpull.set_efficiency(0.85);
         pushpull.set_current_ripple_ratio(0.3);
 
-        PushPullOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({48.0});
         opPoint.set_output_currents({2.0});
         opPoint.set_switching_frequency(100e3);
@@ -563,7 +563,7 @@ namespace {
         pushpull.set_efficiency(0.85);
         pushpull.set_current_ripple_ratio(0.3);
 
-        PushPullOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({48.0});
         opPoint.set_output_currents({2.0});
         opPoint.set_switching_frequency(100e3);
@@ -609,7 +609,7 @@ namespace {
         pushpull.set_efficiency(0.85);
         pushpull.set_current_ripple_ratio(0.3);
 
-        PushPullOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({48.0});
         opPoint.set_output_currents({2.0});
         opPoint.set_switching_frequency(100e3);
@@ -658,7 +658,7 @@ namespace {
         pushpull.set_current_ripple_ratio(0.3);
         pushpull.set_maximum_switch_current(1.0);
 
-        PushPullOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({48.0});
         opPoint.set_output_currents({0.7});
         opPoint.set_switching_frequency(100000.0);
@@ -753,7 +753,7 @@ namespace {
         pp.set_efficiency(0.9);
         pp.set_current_ripple_ratio(0.3);
 
-        PushPullOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({12.0}); op.set_output_currents({4.0});
         op.set_switching_frequency(100e3); op.set_ambient_temperature(25.0);
         pp.set_operating_points({op});
@@ -867,7 +867,7 @@ namespace {
             pp.set_diode_voltage_drop(0.0);  // lossless analytical reference
             pp.set_efficiency(1.0);
             pp.set_current_ripple_ratio(s.ripple);
-            PushPullOperatingPoint op;
+            TopologyExcitation op;
             op.set_output_voltages({s.Vout});
             op.set_output_currents({s.Iout});
             op.set_switching_frequency(s.Fs);
@@ -894,7 +894,7 @@ namespace {
             std::vector<double> turnsRatios{1.0, s.N, s.N};
             double Lout = pp.get_output_inductance(s.N);
 
-            PushPullOperatingPoint op;
+            TopologyExcitation op;
             op.set_output_voltages({s.Vout});
             op.set_output_currents({s.Iout});
             op.set_switching_frequency(s.Fs);
@@ -1018,7 +1018,7 @@ namespace {
         pp.set_diode_voltage_drop(0.5);
         pp.set_efficiency(0.9);
         pp.set_current_ripple_ratio(0.4);
-        PushPullOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({3.3}); op.set_output_currents({1.0});
         op.set_switching_frequency(420e3); op.set_ambient_temperature(25.0);
         pp.set_operating_points({op});
@@ -1115,7 +1115,7 @@ namespace {
         pp.set_current_ripple_ratio(0.3);
         pp.set_duty_cycle(0.40);
 
-        PushPullOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({12.0});
         op.set_output_currents({1.0});
         op.set_switching_frequency(100e3);
@@ -1171,7 +1171,7 @@ namespace {
         pp.set_current_ripple_ratio(0.3);
         pp.set_duty_cycle(0.40);
 
-        PushPullOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({12.0});
         op.set_output_currents({1.0});
         op.set_switching_frequency(100e3);
@@ -1222,7 +1222,7 @@ namespace {
         app.set_desired_inductance(100e-6);
         app.set_desired_turns_ratios({1.25});
 
-        PushPullOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({12.0});
         op.set_output_currents({1.0});
         op.set_switching_frequency(100e3);
@@ -1249,7 +1249,7 @@ namespace {
         pp.set_efficiency(0.9);
         pp.set_current_ripple_ratio(0.4);
 
-        PushPullOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({Vout});
         op.set_output_currents({Iout});
         op.set_switching_frequency(420e3);

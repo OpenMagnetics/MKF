@@ -84,7 +84,7 @@ OpenMagnetics::Buck build(const RefDesignSpec& s) {
     b.set_diode_voltage_drop(0.0);   // synchronous buck (matches EVMs)
     b.set_efficiency(1.0);            // lossless analytical reference
     b.set_current_ripple_ratio(0.4);
-    BaseOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({s.Vout});
     op.set_output_currents({s.Iout});
     op.set_switching_frequency(s.Fs);

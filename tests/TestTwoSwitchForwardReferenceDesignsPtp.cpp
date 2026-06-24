@@ -59,7 +59,7 @@ OpenMagnetics::TwoSwitchForward build(const RefDesignSpec& s) {
     fwd.set_efficiency(0.9);
     fwd.set_current_ripple_ratio(0.3);
     fwd.set_duty_cycle(s.D);
-    ForwardOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({s.Vout});
     op.set_output_currents({s.Iout});
     op.set_switching_frequency(s.Fs);

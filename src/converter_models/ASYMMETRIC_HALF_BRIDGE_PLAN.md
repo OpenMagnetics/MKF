@@ -504,7 +504,7 @@ New file. Pattern off `phaseShiftFullBridge.json` (rectifier-type-aware)
 After schema edit, regenerate `MAS.hpp` and copy to `build/MAS/MAS.hpp`
 (per user-memory staging gotcha).
 
-Add `"ASYMMETRIC_HALF_BRIDGE_CONVERTER"` to the `Topologies` enum
+Add `"ASYMMETRIC_HALF_BRIDGE_CONVERTER"` to the `MAS::Topology` enum
 (alongside PHASE_SHIFTED_HALF_BRIDGE_CONVERTER, etc.).
 
 ---
@@ -676,7 +676,7 @@ deliverable — do it once, all five plans benefit).
 
 | # | Scope | Files | Tests added | Effort |
 |---|---|---|---|---|
-| **P1** | MAS schema (`asymmetricHalfBridge.json`, `Topologies` enum entry), regenerate MAS.hpp, stub `AsymmetricHalfBridge.{h,cpp}` (constructors + run_checks only, throws on the rest), `from_json`/`to_json` for AdvancedAHB | schema, `.h`, `.cpp` | none | 0.5 d |
+| **P1** | MAS schema (`asymmetricHalfBridge.json`, `MAS::Topology` enum entry), regenerate MAS.hpp, stub `AsymmetricHalfBridge.{h,cpp}` (constructors + run_checks only, throws on the rest), `from_json`/`to_json` for AdvancedAHB | schema, `.h`, `.cpp` | none | 0.5 d |
 | **P2** | Static analytical helpers (`compute_duty_cycle`, `compute_dc_blocking_cap_voltage`, `compute_conversion_ratio`, `compute_turns_ratio`, `compute_lo_min`, `compute_lm_min_for_zvs`, `compute_cb_min`, `compute_zvs_energy_balance`, `compute_dead_time`, `compute_steady_state_flux_excursion`, `compute_transient_flux_excursion`); unit tests | `.cpp`, tests | `NonMonotonic_Gain_Curve`, `DC_Blocking_Cap_Voltage`, `Conversion_Ratio` | 0.5 d |
 | **P3** | `process_operating_point_for_input_voltage` (CCM piecewise-linear waveforms for primary, Lm asymmetric ramp, Lo three-region, CT secondary; uses ActiveClampForward magnetizing-ramp pattern); `process_operating_points` (loop over Vin × OPs); diagnostics population | `.cpp` | `OperatingPoints_Generation`, `Asymmetric_Switch_RMS`, `Steady_State_Flux_Excursion`, `Diagnostics_Populated`, `SLUP223_Reference_Design`, `Imbertson_Mohan_Original` | 1.5 d |
 | **P4** | Rectifier-type-aware secondaries (CT / CD / FB) with extra-component waveform emission for Lo / Lo2 / Cb | `.cpp` | `RectifierType_CT`, `RectifierType_CD`, `RectifierType_FB` | 1 d |
@@ -710,7 +710,7 @@ needs P3+P4; P8 needs P7; P9 ⊥ P7; P10/P11 ⊥ P8; P12 last.
       within 5 % at D=0.3.
 - [ ] Transient flux excursion exceeds steady-state when
       `inputVoltageStepRange` is set.
-- [ ] Schema documented; `Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER`
+- [ ] Schema documented; `MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER`
       added.
 - [ ] Header has ASCII art, equations §4 with citations, accuracy
       disclaimer, **PSHB / Pinheiro-Barbi disambiguation block**

@@ -247,7 +247,7 @@ DesignRequirements Psfb::process_design_requirements() {
         designRequirements.set_leakage_inductance(leakageReqs);
     }
 
-    designRequirements.set_topology(Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
+    designRequirements.set_topology(MAS::Topology::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
     designRequirements.set_isolation_sides(
         Topology::create_isolation_sides(ops[0].get_output_currents().size(), false));
 
@@ -1323,7 +1323,7 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Psfb::get_extra_components_inputs
         lTol.set_nominal(computedOutputInductance);
         dr.set_magnetizing_inductance(lTol);
         dr.set_name("outputInductor");
-        dr.set_topology(Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
+        dr.set_topology(MAS::Topology::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
         dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
         dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
         masInputs.set_design_requirements(dr);
@@ -1347,7 +1347,7 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Psfb::get_extra_components_inputs
         lTol.set_nominal(computedOutputInductance);
         dr.set_magnetizing_inductance(lTol);
         dr.set_name("outputInductor2");
-        dr.set_topology(Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
+        dr.set_topology(MAS::Topology::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
         dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
         dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
         masInputs.set_design_requirements(dr);
@@ -1381,7 +1381,7 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Psfb::get_extra_components_inputs
         lTol.set_nominal(Lr_external);
         dr.set_magnetizing_inductance(lTol);
         dr.set_name("seriesInductor");
-        dr.set_topology(Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
+        dr.set_topology(MAS::Topology::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
         dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
         dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
         masInputs.set_design_requirements(dr);

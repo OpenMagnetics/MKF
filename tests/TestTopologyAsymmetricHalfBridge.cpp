@@ -1135,7 +1135,7 @@ TEST_CASE("AHB P6: process_design_requirements emits well-formed output",
 
     REQUIRE(req.get_topology().has_value());
     CHECK(req.get_topology().value() ==
-          OpenMagnetics::Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+          MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
 
     CHECK(req.get_isolation_sides().has_value());
     // CENTER_TAPPED rectifier: 1 primary + 2 physical secondaries
@@ -1837,7 +1837,7 @@ TEST_CASE("AHB P9: V1 (CT) returns one ancillary Inputs (Lo)",
     REQUIRE(dr.get_name().has_value());
     CHECK(dr.get_name().value() == "outputInductor");
     CHECK(dr.get_topology() ==
-          OpenMagnetics::Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+          MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
     auto Lo_nom = dr.get_magnetizing_inductance().get_nominal();
     REQUIRE(Lo_nom.has_value());
     CHECK(*Lo_nom == ahb.get_computed_output_inductance());
@@ -2060,14 +2060,14 @@ TEST_CASE("AHB P12: PsHB_Disambiguation — AHB and PSHB are distinct topologies
     auto req = ahb.process_design_requirements();
     REQUIRE(req.get_topology().has_value());
     CHECK(req.get_topology().value() ==
-          OpenMagnetics::Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+          MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
 
     // PSHB topology enum is DISTINCT from AHB enum. The test verifies that
     // the two topology names do NOT collide and that the AHB header now
     // references the existing class (cross-ref check is a doc-update).
-    using OpenMagnetics::Topologies;
-    CHECK(static_cast<int>(Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER) !=
-          static_cast<int>(Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER));
+    using MAS::Topology;
+    CHECK(static_cast<int>(MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER) !=
+          static_cast<int>(MAS::Topology::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER));
 }
 
 

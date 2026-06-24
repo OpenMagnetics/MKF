@@ -97,7 +97,7 @@ place sections in the correct one.
 Lm, leakage, core losses, AC losses must reflect the per-column
 magnetic circuit.
 
-### Layer C — Application (3-phase DAB / 3-phase transformer
+### Layer C — MAS::MagneticApplication (3-phase DAB / 3-phase transformer
 topology) — **out of scope for this plan**. Lives in a separate
 3-phase DAB plan that will depend on Layers A and B working.
 

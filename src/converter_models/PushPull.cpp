@@ -9,7 +9,7 @@
 
 namespace OpenMagnetics {
 
-    double get_total_reflected_secondary_current(const PushPullOperatingPoint& pushPullOperatingPoint, const std::vector<double>& turnsRatios) {
+    double get_total_reflected_secondary_current(const TopologyExcitation& pushPullOperatingPoint, const std::vector<double>& turnsRatios) {
         double totalReflectedSecondaryCurrent = 0;
         // Main secondary
         totalReflectedSecondaryCurrent += pushPullOperatingPoint.get_output_currents()[0] / turnsRatios[1];
@@ -68,7 +68,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint PushPull::process_operating_points_for_input_voltage(double inputVoltage, const PushPullOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double outputInductance) {
+    OperatingPoint PushPull::process_operating_points_for_input_voltage(double inputVoltage, const TopologyExcitation& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double outputInductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -988,7 +988,7 @@ namespace OpenMagnetics {
             isolationSides.push_back(get_isolation_side_from_index(windingIndex - 2));
         }
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::PUSH_PULL_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::PUSH_PULL_CONVERTER);
         return designRequirements;
     }
 
@@ -1146,7 +1146,7 @@ namespace OpenMagnetics {
         inductance.set_nominal(extraLoInductance);
         dr.set_magnetizing_inductance(inductance);
         dr.set_name("outputInductor");
-        dr.set_topology(Topologies::PUSH_PULL_CONVERTER);
+        dr.set_topology(MAS::Topology::PUSH_PULL_CONVERTER);
         dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
         dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::SECONDARY});
         masInputs.set_design_requirements(dr);
@@ -1269,7 +1269,7 @@ namespace OpenMagnetics {
             isolationSides.push_back(get_isolation_side_from_index(windingIndex - 2));
         }
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::PUSH_PULL_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::PUSH_PULL_CONVERTER);
         return designRequirements;
     }
 

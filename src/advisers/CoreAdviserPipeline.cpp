@@ -488,7 +488,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     // (Sendust/KoolMu/MPP/High-Flux/iron-powder) or amorphous /
     // nanocrystalline. Gapped ferrite is acceptable too.
     auto topology = inputs.get_design_requirements().get_topology();
-    if (topology == Topologies::DIFFERENTIAL_MODE_CHOKE) {
+    if (topology == MAS::Topology::DIFFERENTIAL_MODE_CHOKE) {
         std::vector<std::pair<Magnetic, double>> dmcFiltered;
         dmcFiltered.reserve(magneticsWithScoring.size());
         for (auto& entry : magneticsWithScoring) {

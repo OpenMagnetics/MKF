@@ -499,7 +499,7 @@ namespace OpenMagnetics {
         isolationSides.push_back(get_isolation_side_from_index(0));
         isolationSides.push_back(get_isolation_side_from_index(1));
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::WEINBERG_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::WEINBERG_CONVERTER);
         return designRequirements;
     }
 
@@ -607,7 +607,7 @@ namespace OpenMagnetics {
         isolationSides.push_back(get_isolation_side_from_index(0));
         isolationSides.push_back(get_isolation_side_from_index(1));
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::WEINBERG_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::WEINBERG_CONVERTER);
         inputs.set_design_requirements(designRequirements);
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
@@ -1138,7 +1138,7 @@ namespace OpenMagnetics {
             L.set_nominal(lastSizedL1);
             dr.set_magnetizing_inductance(L);
             dr.set_name("inputCoupledInductor");
-            dr.set_topology(Topologies::WEINBERG_CONVERTER);
+            dr.set_topology(MAS::Topology::WEINBERG_CONVERTER);
             DimensionWithTolerance unityRatio;
             unityRatio.set_nominal(1.0);
             dr.set_turns_ratios(std::vector<DimensionWithTolerance>{unityRatio});
@@ -1174,7 +1174,6 @@ namespace OpenMagnetics {
             }
             dr.set_rated_voltage(peakV * 1.2);
             dr.set_role(CAS::Application::OUTPUT_FILTER);
-            dr.set_name("outputCapacitor");
             casInputs.set_design_requirements(dr);
 
             std::vector<CAS::TwoTerminalOperatingPoint> casOps;

@@ -50,7 +50,7 @@ inline void log_pruned(const std::string& stage, size_t count) {
 // and add_ferrite_materials_by_impedance.
 inline OperatingPointExcitation make_sinusoidal_excitation(double peak, double offset, double frequency) {
     SignalDescriptor magneticFluxDensity;
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(offset);
     processed.set_peak(peak);

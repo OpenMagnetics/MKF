@@ -513,7 +513,7 @@ namespace OpenMagnetics {
         std::vector<IsolationSide> isolationSides;
         isolationSides.push_back(get_isolation_side_from_index(0));
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
         return designRequirements;
     }
 
@@ -614,7 +614,7 @@ namespace OpenMagnetics {
         std::vector<IsolationSide> isolationSides;
         isolationSides.push_back(get_isolation_side_from_index(0));
         dr.set_isolation_sides(isolationSides);
-        dr.set_topology(Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
+        dr.set_topology(MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
         return dr;
     }
 
@@ -645,7 +645,7 @@ namespace OpenMagnetics {
             L.set_nominal(lastSizedInductance);
             dr.set_magnetizing_inductance(L);
             dr.set_name("inductor");
-            dr.set_topology(Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
+            dr.set_topology(MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
             dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
             masInputs.set_design_requirements(dr);
 
@@ -673,7 +673,6 @@ namespace OpenMagnetics {
                 for (double v : wf.get_data()) peakV = std::max(peakV, std::abs(v));
             dr.set_rated_voltage(peakV * 1.2);
             dr.set_role(CAS::Application::INPUT_FILTER);
-            dr.set_name("inputCapacitor");
             casInputs.set_design_requirements(dr);
 
             std::vector<CAS::TwoTerminalOperatingPoint> casOps;
@@ -714,7 +713,6 @@ namespace OpenMagnetics {
                 for (double v : wf.get_data()) peakV = std::max(peakV, std::abs(v));
             dr.set_rated_voltage(peakV * 1.2);
             dr.set_role(CAS::Application::OUTPUT_FILTER);
-            dr.set_name("outputCapacitor");
             casInputs.set_design_requirements(dr);
 
             std::vector<CAS::TwoTerminalOperatingPoint> casOps;

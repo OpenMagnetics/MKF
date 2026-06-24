@@ -1646,28 +1646,28 @@ std::vector<VolumetricCoreLossesMethodType> Core::get_available_core_losses_meth
 }
 
 
-Application Core::resolve_material_application() {
+MAS::MagneticApplication Core::resolve_material_application() {
     auto coreMaterial = resolve_material();
     auto application = resolve_material_application(coreMaterial);
     get_mutable_functional_description().set_material(coreMaterial);
     return application;
 }
 
-Application Core::resolve_material_application(CoreMaterial& coreMaterial) {
+MAS::MagneticApplication Core::resolve_material_application(CoreMaterial& coreMaterial) {
     auto tags = coreMaterial.get_application();
     if (tags && !tags->empty()) {
         return tags->front();
     }
-    coreMaterial.set_application(std::vector<Application>{guess_material_application(coreMaterial)});
+    coreMaterial.set_application(std::vector<MAS::MagneticApplication>{guess_material_application(coreMaterial)});
     return coreMaterial.get_application().value().front();
 }
 
-Application Core::guess_material_application() {
+MAS::MagneticApplication Core::guess_material_application() {
     auto coreMaterial = resolve_material();
     return guess_material_application(coreMaterial);
 }
 
-Application Core::guess_material_application(CoreMaterial coreMaterial) {
+MAS::MagneticApplication Core::guess_material_application(CoreMaterial coreMaterial) {
     auto tags = coreMaterial.get_application();
     if (tags && !tags->empty()) {
         return tags->front();
@@ -1675,20 +1675,20 @@ Application Core::guess_material_application(CoreMaterial coreMaterial) {
     for (auto method : get_available_core_losses_methods(coreMaterial)) {
         if (method == VolumetricCoreLossesMethodType::LOSS_FACTOR) {
             if (coreMaterial.get_permeability().get_complex()) {
-                return Application::INTERFERENCE_SUPPRESSION;
+                return MAS::MagneticApplication::INTERFERENCE_SUPPRESSION;
             }
-            return Application::SIGNAL_PROCESSING;
+            return MAS::MagneticApplication::SIGNAL_PROCESSING;
         }
     }
-    return Application::POWER;
+    return MAS::MagneticApplication::POWER;
 }
 
-bool Core::check_material_application(Application application) {
+bool Core::check_material_application(MAS::MagneticApplication application) {
     auto coreMaterial = resolve_material();
     return check_material_application(coreMaterial, application);
 }
 
-bool Core::check_material_application(CoreMaterial coreMaterial, Application application) {
+bool Core::check_material_application(CoreMaterial coreMaterial, MAS::MagneticApplication application) {
     // Narrow fix for Interference Suppression queries: modern power ferrites
     // (N87, 3C94, …) ship complex-permeability curves to help EMI analysis,
     // and the complex-permeability heuristic below misclassifies them as
@@ -1708,13 +1708,13 @@ bool Core::check_material_application(CoreMaterial coreMaterial, Application app
     // checks below use membership semantics so dual-tagged entries pass for
     // every advertised application.
     auto tagsOpt = coreMaterial.get_application();
-    auto contains = [&](Application a) {
+    auto contains = [&](MAS::MagneticApplication a) {
         if (!tagsOpt) return false;
         const auto& tags = tagsOpt.value();
         return std::find(tags.begin(), tags.end(), a) != tags.end();
     };
 
-    if (application == Application::INTERFERENCE_SUPPRESSION && tagsOpt) {
+    if (application == MAS::MagneticApplication::INTERFERENCE_SUPPRESSION && tagsOpt) {
         // The IS pipeline's MagneticFilterMinimumImpedance reads complex
         // permeability and throws MATERIAL_DATA_MISSING otherwise. Admit
         // materials that either ship explicit complex µ data OR have a
@@ -1729,8 +1729,8 @@ bool Core::check_material_application(CoreMaterial coreMaterial, Application app
         if (!hasExplicitComplex && !canDeriveComplex) {
             return false;
         }
-        if (contains(Application::INTERFERENCE_SUPPRESSION)) return true;
-        if (contains(Application::SIGNAL_PROCESSING)) return true;
+        if (contains(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION)) return true;
+        if (contains(MAS::MagneticApplication::SIGNAL_PROCESSING)) return true;
         return false;
     }
 
@@ -1739,19 +1739,19 @@ bool Core::check_material_application(CoreMaterial coreMaterial, Application app
     }
 
     if (coreMaterial.get_permeability().get_complex()) {
-        if (application == Application::INTERFERENCE_SUPPRESSION) {
+        if (application == MAS::MagneticApplication::INTERFERENCE_SUPPRESSION) {
             return true;
         }
     }
 
     for (auto method : get_available_core_losses_methods(coreMaterial)) {
         if (method == VolumetricCoreLossesMethodType::LOSS_FACTOR) {
-            if (application == Application::SIGNAL_PROCESSING) {
+            if (application == MAS::MagneticApplication::SIGNAL_PROCESSING) {
                 return true;
             }
         }
         else {
-            if (application == Application::POWER) {
+            if (application == MAS::MagneticApplication::POWER) {
                 return true;
             }
         }
@@ -1759,7 +1759,7 @@ bool Core::check_material_application(CoreMaterial coreMaterial, Application app
     return false;
 }
 
-Application Core::guess_material_application(std::string coreMaterialName) {
+MAS::MagneticApplication Core::guess_material_application(std::string coreMaterialName) {
     auto coreMaterial = find_core_material_by_name(coreMaterialName);
     return guess_material_application(coreMaterial);
 }

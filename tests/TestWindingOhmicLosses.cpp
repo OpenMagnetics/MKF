@@ -17,7 +17,7 @@ namespace {
         OperatingPoint operatingPoint;
         OperatingPointExcitation operatingPointExcitation;
         SignalDescriptor current;
-        Processed processed;
+        ProcessedWaveform processed;
         std::vector<OperatingPointExcitation> excitations;
         for (auto& dcCurrent : dcCurrents) {
             processed.set_rms(dcCurrent);

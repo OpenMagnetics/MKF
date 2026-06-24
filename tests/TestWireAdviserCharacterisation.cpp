@@ -73,7 +73,7 @@ Section make_section(double width, double height) {
 
 SignalDescriptor make_current(double rms, double effectiveFreq) {
     SignalDescriptor c;
-    Processed p;
+    ProcessedWaveform p;
     p.set_peak_to_peak(rms * 2 * 1.4142);
     p.set_rms(rms);
     p.set_effective_frequency(effectiveFreq);

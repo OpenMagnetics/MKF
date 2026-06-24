@@ -205,7 +205,7 @@ public:
     Zeta(const json& j);
     Zeta() {};
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::ZETA_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::ZETA_CONVERTER; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }

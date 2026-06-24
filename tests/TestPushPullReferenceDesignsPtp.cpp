@@ -60,12 +60,12 @@ OpenMagnetics::PushPull build(const RefDesignSpec& s) {
     pp.set_diode_voltage_drop(0.0);   // lossless analytical reference
     pp.set_efficiency(1.0);
     pp.set_current_ripple_ratio(s.ripple);
-    PushPullOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({s.Vout});
     op.set_output_currents({s.Iout});
     op.set_switching_frequency(s.Fs);
     op.set_ambient_temperature(25.0);
-    pp.set_operating_points(std::vector<PushPullOperatingPoint>{op});
+    pp.set_operating_points(std::vector<TopologyExcitation>{op});
     return pp;
 }
 
@@ -105,12 +105,12 @@ OpenMagnetics::PushPull build_for_shape_match(const RefDesignSpec& s,
     pp.set_diode_voltage_drop(0.0);
     pp.set_efficiency(1.0);
     pp.set_current_ripple_ratio(ripple);
-    PushPullOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({s.Vout});         // nominal Vout keeps D invariant
     op.set_output_currents({Iout_spice});     // settled Iout from SPICE
     op.set_switching_frequency(s.Fs);
     op.set_ambient_temperature(25.0);
-    pp.set_operating_points(std::vector<PushPullOperatingPoint>{op});
+    pp.set_operating_points(std::vector<TopologyExcitation>{op});
     return pp;
 }
 

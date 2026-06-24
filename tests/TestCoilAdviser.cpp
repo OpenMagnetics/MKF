@@ -39,7 +39,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Same_Isolation_Sides_Basic_N
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_606641};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::BASIC;
+    auto insulationType = IsolationClass::BASIC;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -68,7 +68,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Fu
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_606641};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::FUNCTIONAL;
+    auto insulationType = IsolationClass::FUNCTIONAL;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -94,7 +94,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Ba
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_606641};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::BASIC;
+    auto insulationType = IsolationClass::BASIC;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -138,7 +138,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Su
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_606641};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::SUPPLEMENTARY;
+    auto insulationType = IsolationClass::SUPPLEMENTARY;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -182,7 +182,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Re
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_606641};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::REINFORCED;
+    auto insulationType = IsolationClass::REINFORCED;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -227,7 +227,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Same_Isolation_Sides_Basic_F
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_623681};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::BASIC;
+    auto insulationType = IsolationClass::BASIC;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -257,7 +257,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Fu
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_623681};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::FUNCTIONAL;
+    auto insulationType = IsolationClass::FUNCTIONAL;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -283,7 +283,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Ba
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_623681};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::BASIC;
+    auto insulationType = IsolationClass::BASIC;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -329,7 +329,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Su
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_623681};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::SUPPLEMENTARY;
+    auto insulationType = IsolationClass::SUPPLEMENTARY;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -375,7 +375,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Re
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_623681};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::REINFORCED;
+    auto insulationType = IsolationClass::REINFORCED;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -421,7 +421,7 @@ TEST_CASE("Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Do
     auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_623681};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::DOUBLE;
+    auto insulationType = IsolationClass::DOUBLE;
     OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(1);
@@ -531,7 +531,7 @@ TEST_CASE("Test_CoilAdviser_Insulation_No_Margin", "[adviser][coil-adviser][smok
     mainSupplyVoltage.set_nominal(400);
     auto cti = Cti::GROUP_I;
     auto overvoltageCategory = OvervoltageCategory::IV;
-    auto insulationType = InsulationType::BASIC;
+    auto insulationType = IsolationClass::BASIC;
     auto pollutionDegree = PollutionDegree::PD1;
     auto insulationRequirements = OpenMagneticsTesting::get_quick_insulation_requirements(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards);
     inputs.get_mutable_design_requirements().set_insulation(insulationRequirements);
@@ -646,7 +646,7 @@ TEST_CASE("Test_CoilAdviser_Insulation_Margin", "[adviser][coil-adviser][margin]
     mainSupplyVoltage.set_nominal(400);
     auto cti = Cti::GROUP_I;
     auto overvoltageCategory = OvervoltageCategory::IV;
-    auto insulationType = InsulationType::BASIC;
+    auto insulationType = IsolationClass::BASIC;
     auto pollutionDegree = PollutionDegree::PD1;
     auto insulationRequirements = OpenMagneticsTesting::get_quick_insulation_requirements(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards);
     inputs.get_mutable_design_requirements().set_insulation(insulationRequirements);

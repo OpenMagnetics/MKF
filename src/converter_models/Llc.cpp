@@ -184,7 +184,7 @@ DesignRequirements Llc::process_design_requirements() {
             isolationSides.push_back(get_isolation_side_from_index(i + 1));
     }
     designRequirements.set_isolation_sides(isolationSides);
-    designRequirements.set_topology(Topologies::LLC_RESONANT_CONVERTER);
+    designRequirements.set_topology(MAS::Topology::LLC_RESONANT_CONVERTER);
 
     return designRequirements;
 }
@@ -785,7 +785,7 @@ static void sample_segments(const std::vector<LlcSubStateSegment>& segs,
 
 OperatingPoint Llc::process_operating_point_for_input_voltage(
     double inputVoltage,
-    const LlcOperatingPoint& llcOpPoint,
+    const TopologyExcitation& llcOpPoint,
     const std::vector<double>& turnsRatios,
     double magnetizingInductance)
 {
@@ -2241,7 +2241,6 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Llc::get_extra_components_inputs(
         dr.set_rated_voltage(peakVc * 1.2);  // 20 % margin
 
         dr.set_role(CAS::Application::RESONANT);
-        dr.set_name("resonantCapacitor");
 
         casInputs.set_design_requirements(dr);
 
@@ -2293,7 +2292,7 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Llc::get_extra_components_inputs(
         inductance.set_nominal(Ls_external);
         dr.set_magnetizing_inductance(inductance);
         dr.set_name("seriesInductor");
-        dr.set_topology(Topologies::LLC_RESONANT_CONVERTER);
+        dr.set_topology(MAS::Topology::LLC_RESONANT_CONVERTER);
 
         // Single primary winding, no isolation
         dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
@@ -2338,7 +2337,7 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Llc::get_extra_components_inputs(
             loInd.set_nominal(Lo_design);
             drLo.set_magnetizing_inductance(loInd);
             drLo.set_name(std::string("outputInductor") + (loIdx == 0 ? "1" : "2"));
-            drLo.set_topology(Topologies::LLC_RESONANT_CONVERTER);
+            drLo.set_topology(MAS::Topology::LLC_RESONANT_CONVERTER);
             drLo.set_turns_ratios(std::vector<DimensionWithTolerance>{});
             drLo.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::SECONDARY});
             loInputs.set_design_requirements(drLo);
@@ -2373,7 +2372,6 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Llc::get_extra_components_inputs(
             drCap.set_capacitance(cap);
             drCap.set_rated_voltage((Vout_0 / 2.0) * 1.2);   // 20 % margin
             drCap.set_role(CAS::Application::DC_LINK);
-            drCap.set_name(std::string("outputCapacitor") + (capIdx == 0 ? "Hi" : "Lo"));
             casCap.set_design_requirements(drCap);
 
             std::vector<CAS::TwoTerminalOperatingPoint> capOps;

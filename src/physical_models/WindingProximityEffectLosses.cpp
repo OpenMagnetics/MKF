@@ -207,7 +207,7 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         auto lossesPerHarmonicThisTurn = calculate_proximity_effect_losses_per_meter(wire, temperature, fields, modelOverride).second;
 
 
-        WindingLossElement proximityEffectLossesThisTurn;
+        LossElementPerHarmonic proximityEffectLossesThisTurn;
         auto model = get_model(coil.get_wire_type(windingIndex), modelOverride);
         proximityEffectLossesThisTurn.set_method_used(model->methodName);
         proximityEffectLossesThisTurn.set_origin(ResultOrigin::SIMULATION);

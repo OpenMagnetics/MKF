@@ -34,7 +34,7 @@ namespace OpenMagnetics {
 // Returns true for energy-storing topologies (inductors, flyback-derived);
 // false for transformer-style topologies and for unknown / unspecified
 // values (treated as transformer, the safer no-gap default).
-inline bool is_energy_storing_topology(std::optional<Topologies> topology) {
+inline bool is_energy_storing_topology(std::optional<MAS::Topology> topology) {
     if (!topology.has_value()) {
         return false; // Unknown topology, caller should use other heuristics
     }
@@ -42,56 +42,56 @@ inline bool is_energy_storing_topology(std::optional<Topologies> topology) {
     switch (topology.value()) {
         // Energy-storing topologies (inductors, flyback-derived)
         // These store energy in the magnetic field each switching cycle
-        case Topologies::FLYBACK_CONVERTER:
-        case Topologies::BUCK_CONVERTER:
-        case Topologies::BOOST_CONVERTER:
-        case Topologies::ISOLATED_BUCK_BOOST_CONVERTER:
+        case MAS::Topology::FLYBACK_CONVERTER:
+        case MAS::Topology::BUCK_CONVERTER:
+        case MAS::Topology::BOOST_CONVERTER:
+        case MAS::Topology::ISOLATED_BUCK_BOOST_CONVERTER:
         // Isolated Buck (Fly-Buck) is a synchronous buck with a coupled-inductor
         // secondary harvesting auxiliary outputs. The primary side stores energy
         // in the gap each switching cycle (buck inductor behavior). Industry
         // convention (TI AN-2292, Coilcraft) classifies the magnetic as a
         // "Fly-Buck coupled inductor", not a transformer -> needs a gapped core.
-        case Topologies::ISOLATED_BUCK_CONVERTER:
-        case Topologies::POWER_FACTOR_CORRECTION:
+        case MAS::Topology::ISOLATED_BUCK_CONVERTER:
+        case MAS::Topology::POWER_FACTOR_CORRECTION:
         // DMC is a single-winding (or balanced two-winding) inductor on the
         // line carrying the full DC line current as bias. Routing it through
         // the inductor B-from-current path lets MagnetizingInductance derate
         // permeability via the material's DC-bias polynomial; the transformer
         // path (B from voltage) misses the DC bias entirely.
-        case Topologies::DIFFERENTIAL_MODE_CHOKE:
+        case MAS::Topology::DIFFERENTIAL_MODE_CHOKE:
         // CMC is a two-winding choke that stores energy in the common-mode
         // inductance (Lcm) and carries the full DC line current as bias.
         // Like DMC, it must use the B-from-current path so that DC bias
         // derating is applied. The transformer path (B from voltage) is
         // inappropriate because CMCs are not voltage-driven transformers.
-        case Topologies::COMMON_MODE_CHOKE:
+        case MAS::Topology::COMMON_MODE_CHOKE:
         // SEPIC primary inductor L1 carries the full input DC current and stores
         // energy in the gap each switching cycle (buck-like). Even in the coupled-
         // inductor variant the magnetic returned by process_design_requirements is
         // L1 (see MAS schema sepic.json) -- still energy-storing. Needs a gap.
-        case Topologies::SEPIC_CONVERTER:
+        case MAS::Topology::SEPIC_CONVERTER:
         // Zeta is the dual of SEPIC: L1 is again a magnetizing/energy-storing
         // inductor (TI SLYT411 / SLVA721). Same classification as SEPIC.
-        case Topologies::ZETA_CONVERTER:
+        case MAS::Topology::ZETA_CONVERTER:
         // Cuk: the input inductor L1 stores energy in the gap; the magnetic
         // produced by the wizard is L1 (or the coupled L1-L2 inductor).
-        case Topologies::CUK_CONVERTER:
-        case Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER:
+        case MAS::Topology::CUK_CONVERTER:
+        case MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER:
             return true;
 
         // Transformer topologies (forward-derived)
         // These transfer energy directly without storing it
-        case Topologies::SINGLE_SWITCH_FORWARD_CONVERTER:
-        case Topologies::TWO_SWITCH_FORWARD_CONVERTER:
-        case Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER:
-        case Topologies::PUSH_PULL_CONVERTER:
-        case Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
-        case Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER:
-        case Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER:
-        case Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER:
-        case Topologies::LLC_RESONANT_CONVERTER:
-        case Topologies::CLLC_RESONANT_CONVERTER:
-        case Topologies::CURRENT_TRANSFORMER:
+        case MAS::Topology::SINGLE_SWITCH_FORWARD_CONVERTER:
+        case MAS::Topology::TWO_SWITCH_FORWARD_CONVERTER:
+        case MAS::Topology::ACTIVE_CLAMP_FORWARD_CONVERTER:
+        case MAS::Topology::PUSH_PULL_CONVERTER:
+        case MAS::Topology::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
+        case MAS::Topology::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER:
+        case MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER:
+        case MAS::Topology::DUAL_ACTIVE_BRIDGE_CONVERTER:
+        case MAS::Topology::LLC_RESONANT_CONVERTER:
+        case MAS::Topology::CLLC_RESONANT_CONVERTER:
+        case MAS::Topology::CURRENT_TRANSFORMER:
             return false;
 
         default:

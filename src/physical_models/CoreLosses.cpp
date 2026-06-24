@@ -2336,7 +2336,7 @@ SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_l
                                                                                               double temperature,
                                                                                               double coreLosses) {
     SignalDescriptor magneticFluxDensity;
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(0);
     magneticFluxDensity.set_processed(processed);
@@ -2583,7 +2583,7 @@ SignalDescriptor CoreLossesModel::_get_magnetic_flux_density_from_core_losses(Co
 
     OperatingPointExcitation operatingPointExcitation;
     SignalDescriptor magneticFluxDensity;
-    Processed processed;
+    ProcessedWaveform processed;
     operatingPointExcitation.set_frequency(frequency);
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(0);

@@ -617,7 +617,7 @@ namespace {
         forward.set_duty_cycle(0.4);
         
         // Operating point: 5V @ 5A output, 200kHz
-        ForwardOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({5.0});
         opPoint.set_output_currents({5.0});
         opPoint.set_switching_frequency(200000.0);
@@ -773,7 +773,7 @@ namespace {
         forward.set_duty_cycle(0.4);
         
         // Operating point: 5V @ 5A output, 200kHz
-        ForwardOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({5.0});
         opPoint.set_output_currents({5.0});
         opPoint.set_switching_frequency(200000.0);
@@ -858,7 +858,7 @@ namespace {
         forward.set_efficiency(0.9);
         forward.set_current_ripple_ratio(0.3);
 
-        ForwardOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({12.0});
         opPoint.set_output_currents({4.0});
         opPoint.set_switching_frequency(100e3);
@@ -980,7 +980,7 @@ namespace {
         forward.set_duty_cycle(0.45);
         
         // Operating point: 5V @ 5A output, 200kHz
-        ForwardOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({5.0});
         opPoint.set_output_currents({5.0});
         opPoint.set_switching_frequency(200000.0);
@@ -1070,7 +1070,7 @@ namespace {
         forward.set_efficiency(0.9);
         forward.set_current_ripple_ratio(0.3);
 
-        ForwardOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({12.0});
         opPoint.set_output_currents({4.0});
         opPoint.set_switching_frequency(100e3);
@@ -1116,7 +1116,7 @@ namespace {
         forward.set_efficiency(0.9);
         forward.set_current_ripple_ratio(0.3);
 
-        ForwardOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({12.0});
         opPoint.set_output_currents({4.0});
         opPoint.set_switching_frequency(100e3);
@@ -1158,7 +1158,7 @@ namespace {
         fwd.set_current_ripple_ratio(0.3);
         fwd.set_duty_cycle(0.4);
 
-        ForwardOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({5.0}); op.set_output_currents({5.0});
         op.set_switching_frequency(200e3); op.set_ambient_temperature(25.0);
         fwd.set_operating_points({op});
@@ -1202,7 +1202,7 @@ namespace {
         fwd.set_current_ripple_ratio(0.3);
         fwd.set_duty_cycle(0.45);
 
-        ForwardOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({5.0}); op.set_output_currents({5.0});
         op.set_switching_frequency(200e3); op.set_ambient_temperature(25.0);
         fwd.set_operating_points({op});
@@ -1249,7 +1249,7 @@ namespace {
         fwd.set_current_ripple_ratio(0.3);
         fwd.set_duty_cycle(0.4);
 
-        ForwardOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({5.0}); op.set_output_currents({5.0});
         op.set_switching_frequency(200e3); op.set_ambient_temperature(25.0);
         fwd.set_operating_points({op});
@@ -1305,7 +1305,7 @@ namespace {
         forward.set_current_ripple_ratio(0.3);
         forward.set_duty_cycle(0.4);
 
-        ForwardOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({Vout});
         opPoint.set_output_currents({Iout});
         opPoint.set_switching_frequency(200000.0);
@@ -1353,7 +1353,7 @@ namespace {
         forward.set_current_ripple_ratio(0.3);
         forward.set_duty_cycle(0.4);
 
-        ForwardOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({Vout});
         opPoint.set_output_currents({Iout});
         opPoint.set_switching_frequency(200000.0);
@@ -1397,7 +1397,7 @@ namespace {
         forward.set_current_ripple_ratio(0.3);
         forward.set_duty_cycle(0.45);
 
-        ForwardOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({Vout});
         opPoint.set_output_currents({Iout});
         opPoint.set_switching_frequency(200000.0);

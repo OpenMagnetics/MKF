@@ -826,13 +826,13 @@ Once SRC is merged:
 
 ### 15.1 Foundational Papers
 
-- **Steigerwald, R. L.** (1988). "A Comparison of Half-Bridge Resonant Converter Topologies." *IEEE Transactions on Power Electronics*, 3(2), pp. 174–182. ← **Core SRC paper; defines 4-quadrant analysis**
+- **Steigerwald, R. L.** (1988). "A Comparison of Half-Bridge Resonant Converter MAS::Topology." *IEEE Transactions on Power Electronics*, 3(2), pp. 174–182. ← **Core SRC paper; defines 4-quadrant analysis**
 - **Kazimierczuk, M. K.** (2015). *Fundamentals of Resonant Power Conversion*. Wiley-IEEE Press. Ch. 4 (SRC), Ch. 7 (LLC). ← **Textbook; comprehensive equations and design examples**
 - **Erickson, R. W., & Maksimović, D.** (2019). *Fundamentals of Power Electronics* (3rd ed.). Springer. Ch. 19 (SRC), Ch. 20 (LLC). ← **Graduate-level treatment; state-space analysis**
 
 ### 15.2 Reference Designs and Datasheets
 
-- **Spellman High Voltage** (X-ray supply). "SRC Design for 30 kW HV Rectifier." Application note. ← **High-voltage example, Cr voltage scaling**
+- **Spellman High Voltage** (X-ray supply). "SRC Design for 30 kW HV Rectifier." MAS::MagneticApplication note. ← **High-voltage example, Cr voltage scaling**
 - **Hypertherm Plasma Systems**. "Plasma Cutter Power Supply Design." Technical reference. ← **5–20 kW plasma load example**
 - **Infineon Technologies**. "Resonant Converter Design Guide" (3-phase PFC context). ← **Industrial telecom reference**
 - **TI / Erickson Group**. SRC reference implementations in GaN (LMG5200 evaluation board). ← **Modern GaN fast switching context**

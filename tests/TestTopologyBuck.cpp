@@ -301,7 +301,7 @@ namespace {
         buck.set_efficiency(0.95);
         
         // Operating point: 5V @ 2A output, 100kHz
-        BaseOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({5.0});
         opPoint.set_output_currents({2.0});
         opPoint.set_switching_frequency(100e3);
@@ -485,7 +485,7 @@ namespace {
         buck.set_efficiency(0.95);
         buck.set_current_ripple_ratio(0.4);
 
-        BaseOperatingPoint op; op.set_output_voltages({5.0}); op.set_output_currents({2.0});
+        TopologyExcitation op; op.set_output_voltages({5.0}); op.set_output_currents({2.0});
         op.set_switching_frequency(100e3); op.set_ambient_temperature(25.0);
         buck.set_operating_points({op});
 
@@ -570,7 +570,7 @@ namespace {
             b.set_diode_voltage_drop(0.0);   // synchronous buck
             b.set_efficiency(1.0);            // lossless analytical reference
             b.set_current_ripple_ratio(0.4);
-            BaseOperatingPoint op;
+            TopologyExcitation op;
             op.set_output_voltages({s.Vout});
             op.set_output_currents({s.Iout});
             op.set_switching_frequency(s.Fs);
@@ -584,7 +584,7 @@ namespace {
             // Diagnostics reflect the *last* call to
             // process_operating_points_for_input_voltage(); call directly
             // with nominal Vin to anchor the Values check there.
-            BaseOperatingPoint op;
+            TopologyExcitation op;
             op.set_output_voltages({s.Vout});
             op.set_output_currents({s.Iout});
             op.set_switching_frequency(s.Fs);
@@ -693,7 +693,7 @@ namespace {
         buck.set_efficiency(0.92);
         buck.set_current_ripple_ratio(0.3);
 
-        BaseOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({Vout});
         op.set_output_currents({Iout});
         op.set_switching_frequency(250e3);

@@ -134,7 +134,7 @@ public:
     Clllc(const json& j);
     Clllc() {}
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::CLLLC_RESONANT_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::CLLLC_RESONANT_CONVERTER; }
 
     // Tuning ─────────────────────────────────────────────────
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }

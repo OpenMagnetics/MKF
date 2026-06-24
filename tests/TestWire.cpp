@@ -28,7 +28,7 @@ namespace {
 
     OpenMagnetics::Inputs setup_inputs(double frequency) {
 
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(label);
         processed.set_offset(offset);
         processed.set_peak_to_peak(peakToPeak);
@@ -404,7 +404,7 @@ namespace {
 
     TEST_CASE("Test_Effective_Current_Density_Medium_Frequency_Round_Operation_Point", "[constructive-model][wire][smoke-test]") {
         double frequency = 100000;
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(label);
         processed.set_offset(offset);
         processed.set_peak_to_peak(peakToPeak);
@@ -489,7 +489,7 @@ namespace {
     TEST_CASE("Test_Conducting_Area_Large_Rectangular_2", "[constructive-model][wire][smoke-test]") {
         double frequency = 10;
 
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(label);
         processed.set_offset(offset);
         processed.set_peak_to_peak(peakToPeak);

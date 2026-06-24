@@ -35,7 +35,7 @@ namespace OpenMagnetics {
         isolationSides.push_back(IsolationSide::SECONDARY);
 
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::CURRENT_TRANSFORMER);
+        designRequirements.set_topology(MAS::Topology::CURRENT_TRANSFORMER);
         return designRequirements;
     }
 

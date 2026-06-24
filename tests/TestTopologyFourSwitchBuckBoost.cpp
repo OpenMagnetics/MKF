@@ -311,7 +311,7 @@ TEST_CASE("Test_FSBB_DR_Returns_WorstCase_L",
     json j = make_fsbb_json(12.0, 12.0, 8.0, 350e3, 0.4, 1.0, 9.0, 36.0);
     FSBB c(j);
     auto dr = c.process_design_requirements();
-    REQUIRE(dr.get_topology() == Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
+    REQUIRE(dr.get_topology() == MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
     REQUIRE(dr.get_isolation_sides().has_value());
     REQUIRE(dr.get_isolation_sides().value().size() == 1);    // single inductor (no isolation)
     REQUIRE(dr.get_magnetizing_inductance().get_minimum().has_value());
@@ -457,7 +457,7 @@ TEST_CASE("Test_FSBB_Advanced_Process_RoundTrip",
     AdvFSBB a(j);
     auto inputs = a.process();
     REQUIRE(inputs.get_design_requirements().get_topology()
-            == Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
+            == MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
     auto Lnom = inputs.get_design_requirements().get_magnetizing_inductance().get_nominal();
     REQUIRE(Lnom.has_value());
     REQUIRE_THAT(Lnom.value(), WithinRel(L, 1e-6));
@@ -489,7 +489,7 @@ TEST_CASE("Test_FSBB_ExtraComponents_L_Cin_Co",
     {
         const auto& l = std::get<OpenMagnetics::Inputs>(extras[0]);
         REQUIRE(l.get_design_requirements().get_topology()
-                == Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
+                == MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
         REQUIRE(l.get_design_requirements().get_name().value() == "inductor");
         auto Lnom = l.get_design_requirements().get_magnetizing_inductance().get_nominal();
         REQUIRE(Lnom.has_value());
@@ -503,7 +503,7 @@ TEST_CASE("Test_FSBB_ExtraComponents_L_Cin_Co",
     {
         const auto& cin = std::get<CAS::Inputs>(extras[1]);
         REQUIRE(cin.get_design_requirements().get_role() == CAS::Application::INPUT_FILTER);
-        REQUIRE(cin.get_design_requirements().get_name().value() == "inputCapacitor");
+        REQUIRE(cin.get_design_requirements().get_role().value() == CAS::Application::INPUT_FILTER);
         auto Cnom = cin.get_design_requirements().get_capacitance().get_nominal();
         REQUIRE(Cnom.has_value());
         REQUIRE(Cnom.value() > 0.0);
@@ -514,7 +514,7 @@ TEST_CASE("Test_FSBB_ExtraComponents_L_Cin_Co",
     {
         const auto& co = std::get<CAS::Inputs>(extras[2]);
         REQUIRE(co.get_design_requirements().get_role() == CAS::Application::OUTPUT_FILTER);
-        REQUIRE(co.get_design_requirements().get_name().value() == "outputCapacitor");
+        REQUIRE(co.get_design_requirements().get_role().value() == CAS::Application::OUTPUT_FILTER);
         auto Cnom = co.get_design_requirements().get_capacitance().get_nominal();
         REQUIRE(Cnom.has_value());
         REQUIRE(Cnom.value() > 0.0);

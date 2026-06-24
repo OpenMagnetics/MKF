@@ -392,7 +392,7 @@ namespace OpenMagnetics {
         // Tag the topology so downstream advisers (CoreAdviser, MagneticFilter,
         // CoilAdviser) can distinguish PFC from generic boost/buck inductors and
         // apply the correct routing — same as CMC/DMC.
-        designRequirements.set_topology(Topologies::POWER_FACTOR_CORRECTION);
+        designRequirements.set_topology(MAS::Topology::POWER_FACTOR_CORRECTION);
 
         // Calculate required inductance based on mode
         std::string mode = get_mode_string();
@@ -851,7 +851,7 @@ namespace OpenMagnetics {
 
         // No try/catch swallow: if harmonics extraction fails, propagate the
         // exception so callers see the real problem rather than a silently-
-        // analytical-only Processed.
+        // analytical-only ProcessedWaveform.
         auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
         current.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency));
         auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true);

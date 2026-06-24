@@ -188,7 +188,7 @@ namespace {
         
         // For Isolated Buck-Boost: output_voltages[0] = primary buck-boost output,
         // output_voltages[1] = transformer secondary output.
-        IsolatedBuckBoostOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({6.0, 5.0});
         opPoint.set_output_currents({0.5, 1.0});
         opPoint.set_switching_frequency(200000.0);
@@ -310,7 +310,7 @@ namespace {
         isolatedBuckBoost.set_efficiency(0.9);
         isolatedBuckBoost.set_current_ripple_ratio(0.3);
 
-        IsolatedBuckBoostOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({6.0, 5.0}); op.set_output_currents({0.5, 1.0});
         op.set_switching_frequency(200e3); op.set_ambient_temperature(25.0);
         isolatedBuckBoost.set_operating_points({op});
@@ -370,7 +370,7 @@ namespace {
         ibb.set_efficiency(0.9);
         ibb.set_current_ripple_ratio(0.3);
 
-        IsolatedBuckBoostOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({Vpri, Vsec});
         op.set_output_currents({Ipri, Isec});
         op.set_switching_frequency(200000.0);
@@ -465,7 +465,7 @@ namespace {
         ibb.set_efficiency(1.0);            // lossless analytical reference
         ibb.set_current_ripple_ratio(0.3);
 
-        IsolatedBuckBoostOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({s.Vout, s.Vout / s.n});  // primary + isolated bias
         op.set_output_currents({s.Iout, s.Iout2});
         op.set_switching_frequency(s.Fs);
@@ -478,7 +478,7 @@ namespace {
         auto ibb = build_ibb_from_spec(s);
 
         // Anchor diagnostics at the nominal Vin operating point.
-        IsolatedBuckBoostOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({s.Vout, s.Vout / s.n});
         op.set_output_currents({s.Iout, s.Iout2});
         op.set_switching_frequency(s.Fs);

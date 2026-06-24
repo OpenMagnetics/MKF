@@ -285,7 +285,7 @@ TEST_CASE("CLLLC: process_design_requirements derives expected design values",
     CHECK_THAT(fm_rev, WithinRel(fm_fwd, 1e-9));
 
     // DesignRequirements.topology must carry the CLLLC enum.
-    CHECK(dr.get_topology() == MAS::Topologies::CLLLC_RESONANT_CONVERTER);
+    CHECK(dr.get_topology() == MAS::Topology::CLLLC_RESONANT_CONVERTER);
     REQUIRE(dr.get_magnetizing_inductance().get_nominal().has_value());
     CHECK_THAT(dr.get_magnetizing_inductance().get_nominal().value(),
                WithinRel(Lm, 1e-12));

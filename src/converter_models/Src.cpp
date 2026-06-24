@@ -14,7 +14,7 @@
 //
 // REFERENCES
 //   [1] R. L. Steigerwald, "A Comparison of Half-Bridge Resonant Converter
-//       Topologies", IEEE TPEL 1988.
+//       Topology", IEEE TPEL 1988.
 //   [2] M. K. Kazimierczuk, "Resonant Power Converters", Wiley 2nd ed., Ch.4.
 //   [3] src/converter_models/SRC_PLAN.md (Phase 2 scope).
 // =====================================================================
@@ -244,7 +244,7 @@ DesignRequirements Src::process_design_requirements() {
             isolationSides.push_back(get_isolation_side_from_index(i + 1));
     }
     designRequirements.set_isolation_sides(isolationSides);
-    designRequirements.set_topology(Topologies::SERIES_RESONANT_CONVERTER);
+    designRequirements.set_topology(MAS::Topology::SERIES_RESONANT_CONVERTER);
 
     return designRequirements;
 }
@@ -1315,7 +1315,6 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Src::get_extra_components_inputs(
                 peakVc = std::max(peakVc, std::abs(v));
         dr.set_rated_voltage(peakVc * 1.2);
         dr.set_role(CAS::Application::RESONANT);
-        dr.set_name("resonantCapacitor");
         casInputs.set_design_requirements(dr);
 
         std::vector<CAS::TwoTerminalOperatingPoint> casOps;
@@ -1355,7 +1354,7 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Src::get_extra_components_inputs(
         inductance.set_nominal(Lr_external);
         dr.set_magnetizing_inductance(inductance);
         dr.set_name("seriesInductor");
-        dr.set_topology(Topologies::SERIES_RESONANT_CONVERTER);
+        dr.set_topology(MAS::Topology::SERIES_RESONANT_CONVERTER);
         dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
         dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
         masInputs.set_design_requirements(dr);
@@ -1396,7 +1395,7 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Src::get_extra_components_inputs(
             loInd.set_nominal(Lo_design);
             drLo.set_magnetizing_inductance(loInd);
             drLo.set_name(std::string("outputInductor") + (loIdx == 0 ? "1" : "2"));
-            drLo.set_topology(Topologies::SERIES_RESONANT_CONVERTER);
+            drLo.set_topology(MAS::Topology::SERIES_RESONANT_CONVERTER);
             drLo.set_turns_ratios(std::vector<DimensionWithTolerance>{});
             drLo.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::SECONDARY});
             loInputs.set_design_requirements(drLo);

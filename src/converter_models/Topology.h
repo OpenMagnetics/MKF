@@ -121,7 +121,7 @@ enum class ExtraComponentsMode {
  *   non-bridge topologies; selectable for bridge topologies when device-level
  *   fidelity matters (PtP reference designs, switching-loss validation).
  *
- * Topologies expose this via `Topology::set_bridge_simulation_mode()`. The
+ * Topology expose this via `Topology::set_bridge_simulation_mode()`. The
  * default for bridge topologies is BEHAVIORAL_PULSE (fast); non-bridge
  * topologies always use VOLTAGE_CONTROLLED_SWITCH and throw if PULSE is set
  * on them — there is no physically-valid PULSE replacement for a series
@@ -176,7 +176,7 @@ struct SpiceSimulationConfig {
     // zero leakage inductance, not the ideal-coupling K=1 model). For
     // ideal-K=1 paths, `snubR` can be very large (no Lk → no spike to
     // damp) so the snubber doesn't draw DC bias; with real leakage, the
-    // turn-off Lk·di/dt spike needs a much smaller R to clamp. Topologies
+    // turn-off Lk·di/dt spike needs a much smaller R to clamp. Topology
     // that distinguish the two paths (e.g. Flyback) read `snubRReal` when
     // generating the real-magnetic netlist; std::nullopt ⇒ caller falls
     // back to `snubR` via .value_or(snubR).
@@ -277,16 +277,16 @@ inline double require_input(const std::optional<double>& value,
  * @brief Central registry of per-topology default `SpiceSimulationConfig`s.
  *
  * Every concrete topology that emits ngspice netlists must have an entry
- * here. The registry is keyed by `MAS::Topologies` so the compiler
+ * here. The registry is keyed by `MAS::Topology` so the compiler
  * catches typos.
  */
-const std::map<MAS::Topologies, SpiceSimulationConfig>& spice_simulation_defaults();
+const std::map<MAS::Topology, SpiceSimulationConfig>& spice_simulation_defaults();
 
 /**
  * @brief Look up the default SpiceSimulationConfig for a given topology.
  *        Throws if the topology is not registered (no silent fallback).
  */
-SpiceSimulationConfig get_default_spice_config(MAS::Topologies t);
+SpiceSimulationConfig get_default_spice_config(MAS::Topology t);
 
 class Topology {
 public:
@@ -310,7 +310,7 @@ public:
      *        currently don't generate SPICE; those will throw if their
      *        `spice_config()` is called.
      */
-    virtual MAS::Topologies topology_kind() const {
+    virtual MAS::Topology topology_kind() const {
         throw std::logic_error(
             "topology_kind() not overridden — this topology does not "
             "support ngspice circuit generation");

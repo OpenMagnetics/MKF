@@ -959,7 +959,7 @@ to remove Vienna from the "in progress" list.
   Reference Design* (DS50002952B)
 - **Microchip Vienna 3-Phase PFC Reference Design**
 - **Vincotech 2016** — *Benchmark of High-Efficient 3-Level PFC
-  Topologies*
+  MAS::Topology*
 - **Avnet** — *Designing Vienna Rectifiers for EV Chargers*
 - **MDPI Electronics 14(5):936 (2025)** — *Review of Neutral-Point
   Voltage Balancing in Three-Level Converters*

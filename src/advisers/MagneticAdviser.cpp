@@ -58,11 +58,11 @@ bool MagneticAdviser::get_unique_core_shapes() {
     return _uniqueCoreShapes;
 }
 
-void MagneticAdviser::set_application(Application value) {
+void MagneticAdviser::set_application(MAS::MagneticApplication value) {
     _application = value;
 }
 
-Application MagneticAdviser::get_application() {
+MAS::MagneticApplication MagneticAdviser::get_application() {
     return _application;
 }
 
@@ -344,7 +344,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     {
         auto reqAppOpt = inputs.get_design_requirements().get_application();
         // DesignRequirements.application is now a plain string (PEAS-sourced schema).
-        if (reqAppOpt.has_value() && _application == Application::POWER) {
+        if (reqAppOpt.has_value() && _application == MAS::MagneticApplication::POWER) {
             set_application(magnetic_application_from_string(reqAppOpt.value()));
             if (reqAppOpt.value() == "interferenceSuppression" &&
                 _coreAdviserMode == CoreAdviser::CoreAdviserModes::STANDARD_CORES) {
@@ -421,7 +421,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         clear_loaded_core_shapes();
     }
 
-    if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
+    if (get_application() == MAS::MagneticApplication::INTERFERENCE_SUPPRESSION) {
         settings.set_use_toroidal_cores(true);
         settings.set_use_only_cores_in_stock(false);
         settings.set_use_concentric_cores(false);

@@ -64,7 +64,7 @@ namespace OpenMagnetics {
         // routes inductor- vs transformer-style B calculation off this field.
         designRequirements.set_application(std::string("interferenceSuppression"));
         designRequirements.set_sub_application(SubApplication::DIFFERENTIAL_MODE_NOISE_FILTERING);
-        designRequirements.set_topology(Topologies::DIFFERENTIAL_MODE_CHOKE);
+        designRequirements.set_topology(MAS::Topology::DIFFERENTIAL_MODE_CHOKE);
 
         // Filter-application advisers (MagneticFilter) use minimumImpedance as
         // the primary search criterion: they sweep turn counts on each candidate
@@ -336,7 +336,7 @@ namespace OpenMagnetics {
         // inherit Topology (only MAS::DifferentialModeChoke) so we use
         // the free-function lookup. Shares the CMC entry; behaviour-
         // preserving (matches the file's historical .options line).
-        const auto cfg = get_default_spice_config(MAS::Topologies::DIFFERENTIAL_MODE_CHOKE);
+        const auto cfg = get_default_spice_config(MAS::Topology::DIFFERENTIAL_MODE_CHOKE);
 
         // ============================================================
         // LC Low-Pass Filter Test Circuit

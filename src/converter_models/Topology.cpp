@@ -22,10 +22,10 @@ namespace OpenMagnetics {
     // Adding a new topology: insert a new entry below and override
     // `Topology::topology_kind()` in the concrete class.
     // ----------------------------------------------------------------
-    const std::map<MAS::Topologies, SpiceSimulationConfig>&
+    const std::map<MAS::Topology, SpiceSimulationConfig>&
     spice_simulation_defaults() {
-        static const std::map<MAS::Topologies, SpiceSimulationConfig> defaults = [] {
-            std::map<MAS::Topologies, SpiceSimulationConfig> m;
+        static const std::map<MAS::Topology, SpiceSimulationConfig> defaults = [] {
+            std::map<MAS::Topology, SpiceSimulationConfig> m;
 
             // Boost — single-switch hard-switched, Fs 200 kHz – 2.2 MHz
             // (driven by reference-design EVMs TPS61089EVM-742,
@@ -51,7 +51,7 @@ namespace OpenMagnetics {
                 SpiceSimulationConfig boost;
                 boost.snubR = 1e4;         boost.snubC = 100e-12;
                 boost.outputCapacitance = 100e-6;
-                m[MAS::Topologies::BOOST_CONVERTER] = boost;
+                m[MAS::Topology::BOOST_CONVERTER] = boost;
             }
 
             // Dab — dual active bridge, 8 switches in two H-bridges +
@@ -73,7 +73,7 @@ namespace OpenMagnetics {
                 dab.vnTol = 1e-4;
                 dab.itl1 = 500;            dab.itl4 = 500;
                 dab.method = "GEAR";       dab.trTol = 7.0;
-                m[MAS::Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER] = dab;
+                m[MAS::Topology::DUAL_ACTIVE_BRIDGE_CONVERTER] = dab;
             }
 
             // Buck — single-switch hard-switched, sync or asynchronous
@@ -85,7 +85,7 @@ namespace OpenMagnetics {
                 SpiceSimulationConfig buck;
                 buck.snubR = 100.0;        buck.snubC = 100e-12;
                 buck.outputCapacitance = 100e-6;
-                m[MAS::Topologies::BUCK_CONVERTER] = buck;
+                m[MAS::Topology::BUCK_CONVERTER] = buck;
             }
 
             // Flyback — single primary-switch isolated converter, energy
@@ -131,7 +131,7 @@ namespace OpenMagnetics {
                 flyback.snubRReal = 1e3;
                 flyback.outputCapacitance = 10e-6;
                 flyback.method = "GEAR";       flyback.trTol = 7.0;
-                m[MAS::Topologies::FLYBACK_CONVERTER] = flyback;
+                m[MAS::Topology::FLYBACK_CONVERTER] = flyback;
             }
 
             // PushPull — center-tapped primary, two low-side switches 180°
@@ -181,7 +181,7 @@ namespace OpenMagnetics {
                 pushPull.rectifierSnubR         = 100.0;   // Ω
                 pushPull.rectifierSnubC         = 1e-9;    // 1 nF
                 pushPull.floatingNodeProtection = 1e6;     // 1 MΩ
-                m[MAS::Topologies::PUSH_PULL_CONVERTER] = pushPull;
+                m[MAS::Topology::PUSH_PULL_CONVERTER] = pushPull;
             }
 
             // Cuk (V1 non-isolated, CCM) — fourth-order LC tank with hard
@@ -204,7 +204,7 @@ namespace OpenMagnetics {
                 cuk.itl1 = 500;            cuk.itl4 = 500;
                 cuk.method = "GEAR";       cuk.trTol = 7.0;
                 cuk.snubDampR = 0.001;   // 1 mΩ snubber-chain damper
-                m[MAS::Topologies::CUK_CONVERTER] = cuk;
+                m[MAS::Topology::CUK_CONVERTER] = cuk;
             }
 
             // SEPIC: same hard-switched, low-side-MOSFET shape as Cuk; Co
@@ -221,7 +221,7 @@ namespace OpenMagnetics {
                 sepic.itl1 = 500;            sepic.itl4 = 500;
                 sepic.method = "GEAR";       sepic.trTol = 7.0;
                 sepic.snubDampR = 0.001;   // 1 mΩ snubber-chain damper
-                m[MAS::Topologies::SEPIC_CONVERTER] = sepic;
+                m[MAS::Topology::SEPIC_CONVERTER] = sepic;
             }
 
             // Zeta: same hard-switched 4th-order shape as SEPIC/Cuk but with a
@@ -239,7 +239,7 @@ namespace OpenMagnetics {
                 zeta.itl1 = 500;             zeta.itl4 = 500;
                 zeta.method = "GEAR";        zeta.trTol = 7.0;
                 zeta.snubDampR = 0.001;   // 1 mΩ snubber-chain damper
-                m[MAS::Topologies::ZETA_CONVERTER] = zeta;
+                m[MAS::Topology::ZETA_CONVERTER] = zeta;
             }
 
             // Weinberg: isolated boost-derived topology with push-pull (V1) or
@@ -261,7 +261,7 @@ namespace OpenMagnetics {
                 weinberg.vnTol = 1e-4;
                 weinberg.itl1 = 500;            weinberg.itl4 = 500;
                 weinberg.method = "GEAR";       weinberg.trTol = 7.0;
-                m[MAS::Topologies::WEINBERG_CONVERTER] = weinberg;
+                m[MAS::Topology::WEINBERG_CONVERTER] = weinberg;
             }
 
             // ──────────────────────────────────────────────────────────────
@@ -316,7 +316,7 @@ namespace OpenMagnetics {
                 acf.relTol = 1e-3;               acf.absTol = 1e-9;
                 acf.vnTol = 1e-6;
                 acf.itl1 = 1000;                 acf.itl4 = 1000;
-                m[MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER]  = acf;
+                m[MAS::Topology::ACTIVE_CLAMP_FORWARD_CONVERTER]  = acf;
             }
 
             // SingleSwitchForward: relies on ngspice's SW-model defaults
@@ -334,7 +334,7 @@ namespace OpenMagnetics {
                 ssf.vnTol = 1e-6;
                 ssf.itl1 = 1000;                ssf.itl4 = 1000;
                 ssf.method = "GEAR";            ssf.trTol = 7.0;
-                m[MAS::Topologies::SINGLE_SWITCH_FORWARD_CONVERTER] = ssf;
+                m[MAS::Topology::SINGLE_SWITCH_FORWARD_CONVERTER] = ssf;
             }
 
             // TwoSwitchForward: explicit RON=0.1 Ω (higher than IB's 0.01)
@@ -350,7 +350,7 @@ namespace OpenMagnetics {
                 tsf.vnTol = 1e-6;
                 tsf.itl1 = 1000;                tsf.itl4 = 1000;
                 tsf.method = "GEAR";            tsf.trTol = 7.0;
-                m[MAS::Topologies::TWO_SWITCH_FORWARD_CONVERTER] = tsf;
+                m[MAS::Topology::TWO_SWITCH_FORWARD_CONVERTER] = tsf;
             }
 
             // Phase-shifted full bridge (PSFB) / half-bridge (PSHB):
@@ -376,11 +376,11 @@ namespace OpenMagnetics {
                 psfb.vnTol = 1e-4;
                 psfb.itl1 = 500;                psfb.itl4 = 500;
                 psfb.method = "GEAR";           psfb.trTol = 7.0;
-                m[MAS::Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER] = psfb;
+                m[MAS::Topology::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER] = psfb;
 
                 SpiceSimulationConfig pshb = psfb;     // start from PSFB
                 pshb.diodeExtra = "CJO=1n BV=1000 IBV=1e-12";
-                m[MAS::Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER] = pshb;
+                m[MAS::Topology::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER] = pshb;
             }
 
             // Vienna 3-φ rectifier: PFC-class line-frequency simulation
@@ -401,7 +401,7 @@ namespace OpenMagnetics {
                 vienna.vnTol = 1e-4;
                 vienna.itl1 = 500;              vienna.itl4 = 500;
                 vienna.method = "GEAR";         vienna.trTol = 7.0;
-                m[MAS::Topologies::VIENNA_RECTIFIER_CONVERTER] = vienna;
+                m[MAS::Topology::VIENNA_RECTIFIER_CONVERTER] = vienna;
             }
 
             // Asymmetric Half-Bridge (AHB): half-bridge primary driving a
@@ -430,7 +430,7 @@ namespace OpenMagnetics {
                 ahb.vnTol = 1e-4;
                 ahb.itl1 = 500;                 ahb.itl4 = 500;
                 ahb.method = "GEAR";            ahb.trTol = 7.0;
-                m[MAS::Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER] = ahb;
+                m[MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER] = ahb;
             }
 
             // CLLC resonant — primary L_r1 + C_r1 series tank, secondary
@@ -452,7 +452,7 @@ namespace OpenMagnetics {
                 cllc.vnTol = 1e-4;
                 cllc.itl1 = 500;                cllc.itl4 = 500;
                 cllc.method = "GEAR";           cllc.trTol = 7.0;
-                m[MAS::Topologies::CLLC_RESONANT_CONVERTER] = cllc;
+                m[MAS::Topology::CLLC_RESONANT_CONVERTER] = cllc;
             }
 
             // PFC (Power Factor Correction). Single-switch boost-PFC with
@@ -477,7 +477,7 @@ namespace OpenMagnetics {
                 pfc.vnTol = 1e-6;
                 pfc.itl1 = 500;                 pfc.itl4 = 200;
                 pfc.method = "GEAR";            pfc.trTol = 7.0;
-                m[MAS::Topologies::POWER_FACTOR_CORRECTION] = pfc;
+                m[MAS::Topology::POWER_FACTOR_CORRECTION] = pfc;
             }
 
             // Common-mode choke (CMC) and differential-mode choke (DMC):
@@ -494,8 +494,8 @@ namespace OpenMagnetics {
                 choke.vnTol = 1e-9;
                 // ITLs, method, trTol unused by these topologies (no
                 // .options second line emitted) — leave struct defaults.
-                m[MAS::Topologies::COMMON_MODE_CHOKE] = choke;
-                m[MAS::Topologies::DIFFERENTIAL_MODE_CHOKE] = choke;
+                m[MAS::Topology::COMMON_MODE_CHOKE] = choke;
+                m[MAS::Topology::DIFFERENTIAL_MODE_CHOKE] = choke;
             }
 
             // Isolated Buck (Fly-Buck class). Values matched to
@@ -514,7 +514,7 @@ namespace OpenMagnetics {
                 ib.vnTol = 1e-6;
                 ib.itl1 = 1000;                 ib.itl4 = 1000;
                 ib.method = "GEAR";             ib.trTol = 7.0;
-                m[MAS::Topologies::ISOLATED_BUCK_CONVERTER] = ib;
+                m[MAS::Topology::ISOLATED_BUCK_CONVERTER] = ib;
             }
 
             // SRC (Series-Resonant Converter) — series-only L_r + C_r tank
@@ -536,7 +536,7 @@ namespace OpenMagnetics {
                 src.vnTol = 1e-4;
                 src.itl1 = 500;                 src.itl4 = 500;
                 src.method = "GEAR";            src.trTol = 7.0;
-                m[MAS::Topologies::SERIES_RESONANT_CONVERTER] = src;
+                m[MAS::Topology::SERIES_RESONANT_CONVERTER] = src;
             }
 
             // LLC resonant — series-resonant L_r + C_r in series with
@@ -558,7 +558,7 @@ namespace OpenMagnetics {
                 llc.vnTol = 1e-4;
                 llc.itl1 = 500;                 llc.itl4 = 500;
                 llc.method = "GEAR";            llc.trTol = 7.0;
-                m[MAS::Topologies::LLC_RESONANT_CONVERTER] = llc;
+                m[MAS::Topology::LLC_RESONANT_CONVERTER] = llc;
             }
 
             // CLLLC resonant — like CLLC but with an extra resonant
@@ -576,7 +576,7 @@ namespace OpenMagnetics {
                 clllc.vnTol = 1e-4;
                 clllc.itl1 = 500;               clllc.itl4 = 500;
                 clllc.method = "GEAR";          clllc.trTol = 7.0;
-                m[MAS::Topologies::CLLLC_RESONANT_CONVERTER] = clllc;
+                m[MAS::Topology::CLLLC_RESONANT_CONVERTER] = clllc;
             }
 
             // IsolatedBuckBoost: isolated single-switch step-up/-down,
@@ -602,7 +602,7 @@ namespace OpenMagnetics {
                 ibb.vnTol = 1e-6;
                 ibb.itl1 = 1000;                ibb.itl4 = 1000;
                 ibb.method = "GEAR";            ibb.trTol = 7.0;
-                m[MAS::Topologies::ISOLATED_BUCK_BOOST_CONVERTER] = ibb;
+                m[MAS::Topology::ISOLATED_BUCK_BOOST_CONVERTER] = ibb;
             }
 
             // 4-Switch Buck-Boost (FSBB): non-inverting H-bridge buck-boost with
@@ -622,7 +622,7 @@ namespace OpenMagnetics {
                 fsbb.vnTol = 1e-4;
                 fsbb.itl1 = 500;                 fsbb.itl4 = 500;
                 fsbb.method = "GEAR";            fsbb.trTol = 7.0;
-                m[MAS::Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER] = fsbb;
+                m[MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER] = fsbb;
             }
 
             return m;
@@ -630,7 +630,7 @@ namespace OpenMagnetics {
         return defaults;
     }
 
-    SpiceSimulationConfig get_default_spice_config(MAS::Topologies t) {
+    SpiceSimulationConfig get_default_spice_config(MAS::Topology t) {
         const auto& m = spice_simulation_defaults();
         auto it = m.find(t);
         if (it == m.end()) {

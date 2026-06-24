@@ -8762,7 +8762,7 @@ std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
     // also take repetitions={1} (matches turnsRatios.size()==0 fallback
     // below, but make the intent explicit).
     if (inputs.get_design_requirements().get_topology() &&
-        inputs.get_design_requirements().get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE) {
+        inputs.get_design_requirements().get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE) {
         return {1};
     }
     // CMCs on toroids need bifilar winding for common-mode rejection

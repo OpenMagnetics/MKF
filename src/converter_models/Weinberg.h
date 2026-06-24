@@ -216,7 +216,7 @@ public:
     Weinberg(const json& j);
     Weinberg() {};
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::WEINBERG_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::WEINBERG_CONVERTER; }
     bool is_bridge_topology() const override { return true; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }

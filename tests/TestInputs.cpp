@@ -1492,7 +1492,7 @@ TEST_CASE("Test_Try_Guess_Sinusoidal", "[processor][inputs][smoke-test]") {
     double frequency = 100000;
     auto label = WaveformLabel::SINUSOIDAL;
 
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_peak_to_peak(peakToPeak);
     processed.set_duty_cycle(dutyCycle);
     processed.set_offset(offset);
@@ -1518,7 +1518,7 @@ TEST_CASE("Test_Try_Guess_Triangular", "[processor][inputs][smoke-test]") {
     double frequency = 100000;
     auto label = WaveformLabel::TRIANGULAR;
 
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_peak_to_peak(peakToPeak);
     processed.set_duty_cycle(dutyCycle);
     processed.set_offset(offset);
@@ -1544,7 +1544,7 @@ TEST_CASE("Test_Try_Guess_Unipolar_Triangular", "[processor][inputs][smoke-test]
     double frequency = 100000;
     auto label = WaveformLabel::UNIPOLAR_TRIANGULAR;
 
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_peak_to_peak(peakToPeak);
     processed.set_duty_cycle(dutyCycle);
     processed.set_offset(offset);
@@ -1572,7 +1572,7 @@ TEST_CASE("Test_Try_Guess_Unipolar_Rectangular", "[processor][inputs][smoke-test
     double frequency = 100000;
     auto label = WaveformLabel::UNIPOLAR_RECTANGULAR;
 
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_peak_to_peak(peakToPeak);
     processed.set_duty_cycle(dutyCycle);
     processed.set_offset(offset);
@@ -1600,7 +1600,7 @@ TEST_CASE("Test_Try_Guess_Rectangular", "[processor][inputs][smoke-test]") {
     double frequency = 100000;
     auto label = WaveformLabel::RECTANGULAR;
 
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_peak_to_peak(peakToPeak);
     processed.set_duty_cycle(dutyCycle);
     processed.set_offset(offset);
@@ -1627,7 +1627,7 @@ TEST_CASE("Test_Try_Guess_Bipolar_Rectangular", "[processor][inputs][smoke-test]
     double frequency = 100000;
     auto label = WaveformLabel::BIPOLAR_RECTANGULAR;
 
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_peak_to_peak(peakToPeak);
     processed.set_duty_cycle(dutyCycle);
     processed.set_offset(offset);
@@ -1654,7 +1654,7 @@ TEST_CASE("Test_Try_Guess_Bipolar_Triangular", "[processor][inputs][smoke-test]"
     double frequency = 100000;
     auto label = WaveformLabel::BIPOLAR_TRIANGULAR;
 
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_peak_to_peak(peakToPeak);
     processed.set_duty_cycle(dutyCycle);
     processed.set_offset(offset);
@@ -1681,7 +1681,7 @@ TEST_CASE("Test_Try_Guess_Flyback_Primary", "[processor][inputs][smoke-test]") {
     double frequency = 100000;
     auto label = WaveformLabel::FLYBACK_PRIMARY;
 
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_peak_to_peak(peakToPeak);
     processed.set_duty_cycle(dutyCycle);
     processed.set_offset(offset);
@@ -1706,7 +1706,7 @@ TEST_CASE("Test_Try_Guess_Flyback_Secondary", "[processor][inputs][smoke-test]")
     double frequency = 100000;
     auto label = WaveformLabel::FLYBACK_SECONDARY;
 
-    Processed processed;
+    ProcessedWaveform processed;
     processed.set_peak_to_peak(peakToPeak);
     processed.set_duty_cycle(dutyCycle);
     processed.set_offset(offset);

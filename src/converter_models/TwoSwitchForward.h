@@ -67,7 +67,7 @@ public:
     TwoSwitchForward() {
     };
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::TWO_SWITCH_FORWARD_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::TWO_SWITCH_FORWARD_CONVERTER; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
@@ -80,9 +80,9 @@ public:
     DesignRequirements process_design_requirements() override;
     std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
-    double get_total_reflected_secondary_current(const ForwardOperatingPoint& forwardOperatingPoint, const std::vector<double>& turnsRatios, double rippleRatio=1);
+    double get_total_reflected_secondary_current(const TopologyExcitation& forwardOperatingPoint, const std::vector<double>& turnsRatios, double rippleRatio=1);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const ForwardOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double mainOutputInductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const TopologyExcitation& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double mainOutputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio, size_t outputIndex);
     double get_maximum_duty_cycle();
 
@@ -163,7 +163,7 @@ inline void from_json(const json & j, AdvancedTwoSwitchForward& x) {
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_switch_current(get_stack_optional<double>(j, "maximumSwitchCurrent"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<ForwardOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<TopologyExcitation>>());
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
     x.set_desired_output_inductances(get_stack_optional<std::vector<double>>(j, "desiredOutputInductance"));

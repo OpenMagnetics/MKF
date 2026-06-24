@@ -185,7 +185,7 @@ public:
     Sepic(const json& j);
     Sepic() {};
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::SEPIC_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::SEPIC_CONVERTER; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }

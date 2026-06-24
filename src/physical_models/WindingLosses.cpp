@@ -40,8 +40,8 @@ double WindingLosses::get_total_winding_losses(std::vector<WindingLossesPerEleme
 WindingLossesPerElement combine_turn_losses_per_element(std::vector<WindingLossesPerElement> windingLossesPerTurn, std::vector<size_t> turnIndexesToCombine) {
     WindingLossesPerElement windingLossesThisElement;
     OhmicLosses ohmicLossesThisElement;
-    WindingLossElement skinEffectLossesThisElement;
-    WindingLossElement proximityEffectLossesThisElement;
+    LossElementPerHarmonic skinEffectLossesThisElement;
+    LossElementPerHarmonic proximityEffectLossesThisElement;
 
     for (auto turnIndex : turnIndexesToCombine) {
         auto windingLossesThisTurn = windingLossesPerTurn[turnIndex];
@@ -98,8 +98,8 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
     for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex)
     {
         OhmicLosses ohmicLossesThisLayer;
-        WindingLossElement skinEffectLossesThisLayer;
-        WindingLossElement proximityEffectLossesThisLayer;
+        LossElementPerHarmonic skinEffectLossesThisLayer;
+        LossElementPerHarmonic proximityEffectLossesThisLayer;
 
         auto layer = layers[layerIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_layer(layer.get_name());
@@ -114,8 +114,8 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
     for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
     {
         OhmicLosses ohmicLossesThisSection;
-        WindingLossElement skinEffectLossesThisSection;
-        WindingLossElement proximityEffectLossesThisSection;
+        LossElementPerHarmonic skinEffectLossesThisSection;
+        LossElementPerHarmonic proximityEffectLossesThisSection;
 
         auto section = sections[sectionIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_section(section.get_name());
@@ -128,8 +128,8 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
     std::vector<WindingLossesPerElement> windingLossesPerWinding;
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         OhmicLosses ohmicLossesThisWinding;
-        WindingLossElement skinEffectLossesThisWinding;
-        WindingLossElement proximityEffectLossesThisWinding;
+        LossElementPerHarmonic skinEffectLossesThisWinding;
+        LossElementPerHarmonic proximityEffectLossesThisWinding;
 
         auto winding = coil.get_functional_description()[windingIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_winding(winding.get_name());

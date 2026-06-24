@@ -61,7 +61,7 @@ TEST_CASE("SRC: JSON parses and run_checks accepts a valid HB design", "[src-top
     Src src(j);
     REQUIRE(src.run_checks(/*assert*/false));
     REQUIRE(src.is_bridge_topology());
-    REQUIRE(src.topology_kind() == MAS::Topologies::SERIES_RESONANT_CONVERTER);
+    REQUIRE(src.topology_kind() == MAS::Topology::SERIES_RESONANT_CONVERTER);
     REQUIRE(src.get_bridge_voltage_factor() == 0.5);  // HB
 }
 
@@ -81,7 +81,7 @@ TEST_CASE("SRC: process_design_requirements derives turns ratio and tank", "[src
     auto j = make_src_json(400, 48, 10, 100e3, 100e3, /*Q*/2.0);
     Src src(j);
     auto dr = src.process_design_requirements();
-    REQUIRE(dr.get_topology() == Topologies::SERIES_RESONANT_CONVERTER);
+    REQUIRE(dr.get_topology() == MAS::Topology::SERIES_RESONANT_CONVERTER);
 
     REQUIRE(dr.get_turns_ratios().size() == 1);
     auto n = dr.get_turns_ratios()[0].get_nominal().value();
@@ -423,7 +423,7 @@ TEST_CASE("SRC: get_extra_components_inputs IDEAL returns Cr + Lr", "[src-topolo
     double Lr_emit = lrDr.get_magnetizing_inductance().get_nominal().value();
     REQUIRE_THAT(Lr_emit, WithinRel(src.get_computed_resonant_inductance(), 1e-9));
     REQUIRE(lrDr.get_topology().has_value());
-    REQUIRE(lrDr.get_topology().value() == Topologies::SERIES_RESONANT_CONVERTER);
+    REQUIRE(lrDr.get_topology().value() == MAS::Topology::SERIES_RESONANT_CONVERTER);
     REQUIRE(!lrInputs.get_operating_points().empty());
     {
         auto& exc = lrInputs.get_operating_points()[0].get_excitations_per_winding()[0];

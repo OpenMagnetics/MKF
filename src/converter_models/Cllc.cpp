@@ -307,7 +307,7 @@ double get_value_or(T&& val, double default_val) {
         designRequirements.set_isolation_sides(
             Topology::create_isolation_sides(1, false));
 
-        designRequirements.set_topology(Topologies::CLLC_RESONANT_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::CLLC_RESONANT_CONVERTER);
 
         return designRequirements;
     }
@@ -2570,7 +2570,6 @@ double get_value_or(T&& val, double default_val) {
             // reversal (matches Clllc convention).
             dr.set_rated_voltage(peakV * 1.5);
             dr.set_role(CAS::Application::RESONANT);
-            dr.set_name(name);
             casInputs.set_design_requirements(dr);
 
             std::vector<CAS::TwoTerminalOperatingPoint> casOps;
@@ -2625,7 +2624,7 @@ double get_value_or(T&& val, double default_val) {
             inductance.set_nominal(L);
             dr.set_magnetizing_inductance(inductance);
             dr.set_name(name);
-            dr.set_topology(Topologies::CLLC_RESONANT_CONVERTER);
+            dr.set_topology(MAS::Topology::CLLC_RESONANT_CONVERTER);
             dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
             dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
             masInputs.set_design_requirements(dr);
@@ -2710,7 +2709,7 @@ double get_value_or(T&& val, double default_val) {
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         designRequirements.set_isolation_sides(
             Topology::create_isolation_sides(1, false));
-        designRequirements.set_topology(Topologies::CLLC_RESONANT_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::CLLC_RESONANT_CONVERTER);
 
         inputs.set_design_requirements(designRequirements);
 

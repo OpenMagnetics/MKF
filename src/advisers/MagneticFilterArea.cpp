@@ -26,7 +26,7 @@ namespace OpenMagnetics {
 MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
     double frequencyReference = 100000;
     SignalDescriptor magneticFluxDensity;
-    Processed processed;
+    ProcessedWaveform processed;
     _operatingPointExcitation.set_frequency(frequencyReference);
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(0);

@@ -229,7 +229,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
 
         auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], modelOverride).second;
 
-        WindingLossElement skinEffectLosses;
+        LossElementPerHarmonic skinEffectLosses;
         auto model = get_model(coil.get_wire_type(windingIndex), modelOverride);
         skinEffectLosses.set_method_used(model->methodName);
         skinEffectLosses.set_origin(ResultOrigin::SIMULATION);

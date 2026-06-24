@@ -128,7 +128,7 @@ class CoreAdviser {
         std::map<CoreAdviserFilters, double> _weights;
         MagneticSimulator _magneticSimulator;
         WindingOhmicLosses _windingOhmicLosses;
-        Application _application = Application::POWER;
+        MAS::MagneticApplication _application = MAS::MagneticApplication::POWER;
         CoreAdviserModes _mode = CoreAdviserModes::STANDARD_CORES;
 
 
@@ -177,8 +177,8 @@ class CoreAdviser {
 
         void set_unique_core_shapes(bool value);
         bool get_unique_core_shapes();
-        void set_application(Application value);
-        Application get_application();
+        void set_application(MAS::MagneticApplication value);
+        MAS::MagneticApplication get_application();
         void set_mode(CoreAdviserModes value);
         CoreAdviserModes get_mode();
         void set_weights(std::map<CoreAdviserFilters, double> weights);

@@ -86,7 +86,7 @@ namespace {
         inputs.process();
 
         MagneticAdviser magneticAdviser;
-        magneticAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+        magneticAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
         magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 1);
         REQUIRE(masMagnetics.size() > 0);
@@ -181,7 +181,7 @@ namespace {
         inputs.process();
 
         MagneticAdviser magneticAdviser;
-        magneticAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+        magneticAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
         magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 1);
         REQUIRE(masMagnetics.size() > 0);
@@ -1373,7 +1373,7 @@ namespace {
 
         OpenMagnetics::CoreAdviser coreAdviser;
         coreAdviser.set_mode(OpenMagnetics::CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
-        coreAdviser.set_application(Application::INTERFERENCE_SUPPRESSION);
+        coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
 
         auto masMagnetics = coreAdviser.get_advised_core(inputs, &dmcCores, 2);
 
@@ -3343,7 +3343,7 @@ namespace {
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         
         // Set topology
-        inputs.get_mutable_design_requirements().set_topology(MAS::Topologies::FLYBACK_CONVERTER);
+        inputs.get_mutable_design_requirements().set_topology(MAS::Topology::FLYBACK_CONVERTER);
         
         // Configure to use EE30 core with N87 material if available
         // First, let's see what the adviser comes up with without restrictions
@@ -4175,7 +4175,7 @@ TEST_CASE("Test_MagneticAdviser_WebFrontend_Defaults", "[adviser][magnetic-advis
     // Create magnetic adviser with "standard cores" mode (from web frontend)
     OpenMagnetics::MagneticAdviser magneticAdviser;
     magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
-    magneticAdviser.set_application(MAS::Application::POWER);
+    magneticAdviser.set_application(MAS::MagneticApplication::POWER);
     
     
     try {
@@ -5631,7 +5631,7 @@ TEST_CASE("Test_MagneticAdviser_Flyback_Bug", "[adviser][magnetic-adviser][flyba
     auto topologyOpt = inputs.get_design_requirements().get_topology();
     if (topologyOpt.has_value()) {
         auto topology = topologyOpt.value();
-        if (topology == MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER) {
+        if (topology == MAS::Topology::ACTIVE_CLAMP_FORWARD_CONVERTER) {
         }
     } else {
     }
@@ -5718,7 +5718,7 @@ TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug
     // Now test these specific cores through CoreAdviser
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
-    coreAdviser.set_application(MAS::Application::POWER);
+    coreAdviser.set_application(MAS::MagneticApplication::POWER);
     
     auto results = coreAdviser.get_advised_core(inputs, &shapes, 10);
     

@@ -292,7 +292,7 @@ OpenMagnetics::Magnetic get_quick_magnetic(std::string shapeName,
 
 OpenMagnetics::Inputs get_quick_insulation_inputs(DimensionWithTolerance altitude,
                                                          Cti cti,
-                                                         InsulationType insulationType,
+                                                         IsolationClass insulationType,
                                                          DimensionWithTolerance mainSupplyVoltage,
                                                          OvervoltageCategory overvoltageCategory,
                                                          PollutionDegree pollutionDegree,
@@ -307,7 +307,7 @@ OpenMagnetics::Inputs get_quick_insulation_inputs(DimensionWithTolerance altitud
     OperatingPoint operatingPoint;
     OperatingPointExcitation excitation;
     SignalDescriptor voltage;
-    Processed processedVoltage;
+    ProcessedWaveform processedVoltage;
 
     processedVoltage.set_rms(maximumVoltageRms);
     processedVoltage.set_peak(maximumVoltagePeak);
@@ -332,7 +332,7 @@ OpenMagnetics::Inputs get_quick_insulation_inputs(DimensionWithTolerance altitud
 
 InsulationRequirements get_quick_insulation_requirements(DimensionWithTolerance altitude,
                                                                         Cti cti,
-                                                                        InsulationType insulationType,
+                                                                        IsolationClass insulationType,
                                                                         DimensionWithTolerance mainSupplyVoltage,
                                                                         OvervoltageCategory overvoltageCategory,
                                                                         PollutionDegree pollutionDegree,

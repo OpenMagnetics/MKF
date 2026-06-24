@@ -134,7 +134,7 @@ public:
     const std::vector<double>&       get_per_op_secondary_peak_current()    const { return perOpSecondaryPeakCurrent; }
     const std::vector<bool>&         get_per_op_is_ccm()                    const { return perOpIsCcm; }
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::FLYBACK_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::FLYBACK_CONVERTER; }
 
 
     const std::vector<OpenMagnetics::FlybackOperatingPoint> & get_operating_points() const { return operatingPoints; }

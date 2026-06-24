@@ -65,7 +65,7 @@ class InsulationIEC60664Model : public InsulationStandard {
     double calculate_withstand_voltage(Inputs& inputs);
     double calculate_clearance(Inputs& inputs);
     double calculate_creepage_distance(Inputs& inputs, bool includeClearance = false);
-    double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage, InsulationType insulationType);
+    double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage, IsolationClass insulationType);
     double get_rated_insulation_voltage(double mainSupplyVoltage);
     double get_creepage_distance(PollutionDegree pollutionDegree, Cti cti, double voltageRms, WiringTechnology wiringType = WiringTechnology::WOUND);
     double get_creepage_distance_over_30kHz(double voltageRms, double frequency);
@@ -163,19 +163,19 @@ class InsulationIEC62368Model : public InsulationStandard {
     double get_working_voltage(Inputs& inputs);
     double get_working_voltage_rms(Inputs& inputs);
     double get_required_withstand_voltage(Inputs& inputs);
-    double get_voltage_due_to_transient_overvoltages(double requiredWithstandVoltage, InsulationType insulationType);
-    double get_voltage_due_to_recurring_peak_voltages(double workingVoltage, InsulationType insulationType);
-    double get_voltage_due_to_temporary_overvoltages(double supplyVoltageRms, InsulationType insulationType);
+    double get_voltage_due_to_transient_overvoltages(double requiredWithstandVoltage, IsolationClass insulationType);
+    double get_voltage_due_to_recurring_peak_voltages(double workingVoltage, IsolationClass insulationType);
+    double get_voltage_due_to_temporary_overvoltages(double supplyVoltageRms, IsolationClass insulationType);
     double get_reduction_factor_per_material(std::string material, double frequency);
-    double get_clearance_table_10(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree);
-    double get_clearance_table_11(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree);
-    double get_clearance_table_14(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree);
+    double get_clearance_table_10(double supplyVoltagePeak, IsolationClass insulationType, PollutionDegree pollutionDegree);
+    double get_clearance_table_11(double supplyVoltagePeak, IsolationClass insulationType, PollutionDegree pollutionDegree);
+    double get_clearance_table_14(double supplyVoltagePeak, IsolationClass insulationType, PollutionDegree pollutionDegree);
     double get_altitude_factor(double altitude);
-    double get_creepage_distance_table_17(double voltageRms, InsulationType insulationType, PollutionDegree pollutionDegree, Cti cti);
-    double get_creepage_distance_table_18(double voltageRms, double frequency, PollutionDegree pollutionDegree, InsulationType insulationType);
+    double get_creepage_distance_table_17(double voltageRms, IsolationClass insulationType, PollutionDegree pollutionDegree, Cti cti);
+    double get_creepage_distance_table_18(double voltageRms, double frequency, PollutionDegree pollutionDegree, IsolationClass insulationType);
     double get_voltage_due_to_temporary_overvoltages_procedure_1(double supplyVoltagePeak);
     double get_mains_transient_voltage(double supplyVoltagePeak, OvervoltageCategory overvoltageCategory);
-    double get_distance_table_G13(double workingVoltage, InsulationType insulationType);
+    double get_distance_table_G13(double workingVoltage, IsolationClass insulationType);
 
     double iec62368LowerFrequency = 30000;
     std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>> table10;
@@ -261,15 +261,15 @@ class InsulationIEC61558Model : public InsulationStandard {
     double calculate_withstand_voltage(Inputs& inputs);
     double calculate_clearance(Inputs& inputs);
     double calculate_creepage_distance(Inputs& inputs, bool includeClearance = false);
-    double get_withstand_voltage_table_14(OvervoltageCategory overvoltageCategory, InsulationType insulationType, double workingVoltage);
-    double get_clearance_table_20(OvervoltageCategory overvoltageCategory, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage);
-    double get_creepage_distance_table_21(Cti cti, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage);
-    double get_distance_through_insulation_table_22(InsulationType insulationType, double workingVoltage, bool usingThinLayers = true);
+    double get_withstand_voltage_table_14(OvervoltageCategory overvoltageCategory, IsolationClass insulationType, double workingVoltage);
+    double get_clearance_table_20(OvervoltageCategory overvoltageCategory, PollutionDegree pollutionDegree, IsolationClass insulationType, double workingVoltage);
+    double get_creepage_distance_table_21(Cti cti, PollutionDegree pollutionDegree, IsolationClass insulationType, double workingVoltage);
+    double get_distance_through_insulation_table_22(IsolationClass insulationType, double workingVoltage, bool usingThinLayers = true);
     double get_working_voltage_rms(Inputs& inputs);
     double get_working_voltage_peak(Inputs& inputs);
     double calculate_distance_through_insulation_over_30kHz(double workingVoltage);
-    double calculate_clearance_over_30kHz(InsulationType insulationType, double workingVoltage);
-    double calculate_creepage_distance_over_30kHz(InsulationType insulationType, PollutionDegree pollutionDegree, double frequency, double workingVoltage);
+    double calculate_clearance_over_30kHz(IsolationClass insulationType, double workingVoltage);
+    double calculate_creepage_distance_over_30kHz(IsolationClass insulationType, PollutionDegree pollutionDegree, double frequency, double workingVoltage);
     bool electric_field_strength_is_valid(double dti, double voltage);
 
     double iec61558MinimumWorkingVoltage = 25;
@@ -411,10 +411,10 @@ class InsulationIEC60335Model : public InsulationStandard {
     double calculate_clearance(Inputs& inputs);
     double calculate_creepage_distance(Inputs& inputs, bool includeClearance = false);
     double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage);
-    double get_clearance_table_16(PollutionDegree pollutionDegree, WiringTechnology wiringType, InsulationType insulationType, double ratedImpulseWithstandVoltage);
+    double get_clearance_table_16(PollutionDegree pollutionDegree, WiringTechnology wiringType, IsolationClass insulationType, double ratedImpulseWithstandVoltage);
     double get_distance_through_insulation_table_19(OvervoltageCategory overvoltageCategory, double ratedVoltage);
-    double get_withstand_voltage_table_7(InsulationType insulationType, double ratedVoltage);
-    double get_withstand_voltage_formula_table_7(InsulationType insulationType, double workingVoltage);
+    double get_withstand_voltage_table_7(IsolationClass insulationType, double ratedVoltage);
+    double get_withstand_voltage_formula_table_7(IsolationClass insulationType, double workingVoltage);
     double get_creepage_distance_table_17(Cti cti, PollutionDegree pollutionDegree, double workingVoltage);
     double get_creepage_distance_table_18(Cti cti, PollutionDegree pollutionDegree, double workingVoltage);
 
@@ -466,7 +466,7 @@ class InsulationCoordinator {
     double calculate_clearance(Inputs& inputs);
     double calculate_creepage_distance(Inputs& inputs, bool includeClearance = false);
     double calculate_distance_through_insulation(Inputs& inputs);
-    InsulationCoordinationOutput calculate_insulation_coordination(Inputs& inputs);
+    InsulationCoordination calculate_insulation_coordination(Inputs& inputs);
     std::optional<CoilSectionInterface> calculate_coil_section_interface_layers(Inputs& inputs, Wire leftWire, Wire rightWire, InsulationMaterial insulationMaterial);
     static bool can_fully_insulated_wire_be_used(Inputs& inputs);
     static std::vector<std::vector<WireSolidInsulationRequirements>> get_solid_insulation_requirements_for_wires(Inputs& inputs, std::vector<size_t> pattern, size_t repetitions);

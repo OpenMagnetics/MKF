@@ -217,8 +217,8 @@ public:
     FourSwitchBuckBoost(const json& j);
     FourSwitchBuckBoost() {}
 
-    MAS::Topologies topology_kind() const override {
-        return MAS::Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER;
+    MAS::Topology topology_kind() const override {
+        return MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER;
     }
     bool is_bridge_topology() const override { return true; }
 

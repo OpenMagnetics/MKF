@@ -359,7 +359,7 @@ OperatingPoint LeakageInductance::create_excitation_operating_point(Magnetic& ma
         // Mirror create_leakage_operating_point's amplitude convention exactly so that an
         // entry of 1.0 here equals that method's "unit source" (peak_to_peak=2, rms=1/sqrt2).
         double magnitude = std::abs(currentsRmsSigned[windingIndex]);
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_peak_to_peak(SINUSOIDAL_PEAK_TO_PEAK * magnitude);
         processed.set_duty_cycle(SINUSOIDAL_DUTY_CYCLE);
         processed.set_offset(SINUSOIDAL_OFFSET);
@@ -382,7 +382,7 @@ OperatingPoint LeakageInductance::create_excitation_operating_point(Magnetic& ma
 
 OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magnetic, size_t sourceIndex, size_t destinationIndex, double frequency) {
     // Create source excitation (1 A RMS sinusoidal)
-    Processed sourceProcessed;
+    ProcessedWaveform sourceProcessed;
     sourceProcessed.set_peak_to_peak(SINUSOIDAL_PEAK_TO_PEAK);
     sourceProcessed.set_duty_cycle(SINUSOIDAL_DUTY_CYCLE);
     sourceProcessed.set_offset(SINUSOIDAL_OFFSET);
@@ -397,7 +397,7 @@ OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magne
     sourceExcitation.set_current(sourceCurrent);
 
     // Create destination excitation with turns ratio
-    Processed destinationProcessed = sourceProcessed;
+    ProcessedWaveform destinationProcessed = sourceProcessed;
     double sourceDestinationTurnsRatio = double(magnetic.get_mutable_coil().get_number_turns(sourceIndex)) /
                                          magnetic.get_mutable_coil().get_number_turns(destinationIndex);
     destinationProcessed.set_peak_to_peak(SINUSOIDAL_PEAK_TO_PEAK * sourceDestinationTurnsRatio);
@@ -411,7 +411,7 @@ OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magne
     destinationExcitation.set_current(destinationCurrent);
 
     // Create rest excitation with negligible current
-    Processed restProcessed = sourceProcessed;
+    ProcessedWaveform restProcessed = sourceProcessed;
     restProcessed.set_peak_to_peak(NEGLIGIBLE_CURRENT);
     restProcessed.set_rms(NEGLIGIBLE_CURRENT);
     auto restWaveform = Inputs::create_waveform(restProcessed, frequency);

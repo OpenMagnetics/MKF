@@ -112,8 +112,8 @@ public:
     // they route inductor current rather than setting a bridge-midpoint
     // voltage. So `is_bridge_topology()` stays false (default).
 
-    MAS::Topologies topology_kind() const override {
-        return MAS::Topologies::VIENNA_RECTIFIER_CONVERTER;
+    MAS::Topology topology_kind() const override {
+        return MAS::Topology::VIENNA_RECTIFIER_CONVERTER;
     }
 
     // A 3-phase Vienna uses three identical, separately-wound per-phase boost

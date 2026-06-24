@@ -1100,7 +1100,7 @@ TEST_CASE("Buck converter simulation", "[ngspice-runner][buck-topology][smoke-te
     buck.set_efficiency(0.95);
     
     // Operating point: 5V @ 2A output, 100kHz
-    BaseOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({5.0});
     opPoint.set_output_currents({2.0});
     opPoint.set_switching_frequency(100e3);
@@ -1199,7 +1199,7 @@ TEST_CASE("Boost converter simulation", "[ngspice-runner][boost-topology][smoke-
     boost.set_efficiency(0.92);
     
     // Operating point: 24V @ 1A output, 100kHz
-    BaseOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({24.0});
     opPoint.set_output_currents({1.0});
     opPoint.set_switching_frequency(100e3);
@@ -2034,7 +2034,7 @@ TEST_CASE("SingleSwitchForward ideal waveforms CCM", "[ngspice-runner][forward-t
     forward.set_current_ripple_ratio(0.3);
     
     // Operating point: 12V @ 4A output, 100kHz
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({12.0});
     opPoint.set_output_currents({4.0});
     opPoint.set_switching_frequency(100e3);
@@ -2093,7 +2093,7 @@ TEST_CASE("SingleSwitchForward ngspice simulation CCM", "[ngspice-runner][forwar
     forward.set_efficiency(0.85);
     forward.set_current_ripple_ratio(0.3);
     
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({12.0});
     opPoint.set_output_currents({4.0});
     opPoint.set_switching_frequency(100e3);
@@ -2190,7 +2190,7 @@ TEST_CASE("SingleSwitchForward topology waveforms", "[ngspice-runner][forward-to
     forward.set_efficiency(0.85);
     forward.set_current_ripple_ratio(0.3);
     
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({12.0});
     opPoint.set_output_currents({4.0});
     opPoint.set_switching_frequency(100e3);
@@ -2263,7 +2263,7 @@ TEST_CASE("PushPull ideal waveforms CCM", "[ngspice-runner][push-pull-topology][
     pushpull.set_current_ripple_ratio(0.3);
     
     // Operating point: 48V @ 2A output, 100kHz
-    PushPullOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({48.0});
     opPoint.set_output_currents({2.0});
     opPoint.set_switching_frequency(100e3);
@@ -2310,7 +2310,7 @@ TEST_CASE("PushPull ngspice simulation CCM", "[ngspice-runner][push-pull-topolog
     pushpull.set_efficiency(0.85);
     pushpull.set_current_ripple_ratio(0.3);
     
-    PushPullOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({48.0});
     opPoint.set_output_currents({2.0});
     opPoint.set_switching_frequency(100e3);
@@ -2407,7 +2407,7 @@ TEST_CASE("PushPull topology waveforms", "[ngspice-runner][push-pull-topology][s
     pushpull.set_efficiency(0.85);
     pushpull.set_current_ripple_ratio(0.3);
     
-    PushPullOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({48.0});
     opPoint.set_output_currents({2.0});
     opPoint.set_switching_frequency(100e3);
@@ -2477,7 +2477,7 @@ TEST_CASE("PushPull with frontend default values", "[ngspice-runner][push-pull-t
     pushpull.set_current_ripple_ratio(0.3);
     pushpull.set_duty_cycle(0.45);
     
-    PushPullOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({48.0});
     opPoint.set_output_currents({0.7});
     opPoint.set_switching_frequency(100e3);
@@ -2559,7 +2559,7 @@ TEST_CASE("PushPull analytical vs simulated comparison", "[ngspice-runner][push-
     pushpull.set_efficiency(0.85);
     pushpull.set_current_ripple_ratio(0.3);
     
-    PushPullOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({48.0});
     opPoint.set_output_currents({2.0});
     opPoint.set_switching_frequency(100e3);
@@ -3011,7 +3011,7 @@ TEST_CASE("TwoSwitchForward ideal waveforms CCM", "[ngspice-runner][two-switch-f
     forward.set_efficiency(0.9);
     forward.set_current_ripple_ratio(0.3);
     
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({12.0});
     opPoint.set_output_currents({4.0});
     opPoint.set_switching_frequency(100e3);
@@ -3071,7 +3071,7 @@ TEST_CASE("TwoSwitchForward ngspice simulation CCM", "[ngspice-runner][two-switc
     forward.set_efficiency(0.9);
     forward.set_current_ripple_ratio(0.3);
     
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({12.0});
     opPoint.set_output_currents({4.0});
     opPoint.set_switching_frequency(100e3);
@@ -3142,7 +3142,7 @@ TEST_CASE("TwoSwitchForward topology waveforms", "[ngspice-runner][two-switch-fo
     forward.set_efficiency(0.9);
     forward.set_current_ripple_ratio(0.3);
     
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({12.0});
     opPoint.set_output_currents({4.0});
     opPoint.set_switching_frequency(100e3);
@@ -3202,7 +3202,7 @@ TEST_CASE("TwoSwitchForward ngspice convergence with typical values", "[ngspice-
     forward.set_current_ripple_ratio(0.4);
     
     // Operating point that triggers sharp diode transitions
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({5.0});
     opPoint.set_output_currents({10.0});
     opPoint.set_switching_frequency(200e3);
@@ -3273,7 +3273,7 @@ TEST_CASE("ActiveClampForward ideal waveforms CCM", "[ngspice-runner][active-cla
     forward.set_efficiency(0.9);
     forward.set_current_ripple_ratio(0.3);
     
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({12.0});
     opPoint.set_output_currents({4.0});
     opPoint.set_switching_frequency(100e3);
@@ -3333,7 +3333,7 @@ TEST_CASE("ActiveClampForward ngspice simulation CCM", "[ngspice-runner][active-
     forward.set_efficiency(0.9);
     forward.set_current_ripple_ratio(0.3);
     
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({12.0});
     opPoint.set_output_currents({4.0});
     opPoint.set_switching_frequency(100e3);
@@ -3404,7 +3404,7 @@ TEST_CASE("ActiveClampForward topology waveforms", "[ngspice-runner][active-clam
     forward.set_efficiency(0.9);
     forward.set_current_ripple_ratio(0.3);
     
-    ForwardOperatingPoint opPoint;
+    TopologyExcitation opPoint;
     opPoint.set_output_voltages({12.0});
     opPoint.set_output_currents({4.0});
     opPoint.set_switching_frequency(100e3);

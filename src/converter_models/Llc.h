@@ -137,7 +137,7 @@ public:
     Llc(const json& j);
     Llc() {};
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::LLC_RESONANT_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::LLC_RESONANT_CONVERTER; }
     bool is_bridge_topology() const override { return true; }
 
     // Simulation tuning ──────────────────────────────────────
@@ -221,7 +221,7 @@ public:
     // Per-operating-point analytical waveforms (Runo Nielsen TDA)
     OperatingPoint process_operating_point_for_input_voltage(
         double inputVoltage,
-        const LlcOperatingPoint& llcOpPoint,
+        const TopologyExcitation& llcOpPoint,
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 
@@ -307,7 +307,7 @@ inline void from_json(const json& j, AdvancedLlc& x) {
     x.set_integrated_resonant_inductor(get_stack_optional<bool>(j, "integratedResonantInductor"));
     x.set_max_switching_frequency(j.at("maxSwitchingFrequency").get<double>());
     x.set_min_switching_frequency(j.at("minSwitchingFrequency").get<double>());
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<LlcOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<TopologyExcitation>>());
     x.set_quality_factor(get_stack_optional<double>(j, "qualityFactor"));
     x.set_resonant_frequency(get_stack_optional<double>(j, "resonantFrequency"));
     x.set_rectifier_type(get_stack_optional<LlcRectifierType>(j, "rectifierType"));

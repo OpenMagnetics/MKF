@@ -323,7 +323,7 @@ namespace {
         // Operating point: 5V @ 5A output on secondary, 200kHz
         // For Isolated Buck: output_voltages[0] = primary voltage, output_voltages[1] = secondary voltage
         // output_currents[0] = primary current, output_currents[1] = secondary current
-        IsolatedBuckOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({5.0, 5.0});  // primary voltage ~5V, secondary voltage 5V
         opPoint.set_output_currents({0.6, 5.0});  // primary current ~0.6A (reflected from secondary), secondary current 5A
         opPoint.set_switching_frequency(200000.0);
@@ -433,7 +433,7 @@ namespace {
         // output_currents[0] = primary output current
         // output_currents[1] = secondary 1 current
         // output_currents[2] = secondary 2 current
-        IsolatedBuckOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         double expectedPriVoltage = 5.0;    // Non-isolated buck output: 5V
         double expectedSec1Voltage = 5.0;   // Secondary 1: 5V (tied to same ground)
         double expectedSec2Voltage = 12.0;  // Secondary 2 (isolated): 12V
@@ -611,7 +611,7 @@ namespace {
         isolatedBuck.set_efficiency(0.9);
         isolatedBuck.set_current_ripple_ratio(0.3);
 
-        IsolatedBuckOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({5.0, 5.0}); op.set_output_currents({0.6, 5.0});
         op.set_switching_frequency(200e3); op.set_ambient_temperature(25.0);
         isolatedBuck.set_operating_points({op});
@@ -666,7 +666,7 @@ namespace {
         isolatedBuck.set_efficiency(0.9);
         isolatedBuck.set_current_ripple_ratio(0.3);
 
-        IsolatedBuckOperatingPoint op;
+        TopologyExcitation op;
         // Single-secondary 5 V @ 5 A configuration (mirrors
         // Test_IsolatedBuck_Ngspice_Simulation).
         op.set_output_voltages({5.0, 5.0});
@@ -756,7 +756,7 @@ namespace {
         ib.set_efficiency(0.9);
         ib.set_current_ripple_ratio(0.3);
 
-        IsolatedBuckOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages(Vout);
         op.set_output_currents(Iout);
         op.set_switching_frequency(200e3);
@@ -837,7 +837,7 @@ namespace {
             ib.set_efficiency(1.0);            // lossless analytical reference
             ib.set_current_ripple_ratio(0.3);
 
-            IsolatedBuckOperatingPoint op;
+            TopologyExcitation op;
             op.set_output_voltages({s.Vout, s.Vout / s.n});  // primary + isolated bias
             op.set_output_currents({s.Iout, s.Iout2});
             op.set_switching_frequency(s.Fs);
@@ -850,7 +850,7 @@ namespace {
             auto ib = build_isobuck_from_spec(s);
 
             // Anchor diagnostics at the nominal Vin operating point.
-            IsolatedBuckOperatingPoint op;
+            TopologyExcitation op;
             op.set_output_voltages({s.Vout, s.Vout / s.n});
             op.set_output_currents({s.Iout, s.Iout2});
             op.set_switching_frequency(s.Fs);

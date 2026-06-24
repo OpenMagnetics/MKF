@@ -62,7 +62,7 @@ public:
     PowerFactorCorrection() = default;
     PowerFactorCorrection(const json& j);
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::POWER_FACTOR_CORRECTION; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::POWER_FACTOR_CORRECTION; }
 
     bool run_checks(bool assert = false) override;
     DesignRequirements process_design_requirements() override;

@@ -432,4 +432,4 @@ variants supported."
 - MDPI Energies 17(24):6262 — *A New Voltage-Doubler Rectifier for
   High-Efficiency LLC Resonant Converters*
 - MDPI Electronics 12(7):1605 — *Bidirectional CLLLC Resonant Converter*
-- ITACOIL — *LLC and LCC Resonant Topologies*
+- ITACOIL — *LLC and LCC Resonant MAS::Topology*

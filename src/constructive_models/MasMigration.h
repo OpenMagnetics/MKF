@@ -31,24 +31,19 @@
 #if __has_include(<MAS.hpp>)
 #include <MAS.hpp>
 namespace MAS {
-    // RFC 0006: six topologies merged into TopologyExcitation base
-    using BaseOperatingPoint              = TopologyExcitation;
-    using ForwardOperatingPoint           = TopologyExcitation;
-    using PushPullOperatingPoint          = TopologyExcitation;
-    using LlcOperatingPoint               = TopologyExcitation;
-    using IsolatedBuckOperatingPoint      = TopologyExcitation;
-    using IsolatedBuckBoostOperatingPoint = TopologyExcitation;
-    using FlybuckOperatingPoint           = TopologyExcitation;
-
-    // PEAS integration (ae4414f): several types moved from MAS to PEAS utils.json
-    // or renamed to avoid collisions with the broader PEAS vocabulary.
-    using Application                  = MagneticApplication;
-    using Topologies                   = Topology;
-    using InsulationType               = IsolationClass;
-    using InsulationCoordinationOutput = InsulationCoordination;
-    using DistributorInfo              = Utils;
-    // LossElementPerHarmonic (from PEAS outputs schema) replaces WindingLossElement
-    using WindingLossElement           = LossElementPerHarmonic;
+    // The type aliases that used to map quicktype's generated names back to MKF's
+    // historical names have been removed; MKF code now uses the canonical MAS type
+    // names directly:
+    //   *OperatingPoint family   -> TopologyExcitation  (RFC 0006 merged them)
+    //   Application              -> MAS::MagneticApplication (qualified explicitly to
+    //                               disambiguate from CAS::Application)
+    //   Topologies              -> MAS::Topology (qualified explicitly to disambiguate
+    //                               from the OpenMagnetics::Topology converter class)
+    //   InsulationType          -> IsolationClass
+    //   InsulationCoordinationOutput -> InsulationCoordination
+    //   WindingLossElement      -> LossElementPerHarmonic
+    //   DistributorInfo / Processed are now emitted natively by quicktype (PEAS ac3c34f
+    //                               title annotations), so no alias is needed.
 
     // SubApplication was a MAS enum class; it is now a plain string field in
     // PEAS designRequirementsBase.  Define it as a namespace of string constants

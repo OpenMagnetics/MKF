@@ -271,7 +271,7 @@ double Magnetic::calculate_rated_current(double temperatureRise, double ambientT
     // `temperature`, via the MKF ohmic-loss model (R_dc is resolved at `temperature`). The
     // full Temperature model needs this per-turn distribution, not just a total.
     auto ohmicLossesForCurrent = [&](double dcCurrent, double temperature) {
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_offset(dcCurrent);
         processed.set_rms(dcCurrent);
         SignalDescriptor currentSignal;

@@ -94,7 +94,7 @@ public:
     Buck() {
     };
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::BUCK_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::BUCK_CONVERTER; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
@@ -126,7 +126,7 @@ public:
     DesignRequirements process_design_requirements() override;
     std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const BaseOperatingPoint& outputOperatingPoint, double inductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const TopologyExcitation& outputOperatingPoint, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
@@ -215,7 +215,7 @@ inline void from_json(const json & j, AdvancedBuck& x) {
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_switch_current(get_stack_optional<double>(j, "maximumSwitchCurrent"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<BaseOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<TopologyExcitation>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
 }
 

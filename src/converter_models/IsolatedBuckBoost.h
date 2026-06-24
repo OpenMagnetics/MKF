@@ -66,7 +66,7 @@ public:
     IsolatedBuckBoost() {
     };
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::ISOLATED_BUCK_BOOST_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::ISOLATED_BUCK_BOOST_CONVERTER; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
@@ -101,7 +101,7 @@ public:
     std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckBoostOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance);
+    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, TopologyExcitation outputOperatingPoint, std::vector<double> turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
 
     std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
@@ -186,7 +186,7 @@ inline void from_json(const json & j, AdvancedIsolatedBuckBoost& x) {
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_switch_current(get_stack_optional<double>(j, "maximumSwitchCurrent"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<IsolatedBuckBoostOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<TopologyExcitation>>());
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
 }

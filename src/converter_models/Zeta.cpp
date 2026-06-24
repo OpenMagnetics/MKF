@@ -312,7 +312,7 @@ namespace OpenMagnetics {
             isolationSides.push_back(get_isolation_side_from_index(0));
         }
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::ZETA_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::ZETA_CONVERTER);
         return designRequirements;
     }
 
@@ -399,7 +399,7 @@ namespace OpenMagnetics {
         std::vector<IsolationSide> isolationSides;
         isolationSides.push_back(get_isolation_side_from_index(0));
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::ZETA_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::ZETA_CONVERTER);
         return designRequirements;
     }
 
@@ -810,7 +810,7 @@ namespace OpenMagnetics {
             L.set_nominal(sizedL);
             dr.set_magnetizing_inductance(L);
             dr.set_name(name);
-            dr.set_topology(Topologies::ZETA_CONVERTER);
+            dr.set_topology(MAS::Topology::ZETA_CONVERTER);
             dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
             dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
             masInputs.set_design_requirements(dr);
@@ -842,7 +842,6 @@ namespace OpenMagnetics {
             }
             dr.set_rated_voltage(peakV * 1.2);
             dr.set_role(role);
-            dr.set_name(name);
             casInputs.set_design_requirements(dr);
 
             std::vector<CAS::TwoTerminalOperatingPoint> casOps;

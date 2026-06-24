@@ -113,7 +113,7 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_With_Margin", "[adviser][cor
     DimensionWithTolerance altitude;
     altitude.set_maximum(2000);
     auto cti = Cti::GROUP_I;
-    auto insulationType = InsulationType::REINFORCED;
+    auto insulationType = IsolationClass::REINFORCED;
     DimensionWithTolerance mainSupplyVoltage;
     mainSupplyVoltage.set_nominal(400);
     auto overvoltageCategory = OvervoltageCategory::II;
@@ -229,7 +229,7 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto cores = load_test_data();
-    coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+    coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 5);
 
     REQUIRE(masMagnetics.size() > 0);
@@ -253,8 +253,8 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
         auto coreMaterial = mas.get_mutable_magnetic().get_mutable_core().resolve_material();
         if (coreMaterial.get_application()) {
             auto tags = coreMaterial.get_application().value();
-            bool ok = std::find(tags.begin(), tags.end(), Application::INTERFERENCE_SUPPRESSION) != tags.end()
-                   || std::find(tags.begin(), tags.end(), Application::SIGNAL_PROCESSING) != tags.end();
+            bool ok = std::find(tags.begin(), tags.end(), MAS::MagneticApplication::INTERFERENCE_SUPPRESSION) != tags.end()
+                   || std::find(tags.begin(), tags.end(), MAS::MagneticApplication::SIGNAL_PROCESSING) != tags.end();
             CHECK(ok);
         }
     }
@@ -1756,10 +1756,10 @@ TEST_CASE("Test_CoreAdviserStandardCores_Common_Mode_Choke_Low_Frequency", "[adv
     // CMC needs, and what the TOROIDAL assertions below require). Without it the
     // Interference-Suppression path treats the query as a generic suppression
     // inductor and honours use_toroidal_cores.
-    inputs.get_mutable_design_requirements().set_topology(Topologies::COMMON_MODE_CHOKE);
+    inputs.get_mutable_design_requirements().set_topology(MAS::Topology::COMMON_MODE_CHOKE);
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
-    coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+    coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     std::vector<MAS::CoreShape> shapes;
     for (auto [name, shape] : coreShapeDatabase) {
         shapes.push_back(shape);
@@ -1817,10 +1817,10 @@ TEST_CASE("Test_CoreAdviserStandardCores_Common_Mode_Choke_Low_Frequency_With_Dc
     // CMC needs, and what the TOROIDAL assertions below require). Without it the
     // Interference-Suppression path treats the query as a generic suppression
     // inductor and honours use_toroidal_cores.
-    inputs.get_mutable_design_requirements().set_topology(Topologies::COMMON_MODE_CHOKE);
+    inputs.get_mutable_design_requirements().set_topology(MAS::Topology::COMMON_MODE_CHOKE);
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
-    coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+    coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     std::vector<MAS::CoreShape> shapes;
     for (auto [name, shape] : coreShapeDatabase) {
         shapes.push_back(shape);
@@ -1877,10 +1877,10 @@ TEST_CASE("Test_CoreAdviserStandardCores_Common_Mode_Choke_High_Frequency", "[ad
     // CMC needs, and what the TOROIDAL assertions below require). Without it the
     // Interference-Suppression path treats the query as a generic suppression
     // inductor and honours use_toroidal_cores.
-    inputs.get_mutable_design_requirements().set_topology(Topologies::COMMON_MODE_CHOKE);
+    inputs.get_mutable_design_requirements().set_topology(MAS::Topology::COMMON_MODE_CHOKE);
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
-    coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+    coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     std::vector<MAS::CoreShape> shapes;
     for (auto [name, shape] : coreShapeDatabase) {
         shapes.push_back(shape);
@@ -2258,7 +2258,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     inductanceReq.set_nominal(0.00051);    // 510 µH
     inductanceReq.set_maximum(0.000612);   // 612 µH
     designRequirements.set_magnetizing_inductance(inductanceReq);
-    designRequirements.set_topology(Topologies::FLYBACK_CONVERTER);
+    designRequirements.set_topology(MAS::Topology::FLYBACK_CONVERTER);
     
     DimensionWithTolerance turnsRatioReq;
     turnsRatioReq.set_nominal(8.5);
@@ -2284,7 +2284,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     currentWaveform.set_time(std::vector<double>{0, 0, 5e-6, 5e-6});  // 50% duty cycle at 100kHz = 5µs on
     primaryCurrent.set_waveform(currentWaveform);
     
-    Processed currentProcessed;
+    ProcessedWaveform currentProcessed;
     currentProcessed.set_label(WaveformLabel::FLYBACK_PRIMARY);
     currentProcessed.set_average(0.588);
     currentProcessed.set_rms(0.95);
@@ -2301,7 +2301,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     voltageWaveform.set_time(std::vector<double>{0, 5e-6, 5e-6, 10e-6});
     primaryVoltage.set_waveform(voltageWaveform);
     
-    Processed voltageProcessed;
+    ProcessedWaveform voltageProcessed;
     voltageProcessed.set_label(WaveformLabel::RECTANGULAR);
     voltageProcessed.set_peak(114);
     voltageProcessed.set_peak_to_peak(228);
@@ -2322,7 +2322,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     secCurrentWaveform.set_time(std::vector<double>{0, 5e-6, 5e-6, 10e-6});
     secondaryCurrent.set_waveform(secCurrentWaveform);
     
-    Processed secCurrentProcessed;
+    ProcessedWaveform secCurrentProcessed;
     secCurrentProcessed.set_label(WaveformLabel::FLYBACK_SECONDARY);
     secCurrentProcessed.set_average(2.5);
     secCurrentProcessed.set_rms(3.5);
@@ -2352,7 +2352,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     currentWaveform2.set_time(std::vector<double>{0, 0, 5e-6, 5e-6});
     primaryCurrent2.set_waveform(currentWaveform2);
     
-    Processed currentProcessed2;
+    ProcessedWaveform currentProcessed2;
     currentProcessed2.set_label(WaveformLabel::FLYBACK_PRIMARY);
     currentProcessed2.set_average(0.4);
     currentProcessed2.set_rms(0.7);
@@ -2368,7 +2368,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     voltageWaveform2.set_time(std::vector<double>{0, 5e-6, 5e-6, 10e-6});
     primaryVoltage2.set_waveform(voltageWaveform2);
     
-    Processed voltageProcessed2;
+    ProcessedWaveform voltageProcessed2;
     voltageProcessed2.set_label(WaveformLabel::RECTANGULAR);
     voltageProcessed2.set_peak(150);
     voltageProcessed2.set_peak_to_peak(250);
@@ -2389,7 +2389,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     secCurrentWaveform2.set_time(std::vector<double>{0, 5e-6, 5e-6, 10e-6});
     secondaryCurrent2.set_waveform(secCurrentWaveform2);
     
-    Processed secCurrentProcessed2;
+    ProcessedWaveform secCurrentProcessed2;
     secCurrentProcessed2.set_label(WaveformLabel::FLYBACK_SECONDARY);
     secCurrentProcessed2.set_average(2.0);
     secCurrentProcessed2.set_rms(2.8);
@@ -2465,7 +2465,7 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
     inductanceReq.set_nominal(0.0008256393);  // 825.6 µH
     designRequirements.set_magnetizing_inductance(inductanceReq);
     
-    designRequirements.set_topology(Topologies::LLC_RESONANT_CONVERTER);
+    designRequirements.set_topology(MAS::Topology::LLC_RESONANT_CONVERTER);
     
     // Two turns ratios (for two secondaries or center-tapped)
     DimensionWithTolerance turnsRatioReq1, turnsRatioReq2;
@@ -2511,7 +2511,7 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
     currentWaveform.set_time(currentTime);
     primaryCurrent.set_waveform(currentWaveform);
     
-    Processed currentProcessed;
+    ProcessedWaveform currentProcessed;
     currentProcessed.set_label(WaveformLabel::SINUSOIDAL);
     currentProcessed.set_average(0.0);
     currentProcessed.set_rms(2.147);
@@ -2530,7 +2530,7 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
     voltageWaveform.set_time(std::vector<double>{0, 5e-6, 5e-6, 10e-6, 10e-6});
     primaryVoltage.set_waveform(voltageWaveform);
     
-    Processed voltageProcessed;
+    ProcessedWaveform voltageProcessed;
     voltageProcessed.set_label(WaveformLabel::RECTANGULAR);
     voltageProcessed.set_peak(200);
     voltageProcessed.set_peak_to_peak(400);
@@ -2546,7 +2546,7 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
     secondaryExcitation.set_name("Secondary");
     
     SignalDescriptor secondaryCurrent;
-    Processed secCurrentProcessed;
+    ProcessedWaveform secCurrentProcessed;
     secCurrentProcessed.set_label(WaveformLabel::SINUSOIDAL);
     secCurrentProcessed.set_average(0.0);
     secCurrentProcessed.set_rms(10.0);  // Higher current on secondary
@@ -2944,7 +2944,7 @@ TEST_CASE("Test_CoreAdviser_CMC_Simplified_Inputs", "[adviser][core-adviser][cmc
 
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
-    coreAdviser.set_application(Application::INTERFERENCE_SUPPRESSION);
+    coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto cores = load_test_data();
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 10);
 
@@ -2974,7 +2974,7 @@ TEST_CASE("Test_CoreAdviser_DMC_Default_Wizard_Hang_Repro",
     REQUIRE(dr.get_application().has_value());
     CHECK(dr.get_application().value() == std::string("interferenceSuppression"));
     CHECK(dr.get_topology().has_value());
-    CHECK(dr.get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE);
+    CHECK(dr.get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE);
 
     Settings::GetInstance().set_coil_delimit_and_compact(true);
     Settings::GetInstance().set_use_toroidal_cores(true);
@@ -2988,7 +2988,7 @@ TEST_CASE("Test_CoreAdviser_DMC_Default_Wizard_Hang_Repro",
 
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
-    coreAdviser.set_application(Application::INTERFERENCE_SUPPRESSION);
+    coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
 
     auto t0 = std::chrono::steady_clock::now();
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 1);

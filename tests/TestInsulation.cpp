@@ -14,7 +14,7 @@ namespace TestInsulation{
         DimensionWithTolerance altitude;
         altitude.set_maximum(2000);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         DimensionWithTolerance mainSupplyVoltage;
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
@@ -40,7 +40,7 @@ namespace TestInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standardCoordinator.calculate_creepage_distance(inputs);
@@ -59,7 +59,7 @@ namespace TestInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standardCoordinator.calculate_clearance(inputs);
@@ -110,7 +110,7 @@ namespace TestInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
         overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(1);
@@ -140,7 +140,7 @@ namespace TestInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
         overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(1);
@@ -170,7 +170,7 @@ namespace TestInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
         overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(1);
@@ -200,7 +200,7 @@ namespace TestInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
         overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(1);
@@ -230,7 +230,7 @@ namespace TestInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
         overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(1);
@@ -260,7 +260,7 @@ namespace TestInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
         overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(1);
@@ -291,7 +291,7 @@ namespace TestInsulation{
         double maximumVoltagePeak = 1800;
         double frequency = 30000;
         auto pollutionDegree = PollutionDegree::PD1;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(1);
@@ -321,7 +321,7 @@ namespace TestInsulation{
         overvoltageCategory = OvervoltageCategory::I;
         auto cti = Cti::GROUP_I;
         auto pollutionDegree = PollutionDegree::PD1;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(1);
@@ -351,7 +351,7 @@ namespace TestInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(1);
@@ -383,7 +383,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -394,7 +394,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -405,7 +405,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -416,7 +416,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -427,7 +427,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -438,7 +438,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -449,7 +449,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -460,7 +460,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -471,7 +471,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -482,7 +482,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -493,7 +493,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -504,7 +504,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -515,7 +515,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -526,7 +526,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -537,7 +537,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -548,7 +548,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -559,7 +559,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -570,7 +570,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -582,7 +582,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -594,7 +594,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -606,7 +606,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -618,7 +618,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -630,7 +630,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -642,7 +642,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -654,7 +654,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -666,7 +666,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -678,7 +678,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -690,7 +690,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -702,7 +702,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -714,7 +714,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -726,7 +726,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -738,7 +738,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -750,7 +750,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -762,7 +762,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -774,7 +774,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -786,7 +786,7 @@ namespace TestInsulationIEC60664CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -808,7 +808,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -819,7 +819,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -830,7 +830,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -841,7 +841,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -852,7 +852,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -863,7 +863,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -874,7 +874,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -885,7 +885,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -896,7 +896,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -907,7 +907,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -918,7 +918,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -929,7 +929,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -940,7 +940,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -951,7 +951,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -962,7 +962,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -973,7 +973,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -984,7 +984,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -995,7 +995,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1006,7 +1006,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1017,7 +1017,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1028,7 +1028,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1039,7 +1039,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1050,7 +1050,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1061,7 +1061,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1072,7 +1072,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(8000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1085,7 +1085,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1099,7 +1099,7 @@ namespace TestInsulationIEC60664Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1122,7 +1122,7 @@ namespace TestInsulationIEC60664DistanceThroughInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto dti = standard.calculate_distance_through_insulation(inputs);
@@ -1145,7 +1145,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1156,7 +1156,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1167,7 +1167,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1178,7 +1178,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1189,7 +1189,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1200,7 +1200,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1211,7 +1211,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1222,7 +1222,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1233,7 +1233,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1244,7 +1244,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1255,7 +1255,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1266,7 +1266,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1277,7 +1277,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1288,7 +1288,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1299,7 +1299,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1310,7 +1310,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1321,7 +1321,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1332,7 +1332,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1344,7 +1344,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1356,7 +1356,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1368,7 +1368,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1380,7 +1380,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1392,7 +1392,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1404,7 +1404,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1416,7 +1416,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1428,7 +1428,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1440,7 +1440,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1452,7 +1452,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1464,7 +1464,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1476,7 +1476,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1488,7 +1488,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1500,7 +1500,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1512,7 +1512,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1524,7 +1524,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1536,7 +1536,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1548,7 +1548,7 @@ namespace TestInsulationIEC62368CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1570,7 +1570,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1581,7 +1581,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1592,7 +1592,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1603,7 +1603,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1614,7 +1614,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1625,7 +1625,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1636,7 +1636,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1647,7 +1647,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1658,7 +1658,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1669,7 +1669,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1680,7 +1680,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1691,7 +1691,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1702,7 +1702,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1713,7 +1713,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1724,7 +1724,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1735,7 +1735,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1746,7 +1746,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1757,7 +1757,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1768,7 +1768,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1779,7 +1779,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1790,7 +1790,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1801,7 +1801,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1812,7 +1812,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1823,7 +1823,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1834,7 +1834,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(5000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1845,7 +1845,7 @@ namespace TestInsulationIEC62368Clearance{
         altitude.set_maximum(5000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1858,7 +1858,7 @@ namespace TestInsulationIEC62368Clearance{
         maximumVoltagePeak = 2000;
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1871,7 +1871,7 @@ namespace TestInsulationIEC62368Clearance{
         maximumVoltagePeak = 2000;
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1884,7 +1884,7 @@ namespace TestInsulationIEC62368Clearance{
         maximumVoltagePeak = 2000;
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1897,7 +1897,7 @@ namespace TestInsulationIEC62368Clearance{
         maximumVoltagePeak = 2000;
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1910,7 +1910,7 @@ namespace TestInsulationIEC62368Clearance{
         maximumVoltagePeak = 2000;
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::PRINTED);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1923,7 +1923,7 @@ namespace TestInsulationIEC62368Clearance{
         maximumVoltagePeak = 2000;
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::PRINTED);
         auto clearance = standard.calculate_clearance(inputs);
@@ -1946,7 +1946,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1957,7 +1957,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1968,7 +1968,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1979,7 +1979,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -1990,7 +1990,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2001,7 +2001,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2012,7 +2012,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2023,7 +2023,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2034,7 +2034,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2045,7 +2045,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2056,7 +2056,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2067,7 +2067,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2078,7 +2078,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2089,7 +2089,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2100,7 +2100,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2111,7 +2111,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2122,7 +2122,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2133,7 +2133,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2145,7 +2145,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2157,7 +2157,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2169,7 +2169,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2181,7 +2181,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2193,7 +2193,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2205,7 +2205,7 @@ namespace TestInsulationIEC61558CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2227,7 +2227,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2238,7 +2238,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2249,7 +2249,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2260,7 +2260,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2271,7 +2271,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2282,7 +2282,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2293,7 +2293,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2304,7 +2304,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2315,7 +2315,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2326,7 +2326,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2337,7 +2337,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2348,7 +2348,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2359,7 +2359,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2370,7 +2370,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2381,7 +2381,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2392,7 +2392,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2403,7 +2403,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2414,7 +2414,7 @@ namespace TestInsulationIEC61558Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::IV;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2426,7 +2426,7 @@ namespace TestInsulationIEC61558Clearance{
         mainSupplyVoltage.set_nominal(400);
         frequency = 30000;
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2439,7 +2439,7 @@ namespace TestInsulationIEC61558Clearance{
         maximumVoltagePeak = 2000;
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::PRINTED);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2452,7 +2452,7 @@ namespace TestInsulationIEC61558Clearance{
         maximumVoltagePeak = 2000;
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::PRINTED);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2474,7 +2474,7 @@ namespace TestInsulationIEC61558DistanceThroughInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto dti = standard.calculate_distance_through_insulation(inputs, false);
@@ -2485,7 +2485,7 @@ namespace TestInsulationIEC61558DistanceThroughInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::SUPPLEMENTARY;
+        auto insulationType = IsolationClass::SUPPLEMENTARY;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto dti = standard.calculate_distance_through_insulation(inputs, false);
@@ -2496,7 +2496,7 @@ namespace TestInsulationIEC61558DistanceThroughInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto dti = standard.calculate_distance_through_insulation(inputs, false);
@@ -2507,7 +2507,7 @@ namespace TestInsulationIEC61558DistanceThroughInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto dti = standard.calculate_distance_through_insulation(inputs);
@@ -2518,7 +2518,7 @@ namespace TestInsulationIEC61558DistanceThroughInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::SUPPLEMENTARY;
+        auto insulationType = IsolationClass::SUPPLEMENTARY;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto dti = standard.calculate_distance_through_insulation(inputs);
@@ -2529,7 +2529,7 @@ namespace TestInsulationIEC61558DistanceThroughInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto dti = standard.calculate_distance_through_insulation(inputs);
@@ -2541,7 +2541,7 @@ namespace TestInsulationIEC61558DistanceThroughInsulation{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto dti = standard.calculate_distance_through_insulation(inputs);
@@ -2563,7 +2563,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2574,7 +2574,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2585,7 +2585,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2596,7 +2596,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2607,7 +2607,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2618,7 +2618,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2629,7 +2629,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2640,7 +2640,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2651,7 +2651,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2662,7 +2662,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2673,7 +2673,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2684,7 +2684,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2695,7 +2695,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2706,7 +2706,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2717,7 +2717,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2728,7 +2728,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2739,7 +2739,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2750,7 +2750,7 @@ namespace TestInsulationIEC60335Clearance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto overvoltageCategory = OvervoltageCategory::III;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2762,7 +2762,7 @@ namespace TestInsulationIEC60335Clearance{
         mainSupplyVoltage.set_nominal(250);
         frequency = 30000;
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2777,7 +2777,7 @@ namespace TestInsulationIEC60335Clearance{
         maximumVoltagePeak = 2000;
         mainSupplyVoltage.set_nominal(120);
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::PRINTED);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2788,7 +2788,7 @@ namespace TestInsulationIEC60335Clearance{
         mainSupplyVoltage.set_nominal(250);
         frequency = 500000;
         auto overvoltageCategory = OvervoltageCategory::I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
@@ -2811,7 +2811,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2821,7 +2821,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2832,7 +2832,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2843,7 +2843,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2854,7 +2854,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2865,7 +2865,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2876,7 +2876,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2887,7 +2887,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2898,7 +2898,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2909,7 +2909,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2920,7 +2920,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2931,7 +2931,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2942,7 +2942,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2953,7 +2953,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2964,7 +2964,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2975,7 +2975,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2986,7 +2986,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -2997,7 +2997,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_II;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3008,7 +3008,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3019,7 +3019,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3030,7 +3030,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3041,7 +3041,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3052,7 +3052,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3063,7 +3063,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD2;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3074,7 +3074,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3085,7 +3085,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3096,7 +3096,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_IIIA;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD3;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3109,7 +3109,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::FUNCTIONAL;
+        auto insulationType = IsolationClass::FUNCTIONAL;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3122,7 +3122,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::BASIC;
+        auto insulationType = IsolationClass::BASIC;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
@@ -3135,7 +3135,7 @@ namespace TestInsulationIEC60335CreepageDistance{
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         auto cti = Cti::GROUP_I;
-        auto insulationType = InsulationType::REINFORCED;
+        auto insulationType = IsolationClass::REINFORCED;
         auto pollutionDegree = PollutionDegree::PD1;
         OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, WiringTechnology::WOUND);
         auto creepageDistance = standard.calculate_creepage_distance(inputs);

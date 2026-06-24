@@ -32,8 +32,8 @@ double linear_table_interpolation(std::vector<std::pair<double, double>> table, 
     return DBL_MAX;
 }
 
-InsulationCoordinationOutput InsulationCoordinator::calculate_insulation_coordination(Inputs& inputs) {
-    InsulationCoordinationOutput insulationCoordinationOutput;
+InsulationCoordination InsulationCoordinator::calculate_insulation_coordination(Inputs& inputs) {
+    InsulationCoordination insulationCoordinationOutput;
     insulationCoordinationOutput.set_clearance(calculate_clearance(inputs));
     insulationCoordinationOutput.set_creepage_distance(calculate_creepage_distance(inputs, true));
     insulationCoordinationOutput.set_withstand_voltage(calculate_withstand_voltage(inputs));
@@ -212,7 +212,7 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
     }
 
     switch (insulationType) {
-        case InsulationType::FUNCTIONAL: {
+        case IsolationClass::FUNCTIONAL: {
                 auto timesVoltageIsCovered = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
                 if (timesVoltageIsCovered > 0 && allowInsulatedWire) {
                     if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered >= 3) {
@@ -234,7 +234,7 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
                 }
                 break;
             }
-        case InsulationType::BASIC: {
+        case IsolationClass::BASIC: {
                 auto timesVoltageIsCovered = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
                 if (timesVoltageIsCovered > 0 && allowInsulatedWire) {
                     if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered >= 3) {
@@ -256,7 +256,7 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
 
                 break;
             }
-        case InsulationType::SUPPLEMENTARY: {
+        case IsolationClass::SUPPLEMENTARY: {
                 auto timesVoltageIsCovered = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
                 if (timesVoltageIsCovered > 0 && allowInsulatedWire) {
                     if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered >= 3) {
@@ -277,7 +277,7 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
                 }
                 break;
             }
-        case InsulationType::DOUBLE: {
+        case IsolationClass::DOUBLE: {
                 size_t numberInsulationLayersTogether;
                 size_t numberInsulationLayersSeparated;
 
@@ -296,14 +296,14 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
                 }
 
                 auto insulation = inputs.get_mutable_design_requirements().get_insulation().value();
-                insulation.set_insulation_type(InsulationType::BASIC);
+                insulation.set_insulation_type(IsolationClass::BASIC);
                 inputs.get_mutable_design_requirements().set_insulation(insulation);
                 auto withstandVoltageBasic = calculate_withstand_voltage(inputs);
-                insulation.set_insulation_type(InsulationType::SUPPLEMENTARY);
+                insulation.set_insulation_type(IsolationClass::SUPPLEMENTARY);
                 inputs.get_mutable_design_requirements().set_insulation(insulation);
                 auto withstandVoltageSupplementary = calculate_withstand_voltage(inputs);
                 // Restore the caller's insulation type (DOUBLE) so the mutation does not leak
-                insulation.set_insulation_type(InsulationType::DOUBLE);
+                insulation.set_insulation_type(IsolationClass::DOUBLE);
                 inputs.get_mutable_design_requirements().set_insulation(insulation);
                 double withstandVoltageSeparated = std::max(withstandVoltageBasic, withstandVoltageSupplementary);
                 timesWithstandVoltageIsCoveredByWires = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltageSeparated, canFullyInsulatedWireBeUsed);
@@ -324,7 +324,7 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
 
                 break;
             }
-        case InsulationType::REINFORCED: {
+        case IsolationClass::REINFORCED: {
                 auto timesWithstandVoltageIsCoveredByWires = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
                 if (timesWithstandVoltageIsCoveredByWires >= 3 && allowInsulatedWire) {
                     numberInsulationLayers = 1;
@@ -488,12 +488,12 @@ double InsulationIEC60664Model::calculate_distance_through_insulation_over_30kHz
     return dti;
 }
 
-double InsulationIEC60664Model::get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage, InsulationType insulationType){
+double InsulationIEC60664Model::get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage, IsolationClass insulationType){
     std::string overvoltageCategoryString = to_string(overvoltageCategory);
     auto aux = part1TableF1[overvoltageCategoryString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (ratedVoltage <= aux[voltagesIndex].first) {
-            if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+            if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
                 if (voltagesIndex < aux.size() - 1) {
                     return aux[voltagesIndex + 1].second;
                 }
@@ -697,14 +697,14 @@ double InsulationIEC60664Model::calculate_withstand_voltage(Inputs& inputs) {
 
     double voltageDueToTransientOvervoltages = get_rated_impulse_withstand_voltage(overvoltageCategory, maximumVoltageRms, insulationType);
     double voltageDueToTemporaryWithstandOvervoltages = maximumVoltageRms + 1200;
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         voltageDueToTemporaryWithstandOvervoltages *= 2;
     }
     double F1 = 1.2;  // defined in section 6.4.6.1
     double F3 = 1.25;  // defined in section 6.4.6.1
     double F4 = 1.1;  // defined in section 6.4.6.1
     double voltageDueToRecurringPeakVoltages = F1 * F4 * sqrt(2) * maximumVoltageRms;
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         voltageDueToRecurringPeakVoltages *= F3;
     }
     double voltageDueToSteadyStateVoltages = inputs.get_maximum_voltage_peak();
@@ -723,7 +723,7 @@ double InsulationIEC60664Model::calculate_clearance(Inputs& inputs) {
     double ratedImpulseWithstandVoltage = get_rated_impulse_withstand_voltage(overvoltageCategory, ratedVoltage, insulationType);
     double steadyStatePeakVoltage = inputs.get_maximum_voltage_peak();
 
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         steadyStatePeakVoltage *= 1.6;
     }
 
@@ -805,7 +805,7 @@ double InsulationIEC60664Model::calculate_creepage_distance(Inputs& inputs, bool
         }
     }
 
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         creepageDistance *= 2;
     }
 
@@ -849,9 +849,9 @@ double InsulationIEC62368Model::get_voltage_due_to_temporary_overvoltages_proced
     }
 }
 
-double InsulationIEC62368Model::get_voltage_due_to_transient_overvoltages(double requiredWithstandVoltage, InsulationType insulationType){
+double InsulationIEC62368Model::get_voltage_due_to_transient_overvoltages(double requiredWithstandVoltage, IsolationClass insulationType){
     std::vector<std::pair<double, double>> table;
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         table = table25["Reinforced"];
     }
     else {
@@ -860,9 +860,9 @@ double InsulationIEC62368Model::get_voltage_due_to_transient_overvoltages(double
     return linear_table_interpolation(table, requiredWithstandVoltage);
 }
 
-double InsulationIEC62368Model::get_voltage_due_to_recurring_peak_voltages(double workingVoltage, InsulationType insulationType){
+double InsulationIEC62368Model::get_voltage_due_to_recurring_peak_voltages(double workingVoltage, IsolationClass insulationType){
     std::vector<std::pair<double, double>> table;
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         table = table26["Reinforced"];
     }
     else {
@@ -871,9 +871,9 @@ double InsulationIEC62368Model::get_voltage_due_to_recurring_peak_voltages(doubl
     return linear_table_interpolation(table, workingVoltage);
 }
 
-double InsulationIEC62368Model::get_voltage_due_to_temporary_overvoltages(double supplyVoltageRms, InsulationType insulationType){
+double InsulationIEC62368Model::get_voltage_due_to_temporary_overvoltages(double supplyVoltageRms, IsolationClass insulationType){
     std::vector<std::pair<double, double>> table;
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         table = table27["Reinforced"];
     }
     else {
@@ -898,10 +898,10 @@ double InsulationIEC62368Model::get_reduction_factor_per_material(std::string ma
     throw std::invalid_argument("Too much frequency for IEC 62368-1 in table 22: " + std::to_string(frequency));
 }
 
-double InsulationIEC62368Model::get_clearance_table_10(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree){
+double InsulationIEC62368Model::get_clearance_table_10(double supplyVoltagePeak, IsolationClass insulationType, PollutionDegree pollutionDegree){
     std::string pollutionDegreeString = to_string(pollutionDegree);
     std::vector<std::pair<double, double>> table;
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         table = table10["Reinforced"][pollutionDegreeString];
     }
     else {
@@ -918,10 +918,10 @@ double InsulationIEC62368Model::get_clearance_table_10(double supplyVoltagePeak,
     }
 }
 
-double InsulationIEC62368Model::get_clearance_table_14(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree){
+double InsulationIEC62368Model::get_clearance_table_14(double supplyVoltagePeak, IsolationClass insulationType, PollutionDegree pollutionDegree){
     std::string pollutionDegreeString = to_string(pollutionDegree);
     std::vector<std::pair<double, double>> table;
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         table = table14["Reinforced"][pollutionDegreeString];
     }
     else {
@@ -938,9 +938,9 @@ double InsulationIEC62368Model::get_clearance_table_14(double supplyVoltagePeak,
     }
 }
 
-double InsulationIEC62368Model::get_clearance_table_11(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree){
+double InsulationIEC62368Model::get_clearance_table_11(double supplyVoltagePeak, IsolationClass insulationType, PollutionDegree pollutionDegree){
     std::vector<std::pair<double, double>> table;
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         table = table11["Reinforced"];
     }
     else {
@@ -967,9 +967,9 @@ double InsulationIEC62368Model::get_clearance_table_11(double supplyVoltagePeak,
     }
 }
 
-double InsulationIEC62368Model::get_distance_table_G13(double workingVoltage, InsulationType insulationType){
+double InsulationIEC62368Model::get_distance_table_G13(double workingVoltage, IsolationClass insulationType){
     std::vector<std::pair<double, double>> table;
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         table = tableG13["Reinforced"];
     }
     else {
@@ -980,14 +980,14 @@ double InsulationIEC62368Model::get_distance_table_G13(double workingVoltage, In
     return ceilFloat(result, 4);
 }
 
-double InsulationIEC62368Model::get_creepage_distance_table_17(double voltageRms, InsulationType insulationType, PollutionDegree pollutionDegree, Cti cti){
+double InsulationIEC62368Model::get_creepage_distance_table_17(double voltageRms, IsolationClass insulationType, PollutionDegree pollutionDegree, Cti cti){
     std::string pollutionDegreeString = to_string(pollutionDegree);
     std::string ctiString = to_string(cti);
     std::vector<std::pair<double, double>> table = table17[pollutionDegreeString][ctiString];
 
     double valueBasic = linear_table_interpolation(table, voltageRms);
 
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         return ceilFloat(valueBasic * 2, 4);
     }
     else {
@@ -995,7 +995,7 @@ double InsulationIEC62368Model::get_creepage_distance_table_17(double voltageRms
     }
 }
 
-double InsulationIEC62368Model::get_creepage_distance_table_18(double voltageRms, double frequency, PollutionDegree pollutionDegree, InsulationType insulationType){
+double InsulationIEC62368Model::get_creepage_distance_table_18(double voltageRms, double frequency, PollutionDegree pollutionDegree, IsolationClass insulationType){
     double previousStandardFrequency = iec62368LowerFrequency;
     double valuePollutionDegree1 = DBL_MAX;
     for (auto const& [standardFrequencyString, voltageList] : table18)
@@ -1022,7 +1022,7 @@ double InsulationIEC62368Model::get_creepage_distance_table_18(double voltageRms
         result = valuePollutionDegree1 * 1.4;
     }
 
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         return ceilFloat(2 * result, 5);
     }
     else {
@@ -1071,7 +1071,7 @@ double InsulationIEC62368Model::calculate_withstand_voltage(Inputs& inputs) {
     // For when getting the breakdown voltage of a material, we need to apply this reduction factor
     // if (maximumFrequency > iec62368LowerFrequency) {
     //     auto reductionFactor = get_reduction_factor_per_material("Other thin foil materials", maximumFrequency);
-    //     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    //     if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
     //         materialBreakDownVoltage = 1.2 * 2 * materialBreakDownVoltage / reductionFactor;
     //     }
     //     else {
@@ -1097,7 +1097,7 @@ double InsulationIEC62368Model::calculate_distance_through_insulation(Inputs& in
         return 0;
     }
     else {
-        if (insulationType == InsulationType::FUNCTIONAL || insulationType == InsulationType::BASIC) {
+        if (insulationType == IsolationClass::FUNCTIONAL || insulationType == IsolationClass::BASIC) {
             return 0;
         }
         else {
@@ -1181,7 +1181,7 @@ double InsulationIEC61558Model::get_working_voltage_rms(Inputs& inputs) {
     return inputs.get_maximum_voltage_rms();
 }
 
-double InsulationIEC61558Model::get_withstand_voltage_table_14(OvervoltageCategory overvoltageCategory, InsulationType insulationType, double workingVoltage){
+double InsulationIEC61558Model::get_withstand_voltage_table_14(OvervoltageCategory overvoltageCategory, IsolationClass insulationType, double workingVoltage){
     std::string overvoltageCategoryString = to_string(overvoltageCategory);
     std::string insulationTypeString = to_string(insulationType);
     std::vector<std::pair<double, double>> table = table14[overvoltageCategoryString][insulationTypeString];
@@ -1189,13 +1189,13 @@ double InsulationIEC61558Model::get_withstand_voltage_table_14(OvervoltageCatego
     return linear_table_interpolation(table, workingVoltage);
 }
 
-double InsulationIEC61558Model::get_clearance_table_20(OvervoltageCategory overvoltageCategory, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage){
+double InsulationIEC61558Model::get_clearance_table_20(OvervoltageCategory overvoltageCategory, PollutionDegree pollutionDegree, IsolationClass insulationType, double workingVoltage){
     std::string pollutionDegreeString = to_string(pollutionDegree);
     std::string overvoltageCategoryString = to_string(overvoltageCategory);
     std::string insulationTypeString = to_string(insulationType);
     std::vector<std::pair<double, double>> table = table20[overvoltageCategoryString][insulationTypeString][pollutionDegreeString];
 
-    if (workingVoltage < iec61558MinimumWorkingVoltage || pollutionDegree == PollutionDegree::PD1 || insulationType == InsulationType::FUNCTIONAL) {
+    if (workingVoltage < iec61558MinimumWorkingVoltage || pollutionDegree == PollutionDegree::PD1 || insulationType == IsolationClass::FUNCTIONAL) {
         return 0;
     }
 
@@ -1207,13 +1207,13 @@ double InsulationIEC61558Model::get_clearance_table_20(OvervoltageCategory overv
     throw std::invalid_argument("Too much voltage for IEC 61558-1: " + std::to_string(workingVoltage));
 }
 
-double InsulationIEC61558Model::get_creepage_distance_table_21(Cti cti, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage){
+double InsulationIEC61558Model::get_creepage_distance_table_21(Cti cti, PollutionDegree pollutionDegree, IsolationClass insulationType, double workingVoltage){
     std::string pollutionDegreeString = to_string(pollutionDegree);
     std::string ctiString = to_string(cti);
     std::string insulationTypeString = to_string(insulationType);
     std::vector<std::pair<double, double>> table = table21[ctiString][insulationTypeString][pollutionDegreeString];
 
-    if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == InsulationType::FUNCTIONAL) {
+    if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == IsolationClass::FUNCTIONAL) {
         return 0;
     }
 
@@ -1222,10 +1222,10 @@ double InsulationIEC61558Model::get_creepage_distance_table_21(Cti cti, Pollutio
     return creepageDistance;
 }
 
-double InsulationIEC61558Model::get_distance_through_insulation_table_22(InsulationType insulationType, double workingVoltage, bool usingThinLayers){
+double InsulationIEC61558Model::get_distance_through_insulation_table_22(IsolationClass insulationType, double workingVoltage, bool usingThinLayers){
     std::string insulationTypeString = to_string(insulationType);
     std::vector<std::pair<double, double>> table;
-    if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == InsulationType::FUNCTIONAL || insulationType == InsulationType::BASIC) {
+    if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == IsolationClass::FUNCTIONAL || insulationType == IsolationClass::BASIC) {
         return 0;
     }
     if (usingThinLayers) {
@@ -1263,10 +1263,10 @@ double InsulationIEC61558Model::calculate_distance_through_insulation_over_30kHz
     return dti;
 }
 
-double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType insulationType, double workingVoltage) {
+double InsulationIEC61558Model::calculate_clearance_over_30kHz(IsolationClass insulationType, double workingVoltage) {
     std::string insulationTypeString = to_string(insulationType);
 
-    if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == InsulationType::FUNCTIONAL) {
+    if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == IsolationClass::FUNCTIONAL) {
         return 0;
     }
 
@@ -1274,7 +1274,7 @@ double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType in
 
     {
         std::vector<std::pair<double, double>> table;
-        if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+        if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
             table = table103["Reinforced"];
         }
         else {
@@ -1289,7 +1289,7 @@ double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType in
     }
     {
         std::vector<std::pair<double, double>> table;
-        if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+        if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
             table = table104["Reinforced"];
         }
         else {
@@ -1311,14 +1311,14 @@ double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType in
     }
 }
 
-double InsulationIEC61558Model::calculate_creepage_distance_over_30kHz(InsulationType insulationType, PollutionDegree pollutionDegree, double frequency, double workingVoltage) {
+double InsulationIEC61558Model::calculate_creepage_distance_over_30kHz(IsolationClass insulationType, PollutionDegree pollutionDegree, double frequency, double workingVoltage) {
     std::map<double, std::vector<std::pair<double, double>>> table;
 
-    if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == InsulationType::FUNCTIONAL) {
+    if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == IsolationClass::FUNCTIONAL) {
         return 0;
     }
 
-    if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         switch (pollutionDegree) {
             case PollutionDegree::PD1:
                 table = table108;
@@ -1388,7 +1388,7 @@ double InsulationIEC61558Model::calculate_distance_through_insulation(Inputs& in
     double workingVoltage = get_working_voltage_rms(inputs);
     auto insulationType = inputs.get_insulation_type();
 
-    if (insulationType == InsulationType::FUNCTIONAL) {
+    if (insulationType == IsolationClass::FUNCTIONAL) {
         return 0;
     }
     double maximumFrequency = inputs.get_maximum_frequency();
@@ -1432,7 +1432,7 @@ double InsulationIEC61558Model::calculate_clearance(Inputs& inputs) {
     auto pollutionDegree = inputs.get_pollution_degree();
     auto insulationType = inputs.get_insulation_type();
     double maximumFrequency = inputs.get_maximum_frequency();
-    if (insulationType == InsulationType::FUNCTIONAL) {
+    if (insulationType == IsolationClass::FUNCTIONAL) {
         return 0;
     }
 
@@ -1473,7 +1473,7 @@ double InsulationIEC61558Model::calculate_creepage_distance(Inputs& inputs, bool
     auto pollutionDegree = inputs.get_pollution_degree();
     auto insulationType = inputs.get_insulation_type();
     double maximumFrequency = inputs.get_maximum_frequency();
-    if (insulationType == InsulationType::FUNCTIONAL) {
+    if (insulationType == IsolationClass::FUNCTIONAL) {
         return 0;
     }
 
@@ -1505,11 +1505,11 @@ double InsulationIEC60335Model::get_rated_impulse_withstand_voltage(OvervoltageC
     throw std::invalid_argument("Too much voltage for IEC 60335-1: " + std::to_string(ratedVoltage));
 }
 
-double InsulationIEC60335Model::get_clearance_table_16(PollutionDegree pollutionDegree, WiringTechnology wiringType, InsulationType insulationType, double ratedImpulseWithstandVoltage){
+double InsulationIEC60335Model::get_clearance_table_16(PollutionDegree pollutionDegree, WiringTechnology wiringType, IsolationClass insulationType, double ratedImpulseWithstandVoltage){
     for (size_t voltagesIndex = 0; voltagesIndex < table16.size(); voltagesIndex++) {
         if (ratedImpulseWithstandVoltage <= table16[voltagesIndex].first) {
             double result = DBL_MAX;
-            if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+            if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
                 if (voltagesIndex < table16.size() - 1) {
                     result =  table16[voltagesIndex + 1].second;
                 }
@@ -1521,7 +1521,7 @@ double InsulationIEC60335Model::get_clearance_table_16(PollutionDegree pollution
                 result =  table16[voltagesIndex].second;
             }
 
-            if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+            if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
                 if (ratedImpulseWithstandVoltage <= 800 && pollutionDegree == PollutionDegree::PD3) {
                     result = 0.0008;
                 }
@@ -1554,7 +1554,7 @@ double InsulationIEC60335Model::get_distance_through_insulation_table_19(Overvol
     throw std::invalid_argument("Too much voltage for IEC 60335-1: " + std::to_string(ratedVoltage));
 }
 
-double InsulationIEC60335Model::get_withstand_voltage_table_7(InsulationType insulationType, double ratedVoltage){
+double InsulationIEC60335Model::get_withstand_voltage_table_7(IsolationClass insulationType, double ratedVoltage){
     std::string insulationTypeString = to_string(insulationType);
     auto aux = table7[insulationTypeString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
@@ -1565,14 +1565,14 @@ double InsulationIEC60335Model::get_withstand_voltage_table_7(InsulationType ins
     throw std::invalid_argument("Too much voltage for IEC 60335-1: " + std::to_string(ratedVoltage));
 }
 
-double InsulationIEC60335Model::get_withstand_voltage_formula_table_7(InsulationType insulationType, double workingVoltage){
-    if (insulationType == InsulationType::BASIC) {
+double InsulationIEC60335Model::get_withstand_voltage_formula_table_7(IsolationClass insulationType, double workingVoltage){
+    if (insulationType == IsolationClass::BASIC) {
         return 1.2 * workingVoltage + 950;
     }
-    else if (insulationType == InsulationType::SUPPLEMENTARY) {
+    else if (insulationType == IsolationClass::SUPPLEMENTARY) {
         return 1.2 * workingVoltage + 1450;
     }
-    else if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+    else if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
         return 2.4 * workingVoltage + 2400;
     }
     return 0;
@@ -1616,10 +1616,10 @@ double InsulationIEC60335Model::calculate_distance_through_insulation(Inputs& in
     }
 
     double dti = 0;
-    if (insulationType == InsulationType::REINFORCED) {
+    if (insulationType == IsolationClass::REINFORCED) {
         dti = std::max(0.002, get_distance_through_insulation_table_19(overvoltageCategory, ratedVoltage));
     }
-    else if (insulationType == InsulationType::SUPPLEMENTARY || insulationType == InsulationType::DOUBLE) {
+    else if (insulationType == IsolationClass::SUPPLEMENTARY || insulationType == IsolationClass::DOUBLE) {
         dti = 0.001;
     }
  
@@ -1633,7 +1633,7 @@ double InsulationIEC60335Model::calculate_withstand_voltage(Inputs& inputs) {
     double maximumVoltagePeak = inputs.get_maximum_voltage_peak();
     auto ratedVoltage = std::max(mainSupplyVoltage, maximumPrimaryVoltageRms);
 
-    if (insulationType == InsulationType::FUNCTIONAL) {
+    if (insulationType == IsolationClass::FUNCTIONAL) {
         return 0;
     }
     else {
@@ -1691,12 +1691,12 @@ double InsulationIEC60335Model::calculate_creepage_distance(Inputs& inputs, bool
     double creepageDistance = DBL_MAX;
 
     if (maximumFrequency <= ieC60335MaximumStandardFrequency) {
-        if (insulationType == InsulationType::FUNCTIONAL) {
+        if (insulationType == IsolationClass::FUNCTIONAL) {
             creepageDistance = get_creepage_distance_table_18(cti, pollutionDegree, maximumPrimaryVoltagePeak);
         }
         else {
             creepageDistance = get_creepage_distance_table_17(cti, pollutionDegree, maximumPrimaryVoltagePeak);
-            if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+            if (insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE) {
                 creepageDistance *= 2;
             }
         }
@@ -1819,9 +1819,9 @@ std::vector<std::vector<WireSolidInsulationRequirements>> InsulationCoordinator:
         bool allowMarginTape = settings.get_coil_allow_margin_tape();
 
         // If we don't want margin tape we have to increase to insulation type to DOUBLE:
-        if ((insulationType == InsulationType::BASIC || insulationType == InsulationType::SUPPLEMENTARY)) {
+        if ((insulationType == IsolationClass::BASIC || insulationType == IsolationClass::SUPPLEMENTARY)) {
             if (!allowMarginTape) {
-                insulationType = InsulationType::DOUBLE;
+                insulationType = IsolationClass::DOUBLE;
             }
         }
 
@@ -1834,9 +1834,9 @@ std::vector<std::vector<WireSolidInsulationRequirements>> InsulationCoordinator:
             combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
         }
 
-        if (insulationType != InsulationType::FUNCTIONAL) {
+        if (insulationType != IsolationClass::FUNCTIONAL) {
 
-            if ((insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE)) {
+            if ((insulationType == IsolationClass::REINFORCED || insulationType == IsolationClass::DOUBLE)) {
                 // Reinforced or single winding inductors must have all the isolation needed in one later or coating
                 for (auto isolationSideToRemoveInsulation : isolationSidesRequired) {
                     std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
@@ -1852,19 +1852,19 @@ std::vector<std::vector<WireSolidInsulationRequirements>> InsulationCoordinator:
                 }
             }
 
-            if (insulationType != InsulationType::REINFORCED) {
+            if (insulationType != IsolationClass::REINFORCED) {
                 // If insulation is Double, we need to get the withstand voltage for basic, not double
-                if (insulationType == InsulationType::DOUBLE) {
+                if (insulationType == IsolationClass::DOUBLE) {
                     auto insulation = inputs.get_mutable_design_requirements().get_insulation().value();
-                    insulation.set_insulation_type(InsulationType::BASIC);
+                    insulation.set_insulation_type(IsolationClass::BASIC);
                     inputs.get_mutable_design_requirements().set_insulation(insulation);
                     withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
                     // Restore the caller's insulation type (DOUBLE) so the mutation does not leak
-                    insulation.set_insulation_type(InsulationType::DOUBLE);
+                    insulation.set_insulation_type(IsolationClass::DOUBLE);
                     inputs.get_mutable_design_requirements().set_insulation(insulation);
                 }
 
-                if (insulationType == InsulationType::DOUBLE || isolationSidesRequired.size() == 1) {
+                if (insulationType == IsolationClass::DOUBLE || isolationSidesRequired.size() == 1) {
                     // Additionally, Double can be composed of several steps or parts, as long as each reachs Basic and Supplementary insulation.
 
                     std::vector<WireSolidInsulationRequirements> solidInsulationForWires;

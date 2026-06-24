@@ -301,7 +301,7 @@ TEST_CASE("Test_Weinberg_V1_Default_DR_Has_Two_Windings",
     OpenMagnetics::Weinberg w(j);
     auto dr = w.process_design_requirements();
 
-    REQUIRE(dr.get_topology() == Topologies::WEINBERG_CONVERTER);
+    REQUIRE(dr.get_topology() == MAS::Topology::WEINBERG_CONVERTER);
     REQUIRE(dr.get_isolation_sides().has_value());
     REQUIRE(dr.get_isolation_sides().value().size() == 2);
     REQUIRE(dr.get_turns_ratios().size() == 1);
@@ -493,7 +493,7 @@ TEST_CASE("Test_Weinberg_AdvancedWeinberg_Process_RoundTrip",
     json j = make_advanced_weinberg_json(50.0, 150.0, 10.0, 50e3, L1, n);
     OpenMagnetics::AdvancedWeinberg aw(j);
     auto inputs = aw.process();
-    REQUIRE(inputs.get_design_requirements().get_topology() == Topologies::WEINBERG_CONVERTER);
+    REQUIRE(inputs.get_design_requirements().get_topology() == MAS::Topology::WEINBERG_CONVERTER);
     auto Lnom = inputs.get_design_requirements().get_magnetizing_inductance().get_nominal();
     REQUIRE(Lnom.has_value());
     REQUIRE_THAT(Lnom.value(), WithinRel(L1, 1e-6));
@@ -524,7 +524,7 @@ TEST_CASE("Test_Weinberg_ExtraComponents_L1_Co",
     REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[0]));
     {
         const auto& l1 = std::get<OpenMagnetics::Inputs>(extras[0]);
-        REQUIRE(l1.get_design_requirements().get_topology() == Topologies::WEINBERG_CONVERTER);
+        REQUIRE(l1.get_design_requirements().get_topology() == MAS::Topology::WEINBERG_CONVERTER);
         REQUIRE(l1.get_design_requirements().get_name().value() == "inputCoupledInductor");
         auto Lnom = l1.get_design_requirements().get_magnetizing_inductance().get_nominal();
         REQUIRE(Lnom.has_value());
@@ -543,7 +543,7 @@ TEST_CASE("Test_Weinberg_ExtraComponents_L1_Co",
     REQUIRE(std::holds_alternative<CAS::Inputs>(extras[1]));
     {
         const auto& co = std::get<CAS::Inputs>(extras[1]);
-        REQUIRE(co.get_design_requirements().get_name().value() == "outputCapacitor");
+        REQUIRE(co.get_design_requirements().get_role().value() == CAS::Application::OUTPUT_FILTER);
         auto Cnom = co.get_design_requirements().get_capacitance().get_nominal();
         REQUIRE(Cnom.has_value());
         REQUIRE_THAT(Cnom.value(), WithinRel(w.get_last_sized_co(), 1e-9));

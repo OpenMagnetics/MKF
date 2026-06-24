@@ -190,7 +190,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             continue;
         }
 
-        if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
+        if (get_application() == MAS::MagneticApplication::INTERFERENCE_SUPPRESSION) {
             // Common-mode chokes MUST be wound on a single closed magnetic path so the
             // common-mode flux of both windings adds in the core: only toroidal cores
             // give the tight coupling required. Differential-mode chokes have no such
@@ -200,7 +200,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             // topologies, honour the user's includeToroidalCores / includeConcentricCores
             // settings.
             auto topology = inputs.get_design_requirements().get_topology();
-            bool isCommonModeChoke = topology.has_value() && topology.value() == Topologies::COMMON_MODE_CHOKE;
+            bool isCommonModeChoke = topology.has_value() && topology.value() == MAS::Topology::COMMON_MODE_CHOKE;
             if (isCommonModeChoke) {
                 if (core.get_type() != CoreType::TOROIDAL) {
                     continue;
@@ -307,11 +307,11 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         }
         Core core(shape);
 
-        if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
+        if (get_application() == MAS::MagneticApplication::INTERFERENCE_SUPPRESSION) {
             // See comment in create_magnetic_dataset(): only CMC requires toroidal-only;
             // DMC and other suppression topologies should honour user settings.
             auto topology = inputs.get_design_requirements().get_topology();
-            bool isCommonModeChoke = topology.has_value() && topology.value() == Topologies::COMMON_MODE_CHOKE;
+            bool isCommonModeChoke = topology.has_value() && topology.value() == MAS::Topology::COMMON_MODE_CHOKE;
             if (isCommonModeChoke) {
                 if (core.get_type() != CoreType::TOROIDAL) {
                     continue;
@@ -466,13 +466,13 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     // We need to determine if this application stores energy (needs gap) or transfers it (no gap).
     //
     // ENERGY-STORING (inductor/flyback-like):
-    //   - Topologies: Flyback, Buck, Boost, Buck-Boost, SEPIC, Cuk, Zeta, etc.
+    //   - Topology: Flyback, Buck, Boost, Buck-Boost, SEPIC, Cuk, Zeta, etc.
     //   - Energy is stored in the magnetic field each switching cycle
     //   - Core typically needs a gap to store the required energy without saturating
     //   - Turns calculated from inductance requirement and gap
     //
     // TRANSFORMER (forward-like):
-    //   - Topologies: Forward, PushPull, Half-Bridge, Full-Bridge, DAB, LLC, etc.
+    //   - Topology: Forward, PushPull, Half-Bridge, Full-Bridge, DAB, LLC, etc.
     //   - Energy is transferred directly, not stored in the magnetic field
     //   - Magnetizing inductance should be HIGH to minimize magnetizing current (parasitic)
     //   - Core should NOT be gapped (high permeability = high inductance)

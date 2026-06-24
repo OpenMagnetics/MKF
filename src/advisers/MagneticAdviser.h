@@ -69,7 +69,7 @@ namespace OpenMagnetics {
  * **CMC Design Flow:**
  * ```cpp
  * Inputs inputs;
- * inputs.get_mutable_design_requirements().set_application(Application::INTERFERENCE_SUPPRESSION);
+ * inputs.get_mutable_design_requirements().set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
  * inputs.get_mutable_design_requirements().set_sub_application(SubApplication::COMMON_MODE_NOISE_FILTERING);
  * inputs.get_mutable_design_requirements().set_minimum_impedance(impedanceRequirements);
  * 
@@ -109,7 +109,7 @@ namespace OpenMagnetics {
  *
  * ```cpp
  * MagneticAdviser adviser;
- * adviser.set_application(Application::POWER);
+ * adviser.set_application(MAS::MagneticApplication::POWER);
  * // Uses STANDARD_CORES mode by default (calculates optimal gaps)
  * // To use existing catalog cores instead:
  * // adviser.set_core_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
@@ -154,7 +154,7 @@ class MagneticAdviser{
         };
         bool _simulateResults = true;
         bool _uniqueCoreShapes = false;
-        Application _application = Application::POWER;
+        MAS::MagneticApplication _application = MAS::MagneticApplication::POWER;
         CoreAdviser::CoreAdviserModes _coreAdviserMode = CoreAdviser::CoreAdviserModes::STANDARD_CORES;
 
         MagneticAdviser() {
@@ -165,8 +165,8 @@ class MagneticAdviser{
 
         void set_unique_core_shapes(bool value);
         bool get_unique_core_shapes();
-        void set_application(Application value);
-        Application get_application();
+        void set_application(MAS::MagneticApplication value);
+        MAS::MagneticApplication get_application();
         void set_core_mode(CoreAdviser::CoreAdviserModes value);
         CoreAdviser::CoreAdviserModes get_core_mode();
 

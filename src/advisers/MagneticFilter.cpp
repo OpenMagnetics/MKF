@@ -302,8 +302,8 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     {
         auto topology = inputs->get_design_requirements().get_topology();
         if (topology.has_value() &&
-            (topology.value() == Topologies::COMMON_MODE_CHOKE ||
-             topology.value() == Topologies::DIFFERENTIAL_MODE_CHOKE)) {
+            (topology.value() == MAS::Topology::COMMON_MODE_CHOKE ||
+             topology.value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE)) {
             return {true, 0};
         }
     }

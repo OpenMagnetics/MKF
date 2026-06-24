@@ -535,11 +535,11 @@ TEST_CASE("Test_Cmc_RealisticSimulation_FrontendDefaults", "[converter-model][cm
         auto processed = exc.get_voltage()->get_processed().value();
         // Peak voltage should be in volts, not gigavolts
         if (processed.get_peak().has_value()) {
-            INFO("Processed peak voltage = " << processed.get_peak().value() << " V");
+            INFO("ProcessedWaveform peak voltage = " << processed.get_peak().value() << " V");
             CHECK(std::abs(processed.get_peak().value()) < 1000.0);
         }
         if (processed.get_rms().has_value()) {
-            INFO("Processed RMS voltage = " << processed.get_rms().value() << " V");
+            INFO("ProcessedWaveform RMS voltage = " << processed.get_rms().value() << " V");
             CHECK(processed.get_rms().value() < 1000.0);
         }
     }
@@ -554,7 +554,7 @@ TEST_CASE("Test_Cmc_RealisticSimulation_FrontendDefaults", "[converter-model][cm
 
         auto processed = exc.get_current()->get_processed().value();
         if (processed.get_rms().has_value()) {
-            INFO("Processed RMS current = " << processed.get_rms().value() << " A");
+            INFO("ProcessedWaveform RMS current = " << processed.get_rms().value() << " A");
             CHECK(processed.get_rms().value() > 1e-6);  // Must be non-zero
         }
     }
@@ -1123,7 +1123,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_WaveformShapeEquality",
 // End-to-end: does MagneticAdviser treat CMC inputs as CMCs?
 //
 // CommonModeChoke::process_design_requirements tags Inputs with
-// Application::INTERFERENCE_SUPPRESSION + SubApplication::COMMON_MODE_NOISE_FILTERING.
+// MAS::MagneticApplication::INTERFERENCE_SUPPRESSION + SubApplication::COMMON_MODE_NOISE_FILTERING.
 // The advisers key off these tags to:
 //   · restrict CoreAdviser to TOROIDAL shapes (CoreAdviser.cpp:878, :975)
 //   · filter CoreMaterial to CM-appropriate high-µ ferrites (Core.cpp:1478)

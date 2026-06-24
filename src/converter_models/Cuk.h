@@ -226,7 +226,7 @@ public:
     Cuk(const json& j);
     Cuk() {};
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::CUK_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::CUK_CONVERTER; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }

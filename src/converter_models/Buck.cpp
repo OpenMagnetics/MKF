@@ -46,7 +46,7 @@ namespace OpenMagnetics {
         from_json(migrated, *this);
     }
 
-    OperatingPoint Buck::process_operating_points_for_input_voltage(double inputVoltage, const BaseOperatingPoint& outputOperatingPoint, double inductance) {
+    OperatingPoint Buck::process_operating_points_for_input_voltage(double inputVoltage, const TopologyExcitation& outputOperatingPoint, double inductance) {
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
         double outputVoltage = outputOperatingPoint.get_output_voltages()[0];
@@ -202,7 +202,7 @@ namespace OpenMagnetics {
         std::vector<IsolationSide> isolationSides;
         isolationSides.push_back(get_isolation_side_from_index(0));
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::BUCK_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::BUCK_CONVERTER);
         return designRequirements;
     }
 
@@ -266,7 +266,7 @@ namespace OpenMagnetics {
         std::vector<IsolationSide> isolationSides;
         isolationSides.push_back(get_isolation_side_from_index(0));
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::BUCK_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::BUCK_CONVERTER);
         return designRequirements;
     }
 
@@ -292,7 +292,7 @@ namespace OpenMagnetics {
         std::vector<IsolationSide> isolationSides;
         isolationSides.push_back(get_isolation_side_from_index(0));
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::BUCK_CONVERTER);
+        designRequirements.set_topology(MAS::Topology::BUCK_CONVERTER);
 
         inputs.set_design_requirements(designRequirements);
 

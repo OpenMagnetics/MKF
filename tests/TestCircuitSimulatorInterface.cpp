@@ -2431,7 +2431,7 @@ TEST_CASE("Converter_Basic_Simulation_Tests", "[converter][basic-simulation][smo
         buck.set_diode_voltage_drop(0.5);
         buck.set_efficiency(0.9);  // efficiency is required (sets the duty cycle); no silent default
 
-        auto opPoint = BaseOperatingPoint();
+        auto opPoint = TopologyExcitation();
         opPoint.set_output_voltages({5.0});
         opPoint.set_output_currents({3.0});
         opPoint.set_ambient_temperature(25.0);
@@ -2453,7 +2453,7 @@ TEST_CASE("Converter_Basic_Simulation_Tests", "[converter][basic-simulation][smo
         boost.set_diode_voltage_drop(0.5);
         boost.set_efficiency(0.9);  // efficiency is required (sets the duty cycle); no silent default
 
-        auto opPoint = BaseOperatingPoint();
+        auto opPoint = TopologyExcitation();
         opPoint.set_output_voltages({12.0});
         opPoint.set_output_currents({1.0});
         opPoint.set_ambient_temperature(25.0);

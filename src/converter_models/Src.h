@@ -31,7 +31,7 @@ using namespace MAS;
  *
  * REFERENCES
  * [1] R. L. Steigerwald, "A Comparison of Half-Bridge Resonant Converter
- *     Topologies", IEEE Trans. Power Electronics, vol. 3, no. 2, pp. 174–182,
+ *     Topology", IEEE Trans. Power Electronics, vol. 3, no. 2, pp. 174–182,
  *     Apr. 1988.
  * [2] M. K. Kazimierczuk, "Resonant Power Converters", Wiley, 2nd ed. 2011,
  *     Ch. 4 (Series Resonant).
@@ -92,8 +92,8 @@ public:
 
     bool is_bridge_topology() const override { return true; }
 
-    MAS::Topologies topology_kind() const override {
-        return MAS::Topologies::SERIES_RESONANT_CONVERTER;
+    MAS::Topology topology_kind() const override {
+        return MAS::Topology::SERIES_RESONANT_CONVERTER;
     }
 
     // ── Computed-tank accessors ─────────────────────────────────────────────

@@ -45,7 +45,7 @@ namespace {
         section.set_dimensions({windingWindowWidth, windingWindowHeight});
         section.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_peak_to_peak(currentRms * 2 * 1.4142);
         processed.set_rms(currentRms);
         processed.set_effective_frequency(currentEffectiveFrequency);

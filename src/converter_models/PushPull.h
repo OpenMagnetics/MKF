@@ -120,7 +120,7 @@ public:
     const std::vector<double>& get_per_op_magnetizing_peak_current() const { return perOpMagnetizingPeakCurrent; }
     const std::vector<bool>& get_per_op_is_ccm() const { return perOpIsCcm; }
 
-    MAS::Topologies topology_kind() const override { return MAS::Topologies::PUSH_PULL_CONVERTER; }
+    MAS::Topology topology_kind() const override { return MAS::Topology::PUSH_PULL_CONVERTER; }
     bool is_bridge_topology() const override { return true; }
 
     bool _assertErrors = false;
@@ -142,7 +142,7 @@ public:
     std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const PushPullOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double outputInductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const TopologyExcitation& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double outputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio);
     double get_maximum_duty_cycle();
 
@@ -236,7 +236,7 @@ inline void from_json(const json & j, AdvancedPushPull& x) {
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_drain_source_voltage(get_stack_optional<double>(j, "maximumDrainSourceVoltage"));
     x.set_maximum_switch_current(get_stack_optional<double>(j, "maximumSwitchCurrent"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<PushPullOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<TopologyExcitation>>());
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
     x.set_desired_output_inductance(get_stack_optional<double>(j, "desiredOutputInductance"));

@@ -1,4 +1,4 @@
-# Converter Models Review Plan — Bring All Topologies to DAB-Quality
+# Converter Models Review Plan — Bring All MAS::Topology to DAB-Quality
 
 **Audience**: Implementing AI agents (this plan is verbose by design — every step
 includes file paths, line numbers, exact code snippets to paste, and explicit

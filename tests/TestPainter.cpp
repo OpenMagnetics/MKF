@@ -4098,7 +4098,7 @@ namespace {
         double magnetizingInductance = 1e-3;
         std::string shapeName = "T 20/10/7";
 
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(label);
         processed.set_offset(offset);
         processed.set_peak_to_peak(peakToPeak);

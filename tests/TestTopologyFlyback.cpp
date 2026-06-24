@@ -641,7 +641,7 @@ namespace {
         REQUIRE_THAT(dr.get_turns_ratios()[0].get_nominal().value(), Catch::Matchers::WithinAbs(10.0, 1e-9));
         REQUIRE_THAT(dr.get_turns_ratios()[1].get_nominal().value(), Catch::Matchers::WithinAbs(20.0, 1e-9));
         REQUIRE_THAT(dr.get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(950e-6, 1e-12));
-        REQUIRE(dr.get_topology().value() == OpenMagnetics::Topologies::FLYBACK_CONVERTER);
+        REQUIRE(dr.get_topology().value() == MAS::Topology::FLYBACK_CONVERTER);
         REQUIRE(dr.get_isolation_sides().value().size() == 3);
     }
 

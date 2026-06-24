@@ -456,7 +456,7 @@ DesignRequirements Vienna::process_design_requirements() {
     std::vector<IsolationSide> isolationSides;
     isolationSides.push_back(get_isolation_side_from_index(0));
     designRequirements.set_isolation_sides(isolationSides);
-    designRequirements.set_topology(Topologies::VIENNA_RECTIFIER_CONVERTER);
+    designRequirements.set_topology(MAS::Topology::VIENNA_RECTIFIER_CONVERTER);
 
     return designRequirements;
 }

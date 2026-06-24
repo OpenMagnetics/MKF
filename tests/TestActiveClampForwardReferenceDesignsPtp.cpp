@@ -96,7 +96,7 @@ OpenMagnetics::ActiveClampForward build(const RefDesignSpec& s) {
     fwd.set_current_ripple_ratio(0.3);
     fwd.set_duty_cycle(s.D);
 
-    ForwardOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({s.Vout});
     op.set_output_currents({s.Iout});
     op.set_switching_frequency(s.Fs);
@@ -153,7 +153,7 @@ OpenMagnetics::ActiveClampForward build_for_shape_match(
     fwd.set_current_ripple_ratio(ripple);
     fwd.set_duty_cycle(s.D);
 
-    ForwardOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({Vout_for_t1});
     op.set_output_currents({Iout_spice});
     op.set_switching_frequency(s.Fs);

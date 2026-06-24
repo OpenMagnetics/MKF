@@ -461,7 +461,7 @@ New file. Pattern off `boost.json` (single inductor) + `flyback.json`
 After schema edit, regenerate `MAS.hpp` and copy to `build/MAS/MAS.hpp`
 (per user-memory staging gotcha).
 
-Add `"CUK_CONVERTER"` to the `Topologies` enum in `MAS/schemas/inputs/`
+Add `"CUK_CONVERTER"` to the `MAS::Topology` enum in `MAS/schemas/inputs/`
 (see how BUCK_CONVERTER and FLYBACK_CONVERTER are listed).
 
 ---
@@ -614,7 +614,7 @@ do it once, both plans benefit).
 
 | # | Scope | Files | Tests added | Effort |
 |---|---|---|---|---|
-| **P1** | MAS schema (`cuk.json`, `Topologies` enum entry), regenerate MAS.hpp, stub `Cuk.h`/`Cuk.cpp` (constructors + run_checks only, throws on the rest), `from_json`/`to_json` for `AdvancedCuk` | schema, `Cuk.h`, `Cuk.cpp` | none | 0.5 d |
+| **P1** | MAS schema (`cuk.json`, `MAS::Topology` enum entry), regenerate MAS.hpp, stub `Cuk.h`/`Cuk.cpp` (constructors + run_checks only, throws on the rest), `from_json`/`to_json` for `AdvancedCuk` | schema, `Cuk.h`, `Cuk.cpp` | none | 0.5 d |
 | **P2** | Static analytical helpers (`compute_duty_cycle`, `compute_conversion_ratio`, `compute_l1_min`, `compute_l2_min`, `compute_c1_min`, `compute_dcm_K`, `compute_rhp_zero_freq`), unit tests for each | `Cuk.cpp`, tests | `Conversion_Ratio`, `RHP_Zero_Frequency` | 0.5 d |
 | **P3** | `process_design_requirements` (sizes L1, L2, C1, Co from current-ripple-ratio or maximum-switch-current; mirror `Boost::process_design_requirements`); `process_operating_point_for_input_voltage` (CCM piecewise-linear waveforms for L1, L2, plus diagnostics); `process_operating_points` (loop over input voltages × OPs) | `Cuk.cpp` | `Erickson_Reference_Design`, `Bramble_Reference_Design`, `Design_Requirements`, `OperatingPoints_Generation`, `Diagnostics_Populated` | 1.5 d |
 | **P4** | DCM detection & flag (no DCM waveform construction yet); CCM/DCM boundary test | `Cuk.cpp`, tests | `CCM_DCM_Boundary` | 0.5 d |
@@ -640,7 +640,7 @@ P5; P8/P9/P10 need P5; P11 last.
 - [ ] Both `*_PtP_AnalyticalVsNgspice_*` tests run and NRMSE ≤ 0.15.
 - [ ] `lastOperatingMode` flips CCM ↔ DCM at K(D) = (1-D)² boundary
       within ±5%.
-- [ ] Schema documented; `Topologies::CUK_CONVERTER` added.
+- [ ] Schema documented; `MAS::Topology::CUK_CONVERTER` added.
 - [ ] Header has ASCII art, equations §4 with citations,
       accuracy disclaimer (Coss neglected, body-diode reverse-recovery
       neglected), **polarity convention note** (Vo < 0 in non-isolated),

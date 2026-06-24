@@ -222,7 +222,7 @@ double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculat
 
     OperatingPointExcitation excitation;
     SignalDescriptor magneticFluxDensity;
-    Processed magneticFluxDensityProcessed;
+    ProcessedWaveform magneticFluxDensityProcessed;
     magneticFluxDensityProcessed.set_label(WaveformLabel::SINUSOIDAL);
     magneticFluxDensityProcessed.set_offset(0);
     magneticFluxDensityProcessed.set_duty_cycle(0.5);
@@ -298,7 +298,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
 
         OperatingPointExcitation excitation;
         SignalDescriptor magneticFluxDensity;
-        Processed magneticFluxDensityProcessed;
+        ProcessedWaveform magneticFluxDensityProcessed;
         magneticFluxDensityProcessed.set_label(WaveformLabel::SINUSOIDAL);
         magneticFluxDensityProcessed.set_offset(0);
         magneticFluxDensityProcessed.set_duty_cycle(0.5);

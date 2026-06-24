@@ -1,4 +1,4 @@
-# Future Topologies for MKF
+# Future MAS::Topology for MKF
 
 A prioritised list of converter topologies that could be added to MKF
 beyond the ones currently implemented or already planned. Sibling to

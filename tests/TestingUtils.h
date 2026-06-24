@@ -83,7 +83,7 @@ OpenMagnetics::Coil get_quick_toroidal_coil_no_compact(std::vector<int64_t> numb
 
 OpenMagnetics::Inputs get_quick_insulation_inputs(MAS::DimensionWithTolerance altitude,
                                                          MAS::Cti cti,
-                                                         MAS::InsulationType insulation_type,
+                                                         MAS::IsolationClass insulation_type,
                                                          MAS::DimensionWithTolerance main_supply_voltage,
                                                          MAS::OvervoltageCategory overvoltage_category,
                                                          MAS::PollutionDegree pollution_degree,
@@ -95,7 +95,7 @@ OpenMagnetics::Inputs get_quick_insulation_inputs(MAS::DimensionWithTolerance al
 
 MAS::InsulationRequirements get_quick_insulation_requirements(MAS::DimensionWithTolerance altitude,
                                                                         MAS::Cti cti,
-                                                                        MAS::InsulationType insulation_type,
+                                                                        MAS::IsolationClass insulation_type,
                                                                         MAS::DimensionWithTolerance main_supply_voltage,
                                                                         MAS::OvervoltageCategory overvoltage_category,
                                                                         MAS::PollutionDegree pollution_degree,

@@ -45,11 +45,11 @@ bool CoreAdviser::get_unique_core_shapes() {
     return _uniqueCoreShapes;
 }
 
-void CoreAdviser::set_application(Application value) {
+void CoreAdviser::set_application(MAS::MagneticApplication value) {
     _application = value;
 }
 
-Application CoreAdviser::get_application() {
+MAS::MagneticApplication CoreAdviser::get_application() {
     return _application;
 }
 
@@ -273,7 +273,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
     // logEntry("We don't include stacks of cores in our search.", "CoreAdviser");
     std::vector<std::pair<Mas, double>> filteredMagnetics;
     
-    if (get_application() == Application::POWER) {
+    if (get_application() == MAS::MagneticApplication::POWER) {
         filteredMagnetics = filter_available_cores_power_application(&magnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
         if (filteredMagnetics.size() >= maximumNumberResults) {
             return filteredMagnetics;
@@ -300,7 +300,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
     auto magnetics = create_magnetic_dataset(inputs, shapes, globalIncludeStacks);
 
     size_t maximumMagneticsAfterFiltering = settings.get_core_adviser_maximum_magnetics_after_filtering();
-    if (get_application() == Application::POWER) {
+    if (get_application() == MAS::MagneticApplication::POWER) {
         return filter_standard_cores_power_application(&magnetics, inputs, _weights, maximumMagneticsAfterFiltering, maximumNumberResults);
     }
     else {

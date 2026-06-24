@@ -3397,7 +3397,7 @@ TEST_CASE("MagneticFluxDensity_From_Losses_Steinmetz", "[physical-model][core-lo
     double frequency = 423568;
     OperatingPointExcitation operatingPointExcitation;
     SignalDescriptor magneticFluxDensity;
-    Processed processed;
+    ProcessedWaveform processed;
     operatingPointExcitation.set_frequency(frequency);
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(0);
@@ -3435,7 +3435,7 @@ TEST_CASE("MagneticFluxDensity_From_Losses_Igse", "[physical-model][core-losses]
     double frequency = 423568;
     OperatingPointExcitation operatingPointExcitation;
     SignalDescriptor magneticFluxDensity;
-    Processed processed;
+    ProcessedWaveform processed;
     operatingPointExcitation.set_frequency(frequency);
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(0);

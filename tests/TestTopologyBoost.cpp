@@ -180,7 +180,7 @@ namespace {
         boost.set_efficiency(0.92);
         
         // Operating point: 24V @ 1A output, 100kHz
-        BaseOperatingPoint opPoint;
+        TopologyExcitation opPoint;
         opPoint.set_output_voltages({24.0});
         opPoint.set_output_currents({1.0});
         opPoint.set_switching_frequency(100e3);
@@ -301,7 +301,7 @@ namespace {
         boost.set_efficiency(0.92);
         boost.set_current_ripple_ratio(0.4);
 
-        BaseOperatingPoint op; op.set_output_voltages({24.0}); op.set_output_currents({1.0});
+        TopologyExcitation op; op.set_output_voltages({24.0}); op.set_output_currents({1.0});
         op.set_switching_frequency(100e3); op.set_ambient_temperature(25.0);
         boost.set_operating_points({op});
 
@@ -382,7 +382,7 @@ namespace {
             b.set_diode_voltage_drop(0.0);   // synchronous boost
             b.set_efficiency(1.0);            // lossless analytical reference
             b.set_current_ripple_ratio(0.4);
-            BaseOperatingPoint op;
+            TopologyExcitation op;
             op.set_output_voltages({s.Vout});
             op.set_output_currents({s.Iout});
             op.set_switching_frequency(s.Fs);
@@ -398,7 +398,7 @@ namespace {
             // directly with the nominal Vin guarantees the Values check
             // is anchored at the nominal operating point rather than at
             // whichever corner (min/nom/max) the iterator visits last.
-            BaseOperatingPoint op;
+            TopologyExcitation op;
             op.set_output_voltages({s.Vout});
             op.set_output_currents({s.Iout});
             op.set_switching_frequency(s.Fs);
@@ -505,7 +505,7 @@ namespace {
         boost.set_efficiency(0.92);
         boost.set_current_ripple_ratio(0.3);
 
-        BaseOperatingPoint op;
+        TopologyExcitation op;
         op.set_output_voltages({Vout});
         op.set_output_currents({Iout});
         op.set_switching_frequency(250e3);

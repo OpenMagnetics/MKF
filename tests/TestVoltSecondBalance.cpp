@@ -156,7 +156,7 @@ TEST_CASE("Test_VoltSecondBalance_Buck", "[volt-second-balance][buck-topology]")
     buck.set_efficiency(0.92);
     buck.set_current_ripple_ratio(0.3);
 
-    BaseOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({12.0});
     op.set_output_currents({2.0});
     op.set_switching_frequency(250e3);
@@ -185,7 +185,7 @@ TEST_CASE("Test_VoltSecondBalance_Boost", "[volt-second-balance][boost-topology]
     boost.set_efficiency(0.92);
     boost.set_current_ripple_ratio(0.3);
 
-    BaseOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({24.0});
     op.set_output_currents({1.0});
     op.set_switching_frequency(250e3);
@@ -254,7 +254,7 @@ TEST_CASE("Test_VoltSecondBalance_PushPull", "[volt-second-balance][push-pull-to
     pp.set_efficiency(0.9);
     pp.set_current_ripple_ratio(0.4);
 
-    OpenMagnetics::PushPullOperatingPoint op;
+    OpenMagnetics::TopologyExcitation op;
     op.set_output_voltages({5.0});
     op.set_output_currents({1.0});
     op.set_switching_frequency(420e3);
@@ -302,7 +302,7 @@ TEST_CASE("Test_VoltSecondBalance_IsolatedBuck", "[volt-second-balance][isolated
     ib.set_efficiency(0.9);
     ib.set_current_ripple_ratio(0.3);
 
-    IsolatedBuckOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({5.0, 5.0});
     op.set_output_currents({0.6, 5.0});
     op.set_switching_frequency(200e3);

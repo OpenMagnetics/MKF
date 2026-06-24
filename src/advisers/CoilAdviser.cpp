@@ -211,7 +211,7 @@ namespace OpenMagnetics {
         }
         const bool isDmcMultiWinding =
             inputs.get_design_requirements().get_topology().has_value()
-            && inputs.get_design_requirements().get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE
+            && inputs.get_design_requirements().get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE
             && numWindingsForDmcCheck >= 2;
         if (isCmc && coreType == CoreType::TOROIDAL) {
             repetitions = {1};
@@ -560,7 +560,7 @@ namespace OpenMagnetics {
         }
         const bool isDmcMultiWinding =
             mas.get_mutable_inputs().get_design_requirements().get_topology().has_value()
-            && mas.get_mutable_inputs().get_design_requirements().get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE
+            && mas.get_mutable_inputs().get_design_requirements().get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE
             && dmcWindingCount >= 2;
         size_t maximumNumberWires = settings.get_coil_adviser_maximum_number_wires();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs(), mas.get_magnetic().get_coil());

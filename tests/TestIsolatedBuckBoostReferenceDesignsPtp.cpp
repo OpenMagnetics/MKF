@@ -77,12 +77,12 @@ OpenMagnetics::IsolatedBuckBoost build(const RefDesignSpec& s) {
     ibb.set_diode_voltage_drop(0.0);   // ideal diode for closed-form anchor
     ibb.set_efficiency(1.0);            // lossless analytical reference
     ibb.set_current_ripple_ratio(0.3);
-    IsolatedBuckBoostOperatingPoint op;
+    TopologyExcitation op;
     op.set_output_voltages({s.Vout, s.Vout / s.n});  // primary + isolated bias
     op.set_output_currents({s.Iout, s.Iout2});
     op.set_switching_frequency(s.Fs);
     op.set_ambient_temperature(25.0);
-    ibb.set_operating_points(std::vector<IsolatedBuckBoostOperatingPoint>{op});
+    ibb.set_operating_points(std::vector<TopologyExcitation>{op});
     return ibb;
 }
 

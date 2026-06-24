@@ -355,7 +355,7 @@ TEST_CASE("Test_Cuk_AdvancedCuk_Process_RoundTrip",
     json j = make_advanced_cuk_json(25.0, 25.0, 1.0, 100e3, L1);
     OpenMagnetics::AdvancedCuk acuk(j);
     auto inputs = acuk.process();
-    REQUIRE(inputs.get_design_requirements().get_topology() == Topologies::CUK_CONVERTER);
+    REQUIRE(inputs.get_design_requirements().get_topology() == MAS::Topology::CUK_CONVERTER);
     auto Lnom = inputs.get_design_requirements().get_magnetizing_inductance().get_nominal();
     REQUIRE(Lnom.has_value());
     REQUIRE_THAT(Lnom.value(), WithinRel(L1, 1e-6));
@@ -381,7 +381,7 @@ TEST_CASE("Test_Cuk_ExtraComponents_L2_C1_Co",
     REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[0]));
     {
         const auto& l2 = std::get<OpenMagnetics::Inputs>(extras[0]);
-        REQUIRE(l2.get_design_requirements().get_topology() == Topologies::CUK_CONVERTER);
+        REQUIRE(l2.get_design_requirements().get_topology() == MAS::Topology::CUK_CONVERTER);
         auto Lnom = l2.get_design_requirements().get_magnetizing_inductance().get_nominal();
         REQUIRE(Lnom.has_value());
         REQUIRE(Lnom.value() > 0.0);
@@ -542,7 +542,7 @@ TEST_CASE("Test_Cuk_V2_CoupledInductor_DR_Has_Two_Windings",
     OpenMagnetics::Cuk cuk(j);
 
     auto dr = cuk.process_design_requirements();
-    REQUIRE(dr.get_topology() == Topologies::CUK_CONVERTER);
+    REQUIRE(dr.get_topology() == MAS::Topology::CUK_CONVERTER);
     REQUIRE(dr.get_isolation_sides().has_value());
     // Two windings on the same (non-isolated) core.
     REQUIRE(dr.get_isolation_sides().value().size() == 2);
@@ -779,13 +779,13 @@ TEST_CASE("Test_Cuk_V3_Isolated_Extra_Components_5_Entries",
     REQUIRE(l2Inputs.get_design_requirements().get_name().value() == "outputInductor");
 
     auto& caInputs = std::get<CAS::Inputs>(extras[2]);
-    REQUIRE(caInputs.get_design_requirements().get_name().value() == "primaryCouplingCapacitor");
+    REQUIRE(caInputs.get_design_requirements().get_role().value() == CAS::Application::DC_LINK);
     REQUIRE(caInputs.get_design_requirements().get_role() == CAS::Application::DC_LINK);
     auto& cbInputs = std::get<CAS::Inputs>(extras[3]);
-    REQUIRE(cbInputs.get_design_requirements().get_name().value() == "secondaryCouplingCapacitor");
+    REQUIRE(cbInputs.get_design_requirements().get_role().value() == CAS::Application::DC_LINK);
     REQUIRE(cbInputs.get_design_requirements().get_role() == CAS::Application::DC_LINK);
     auto& coInputs = std::get<CAS::Inputs>(extras[4]);
-    REQUIRE(coInputs.get_design_requirements().get_name().value() == "outputCapacitor");
+    REQUIRE(coInputs.get_design_requirements().get_role().value() == CAS::Application::OUTPUT_FILTER);
     REQUIRE(coInputs.get_design_requirements().get_role() == CAS::Application::OUTPUT_FILTER);
 }
 

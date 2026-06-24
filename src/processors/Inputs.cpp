@@ -540,7 +540,7 @@ Waveform Inputs::reconstruct_signal(Harmonics harmonics, double frequency) {
     return waveform;
 }
 
-Waveform Inputs::create_waveform(Processed processed, double frequency) {
+Waveform Inputs::create_waveform(ProcessedWaveform processed, double frequency) {
     if (!processed.get_peak_to_peak()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Signal is missing peak to peak");
     }
@@ -888,7 +888,7 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoi
 
     // Build a continuous triangular magnetizing current with the correct offset,
     // peak-to-peak, and duty cycle (asymmetric slopes for tOn vs tOff)
-    Processed triangularProcessed;
+    ProcessedWaveform triangularProcessed;
     triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
     triangularProcessed.set_offset(offset + peakToPeak / 2);
     triangularProcessed.set_peak_to_peak(peakToPeak);
@@ -942,7 +942,7 @@ SignalDescriptor Inputs::get_common_mode_choke_magnetizing_current(OperatingPoin
     // centered around zero (no DC flux bias in a CMC).
     double peakToPeak = primaryProcessed.get_peak_to_peak().value();
 
-    Processed triangularProcessed;
+    ProcessedWaveform triangularProcessed;
     triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
     triangularProcessed.set_offset(peakToPeak / 2);
     triangularProcessed.set_peak_to_peak(peakToPeak);
@@ -1506,7 +1506,7 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
     if (label == WaveformLabel::CUSTOM) {
         return reflect_waveform(signal, ratio);
     }
-    Processed processed;
+    ProcessedWaveform processed;
     if (!signal.get_processed()) {
         auto waveform = signal.get_waveform().value();
         if (is_waveform_sampled(waveform)) {
@@ -1653,10 +1653,10 @@ std::pair<bool, std::string> Inputs::check_integrity() {
     return result;
 }
 
-Processed Inputs::calculate_processed_data(SignalDescriptor excitation,
+ProcessedWaveform Inputs::calculate_processed_data(SignalDescriptor excitation,
                                             Waveform sampledWaveform,
                                             bool includeAdvancedData,
-                                            std::optional<Processed> processed) {
+                                            std::optional<ProcessedWaveform> processed) {
 
     auto harmonics = excitation.get_harmonics().value();
     return Inputs::calculate_processed_data(harmonics, sampledWaveform, includeAdvancedData, processed);
@@ -1702,8 +1702,8 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
     return 0;
 }
 
-Processed Inputs::calculate_basic_processed_data(Waveform waveform) {
-    Processed processed;
+ProcessedWaveform Inputs::calculate_basic_processed_data(Waveform waveform) {
+    ProcessedWaveform processed;
     std::vector<double> dataToProcess;
     auto sampledWaveform = waveform;
     auto compressedWaveform = waveform;
@@ -1757,10 +1757,10 @@ Processed Inputs::calculate_basic_processed_data(Waveform waveform) {
     return processed;
 }
 
-Processed Inputs::calculate_processed_data(Waveform waveform,
+ProcessedWaveform Inputs::calculate_processed_data(Waveform waveform,
                                             std::optional<double> frequency,
                                             bool includeAdvancedData,
-                                            std::optional<Processed> processed) {
+                                            std::optional<ProcessedWaveform> processed) {
     double frequencyValue;
     if (frequency) {
         frequencyValue = frequency.value();
@@ -1779,10 +1779,10 @@ Processed Inputs::calculate_processed_data(Waveform waveform,
     return calculate_processed_data(harmonics, waveform, includeAdvancedData, processed);
 }
 
-Processed Inputs::calculate_processed_data(Harmonics harmonics,
+ProcessedWaveform Inputs::calculate_processed_data(Harmonics harmonics,
                                             Waveform waveform,
                                             bool includeAdvancedData,
-                                            std::optional<Processed> processed) {
+                                            std::optional<ProcessedWaveform> processed) {
     auto sampledDataToProcess = waveform;
 
     if (waveform.get_time() && waveform.get_data().size() < settings.get_inputs_number_points_sampled_waveforms()) {
@@ -1790,7 +1790,7 @@ Processed Inputs::calculate_processed_data(Harmonics harmonics,
         sampledDataToProcess = calculate_sampled_waveform(waveform, frequency);
     }
 
-    Processed processedResult;
+    ProcessedWaveform processedResult;
     if (processed) {
         processedResult = processed.value();
     }
@@ -2382,7 +2382,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
                                               excitation.get_current()->get_processed()->get_label());
         }
 
-        Processed triangularProcessed;
+        ProcessedWaveform triangularProcessed;
         triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
         triangularProcessed.set_offset(offset + peakToPeak / 2);
         triangularProcessed.set_peak_to_peak(peakToPeak);
@@ -2812,7 +2812,7 @@ void Inputs::process(std::optional<std::variant<double, std::vector<double>>> ma
     // can synthesize the effective core magnetizing current for multi-winding
     // DMCs (configuration is implied by the operating point's winding count).
     bool isDmcTopology = get_design_requirements().get_topology().has_value()
-        && get_design_requirements().get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE;
+        && get_design_requirements().get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE;
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
         auto operatingPoint = operatingPoints[operatingPointIndex];
@@ -2861,7 +2861,7 @@ OperatingPoint Inputs::create_operating_point_with_sinusoidal_current_mask(doubl
         OperatingPointExcitation excitation;
         excitation.set_frequency(frequency);
         SignalDescriptor current;
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(WaveformLabel::SINUSOIDAL);
         processed.set_peak_to_peak(2 * currentPeakMask[0]);
         processed.set_duty_cycle(0.5);
@@ -2885,7 +2885,7 @@ OperatingPoint Inputs::create_operating_point_with_sinusoidal_current_mask(doubl
         OperatingPointExcitation excitation;
         excitation.set_frequency(frequency);
         SignalDescriptor current;
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(WaveformLabel::SINUSOIDAL);
         processed.set_peak_to_peak(2 * currentPeakMask[turnsRatioIndex + 1]);
         processed.set_duty_cycle(0.5);
@@ -2934,7 +2934,7 @@ Inputs Inputs::create_quick_operating_point(double frequency,
     auto standards = std::vector<InsulationStandards>{};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::BASIC;
+    auto insulationType = IsolationClass::BASIC;
 
     insulationRequirements.set_altitude(altitude);
     insulationRequirements.set_cti(cti);
@@ -2964,7 +2964,7 @@ Inputs Inputs::create_quick_operating_point(double frequency,
         OperatingPointExcitation excitation;
         excitation.set_frequency(frequency);
         SignalDescriptor voltage;
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(waveShape);
         processed.set_peak_to_peak(peakToPeak);
         processed.set_duty_cycle(dutyCycle);
@@ -2984,7 +2984,7 @@ Inputs Inputs::create_quick_operating_point(double frequency,
         OperatingPointExcitation excitation;
         excitation.set_frequency(frequency);
         SignalDescriptor voltage;
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(waveShape);
         processed.set_peak_to_peak(peakToPeak * turnsRatio);
         processed.set_duty_cycle(dutyCycle);
@@ -3031,7 +3031,7 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
     auto standards = std::vector<InsulationStandards>{};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::BASIC;
+    auto insulationType = IsolationClass::BASIC;
 
     insulationRequirements.set_altitude(altitude);
     insulationRequirements.set_cti(cti);
@@ -3061,7 +3061,7 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
         OperatingPointExcitation excitation;
         excitation.set_frequency(frequency);
         SignalDescriptor current;
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(waveShape);
         processed.set_peak(peakToPeak / 2 + dcCurrent);
         processed.set_peak_to_peak(peakToPeak);
@@ -3080,7 +3080,7 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
         OperatingPointExcitation excitation;
         excitation.set_frequency(frequency);
         SignalDescriptor current;
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(waveShape);
         processed.set_peak(peakToPeak / 2 * turnsRatio);
         processed.set_peak_to_peak(peakToPeak * turnsRatio);
@@ -3127,7 +3127,7 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
     auto standards = std::vector<InsulationStandards>{};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
-    auto insulationType = InsulationType::BASIC;
+    auto insulationType = IsolationClass::BASIC;
 
     insulationRequirements.set_altitude(altitude);
     insulationRequirements.set_cti(cti);
@@ -3159,7 +3159,7 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
         OperatingPointExcitation excitation;
         excitation.set_frequency(frequency);
         SignalDescriptor current;
-        Processed processed;
+        ProcessedWaveform processed;
         processed.set_label(waveShape);
         processed.set_peak(peakToPeak / 2 + dcCurrent);
         processed.set_peak_to_peak(peakToPeak);
@@ -3548,7 +3548,7 @@ Waveform Inputs::scale_time_to_frequency(Waveform waveform, double newFrequency)
 void process_voltage(OperatingPointExcitation& excitation) {
     if (!excitation.get_voltage()->get_waveform()) 
         throw std::invalid_argument("Voltage does not have waveform");
-    Processed processed = Inputs::calculate_processed_data(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
+    ProcessedWaveform processed = Inputs::calculate_processed_data(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
     auto voltage = excitation.get_voltage().value();
     voltage.set_processed(processed);
     excitation.set_voltage(voltage);
@@ -3600,7 +3600,7 @@ double Inputs::get_maximum_voltage_rms() {
             }
             if (!excitation.get_voltage()->get_processed()->get_rms()) {
                 process_voltage(excitation);
-                // Processed processed = calculate_processed_data(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
+                // ProcessedWaveform processed = calculate_processed_data(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
                 // auto voltage = excitation.get_voltage().value();
                 // voltage.set_processed(processed);
                 // excitation.set_voltage(voltage);
@@ -3846,7 +3846,7 @@ Cti Inputs::get_cti() {
     return get_design_requirements().get_insulation()->get_cti().value();
 }
 
-InsulationType Inputs::get_insulation_type() {
+IsolationClass Inputs::get_insulation_type() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");
     if (!get_design_requirements().get_insulation()->get_insulation_type())
