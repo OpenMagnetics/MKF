@@ -2327,65 +2327,6 @@ TEST_CASE("PEEC_Convergence_Study", "[physical-model][winding-losses][peec-conv]
     }
 }
 
-// FastHenry integration (feature/peec-winding-losses): export each test config's
-// winding as a FastHenry .inp (turns = series-connected straight bars at their
-// (x,y), cross-section w x h, nwinc/nhinc for skin/proximity, frequency sweep).
-// FastHenry then gives R(f) -> loss = I_rms^2 * R(f), an independent PEEC-family
-// oracle to sit alongside FEM / Analytical / PEEC. Writes .inp only (running
-// fasthenry is a separate, opt-in step).
-TEST_CASE("Export_FastHenry_Inp", "[physical-model][winding-losses][fasthenry-export][diagnostic]") {
-    using namespace WindingLossesTestData;
-    struct Case { std::string name; TestConfig cfg; };
-    std::vector<Case> cases = {
-        {"five_turns_rect", createFiveTurnsRectangularUngappedConfig()},
-        {"seven_turns_rect", createSevenTurnsRectangularUngappedConfig()},
-        {"ten_turns_foil", createTenTurnsFoilSinusoidalConfig()},
-    };
-    std::string outDir = "/tmp/claude-1000/-home-alf-OpenMagnetics-MKF/b9b2d584-5a75-4502-97ef-69a95c78876e/scratchpad/";
-    for (auto& c : cases) {
-        OpenMagnetics::Magnetic magnetic;
-        try { magnetic = c.cfg.createMagnetic(); }
-        catch (const std::exception& e) { printf("[%s] createMagnetic threw: %s\n", c.name.c_str(), e.what()); continue; }
-        auto coil = magnetic.get_coil();
-        if (!coil.get_turns_description()) { printf("[%s] no turns\n", c.name.c_str()); continue; }
-        auto turns = coil.get_turns_description().value();
-
-        std::ostringstream s;
-        s << "* FastHenry winding-loss model for " << c.name << " (turns as series bars)\n";
-        s << ".units m\n";
-        s << ".default nwinc=10 nhinc=6\n\n";
-        // one straight bar per turn, oriented along +z, length = turn length
-        for (size_t t = 0; t < turns.size(); ++t) {
-            double x = turns[t].get_coordinates()[0];
-            double y = turns[t].get_coordinates()[1];
-            double L = turns[t].get_length();
-            s << "N" << t << "a x=" << x << " y=" << y << " z=0\n";
-            s << "N" << t << "b x=" << x << " y=" << y << " z=" << L << "\n";
-        }
-        s << "\n";
-        for (size_t t = 0; t < turns.size(); ++t) {
-            size_t w = coil.get_winding_index_by_name(turns[t].get_winding());
-            auto wire = coil.resolve_wire(w);
-            double cw, ch;
-            if (wire.get_type() == WireType::ROUND) {
-                double d = OpenMagnetics::resolve_dimensional_values(wire.get_conducting_diameter().value());
-                cw = ch = std::sqrt(std::numbers::pi) * d / 2.0; // equal-area square (FastHenry has no round)
-            } else { cw = wire.get_maximum_conducting_width(); ch = wire.get_maximum_conducting_height(); }
-            s << "E" << t << " N" << t << "a N" << t << "b w=" << cw << " h=" << ch << "\n";
-        }
-        s << "\n";
-        for (size_t t = 0; t + 1 < turns.size(); ++t)
-            s << ".equiv N" << t << "b N" << (t + 1) << "a\n";
-        s << "\n.external N0a N" << (turns.size() - 1) << "b\n";
-        s << ".freq fmin=1e3 fmax=1e6 ndec=1\n\n.end\n";
-
-        std::string path = outDir + c.name + ".inp";
-        std::ofstream f(path);
-        f << s.str();
-        f.close();
-        printf("[%s] wrote %s (%zu turns)\n", c.name.c_str(), path.c_str(), turns.size());
-    }
-}
 
 // Comprehensive: every analytical proximity model + PEEC, vs FEM(test) and (in
 // post) FastHenry, for the configs/frequencies cross-checked with FastHenry.
