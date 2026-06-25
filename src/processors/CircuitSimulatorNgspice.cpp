@@ -33,54 +33,45 @@ static std::string emit_saturating_inductor_ngspice(
     }
 
     std::string s;
-    const double mu0 = 4e-7 * M_PI;
 
-    // Calculate saturation current and flux linkage
     double Isat = sat.Isat();
-    double lambdaSat = sat.fluxLinkageSat();
-
-    // The model uses: V = d(Lambda)/dt where Lambda = Lambda_sat * tanh(I/I_sat) + L_gap * I
-    // L_gap is the linear component (from air gap), approximately L_mag * (1 - 1/effective_permeability)
-    // For a typical gapped core, most inductance comes from the gap, so L_gap ≈ L_mag
-    double effectiveMuR = sat.Lmag / (mu0 * sat.primaryTurns * sat.primaryTurns * sat.Ae / sat.le);
-    double gapFactor = 1.0 / effectiveMuR;  // Fraction of reluctance from gap
-    double Lgap = sat.Lmag * gapFactor;  // Linear (gap) component
-
-    // Ensure reasonable values
-    if (Isat < 1e-6) Isat = 1e-6;
-    if (lambdaSat < 1e-9) lambdaSat = 1e-9;
-    if (Lgap < 1e-12) Lgap = sat.Lmag * 0.5;  // Fallback
+    if (Isat < 1e-6) Isat = 1e-6;            // numerical floor
 
     s += "* Saturating magnetizing inductance (winding " + windingIndex + ")\n";
     s += "* Bsat=" + to_string(sat.Bsat, 4) + "T, Isat=" + to_string(Isat, 4) + "A\n";
 
-    // ngspice behavioral inductor using flux linkage
-    // V = dLambda/dt = dLambda/dI * dI/dt
-    // For Lambda = Lsat*tanh(I/Isat) + Lgap*I:
-    // dLambda/dI = Lsat/Isat * sech²(I/Isat) + Lgap
-    //            = Lsat/Isat * (1 - tanh²(I/Isat)) + Lgap
-    // We use the GVALUE element with Laplace to model this
-
-    // Simpler approach: Use the inductor with polynomial current dependence
-    // L(I) = L0 / (1 + (I/Isat)^2) gives smooth saturation
+    // Smooth-saturation behavioural inductor: L(I) = L0 / (1 + (I/Isat)^2), realized below in a numerically
+    // stable flux-integral form (NOT V = L*dI/dt, which is ddt-unstable in ngspice). Needs only L0 and Isat. (The flux-linkage / air-gap quantities
+    // the LTspice and NL5 exporters use — Lambda_sat = N*Ae*Bsat, L_gap = Lmag/effective_mu_r — belong to
+    // THEIR tanh model; ngspice does not use them, so they are not computed here.)
     double L0 = sat.Lmag;
 
     s += ".param Lmag_" + windingIndex + "_L0=" + to_string(L0, 12) + "\n";
     s += ".param Lmag_" + windingIndex + "_Isat=" + to_string(Isat, 6) + "\n";
 
-    // Use behavioral source: V = L(I) * dI/dt
-    // L(I) = L0 / (1 + (abs(I)/Isat)^2)
-    // Note: ngspice behavioral sources use I() for current through voltage source
-    std::string senseName = "Vmag_sense_" + windingIndex;
+    // Flux-integral realization (numerically stable). The flux linkage of
+    // L(I)=L0/(1+(I/Isat)^2) is lambda = integral_0^I L(i) di = L0*Isat*atan(I/Isat),
+    // so the constitutive winding current is I(lambda) = Isat*tan(lambda/(L0*Isat)).
+    // We drive the current from the INTEGRATED winding voltage (a flux state node)
+    // instead of a behavioural V = L(I)*dI/dt source: a numerical current derivative
+    // ddt(I) inside a B-source is numerically unstable in ngspice (Gear cannot start
+    // it -> "timestep too small" at t~0; trapezoidal rings and runs away to nonsense
+    // currents). Only the SPICE realization changes here; the physics (L0, Isat) are
+    // the authoritative MKF values. Single-winding only (saturation is disabled for
+    // coupled transformers above, whose K coupling needs linear inductors).
     std::string fluxName = "Lmag_flux_" + windingIndex;
+    std::string L0p = "Lmag_" + windingIndex + "_L0";
+    std::string Isp = "Lmag_" + windingIndex + "_Isat";
 
-    // Current sense (zero volt source)
-    s += senseName + " " + nodeIn + " " + fluxName + " 0\n";
+    // lambda = integral(V(nodeIn,nodeOut)) dt : a VCCS of the winding voltage into a
+    // 1 F capacitor makes V(fluxName) the time-integral of the winding voltage.
+    s += "Gflux_" + windingIndex + " 0 " + fluxName + " " + nodeIn + " " + nodeOut + " 1\n";
+    s += "Cflux_" + windingIndex + " " + fluxName + " 0 1\n";
+    s += "Rflux_" + windingIndex + " " + fluxName + " 0 1e12\n";  // DC leak: keep the flux node non-floating
 
-    // Behavioral inductor: V = L(I) * dI/dt
-    // Using EL (behavioral voltage source) with ddt() function
-    s += "BLmag_" + windingIndex + " " + fluxName + " " + nodeOut;
-    s += " V='Lmag_" + windingIndex + "_L0/(1+pow(abs(I(" + senseName + "))/Lmag_" + windingIndex + "_Isat,2))*ddt(I(" + senseName + "))'\n";
+    // winding current I(lambda) = Isat * tan(lambda / (L0*Isat))
+    s += "Bind_" + windingIndex + " " + nodeIn + " " + nodeOut +
+         " I='" + Isp + "*tan(V(" + fluxName + ")/(" + L0p + "*" + Isp + "))'\n";
 
     return s;
 }
