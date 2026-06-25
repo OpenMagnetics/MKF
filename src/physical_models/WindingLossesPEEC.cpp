@@ -240,6 +240,14 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
     // which coincides with the filament centroid) is EXCLUDED here and handled
     // separately by the quadrature kernel below — the mesher returns it in the
     // middle of the list, not first, so it must be matched by position.
+    // PEEC needs the core images for the 2D partial-inductance system to be
+    // well-posed (without them the constrained log-kernel solve is singular and
+    // collapses). Force at least one mirror level regardless of the caller's
+    // field-mirroring setting; restore it afterwards.
+    int savedMirroring = settings.get_magnetic_field_mirroring_dimension();
+    if (savedMirroring < 1) {
+        settings.set_magnetic_field_mirroring_dimension(1);
+    }
     CoilMesherCenterModel imager;
     std::vector<std::vector<std::pair<double, double>>> imagePos(N); // (x,y)
     std::vector<std::vector<double>> imageWeight(N);
@@ -258,6 +266,9 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
                 imageWeight[k].push_back(p.get_value());
             }
         }
+    }
+    if (savedMirroring < 1) {
+        settings.set_magnetic_field_mirroring_dimension(savedMirroring);
     }
 
     // reference length to keep ln() dimensionless (cancels in the constrained solve)

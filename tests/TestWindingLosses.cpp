@@ -2386,3 +2386,57 @@ TEST_CASE("Export_FastHenry_Inp", "[physical-model][winding-losses][fasthenry-ex
         printf("[%s] wrote %s (%zu turns)\n", c.name.c_str(), path.c_str(), turns.size());
     }
 }
+
+// Comprehensive: every analytical proximity model + PEEC, vs FEM(test) and (in
+// post) FastHenry, for the configs/frequencies cross-checked with FastHenry.
+TEST_CASE("All_Models_Comparison", "[physical-model][winding-losses][all-models-cmp][diagnostic]") {
+    using namespace WindingLossesTestData;
+    struct Case { std::string name; TestConfig cfg; std::vector<double> freqs; };
+    std::vector<Case> cases = {
+        {"Five_Turns_Rect", createFiveTurnsRectangularUngappedConfig(), {100000,1000000}},
+        {"Ten_Turns_Foil",  createTenTurnsFoilSinusoidalConfig(),       {100000,1000000}},
+    };
+    std::vector<std::pair<std::string,WindingProximityEffectLossesModels>> proxModels = {
+        {"ROSSMANITH",WindingProximityEffectLossesModels::ROSSMANITH},
+        {"WANG",WindingProximityEffectLossesModels::WANG},
+        {"FERREIRA",WindingProximityEffectLossesModels::FERREIRA},
+        {"LAMMERANER",WindingProximityEffectLossesModels::LAMMERANER},
+        {"ALBACH",WindingProximityEffectLossesModels::ALBACH},
+        {"DOWELL",WindingProximityEffectLossesModels::DOWELL},
+        {"XI_NAN",WindingProximityEffectLossesModels::XI_NAN},
+        {"WOJDA",WindingProximityEffectLossesModels::WOJDA},
+        {"SULLIVAN",WindingProximityEffectLossesModels::SULLIVAN},
+        {"BARTOLI",WindingProximityEffectLossesModels::BARTOLI},
+        {"VANDELAC",WindingProximityEffectLossesModels::VANDELAC},
+    };
+    for (auto& c : cases) {
+        OpenMagnetics::Magnetic magnetic;
+        try { magnetic = c.cfg.createMagnetic(); } catch (const std::exception& e) { printf("[%s] threw %s\n",c.name.c_str(),e.what()); continue; }
+        for (double frequency : c.freqs) {
+            double fem = 0; for (auto& [ff,vv] : c.cfg.expectedValues) if (std::abs(ff-frequency)<1) fem=vv;
+            printf("\n=== %s @ %.0f Hz   (FEM=%.6g) ===\n", c.name.c_str(), frequency, fem);
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+                frequency, c.cfg.magnetizingInductance, c.cfg.temperature, c.cfg.waveform, c.cfg.peakToPeak, c.cfg.dutyCycle, c.cfg.offset);
+            auto op = inputs.get_operating_point(0);
+            for (auto& [nm,pm] : proxModels) {
+                settings.reset(); clear_databases();
+                settings.set_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
+                settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ALBACH);
+                settings.set_coil_enable_user_winding_losses_models(true);
+                settings.set_winding_proximity_effect_losses_model(pm);
+                double v=-1; std::string err;
+                try { v = WindingLosses().calculate_losses(magnetic, op, c.cfg.temperature).get_winding_losses(); }
+                catch (const std::exception& e) { err = e.what(); }
+                if (v>=0) printf("  %-12s %12.6g  %6.2fx FEM\n", nm.c_str(), v, fem>0?v/fem:0);
+                else      printf("  %-12s   (n/a: %s)\n", nm.c_str(), err.substr(0,40).c_str());
+                fflush(stdout);
+            }
+            settings.reset(); clear_databases();
+            settings.set_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
+            settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ALBACH);
+            double pv=-1; try { pv = WindingLossesPEEC().calculate_losses(magnetic, op, c.cfg.temperature).get_winding_losses(); } catch (const std::exception& e) { printf("  PEEC threw %s\n", e.what()); }
+            if (pv>=0) printf("  %-12s %12.6g  %6.2fx FEM\n", "PEEC", pv, fem>0?pv/fem:0);
+            settings.reset();
+        }
+    }
+}
