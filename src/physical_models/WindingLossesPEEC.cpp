@@ -11,6 +11,7 @@
 #include <Eigen/Dense>
 #include <complex>
 #include <cmath>
+#include <cstdlib>
 #include <numbers>
 
 namespace OpenMagnetics {
@@ -24,9 +25,12 @@ static double self_gmd(double w, double h) {
     return 0.2235 * (w + h);
 }
 
-// Subdivide a single turn's conducting cross-section into filaments.
+// Subdivide a single turn's conducting cross-section into nx*ny filaments.
+// nx/ny are chosen by the caller per-dimension so the filament pitch resolves
+// the skin depth in the penetration direction (a uniform grid badly
+// under-resolves thin foils).
 static void mesh_turn_into_filaments(const Turn& turn, Wire wire, size_t turnIndex, size_t windingIndex,
-                                     size_t nPerDim, std::vector<WindingLossesPEEC::Filament>& out) {
+                                     size_t nx, size_t ny, std::vector<WindingLossesPEEC::Filament>& out) {
     double cx = turn.get_coordinates()[0];
     double cy = turn.get_coordinates()[1];
     double turnLength = turn.get_length();
@@ -42,15 +46,12 @@ static void mesh_turn_into_filaments(const Turn& turn, Wire wire, size_t turnInd
         fullH = wire.get_maximum_conducting_height();
     }
 
-    double dw = fullW / nPerDim;
-    double dh = fullH / nPerDim;
+    double dw = fullW / nx;
+    double dh = fullH / ny;
 
-    // First pass: collect candidate centroids (round wire keeps only cells whose
-    // centre is inside the conductor) so the total filament area matches the
-    // real conducting area.
     std::vector<std::pair<double, double>> centres;
-    for (size_t i = 0; i < nPerDim; ++i) {
-        for (size_t j = 0; j < nPerDim; ++j) {
+    for (size_t i = 0; i < nx; ++i) {
+        for (size_t j = 0; j < ny; ++j) {
             double fx = cx - fullW / 2 + (i + 0.5) * dw;
             double fy = cy - fullH / 2 + (j + 0.5) * dh;
             if (isRound) {
@@ -83,6 +84,30 @@ static void mesh_turn_into_filaments(const Turn& turn, Wire wire, size_t turnInd
     }
 }
 
+// Pick per-dimension filament counts so the pitch is ~ skinDepth/3 in each
+// direction, clamped to [minN, maxN] and a per-turn budget.
+static void choose_filament_counts(double fullW, double fullH, double skinDepth,
+                                   size_t numberTurns, size_t& nx, size_t& ny) {
+    double target = std::max(skinDepth / 3.0, 1e-9);
+    auto pick = [&](double dim) -> size_t {
+        size_t n = static_cast<size_t>(std::ceil(dim / target));
+        if (n < 2) n = 2;
+        if (n > 18) n = 18;
+        return n;
+    };
+    nx = pick(fullW);
+    ny = pick(fullH);
+    // keep the global dense system tractable AND well-conditioned: cap
+    // filaments-per-turn (the 2D log-kernel matrix conditioning degrades as the
+    // filament count grows).
+    size_t budget = numberTurns > 0 ? std::max<size_t>(36, 2000 / numberTurns) : 320;
+    while (nx * ny > budget && (nx > 2 || ny > 2)) {
+        if (nx >= ny && nx > 2) --nx;
+        else if (ny > 2) --ny;
+        else break;
+    }
+}
+
 WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
     auto& settings = Settings::GetInstance();
     (void)settings;
@@ -108,14 +133,36 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
     auto turns = coil.get_turns_description().value();
     size_t numberTurns = turns.size();
 
-    // --- mesh every turn into filaments; reject litz (impractical to mesh strands) ---
-    std::vector<Filament> filaments;
-    // Auto-reduce resolution so the dense solve stays tractable on big windings.
-    size_t nPerDim = _filamentsPerDimension;
-    while (nPerDim > 1 && numberTurns * nPerDim * nPerDim > 1300) {
-        --nPerDim;
+    // --- highest significant frequency (drives the mesh resolution) ---
+    auto excitationsForMesh = operatingPoint.get_excitations_per_winding();
+    double maxSignificantFrequency = 0;
+    double globalMaxAmp = 0;
+    for (auto& exc : excitationsForMesh) {
+        if (exc.get_current() && exc.get_current()->get_harmonics()) {
+            for (double a : exc.get_current()->get_harmonics()->get_amplitudes()) {
+                globalMaxAmp = std::max(globalMaxAmp, std::fabs(a));
+            }
+        }
+    }
+    for (auto& exc : excitationsForMesh) {
+        if (exc.get_current() && exc.get_current()->get_harmonics()) {
+            auto amps = exc.get_current()->get_harmonics()->get_amplitudes();
+            auto freqs = exc.get_current()->get_harmonics()->get_frequencies();
+            for (size_t h = 0; h < amps.size() && h < freqs.size(); ++h) {
+                if (globalMaxAmp > 0 && std::fabs(amps[h]) / globalMaxAmp >= _harmonicAmplitudeThreshold) {
+                    maxSignificantFrequency = std::max(maxSignificantFrequency, freqs[h]);
+                }
+            }
+        }
+    }
+    if (maxSignificantFrequency <= 0) {
+        maxSignificantFrequency = 1.0;
     }
 
+    // --- mesh every turn into filaments; reject litz (impractical to mesh strands) ---
+    // Resolution is chosen per turn so the filament pitch ~ skinDepth/3 in each
+    // direction at the highest significant frequency.
+    std::vector<Filament> filaments;
     for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
         auto turn = turns[turnIndex];
         size_t windingIndex = coil.get_winding_index_by_name(turn.get_winding());
@@ -123,7 +170,18 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
         if (wire.get_type() == WireType::LITZ) {
             throw NotImplementedException("WindingLossesPEEC: litz must use the analytical model (strand meshing is impractical); homogenise the bundle to enable PEEC");
         }
-        mesh_turn_into_filaments(turn, wire, turnIndex, windingIndex, nPerDim, filaments);
+        double fullW, fullH;
+        if (wire.get_type() == WireType::ROUND) {
+            fullW = fullH = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        }
+        else {
+            fullW = wire.get_maximum_conducting_width();
+            fullH = wire.get_maximum_conducting_height();
+        }
+        double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, maxSignificantFrequency, temperature);
+        size_t nx, ny;
+        choose_filament_counts(fullW, fullH, skinDepth, numberTurns, nx, ny);
+        mesh_turn_into_filaments(turn, wire, turnIndex, windingIndex, nx, ny, filaments);
     }
     size_t N = filaments.size();
     if (N == 0) {
@@ -275,7 +333,9 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
             rhs(N + t) = Iturns(t);
         }
 
-        Eigen::VectorXcd sol = A.partialPivLu().solve(rhs);
+        // ColPivHouseholderQR is more robust than LU for the (mildly
+        // ill-conditioned) 2D log-kernel PEEC system.
+        Eigen::VectorXcd sol = A.colPivHouseholderQr().solve(rhs);
 
         // loss this harmonic = sum_k R_k |I_k|^2 * turnLength_k
         for (size_t k = 0; k < N; ++k) {

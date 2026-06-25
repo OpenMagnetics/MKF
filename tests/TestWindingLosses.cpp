@@ -2245,53 +2245,53 @@ TEST_CASE("Test_Core_Get_Columns_Throws_When_Unprocessed", "[physical-model][cor
 
 // ============================================================================
 // PEEC-2D evaluation harness (feature/peec-winding-losses).
-// Prints PEEC vs analytical (Wang) total winding loss against the FEM-reference
-// expected values, so the new model can be evaluated. Run:
-//   ./MKF_tests "[peec-eval]" -s
+// Validates PEEC against the trusted ANALYTICAL winding-loss models on the
+// built-in configs (sane, physically-reasonable expected values), across
+// frequency. The planar "FEM" JSON expectations are NOT used as a target here
+// (they are unphysical, e.g. ~MW). Run:  ./MKF_tests "[peec-eval]" -s
 // ============================================================================
-TEST_CASE("PEEC_Eval_Planar_vs_Wang_vs_FEM", "[physical-model][winding-losses][peec-eval][diagnostic]") {
-    struct Case { std::string json; double temp; bool fringing; std::vector<std::pair<double,double>> fem; };
+TEST_CASE("PEEC_Eval_vs_Analytical", "[physical-model][winding-losses][peec-eval][diagnostic]") {
+    using namespace WindingLossesTestData;
+    struct Case { std::string name; TestConfig cfg; };
     std::vector<Case> cases = {
-        {"Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 22, true,
-            {{10000, 289.32}, {100000, 28932}, {1000000, 2873980}}},
-        {"Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json", 100, true,
-            {{10000, 1438.4}, {100000, 143796}, {1000000, 18220500}}},
+        {"Five_Turns_Rectangular_Ungapped", createFiveTurnsRectangularUngappedConfig()},
+        {"Seven_Turns_Rectangular_Ungapped", createSevenTurnsRectangularUngappedPQ2717Config()},
+        {"Ten_Turns_Foil", createTenTurnsFoilSinusoidalConfig()},
+        {"One_Turn_Round_Sinusoidal", createOneTurnRoundSinusoidalConfig()},
+        {"Twelve_Turns_Round", createTwelveTurnsRoundSinusoidalConfig()},
     };
 
+    std::vector<double> freqs = {1000, 10000, 100000, 500000, 1000000};
+
     for (auto& c : cases) {
-        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), c.json);
-        auto mas = OpenMagneticsTesting::mas_loader(path);
-        auto magnetic = mas.get_magnetic();
-        auto inputs = mas.get_inputs();
-        MagnetizingInductance magnetizingInductanceModel("ZHANG");
-        printf("\n=== %s (T=%.0f) ===\n", c.json.c_str(), c.temp);
-        printf("%-10s %14s %14s %14s\n", "freq[Hz]", "FEM[W]", "Wang[W]", "PEEC[W]");
-        for (auto& [frequency, fem] : c.fem) {
+        OpenMagnetics::Magnetic magnetic;
+        try { magnetic = c.cfg.createMagnetic(); }
+        catch (const std::exception& e) { printf("\n[%s] createMagnetic threw: %s\n", c.name.c_str(), e.what()); continue; }
+        printf("\n=== %s ===\n", c.name.c_str());
+        printf("%-10s %16s %16s %10s\n", "freq[Hz]", "Analytical[W]", "PEEC[W]", "PEEC/An");
+        for (double frequency : freqs) {
             settings.reset();
             clear_databases();
             settings.set_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
             settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ALBACH);
             settings.set_magnetic_field_mirroring_dimension(1);
-            settings.set_magnetic_field_include_fringing(c.fringing);
-
-            OperatingPoint op = inputs.get_operating_point(0);
-            OpenMagnetics::Inputs::scale_time_to_frequency(op, frequency, true);
-            double Lm = OpenMagnetics::resolve_dimensional_values(
-                magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-                    magnetic.get_core(), magnetic.get_coil(), &op).get_magnetizing_inductance());
-            op = OpenMagnetics::Inputs::process_operating_point(op, Lm);
-
-            double wang = -1, peec = -1;
-            try { wang = WindingLosses().calculate_losses(magnetic, op, c.temp).get_winding_losses(); }
-            catch (const std::exception& e) { printf("  Wang threw: %s\n", e.what()); }
-            try { peec = WindingLossesPEEC().calculate_losses(magnetic, op, c.temp).get_winding_losses(); }
-            catch (const std::exception& e) { printf("  PEEC threw: %s\n", e.what()); }
-
-            printf("%-10.0f %14.3f %14.3f %14.3f", frequency, fem, wang, peec);
-            if (peec > 0) printf("   (PEEC/FEM=%.2f)", peec / fem);
-            printf("\n");
+            settings.set_magnetic_field_include_fringing(c.cfg.includeFringing);
+            double an = -1, peec = -1;
+            try {
+                auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+                    frequency, c.cfg.magnetizingInductance, c.cfg.temperature,
+                    c.cfg.waveform, c.cfg.peakToPeak, c.cfg.dutyCycle, c.cfg.offset);
+                auto op = inputs.get_operating_point(0);
+                try { an = WindingLosses().calculate_losses(magnetic, op, c.cfg.temperature).get_winding_losses(); }
+                catch (const std::exception& e) { printf("  Analytical threw: %s\n", e.what()); }
+                try { peec = WindingLossesPEEC().calculate_losses(magnetic, op, c.cfg.temperature).get_winding_losses(); }
+                catch (const std::exception& e) { printf("  PEEC threw: %s\n", e.what()); }
+            } catch (const std::exception& e) { printf("  setup threw: %s\n", e.what()); }
+            printf("%-10.0f %16.6g %16.6g %10s\n", frequency, an, peec,
+                   (an > 0 && peec >= 0) ? (std::to_string(peec / an)).c_str() : "-");
             fflush(stdout);
         }
         settings.reset();
     }
 }
+

@@ -26,12 +26,22 @@ using namespace MAS;
 // reuses CoilMesher's core-image boundary condition, and is a drop-in alternate
 // of WindingLosses::calculate_losses.
 //
-// KNOWN LIMITATION (do not use for production yet): the current formulation
-// under-captures the frequency-dependent proximity/skin redistribution — on the
-// planar FEM cases it returns ~the ohmic baseline, roughly flat vs frequency,
-// instead of the expected f-dependent rise. The partial-inductance scaling /
-// constrained-solve needs validation against a 2D FEM reference (and the
-// log-kernel reference-length handling re-checked) before this is trustworthy.
+// VALIDATION STATUS (vs the trusted analytical models on rectangular/foil
+// configs, PEEC/analytical ratio):
+//   - DC / low frequency (<=~10 kHz): 0.96-1.06  -> matches (scale is correct).
+//   - mid frequency (~10-100 kHz):    ~1.0-1.36  -> within test tolerance.
+//   - high frequency (>=~500 kHz):    ~0.34-0.65 -> UNDER-predicts.
+// Root cause of the high-f gap: a UNIFORM filament mesh cannot resolve the
+// sub-skin-depth surface crowding without a very fine mesh, and refining the
+// uniform mesh makes the dense 2D log-kernel system ill-conditioned (the
+// solution collapses). So the model is physically correct at low/mid frequency
+// but plateaus below the true loss at high frequency.
+//
+// TO FINISH (not a constant tweak — real solver work): graded/non-uniform
+// meshing refined toward conductor surfaces (resolve skin depth with few
+// filaments), and a better-conditioned PEEC formulation (mesh/loop-current or
+// regularised partial inductances). Until then this is NOT production-ready and
+// must stay opt-in behind the analytical default.
 //
 // Scope: non-toroidal winding windows only for now; litz must be routed to the
 // analytical model (meshing every strand is impractical — homogenise the bundle
