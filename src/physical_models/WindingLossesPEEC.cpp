@@ -89,9 +89,33 @@ static std::vector<double> graded_edges(double D, double cellMin, double ratio, 
     return edges;
 }
 
-// Subdivide a turn's cross-section into a graded tensor mesh, refined toward the
-// surfaces in BOTH dimensions. cellMin ~ skinDepth/3 (penetration resolution);
-// maxCellsPerSide bounds the per-dimension cell count.
+// Uniform cell edges on [-D/2, D/2] with n cells.
+static std::vector<double> uniform_edges(double D, size_t n) {
+    if (n < 1) n = 1;
+    std::vector<double> e;
+    e.reserve(n + 1);
+    for (size_t i = 0; i <= n; ++i) e.push_back(-D / 2 + D * (double)i / n);
+    return e;
+}
+
+// Per-dimension edges: a dimension that is much longer than the other (high
+// aspect ratio, e.g. a thin wide foil) carries a roughly uniform current along
+// its long axis, so it gets a FEW uniform cells; the thin (penetration)
+// dimension is graded toward its surfaces. Grading both dimensions of a
+// high-aspect foil is both physically wrong (no skin crowding along the long
+// axis) and the source of the ill-conditioned collapse (many near-identical
+// log-kernel rows for the far-apart long-axis cells).
+static std::vector<double> edges_for_dimension(double thisDim, double otherDim,
+                                               double cellMin, double ratio, size_t maxCellsPerSide) {
+    if (thisDim > 4.0 * otherDim) {
+        return uniform_edges(thisDim, std::min<size_t>(4, maxCellsPerSide));
+    }
+    return graded_edges(thisDim, cellMin, ratio, maxCellsPerSide);
+}
+
+// Subdivide a turn's cross-section into a (per-dimension) graded tensor mesh.
+// cellMin ~ skinDepth/3 (penetration resolution); maxCellsPerSide bounds the
+// per-dimension cell count.
 static void mesh_turn_into_filaments(const Turn& turn, Wire wire, size_t turnIndex, size_t windingIndex,
                                      double cellMin, double ratio, size_t maxCellsPerSide,
                                      std::vector<WindingLossesPEEC::Filament>& out) {
@@ -110,8 +134,8 @@ static void mesh_turn_into_filaments(const Turn& turn, Wire wire, size_t turnInd
         fullH = wire.get_maximum_conducting_height();
     }
 
-    auto ex = graded_edges(fullW, cellMin, ratio, maxCellsPerSide);
-    auto ey = graded_edges(fullH, cellMin, ratio, maxCellsPerSide);
+    auto ex = edges_for_dimension(fullW, fullH, cellMin, ratio, maxCellsPerSide);
+    auto ey = edges_for_dimension(fullH, fullW, cellMin, ratio, maxCellsPerSide);
 
     struct Cell { double x, y, w, h; };
     std::vector<Cell> cells;

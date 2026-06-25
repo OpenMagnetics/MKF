@@ -2440,3 +2440,36 @@ TEST_CASE("All_Models_Comparison", "[physical-model][winding-losses][all-models-
         }
     }
 }
+
+// Foil PEEC diagnostic: vary mesh density AND core-image mirroring level.
+// If the value is stable vs mesh but moves a lot with mirroring -> the
+// foil/FastHenry gap is the core-image proximity (FastHenry is air-core).
+// If it moves with mesh -> a PEEC mesh/formulation issue for high-aspect foil.
+TEST_CASE("PEEC_Foil_Study", "[physical-model][winding-losses][peec-foil][diagnostic]") {
+    using namespace WindingLossesTestData;
+    auto cfg = createTenTurnsFoilSinusoidalConfig();
+    auto magnetic = cfg.createMagnetic();
+    double frequency = 100000;
+    double fem = 0; for (auto& [ff,vv] : cfg.expectedValues) if (std::abs(ff-frequency)<1) fem=vv;
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        frequency, cfg.magnetizingInductance, cfg.temperature, cfg.waveform, cfg.peakToPeak, cfg.dutyCycle, cfg.offset);
+    auto op = inputs.get_operating_point(0);
+    printf("\n=== Ten_Turns_Foil @ %.0f Hz (FEM=%.6g, FastHenry=0.00619) ===\n", frequency, fem);
+    printf("%-8s %-22s %14s %9s\n", "mirror", "mesh(factor,ratio,max)", "PEEC[W]", "x FEM");
+    struct M { double f; double ratio; size_t maxc; };
+    std::vector<M> meshes = {{3,1.6,8},{4,1.5,12},{5,1.35,16}};
+    for (int mir : {1,2,3}) {
+        for (auto& m : meshes) {
+            settings.reset(); clear_databases();
+            settings.set_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
+            settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ALBACH);
+            settings.set_magnetic_field_mirroring_dimension(mir);
+            WindingLossesPEEC peec; peec._cellMinFactor=m.f; peec._gradingRatio=m.ratio; peec._maxCellsPerSide=m.maxc;
+            double p=-1; try { p = peec.calculate_losses(magnetic, op, cfg.temperature).get_winding_losses(); }
+            catch (const std::exception& e) { printf("  threw %s\n", e.what()); continue; }
+            printf("%-8d f=%.0f r=%.2f max=%2zu      %14.6g %9.3f\n", mir, m.f, m.ratio, m.maxc, p, fem>0?p/fem:0);
+            fflush(stdout);
+        }
+    }
+    settings.reset();
+}

@@ -18,9 +18,15 @@ struct SaturationParameters {
     bool valid;            // Whether parameters are valid
 
     double Isat() const {
-        const double mu0 = 4e-7 * M_PI;
-        double Hsat = Bsat / (mu0 * mu_r);
-        return Hsat * le / primaryTurns;
+        // I_sat = lambda_sat / L = B_sat·N·A_e / L_actual — the SAME identity the authoritative
+        // Magnetic::calculate_saturation_current uses. The old H-field form (Hsat·le/N) back-solved through
+        // the INITIAL-permeability BARE-CORE inductance (mu0·mu_r·N²·Ae/le), which disagrees with the real
+        // gapped/effective L_actual by the turns factor — exporting an I_sat ~N× too LOW. ngspice's
+        // saturating-L source L0/(1+(I/Isat)²) then collapsed and aborted ('timestep too small') on
+        // perfectly-valid cores (e.g. a 5.2× FALSE saturation on a core whose true I_sat is 1.75× the
+        // current). Lmag here is the very calculate_inductance_from_number_turns_and_gapping value that
+        // calculate_saturation_current uses, so the exported subcircuit now agrees with it. (ABT #33.)
+        return fluxLinkageSat() / Lmag;
     }
 
     double fluxLinkageSat() const {
