@@ -65,10 +65,10 @@ class WindingLossesPEEC {
         double turnLength = 0; // [m]
     };
 
-    // Number of filaments across each cross-section dimension (so a turn is
-    // discretised into _filamentsPerDimension^2 filaments). Higher = more
-    // accurate, more expensive (dense solve scales ~ (N_filaments)^3).
-    size_t _filamentsPerDimension = 6;
+    // Mesh controls (exposed for convergence studies).
+    double _cellMinFactor = 3.0;     // surface cell size = skinDepth / factor
+    double _gradingRatio = 1.5;      // cell growth ratio toward the centre
+    size_t _maxCellsPerSide = 12;    // per-dimension cell cap
 
     // Highest harmonic loss must exceed this fraction of the fundamental's loss
     // contribution to be included (mirrors the analytical amplitude threshold).

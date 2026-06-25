@@ -25,6 +25,38 @@ static double self_gmd(double w, double h) {
     return 0.2235 * (w + h);
 }
 
+// Average of ln(distance) over two rectangular cells = the 2D mutual
+// partial-inductance kernel <ln d>_ij. Uses 3-point Gauss-Legendre per
+// dimension (81 pairs). For distinct (non-overlapping) cells the integrand is
+// smooth at the interior Gauss points, so this converges as the mesh refines —
+// which the centroid point-log approximation does NOT (that was the source of
+// the mesh non-convergence).
+static double avg_ln_between_cells(double xi, double yi, double wi, double hi,
+                                   double xj, double yj, double wj, double hj) {
+    static const double gp[3] = {-0.7745966692414834, 0.0, 0.7745966692414834};
+    static const double gw[3] = {0.5555555555555556, 0.8888888888888889, 0.5555555555555556};
+    double acc = 0, wsum = 0;
+    for (int ax = 0; ax < 3; ++ax) {
+        for (int ay = 0; ay < 3; ++ay) {
+            double pax = xi + 0.5 * wi * gp[ax];
+            double pay = yi + 0.5 * hi * gp[ay];
+            double wA = gw[ax] * gw[ay];
+            for (int bx = 0; bx < 3; ++bx) {
+                for (int by = 0; by < 3; ++by) {
+                    double pbx = xj + 0.5 * wj * gp[bx];
+                    double pby = yj + 0.5 * hj * gp[by];
+                    double wB = gw[bx] * gw[by];
+                    double dx = pax - pbx, dy = pay - pby;
+                    double d = std::sqrt(dx * dx + dy * dy);
+                    acc += wA * wB * std::log(std::max(d, 1e-15));
+                    wsum += wA * wB;
+                }
+            }
+        }
+    }
+    return acc / wsum;
+}
+
 // Symmetric GRADED cell edges on [-D/2, D/2]: smallest cell ~ cellMin at both
 // surfaces (where current crowds at high frequency), growing geometrically by
 // `ratio` toward the centre. Resolves the skin depth with far fewer filaments
@@ -182,13 +214,10 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
             throw NotImplementedException("WindingLossesPEEC: litz must use the analytical model (strand meshing is impractical); homogenise the bundle to enable PEEC");
         }
         double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, maxSignificantFrequency, temperature);
-        // graded mesh: ~skinDepth/3 cells at the surfaces, growing by `ratio`.
-        // maxCellsPerSide kept modest so the dense log-kernel system stays
-        // well-conditioned even with many turns.
-        double cellMin = skinDepth / 3.0;
-        double ratio = 1.5;
-        size_t maxCellsPerSide = numberTurns > 30 ? 8 : 12;
-        mesh_turn_into_filaments(turn, wire, turnIndex, windingIndex, cellMin, ratio, maxCellsPerSide, filaments);
+        // graded mesh: ~skinDepth/factor cells at the surfaces, growing by ratio.
+        double cellMin = skinDepth / _cellMinFactor;
+        size_t maxCellsPerSide = (numberTurns > 30 && _maxCellsPerSide > 8) ? 8 : _maxCellsPerSide;
+        mesh_turn_into_filaments(turn, wire, turnIndex, windingIndex, cellMin, _gradingRatio, maxCellsPerSide, filaments);
     }
     size_t N = filaments.size();
     if (N == 0) {
@@ -207,8 +236,10 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
     // --- ferrite-core boundary condition via CoilMesher's method of images ---
     // For each filament, get its image set (positions + (mu-n)/(mu+n) weights)
     // by reusing the exact rectangular-window image expansion already used by
-    // the analytical field models. The first entry (weight 1) is the filament
-    // itself.
+    // the analytical field models. The REAL conductor (the (0,0) reflection,
+    // which coincides with the filament centroid) is EXCLUDED here and handled
+    // separately by the quadrature kernel below — the mesher returns it in the
+    // middle of the list, not first, so it must be matched by position.
     CoilMesherCenterModel imager;
     std::vector<std::vector<std::pair<double, double>>> imagePos(N); // (x,y)
     std::vector<std::vector<double>> imageWeight(N);
@@ -219,7 +250,11 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
             synth.set_coordinates({filaments[k].x, filaments[k].y});
             auto pts = imager.generate_mesh_inducing_turn(synth, firstWire, k, filaments[k].turnLength, core);
             for (auto& p : pts) {
-                imagePos[k].push_back({p.get_point()[0], p.get_point()[1]});
+                double px = p.get_point()[0], py = p.get_point()[1];
+                if (std::abs(px - filaments[k].x) < 1e-12 && std::abs(py - filaments[k].y) < 1e-12) {
+                    continue; // real conductor, handled by the quadrature term
+                }
+                imagePos[k].push_back({px, py});
                 imageWeight[k].push_back(p.get_value());
             }
         }
@@ -232,20 +267,26 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
     }
 
     // --- partial inductance matrix L [H/m] (real, frequency-independent) ---
-    // L_ij = -(mu0/2pi) * sum over images of j: w * ln(dist(i, image_of_j)/ref)
+    // L_ij = -(mu0/2pi) * [ <ln d>_ij(real, weight 1) + sum_images w*ln(d/ref) ]
+    // Real term: 2D quadrature integral (i!=j) or self-GMD (i==j) -> convergent.
+    // Image terms: far (window-scale), so the centroid point-log is accurate.
+    double lnRef = std::log(refLength);
     Eigen::MatrixXd L(N, N);
     for (size_t i = 0; i < N; ++i) {
         for (size_t j = 0; j < N; ++j) {
-            double acc = 0;
+            double realLn;
+            if (i == j) {
+                realLn = std::log(self_gmd(filaments[i].width, filaments[i].height)) - lnRef;
+            }
+            else {
+                realLn = avg_ln_between_cells(filaments[i].x, filaments[i].y, filaments[i].width, filaments[i].height,
+                                              filaments[j].x, filaments[j].y, filaments[j].width, filaments[j].height) - lnRef;
+            }
+            double acc = realLn; // real conductor weight is 1
             for (size_t m = 0; m < imagePos[j].size(); ++m) {
                 double dx = filaments[i].x - imagePos[j][m].first;
                 double dy = filaments[i].y - imagePos[j][m].second;
-                double d = std::sqrt(dx * dx + dy * dy);
-                bool isSelfReal = (i == j) && (m == 0); // real-on-real -> use GMD
-                if (isSelfReal) {
-                    d = self_gmd(filaments[j].width, filaments[j].height);
-                }
-                d = std::max(d, 1e-12);
+                double d = std::max(std::sqrt(dx * dx + dy * dy), 1e-12);
                 acc += imageWeight[j][m] * std::log(d / refLength);
             }
             L(i, j) = -(MU0 / (2 * std::numbers::pi)) * acc;

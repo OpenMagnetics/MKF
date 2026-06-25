@@ -17,6 +17,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <iostream>
 #include <iomanip>
 #include <magic_enum.hpp>
@@ -2245,31 +2246,27 @@ TEST_CASE("Test_Core_Get_Columns_Throws_When_Unprocessed", "[physical-model][cor
 
 // ============================================================================
 // PEEC-2D evaluation harness (feature/peec-winding-losses).
-// Validates PEEC against the trusted ANALYTICAL winding-loss models on the
-// built-in configs (sane, physically-reasonable expected values), across
-// frequency. The planar "FEM" JSON expectations are NOT used as a target here
-// (they are unphysical, e.g. ~MW). Run:  ./MKF_tests "[peec-eval]" -s
+// Validates PEEC against the FEM-derived test expected values in this file (the
+// ground truth), with the analytical model shown for context. Iterates each
+// config's own (frequency -> FEM expected) pairs. Run: ./MKF_tests "[peec-eval]" -s
 // ============================================================================
-TEST_CASE("PEEC_Eval_vs_Analytical", "[physical-model][winding-losses][peec-eval][diagnostic]") {
+TEST_CASE("PEEC_Eval_vs_FEM", "[physical-model][winding-losses][peec-eval][diagnostic]") {
     using namespace WindingLossesTestData;
     struct Case { std::string name; TestConfig cfg; };
     std::vector<Case> cases = {
         {"Five_Turns_Rectangular_Ungapped", createFiveTurnsRectangularUngappedConfig()},
-        {"Seven_Turns_Rectangular_Ungapped", createSevenTurnsRectangularUngappedPQ2717Config()},
+        {"Seven_Turns_Rectangular_Ungapped", createSevenTurnsRectangularUngappedConfig()},
         {"Ten_Turns_Foil", createTenTurnsFoilSinusoidalConfig()},
-        {"One_Turn_Round_Sinusoidal", createOneTurnRoundSinusoidalConfig()},
-        {"Twelve_Turns_Round", createTwelveTurnsRoundSinusoidalConfig()},
     };
-
-    std::vector<double> freqs = {1000, 10000, 100000, 500000, 1000000};
 
     for (auto& c : cases) {
         OpenMagnetics::Magnetic magnetic;
         try { magnetic = c.cfg.createMagnetic(); }
         catch (const std::exception& e) { printf("\n[%s] createMagnetic threw: %s\n", c.name.c_str(), e.what()); continue; }
-        printf("\n=== %s ===\n", c.name.c_str());
-        printf("%-10s %16s %16s %10s\n", "freq[Hz]", "Analytical[W]", "PEEC[W]", "PEEC/An");
-        for (double frequency : freqs) {
+        printf("\n=== %s (FEM = test expected values) ===\n", c.name.c_str());
+        printf("%-10s %14s %14s %14s %9s %9s\n", "freq[Hz]", "FEM[W]", "Analytical[W]", "PEEC[W]", "An/FEM", "PEEC/FEM");
+        for (auto& [frequency, fem] : c.cfg.expectedValues) {
+            if (frequency < 1) continue; // skip the DC row
             settings.reset();
             clear_databases();
             settings.set_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -2287,11 +2284,105 @@ TEST_CASE("PEEC_Eval_vs_Analytical", "[physical-model][winding-losses][peec-eval
                 try { peec = WindingLossesPEEC().calculate_losses(magnetic, op, c.cfg.temperature).get_winding_losses(); }
                 catch (const std::exception& e) { printf("  PEEC threw: %s\n", e.what()); }
             } catch (const std::exception& e) { printf("  setup threw: %s\n", e.what()); }
-            printf("%-10.0f %16.6g %16.6g %10s\n", frequency, an, peec,
-                   (an > 0 && peec >= 0) ? (std::to_string(peec / an)).c_str() : "-");
+            printf("%-10.0f %14.6g %14.6g %14.6g %9.3f %9.3f\n", frequency, fem, an, peec,
+                   (fem > 0 ? an / fem : 0.0), (fem > 0 ? peec / fem : 0.0));
             fflush(stdout);
         }
         settings.reset();
     }
 }
 
+
+// PEEC mesh-convergence study: same case, increasing mesh density. If the loss
+// stabilises, the formulation is convergent (and any gap to the analytical
+// model is the analytical model's error, to be settled by FEM/FastHenry).
+TEST_CASE("PEEC_Convergence_Study", "[physical-model][winding-losses][peec-conv][diagnostic]") {
+    using namespace WindingLossesTestData;
+    auto cfg = createFiveTurnsRectangularUngappedConfig();
+    auto magnetic = cfg.createMagnetic();
+    struct M { double f; double ratio; size_t maxc; };
+    std::vector<M> meshes = {{3,1.7,8},{4,1.5,12},{5,1.3,16},{6,1.25,22}};
+    for (double frequency : {100000.0, 1000000.0}) {
+        printf("\n--- Five_Turns_Rectangular @ %.0f Hz ---\n", frequency);
+        settings.reset(); clear_databases();
+        settings.set_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
+        settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ALBACH);
+        settings.set_magnetic_field_mirroring_dimension(1);
+        settings.set_magnetic_field_include_fringing(cfg.includeFringing);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            frequency, cfg.magnetizingInductance, cfg.temperature, cfg.waveform, cfg.peakToPeak, cfg.dutyCycle, cfg.offset);
+        auto op = inputs.get_operating_point(0);
+        double an = WindingLosses().calculate_losses(magnetic, op, cfg.temperature).get_winding_losses();
+        printf("  analytical = %.6g\n", an);
+        printf("  %-22s %16s %10s\n", "mesh(factor,ratio,max)", "PEEC[W]", "PEEC/An");
+        for (auto& m : meshes) {
+            WindingLossesPEEC peec;
+            peec._cellMinFactor = m.f; peec._gradingRatio = m.ratio; peec._maxCellsPerSide = m.maxc;
+            double p = -1;
+            try { p = peec.calculate_losses(magnetic, op, cfg.temperature).get_winding_losses(); }
+            catch (const std::exception& e) { printf("  threw: %s\n", e.what()); continue; }
+            printf("  f=%.0f r=%.2f max=%2zu      %16.6g %10.3f\n", m.f, m.ratio, m.maxc, p, p/an);
+            fflush(stdout);
+        }
+    }
+}
+
+// FastHenry integration (feature/peec-winding-losses): export each test config's
+// winding as a FastHenry .inp (turns = series-connected straight bars at their
+// (x,y), cross-section w x h, nwinc/nhinc for skin/proximity, frequency sweep).
+// FastHenry then gives R(f) -> loss = I_rms^2 * R(f), an independent PEEC-family
+// oracle to sit alongside FEM / Analytical / PEEC. Writes .inp only (running
+// fasthenry is a separate, opt-in step).
+TEST_CASE("Export_FastHenry_Inp", "[physical-model][winding-losses][fasthenry-export][diagnostic]") {
+    using namespace WindingLossesTestData;
+    struct Case { std::string name; TestConfig cfg; };
+    std::vector<Case> cases = {
+        {"five_turns_rect", createFiveTurnsRectangularUngappedConfig()},
+        {"seven_turns_rect", createSevenTurnsRectangularUngappedConfig()},
+        {"ten_turns_foil", createTenTurnsFoilSinusoidalConfig()},
+    };
+    std::string outDir = "/tmp/claude-1000/-home-alf-OpenMagnetics-MKF/b9b2d584-5a75-4502-97ef-69a95c78876e/scratchpad/";
+    for (auto& c : cases) {
+        OpenMagnetics::Magnetic magnetic;
+        try { magnetic = c.cfg.createMagnetic(); }
+        catch (const std::exception& e) { printf("[%s] createMagnetic threw: %s\n", c.name.c_str(), e.what()); continue; }
+        auto coil = magnetic.get_coil();
+        if (!coil.get_turns_description()) { printf("[%s] no turns\n", c.name.c_str()); continue; }
+        auto turns = coil.get_turns_description().value();
+
+        std::ostringstream s;
+        s << "* FastHenry winding-loss model for " << c.name << " (turns as series bars)\n";
+        s << ".units m\n";
+        s << ".default nwinc=10 nhinc=6\n\n";
+        // one straight bar per turn, oriented along +z, length = turn length
+        for (size_t t = 0; t < turns.size(); ++t) {
+            double x = turns[t].get_coordinates()[0];
+            double y = turns[t].get_coordinates()[1];
+            double L = turns[t].get_length();
+            s << "N" << t << "a x=" << x << " y=" << y << " z=0\n";
+            s << "N" << t << "b x=" << x << " y=" << y << " z=" << L << "\n";
+        }
+        s << "\n";
+        for (size_t t = 0; t < turns.size(); ++t) {
+            size_t w = coil.get_winding_index_by_name(turns[t].get_winding());
+            auto wire = coil.resolve_wire(w);
+            double cw, ch;
+            if (wire.get_type() == WireType::ROUND) {
+                double d = OpenMagnetics::resolve_dimensional_values(wire.get_conducting_diameter().value());
+                cw = ch = std::sqrt(std::numbers::pi) * d / 2.0; // equal-area square (FastHenry has no round)
+            } else { cw = wire.get_maximum_conducting_width(); ch = wire.get_maximum_conducting_height(); }
+            s << "E" << t << " N" << t << "a N" << t << "b w=" << cw << " h=" << ch << "\n";
+        }
+        s << "\n";
+        for (size_t t = 0; t + 1 < turns.size(); ++t)
+            s << ".equiv N" << t << "b N" << (t + 1) << "a\n";
+        s << "\n.external N0a N" << (turns.size() - 1) << "b\n";
+        s << ".freq fmin=1e3 fmax=1e6 ndec=1\n\n.end\n";
+
+        std::string path = outDir + c.name + ".inp";
+        std::ofstream f(path);
+        f << s.str();
+        f.close();
+        printf("[%s] wrote %s (%zu turns)\n", c.name.c_str(), path.c_str(), turns.size());
+    }
+}
