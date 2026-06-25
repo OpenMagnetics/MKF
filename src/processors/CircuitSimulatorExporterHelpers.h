@@ -15,27 +15,26 @@ struct SaturationParameters {
     double le;             // Effective magnetic path length [m]
     double primaryTurns;   // Number of primary turns
     double Lmag;           // Magnetizing inductance [H]
-    bool valid;            // Whether parameters are valid
+    double saturationCurrent = 0;  // I_sat [A] — from Magnetic::calculate_saturation_current (authoritative)
+    bool valid = false;    // Whether parameters are valid
 
-    double Isat() const {
-        // I_sat = lambda_sat / L = B_sat·N·A_e / L_actual — the SAME identity the authoritative
-        // Magnetic::calculate_saturation_current uses. The old H-field form (Hsat·le/N) back-solved through
-        // the INITIAL-permeability BARE-CORE inductance (mu0·mu_r·N²·Ae/le), which disagrees with the real
-        // gapped/effective L_actual by the turns factor — exporting an I_sat ~N× too LOW. ngspice's
-        // saturating-L source L0/(1+(I/Isat)²) then collapsed and aborted ('timestep too small') on
-        // perfectly-valid cores (e.g. a 5.2× FALSE saturation on a core whose true I_sat is 1.75× the
-        // current). Lmag here is the very calculate_inductance_from_number_turns_and_gapping value that
-        // calculate_saturation_current uses, so the exported subcircuit now agrees with it. (ABT #33.)
-        return fluxLinkageSat() / Lmag;
-    }
+    // The saturation current that parameterises the exported saturable-L model. DELEGATES to the
+    // authoritative Magnetic::calculate_saturation_current (computed once in get_saturation_parameters) — it
+    // does NOT re-derive the physics here. The previous H-field form (Hsat·le/N, the initial-permeability
+    // bare-core inductance) was a PARALLEL formula that drifted ~N× below calculate_saturation_current after
+    // the latter was fixed to use the real gapped/effective L — so ngspice's L0/(1+(I/Isat)²) collapsed and
+    // aborted on perfectly-valid cores (a false 5.2× saturation on a core whose true margin is 1.75×). One
+    // source of truth, so it cannot drift again. (ABT #33.)
+    double Isat() const { return saturationCurrent; }
 
     double fluxLinkageSat() const {
         return primaryTurns * Ae * Bsat;
     }
 };
 
-// Extract saturation parameters from a magnetic component (shared across vendors).
-SaturationParameters get_saturation_parameters(const Magnetic& magnetic, double temperature);
+// Extract saturation parameters from a magnetic component (shared across vendors). Takes the magnetic BY
+// VALUE because it delegates I_sat to the non-const Magnetic::calculate_saturation_current.
+SaturationParameters get_saturation_parameters(Magnetic magnetic, double temperature);
 
 // Shared SPICE-like circuit fragment emitters used by both Ngspice and Ltspice exporters.
 std::string emit_fracpole_winding_spice(

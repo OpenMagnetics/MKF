@@ -20,35 +20,41 @@
 namespace OpenMagnetics {
 
 // Extract saturation parameters from a magnetic component
-SaturationParameters get_saturation_parameters(const Magnetic& magnetic, double temperature) {
+SaturationParameters get_saturation_parameters(Magnetic magnetic, double temperature) {
     SaturationParameters params;
     params.valid = false;
-    
+
     try {
         auto core = magnetic.get_core();
         auto coil = magnetic.get_coil();
-        
+
         // Get saturation flux density
         params.Bsat = core.get_magnetic_flux_density_saturation(temperature, true);
-        
+
         // Get initial permeability
         params.mu_r = core.get_initial_permeability(temperature);
-        
+
         // Get effective parameters
         params.Ae = core.get_effective_area();
         params.le = core.get_effective_length();
-        
+
         // Get primary turns
         params.primaryTurns = coil.get_functional_description()[0].get_number_turns();
-        
+
         // Get magnetizing inductance
         params.Lmag = resolve_dimensional_values(
             MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
                 .get_magnetizing_inductance());
-        
+
+        // I_sat: DELEGATE to the authoritative physics model — the SAME function Heaviside's realism gate and
+        // PyOpenMagnetics use — so the exported saturable-L's I_sat cannot disagree with calculate_saturation_
+        // current (which is exactly the drift that ABT #33 was: a parallel H-field formula reading ~N× low).
+        params.saturationCurrent = magnetic.calculate_saturation_current(temperature);
+
         // Validate
         if (params.Bsat > 0 && params.mu_r > 0 && params.Ae > 0 &&
-            params.le > 0 && params.primaryTurns > 0 && params.Lmag > 0) {
+            params.le > 0 && params.primaryTurns > 0 && params.Lmag > 0 &&
+            params.saturationCurrent > 0) {
             params.valid = true;
         }
     } catch (const std::exception& e) {

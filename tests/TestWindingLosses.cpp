@@ -2473,3 +2473,39 @@ TEST_CASE("PEEC_Foil_Study", "[physical-model][winding-losses][peec-foil][diagno
     }
     settings.reset();
 }
+
+// Per-call wall-clock timing: analytical vs PEEC, to judge fitness for the
+// OM adviser/simulator hot loops (which call winding-loss many thousands of times).
+TEST_CASE("PEEC_Timing", "[physical-model][winding-losses][peec-timing][diagnostic]") {
+    using namespace WindingLossesTestData;
+    struct Case { std::string name; TestConfig cfg; };
+    std::vector<Case> cases = {
+        {"Five_Turns_Rect", createFiveTurnsRectangularUngappedConfig()},
+        {"Ten_Turns_Foil",  createTenTurnsFoilSinusoidalConfig()},
+    };
+    double frequency = 100000;
+    for (auto& c : cases) {
+        auto magnetic = c.cfg.createMagnetic();
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            frequency, c.cfg.magnetizingInductance, c.cfg.temperature, c.cfg.waveform, c.cfg.peakToPeak, c.cfg.dutyCycle, c.cfg.offset);
+        auto op = inputs.get_operating_point(0);
+        // analytical (default)
+        settings.reset(); clear_databases();
+        settings.set_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
+        settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ALBACH);
+        auto t0 = std::chrono::steady_clock::now();
+        double an = WindingLosses().calculate_losses(magnetic, op, c.cfg.temperature).get_winding_losses();
+        auto t1 = std::chrono::steady_clock::now();
+        // PEEC
+        settings.set_magnetic_field_mirroring_dimension(1);
+        auto t2 = std::chrono::steady_clock::now();
+        double pe = WindingLossesPEEC().calculate_losses(magnetic, op, c.cfg.temperature).get_winding_losses();
+        auto t3 = std::chrono::steady_clock::now();
+        double anMs = std::chrono::duration<double,std::milli>(t1-t0).count();
+        double peMs = std::chrono::duration<double,std::milli>(t3-t2).count();
+        printf("[%s @100kHz] analytical=%.4gW in %.1f ms | PEEC=%.4gW in %.1f ms | PEEC/analytical = %.0fx slower\n",
+               c.name.c_str(), an, anMs, pe, peMs, anMs>0?peMs/anMs:0);
+        fflush(stdout);
+        settings.reset();
+    }
+}

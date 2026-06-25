@@ -107,7 +107,11 @@ static std::vector<double> uniform_edges(double D, size_t n) {
 // log-kernel rows for the far-apart long-axis cells).
 static std::vector<double> edges_for_dimension(double thisDim, double otherDim,
                                                double cellMin, double ratio, size_t maxCellsPerSide) {
-    if (thisDim > 4.0 * otherDim) {
+    // Only true high-aspect foils (e.g. 200:1) get the uniform long-axis
+    // treatment; moderate-aspect rectangulars (~4:1) keep graded-both-dims,
+    // which matched FastHenry to 0.1%. (Threshold 4 over-triggered and
+    // regressed the validated rectangular case.)
+    if (thisDim > 20.0 * otherDim) {
         return uniform_edges(thisDim, std::min<size_t>(4, maxCellsPerSide));
     }
     return graded_edges(thisDim, cellMin, ratio, maxCellsPerSide);
