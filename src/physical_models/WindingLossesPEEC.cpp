@@ -25,12 +25,44 @@ static double self_gmd(double w, double h) {
     return 0.2235 * (w + h);
 }
 
-// Subdivide a single turn's conducting cross-section into nx*ny filaments.
-// nx/ny are chosen by the caller per-dimension so the filament pitch resolves
-// the skin depth in the penetration direction (a uniform grid badly
-// under-resolves thin foils).
+// Symmetric GRADED cell edges on [-D/2, D/2]: smallest cell ~ cellMin at both
+// surfaces (where current crowds at high frequency), growing geometrically by
+// `ratio` toward the centre. Resolves the skin depth with far fewer filaments
+// than a uniform grid -> small, well-conditioned matrices. Returns edges
+// (size = nCells+1), normalised to span exactly D.
+static std::vector<double> graded_edges(double D, double cellMin, double ratio, size_t maxCellsPerSide) {
+    cellMin = std::min(cellMin, D / 2);
+    if (cellMin <= 0) cellMin = D / 2;
+    std::vector<double> half; // surface -> centre, increasing widths
+    double c = cellMin, sum = 0;
+    while (sum + c < D / 2 && half.size() + 1 < maxCellsPerSide) {
+        half.push_back(c);
+        sum += c;
+        c *= ratio;
+    }
+    half.push_back(std::max(D / 2 - sum, cellMin * 0.25)); // remaining centre half-cell
+    std::vector<double> widths(half); // surface -> centre ...
+    for (auto it = half.rbegin(); it != half.rend(); ++it) widths.push_back(*it); // ... centre -> surface
+    double total = 0;
+    for (double w : widths) total += w;
+    double scale = D / total;
+    std::vector<double> edges;
+    edges.reserve(widths.size() + 1);
+    double x = -D / 2;
+    edges.push_back(x);
+    for (double w : widths) {
+        x += w * scale;
+        edges.push_back(x);
+    }
+    return edges;
+}
+
+// Subdivide a turn's cross-section into a graded tensor mesh, refined toward the
+// surfaces in BOTH dimensions. cellMin ~ skinDepth/3 (penetration resolution);
+// maxCellsPerSide bounds the per-dimension cell count.
 static void mesh_turn_into_filaments(const Turn& turn, Wire wire, size_t turnIndex, size_t windingIndex,
-                                     size_t nx, size_t ny, std::vector<WindingLossesPEEC::Filament>& out) {
+                                     double cellMin, double ratio, size_t maxCellsPerSide,
+                                     std::vector<WindingLossesPEEC::Filament>& out) {
     double cx = turn.get_coordinates()[0];
     double cy = turn.get_coordinates()[1];
     double turnLength = turn.get_length();
@@ -46,65 +78,44 @@ static void mesh_turn_into_filaments(const Turn& turn, Wire wire, size_t turnInd
         fullH = wire.get_maximum_conducting_height();
     }
 
-    double dw = fullW / nx;
-    double dh = fullH / ny;
+    auto ex = graded_edges(fullW, cellMin, ratio, maxCellsPerSide);
+    auto ey = graded_edges(fullH, cellMin, ratio, maxCellsPerSide);
 
-    std::vector<std::pair<double, double>> centres;
-    for (size_t i = 0; i < nx; ++i) {
-        for (size_t j = 0; j < ny; ++j) {
-            double fx = cx - fullW / 2 + (i + 0.5) * dw;
-            double fy = cy - fullH / 2 + (j + 0.5) * dh;
+    struct Cell { double x, y, w, h; };
+    std::vector<Cell> cells;
+    double boxAreaInside = 0;
+    for (size_t i = 0; i + 1 < ex.size(); ++i) {
+        for (size_t j = 0; j + 1 < ey.size(); ++j) {
+            double w = ex[i + 1] - ex[i];
+            double h = ey[j + 1] - ey[j];
+            double fx = cx + 0.5 * (ex[i] + ex[i + 1]);
+            double fy = cy + 0.5 * (ey[j] + ey[j + 1]);
             if (isRound) {
                 double rx = fx - cx, ry = fy - cy;
-                if (rx * rx + ry * ry > radius * radius) {
-                    continue;
-                }
+                if (rx * rx + ry * ry > radius * radius) continue;
             }
-            centres.push_back({fx, fy});
+            cells.push_back({fx, fy, w, h});
+            boxAreaInside += w * h;
         }
     }
-    if (centres.empty()) {
-        return;
-    }
+    if (cells.empty()) return;
 
     double conductingArea = isRound ? (std::numbers::pi * radius * radius) : (fullW * fullH);
-    double filamentArea = conductingArea / centres.size();
+    // conserve total conducting area (exact for rectangles; rescales the round
+    // bounding-box tiling back to the true circle area).
+    double areaScale = (boxAreaInside > 0) ? conductingArea / boxAreaInside : 1.0;
 
-    for (auto& [fx, fy] : centres) {
+    for (auto& cl : cells) {
         WindingLossesPEEC::Filament f;
-        f.x = fx;
-        f.y = fy;
-        f.area = filamentArea;
-        f.width = dw;
-        f.height = dh;
+        f.x = cl.x;
+        f.y = cl.y;
+        f.area = cl.w * cl.h * areaScale;
+        f.width = cl.w;
+        f.height = cl.h;
         f.turnIndex = turnIndex;
         f.windingIndex = windingIndex;
         f.turnLength = turnLength;
         out.push_back(f);
-    }
-}
-
-// Pick per-dimension filament counts so the pitch is ~ skinDepth/3 in each
-// direction, clamped to [minN, maxN] and a per-turn budget.
-static void choose_filament_counts(double fullW, double fullH, double skinDepth,
-                                   size_t numberTurns, size_t& nx, size_t& ny) {
-    double target = std::max(skinDepth / 3.0, 1e-9);
-    auto pick = [&](double dim) -> size_t {
-        size_t n = static_cast<size_t>(std::ceil(dim / target));
-        if (n < 2) n = 2;
-        if (n > 18) n = 18;
-        return n;
-    };
-    nx = pick(fullW);
-    ny = pick(fullH);
-    // keep the global dense system tractable AND well-conditioned: cap
-    // filaments-per-turn (the 2D log-kernel matrix conditioning degrades as the
-    // filament count grows).
-    size_t budget = numberTurns > 0 ? std::max<size_t>(36, 2000 / numberTurns) : 320;
-    while (nx * ny > budget && (nx > 2 || ny > 2)) {
-        if (nx >= ny && nx > 2) --nx;
-        else if (ny > 2) --ny;
-        else break;
     }
 }
 
@@ -170,18 +181,14 @@ WindingLossesOutput WindingLossesPEEC::calculate_losses(Magnetic magnetic, Opera
         if (wire.get_type() == WireType::LITZ) {
             throw NotImplementedException("WindingLossesPEEC: litz must use the analytical model (strand meshing is impractical); homogenise the bundle to enable PEEC");
         }
-        double fullW, fullH;
-        if (wire.get_type() == WireType::ROUND) {
-            fullW = fullH = resolve_dimensional_values(wire.get_conducting_diameter().value());
-        }
-        else {
-            fullW = wire.get_maximum_conducting_width();
-            fullH = wire.get_maximum_conducting_height();
-        }
         double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, maxSignificantFrequency, temperature);
-        size_t nx, ny;
-        choose_filament_counts(fullW, fullH, skinDepth, numberTurns, nx, ny);
-        mesh_turn_into_filaments(turn, wire, turnIndex, windingIndex, nx, ny, filaments);
+        // graded mesh: ~skinDepth/3 cells at the surfaces, growing by `ratio`.
+        // maxCellsPerSide kept modest so the dense log-kernel system stays
+        // well-conditioned even with many turns.
+        double cellMin = skinDepth / 3.0;
+        double ratio = 1.5;
+        size_t maxCellsPerSide = numberTurns > 30 ? 8 : 12;
+        mesh_turn_into_filaments(turn, wire, turnIndex, windingIndex, cellMin, ratio, maxCellsPerSide, filaments);
     }
     size_t N = filaments.size();
     if (N == 0) {

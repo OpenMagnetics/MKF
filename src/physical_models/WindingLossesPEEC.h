@@ -28,20 +28,23 @@ using namespace MAS;
 //
 // VALIDATION STATUS (vs the trusted analytical models on rectangular/foil
 // configs, PEEC/analytical ratio):
-//   - DC / low frequency (<=~10 kHz): 0.96-1.06  -> matches (scale is correct).
-//   - mid frequency (~10-100 kHz):    ~1.0-1.36  -> within test tolerance.
-//   - high frequency (>=~500 kHz):    ~0.34-0.65 -> UNDER-predicts.
-// Root cause of the high-f gap: a UNIFORM filament mesh cannot resolve the
-// sub-skin-depth surface crowding without a very fine mesh, and refining the
-// uniform mesh makes the dense 2D log-kernel system ill-conditioned (the
-// solution collapses). So the model is physically correct at low/mid frequency
-// but plateaus below the true loss at high frequency.
+//   - DC / low frequency (<=~10 kHz): ~0.96-1.06  -> matches (scale is correct).
+//   - mid/high frequency: MESH-DEPENDENT and NOT YET CONVERGED:
+//       * uniform mesh:  ~1.04 @100 kHz, falling to ~0.34-0.65 @>=500 kHz (under);
+//       * graded mesh:   ~2.09 @100 kHz (over).
+// The true answer is bracketed but the result still depends strongly on the
+// mesh -> the partial-inductance formulation is not yet convergent. The graded
+// (surface-refined) mesh fixed the ill-conditioning of the fine uniform mesh
+// and captures more of the high-f crowding, but over/under-shoots depending on
+// resolution.
 //
-// TO FINISH (not a constant tweak — real solver work): graded/non-uniform
-// meshing refined toward conductor surfaces (resolve skin depth with few
-// filaments), and a better-conditioned PEEC formulation (mesh/loop-current or
-// regularised partial inductances). Until then this is NOT production-ready and
-// must stay opt-in behind the analytical default.
+// TO FINISH (real EM-solver work, NOT a constant tweak): make the partial
+// inductances convergent — correct self/mutual 2D partial-inductance integrals
+// (exact filament GMD / area integrals instead of the point-log approximation),
+// a consistent reference handling, and a mesh-convergence study. Consider a
+// vetted PEEC formulation/library. Until it converges to the analytical models
+// (and an independent 2D FEM) across frequency, this is NOT production-ready and
+// stays opt-in behind the analytical default.
 //
 // Scope: non-toroidal winding windows only for now; litz must be routed to the
 // analytical model (meshing every strand is impractical — homogenise the bundle
