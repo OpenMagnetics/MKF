@@ -252,9 +252,19 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     std::vector<Field> inducingFields;
     auto core = magnetic.get_core();
 
+    // A core supplied as functionalDescription-only (e.g. a MAS file saved
+    // without processedDescription) has no columns/winding-window geometry yet.
+    // The field calculation (and the CoilMesher it invokes via `magnetic`) needs
+    // that geometry, so process it here and write it back into `magnetic` —
+    // otherwise get_columns() below, and the mesher, would throw
+    // CoreNotProcessedException. `magnetic` is taken by value, so this is local.
+    if (!core.get_processed_description()) {
+        core.process_data();
+    }
     if (!core.is_gap_processed()) {
         core.process_gap();
     }
+    magnetic.set_core(core);
     auto gapping = core.get_functional_description().get_gapping();
     double coreColumnWidth = core.get_columns()[0].get_width();
     auto processedDescription = core.get_processed_description().value();

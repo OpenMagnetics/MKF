@@ -2194,3 +2194,50 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
     
     settings.reset();
 }
+
+// Regression: a magnetic whose core carries only a functionalDescription (no
+// processedDescription) — e.g. a MAS file saved without the processed core —
+// must NOT segfault in the winding-loss / H-field path. Previously
+// calculate_magnetic_field_strength_field did core.get_columns()[0] on an empty
+// columns vector (only process_gap() was called, never process_data()).
+TEST_CASE("Test_Winding_Losses_Unprocessed_Core_Does_Not_Crash", "[physical-model][winding-losses][litz][smoke-test]") {
+    auto config = WindingLossesTestData::createTenTurnsLitzSinusoidalConfig();
+    double frequency = config.expectedValues.back().first;
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        frequency, config.magnetizingInductance, config.temperature,
+        config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
+    auto op = inputs.get_operating_point(0);
+
+    // Baseline with a fully processed core.
+    settings.reset();
+    clear_databases();
+    auto processedMagnetic = config.createMagnetic();
+    double processedLosses = WindingLosses().calculate_losses(processedMagnetic, op, config.temperature).get_winding_losses();
+    REQUIRE(processedLosses > 0);
+
+    // Same magnetic, but with the core's processedDescription stripped so only
+    // the functionalDescription remains — reproduces the externally-loaded MAS.
+    settings.reset();
+    clear_databases();
+    auto magnetic = config.createMagnetic();
+    auto core = magnetic.get_core();
+    core.set_processed_description(std::nullopt);
+    magnetic.set_core(core);
+    REQUIRE_FALSE(magnetic.get_core().get_processed_description().has_value());
+
+    double lossesFromUnprocessed = 0;
+    REQUIRE_NOTHROW(lossesFromUnprocessed = WindingLosses().calculate_losses(magnetic, op, config.temperature).get_winding_losses());
+    // The field path should self-heal by processing the core, giving the same result.
+    REQUIRE_THAT(lossesFromUnprocessed, Catch::Matchers::WithinRel(processedLosses, 1e-9));
+    settings.reset();
+}
+
+// A truly unprocessed core accessed directly must fail loudly, not return an
+// empty vector that callers then index out of bounds.
+TEST_CASE("Test_Core_Get_Columns_Throws_When_Unprocessed", "[physical-model][core][smoke-test]") {
+    auto config = WindingLossesTestData::createTenTurnsLitzSinusoidalConfig();
+    auto magnetic = config.createMagnetic();
+    auto core = magnetic.get_core();
+    core.set_processed_description(std::nullopt);
+    REQUIRE_THROWS_AS(core.get_columns(), CoreNotProcessedException);
+}

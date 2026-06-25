@@ -1566,12 +1566,10 @@ double Core::get_density() {
 }
 
 std::vector<ColumnElement> Core::get_columns() const {
-    if (get_processed_description()) {
-        return get_processed_description().value().get_columns();
+    if (!get_processed_description()) {
+        throw CoreNotProcessedException("Core is not processed");
     }
-    else {
-        return std::vector<ColumnElement>();
-    }
+    return get_processed_description().value().get_columns();
 }
 
 WindingWindowElement Core::get_winding_window(size_t windingWindowIndex) const {
