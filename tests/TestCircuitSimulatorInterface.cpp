@@ -4315,7 +4315,55 @@ TEST_CASE("Test_Saturation_Ngspice_SingleWinding", "[processor][circuit-simulato
     CHECK(netlist.find("Lmag_1_L0") != std::string::npos);
     CHECK(netlist.find("Lmag_1_Isat") != std::string::npos);
     // Should have behavioral voltage source
-    CHECK(netlist.find("BLmag_1") != std::string::npos);
+    CHECK(netlist.find("Bind_1") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_Ngspice_ExportedIsat_MatchesCalculateSaturationCurrent", "[processor][circuit-simulator-exporter][ngspice][saturation]") {
+    // Regression for ABT #40: the exported saturable-inductor Isat parameter
+    // (Lmag_1_Isat) must equal the authoritative Magnetic::calculate_saturation_current
+    // for the SAME magnetic. The old exporter used the UNGAPPED core formula
+    // (Bsat/(mu0*mu_r) * le / N), under-reporting Isat by the gap factor (~10x)
+    // and collapsing every deck whose inductor current exceeded the bogus value.
+    std::vector<int64_t> numberTurns = {12};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 55/28/21";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.0005);  // 0.5 mm gap -> gap dominates reluctance
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    double temperature = 25;
+
+    // Authoritative saturation current (B_sat·N·A_e/L_gapped), proportion=true (export default)
+    double authoritativeIsat = magnetic.calculate_saturation_current(temperature, true);
+
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+
+    auto netlist = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, temperature, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+
+    // Parse `.param Lmag_1_Isat=<value>` out of the netlist
+    auto pos = netlist.find("Lmag_1_Isat=");
+    REQUIRE(pos != std::string::npos);
+    pos += std::string("Lmag_1_Isat=").size();
+    auto end = netlist.find_first_of("\r\n", pos);
+    double exportedIsat = std::stod(netlist.substr(pos, end - pos));
+
+    INFO("exported Isat=" << exportedIsat << " A, authoritative Isat=" << authoritativeIsat << " A");
+    // Same identity, same inputs -> must match to within rounding
+    REQUIRE(authoritativeIsat > 0);
+    CHECK(std::abs(exportedIsat - authoritativeIsat) / authoritativeIsat < 0.01);
 }
 
 TEST_CASE("Test_Saturation_Ngspice_MultiWinding_FallsBackToLinear", "[processor][circuit-simulator-exporter][ngspice][saturation]") {
@@ -4350,7 +4398,7 @@ TEST_CASE("Test_Saturation_Ngspice_MultiWinding_FallsBackToLinear", "[processor]
     // Should have warning about multi-winding
     CHECK(netlist.find("WARNING: Saturation modeling not supported for multi-winding") != std::string::npos);
     // Should NOT have behavioral voltage source (falls back to linear)
-    CHECK(netlist.find("BLmag_") == std::string::npos);
+    CHECK(netlist.find("Bind_") == std::string::npos);
     // Should have regular inductor
     CHECK(netlist.find("Lmag_1") != std::string::npos);
 }
@@ -4539,7 +4587,7 @@ TEST_CASE("Test_Saturation_Disabled_NoSaturationInOutput", "[processor][circuit-
     settings.set_circuit_simulator_include_saturation(originalSaturation);
     
     // ngspice should NOT have behavioral source for saturation
-    CHECK(ngspiceNetlist.find("BLmag_") == std::string::npos);
+    CHECK(ngspiceNetlist.find("Bind_") == std::string::npos);
     CHECK(ngspiceNetlist.find("Saturating") == std::string::npos);
     
     // LTspice should NOT have Flux= syntax
@@ -4655,7 +4703,7 @@ TEST_CASE("Test_Ngspice_Integration_SaturatingInductor_BasicSimulation", "[proce
         magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
     
     // Verify the subcircuit contains saturation elements
-    REQUIRE(subcircuit.find("BLmag_") != std::string::npos);
+    REQUIRE(subcircuit.find("Bind_") != std::string::npos);
     
     // Create a test circuit with voltage source (easier to simulate than current source)
     // Use a slow sinusoidal excitation to avoid convergence issues
@@ -4734,8 +4782,8 @@ TEST_CASE("Test_Ngspice_Integration_LinearVsSaturating_Comparison", "[processor]
     
     // Verify both netlists are different
     CHECK(linearSubcircuit != saturatingSubcircuit);
-    CHECK(linearSubcircuit.find("BLmag_") == std::string::npos);  // Linear has no behavioral source
-    CHECK(saturatingSubcircuit.find("BLmag_") != std::string::npos);  // Saturating has behavioral source
+    CHECK(linearSubcircuit.find("Bind_") == std::string::npos);  // Linear has no behavioral source
+    CHECK(saturatingSubcircuit.find("Bind_") != std::string::npos);  // Saturating has behavioral source
     
     // Use sine wave test like the working basic test
     auto createTestCircuit = [&](const std::string& subcircuit, const std::string& name) {
@@ -4878,7 +4926,7 @@ TEST_CASE("Test_Ngspice_Integration_Transformer_LinearFallback", "[processor][ci
     
     // Should have warning about multi-winding and NO behavioral source
     CHECK(subcircuit.find("WARNING: Saturation modeling not supported") != std::string::npos);
-    CHECK(subcircuit.find("BLmag_") == std::string::npos);
+    CHECK(subcircuit.find("Bind_") == std::string::npos);
     
     // Create a simple transformer test circuit
     std::string testCircuit = R"(
@@ -5033,7 +5081,7 @@ TEST_CASE("Test_Ngspice_Integration_Saturation_CurrentSlope_Analysis", "[process
     // Verify saturation parameters are in the netlist
     CHECK(saturatingSubcircuit.find("Lmag_1_L0") != std::string::npos);
     CHECK(saturatingSubcircuit.find("Lmag_1_Isat") != std::string::npos);
-    CHECK(saturatingSubcircuit.find("BLmag_1") != std::string::npos);
+    CHECK(saturatingSubcircuit.find("Bind_1") != std::string::npos);
     
     // Extract and display Isat value
     size_t isatParamPos = saturatingSubcircuit.find(".param Lmag_1_Isat=");
