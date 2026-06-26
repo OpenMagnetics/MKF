@@ -350,7 +350,7 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
     if (includeSaturation && satParams.valid) {
         // Use saturating inductor model
         const double mu0 = 4e-7 * M_PI;
-        double Isat = satParams.Isat();
+        double Isat = satParams.Isat;
         // Calculate gap contribution for saturated inductance
         double effectiveMuR = satParams.Lmag / (mu0 * satParams.primaryTurns * satParams.primaryTurns * satParams.Ae / satParams.le);
         double gapFactor = std::min(0.99, 1.0 / effectiveMuR);

@@ -15,25 +15,12 @@ struct SaturationParameters {
     double le;             // Effective magnetic path length [m]
     double primaryTurns;   // Number of primary turns
     double Lmag;           // Magnetizing inductance [H]
+    double Isat;           // Saturation current [A] — from Magnetic::calculate_saturation_current
+                           // (gapped B_sat·N·A_e/L). NOT recomputed here: the previous local
+                           // formula Bsat/(mu0*mu_r)*le/N used the UNGAPPED core path and
+                           // under-reported I_sat by the gap factor (~10×), collapsing the
+                           // exported saturable inductor above the bogus value (ABT #40).
     bool valid;            // Whether parameters are valid
-
-    double Isat() const {
-        // Saturation current of the as-designed (wound + gapped) magnetic:
-        //
-        //   I_sat = B_sat · N · A_e / L_actual   (== fluxLinkageSat / Lmag)
-        //
-        // This is the SAME identity Magnetic::calculate_saturation_current uses,
-        // with L_actual the gapped-magnetic inductance already resolved into
-        // `Lmag` (calculate_inductance_from_number_turns_and_gapping).
-        //
-        // The previous form `Bsat/(mu0*mu_r) * le / N` used the core path `le`
-        // with the *material* initial permeability `mu_r`, i.e. the saturation
-        // current of an UNGAPPED core. For a gapped E/RM core the gap dominates
-        // reluctance, so that form under-reported I_sat by the gap factor
-        // (mu_r/mu_e, ~10×) — collapsing the exported saturable inductor for any
-        // converter whose current exceeded the bogus low value (ABT #40).
-        return fluxLinkageSat() / Lmag;
-    }
 
     double fluxLinkageSat() const {
         return primaryTurns * Ae * Bsat;

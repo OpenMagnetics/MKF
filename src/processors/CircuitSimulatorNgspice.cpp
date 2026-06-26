@@ -34,7 +34,7 @@ static std::string emit_saturating_inductor_ngspice(
 
     std::string s;
 
-    double Isat = sat.Isat();
+    double Isat = sat.Isat;
     if (Isat < 1e-6) Isat = 1e-6;            // numerical floor
 
     s += "* Saturating magnetizing inductance (winding " + windingIndex + ")\n";

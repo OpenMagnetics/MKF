@@ -36,7 +36,7 @@ static std::string emit_saturating_inductor_ltspice(
     const double mu0 = 4e-7 * M_PI;
 
     // Calculate saturation current and flux linkage
-    double Isat = sat.Isat();
+    double Isat = sat.Isat;
     double lambdaSat = sat.fluxLinkageSat();
 
     // Calculate gap contribution

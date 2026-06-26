@@ -23,7 +23,8 @@ namespace OpenMagnetics {
 SaturationParameters get_saturation_parameters(const Magnetic& magnetic, double temperature) {
     SaturationParameters params;
     params.valid = false;
-    
+    params.Isat = 0;
+
     try {
         auto core = magnetic.get_core();
         auto coil = magnetic.get_coil();
@@ -46,10 +47,18 @@ SaturationParameters get_saturation_parameters(const Magnetic& magnetic, double 
             MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
                 .get_magnetizing_inductance());
         
-        // Validate
+        // Saturation current comes from the authoritative physical model
+        // (Magnetic::calculate_saturation_current = gapped B_sat*N*A_e/L), NOT a
+        // formula reimplemented here -- that is what drifted and produced the
+        // ungapped, ~10x too-low I_sat in ABT #40. proportion=true matches the
+        // proportioned B_sat used above and by the model internally. A mutable
+        // copy is needed because calculate_saturation_current uses the mutable
+        // core/coil accessors.
         if (params.Bsat > 0 && params.mu_r > 0 && params.Ae > 0 &&
             params.le > 0 && params.primaryTurns > 0 && params.Lmag > 0) {
-            params.valid = true;
+            Magnetic mutableMagnetic = magnetic;
+            params.Isat = mutableMagnetic.calculate_saturation_current(temperature, true);
+            params.valid = params.Isat > 0;
         }
     } catch (const std::exception& e) {
         // Silently exporting a LINEAR inductor when saturation was requested hid
