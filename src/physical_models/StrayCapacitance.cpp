@@ -1304,6 +1304,25 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
 }
 
 
+// Effective bare-conductor radius for the turn-to-core field-spreading integral.
+// Round/litz wires pass their true radius. Flat conductors (planar / foil /
+// rectangular) are modelled as an AREA-EQUIVALENT cylinder, r_eq = sqrt(w*h/pi):
+// the turn-to-core element is a fringing/curvature field that leaves the conductor
+// surface and spreads to the core, and calculate_turn_to_core_capacitance stays
+// finite at contact only because of that curvature. A true flat-face parallel
+// plate would diverge at zero separation (touching plates), and these planar parts
+// carry no modelled trace-to-core dielectric to bound it — so reusing the curvature
+// integral with an equivalent radius is the physically consistent, finite choice
+// (rather than fabricating a dielectric thickness absent from the data).
+static double turn_to_core_equivalent_radius(Wire wire) {
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        return wire.get_maximum_conducting_width() / 2.0;
+    }
+    double conductingWidth = wire.get_maximum_conducting_width();
+    double conductingHeight = wire.get_maximum_conducting_height();
+    return std::sqrt(conductingWidth * conductingHeight / std::numbers::pi);
+}
+
 double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRadius, double turnLength,
                                                             double wireCoatingThickness, double wireCoatingRelativePermittivity,
                                                             double airGapToCore,
@@ -1378,16 +1397,11 @@ double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core c
     auto windingIndex = coil.get_winding_index_by_name(windingName);
     auto wire = wirePerWinding[windingIndex];
 
-    if (wire.get_type() != WireType::ROUND && wire.get_type() != WireType::LITZ) {
-        throw NotImplementedException("Turn-to-core capacitance is only modelled for ROUND/LITZ wires, got: " + std::string(magic_enum::enum_name(wire.get_type())));
-    }
-
-    // calculate_turn_to_core_capacitance / the Massarini model take the conducting
-    // RADIUS (the model computes Dc = 2*conductingRadius for the bare-conductor
-    // diameter); get_maximum_conducting_width returns the diameter, so halve it.
-    // (The turn-to-turn caller's own radius/diameter handling is separate and is
-    // intentionally left untouched here.)
-    double conductingRadius = wire.get_maximum_conducting_width() / 2.0;
+    // calculate_turn_to_core_capacitance takes the bare-conductor RADIUS. Round/litz
+    // wires use their true radius; flat conductors use an area-equivalent radius
+    // (see turn_to_core_equivalent_radius), so planar/foil/rectangular windings get a
+    // finite through-core element instead of throwing.
+    double conductingRadius = turn_to_core_equivalent_radius(wire);
     double wireCoatingThickness = wire.get_coating_thickness();
     double wireCoatingRelativePermittivity = get_wire_insulation_relative_permittivity(wire);
     constexpr double airGapToCore = 0.0;  // close-wound onto the coated core
@@ -1452,13 +1466,10 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
         }
 
         auto wire = wirePerWinding[coil.get_winding_index_by_name(windingName)];
-        if (wire.get_type() != WireType::ROUND && wire.get_type() != WireType::LITZ) {
-            throw NotImplementedException("Turn-to-core capacitance is only modelled for ROUND/LITZ wires, got: " + std::string(magic_enum::enum_name(wire.get_type())));
-        }
-        // Conducting RADIUS for the Massarini routine (Dc = 2*conductingRadius);
-        // get_maximum_conducting_width is the diameter, so halve it.
+        // Bare-conductor radius for the field-spreading integral; flat conductors
+        // use an area-equivalent radius (see turn_to_core_equivalent_radius).
         double capacitance = calculate_turn_to_core_capacitance(
-            wire.get_maximum_conducting_width() / 2.0, turns[turnIndex].get_length(),
+            turn_to_core_equivalent_radius(wire), turns[turnIndex].get_length(),
             wire.get_coating_thickness(), get_wire_insulation_relative_permittivity(wire),
             0.0 /* air gap: close-wound */,
             coreCoatingThickness, coreCoatingRelativePermittivity);
@@ -1960,6 +1971,31 @@ double StrayCapacitanceOneLayer::calculate_capacitance(Coil coil) {
             auto secondTurn = coil.get_turns_description().value()[1];
             centerSeparation = sqrt(pow(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0], 2) + pow(firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1], 2));
         }
+    }
+
+    // The two building blocks are cylinder-to-cylinder / cylinder-to-plane
+    // capacitances, C ~ 1/acosh(x), valid only for x > 1 (conductors not touching):
+    //   turn-to-turn:   x = centerSeparation / (2*wireRadius)
+    //   turn-to-shield: x = distanceTurnsToCore / wireRadius
+    // x -> 1 is the contact singularity (acosh(1)=0 => C=inf => the cas/cab
+    // recursion produces NaN). This happens for a flat/planar conductor (whose
+    // half-WIDTH is used as "wireRadius" while the stacking pitch is the thin
+    // dimension) and for thick round Grade-1 wire flush to the core (proportionally
+    // thin coating + zero bobbin column thickness => distanceTurnsToCore == wireRadius).
+    // In those degenerate cases this fast single-layer round-wire approximation is
+    // outside its validity domain, so defer to the full StrayCapacitance model
+    // (parallel-plate for planar, Albach for round) which is finite and wire-type aware.
+    // The 1.001 margin matches the acosh-domain guard the Albach/Koch models use and
+    // also avoids the near-singular huge-but-finite value just above contact.
+    constexpr double acoshDomainFloor = 1.001;
+    auto wireType = coil.resolve_wire(0).get_type();
+    bool roundLike = (wireType == WireType::ROUND || wireType == WireType::LITZ);
+    double turnToTurnArg = centerSeparation / (2 * wireRadius);
+    double turnToShieldArg = distanceTurnsToCore / wireRadius;
+    if (!roundLike || turnToTurnArg <= acoshDomainFloor || turnToShieldArg <= acoshDomainFloor) {
+        auto capacitanceAmongWindings = StrayCapacitance().calculate_capacitance(coil).get_capacitance_among_windings().value();
+        auto firstWindingName = coil.get_functional_description()[0].get_name();
+        return capacitanceAmongWindings[firstWindingName][firstWindingName];
     }
 
     double ctt = capacitance_turn_to_turn(turnDiameter, wireRadius, centerSeparation);

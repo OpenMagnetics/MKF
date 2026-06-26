@@ -5,6 +5,7 @@
 #include "support/Utils.h"
 #include "support/Settings.h"
 #include "support/Painter.h"
+#include "processors/Sweeper.h"
 #include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -1575,4 +1576,114 @@ TEST_CASE("Turn_To_Core_Capacitance_Bounded_And_Monotone", "[physical-model][str
 
     // Degenerate inputs return 0 rather than NaN/Inf.
     REQUIRE(StrayCapacitance::calculate_turn_to_core_capacitance(0.0, L, tEnamel, epsEnamel, 0.0, tCoating, epsCoating) == 0.0);
+}
+
+// ABT #31 repro: sweep_impedance_over_frequency -> "capacitance cannot be NaN".
+// Reproduced with the planar flyback MAS the user reported (the same failure also
+// hits the WE CMC catalogue via the El Choker tool).
+TEST_CASE("ABT31 sweep_impedance_over_frequency capacitance NaN repro", "[physical-model][stray-capacitance][abt31]") {
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "custom_magnetic_flyback.json");
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_file(path, mas);
+    auto magnetic = mas.get_magnetic();
+
+    for (auto title : {std::string("Impedance over frequency"), std::string("Common-mode impedance")}) {
+        try {
+            auto sweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1e3, 1e9, 100, "log", title);
+            bool finite = true;
+            for (auto y : sweep.get_y_points()) if (!std::isfinite(y)) finite = false;
+            UNSCOPED_INFO(title << " => sweep finite=" << finite);
+            CHECK(finite);
+        }
+        catch (const std::exception& e) {
+            UNSCOPED_INFO(title << " THREW: " << e.what());
+            FAIL_CHECK(title << " threw");
+        }
+    }
+}
+
+// Regression for a NaN report on the stray capacitance of a 3-winding PLANAR
+// flyback (custom_magnetic_flyback.json). The coil-only and operating-point
+// paths must return finite, real capacitances for planar wires (parallel-plate
+// model). See the companion "(through-core)" case for the with-core path.
+TEST_CASE("Calculate stray capacitance of custom planar flyback", "[physical-model][stray-capacitance]") {
+    settings.reset();
+
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "custom_magnetic_flyback.json");
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_file(path, mas);
+    auto magnetic = mas.get_magnetic();
+    auto coil = magnetic.get_coil();
+    auto inputs = mas.get_inputs();
+    auto operatingPoint = inputs.get_operating_point(0);
+
+    StrayCapacitance strayCapacitance;
+
+    // Raw turn-to-turn capacitances (planar parallel-plate model) must be finite.
+    auto capacitanceAmongTurns = strayCapacitance.calculate_capacitance_among_turns(coil);
+    REQUIRE_FALSE(capacitanceAmongTurns.empty());
+    for (auto& [turnsKey, capacitance] : capacitanceAmongTurns) {
+        UNSCOPED_INFO("C[turn " << turnsKey.first << "][turn " << turnsKey.second << "] = " << capacitance);
+        REQUIRE(std::isfinite(capacitance));
+        REQUIRE(capacitance >= 0);
+    }
+
+    auto checkMaxwell = [](const std::string& label, const StrayCapacitanceOutput& output) {
+        auto maxwellCapacitanceMatrix = output.get_maxwell_capacitance_matrix().value();
+        REQUIRE_FALSE(maxwellCapacitanceMatrix.empty());
+        for (auto& matrixAtFreq : maxwellCapacitanceMatrix) {
+            for (auto& [firstKey, row] : matrixAtFreq.get_magnitude()) {
+                for (auto& [secondKey, capacitanceWithTolerance] : row) {
+                    auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+                    UNSCOPED_INFO(label << " C[" << firstKey << "][" << secondKey << "] = " << capacitance);
+                    REQUIRE(std::isfinite(capacitance));
+                }
+            }
+        }
+    };
+
+    checkMaxwell("coil", strayCapacitance.calculate_capacitance(coil));
+    checkMaxwell("coil+operatingPoint", strayCapacitance.calculate_capacitance(coil, operatingPoint));
+}
+
+// The with-core (through-core) inter-winding path now supports planar/foil/
+// rectangular wires (flat conductors modelled as an area-equivalent cylinder in
+// the turn-to-core field-spreading integral), so separated planar windings + core
+// must return a finite capacitance matrix instead of throwing.
+TEST_CASE("Calculate stray capacitance of custom planar flyback (through-core)", "[physical-model][stray-capacitance]") {
+    settings.reset();
+
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "custom_magnetic_flyback.json");
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_file(path, mas);
+    auto magnetic = mas.get_magnetic();
+    auto coil = magnetic.get_coil();
+    auto core = magnetic.get_core();
+
+    StrayCapacitance strayCapacitance;
+    StrayCapacitanceOutput output;
+    REQUIRE_NOTHROW(output = strayCapacitance.calculate_capacitance(coil, core));
+
+    auto maxwell = output.get_maxwell_capacitance_matrix().value();
+    REQUIRE_FALSE(maxwell.empty());
+    for (auto& matrixAtFreq : maxwell) {
+        for (auto& [firstKey, row] : matrixAtFreq.get_magnitude()) {
+            for (auto& [secondKey, capacitanceWithTolerance] : row) {
+                auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+                UNSCOPED_INFO("C[" << firstKey << "][" << secondKey << "] = " << capacitance);
+                REQUIRE(std::isfinite(capacitance));
+            }
+        }
+    }
+
+    // The through-core element for a flat conductor must be a finite, positive, and
+    // physically small (sub-nF) per-winding self term.
+    auto amongWindings = output.get_capacitance_among_windings().value();
+    for (auto& [firstName, row] : amongWindings) {
+        for (auto& [secondName, capacitance] : row) {
+            UNSCOPED_INFO("Cww[" << firstName << "][" << secondName << "] = " << capacitance);
+            REQUIRE(std::isfinite(capacitance));
+        }
+    }
 }
