@@ -10,6 +10,7 @@
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
 #include "physical_models/Inductance.h"
+#include "constructive_models/MasMigration.h"
 #include "physical_models/WindingLosses.h"
 #include "processors/MagneticSimulator.h"
 #include "advisers/CoilAdviser.h"
@@ -38,6 +39,32 @@ using namespace OpenMagnetics;
 namespace {
     bool plot = false;
     std::string file_path = std::source_location::current().file_name();
+
+    // ABT #15: build a catalogue Magnetic from one ndjson line, applying the same
+    // pre-1.0 compatibility migration that production OpenMagnetics::from_file()
+    // runs before parsing. The test cache loaders historically bypassed it, so a
+    // pre-1.0 catalogue fixture (legacy enum strings like "two-piece set"/"Pin",
+    // and the -0.05 m subtractive-gap placeholder convention) failed the current
+    // schema / threw "negative length" during autocomplete. migrate_pre_1_0 fixes
+    // the enums; we additionally repair the invalid negative subtractive-gap
+    // lengths to 0.0 (the value the already-valid entries use). Keeps the
+    // catalogue tests robust to fixture vintage (tests/testData is gitignored and
+    // generated locally, so the fixture cannot be pinned in-repo).
+    inline OpenMagnetics::Magnetic load_catalogue_magnetic(const std::string& jsonLine) {
+        json jf = json::parse(jsonLine);
+        OpenMagnetics::compat::migrate_pre_1_0(jf);
+        if (jf.contains("core") && jf["core"].contains("functionalDescription")
+            && jf["core"]["functionalDescription"].contains("gapping")
+            && jf["core"]["functionalDescription"]["gapping"].is_array()) {
+            for (auto& gap : jf["core"]["functionalDescription"]["gapping"]) {
+                if (gap.contains("length") && gap["length"].is_number()
+                    && gap["length"].get<double>() < 0) {
+                    gap["length"] = 0.0;
+                }
+            }
+        }
+        return OpenMagnetics::Magnetic(jf);
+    }
 
 
 
@@ -2490,8 +2517,7 @@ namespace {
         std::string jsonLine;
         json coresJson = json::array();
         while (std::getline(ndjsonFile, jsonLine)) {
-            json jf = json::parse(jsonLine);
-            OpenMagnetics::Magnetic magnetic(jf);
+            OpenMagnetics::Magnetic magnetic = load_catalogue_magnetic(jsonLine);
             catalogue.push_back(magnetic);
         }
 
@@ -2631,8 +2657,7 @@ namespace {
         std::string jsonLine;
         json coresJson = json::array();
         while (std::getline(ndjsonFile, jsonLine)) {
-            json jf = json::parse(jsonLine);
-            OpenMagnetics::Magnetic magnetic(jf);
+            OpenMagnetics::Magnetic magnetic = load_catalogue_magnetic(jsonLine);
             catalogue.push_back(magnetic);
         }
 
@@ -2707,8 +2732,7 @@ namespace {
             std::string jsonLine;
             json coresJson = json::array();
             while (std::getline(ndjsonFile, jsonLine)) {
-                json jf = json::parse(jsonLine);
-                OpenMagnetics::Magnetic magnetic(jf);
+                OpenMagnetics::Magnetic magnetic = load_catalogue_magnetic(jsonLine);
                 catalogue.push_back(magnetic);
             }
         }
@@ -2915,8 +2939,7 @@ namespace {
         std::string jsonLine;
         json coresJson = json::array();
         while (std::getline(ndjsonFile, jsonLine)) {
-            json jf = json::parse(jsonLine);
-            OpenMagnetics::Magnetic magnetic(jf); 
+            OpenMagnetics::Magnetic magnetic = load_catalogue_magnetic(jsonLine);
             magneticsCache.load(magnetic.get_reference(), magnetic);
         }
         magneticsCache.autocomplete_magnetics();
@@ -2938,8 +2961,7 @@ namespace {
         std::string jsonLine;
         json coresJson = json::array();
         while (std::getline(ndjsonFile, jsonLine)) {
-            json jf = json::parse(jsonLine);
-            OpenMagnetics::Magnetic magnetic(jf); 
+            OpenMagnetics::Magnetic magnetic = load_catalogue_magnetic(jsonLine);
             magneticsCache.load(magnetic.get_reference(), magnetic);
         }
         magneticsCache.autocomplete_magnetics();
@@ -2964,8 +2986,7 @@ namespace {
         std::string jsonLine;
         json coresJson = json::array();
         while (std::getline(ndjsonFile, jsonLine)) {
-            json jf = json::parse(jsonLine);
-            OpenMagnetics::Magnetic magnetic(jf); 
+            OpenMagnetics::Magnetic magnetic = load_catalogue_magnetic(jsonLine);
             magneticsCache.load(magnetic.get_reference(), magnetic);
         }
         magneticsCache.autocomplete_magnetics();
@@ -2988,8 +3009,7 @@ namespace {
         std::string jsonLine;
         json coresJson = json::array();
         while (std::getline(ndjsonFile, jsonLine)) {
-            json jf = json::parse(jsonLine);
-            OpenMagnetics::Magnetic magnetic(jf); 
+            OpenMagnetics::Magnetic magnetic = load_catalogue_magnetic(jsonLine);
             magneticsCache.load(magnetic.get_reference(), magnetic);
         }
         magneticsCache.autocomplete_magnetics();
@@ -3012,8 +3032,7 @@ namespace {
         std::string jsonLine;
         json coresJson = json::array();
         while (std::getline(ndjsonFile, jsonLine)) {
-            json jf = json::parse(jsonLine);
-            OpenMagnetics::Magnetic magnetic(jf); 
+            OpenMagnetics::Magnetic magnetic = load_catalogue_magnetic(jsonLine);
             magneticsCache.load(magnetic.get_reference(), magnetic);
         }
         magneticsCache.autocomplete_magnetics();
@@ -3060,8 +3079,7 @@ namespace {
         std::string jsonLine;
         json coresJson = json::array();
         while (std::getline(ndjsonFile, jsonLine)) {
-            json jf = json::parse(jsonLine);
-            OpenMagnetics::Magnetic magnetic(jf); 
+            OpenMagnetics::Magnetic magnetic = load_catalogue_magnetic(jsonLine);
             magneticsCache.load(magnetic.get_reference(), magnetic);
         }
         magneticsCache.autocomplete_magnetics();
