@@ -9,6 +9,7 @@
 #include "TestingUtils.h"
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/Inductance.h"
 #include "physical_models/WindingLosses.h"
 #include "processors/MagneticSimulator.h"
 #include "advisers/CoilAdviser.h"
@@ -5919,6 +5920,177 @@ TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug
         // 15 W is a generous ceiling (the proximity-blind pick was ~44 W; the
         // re-ranked good pick is ~5.6 W).
         REQUIRE(totalLoss < 15.0);
+    }
+
+    // ABT #41 (from Heaviside, KH cutover): get_advised_magnetic_fast threw
+    // GAP_INVALID_DIMENSIONS ("Gap Area is not set") for a transformer with a
+    // specific (nominal) magnetizing inductance whose target Lm needs a gap that
+    // does not physically fit the candidate core's column. The transformer
+    // gap-solve in add_initial_turns_by_inductance applied the solver's gapping
+    // and called Core::process_gap() WITHOUT checking its return value: for an
+    // oversized gap process_gap() returns false and leaves the gap area unset,
+    // so the degenerate core then made the downstream inductance/saturation
+    // filters throw GAP_INVALID_DIMENSIONS, which tunneled out of the fast path.
+    // The fix rejects the non-fitting gap (leaves the core ungapped so the
+    // inductance filter culls it cleanly). The advise must NOT throw.
+    TEST_CASE("Test_FastAdviser_Transformer_GapDoesNotFit_NoThrow", "[adviser][magnetic-adviser][fast][abt41]") {
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+
+        // Asymmetric-half-bridge transformer: 100->12 V, 16 A, 100 kHz.
+        // Symmetric (bidirectional, ~zero DC offset) primary current — exactly
+        // the transformer-winding excitation that triggered the bug — plus a
+        // specific nominal Lm of 0.291 mH and turns ratio 3.58.
+        std::string inputsString = R"({
+            "designRequirements": {
+                "name": "ABT41 AHB transformer",
+                "topology": "asymmetricHalfBridgeConverter",
+                "magnetizingInductance": {"nominal": 0.291e-3},
+                "turnsRatios": [{"nominal": 3.58}],
+                "wiringTechnology": "Wound"
+            },
+            "operatingPoints": [{
+                "name": "Operating Point No. 1",
+                "conditions": {"ambientTemperature": 25},
+                "excitationsPerWinding": [{
+                    "name": "Primary winding excitation",
+                    "frequency": 100000,
+                    "current": {
+                        "waveform": {"data": [-4.92, 4.92, 4.92, -4.92, -4.92], "time": [0, 0, 0.000005, 0.000005, 0.00001]},
+                        "processed": {"dutyCycle": 0.5, "peakToPeak": 9.84, "offset": 0, "label": "Rectangular"}
+                    },
+                    "voltage": {
+                        "waveform": {"data": [-100, 100, 100, -100, -100], "time": [0, 0, 0.000005, 0.000005, 0.00001]},
+                        "processed": {"dutyCycle": 0.5, "peakToPeak": 200, "offset": 0, "label": "Rectangular"}
+                    }
+                }]
+            }]
+        })";
+        OpenMagnetics::Inputs inputs = json::parse(inputsString);
+        inputs.process();
+
+        MagneticAdviser magneticAdviser;
+        magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+
+        // The bug threw here (GAP_INVALID_DIMENSIONS tunneling out). An uncaught
+        // exception fails the test case, so a plain call captures the regression.
+        auto results = magneticAdviser.get_advised_magnetic_fast(inputs, 3);
+        REQUIRE(results.size() > 0);
+        // Every returned magnetic must be fully wound (never an un-wound coil).
+        for (auto& [mas, scoring] : results) {
+            REQUIRE(mas.get_magnetic().get_coil().get_turns_description());
+            REQUIRE(!mas.get_magnetic().get_coil().get_turns_description()->empty());
+        }
+    }
+
+    // ABT #42 (from Heaviside, KH cutover): for a high-Lm / low-magnetizing-
+    // current transformer the fast advise sized a tiny core (area product driven
+    // by the small primary current), then set the inductance-driven turn count
+    // that could not fit the window -> fast_wind() produced no turnsDescription,
+    // and post_process_core returned the magnetic un-wound. The failure only
+    // surfaced one step later as COIL_NOT_PROCESSED in export. The fix rejects
+    // candidates whose fast_wind() yields no turns so the advise never returns an
+    // un-wound magnetic.
+    TEST_CASE("Test_FastAdviser_Transformer_HighLm_Windable", "[adviser][magnetic-adviser][fast][abt42]") {
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+
+        // Phase-shifted full-bridge transformer: 400->12 V, 5 A, 100 kHz.
+        // High magnetizing inductance (28.5 mH) with a low magnetizing current,
+        // turns ratio 20.35 — physically correct for a bridge transformer.
+        std::string inputsString = R"({
+            "designRequirements": {
+                "name": "ABT42 PSFB transformer",
+                "topology": "phaseShiftedFullBridgeConverter",
+                "magnetizingInductance": {"nominal": 28.5e-3},
+                "turnsRatios": [{"nominal": 20.35}],
+                "wiringTechnology": "Wound"
+            },
+            "operatingPoints": [{
+                "name": "Operating Point No. 1",
+                "conditions": {"ambientTemperature": 25},
+                "excitationsPerWinding": [{
+                    "name": "Primary winding excitation",
+                    "frequency": 100000,
+                    "current": {
+                        "waveform": {"data": [-0.27, 0.27, 0.27, -0.27, -0.27], "time": [0, 0, 0.000005, 0.000005, 0.00001]},
+                        "processed": {"dutyCycle": 0.5, "peakToPeak": 0.54, "offset": 0, "label": "Rectangular"}
+                    },
+                    "voltage": {
+                        "waveform": {"data": [-400, 400, 400, -400, -400], "time": [0, 0, 0.000005, 0.000005, 0.00001]},
+                        "processed": {"dutyCycle": 0.5, "peakToPeak": 800, "offset": 0, "label": "Rectangular"}
+                    }
+                }]
+            }]
+        })";
+        OpenMagnetics::Inputs inputs = json::parse(inputsString);
+        inputs.process();
+
+        MagneticAdviser magneticAdviser;
+        magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+
+        auto results = magneticAdviser.get_advised_magnetic_fast(inputs, 3);
+        // Whatever is returned must be fully wound (never an un-wound coil that
+        // would later throw COIL_NOT_PROCESSED on export).
+        for (auto& [mas, scoring] : results) {
+            REQUIRE(mas.get_magnetic().get_coil().get_turns_description());
+            REQUIRE(!mas.get_magnetic().get_coil().get_turns_description()->empty());
+        }
+        REQUIRE(results.size() > 0);
+    }
+
+    // ABT #43 (from Heaviside, KH cutover): a transformer designed by the fast
+    // advise exported with a non-physical coupling coefficient K≈0.47 (~53%
+    // leakage), so isolated converters capped far below target. Two causes,
+    // both fixed: (1) the returned coil was un-wound (the post_process_core
+    // ordering bug, see ABT #42), so the leakage/coupling was computed on a
+    // degenerate geometry; (2) the fast path laid the windings out
+    // non-interleaved (primary fully inside, secondary fully outside), which is
+    // the loosest-coupling concentric layout. The advise now returns a fully
+    // wound, interleaved transformer whose coupling is realistic (K well above
+    // the 0.47 that blocked regulation).
+    TEST_CASE("Test_FastAdviser_Transformer_RealisticCoupling", "[adviser][magnetic-adviser][fast][abt43]") {
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+
+        // Flyback transformer (48->12 V 2 A 100 kHz, Lm 0.49 mH, turnsRatio 3.42).
+        std::vector<double> turnsRatios = {3.42};
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(
+            100000, 0.49e-3, 25, WaveformLabel::TRIANGULAR, 1.6, 0.5, 0.8, turnsRatios);
+        {
+            auto dr = inputs.get_design_requirements();
+            dr.set_topology(MAS::Topology::FLYBACK_CONVERTER);
+            dr.get_mutable_magnetizing_inductance().set_nominal(0.49e-3);
+            inputs.set_design_requirements(dr);
+        }
+        inputs.process();
+
+        MagneticAdviser magneticAdviser;
+        magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        auto results = magneticAdviser.get_advised_magnetic_fast(inputs, 1);
+        REQUIRE(results.size() > 0);
+
+        auto magnetic = results[0].first.get_magnetic();
+        // Must be fully wound (ABT #42) so the coupling reflects real geometry.
+        REQUIRE(magnetic.get_coil().get_turns_description());
+        REQUIRE(!magnetic.get_coil().get_turns_description()->empty());
+
+        double k = Inductance().calculate_coupling_coefficient(magnetic, 0, 1, 100000);
+        std::cout << "[ABT43] advised core=" << magnetic.get_core().get_name().value_or("?")
+                  << " K=" << k << std::endl;
+        // The bug exported K≈0.47 (un-regulatable). A realistically wound and
+        // interleaved transformer couples far tighter; 0.85 is a generous floor
+        // that cleanly separates the fixed design from the broken one.
+        REQUIRE(k > 0.85);
     }
 
 

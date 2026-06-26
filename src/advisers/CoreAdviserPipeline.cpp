@@ -198,7 +198,6 @@ std::vector<std::pair<Magnetic, double>> cull_to_unique_core_shapes(std::vector<
 Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
     MagneticEnergy magneticEnergy;
     Mas mas;
-    mas.set_magnetic(magnetic);
     double temperature = inputs.get_maximum_temperature();
 
     magnetic.get_reference();
@@ -212,6 +211,14 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
     settings.set_coil_delimit_and_compact(false);
     magnetic.get_mutable_coil().fast_wind();
     settings.set_coil_delimit_and_compact(previousCoilDelimitAndCompact);
+
+    // Store the magnetic AFTER fast_wind so the returned Mas carries the wound
+    // coil (sections/layers/turns). Previously set_magnetic ran before
+    // fast_wind, so the returned Mas kept the UN-wound copy while only the
+    // local `magnetic` got the turns — every fast-path result came back without
+    // a turnsDescription, which later threw COIL_NOT_PROCESSED on export
+    // (ABT #42). The losses below are computed on the same wound `magnetic`.
+    mas.set_magnetic(magnetic);
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         Outputs outputs;

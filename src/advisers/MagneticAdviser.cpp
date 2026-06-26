@@ -234,11 +234,58 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     // Step 4: Add secondary windings from turns ratios
     correct_windings(&magneticsWithScoring, inputs);
 
+    // Multi-winding transformers: prefer an INTERLEAVED winding (primary and
+    // secondary split into alternating sections) over the default single
+    // section-per-winding layout. A non-interleaved concentric transformer has
+    // all the primary flux on the inside and all the secondary on the outside,
+    // leaving a large leakage inductance — the exported coupling coefficient
+    // drops well below unity and an isolated converter can't regulate
+    // (ABT #43: K≈0.47 → caps far below target). Interleaving roughly halves the
+    // leakage per extra split, lifting K toward the ≳0.99 a real transformer has.
+    // Inductors (single winding) gain nothing from interleaving, so leave them
+    // at level 1. The level-1 fallback in Step 5 covers the rare core where the
+    // interleaved layout doesn't fit.
+    const size_t numberWindingsFast = inputs.get_design_requirements().get_turns_ratios().size() + 1;
+    const uint8_t transformerInterleavingLevel = 2;
+    if (numberWindingsFast > 1) {
+        for (auto& [magnetic, scoring] : magneticsWithScoring) {
+            magnetic.get_mutable_coil().set_interleaving_level(transformerInterleavingLevel);
+        }
+    }
+
     // Step 5: Evaluate each core with fast_wind + ohmic losses + core losses
     std::vector<std::pair<Mas, double>> results;
     for (auto& [magnetic, scoring] : magneticsWithScoring) {
         try {
             auto mas = coreAdviser.post_process_core(magnetic, inputs);
+
+            // If the interleaved layout did not fit this core's window, retry the
+            // non-interleaved (level-1) layout before giving up — a tighter core
+            // may only host the windings as one section each. This preserves the
+            // candidate (a valid, if more loosely coupled, design) instead of
+            // dropping it.
+            bool wound = mas.get_magnetic().get_coil().get_turns_description()
+                         && !mas.get_magnetic().get_coil().get_turns_description()->empty();
+            if (!wound && numberWindingsFast > 1
+                && magnetic.get_coil().get_interleaving_level() != 1) {
+                magnetic.get_mutable_coil().set_interleaving_level(1);
+                mas = coreAdviser.post_process_core(magnetic, inputs);
+                wound = mas.get_magnetic().get_coil().get_turns_description()
+                        && !mas.get_magnetic().get_coil().get_turns_description()->empty();
+            }
+
+            // Never surface an un-wound magnetic: if fast_wind could not lay out
+            // the turns (window too small for the inductance-driven turn count),
+            // the coil has no turnsDescription and export_magnetic_as_subcircuit
+            // would later throw COIL_NOT_PROCESSED. Skip it here so only fully
+            // wound candidates enter the result pool (ABT #42).
+            if (!wound) {
+                logEntry("MagneticAdviser::get_advised_magnetic_fast: skipping candidate '"
+                         + mas.get_mutable_magnetic().get_core().get_name().value_or("?")
+                         + "' — fast_wind produced no turns (window too small for the turns)",
+                         "MagneticAdviser", 2);
+                continue;
+            }
 
             // Score by total losses (lower is better)
             double totalLosses = 0;

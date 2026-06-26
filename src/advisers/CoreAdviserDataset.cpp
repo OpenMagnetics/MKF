@@ -603,9 +603,29 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                             .calculate_gapping_from_number_turns_and_inductance(
                                 core, tempCoil, &lmInputs, GappingType::GROUND);
                         if (!gaps.empty()) {
-                            core.set_gapping(gaps);
-                            core.process_gap();
-                            (*magneticsWithScoring)[i].first.set_core(core);
+                            Core gappedCore = core;
+                            gappedCore.set_gapping(gaps);
+                            // process_gap() returns false when the solved gap is
+                            // too long to fit the core's column: it then leaves the
+                            // gap AREA unset. Committing such a degenerate CoreGap
+                            // makes the downstream inductance/saturation filters (or
+                            // the reluctance model) throw GAP_INVALID_DIMENSIONS
+                            // ("Gap Area is not set"), which tunnels out of the fast
+                            // advise (ABT #41). Only adopt the gap when it physically
+                            // fits; otherwise leave the core ungapped so the
+                            // inductance filter culls this candidate cleanly.
+                            if (gappedCore.process_gap()) {
+                                core = gappedCore;
+                                (*magneticsWithScoring)[i].first.set_core(core);
+                            }
+                            else {
+                                logEntry(std::string("Transformer gap of ")
+                                         + std::to_string(gaps[0].get_length())
+                                         + " m does not fit core "
+                                         + core.get_name().value_or("?")
+                                         + " — leaving ungapped (inductance filter will cull)",
+                                         "CoreAdviser", 2);
+                            }
                         }
                     } catch (const std::exception& e) {
                         // Solver failed (e.g. target Lm unreachable with this
