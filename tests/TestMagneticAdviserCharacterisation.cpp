@@ -167,14 +167,21 @@ void check_top_n(const std::string& label,
 // valid pool for this 507 kHz spec, so the former INVALID-penalised fallback
 // (95 E 8.3/4, 0.85) is replaced by a genuinely VALID third design
 // (79 E 8/2 3 stacks, 0.75) — the thin-pool note below no longer applies.
+// Refreshed 2026-06-27 (ABT #10): the core names now annotate the solved gap
+// ("gapped 0.03 mm" on the E 10/3, "gapped 0.00 mm" on the E 8/2 — i.e. still
+// physically ungapped, just rendered with the gap field). This is a pure
+// naming/representation change from the gap-labelling rework: the shapes, turn
+// counts, winding order, margins, wires AND scores are byte-identical to the
+// previous snapshot, so the advised designs are unchanged — only the reference
+// strings gained the gap suffix.
 const std::vector<MagneticEntry> kTopThreeWinding = {
-    {"79 E 10/3, Turns: 20, Order: 012, Non-Interleaved, Margin Taped 00",
+    {"79 E 10/3 gapped 0.03 mm, Turns: 20, Order: 012, Non-Interleaved, Margin Taped 00",
      "Round 33.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
      2.996808299681307},
-    {"79 E 10/3, Turns: 20, Order: 012, Non-Interleaved, Margin Taped 01",
+    {"79 E 10/3 gapped 0.03 mm, Turns: 20, Order: 012, Non-Interleaved, Margin Taped 01",
      "Round 33.0 - Single Build || Round 41.0 - Heavy Build || Round 41.0 - Single Build",
      1.9199759326110142},
-    {"79 E 8/2 3 stacks, Turns: 10, Order: 012, Non-Interleaved, Margin Taped 00",
+    {"79 E 8/2 3 stacks gapped 0.00 mm, Turns: 10, Order: 012, Non-Interleaved, Margin Taped 00",
      "Round 36.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
      0.75054151624567389},
 };
