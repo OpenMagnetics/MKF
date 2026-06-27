@@ -225,6 +225,15 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
 
         MagnetizingInductanceOutput magnetizingInductanceOutput = _magneticSimulator.calculate_magnetizing_inductance(operatingPoint, magnetic);
+        // calculate_magnetizing_inductance() re-evaluated the magnetizing current — the flux /
+        // saturation driver, which scales with 1/Lm — at THIS core's achieved inductance (Np^2 /
+        // reluctance), not the seed Lm that pre_process_inputs used. Persist that recomputed operating
+        // point so the exported MAS is self-consistent with its own core: otherwise every candidate
+        // ships the seed-Lm magnetizing current regardless of its actual inductance, over-stating the
+        // saturating current of transformers (forward/push-pull/bridge) by several-fold and falsely
+        // rejecting feasible designs. Inductors are unchanged (their magnetizing current IS the
+        // winding current).
+        inputs.get_mutable_operating_points()[operatingPointIndex] = operatingPoint;
         double totalStorableMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(magnetic.get_core(), operatingPoint);
         auto excitation = Inputs::get_primary_excitation(inputs.get_mutable_operating_points()[operatingPointIndex]);
 
