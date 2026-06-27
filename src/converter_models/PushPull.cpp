@@ -970,9 +970,21 @@ namespace OpenMagnetics {
 
         DesignRequirements designRequirements;
         designRequirements.get_mutable_turns_ratios().clear();
-        for (auto turnsRatio : turnsRatios) {
+        for (size_t turnsRatioIndex = 0; turnsRatioIndex < turnsRatios.size(); ++turnsRatioIndex) {
             DimensionWithTolerance turnsRatioWithTolerance;
-            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
+            if (turnsRatioIndex == 0) {
+                // Second primary half: a STRUCTURAL 1:1 (matched center-tap halves), not duty-derived.
+                turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatios[turnsRatioIndex], 2));
+            }
+            else {
+                // Secondary turns ratio computed above from the MAXIMUM duty cycle — it is the CEILING:
+                // a higher realized N_pri/N_sec needs MORE than the max duty (per-switch D >= 0.5, which
+                // shorts the transformer). Emit it as a MAXIMUM so NumberTurns rejects integer-turn
+                // combinations that overshoot it and adds primary turns until the realized ratio fits,
+                // instead of set_nominal's loose +/- threshold band that let 12/4 = 3.0 slip past 2.72.
+                // floorFloat (not round) so the rounded ceiling never lands ABOVE the true limit.
+                turnsRatioWithTolerance.set_maximum(floorFloat(turnsRatios[turnsRatioIndex], 2));
+            }
             designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
         }
 
