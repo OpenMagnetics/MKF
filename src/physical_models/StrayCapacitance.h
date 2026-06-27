@@ -161,4 +161,12 @@ class StrayCapacitanceOneLayer{
 
 
 };
+
+// Effective relative permittivity of a wire's insulation/coating, resolved by wire type
+// (ROUND: Albach enamel empirical formula; LITZ: serving/strand; FOIL/RECTANGULAR:
+// coating material with a typical-film fallback; PLANAR: typical FR4). Exposed so FEM
+// consumers (e.g. OMFEM) that mesh the coating as a dielectric can source the same value
+// MKF uses, instead of re-deriving it. Definition in StrayCapacitance.cpp.
+double get_wire_insulation_relative_permittivity(Wire wire);
+
 } // namespace OpenMagnetics
