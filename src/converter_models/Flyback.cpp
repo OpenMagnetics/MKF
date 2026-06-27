@@ -1173,9 +1173,21 @@ namespace OpenMagnetics {
 
         DesignRequirements designRequirements;
         designRequirements.get_mutable_turns_ratios().clear();
+        bool dutyConstrained = get_maximum_duty_cycle().has_value();
         for (auto turnsRatio : turnsRatios) {
             DimensionWithTolerance turnsRatioWithTolerance;
-            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
+            double realizedTurnsRatio = roundFloat(turnsRatio, 2);
+            // The maximum-duty-cycle turns ratio is an UPPER bound: the reflected secondary voltage
+            // (and hence the required duty) RISES with the turns ratio, so the derivation above sets it
+            // to the largest ratio that still meets D <= maximumDutyCycle at minimum input voltage.
+            // Rounding that ratio UP to the realizable 2-decimal precision pushes the recomputed duty
+            // just past the ceiling and trips the duty check in process_operating_points_for_input_voltage
+            // (e.g. 2.2091 -> 2.21 takes D from 0.4500 to 0.4501 against a 0.45 ceiling). When the rounding
+            // would exceed the derived ratio, floor it instead so the realized design honours the ceiling.
+            if (dutyConstrained && realizedTurnsRatio > turnsRatio) {
+                realizedTurnsRatio = floorFloat(turnsRatio, 2);
+            }
+            turnsRatioWithTolerance.set_nominal(realizedTurnsRatio);
             designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
         }
         DimensionWithTolerance inductanceWithTolerance;

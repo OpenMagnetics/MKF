@@ -2869,7 +2869,11 @@ Inputs get_defaults_inputs(OpenMagnetics::Magnetic magnetic) {
     auto turnsRatios = magnetic.get_turns_ratios();
     for (auto turnsRatio : turnsRatios) {
         MAS::DimensionWithTolerance turnsRatioWithTolerance;
-        turnsRatioWithTolerance.set_nominal(OpenMagnetics::roundFloat(turnsRatio, 2));
+        // Floor (not round) the realized turns ratio to 2 decimals: the reflected secondary voltage and
+        // hence the required duty RISE with the turns ratio, so a maximum-duty-constrained design sits at
+        // the largest ratio meeting D <= maximumDutyCycle. Rounding UP would push the recomputed duty past
+        // the ceiling and trip the duty check; flooring keeps the realized design within the ceiling.
+        turnsRatioWithTolerance.set_nominal(OpenMagnetics::floorFloat(turnsRatio, 2));
         designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
     }
     auto operatingPoint = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, MAS::WaveformLabel::SINUSOIDAL, 0.01, 0.5, 0, turnsRatios).get_operating_points()[0];
