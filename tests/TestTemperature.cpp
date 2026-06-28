@@ -3268,7 +3268,7 @@ TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-te
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: PQ Single Turn Quadrant Surface Areas", "[temperature][concentric][geometry]") {
+TEST_CASE("Temperature: PQ Single Turn Quadrant Surface Areas", "[temperature][concentric][geometry][smoke-test]") {
     // Create a PQ core with just one turn to verify quadrant surface areas
     // PQ cores have round columns, so turn length = 2*pi*r at each face's radial position
     std::vector<int64_t> numberTurns({1});
@@ -3350,7 +3350,7 @@ TEST_CASE("Temperature: PQ Single Turn Quadrant Surface Areas", "[temperature][c
     REQUIRE(leftArea < rightArea);
 }
 
-TEST_CASE("Temperature: Toroidal Single Turn Quadrant Surface Areas", "[temperature][toroidal][geometry]") {
+TEST_CASE("Temperature: Toroidal Single Turn Quadrant Surface Areas", "[temperature][toroidal][geometry][smoke-test]") {
     // Create a toroidal core with one turn to verify quadrant surface areas
     // Toroidal cores always have round columns: turn length = 2*pi*r
     std::vector<int64_t> numberTurns({1});
@@ -3439,7 +3439,7 @@ TEST_CASE("Temperature: Toroidal Single Turn Quadrant Surface Areas", "[temperat
     REQUIRE(innerArea < outerArea);
 }
 
-TEST_CASE("Temperature: Planar Single Turn Quadrant Surface Areas", "[temperature][planar][geometry]") {
+TEST_CASE("Temperature: Planar Single Turn Quadrant Surface Areas", "[temperature][planar][geometry][smoke-test]") {
     // Create a planar core (ER) with one turn to verify quadrant surface areas
     // Planar cores are concentric with round columns
     std::vector<int64_t> numberTurns({1});
@@ -3523,7 +3523,7 @@ TEST_CASE("Temperature: Planar Single Turn Quadrant Surface Areas", "[temperatur
 }
 
 
-TEST_CASE("Temperature: concentric_transformer", "[temperature]") {
+TEST_CASE("Temperature: concentric_transformer", "[temperature][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_transformer.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -3625,7 +3625,7 @@ TEST_CASE("Temperature: concentric_transformer", "[temperature]") {
 }
 
 
-TEST_CASE("Temperature: concentric_flyback_rectangular_column", "[temperature]") {
+TEST_CASE("Temperature: concentric_flyback_rectangular_column", "[temperature][smoke-test]") {
     // The Icepak reference ranges in this test (cap 605.73, floor 363.44 on
     // the "core" component) were calibrated on 2026-03-03 (commit 356189a3).
     // Multiple legitimate thermal-model fixes have shipped since — notably
@@ -3748,7 +3748,7 @@ TEST_CASE("Temperature: concentric_flyback_rectangular_column", "[temperature]")
     }
 }
 
-TEST_CASE("Temperature: concentric_transformer_contiguous_rectangular_wire", "[temperature]") {
+TEST_CASE("Temperature: concentric_transformer_contiguous_rectangular_wire", "[temperature][smoke-test]") {
     // Same situation as Temperature: concentric_flyback_rectangular_column —
     // Icepak reference ranges (cap 473.04, floor 283.82) frozen on 2026-03-03,
     // current model output 270.93°C undershoots the floor by ~5%. Cumulative
@@ -3907,7 +3907,7 @@ TEST_CASE("Temperature: concentric_transformer_contiguous_rectangular_wire", "[t
 }
 
 
-TEST_CASE("Temperature: BuckInductor T134_77_27 from MAS file", "[temperature][concentric][buck-inductor]") {
+TEST_CASE("Temperature: BuckInductor T134_77_27 from MAS file", "[temperature][concentric][buck-inductor][smoke-test]") {
     // The fixture BuckInductor_164uH_T134_77_27.json was referenced when this
     // test was added in 7717b002 ("fix(thermal): skip zero-thickness insulation
     // layers in toroidal thermal model") but the JSON file was never committed
@@ -3965,7 +3965,7 @@ TEST_CASE("Temperature: BuckInductor T134_77_27 from MAS file", "[temperature][c
     REQUIRE(tempsByType.at("core") > config.ambientTemperature);
 }
 
-TEST_CASE("Temperature: coreOnly mode concentric E-core", "[temperature][core-only]") {
+TEST_CASE("Temperature: coreOnly mode concentric E-core", "[temperature][core-only][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "E 42/21/15";
@@ -3997,7 +3997,7 @@ TEST_CASE("Temperature: coreOnly mode concentric E-core", "[temperature][core-on
     REQUIRE(result.averageCoreTemperature > config.ambientTemperature);
 }
 
-TEST_CASE("Temperature: coreOnly mode toroidal core", "[temperature][core-only]") {
+TEST_CASE("Temperature: coreOnly mode toroidal core", "[temperature][core-only][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -4027,7 +4027,7 @@ TEST_CASE("Temperature: coreOnly mode toroidal core", "[temperature][core-only]"
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
 }
 
-TEST_CASE("Temperature: coreOnly zero losses stays at ambient", "[temperature][core-only]") {
+TEST_CASE("Temperature: coreOnly zero losses stays at ambient", "[temperature][core-only][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "E 42/21/15";

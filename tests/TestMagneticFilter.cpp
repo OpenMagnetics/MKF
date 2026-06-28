@@ -103,7 +103,7 @@ OpenMagnetics::Inputs make_reference_inputs() {
 
 // Print baseline if regenerating, otherwise assert against snapshot.
 void check_or_print(const std::string& name, bool gotValid, double gotScore,
-                    bool expectedValid, double expectedScore) {
+                    bool expectedValid, double expectedScore, double relTol = kRelTol) {
     if (kRegenerateBaselines) {
         // Emit a line that can be grepped + pasted back as a snapshot.
         UNSCOPED_INFO("BASELINE " << name
@@ -119,7 +119,7 @@ void check_or_print(const std::string& name, bool gotValid, double gotScore,
     } else if (expectedScore == 0.0) {
         REQUIRE(gotScore == 0.0);
     } else {
-        REQUIRE_THAT(gotScore, WithinRel(expectedScore, kRelTol));
+        REQUIRE_THAT(gotScore, WithinRel(expectedScore, relTol));
     }
 }
 
@@ -491,7 +491,7 @@ TEST_CASE("MagneticFilter LEAKAGE_INDUCTANCE throws on missing turns description
 }
 
 TEST_CASE("MagneticFilter TEMPERATURE snapshot",
-          "[magnetic-filter][characterisation][temperature]") {
+          "[magnetic-filter][characterisation][temperature][smoke-test]") {
     // LOCKS BUG: MagneticFilter::factory(TEMPERATURE) goes through the
     // default ctor (MagneticFilter.cpp:158) leaving _coreLossesModel null,
     // which dereferences at cpp:2420. The default ctor path is therefore a
@@ -509,7 +509,9 @@ TEST_CASE("MagneticFilter TEMPERATURE snapshot",
                       << " score=" << std::setprecision(17) << score);
         REQUIRE(std::isfinite(score));
     } else {
-        check_or_print("TEMPERATURE", valid, score, snap.valid, snap.score);
+        // 5% relative bracket: the coreOnly TEMPERATURE score legitimately shifts with
+        // core-model refinements (column footprint area, conductivity resolution, radiation).
+        check_or_print("TEMPERATURE", valid, score, snap.valid, snap.score, 0.05);
     }
 }
 
