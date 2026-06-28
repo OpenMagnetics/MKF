@@ -313,12 +313,12 @@ void Temperature::extractWireProperties() {
             std::string materialName = std::get<std::string>(materialVariant);
             try {
                 auto wireMaterial = find_wire_material_by_name(materialName);
-                auto thermalCond = wireMaterial.get_thermal_conductivity();
-                if (thermalCond && !thermalCond->empty()) {
-                    _wireThermalCond = (*thermalCond)[0].get_value();
-                }
+                // Use the temperature-interpolating helper instead of blindly taking the
+                // first conductivity-table entry (which ignored temperature dependence).
+                _wireThermalCond = ThermalResistance::getWireMaterialThermalConductivity(
+                    wireMaterial, _config.ambientTemperature);
             } catch (const std::exception& e) {
-                throw std::runtime_error("Temperature::extractWireProperties: Failed to lookup wire material '" + 
+                throw std::runtime_error("Temperature::extractWireProperties: Failed to lookup wire material '" +
                                          materialName + "' for thermal conductivity: " + e.what());
             }
         }
@@ -383,10 +383,8 @@ void Temperature::extractWireProperties() {
                 if (std::holds_alternative<std::string>(materialVariant)) {
                     try {
                         auto wireMaterial = find_wire_material_by_name(std::get<std::string>(materialVariant));
-                        auto thermalCond = wireMaterial.get_thermal_conductivity();
-                        if (thermalCond && !thermalCond->empty()) {
-                            wProps.wireThermalCond = (*thermalCond)[0].get_value();
-                        }
+                        wProps.wireThermalCond = ThermalResistance::getWireMaterialThermalConductivity(
+                            wireMaterial, _config.ambientTemperature);
                     } catch (const std::exception& e) {
                         throw std::runtime_error("Temperature::extractWireProperties: Failed to lookup wire material for winding " + 
                                                  std::to_string(wIdx) + ": " + e.what());
@@ -1663,10 +1661,12 @@ void Temperature::createConcentricCoreConnections() {
         _resistances.push_back(r);
     };
     
-    // Helper to get appropriate cross-sectional area based on connection direction
+    // Helper to get the column footprint: the cross-section perpendicular to the column
+    // axis (vertical/Y), through which heat conducts between a column and the yokes it
+    // joins. dimensions.height is the column's vertical extent (the flow direction itself),
+    // so the area is width * depth, NOT height * depth (which is a side face).
     auto getColumnCrossSection = [&](size_t idx) -> double {
-        // For columns, use the area perpendicular to the column axis (x-axis for central, y for lateral)
-        return _nodes[idx].dimensions.height * _nodes[idx].dimensions.depth;
+        return _nodes[idx].dimensions.width * _nodes[idx].dimensions.depth;
     };
     
     // Helper to find closest node in a list
@@ -5155,12 +5155,15 @@ void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
     size_t heatsinkIdx = _nodes.size();
     _nodes.push_back(heatsinkNode);
     
-    // Create TIM resistance if interface properties provided
+    // Create TIM resistance from the provided area-specific interface resistance.
+    // Gate ONLY on interface_thermal_resistance: it is the value actually used
+    // (R_total = R_specific / area). The previous code also required
+    // interface_thickness, which is never used in the computation, so a user who
+    // supplied only the (correct) area-specific resistance had it silently dropped
+    // in favour of the default.
     double timResistance = kTIM_DefaultResistance;
-    if (cooling.get_interface_thickness().has_value() && 
-        cooling.get_interface_thermal_resistance().has_value()) {
-        // Issue 25: interface_thermal_resistance is area-specific resistance (K*m^2/W)
-        // R_total = R_specific / area
+    if (cooling.get_interface_thermal_resistance().has_value()) {
+        // interface_thermal_resistance is area-specific resistance (K*m^2/W).
         double areaSpecificResistance = cooling.get_interface_thermal_resistance().value();
         double area = _nodes[topYokeIdx].getTotalSurfaceArea();
         if (area > 0) {
