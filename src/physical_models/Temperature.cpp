@@ -161,14 +161,20 @@ double CoolingUtils::calculateMixedConvectionCoefficient(
 
 TemperatureConfig TemperatureConfig::fromMasOperatingConditions(
     const MAS::OperatingConditions& conditions) {
-    
+
+    // NOTE: this only populates the OPERATING-CONDITION inputs (ambient temperature and
+    // cooling) that live on MAS::OperatingConditions. It intentionally does NOT set the
+    // loss inputs (coreLosses / windingLosses / windingLossesOutput): those come from a
+    // separate loss simulation and must be assigned by the caller. A config built here
+    // and solved without setting losses will (correctly) report an unpowered component
+    // at ambient temperature.
     TemperatureConfig config;
     config.ambientTemperature = conditions.get_ambient_temperature();
-    
+
     if (conditions.get_cooling().has_value()) {
         config.masCooling = conditions.get_cooling().value();
     }
-    
+
     return config;
 }
 
@@ -2479,7 +2485,11 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
         
         // Calculate resistance through air/bobbin gap - use quadrant surface area
         auto* turnQuadrant = _nodes[turnIdx].getQuadrant(r.quadrantTo);
-        double contactArea = turnQuadrant ? turnQuadrant->surfaceArea : (turnWidth * turnHeight * 0.5);
+        if (!turnQuadrant) {
+            throw std::runtime_error("Temperature: bobbin-yoke-to-turn connection: turn node is missing the "
+                                     "expected quadrant; cannot determine contact area.");
+        }
+        double contactArea = turnQuadrant->surfaceArea;
         // Issue 15: Use configurable interface conductivity for turn-to-bobbin contact
         double k_interface = _config.turnToBobbinInterfaceConductivity;
         r.resistance = dist / (k_interface * contactArea);
@@ -2665,7 +2675,11 @@ void Temperature::createTurnToBobbinConnections() {
                     r.type = HeatTransferType::CONDUCTION;
                     
                     auto* q = turnNode.getQuadrant(quadrant.face);
-                    double contactArea = q ? q->surfaceArea : (turnWidth * turnHeight * 0.5);
+                    if (!q) {
+                        throw std::runtime_error("Temperature: turn-to-bobbin connection: turn node is missing the "
+                                                 "expected quadrant; cannot determine contact area.");
+                    }
+                    double contactArea = q->surfaceArea;
                     double distance = std::max(dist, 1e-6);
                     
                     // IMP-NEW-05: Configurable interface conductivity (was k_air=0.025)
@@ -2823,7 +2837,11 @@ void Temperature::createTurnToInsulationConnections() {
                 r.type = HeatTransferType::CONDUCTION;
                 
                 auto* leftQ = turnNode.getQuadrant(ThermalNodeFace::RADIAL_INNER);
-                double contactArea = leftQ ? leftQ->surfaceArea : (turnWidth * turnHeight * 0.5);
+                if (!leftQ) {
+                    throw std::runtime_error("Temperature: turn-to-insulation connection: turn node is missing the "
+                                             "RADIAL_INNER quadrant; cannot determine contact area.");
+                }
+                double contactArea = leftQ->surfaceArea;
                 double conductionDistance = leftCandidate.insulationWidth / 2.0;
                 
                 r.resistance = ThermalResistance::calculateConductionResistance(
@@ -2852,7 +2870,11 @@ void Temperature::createTurnToInsulationConnections() {
                 r.type = HeatTransferType::CONDUCTION;
                 
                 auto* rightQ = turnNode.getQuadrant(ThermalNodeFace::RADIAL_OUTER);
-                double contactArea = rightQ ? rightQ->surfaceArea : (turnWidth * turnHeight * 0.5);
+                if (!rightQ) {
+                    throw std::runtime_error("Temperature: turn-to-insulation connection: turn node is missing the "
+                                             "RADIAL_OUTER quadrant; cannot determine contact area.");
+                }
+                double contactArea = rightQ->surfaceArea;
                 double conductionDistance = rightCandidate.insulationWidth / 2.0;
                 
                 r.resistance = ThermalResistance::calculateConductionResistance(

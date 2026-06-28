@@ -29,7 +29,7 @@
  *   where h = convection coefficient [W/(m²·K)]
  * 
  * - Natural convection coefficient (Churchill & Chu correlation):
- *   Nu_L = {0.825 + 0.387 Ra_L^(1/6) / [1 + (0.492/Pr)^(9/16)]^(8/9)}²
+ *   Nu_L = {0.825 + 0.387 Ra_L^(1/6) / [1 + (0.492/Pr)^(9/16)]^(8/27)}²
  *   h = Nu_L × k_air / L
  * 
  * - Radiation: R_th = 1 / (h_rad × A)
@@ -132,24 +132,6 @@ namespace OpenMagnetics {
 // SimpleMatrix (the dense thermal-circuit solver) is defined as a file-local
 // implementation detail in Temperature.cpp — it is not part of the public API.
 
-// Old thermal types for compatibility with Painter
-enum class ThermalNodeType {
-    CORE_CENTRAL_COLUMN,
-    CORE_LATERAL_COLUMN,
-    CORE_TOP_YOKE,
-    CORE_BOTTOM_YOKE,
-    CORE_TOROIDAL_SEGMENT,
-    COIL_TURN,
-    COIL_TURN_INNER,
-    COIL_TURN_OUTER,
-    BOBBIN_INNER,
-    BOBBIN_OUTER,
-    BOBBIN_COLUMN,
-    BOBBIN_TOP_WALL,
-    BOBBIN_BOTTOM_WALL,
-    AMBIENT
-};
-
 /**
  * @brief Cooling types for thermal analysis
  */
@@ -211,20 +193,6 @@ public:
         double h_forced);
 };
 
-// IMP-14: Deprecated — use ThermalNetworkNode
-struct [[deprecated("Use ThermalNetworkNode instead")]] ThermalNode {
-    size_t id;
-    ThermalNodeType type;
-    std::string name;
-    double temperature;
-    double powerDissipation;
-    std::vector<double> coordinates;
-    double volume = 0.0;
-    double exposedSurfaceArea = 0.0;
-    double emissivity = 0.9;
-    
-    bool isAmbient() const { return type == ThermalNodeType::AMBIENT; }
-};
 
 /**
  * @brief Output structure for thermal analysis results
@@ -294,12 +262,7 @@ struct TemperatureConfig {
     bool plotSchematic = true;          // Whether to generate schematic visualization
     std::string schematicOutputPath = "output/thermal_schematic.svg";
     bool coreOnly = false;              // Skip turn/bobbin nodes; only core nodes solved
-    
-    // =========================================================================
-    // IMP-NEW-03: Configurable minimum natural convection coefficient
-    // =========================================================================
-    double minimumNaturalConvectionH = 2.0;  // W/(m2 K), was 5.0
-    
+
     // =========================================================================
     // IMP-NEW-05: Configurable turn-to-bobbin interface conductivity
     // =========================================================================
