@@ -3664,13 +3664,20 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                             
                             bool isLeft = (face == ThermalNodeFace::TANGENTIAL_LEFT);
                             double distAlongTangent = std::abs(angleDiff) * nodeR;
-                            
-                            // Check if there's a turn blocking this direction
-                            if (isLeft && angleDiff < 0 && distAlongTangent < maxConvectionDist) {
+
+                            // Block if a turn sits in this face's tangential direction.
+                            // initializeToroidalQuadrants assigns TANGENTIAL_LEFT to +pi/2
+                            // (CCW, larger angle) and TANGENTIAL_RIGHT to -pi/2 (CW, smaller
+                            // angle), and angleDiff = otherAngle - nodeAngle. So a LEFT face
+                            // is blocked by a neighbour at LARGER angle (angleDiff > 0) and a
+                            // RIGHT face by one at SMALLER angle. The previous signs were
+                            // reversed (they disagreed with the insulation-layer block below,
+                            // which already used the correct convention).
+                            if (isLeft && angleDiff > 0 && distAlongTangent < maxConvectionDist) {
                                 isExposed = false;
                                 break;
                             }
-                            if (!isLeft && angleDiff > 0 && distAlongTangent < maxConvectionDist) {
+                            if (!isLeft && angleDiff < 0 && distAlongTangent < maxConvectionDist) {
                                 isExposed = false;
                                 break;
                             }
@@ -4426,13 +4433,19 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
             }
         }
     
-    // Half-core symmetry correction: the model uses half the core depth,
-    // so convection areas represent only one half. The real core has double
-    // the convection area (both halves), so halve all convection resistances
-    // created in this method (R = 1/(h*A), double A => R/2)
+    // Half-core symmetry correction: the CORE is modelled at half its depth, so its
+    // convection surfaces represent only one half — double their area (halve R) to
+    // account for the symmetric other half. Turns are NOT halved: they come from the
+    // real winding at full geometry (a round turn is a full 2*pi*r loop independent of
+    // core depth), so doubling their convection would over-cool the winding. Skip
+    // turn-sourced convection resistors.
     for (size_t i = initialResistanceCount; i < _resistances.size(); ++i) {
         if (_resistances[i].type == HeatTransferType::NATURAL_CONVECTION ||
             _resistances[i].type == HeatTransferType::FORCED_CONVECTION) {
+            size_t fromId = _resistances[i].nodeFromId;
+            if (fromId < _nodes.size() && _nodes[fromId].part == ThermalNodePartType::TURN) {
+                continue;  // turns are full-geometry, not half-depth
+            }
             _resistances[i].resistance /= 2.0;
             _resistances[i].area *= 2.0;
         }
