@@ -265,6 +265,40 @@ ThermalResult Temperature::calculateTemperatures() {
 // Wire Property Extraction
 // ============================================================================
 
+// Transverse (radial) effective thermal conductivity of a litz bundle.
+// Radial heat spreading across a litz turn is governed by the TRANSVERSE conductivity,
+// which is far below solid copper (~0.5-1.5 vs ~385 W/m.K) because heat must cross the
+// strand enamel between conductors. Uses the composite-cylinder-assemblage /
+// Maxwell-Garnett model for aligned cylindrical fibres:
+//     k_t = k_m * [g(1+F) + (1-F)] / [g(1-F) + (1+F)],   g = k_copper / k_matrix
+// with F the copper fill factor (conducting area / bundle area) and k_m the inter-strand
+// (strand-enamel) matrix conductivity. Refs: Simpson, Wrobel & Mellor, "Estimation of
+// equivalent thermal parameters of impregnated electrical windings", IEEE Trans. Ind.
+// Appl. 2013; composite-cylinder-assemblage transverse-conductivity model.
+static double litzTransverseThermalConductivity(Wire litzWire, double copperThermalCond) {
+    double outerDiameter = litzWire.calculate_outer_diameter();
+    double bundleArea = M_PI / 4.0 * outerDiameter * outerDiameter;
+    double conductingArea = litzWire.calculate_conducting_area();
+    if (bundleArea <= 0.0 || conductingArea <= 0.0) {
+        throw std::runtime_error("Temperature: litz wire has non-positive bundle or conducting area; "
+                                 "cannot compute effective thermal conductivity.");
+    }
+    double fillFactor = conductingArea / bundleArea;
+    if (fillFactor <= 0.0 || fillFactor >= 1.0) {
+        throw std::runtime_error("Temperature: litz copper fill factor out of range (0,1): " +
+                                 std::to_string(fillFactor));
+    }
+    // Inter-strand matrix conductivity: the strand enamel/insulation that heat must cross
+    // between conductors (resolved from the litz wire's coating grade).
+    double matrixThermalCond = litzWire.get_coating_thermal_conductivity();
+    if (matrixThermalCond <= 0.0) {
+        throw std::runtime_error("Temperature: litz coating thermal conductivity is non-positive.");
+    }
+    double g = copperThermalCond / matrixThermalCond;
+    return matrixThermalCond * (g * (1.0 + fillFactor) + (1.0 - fillFactor)) /
+                               (g * (1.0 - fillFactor) + (1.0 + fillFactor));
+}
+
 void Temperature::extractWireProperties() {
     auto coil = _magnetic.get_coil();
     auto windings = coil.get_functional_description();
@@ -329,7 +363,13 @@ void Temperature::extractWireProperties() {
             }
         }
     }
-    
+
+    // Litz: the value above is the strand (copper) conductivity, but radial heat spreading
+    // across the bundle is governed by the much lower transverse effective conductivity.
+    if (wire.get_type() == WireType::LITZ) {
+        _wireThermalCond = litzTransverseThermalConductivity(wire, _wireThermalCond);
+    }
+
     // Get wire coating for thermal calculations
     _wireCoating = wire.resolve_coating();
     
@@ -392,12 +432,17 @@ void Temperature::extractWireProperties() {
                         wProps.wireThermalCond = ThermalResistance::getWireMaterialThermalConductivity(
                             wireMaterial, _config.ambientTemperature);
                     } catch (const std::exception& e) {
-                        throw std::runtime_error("Temperature::extractWireProperties: Failed to lookup wire material for winding " + 
+                        throw std::runtime_error("Temperature::extractWireProperties: Failed to lookup wire material for winding " +
                                                  std::to_string(wIdx) + ": " + e.what());
                     }
                 }
             }
-            
+
+            // Litz: use the transverse effective conductivity for radial heat spreading.
+            if (w.get_type() == WireType::LITZ) {
+                wProps.wireThermalCond = litzTransverseThermalConductivity(w, wProps.wireThermalCond);
+            }
+
             wProps.wireCoating = w.resolve_coating();
             _perWindingWireProps[wIdx] = wProps;
         }
@@ -2471,10 +2516,6 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
     // Helper to create bobbin-to-turn connection
     auto createBobbinToTurnConnection = [&](size_t bobbinIdx, ThermalNodeFace bobbinFace, 
                                             size_t turnIdx, double dist) {
-        const auto& turnNode = _nodes[turnIdx];
-        double turnWidth = turnNode.dimensions.width;
-        double turnHeight = turnNode.dimensions.height;
-        
         ThermalResistanceElement r;
         r.nodeFromId = bobbinIdx;
         r.quadrantFrom = bobbinFace;
