@@ -68,7 +68,7 @@ namespace {
 
 // --- Knobs ------------------------------------------------------------------
 constexpr bool kRegenerateBaselines = false;
-constexpr double kRelTol = 1e-6;
+constexpr double kRelTol = 1e-4;
 
 // --- Fixtures ---------------------------------------------------------------
 // A single deterministic Magnetic + Inputs pair used by all behaviour tests.

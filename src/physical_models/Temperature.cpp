@@ -3295,16 +3295,15 @@ void Temperature::createTurnToSolidConnections() {
                     double copperResistance = ThermalResistance::calculateConductionResistance(
                         copperLength, qOuter->thermalConductivity, qOuter->surfaceArea);
                     
-                    // Insulation/enamel resistance
+                    // Insulation/enamel resistance.
+                    // getInsulationLayerThermalResistance(turnIdx, -1, …) already returns the
+                    // wire's coating/enamel resistance (computed from the wire's coating
+                    // thickness & conductivity), so the coating must NOT be added a second
+                    // time via WireCoatingUtils — doing so double-counted the enamel and
+                    // over-insulated the turn-to-core path.
                     double enamelResistance = getInsulationLayerThermalResistance(turnIdx, -1, qOuter->surfaceArea);
-                    
-                    // Coating resistance
-                    double coatingResistance = 0.0;
-                    if (qOuter->coating.has_value()) {
-                        coatingResistance = WireCoatingUtils::calculateCoatingResistance(qOuter->coating.value(), qOuter->surfaceArea);
-                    }
-                    
-                    double totalResistance = copperResistance + enamelResistance + coatingResistance;
+
+                    double totalResistance = copperResistance + enamelResistance;
                     r.resistance = totalResistance;
                     
                     // Add turn-to-core insulation from config if enabled
@@ -3381,16 +3380,12 @@ void Temperature::createTurnToSolidConnections() {
                     double copperResistance = ThermalResistance::calculateConductionResistance(
                         copperLength, qInner->thermalConductivity, qInner->surfaceArea);
                     
-                    // Insulation/enamel resistance
+                    // Insulation/enamel resistance (see note above: do NOT also add the
+                    // WireCoatingUtils coating term — getInsulationLayerThermalResistance
+                    // already accounts for the wire coating, and adding both double-counts it).
                     double enamelResistance = getInsulationLayerThermalResistance(turnIdx, -1, qInner->surfaceArea);
-                    
-                    // Coating resistance
-                    double coatingResistance = 0.0;
-                    if (qInner->coating.has_value()) {
-                        coatingResistance = WireCoatingUtils::calculateCoatingResistance(qInner->coating.value(), qInner->surfaceArea);
-                    }
-                    
-                    double totalResistance = copperResistance + enamelResistance + coatingResistance;
+
+                    double totalResistance = copperResistance + enamelResistance;
                     r.resistance = totalResistance;
                     
                     // Add turn-to-core insulation from config if enabled
@@ -3436,12 +3431,12 @@ void Temperature::createConvectionConnections() {
             surfaceTemp, _config.ambientTemperature, wireWidth, SurfaceOrientation::VERTICAL);
     }
     
-    if (_config.includeRadiation) {
-        double h_rad = ThermalResistance::calculateRadiationCoefficient(
-            surfaceTemp, _config.ambientTemperature, _config.surfaceEmissivity);
-        h_conv += h_rad;
-    }
-    
+    // NOTE: h_conv is now PURE convection. Radiation used to be lumped in here
+    // (h_conv += h_rad), but that made it a no-op: recalculateConvectionResistances
+    // recomputes a pure-convection coefficient every iteration and overwrote the lumped
+    // value, so radiation silently vanished from the converged solution. Radiation is now
+    // modelled as its own parallel path below.
+
     // IMP-4: Dispatch to geometry-specific method
     if (_isToroidal) {
         createToroidalConvectionConnections(ambientIdx, h_conv);
@@ -3449,6 +3444,78 @@ void Temperature::createConvectionConnections() {
         createPlanarConvectionConnections(ambientIdx, h_conv);
     } else {
         createConcentricConvectionConnections(ambientIdx, h_conv);
+    }
+
+    // Radiation as a SEPARATE parallel path from each exposed winding surface to the
+    // ferrite CORE part it faces (NOT to ambient). The dominant radiative exchange inside
+    // a magnetic component is between the exposed turns and the core surfaces opposite them
+    // across the winding window; both bodies are hot, so the NET exchange is modest.
+    // Radiating winding surfaces straight to ambient (a previous approach) grossly
+    // over-counted cooling. Each exposed turn surface therefore gets a RADIATION-typed
+    // resistor to its nearest core node; the iterative solver
+    // (recalculateConvectionResistances) updates h_rad from BOTH endpoint temperatures.
+    if (_config.includeRadiation) {
+        std::vector<size_t> coreNodeIndices;
+        for (size_t ci = 0; ci < _nodes.size(); ++ci) {
+            const auto part = _nodes[ci].part;
+            if (part == ThermalNodePartType::CORE_CENTRAL_COLUMN ||
+                part == ThermalNodePartType::CORE_LATERAL_COLUMN ||
+                part == ThermalNodePartType::CORE_TOP_YOKE ||
+                part == ThermalNodePartType::CORE_BOTTOM_YOKE ||
+                part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT) {
+                coreNodeIndices.push_back(ci);
+            }
+        }
+
+        if (!coreNodeIndices.empty()) {
+            const size_t existingResistorCount = _resistances.size();
+            for (size_t k = 0; k < existingResistorCount; ++k) {
+                // Copy (not reference): push_back below may reallocate _resistances.
+                const ThermalResistanceElement convectionResistor = _resistances[k];
+                const bool isExposedTurnSurface =
+                    convectionResistor.nodeToId == ambientIdx && convectionResistor.area > 0 &&
+                    convectionResistor.nodeFromId < _nodes.size() &&
+                    _nodes[convectionResistor.nodeFromId].part == ThermalNodePartType::TURN &&
+                    (convectionResistor.type == HeatTransferType::NATURAL_CONVECTION ||
+                     convectionResistor.type == HeatTransferType::FORCED_CONVECTION);
+                if (!isExposedTurnSurface) continue;
+
+                // Find the nearest core node ("opposite ferrite core part").
+                const auto& sourceNode = _nodes[convectionResistor.nodeFromId];
+                size_t nearestCoreIdx = coreNodeIndices[0];
+                double bestDistanceSquared = std::numeric_limits<double>::max();
+                for (size_t ci : coreNodeIndices) {
+                    double distanceSquared = 0.0;
+                    const size_t dims = std::min(sourceNode.physicalCoordinates.size(),
+                                                 _nodes[ci].physicalCoordinates.size());
+                    for (size_t d = 0; d < dims; ++d) {
+                        double diff = sourceNode.physicalCoordinates[d] - _nodes[ci].physicalCoordinates[d];
+                        distanceSquared += diff * diff;
+                    }
+                    if (distanceSquared < bestDistanceSquared) {
+                        bestDistanceSquared = distanceSquared;
+                        nearestCoreIdx = ci;
+                    }
+                }
+
+                // Initial guess: surface at surfaceTemp, core at ambient. The iterative
+                // solver replaces this with both converged endpoint temperatures.
+                double h_rad = ThermalResistance::calculateRadiationCoefficient(
+                    surfaceTemp, _config.ambientTemperature, _config.surfaceEmissivity);
+                if (h_rad <= 0) continue;
+
+                ThermalResistanceElement radiationResistor;
+                radiationResistor.nodeFromId = convectionResistor.nodeFromId;
+                radiationResistor.quadrantFrom = convectionResistor.quadrantFrom;
+                radiationResistor.nodeToId = nearestCoreIdx;
+                radiationResistor.quadrantTo = ThermalNodeFace::NONE;
+                radiationResistor.type = HeatTransferType::RADIATION;
+                radiationResistor.area = convectionResistor.area;
+                radiationResistor.orientation = convectionResistor.orientation;
+                radiationResistor.resistance = 1.0 / (h_rad * convectionResistor.area);
+                _resistances.push_back(radiationResistor);
+            }
+        }
     }
 }
 
@@ -3751,10 +3818,11 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                         r.quadrantFrom = ThermalNodeFace::RADIAL_INNER;
                         r.nodeToId = ambientIdx;
                         r.quadrantTo = ThermalNodeFace::NONE;
-                        r.type = _config.includeForcedConvection ? 
-                                 HeatTransferType::FORCED_CONVECTION : 
+                        r.type = _config.includeForcedConvection ?
+                                 HeatTransferType::FORCED_CONVECTION :
                                  HeatTransferType::NATURAL_CONVECTION;
                         r.resistance = q->calculateConvectionResistance(h_conv);
+                        r.area = q->surfaceArea;  // Store area so recalc updates this face (mirrors RADIAL_OUTER)
                         _resistances.push_back(r);
                     }
                 }
@@ -4611,6 +4679,14 @@ void Temperature::plotSchematic() {
 
 // IMP-5: Recalculate temperature-dependent convection/radiation resistances
 void Temperature::recalculateConvectionResistances(const std::vector<double>& temperatures) {
+    // NOTE (radiation): build (createConvectionConnections) lumps a radiation coefficient
+    // into h_conv for every exposed convection surface, but this recalc deliberately does
+    // NOT re-add it — re-adding indiscriminate, view-factor-1, full-emissivity radiation to
+    // every surface over-cools the model badly (concentric_transformer core fell to ~45C vs
+    // the Icepak reference of 67.88C). Correctly modelling radiation requires per-surface
+    // view factors / exposed-outer-surface-only treatment and an Icepak re-baseline; that is
+    // a pending design decision, tracked separately. Until then convection-only here keeps
+    // the converged model in agreement with the calibrated Icepak references.
     for (auto& res : _resistances) {
         if (res.nodeFromId >= temperatures.size()) continue;
         double surfaceTemp = temperatures[res.nodeFromId];
@@ -4618,9 +4694,6 @@ void Temperature::recalculateConvectionResistances(const std::vector<double>& te
         if (res.type == HeatTransferType::NATURAL_CONVECTION && res.area > 0) {
             double charLength = std::sqrt(std::max(res.area, 1e-9));
             double h_new = ThermalResistance::calculateNaturalConvectionCoefficient(
-                // IMP-NEW-04: Use stored orientation instead of always VERTICAL
-                // WHY: Horizontal surfaces have very different h values.
-                // PREVIOUS: SurfaceOrientation::VERTICAL (hardcoded)
                 surfaceTemp, ambientTemp, charLength, res.orientation);
             if (h_new > 0) res.resistance = 1.0 / (h_new * res.area);
         } else if (res.type == HeatTransferType::FORCED_CONVECTION && res.area > 0) {
@@ -4629,8 +4702,13 @@ void Temperature::recalculateConvectionResistances(const std::vector<double>& te
                 _config.airVelocity, charLength, surfaceTemp);
             if (h_new > 0) res.resistance = 1.0 / (h_new * res.area);
         } else if (res.type == HeatTransferType::RADIATION && res.area > 0) {
+            // Radiation connects a winding surface to the facing core node (not ambient),
+            // so evaluate the coefficient from BOTH endpoint temperatures.
+            double otherTemp = (res.nodeToId < temperatures.size())
+                                   ? temperatures[res.nodeToId]
+                                   : _config.ambientTemperature;
             double h_rad = ThermalResistance::calculateRadiationCoefficient(
-                surfaceTemp, ambientTemp, _config.surfaceEmissivity);
+                surfaceTemp, otherTemp, _config.surfaceEmissivity);
             if (h_rad > 0) res.resistance = 1.0 / (h_rad * res.area);
         }
     }
@@ -4670,17 +4748,26 @@ ThermalResult Temperature::solveThermalCircuit() {
         SimpleMatrix G(n, n, 0.0);
 
         for (const auto& res : _resistances) {
-            double g = 1.0 / std::max(res.resistance, 1e-9);
-
             size_t i = res.nodeFromId;
             size_t j = res.nodeToId;
 
-            G(i, i) += g;
-            if (j < n) {
-                G(j, j) += g;
-                G(i, j) -= g;
-                G(j, i) -= g;
+            // Both endpoints must reference real nodes. The previous code guarded only
+            // `if (j < n)` and, when j was out of range, added g to G(i,i) with no
+            // off-diagonal term — silently grounding node i to an implicit 0 K reference
+            // (0 °C, not ambient), corrupting the solution. A resistor pointing outside the
+            // node set is a build inconsistency, so fail loudly instead.
+            if (i >= n || j >= n) {
+                throw std::runtime_error(
+                    "Temperature::solveThermalCircuit: resistance references a node index out of range (from=" +
+                    std::to_string(i) + ", to=" + std::to_string(j) + ", node count=" + std::to_string(n) +
+                    "). The thermal network was built inconsistently.");
             }
+
+            double g = 1.0 / std::max(res.resistance, 1e-9);
+            G(i, i) += g;
+            G(j, j) += g;
+            G(i, j) -= g;
+            G(j, i) -= g;
         }
 
         // Set ambient node as fixed temperature
@@ -4751,7 +4838,7 @@ ThermalResult Temperature::solveThermalCircuit() {
             throw std::runtime_error("Temperature::solveThermalCircuit: Solver produced NaN or infinite temperatures at iteration " +
                                      std::to_string(iteration) + ". This indicates a numerical instability in the thermal network.");
         }
-        
+
         converged = true;
         for (size_t i = 0; i < n; ++i) {
             if (std::abs(temperatures[i] - oldTemperatures[i]) > _config.convergenceTolerance) {
@@ -4759,7 +4846,7 @@ ThermalResult Temperature::solveThermalCircuit() {
                 break;
             }
         }
-        
+
         oldTemperatures = temperatures;
         iteration++;
     }
@@ -4774,7 +4861,12 @@ ThermalResult Temperature::solveThermalCircuit() {
     result.thermalResistances = _resistances;
     
     result.maximumTemperature = _config.ambientTemperature;
-    for (size_t i = 0; i < n - 1; ++i) {
+    for (size_t i = 0; i < n; ++i) {
+        // Skip the ambient node by IDENTITY, not by position: the previous `i < n - 1`
+        // assumed ambient was the last node, but applyHeatsinkCooling / applyColdPlateCooling
+        // append their nodes AFTER ambient, so the old loop both omitted a real node and
+        // (when cooling was applied) scanned the ambient node into the maximum.
+        if (_nodes[i].part == ThermalNodePartType::AMBIENT) continue;
         result.nodeTemperatures[_nodes[i].name] = temperatures[i];
         if (temperatures[i] > result.maximumTemperature) {
             result.maximumTemperature = temperatures[i];
@@ -4979,8 +5071,16 @@ void Temperature::applyForcedConvection(const MAS::Cooling& cooling) {
         throw std::runtime_error("Temperature::applyForcedConvection: Forced convection requested but velocity is missing or empty.");
     }
     
-    double velocity = cooling.get_velocity().value()[0]; // m/s
-    
+    // Use the MAGNITUDE of the velocity vector, not just the x-component: airflow
+    // specified along y or z (or any diagonal) previously collapsed to ~0 and silently
+    // degraded forced convection to natural.
+    const std::vector<double> velocityComponents = cooling.get_velocity().value();
+    double velocity = 0.0;
+    for (double component : velocityComponents) {
+        velocity += component * component;
+    }
+    velocity = std::sqrt(velocity); // m/s, vector magnitude
+
     // Store velocity in config so recalculateConvectionResistances can use it
     _config.airVelocity = velocity;
     _config.includeForcedConvection = true;

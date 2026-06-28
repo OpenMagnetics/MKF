@@ -276,15 +276,16 @@ double ThermalResistance::getWireMaterialThermalConductivity(const WireMaterial&
 
 double ThermalResistance::getCoreMaterialThermalConductivity(const CoreMaterial& coreMaterial) {
     auto heatCond = coreMaterial.get_heat_conductivity();
-    if (heatCond) {
-        auto nominal = heatCond->get_nominal();
-        if (nominal) {
-            return *nominal;
-        }
+    if (!heatCond) {
+        // No conductivity data at all: signal missing-material-data so the caller decides.
+        // Temperature::getCoreThermalConductivity catches this and falls back to the
+        // configured coreThermalConductivity instead of silently hardcoding 4.0 here.
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Core material '" + coreMaterial.get_name() + "' has no heat_conductivity defined");
     }
-    
-    // Fallback for ferrite
-    return 4.0;
+    // Resolve via the shared resolver (handles nominal, and the min/max bands that most
+    // catalogue ferrites use without a nominal) rather than reading only get_nominal().
+    return resolve_dimensional_values(*heatCond);
 }
 
 double ThermalResistance::getInsulationMaterialThermalConductivity(const InsulationMaterial& material) {
@@ -292,9 +293,11 @@ double ThermalResistance::getInsulationMaterialThermalConductivity(const Insulat
     if (thermalCond) {
         return *thermalCond;
     }
-    
-    // Default for insulation
-    return 0.2;
+    // No conductivity data: signal missing-material-data so the caller decides
+    // (Temperature::getBobbinThermalConductivity catches this and falls back to the
+    // configured bobbin conductivity) instead of silently hardcoding 0.2 here.
+    throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+        "Insulation material '" + material.get_name() + "' has no thermal_conductivity defined");
 }
 
 } // namespace OpenMagnetics
