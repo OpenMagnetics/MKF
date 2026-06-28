@@ -1717,7 +1717,12 @@ void Temperature::createConcentricCoreConnections() {
     // joins. dimensions.height is the column's vertical extent (the flow direction itself),
     // so the area is width * depth, NOT height * depth (which is a side face).
     auto getColumnCrossSection = [&](size_t idx) -> double {
-        return _nodes[idx].dimensions.width * _nodes[idx].dimensions.depth;
+        // Full-core conduction footprint (width * full depth). Core nodes carry HALF the
+        // core depth (half-core symmetry model), so the node footprint (width * halfDepth)
+        // is doubled here to represent the full-core cross-section — mirroring the
+        // symmetry doubling applied to convection. Without this, half-depth conduction
+        // area must carry the FULL core loss, which inflates the internal core gradient.
+        return _nodes[idx].dimensions.width * _nodes[idx].dimensions.depth * 2.0;
     };
     
     // Helper to find closest node in a list
