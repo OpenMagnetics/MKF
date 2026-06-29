@@ -240,8 +240,13 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     // Each K statement gets a unique name (K12, K13, K23, etc.)
     // Use per-pair leakage inductance calculation for accurate coupling coefficients
     if (numWindings == 2) {
-        // Simple 2-winding case - use already calculated coupling, capped at 0.98 for stability
-        double k12 = couplingCoeffs.size() > 0 ? std::min(0.98, couplingCoeffs[0]) : 0.98;
+        // Simple 2-winding case - use the coupling computed from the measured leakage above.
+        // Earlier this was hard-capped at 0.98 "for stability", which injected ~2% ARTIFICIAL
+        // leakage: for a low-leakage transformer the real K is ~0.9998, and forcing it to 0.98
+        // adds a large series leakage reactance that strangles power transfer (AHB vout capped
+        // ~3 V instead of 12 V; PSFB/PSHB decks transferred ~0 power — abt #56/#61). ngspice only
+        // needs K strictly below 1 (k=1.0 is a singular coupling matrix), so clamp just under 1.
+        double k12 = couplingCoeffs.size() > 0 ? std::min(0.999999, couplingCoeffs[0]) : 0.98;
         circuitString += "K Lmag_1 Lmag_2 " + std::to_string(k12) + "\n";
     } else if (numWindings >= 3) {
         // Consistent coupling from the full inductance matrix L = M + Λ (positive-definite):
