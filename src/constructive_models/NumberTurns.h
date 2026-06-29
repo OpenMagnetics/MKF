@@ -13,6 +13,12 @@ class NumberTurns {
         std::vector<uint64_t> _currentNumberTurns;
         std::vector<DimensionWithTolerance> _turnsRatiosRequirements;
         std::vector<double> _turnsRatios;
+        // Tight relative tolerance applied to the realized turns ratio when a ratio
+        // requirement is nominal-only (no explicit min/max). Keeps the integer-rounded
+        // realization close to the requested ratio instead of merely inside the loose
+        // ±25% validity band, so a large step-down (tiny secondary) does not overshoot
+        // and force a resonant stage off-resonance (abt #62).
+        double _turnsRatioRelativeTolerance = 0.02;
     protected:
     public:
         NumberTurns(double initialPrimaryNumberTurns, DesignRequirements designRequirements) {
