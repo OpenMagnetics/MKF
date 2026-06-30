@@ -1,5 +1,6 @@
 #include "converter_models/PushPull.h"
 #include "converter_models/Topology.h"
+#include "processors/WaveformProcessor.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
@@ -647,38 +648,10 @@ namespace OpenMagnetics {
     }
 
     OperatingPointExcitation Topology::complete_excitation(Waveform currentWaveform, Waveform voltageWaveform, double switchingFrequency, std::string name) {
-        if (switchingFrequency <= 0 || !std::isfinite(switchingFrequency)) {
-            throw std::invalid_argument("complete_excitation: Invalid switchingFrequency: " + std::to_string(switchingFrequency));
-        }
-
-        OperatingPointExcitation excitation;
-        excitation.set_frequency(switchingFrequency);
-        
-        SignalDescriptor current;
-        auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true);
-        auto sampledCurrentWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
-        auto currentHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
-        // Store the resampled (power-of-2) waveform so downstream consumers
-        // (MagnetizingInductance, harmonics derivation, FFT-based pipelines)
-        // get the standardized waveform contract MKF expects. The raw
-        // analytical waveform is not necessarily a power-of-2 length (e.g.
-        // DAB/PSFB/PSHB use 2*N+1 = 513 samples, AHB has variable size due to
-        // discontinuity duplicates), and the size-check gates in
-        // MagnetizingInductance.cpp would otherwise throw.
-        current.set_waveform(sampledCurrentWaveform);
-        current.set_processed(currentProcessed);
-        current.set_harmonics(currentHarmonics);
-        excitation.set_current(current);
-        SignalDescriptor voltage;
-        auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true);
-        auto sampledVoltageWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
-        auto voltageHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
-        voltage.set_waveform(sampledVoltageWaveform);
-        voltage.set_processed(voltageProcessed);
-        voltage.set_harmonics(voltageHarmonics);
-        excitation.set_voltage(voltage);
-        excitation.set_name(name);
-        return excitation;
+        return WaveformProcessor::complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, name,
+                                                      settings.get_inputs_trim_harmonics(),
+                                                      settings.get_harmonic_amplitude_threshold(),
+                                                      settings.get_inputs_number_points_sampled_waveforms());
     }
 
     bool Topology::run_checks(bool assert) {

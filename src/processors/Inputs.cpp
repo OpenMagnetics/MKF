@@ -1,4 +1,5 @@
 #include "processors/Inputs.h"
+#include "processors/WaveformProcessor.h"
 #include "constructive_models/Magnetic.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "support/Painter.h"
@@ -541,181 +542,14 @@ Waveform Inputs::reconstruct_signal(Harmonics harmonics, double frequency) {
 }
 
 Waveform Inputs::create_waveform(ProcessedWaveform processed, double frequency) {
-    if (!processed.get_peak_to_peak()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "Signal is missing peak to peak");
-    }
-
-    auto label = processed.get_label();
-    auto peakToPeak = processed.get_peak_to_peak().value();
-    auto offset = processed.get_offset();
-    double dutyCycle = 0.5;
-    if (processed.get_duty_cycle()) {
-        dutyCycle = processed.get_duty_cycle().value();
-    }
-    double deadTime = 0;
-    if (processed.get_dead_time()) {
-        deadTime = processed.get_dead_time().value();
-    }
-
-    return create_waveform(label, peakToPeak, frequency, dutyCycle, offset, deadTime);
+    return WaveformProcessor::create_waveform(processed, frequency,
+                                              settings.get_inputs_number_points_sampled_waveforms());
 }
 
 
 Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle, double offset, double deadTime, double skew, double phase) {
-    Waveform waveform;
-    std::vector<double> data;
-    std::vector<double> time;
-    double period = 1 / frequency;
-
-    switch (label) {
-        case WaveformLabel::TRIANGULAR: {
-            double max = peakToPeak / 2 + offset;
-            double min = -peakToPeak / 2 + offset;
-            double dc = dutyCycle * period;
-            data = {min, max, min};
-            time = {0, dc, period};
-            break;
-        }
-        case WaveformLabel::TRIANGULAR_WITH_DEADTIME: {
-            double max = peakToPeak / 2 + offset;
-            double min = -peakToPeak / 2 + offset;
-            double dc = dutyCycle * period;
-            data = {min, max, min, 0};
-            time = {0, dc, period - deadTime, period};
-            break;
-        }
-        case WaveformLabel::UNIPOLAR_TRIANGULAR: {
-            double max = peakToPeak + offset;
-            double min = offset;
-            double dc = dutyCycle * period;
-            data = {min, max, min, min};
-            time = {0, dc, dc, period};
-            break;
-        }
-        case WaveformLabel::RECTANGULAR: {
-            double max = peakToPeak * (1 - dutyCycle) + offset;
-            double min = -peakToPeak * dutyCycle + offset;
-            double dc = dutyCycle * period;
-            data = {min, max, max, min, min};
-            time = {0, 0, dc, dc, period};
-            break;
-        }
-        case WaveformLabel::RECTANGULAR_WITH_DEADTIME: {
-            double max = peakToPeak * (1 - dutyCycle) + offset;
-            double min = -peakToPeak * dutyCycle + offset;
-            double dc = dutyCycle * period;
-            data = {0, max, max, min, min, 0, 0};
-            time = {0, 0, dc, dc, period - deadTime, period - deadTime, period};
-            break;
-        }
-        case WaveformLabel::SECONDARY_RECTANGULAR: {
-            double max = -peakToPeak * (1 - dutyCycle) + offset;
-            double min = peakToPeak * dutyCycle + offset;
-            double dc = dutyCycle * period;
-            data = {min, max, max, min, min};
-            time = {0, 0, dc, dc, period};
-            break;
-        }
-        case WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME: {
-            double max = -peakToPeak * (1 - dutyCycle) + offset;
-            double min = peakToPeak * dutyCycle + offset;
-            double dc = dutyCycle * period;
-            data = {0, max, max, min, min, 0, 0};
-            time = {0, 0, dc, dc, period - deadTime, period - deadTime, period};
-            break;
-        }
-        case WaveformLabel::UNIPOLAR_RECTANGULAR: {
-            double max = peakToPeak + offset;
-            double min = offset;
-            double dc = std::min(0.5, dutyCycle) * period;
-            data = {min, max, max, min, min};
-            time = {0, 0, dc, dc, period};
-            break;
-        }
-        case WaveformLabel::BIPOLAR_RECTANGULAR: {
-            double max = +peakToPeak / 2;
-            double min = -peakToPeak / 2;
-            double dc = dutyCycle * period;
-            data = {0, 0, max, max, 0, 0, min, min, 0, 0};
-            time = {0,
-                    0.25 * period - dc / 2,
-                    0.25 * period - dc / 2,
-                    0.25 * period + dc / 2,
-                    0.25 * period + dc / 2,
-                    0.75 * period - dc / 2,
-                    0.75 * period - dc / 2,
-                    0.75 * period + dc / 2,
-                    0.75 * period + dc / 2,
-                    period};
-            break;
-        }
-        case WaveformLabel::BIPOLAR_TRIANGULAR: {
-            double max = +peakToPeak / 2;
-            double min = -peakToPeak / 2;
-            double dc = std::min(0.5, dutyCycle) * period;
-            data = {min, min, max, max, min, min};
-            time = {0,
-                    0.25 * period - dc / 2,
-                    0.25 * period + dc / 2,
-                    0.75 * period - dc / 2,
-                    0.75 * period + dc / 2,
-                    period};
-            break;
-        }
-        case WaveformLabel::FLYBACK_PRIMARY:{
-            double max = peakToPeak + offset;
-            double min = offset;
-            double dc = dutyCycle * period;
-            data = {0, min, max, 0, 0};
-            time = {0, 0, dc, dc, period};
-            break;
-        }
-        case WaveformLabel::FLYBACK_SECONDARY:{
-            double max = peakToPeak + offset;
-            double min = offset;
-            double dc = dutyCycle * period;
-            data = {0, 0, max, min, 0};
-            time = {0, dc, dc, period, period};
-            break;
-        }
-        case WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME:{
-            double max = peakToPeak + offset;
-            double min = offset;
-            double dc = dutyCycle * period;
-            data = {0, 0, max, min, 0, 0};
-            time = {0, dc, dc, period - deadTime, period - deadTime, period};
-            break;
-        }
-        case WaveformLabel::SINUSOIDAL: {
-            for (size_t i = 0; i < settings.get_inputs_number_points_sampled_waveforms(); ++i) {
-                double angle = i * 2 * std::numbers::pi / (settings.get_inputs_number_points_sampled_waveforms() - 1);
-                time.push_back(i * period / (settings.get_inputs_number_points_sampled_waveforms() - 1));
-                data.push_back((sin(angle + phase) * peakToPeak / 2) + offset);
-            }
-            break;
-        }
-        default:
-            break;
-    }
-
-    waveform.set_ancillary_label(label);
-    waveform.set_data(data);
-    waveform.set_time(time);
-
-    if (skew > 0) {
-        auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
-        auto timeStep = period / sampledWaveform.get_data().size();
-        size_t stepNeededForSkew = round(skew / timeStep);
-
-        auto auxData = sampledWaveform.get_data();
-        // FIXED: BUG-05 — Removed period subtraction
-        std::rotate(auxData.rbegin(), auxData.rbegin() + stepNeededForSkew, auxData.rend());
-        waveform = sampledWaveform;
-        waveform.set_data(auxData);
-        waveform = compress_waveform(waveform);
-    }
-
-    return waveform;
+    return WaveformProcessor::create_waveform(label, peakToPeak, frequency, dutyCycle, offset, deadTime, skew, phase,
+                                              settings.get_inputs_number_points_sampled_waveforms());
 }
 
 bool Inputs::is_waveform_sampled(Waveform waveform) {
@@ -1054,106 +888,8 @@ SignalDescriptor Inputs::get_differential_mode_choke_magnetizing_current(Operati
 }
 
 Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency, std::optional<size_t> numberPoints) {
-    std::vector<double> time;
-    auto data = waveform.get_data();
-
-    // Validate input data
-    if (data.size() < 2) {
-        throw std::invalid_argument("Waveform must have at least 2 data points");
-    }
-
-    if (!waveform.get_time()) { // This means the waveform is equidistant
-        // Without time data, frequency must be provided
-        if (!std::isfinite(frequency) || frequency <= 0) {
-            throw std::invalid_argument("Invalid frequency: " + std::to_string(frequency));
-        }
-        // Reject unreasonably small frequencies (likely uninitialized garbage values)
-        // Minimum reasonable frequency is 1 Hz (period = 1 second)
-        if (frequency < 1.0) {
-            throw std::invalid_argument("Frequency too small (likely uninitialized): " + std::to_string(frequency));
-        }
-        time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), data.size());
-    }
-    else {
-        time = waveform.get_time().value();
-        // The waveform time data defines the actual period to sample over
-        // Always use the frequency derived from the waveform time data for sampling
-        // This ensures the sampled time points fall within the waveform's time range
-        double period = (time.back() - time.front());
-        if (period <= 0) {
-            throw std::invalid_argument("Invalid waveform period: " + std::to_string(period));
-        }
-        // Use frequency from waveform time data for sampling purposes
-        // The passed frequency parameter is only used as fallback when time data is missing
-        frequency = 1.0 / period;
-        // Validate frequency after inference
-        if (!std::isfinite(frequency) || frequency <= 0) {
-            throw std::invalid_argument("Invalid frequency derived from waveform: " + std::to_string(frequency));
-        }
-    }
-
-    size_t numberPointsForSampling = settings.get_inputs_number_points_sampled_waveforms();
-    if (numberPoints) {
-        numberPointsForSampling = numberPoints.value();
-    }
-
-    if (data.size() > numberPointsForSampling) {
-        if (is_size_power_of_2(data)) {
-            numberPointsForSampling = data.size();
-        }
-        else {
-            numberPointsForSampling = round_up_size_to_power_of_2(data);
-        }
-    }
-
-    auto sampledTime = linear_spaced_array(0, 1. / roundFloat(frequency, 9), numberPointsForSampling + 1);
-
-    std::vector<double> sampledData;
-
-    for (size_t i = 0; i < numberPointsForSampling; i++) {
-        bool found = false;
-        for (size_t interpIndex = 0; interpIndex < data.size() - 1; interpIndex++) {
-            // Skip zero-length segments (where time[i] == time[i+1])
-            // These occur in waveforms like FLYBACK_PRIMARY: time = {0, 0, dc, dc, period}
-            if (time[interpIndex + 1] == time[interpIndex]) {
-                // If sampled time is exactly at this zero-length segment, use the data value
-                if (sampledTime[i] == time[interpIndex]) {
-                    sampledData.push_back(data[interpIndex]);
-                    found = true;
-                    break;
-                }
-                // Otherwise skip this zero-length segment
-                continue;
-            }
-
-            // For non-zero-length segments, check if sampled time falls within [start, end]
-            // Use inclusive checks to handle edge cases properly
-            if (time[interpIndex] <= sampledTime[i] && sampledTime[i] <= time[interpIndex + 1]) {
-                double proportion = (sampledTime[i] - time[interpIndex]) / (time[interpIndex + 1] - time[interpIndex]);
-                double interpPoint = std::lerp(data[interpIndex], data[interpIndex + 1], proportion);
-                sampledData.push_back(interpPoint);
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            throw std::invalid_argument("Error while sampling waveform in point: " + std::to_string(i));
-        }
-    }
-
-    if (sampledData.size() != numberPointsForSampling) {
-        throw std::invalid_argument("Wrong number of sampled points");
-    }
-
-    sampledTime.pop_back();
-
-    Waveform sampledWaveform;
-    sampledWaveform.set_data(sampledData);
-    sampledWaveform.set_time(sampledTime);
-    if (waveform.get_ancillary_label()) {
-        sampledWaveform.set_ancillary_label(waveform.get_ancillary_label().value());
-    }
-    return sampledWaveform;
+    return WaveformProcessor::calculate_sampled_waveform(waveform, frequency, numberPoints,
+                                                         settings.get_inputs_number_points_sampled_waveforms());
 }
 
 double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excitation) {
@@ -1657,9 +1393,8 @@ ProcessedWaveform Inputs::calculate_processed_data(SignalDescriptor excitation,
                                             Waveform sampledWaveform,
                                             bool includeAdvancedData,
                                             std::optional<ProcessedWaveform> processed) {
-
-    auto harmonics = excitation.get_harmonics().value();
-    return Inputs::calculate_processed_data(harmonics, sampledWaveform, includeAdvancedData, processed);
+    return WaveformProcessor::calculate_processed_data(excitation, sampledWaveform, includeAdvancedData, processed,
+                                                       settings.get_inputs_number_points_sampled_waveforms());
 }
 
 double calculate_offset(Waveform waveform, WaveformLabel label) {
@@ -1761,157 +1496,25 @@ ProcessedWaveform Inputs::calculate_processed_data(Waveform waveform,
                                             std::optional<double> frequency,
                                             bool includeAdvancedData,
                                             std::optional<ProcessedWaveform> processed) {
-    double frequencyValue;
-    if (frequency) {
-        frequencyValue = frequency.value();
-    }
-    else {
-        if (!waveform.get_time()) {
-            throw std::invalid_argument("Either frequency or time must be provided");
-        }
-        frequencyValue = 1.0 / (waveform.get_time()->back() - waveform.get_time()->front());
-    }
-    auto sampledWaveform = waveform;
-    if (!is_size_power_of_2(waveform.get_data())) {
-        sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequencyValue);
-    }
-    auto harmonics = calculate_harmonics_data(sampledWaveform, frequencyValue);
-    return calculate_processed_data(harmonics, waveform, includeAdvancedData, processed);
+    return WaveformProcessor::calculate_processed_data(waveform, frequency, includeAdvancedData, processed,
+                                                       settings.get_inputs_trim_harmonics(),
+                                                       settings.get_harmonic_amplitude_threshold(),
+                                                       settings.get_inputs_number_points_sampled_waveforms());
 }
 
 ProcessedWaveform Inputs::calculate_processed_data(Harmonics harmonics,
                                             Waveform waveform,
                                             bool includeAdvancedData,
                                             std::optional<ProcessedWaveform> processed) {
-    auto sampledDataToProcess = waveform;
-
-    if (waveform.get_time() && waveform.get_data().size() < settings.get_inputs_number_points_sampled_waveforms()) {
-        auto frequency = harmonics.get_frequencies()[1];
-        sampledDataToProcess = calculate_sampled_waveform(waveform, frequency);
-    }
-
-    ProcessedWaveform processedResult;
-    if (processed) {
-        processedResult = processed.value();
-    }
-    else {
-        processedResult = calculate_basic_processed_data(sampledDataToProcess);
-    }
-
-    {
-        if (is_waveform_sampled(waveform)) {
-            processedResult.set_average(std::accumulate(std::begin(sampledDataToProcess.get_data()), std::end(sampledDataToProcess.get_data()), 0.0) /
-                             sampledDataToProcess.get_data().size());
-        }
-        else {;
-            auto average = calculate_waveform_average(waveform);
-            processedResult.set_average(average);
-        }
-    }
-
-    if (includeAdvancedData) {
-        {
-            double effectiveFrequency = 0;
-            std::vector<double> dividend;
-            std::vector<double> divisor;
-
-            for (size_t i = 0; i < harmonics.get_amplitudes().size(); ++i) {
-                double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
-                double timeSquared = pow(harmonics.get_frequencies()[i], 2);
-                dividend.push_back(dataSquared * timeSquared);
-                divisor.push_back(dataSquared);
-            }
-            double sumDivisor = std::reduce(divisor.begin(), divisor.end());
-            if (sumDivisor > 0)
-                effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
-
-            processedResult.set_effective_frequency(effectiveFrequency);
-        }
-        {
-            double effectiveFrequency = 0;
-            std::vector<double> dividend;
-            std::vector<double> divisor;
-
-            for (size_t i = 1; i < harmonics.get_amplitudes().size(); ++i) {
-                double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
-                double timeSquared = pow(harmonics.get_frequencies()[i], 2);
-                dividend.push_back(dataSquared * timeSquared);
-                divisor.push_back(dataSquared);
-            }
-            double sumDivisor = std::reduce(divisor.begin(), divisor.end());
-            if (sumDivisor > 0)
-                effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
-
-            processedResult.set_ac_effective_frequency(effectiveFrequency);
-        }
-        {
-            double rms = 0.0;
-            for (int i = 0; i < int(sampledDataToProcess.get_data().size()); ++i) {
-                rms += sampledDataToProcess.get_data()[i] * sampledDataToProcess.get_data()[i];
-            }
-            rms /= sampledDataToProcess.get_data().size();
-            rms = sqrt(rms);
-            processedResult.set_rms(rms);
-        }
-        {
-            std::vector<double> dividend;
-            double divisor = harmonics.get_amplitudes()[1];
-            double thd = 0;
-            for (size_t i = 2; i < harmonics.get_amplitudes().size(); ++i) {
-                dividend.push_back(pow(harmonics.get_amplitudes()[i], 2));
-            }
-
-            if (divisor > 0)
-                thd = sqrt(std::reduce(dividend.begin(), dividend.end())) / divisor;
-            processedResult.set_thd(thd);
-        }
-    }
-
-    return processedResult;
+    return WaveformProcessor::calculate_processed_data(harmonics, waveform, includeAdvancedData, processed,
+                                                       settings.get_inputs_number_points_sampled_waveforms());
 }
 
 Harmonics Inputs::calculate_harmonics_data(Waveform waveform, double frequency) {
-    bool trimHarmonics = settings.get_inputs_trim_harmonics();
-    bool isWaveformImported = is_waveform_imported(waveform);
-    Harmonics harmonics;
-
-    std::vector<std::complex<double>> data;
-    for (std::size_t i = 0; i < waveform.get_data().size(); ++i) {
-        data.emplace_back(waveform.get_data()[i]);
-    }
-
-    if (data.size() > 0 && ((data.size() & (data.size() - 1)) != 0)) {
-        throw std::invalid_argument("Data vector size is not a power of 2: " + std::to_string(data.size()));
-    }
-    fft(data);
-
-    harmonics.get_mutable_amplitudes().push_back(abs(data[0] / static_cast<double>(data.size())));
-    for (size_t i = 1; i < data.size() / 2; ++i) {
-        harmonics.get_mutable_amplitudes().push_back(abs(2. * data[i] / static_cast<double>(data.size())));
-    }
-    for (size_t i = 0; i < data.size() / 2; ++i) {
-        harmonics.get_mutable_frequencies().push_back(frequency * i);
-    }
-
-
-    if (isWaveformImported && trimHarmonics) {
-        auto mainHarmonicIndexes = get_main_harmonic_indexes(harmonics, settings.get_harmonic_amplitude_threshold());
-        Harmonics reducedHarmonics;
-        reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[0]);
-        reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[1]);
-        reducedHarmonics.get_mutable_frequencies().push_back(harmonics.get_frequencies()[0]);
-        reducedHarmonics.get_mutable_frequencies().push_back(harmonics.get_frequencies()[1]);
-        for (auto harmonicIndex : mainHarmonicIndexes) {
-            if (harmonicIndex == 0 || harmonicIndex == 1) {
-                continue;
-            }
-            reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[harmonicIndex]);
-            reducedHarmonics.get_mutable_frequencies().push_back(harmonics.get_frequencies()[harmonicIndex]);
-        }
-        harmonics = reducedHarmonics;
-    }
-
-    return harmonics;
+    return WaveformProcessor::calculate_harmonics_data(waveform, frequency,
+                                                       settings.get_inputs_trim_harmonics(),
+                                                       settings.get_harmonic_amplitude_threshold(),
+                                                       settings.get_inputs_number_points_sampled_waveforms());
 }
 
 OperatingPointExcitation Inputs::prune_harmonics(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex) {
