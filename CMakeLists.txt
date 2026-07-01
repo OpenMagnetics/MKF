@@ -546,6 +546,11 @@ file(GLOB SOURCES CONFIGURE_DEPENDS
     "src/support/*.cpp")
 list(APPEND SOURCES "${CCI_GENERATED_CPP}")
 
+# The old converter_models were DELETED — replaced by Kirchhoff (linked via KirchhoffBridge, the only
+# remaining src/converter_models/*.cpp). MKF's core never instantiated a converter class (the
+# MagneticAdviser converter path is generic templates the CALLER feeds a converter to); the converter
+# physics now lives in Kirchhoff and its reference designs are SPICE-gated there.
+
 SET(LIBS data::insulation_standards)
 
 # REMOVED: LINK_DIRECTORIES for LAPACKBLAS (no longer needed, levmar replaced by Eigen)

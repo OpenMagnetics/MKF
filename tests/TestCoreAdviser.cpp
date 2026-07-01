@@ -8,7 +8,6 @@
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
 #include "physical_models/Reluctance.h"
-#include "converter_models/Flyback.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
@@ -2798,115 +2797,6 @@ TEST_CASE("Test_CoreAdviser_Temperature_Filter", "[adviser][core-adviser][availa
     settings.reset();
 }
 
-// =============================================================================
-// Flyback Core Adviser tests (merged from TestFlybackCoreAdviser.cpp)
-// =============================================================================
-
-TEST_CASE("Flyback Core Adviser - Default Values", "[core-adviser][flyback-topology][default-values]") {
-    // Default flyback values from WebFrontend/WebSharedComponents/assets/js/defaults.js
-    json flybackJson;
-    flybackJson["inputVoltage"]["minimum"] = 120.0;
-    flybackJson["inputVoltage"]["maximum"] = 375.0;
-    flybackJson["diodeVoltageDrop"] = 0.7;
-    flybackJson["maximumDrainSourceVoltage"] = 600.0;
-    flybackJson["maximumDutyCycle"] = 0.5;
-    flybackJson["currentRippleRatio"] = 1.0;
-    flybackJson["inductance"] = 200e-6;  // 200 µH
-    flybackJson["dutyCycleRange"][0] = 0.5;
-    flybackJson["dutyCycleRange"][1] = 0.3;
-    flybackJson["deadTime"] = 0.0;
-    flybackJson["efficiency"] = 0.85;
-    flybackJson["numberOfOutputs"] = 1;
-
-    json outputParams;
-    outputParams["outputVoltages"] = json::array({12.0});
-    outputParams["outputCurrents"] = json::array({5.0});
-    outputParams["switchingFrequency"] = 100000.0;  // 100 kHz
-    outputParams["ambientTemperature"] = 25.0;
-    flybackJson["operatingPoints"] = json::array({outputParams});
-
-    flybackJson["insulationType"] = "basic";
-    flybackJson["insulation"]["cti"] = "groupII";
-    flybackJson["insulation"]["pollutionDegree"] = "PD2";
-    flybackJson["insulation"]["overvoltageCategory"] = "III";
-    flybackJson["insulation"]["altitude"]["maximum"] = 2000.0;
-    flybackJson["insulation"]["mainSupplyVoltage"]["maximum"] = 400.0;
-    flybackJson["insulation"]["standards"] = json::array({"IEC 60664-1"});
-
-    OpenMagnetics::Flyback flyback(flybackJson);
-    auto inputs = flyback.process();
-
-    REQUIRE_FALSE(inputs.get_operating_points().empty());
-
-    auto& firstOp = inputs.get_operating_points()[0];
-    REQUIRE_FALSE(firstOp.get_excitations_per_winding().empty());
-
-    auto& firstExc = firstOp.get_excitations_per_winding()[0];
-    double frequency = firstExc.get_frequency();
-    REQUIRE(std::isfinite(frequency));
-    REQUIRE(frequency > 0);
-    REQUIRE(frequency == 100000.0);
-
-    CoreAdviser coreAdviser;
-    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
-
-    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
-    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0.4;
-    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0.3;
-    weights[CoreAdviser::CoreAdviserFilters::COST] = 0.3;
-
-    try {
-        auto results = coreAdviser.get_advised_core(inputs, weights, 5);
-        REQUIRE_FALSE(results.empty());
-    }
-    catch (const std::exception& e) {
-        FAIL("Core adviser threw exception: " << std::string(e.what()));
-    }
-}
-
-TEST_CASE("Flyback Inputs - Frequency Validation", "[flyback-topology][frequency][validation]") {
-    json flybackJson;
-    flybackJson["inputVoltage"]["minimum"] = 120.0;
-    flybackJson["inputVoltage"]["maximum"] = 375.0;
-    flybackJson["diodeVoltageDrop"] = 0.7;
-    flybackJson["maximumDrainSourceVoltage"] = 600.0;
-    flybackJson["maximumDutyCycle"] = 0.5;
-    flybackJson["currentRippleRatio"] = 1.0;
-    flybackJson["inductance"] = 200e-6;
-
-    json outputParams;
-    outputParams["outputVoltages"] = json::array({12.0});
-    outputParams["outputCurrents"] = json::array({5.0});
-    outputParams["switchingFrequency"] = 100000.0;
-    outputParams["ambientTemperature"] = 25.0;
-    flybackJson["operatingPoints"] = json::array({outputParams});
-
-    flybackJson["insulationType"] = "basic";
-    flybackJson["efficiency"] = 0.85;
-
-    OpenMagnetics::Flyback flyback(flybackJson);
-    auto inputs = flyback.process();
-
-    json inputsJson;
-    to_json(inputsJson, inputs);
-
-    REQUIRE(inputsJson.contains("operatingPoints"));
-    REQUIRE(!inputsJson["operatingPoints"].empty());
-    auto& firstOp = inputsJson["operatingPoints"][0];
-    REQUIRE(firstOp.contains("excitationsPerWinding"));
-    REQUIRE(!firstOp["excitationsPerWinding"].empty());
-    auto& firstExc = firstOp["excitationsPerWinding"][0];
-    REQUIRE(firstExc.contains("frequency"));
-    double freq = firstExc["frequency"].get<double>();
-    REQUIRE(std::isfinite(freq));
-    REQUIRE(freq > 0);
-
-    OpenMagnetics::Inputs inputs2(inputsJson);
-    double freq2 = inputs2.get_operating_points()[0].get_excitations_per_winding()[0].get_frequency();
-    REQUIRE(std::isfinite(freq2));
-    REQUIRE(freq2 > 0);
-    REQUIRE(freq2 == 100000.0);
-}
 
 // =============================================================================
 // CMC core adviser smoke test (merged from TestCoreAdviserCmcBug.cpp)

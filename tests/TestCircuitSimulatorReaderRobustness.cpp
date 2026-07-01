@@ -1,7 +1,9 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include "support/Exceptions.h"
+#include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <source_location>
 
 using namespace OpenMagnetics;
 using Catch::Matchers::ContainsSubstring;
@@ -138,4 +140,55 @@ TEST_CASE("Reader: header with quoted commas keeps the comma inside the name (se
     REQUIRE(names[0] == "Time / s");
     REQUIRE(names[1] == "Voltage, primary");  // comma preserved inside quotes
     REQUIRE(names[2] == "Current, primary");
+}
+
+TEST_CASE("guess_separator: ignores commas inside an LTspice differential probe V(a,b)",
+          "[processor][circuit-simulation-reader][robustness]") {
+    // LTspice writes the differential-voltage probe unquoted as V(node_p,node_n).
+    // The comma inside the parentheses must not be counted as a separator, or a
+    // comma-separated file is mis-split (one extra column in the header).
+    std::string header = "time,V(N009,d),V(n016),V(n017),I(L1),I(L3),I(L4)";
+    REQUIRE(',' == CircuitSimulationReader::guess_separator(header));
+}
+
+TEST_CASE("Reader: LTspice differential probe V(a,b) stays a single column (comma-separated)",
+          "[processor][circuit-simulation-reader][robustness]") {
+    // Regression for the broken CSV upload: the unquoted comma inside V(N009,d)
+    // used to split the header into 8 fields while data rows had 7, shifting
+    // every column left by one. The header must now yield exactly 7 columns
+    // with the differential probe preserved verbatim.
+    std::string csv =
+        "time,V(N009,d),V(n016),V(n017),I(L1),I(L3),I(L4)\n"
+        "0.0,-19.1,13.9,6.97,-2.9e-4,1.24,3.9e-4\n"
+        "1e-9,-19.1,13.9,6.97,-3.2e-4,1.24,3.8e-4\n";
+    CircuitSimulationReader reader(csv, true);
+    auto names = reader.extract_column_names();
+    REQUIRE(names.size() == 7);
+    REQUIRE(names[0] == "time");
+    REQUIRE(names[1] == "V(N009,d)");  // comma preserved inside the parentheses
+    REQUIRE(names[2] == "V(n016)");
+    REQUIRE(names[6] == "I(L4)");
+}
+
+TEST_CASE("Reader: parses the real LTspice flyback export with a differential probe",
+          "[processor][circuit-simulation-reader][robustness]") {
+    // Trimmed copy of a user's LTspice 'Export data as text' CSV (fly_2out.txt)
+    // whose header is: time,V(N009,d),V(n016),V(n017),I(L1),I(L3),I(L4)
+    // It uses CRLF endings and the unquoted differential probe V(N009,d).
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "ltspice_flyback_diff_probe.csv");
+    CircuitSimulationReader reader(path.string());  // file mode (not forceFile)
+
+    auto names = reader.extract_column_names();
+    REQUIRE(names.size() == 7);
+    REQUIRE(names[1] == "V(N009,d)");
+
+    // Every column must be fully populated and aligned: a misaligned split would
+    // leave the trailing column empty or with a different length.
+    const auto& columns = reader.get_columns();
+    REQUIRE(columns.size() == 7);
+    size_t expectedSamples = columns[0].data.size();
+    REQUIRE(expectedSamples > 0);
+    for (const auto& column : columns) {
+        REQUIRE(column.data.size() == expectedSamples);
+    }
 }
