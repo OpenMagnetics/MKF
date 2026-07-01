@@ -5,7 +5,7 @@ if (POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-project ("MKF_Project" VERSION 1.0.0 LANGUAGES CXX)
+project ("MKF_Project" VERSION 2.0.0 LANGUAGES CXX)
 
 # ============================================================================
 # C++ Standard and Compiler Settings
@@ -124,13 +124,22 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include/magic_enum
 option(MKF_USE_KIRCHHOFF "Link the Kirchhoff converter-model library (libKirchhoffApi.so)" ON)
 if(MKF_USE_KIRCHHOFF)
     include(ExternalProject)
-    # Local checkout while KH is unpushed; switch to GIT_REPOSITORY/GIT_TAG once KH is on GitHub.
-    set(KIRCHHOFF_SOURCE_DIR "/home/alf/OpenConverters/Kirchhoff" CACHE PATH "Kirchhoff source dir")
+    # Kirchhoff is fetched from GitHub and configured in its OWN CMake context (its PEAS/RAS/CAS/… deps are
+    # recursive git submodules, pulled automatically). OpenConverters/Kirchhoff is private, so the build host
+    # needs SSH access to it; for local iteration (or a host without that access) pass
+    # -DKIRCHHOFF_SOURCE_DIR=/path/to/Kirchhoff to build from a working tree instead of the pinned tag.
+    set(KIRCHHOFF_GIT_TAG "main" CACHE STRING "Kirchhoff git tag/branch to build")
+    set(KIRCHHOFF_SOURCE_DIR "" CACHE PATH "Local Kirchhoff working tree (empty = fetch from GitHub)")
     set(KIRCHHOFF_BUILD_DIR "${CMAKE_BINARY_DIR}/kirchhoff-build")
     set(KIRCHHOFF_API_LIB "${KIRCHHOFF_BUILD_DIR}/libKirchhoffApi.so")
+    if(KIRCHHOFF_SOURCE_DIR)
+        set(_kirchhoff_src SOURCE_DIR "${KIRCHHOFF_SOURCE_DIR}")
+    else()
+        set(_kirchhoff_src GIT_REPOSITORY "git@github.com:OpenConverters/Kirchhoff.git"
+                           GIT_TAG "${KIRCHHOFF_GIT_TAG}")
+    endif()
     ExternalProject_Add(kirchhoff_ext
-        SOURCE_DIR "${KIRCHHOFF_SOURCE_DIR}"
-        # GIT_REPOSITORY https://github.com/OpenConverters/Kirchhoff.git  GIT_TAG main  # once pushed
+        ${_kirchhoff_src}
         BINARY_DIR "${KIRCHHOFF_BUILD_DIR}"
         CMAKE_ARGS
             -DCMAKE_BUILD_TYPE=Release
