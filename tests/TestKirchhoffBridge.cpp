@@ -17,6 +17,8 @@
 
 #include "converter_models/KirchhoffBridge.h"   // design_converter_tas / design_requirements_from_tas / simulate_tas
 #include "processors/Inputs.h"
+#include "advisers/MagneticAdviser.h"           // get_advised_magnetic — the end-to-end target
+#include "support/Utils.h"                       // clear_databases
 
 using json = nlohmann::json;
 using namespace OpenMagnetics;
@@ -116,6 +118,32 @@ TEST_CASE("Kirchhoff bridge designs every topology into an adviser-ready Inputs"
 
             OpenMagnetics::Inputs inputs = design_requirements_from_tas(tas);            // MKF gets the magnetic Inputs
             check_inputs(inputs, c.topology);
+        }
+    }
+}
+
+TEST_CASE("Kirchhoff bridge -> MagneticAdviser: converter to advised magnetic (end to end)",
+          "[kirchhoff][bridge][adviser][slow]") {
+    // Restores the full converter->advised-magnetic path the deleted TestMagneticAdviser exercised: KH
+    // designs the converter, MKF extracts the magnetic Inputs, and the MagneticAdviser designs a real
+    // magnetic against the catalog. Slow (searches cores), so a representative pair (one non-isolated
+    // inductor, one isolated transformer).
+    const std::vector<Case> cases = {
+        {"buck",    dc_spec(24, 12, 60, 100000)},
+        {"flyback", dc_spec(48, 12, 30, 100000)},
+    };
+    for (const auto& c : cases) {
+        DYNAMIC_SECTION("advise " << c.topology) {
+            clear_databases();
+            json tas = design_converter_tas(c.topology, c.spec);
+            OpenMagnetics::Inputs inputs = design_requirements_from_tas(tas);
+            inputs.process();   // fill waveforms/harmonics the adviser's filters need (the legacy flow did this)
+
+            OpenMagnetics::MagneticAdviser adviser;
+            auto results = adviser.get_advised_magnetic(inputs, 1);
+            INFO("topology: " << c.topology);
+            REQUIRE_FALSE(results.empty());          // a real magnetic was designed for the KH converter
+            CHECK(results.at(0).second > 0.0);       // it has a positive score
         }
     }
 }
