@@ -110,6 +110,42 @@ FetchContent_MakeAvailable(magic-enum)
 include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include/magic_enum")
 
 
+# ============================================================================
+# Kirchhoff — the exportable converter-model library that replaces MKF's converter_models (and carries the
+# ngspice simulator, which is why MKF no longer builds its own: MKF's ENABLE_NGSPICE stays OFF by default
+# and any circuit that must be solved goes through Kirchhoff::api::simulate_ngspice via KirchhoffBridge).
+#
+# Built ISOLATED with ExternalProject so KH's own dependency targets — critically its `namespace MAS`
+# types, plus CAS/SAS/RAS/… — are configured in a SEPARATE CMake context and can never collide with MKF's
+# identically-named ones. KH is consumed as libKirchhoffApi.so: a shared lib that exports ONLY the
+# Kirchhoff::api string/JSON facade (KH's MAS:: symbols are hidden), so nothing but JSON strings crosses the
+# boundary. No MAS material DB is pulled (KH has none; MKF's EMBED_MAS_* is independent and only for HS).
+# ============================================================================
+option(MKF_USE_KIRCHHOFF "Link the Kirchhoff converter-model library (libKirchhoffApi.so)" ON)
+if(MKF_USE_KIRCHHOFF)
+    include(ExternalProject)
+    # Local checkout while KH is unpushed; switch to GIT_REPOSITORY/GIT_TAG once KH is on GitHub.
+    set(KIRCHHOFF_SOURCE_DIR "/home/alf/OpenConverters/Kirchhoff" CACHE PATH "Kirchhoff source dir")
+    set(KIRCHHOFF_BUILD_DIR "${CMAKE_BINARY_DIR}/kirchhoff-build")
+    set(KIRCHHOFF_API_LIB "${KIRCHHOFF_BUILD_DIR}/libKirchhoffApi.so")
+    ExternalProject_Add(kirchhoff_ext
+        SOURCE_DIR "${KIRCHHOFF_SOURCE_DIR}"
+        # GIT_REPOSITORY https://github.com/OpenConverters/Kirchhoff.git  GIT_TAG main  # once pushed
+        BINARY_DIR "${KIRCHHOFF_BUILD_DIR}"
+        CMAKE_ARGS
+            -DCMAKE_BUILD_TYPE=Release
+            -DKIRCHHOFF_BUILD_SHARED_API=ON   # emit libKirchhoffApi.so (string facade, hidden internals)
+            -DKIRCHHOFF_BUILD_PYBIND=OFF
+            -DENABLE_NGSPICE=ON               # KH carries the simulator MKF stopped building
+        BUILD_ALWAYS OFF
+        INSTALL_COMMAND ""
+        BUILD_BYPRODUCTS "${KIRCHHOFF_API_LIB}")
+    add_library(KirchhoffApi SHARED IMPORTED)
+    set_target_properties(KirchhoffApi PROPERTIES IMPORTED_LOCATION "${KIRCHHOFF_API_LIB}")
+    add_dependencies(KirchhoffApi kirchhoff_ext)
+endif()
+
+
 # Make profiling and ASan opt-in so users can build fast Release binaries by default
 option(ENABLE_PROFILING "Enable gprof profiling (-pg)" OFF)
 option(ENABLE_ASAN "Enable AddressSanitizer in Debug builds" OFF)
@@ -536,6 +572,15 @@ cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards 
 cmrc_add_resource_library(core_losses_data ALIAS data::core_losses_data NAMESPACE coreLossesData src/data/core_losses/ciGSE_coefficients.json)
 target_link_libraries(MKF PUBLIC ${LIBS})
 
+# Kirchhoff bridge: MKF links libKirchhoffApi.so and includes ONLY KirchhoffApi.hpp (the string facade),
+# so KH's `namespace MAS` types never enter an MKF TU. src/converter_models/KirchhoffBridge.cpp is picked
+# up by the SOURCES glob; here we add the include path + the imported .so + the build-order dependency.
+if(MKF_USE_KIRCHHOFF)
+    add_dependencies(MKF kirchhoff_ext)
+    target_include_directories(MKF PRIVATE "${KIRCHHOFF_SOURCE_DIR}/src")
+    target_link_libraries(MKF PUBLIC KirchhoffApi)
+endif()
+
 set(DATA_LIST "")
 if(EMBED_MAS_DATA)
     if(EMBED_MAS_CORES)
@@ -562,7 +607,7 @@ if(EMBED_MAS_DATA)
     endif()
 endif()
 
-message(${DATA_LIST})
+message(STATUS "MKF embedded MAS data files: ${DATA_LIST}")
 cmrc_add_resource_library(data ALIAS data::data NAMESPACE data ${DATA_LIST})
 target_link_libraries(MKF PUBLIC data::data)
 target_link_libraries(MKF PUBLIC data::core_losses_data)
