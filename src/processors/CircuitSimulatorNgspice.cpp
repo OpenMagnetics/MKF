@@ -140,6 +140,27 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         return "NumberTurns_" + is + "**2*Permeance";
     };
 
+    // Mutual (cross-coupling) resistance — the off-diagonal Hesterman winding-loss
+    // term. The auxiliary-winding realization is skipped for n>=3 because its
+    // shared-but-uncoupled auxiliaries make the coupled-L matrix non-positive-definite
+    // in ngspice (abt #50). For n>=3 we instead use a PD-SAFE BEHAVIOURAL realization
+    // (grounded uncoupled ladders + sense/behavioural sources; no coupled inductors),
+    // which routes each winding's P{k}+ through a series sense+drop node — so it must
+    // be decided BEFORE the windings are emitted. Wired for LADDER mode only (the
+    // default); the other curve-fit modes emit the winding series path through
+    // fixed P{k}+ nodes and keep the historical n>=3 skip (abt #72).
+    bool includeMutualResistance = settings.get_circuit_simulator_include_mutual_resistance();
+    std::vector<CircuitSimulatorExporter::MutualResistanceCoefficients> mutualResistanceCoeffs;
+    if (includeMutualResistance && numWindings >= 2) {
+        mutualResistanceCoeffs = CircuitSimulatorExporter::calculate_mutual_resistance_coefficients(magnetic, temperature);
+    }
+    bool behaviouralMutualResistance =
+        includeMutualResistance && numWindings >= 3 && !mutualResistanceCoeffs.empty() &&
+        resolvedMode == CircuitSimulatorExporterCurveFittingModes::LADDER;
+    auto windingTopNode = [&](const std::string& is) -> std::string {
+        return behaviouralMutualResistance ? ("Node_Wtop_" + is) : ("P" + is + "+");
+    };
+
     for (size_t index = 0; index < numWindings; index++) {
         auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, 0.1, temperature);
         std::string is = std::to_string(index + 1);
@@ -211,7 +232,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
                 // Fitted model (ladder_model): Z = Rdc + L1||(R1 + L2||(R2 + ...))
                 // Rdc in series first, then nested L||(R + rest) stages.
                 size_t numStages = acResistanceCoefficientsPerWinding[index].size() / 2;
-                circuitString += "Rdc" + is + " P" + is + "+ Node_Lladder_" + is + "_0 {Rdc_" + is + "_Value}\n";
+                circuitString += "Rdc" + is + " " + windingTopNode(is) + " Node_Lladder_" + is + "_0 {Rdc_" + is + "_Value}\n";
                 for (size_t stage = 0; stage < numStages; ++stage) {
                     std::string stageNode = "Node_Lladder_" + is + "_" + std::to_string(stage);
                     std::string nextNode = (stage + 1 == numStages) ? ("Node_R_Lmag_" + is)
@@ -221,7 +242,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
                     circuitString += "Rladder" + is + "_" + std::to_string(stage) + " " + stageNode + " " + nextNode + " " + c[stage * 2] + "\n";
                 }
             } else {
-                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+                circuitString += "Rdc" + is + " " + windingTopNode(is) + " Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
             }
             // Emit magnetizing inductance (saturating or linear)
             if (includeSaturation && satParams.valid) {
@@ -300,12 +321,16 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         // If zCoreLoss <= 10*zLmag, skip core loss network to avoid shorting Lmag
     }
 
-    // Mutual resistance: auxiliary winding network for cross-coupling losses (Hesterman 2020)
-    // Only for multi-winding transformers when setting is enabled
-    bool includeMutualResistance = settings.get_circuit_simulator_include_mutual_resistance();
-    if (includeMutualResistance && numWindings >= 2) {
-        auto mutualResistanceCoeffs = CircuitSimulatorExporter::calculate_mutual_resistance_coefficients(magnetic, temperature);
-        if (!mutualResistanceCoeffs.empty()) {
+    // Mutual resistance cross-coupling loss (Hesterman 2020). n==2 uses the
+    // positive-definite auxiliary-winding realization as-is; n>=3 in LADDER mode uses
+    // the PD-safe BEHAVIOURAL realization (keeps the cross term, adds no coupled
+    // inductors); other n>=3 modes fall through to the historical loud skip. The
+    // coefficients were computed once, before the winding loop, so the winding series
+    // path could be routed through the behavioural sense/drop nodes.
+    if (includeMutualResistance && numWindings >= 2 && !mutualResistanceCoeffs.empty()) {
+        if (behaviouralMutualResistance) {
+            circuitString += emit_mutual_resistance_behavioural_spice(mutualResistanceCoeffs, numWindings, frequency);
+        } else {
             circuitString += emit_mutual_resistance_network_spice(mutualResistanceCoeffs, magnetizingInductance, numWindings);
         }
     }

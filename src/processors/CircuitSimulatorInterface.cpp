@@ -1598,10 +1598,105 @@ std::string emit_mutual_resistance_network_spice(
         
         s += "KA_" + std::to_string(i) + "_" + ij + " Lmag_" + std::to_string(i) + " LA_" + ij + " " + to_string(k_i_aux, 6) + "\n";
         s += "KA_" + std::to_string(j) + "_" + ij + " Lmag_" + std::to_string(j) + " LA_" + ij + " " + to_string(k_j_aux, 6) + "\n";
-        
+
         s += "\n";
     }
-    
+
+    return s;
+}
+
+
+std::string emit_mutual_resistance_behavioural_spice(
+    const std::vector<CircuitSimulatorExporter::MutualResistanceCoefficients>& mutualCoeffs,
+    size_t numWindings,
+    double frequency) {
+
+    if (mutualCoeffs.empty() || numWindings < 3) {
+        return "";  // Behavioural realization is only needed for n>=3 (n==2 is PD already)
+    }
+
+    // PD-safe behavioural realization of the cross-coupling (mutual) resistance loss for
+    // n>=3 windings (abt #50/#72). The auxiliary-winding (Hesterman 2020) model couples an
+    // extra inductor into TWO magnetizing inductors at once; for n>=3 the shared-but-
+    // uncoupled auxiliaries leave the coupled-L matrix non-positive-definite and ngspice
+    // collapses ("Timestep too small"), so it was skipped. Here each winding i instead
+    // carries a series voltage drop sum_{j!=i} R_ij*I_j realized with LINEAR current-
+    // controlled voltage sources (H), so NO inductor and NO coupling is added: the Lmag
+    // coupled-L matrix is byte-identical to the no-mutual case and stays positive-definite.
+    //
+    //   * Vsns_<i>      : a 0 V sense source, so i(Vsns_<i>) = the winding-i terminal current
+    //   * Hmut_<i>_<j>  : a CCVS = R_ij * i(Vsns_<j>), chained in series into the drop
+    // R_ij is the PURELY RESISTIVE mutual resistance at the export frequency (the real part
+    // of the fitted ladder impedance, mutual_resistance_real_at). Using a scalar resistance
+    // rather than the raw R-L ladder keeps the loss WITHOUT the ladder's reactance, which
+    // would otherwise add a spurious series inductance and detune the winding — the reactive
+    // coupling already lives in the Lmag K statements. The winding emission routes
+    // P<i>+ -> Vsns_<i> -> H chain -> Node_Wtop_<i> -> Rdc. Power: the H drop in winding i
+    // absorbs (R_ij*I_j)*I_i and in winding j absorbs (R_ij*I_i)*I_j — the full
+    // 2*R_ij*I_i*I_j Hesterman cross term, at the winding terminals.
+
+    // Per receiver winding (0-indexed): list of (driving winding, signed R_ij) drops.
+    std::vector<std::vector<std::pair<size_t, double>>> drops(numWindings);
+
+    std::string s;
+    s += "\n* ==== MUTUAL RESISTANCE NETWORK (PD-safe behavioural, n>=3) ====\n";
+    s += "* Cross-coupling loss sum_{i!=j} R_ij*I_i*I_j via linear current-controlled\n";
+    s += "* voltage sources (no inductors, no coupling) so the Lmag matrix stays\n";
+    s += "* positive-definite (abt #50/#72). R_ij is the mutual resistance at the export\n";
+    s += "* frequency (real part of the fitted ladder; the reactance lives in the K's).\n\n";
+
+    for (const auto& mc : mutualCoeffs) {
+        if (mc.coefficients.size() < 2) {
+            continue;
+        }
+        if (mc.windingIndex1 >= numWindings || mc.windingIndex2 >= numWindings ||
+            mc.windingIndex1 == mc.windingIndex2) {
+            continue;
+        }
+        size_t i = mc.windingIndex1;   // 0-indexed
+        size_t j = mc.windingIndex2;
+        // Mutual resistance (signed) at the export frequency, evaluated with the SAME
+        // model the coefficients were fitted to (mutual_resistance_ladder_model). This is
+        // a pure scalar resistance carrying the DC term and the correct sign — no ladder,
+        // so no spurious reactance (that reactive coupling already lives in the K's).
+        if (mc.coefficients.size() < 6) {
+            continue;  // the fit always emits 6 coefficients; skip a malformed pair
+        }
+        double rij = mutual_resistance_ladder_model(
+            const_cast<double*>(mc.coefficients.data()), frequency, mc.dcMutualResistance);
+        if (!std::isfinite(rij) || rij == 0.0) {
+            continue;
+        }
+        s += "* Mutual R" + std::to_string(i + 1) + std::to_string(j + 1) +
+             " = " + to_string(rij, 9) + " Ohm @ " + to_string(frequency, 1) + " Hz\n";
+        drops[i].emplace_back(j, rij);
+        drops[j].emplace_back(i, rij);
+    }
+
+    // Per-winding series sense (Vsns) + a chain of CCVS drops (Hmut), routing P<k>+ into
+    // the Node_Wtop_<k> node the winding emission consumes. Every winding gets a
+    // Node_Wtop_<k> (a straight 0 V wire when it has no mutual term) so the winding side
+    // never references an undefined node.
+    for (size_t k = 0; k < numWindings; ++k) {
+        std::string ks = std::to_string(k + 1);
+        s += "Vsns_" + ks + " P" + ks + "+ Node_Wsns_" + ks + " 0\n";
+        const auto& kdrops = drops[k];
+        if (kdrops.empty()) {
+            s += "Vwire_" + ks + " Node_Wsns_" + ks + " Node_Wtop_" + ks + " 0\n";
+            continue;
+        }
+        std::string node = "Node_Wsns_" + ks;
+        for (size_t d = 0; d < kdrops.size(); ++d) {
+            std::string otherS = std::to_string(kdrops[d].first + 1);
+            std::string next = (d + 1 == kdrops.size())
+                                   ? ("Node_Wtop_" + ks)
+                                   : ("Node_Hmut_" + ks + "_" + std::to_string(d));
+            s += "Hmut_" + ks + "_" + otherS + " " + node + " " + next + " Vsns_" + otherS +
+                 " " + to_string(kdrops[d].second, 9) + "\n";
+            node = next;
+        }
+    }
+    s += "\n";
     return s;
 }
 
