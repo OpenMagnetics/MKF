@@ -237,6 +237,11 @@ class MagneticAdviser{
          * @return Vector of (Mas, score) pairs sorted by ascending total losses.
          */
         std::vector<std::pair<Mas, double>> get_advised_magnetic_fast(Inputs inputs, size_t maximumNumberResults = 1);
+        // Fast analytical design with a caller-supplied filter flow: strictlyRequired
+        // filters (e.g. DC/EFFECTIVE_CURRENT_DENSITY) DROP any wound candidate that
+        // fails them, so the fast path can gate winding current density without the
+        // full CoilAdviser. Empty flow == the plain fast path above.
+        std::vector<std::pair<Mas, double>> get_advised_magnetic_fast(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults = 1);
 
         /**
          * @brief Score a collection of magnetic designs using the filter flow.

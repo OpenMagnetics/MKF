@@ -101,6 +101,29 @@ Coil get_dummy_coil(const Inputs& inputs) {
         winding.set_number_parallels(1);
         winding.set_number_turns(1);
         winding.set_wire(wire);
+        // Size the number of PARALLEL strands to carry THIS winding's RMS current
+        // at <= maximumEffectiveCurrentDensity. The dummy wire is a skin-depth
+        // strand (good for AC loss) but a single strand ignores current-carrying
+        // capacity, so the fast path left high-current windings under-coppered —
+        // every winding at ~18 A/mm2 regardless of core (ABT #70). Use the same
+        // helper the WireAdviser uses on the full path so both paths agree.
+        if (!operatingPoints.empty()) {
+            const auto& excitations = operatingPoints[0].get_excitations_per_winding();
+            if (w < excitations.size() && excitations[w].get_current()) {
+                auto windingCurrent = excitations[w].get_current().value();
+                // Satisfy BOTH MKF density limits — the AC/effective ceiling
+                // (maximumEffectiveCurrentDensity, ~12 A/mm2) AND the stricter DC
+                // ceiling (maximumCurrentDensity, ~7 A/mm2) — by taking the larger
+                // parallel count. Sizing to only the effective limit left the DC
+                // density above the DC filter's own threshold, so the design failed
+                // its own DcCurrentDensity check.
+                int parallelsEffective = Wire::calculate_number_parallels_needed(
+                    windingCurrent, temperature, wire, defaults.maximumEffectiveCurrentDensity);
+                double dcCurrentDensity = wire.calculate_dc_current_density(windingCurrent);
+                int parallelsDc = static_cast<int>(std::ceil(dcCurrentDensity / defaults.maximumCurrentDensity));
+                winding.set_number_parallels(std::max({1, parallelsEffective, parallelsDc}));
+            }
+        }
         windings.push_back(winding);
     }
 
@@ -525,7 +548,13 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     auto reqAppOpt = inputs.get_design_requirements().get_application();
     // DesignRequirements.application is a plain JSON string in the new PEAS-backed schema.
     bool isSuppression = reqAppOpt.has_value() && reqAppOpt.value() == "interferenceSuppression";
+    // Candidates whose turn/gap sizing throws (e.g. an unreachable high-Lm transformer target whose
+    // gap solve leaves a degenerate gap -> GAP_INVALID_DIMENSIONS "Gap Area is not set", abt #53) are
+    // INFEASIBLE, not fatal: collect them and erase after the loop so the advise still returns the
+    // sizable cores instead of aborting the whole call.
+    std::vector<size_t> indexesToEraseForSizing;
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
+      try {
 
         Core core = (*magneticsWithScoring)[i].first.get_core();
         if (!core.get_processed_description()) {
@@ -745,6 +774,13 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
         }
 
         (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(initialNumberTurns);
+      }
+      catch (const OpenMagneticsException&) {
+        indexesToEraseForSizing.push_back(i);  // abt #53: drop a candidate whose sizing throws
+      }
+    }
+    for (auto it = indexesToEraseForSizing.rbegin(); it != indexesToEraseForSizing.rend(); ++it) {
+        (*magneticsWithScoring).erase((*magneticsWithScoring).begin() + *it);
     }
 }
 

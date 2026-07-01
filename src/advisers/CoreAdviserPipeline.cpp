@@ -135,10 +135,33 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
         // Also align the primary's isolation side with the design requirement.
         (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_isolation_side(isolation_side_for_index(0));
 
+        // Every secondary below is a COPY of the primary winding, so it inherits
+        // the primary's strand + parallel count. Resolve the shared (skin-depth)
+        // wire and the temperature so each secondary's parallels can be re-sized
+        // to ITS own current — otherwise a high-current secondary stays at the
+        // primary's parallel count and is under-coppered (ABT #70).
+        Wire sharedWire = (*magneticsWithScoring)[i].first.get_mutable_coil().resolve_wire(0);
+        double windingTemperature = inputs.get_maximum_temperature();
+
         for (size_t windingIndex = 1; windingIndex < numberTurnsCombination.size(); ++windingIndex) {
             auto winding = coil.get_functional_description()[0];
             winding.set_number_turns(numberTurnsCombination[windingIndex]);
             winding.set_isolation_side(isolation_side_for_index(windingIndex));
+
+            // Size this secondary's parallels to its own RMS current (both the DC
+            // ~7 A/mm2 and effective ~12 A/mm2 limits), like get_dummy_coil does
+            // for the primary.
+            if (!inputs.get_operating_points().empty()) {
+                const auto& secExcitations = inputs.get_operating_points()[0].get_excitations_per_winding();
+                if (windingIndex < secExcitations.size() && secExcitations[windingIndex].get_current()) {
+                    auto secCurrent = secExcitations[windingIndex].get_current().value();
+                    int npEffective = Wire::calculate_number_parallels_needed(
+                        secCurrent, windingTemperature, sharedWire, defaults.maximumEffectiveCurrentDensity);
+                    double secDcDensity = sharedWire.calculate_dc_current_density(secCurrent);
+                    int npDc = static_cast<int>(std::ceil(secDcDensity / defaults.maximumCurrentDensity));
+                    winding.set_number_parallels(std::max({1, npEffective, npDc}));
+                }
+            }
 
             // Prefer the excitation name over the generic isolation-side name.
             std::string name;

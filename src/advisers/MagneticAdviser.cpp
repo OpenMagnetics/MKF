@@ -84,7 +84,21 @@ void MagneticAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(Inputs inputs, size_t maximumNumberResults) {
+    return get_advised_magnetic_fast(inputs, {}, maximumNumberResults);
+}
+
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
     inputs = pre_process_inputs(inputs);
+
+    // Caller-supplied filters (e.g. DC/EFFECTIVE_CURRENT_DENSITY) are evaluated
+    // per WOUND candidate in Step 5: a strictlyRequired filter that fails DROPS
+    // the candidate, so the fast path returns only designs meeting the
+    // constraint while keeping its loss ranking + area-product core search (so
+    // the behaviour the frequency sweep is tuned around is unchanged). The
+    // default flow is empty → identical to the original fast path.
+    if (!filterFlow.empty()) {
+        load_filter_flow(filterFlow, inputs);
+    }
 
     if (coreDatabase.empty()) {
         load_cores();
@@ -125,8 +139,18 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     }
 
     // Cap candidates: AP filter sorts by score, keep the best ones.
-    // post_process_core takes ~2-3ms each; 100 candidates ≈ 250ms.
-    const size_t maxCandidates = std::max(maximumNumberResults * 20, size_t(50));
+    // post_process_core takes ~2-3ms each; 200 candidates ≈ 500ms.
+    //
+    // The floor must NOT starve feasibility. The candidates are sorted by area-product
+    // fit (tightest first), but the tightest cores routinely FAIL to wind (window too
+    // small for the inductance-driven turns) and are dropped in Step 5. For a demanding
+    // seed (e.g. a SEPIC/Cuk secondary inductor) the first ~50 AP-best cores can all fail
+    // winding, and the only windable core sits past rank 50 — so a pool tied to a small
+    // maximumNumberResults returned ZERO while a larger request returned one (the pool, not
+    // feasibility, decided the result). Decouple the two: evaluate a generous FIXED-floor
+    // pool so max_results=1 sees the same candidates as max_results=10, then truncate the
+    // RESULT to maximumNumberResults at Step 7. Floor 200 (≈4x the observed starvation point).
+    const size_t maxCandidates = std::max(maximumNumberResults * 20, size_t(200));
     if (magneticsWithScoring.size() > maxCandidates) {
         magneticsWithScoring.resize(maxCandidates);
     }
@@ -285,6 +309,44 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
                          + "' — fast_wind produced no turns (window too small for the turns)",
                          "MagneticAdviser", 2);
                 continue;
+            }
+
+            // Apply caller-supplied strictlyRequired filters (e.g. current
+            // density) to the wound candidate. A filter that rejects DROPS the
+            // candidate — so e.g. a winding above maximumEffectiveCurrentDensity
+            // is skipped and a lower-density (larger-copper) core is returned
+            // instead. Non-strict filters do not gate here (the fast path ranks
+            // by loss). A filter that cannot evaluate this candidate is ignored
+            // rather than rejecting on the failure.
+            {
+                bool rejected = false;
+                auto magneticForFilter = mas.get_magnetic();
+                auto inputsForFilter = mas.get_inputs();
+                auto outputsForFilter = mas.get_outputs();
+                for (const auto& filterOp : filterFlow) {
+                    if (!filterOp.get_strictly_required()) {
+                        continue;
+                    }
+                    auto filterIt = _filters.find(filterOp.get_filter());
+                    if (filterIt == _filters.end()) {
+                        continue;
+                    }
+                    try {
+                        auto [valid, filterScore] = filterIt->second->evaluate_magnetic(
+                            &magneticForFilter, &inputsForFilter, &outputsForFilter);
+                        (void)filterScore;
+                        if (!valid) {
+                            rejected = true;
+                            break;
+                        }
+                    }
+                    catch (const std::exception&) {
+                        // Filter could not evaluate this candidate — do not reject on that.
+                    }
+                }
+                if (rejected) {
+                    continue;
+                }
             }
 
             // Score by total losses (lower is better)
