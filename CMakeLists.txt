@@ -582,7 +582,8 @@ target_link_libraries(MKF PUBLIC ${LIBS})
 # up by the SOURCES glob; here we add the include path + the imported .so + the build-order dependency.
 if(MKF_USE_KIRCHHOFF)
     add_dependencies(MKF kirchhoff_ext)
-    target_include_directories(MKF PRIVATE "${KIRCHHOFF_SOURCE_DIR}/src")
+    # PUBLIC so consumers/tests that include KirchhoffBridge.h (-> KirchhoffApi.hpp) find it too.
+    target_include_directories(MKF PUBLIC "${KIRCHHOFF_SOURCE_DIR}/src")
     target_link_libraries(MKF PUBLIC KirchhoffApi)
 endif()
 
