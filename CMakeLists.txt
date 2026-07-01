@@ -132,12 +132,15 @@ endif()
 option(MKF_USE_KIRCHHOFF "Link the Kirchhoff converter-model library (libKirchhoffApi.so)" ${_mkf_use_kirchhoff_default})
 if(MKF_USE_KIRCHHOFF)
     include(ExternalProject)
-    # Kirchhoff is fetched from GitHub and configured in its OWN CMake context (its PEAS/RAS/CAS/… deps are
-    # recursive git submodules, pulled automatically). OpenConverters/Kirchhoff is private, so the build host
-    # needs SSH access to it; for local iteration (or a host without that access) pass
-    # -DKIRCHHOFF_SOURCE_DIR=/path/to/Kirchhoff to build from a working tree instead of the pinned tag.
-    set(KIRCHHOFF_GIT_TAG "main" CACHE STRING "Kirchhoff git tag/branch to build")
-    set(KIRCHHOFF_SOURCE_DIR "" CACHE PATH "Local Kirchhoff working tree (empty = fetch from GitHub)")
+    # Kirchhoff is configured in its OWN CMake context (isolated from MKF's targets). Two ways to provide it:
+    #   * a local working tree via KIRCHHOFF_SOURCE_DIR (DEFAULT — what works today), or
+    #   * a GitHub clone (set KIRCHHOFF_SOURCE_DIR="" to use GIT_REPOSITORY/GIT_TAG below).
+    # NOTE: the GitHub path is currently BLOCKED — Kirchhoff's `AAS` submodule
+    # (git@github.com:Power-Supply-Manufacturers-Association/AAS.git) is not published on GitHub ("Repository
+    # not found"), so a recursive clone of Kirchhoff fails. Publish AAS (its siblings PEAS/RAS/CAS/SAS/MAS/
+    # CIAS/CTAS resolve fine) to enable the github-fetch default; until then the local working tree is required.
+    set(KIRCHHOFF_GIT_TAG "main" CACHE STRING "Kirchhoff git tag/branch to build (when fetching from GitHub)")
+    set(KIRCHHOFF_SOURCE_DIR "/home/alf/OpenConverters/Kirchhoff" CACHE PATH "Local Kirchhoff working tree (clear to fetch from GitHub)")
     set(KIRCHHOFF_BUILD_DIR "${CMAKE_BINARY_DIR}/kirchhoff-build")
     set(KIRCHHOFF_API_LIB "${KIRCHHOFF_BUILD_DIR}/libKirchhoffApi.so")
     if(KIRCHHOFF_SOURCE_DIR)
