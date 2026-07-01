@@ -121,7 +121,15 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include/magic_enum
 # Kirchhoff::api string/JSON facade (KH's MAS:: symbols are hidden), so nothing but JSON strings crosses the
 # boundary. No MAS material DB is pulled (KH has none; MKF's EMBED_MAS_* is independent and only for HS).
 # ============================================================================
-option(MKF_USE_KIRCHHOFF "Link the Kirchhoff converter-model library (libKirchhoffApi.so)" ON)
+# Default ON natively, but OFF under Emscripten: the KirchhoffBridge links libKirchhoffApi.so (a native
+# hidden-visibility shared lib) which has no wasm equivalent, and in the browser the converter surface is a
+# SEPARATE module (webKirchhoff) — webMKF is magnetics-only. So the wasm MKF must not pull Kirchhoff.
+if(EMSCRIPTEN)
+    set(_mkf_use_kirchhoff_default OFF)
+else()
+    set(_mkf_use_kirchhoff_default ON)
+endif()
+option(MKF_USE_KIRCHHOFF "Link the Kirchhoff converter-model library (libKirchhoffApi.so)" ${_mkf_use_kirchhoff_default})
 if(MKF_USE_KIRCHHOFF)
     include(ExternalProject)
     # Kirchhoff is fetched from GitHub and configured in its OWN CMake context (its PEAS/RAS/CAS/… deps are
@@ -554,6 +562,13 @@ file(GLOB SOURCES CONFIGURE_DEPENDS
     "src/processors/*.cpp"
     "src/support/*.cpp")
 list(APPEND SOURCES "${CCI_GENERATED_CPP}")
+
+# The only surviving src/converter_models/*.cpp is KirchhoffBridge.cpp — it #includes KirchhoffApi.hpp and
+# links libKirchhoffApi.so, so it can only be compiled when Kirchhoff is linked. Drop it otherwise (e.g. the
+# Emscripten/webMKF build, MKF_USE_KIRCHHOFF=OFF).
+if(NOT MKF_USE_KIRCHHOFF)
+    list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/converter_models/KirchhoffBridge.cpp")
+endif()
 
 # The old converter_models were DELETED — replaced by Kirchhoff (linked via KirchhoffBridge, the only
 # remaining src/converter_models/*.cpp). MKF's core never instantiated a converter class (the
