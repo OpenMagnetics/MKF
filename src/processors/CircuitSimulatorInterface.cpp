@@ -2661,5 +2661,79 @@ FractionalPoleNetwork CircuitSimulatorExporter::calculate_core_fracpole_network(
 }
 
 
+GseCoreLossParams CircuitSimulatorExporter::calculate_gse_core_loss_params(
+    Magnetic magnetic, double frequency, double temperature) {
+
+    GseCoreLossParams p;
+
+    auto core = magnetic.get_core();
+    auto material = core.resolve_material();
+    // Steinmetz k / alpha / beta for the material at this frequency band. A material without
+    // Steinmetz data cannot supply a large-signal core-loss model -> report invalid and let the
+    // caller keep the linear small-signal ladder.
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    try {
+        steinmetzDatum = CoreLossesModel::get_steinmetz_coefficients(material, frequency);
+    } catch (...) {
+        return p;
+    }
+    double alpha = steinmetzDatum.get_alpha();
+    double beta = steinmetzDatum.get_beta();
+    double k = steinmetzDatum.get_k();
+    if (!(std::isfinite(alpha) && std::isfinite(beta) && std::isfinite(k) &&
+          alpha > 0 && beta > 0 && k > 0 && beta >= alpha)) {
+        return p;  // beta < alpha would make |B|^(beta-alpha) singular at B=0; refuse it
+    }
+
+    // GSE coefficient k1: calibrated so that for a sinusoidal B the cycle-average of
+    // p(t) = k1*|dB/dt|^alpha*|B|^(beta-alpha) equals the Steinmetz loss k*f^alpha*B_peak^beta.
+    //   k1 = k / [ (2*pi)^(alpha-1) * integral_0^{2*pi} |cos t|^alpha * |sin t|^(beta-alpha) dt ]
+    // (identical construction to CoreLossesIGSEModel::get_ki, but with |sin t|^(beta-alpha) in the
+    // integrand instead of the constant 2^(beta-alpha): GSE uses the instantaneous |B|, iGSE the
+    // per-cycle peak-to-peak swing.)
+    auto& settings = Settings::GetInstance();
+    size_t nPoints = settings.get_inputs_number_points_sampled_waveforms();
+    if (nPoints < 8) nPoints = 128;
+    double integral = 0.0;
+    for (size_t i = 0; i < nPoints; ++i) {
+        double theta = static_cast<double>(i) * 2.0 * std::numbers::pi / static_cast<double>(nPoints);
+        integral += std::pow(std::fabs(std::cos(theta)), alpha) *
+                    std::pow(std::fabs(std::sin(theta)), beta - alpha) *
+                    2.0 * std::numbers::pi / static_cast<double>(nPoints);
+    }
+    if (!(integral > 0.0)) {
+        return p;
+    }
+    double k1 = k / (std::pow(2.0 * std::numbers::pi, alpha - 1.0) * integral);
+
+    // Core geometry: effective volume + effective area, and the main-winding turns.
+    auto processedDescription = core.get_processed_description();
+    if (!processedDescription) {
+        return p;
+    }
+    auto effectiveParameters = processedDescription.value().get_effective_parameters();
+    double A_e = effectiveParameters.get_effective_area();
+    double V_e = effectiveParameters.get_effective_volume();
+    auto coil = magnetic.get_coil();
+    if (coil.get_functional_description().empty()) {
+        return p;
+    }
+    double N = static_cast<double>(coil.get_functional_description()[0].get_number_turns());
+    if (!(A_e > 0 && V_e > 0 && N > 0)) {
+        return p;
+    }
+
+    // I_loss = P/V_L with P = V_e*k1*|dB/dt|^alpha*|B|^(beta-alpha), dB/dt = V_L/(N*A_e),
+    // B = lambda/(N*A_e):  I_loss = [V_e*k1/(N*A_e)^beta] * sgn(V_L)*|V_L|^(alpha-1)*|lambda|^(beta-alpha).
+    p.gc = V_e * k1 / std::pow(N * A_e, beta);
+    p.alpha = alpha;
+    p.beta = beta;
+    p.nTurns = N;
+    p.effectiveArea = A_e;
+    p.valid = std::isfinite(p.gc) && p.gc > 0;
+    return p;
+}
+
+
 } // namespace OpenMagnetics
 

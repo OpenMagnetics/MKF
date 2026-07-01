@@ -172,6 +172,21 @@ struct FractionalPoleNetwork {
     FractionalPoleOptions opts;
 };
 
+// Parameters for a behavioural GSE (Generalized Steinmetz Equation) core-loss element.
+// The instantaneous volumetric loss is p(t) = k1 * |dB/dt|^alpha * |B|^(beta-alpha); realized as
+// a current in parallel with the magnetizing inductance, I_loss(t) = gc * sgn(V_L) *
+// |V_L|^(alpha-1) * |lambda|^(beta-alpha), where V_L is the winding voltage and lambda its flux
+// linkage (integral of V_L). gc folds in k1, the core effective volume, the turns and effective
+// area: gc = V_e * k1 / (N*A_e)^beta. See CircuitSimulatorExporter::calculate_gse_core_loss_params.
+struct GseCoreLossParams {
+    bool valid = false;
+    double gc = 0.0;      // A / (V^(alpha-1) * (V*s)^(beta-alpha))
+    double alpha = 0.0;   // Steinmetz frequency exponent
+    double beta = 0.0;    // Steinmetz flux-density exponent
+    double nTurns = 0.0;  // main-winding turns (B = lambda / (N*A_e))
+    double effectiveArea = 0.0;
+};
+
 class FractionalPole {
 public:
     static FractionalPoleNetwork generate(const FractionalPoleOptions& opts) {
@@ -537,6 +552,7 @@ class CircuitSimulatorExporter {
         static FractionalPoleNetwork calculate_core_fracpole_network(Magnetic magnetic, double temperature, FractionalPoleOptions opts={});
         static CircuitSimulatorExporterCurveFittingModes resolve_curve_fitting_mode(CircuitSimulatorExporterCurveFittingModes mode);
         static std::vector<double> calculate_core_resistance_coefficients(Magnetic magnetic, double temperature = defaults.ambientTemperature, CoreLossTopology topology = CoreLossTopology::RIDLEY);
+        static GseCoreLossParams calculate_gse_core_loss_params(Magnetic magnetic, double frequency, double temperature = defaults.ambientTemperature);
         std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
         std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = defaults.measurementFrequency, double temperature = defaults.ambientTemperature, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
 };
@@ -684,10 +700,17 @@ class CircuitSimulationReader {
     std::vector<std::map<std::string, std::string>> extract_map_column_names(size_t numberWindings, double frequency);
     bool assign_column_names(std::vector<std::map<std::string, std::string>> columnNames);
     std::vector<std::string> extract_column_names();
+    const std::vector<CircuitSimulationSignal>& get_columns() const { return _columns; }
     Waveform extract_waveform(CircuitSimulationSignal signal, double frequency, bool sample=true);
     static CircuitSimulationSignal find_time(std::vector<CircuitSimulationSignal> columns);
     Waveform get_one_period(Waveform waveform, double frequency, bool sample=true, bool alignToZeroCrossing=true);
     static char guess_separator(std::string line);
+    // Split a line on `separator`, ignoring any separator that falls inside a
+    // double-quoted field OR inside balanced parentheses. The latter keeps
+    // SPICE differential probes such as LTspice's V(node_p,node_n) intact when
+    // the file is comma-separated. Quotes are preserved in the returned tokens
+    // (callers strip surrounding quotes themselves).
+    static std::vector<std::string> split_fields(const std::string& line, char separator);
     static bool can_be_voltage(std::vector<double> data, double limit=0.05);
     static bool can_be_time(std::vector<double> data);
     static bool can_be_current(std::vector<double> data, double limit=0.05);

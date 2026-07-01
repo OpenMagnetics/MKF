@@ -174,6 +174,12 @@ class Settings
         // capacitors that set self-resonance and inter-winding (CM) coupling. Default to disabled.
         bool _circuitSimulatorIncludeStrayCapacitance = false;
 
+        // Circuit simulator large-signal core loss (false = small-signal mu(f) resistance ladder,
+        // true = a behavioural GSE/Steinmetz core-loss element that tracks the instantaneous dB/dt and
+        // flux). Only the behavioural-capable exporters (ngspice/LTspice/NL5) emit the nonlinear element;
+        // Simba/Plecs keep the linear ladder. Default to disabled.
+        bool _circuitSimulatorIncludeSteinmetzCoreLoss = false;
+
         // Circuit simulator core loss topology (0=RIDLEY RL stages, 1=ROSANO R/RL/RLC branches)
         int _circuitSimulatorCoreLossTopology = 1;  // Default to ROSANO
 
@@ -488,6 +494,9 @@ class Settings
 
         bool get_circuit_simulator_include_stray_capacitance() const;
         void set_circuit_simulator_include_stray_capacitance(bool value);
+
+        bool get_circuit_simulator_include_steinmetz_core_loss() const;
+        void set_circuit_simulator_include_steinmetz_core_loss(bool value);
 
         int get_circuit_simulator_core_loss_topology() const;
         void set_circuit_simulator_core_loss_topology(int value);

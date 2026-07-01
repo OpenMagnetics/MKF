@@ -175,6 +175,7 @@ namespace OpenMagnetics {
         _circuitSimulatorIncludeSaturation = false;
         _circuitSimulatorIncludeMutualResistance = false;
         _circuitSimulatorIncludeStrayCapacitance = false;
+        _circuitSimulatorIncludeSteinmetzCoreLoss = false;
         _circuitSimulatorCoreLossTopology = 1;
 
         if (previousToroidalCores != _useToroidalCores
@@ -905,6 +906,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_circuit_simulator_include_stray_capacitance(bool value) {
         _circuitSimulatorIncludeStrayCapacitance = value;
+    }
+
+    bool Settings::get_circuit_simulator_include_steinmetz_core_loss() const {
+        return _circuitSimulatorIncludeSteinmetzCoreLoss;
+    }
+    void Settings::set_circuit_simulator_include_steinmetz_core_loss(bool value) {
+        _circuitSimulatorIncludeSteinmetzCoreLoss = value;
     }
 
     int Settings::get_circuit_simulator_core_loss_topology() const {
