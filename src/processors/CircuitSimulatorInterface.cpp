@@ -144,17 +144,21 @@ double CircuitSimulatorExporter::ladder_model(double x[], double frequency, doub
             return 1e30;  // Large penalty value instead of 0
         }
     }
-    // Reject UNPHYSICAL ladder inductors (x[1],x[3],x[5],x[7],x[9]). A winding
-    // AC-resistance ladder's breakpoint inductors are ~nH-µH scale; levmar
-    // sometimes finds a low-average-error solution using a huge inductor (e.g.
-    // ~10 mH) that fits the broadband curve on average but gives an L/R settling
-    // time of hundreds of µs that never reaches steady state in the transient
-    // regulate deck, so pin/efficiency are grossly mismeasured (a 50 W transformer
-    // read as dissipating ~150 W -> 24.7% "efficiency"). Penalising inductors
-    // above ~a magnetizing-inductance scale keeps the fit physical and fast-
-    // settling; the winding's operating-band resistance is unchanged. See abt #71.
-    for (int i = 1; i < 10; i += 2) {
-        if (x[i] > 1e-4) {
+    // Reject ladder stages whose L/R SETTLING TIME is too long for a transient
+    // sim to reach steady state. levmar can otherwise fit a physically-absurd
+    // inductor (e.g. ~10 mH with a ~19 Ω stage -> ~550 µs settling) that shapes
+    // the broadband curve on average but never settles in the transient regulate
+    // window, so pin/efficiency are grossly mismeasured (a 50 W transformer read
+    // as ~150 W, 24.7% "efficiency"). The bound is the physical quantity that
+    // caused the bug — the AC-resistance dynamics of a switching magnetic settle
+    // within a handful of switching periods (<<100 µs); a stage slower than that
+    // is a fit artifact, not physics. The operating-band resistance is unchanged.
+    // See abt #71.
+    const double maxSettlingTime = 1e-4;  // 100 µs: >> a few switching periods
+    for (int k = 0; k < 10; k += 2) {
+        const double R = x[k];
+        const double L = x[k + 1];
+        if (R > 0.0 && L / R > maxSettlingTime) {
             return 1e30;
         }
     }
