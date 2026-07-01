@@ -174,6 +174,7 @@ namespace OpenMagnetics {
         _circuitSimulatorFracpoleOptions = std::nullopt;
         _circuitSimulatorIncludeSaturation = false;
         _circuitSimulatorIncludeMutualResistance = false;
+        _circuitSimulatorIncludeStrayCapacitance = false;
         _circuitSimulatorCoreLossTopology = 1;
 
         if (previousToroidalCores != _useToroidalCores
@@ -897,6 +898,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_circuit_simulator_include_mutual_resistance(bool value) {
         _circuitSimulatorIncludeMutualResistance = value;
+    }
+
+    bool Settings::get_circuit_simulator_include_stray_capacitance() const {
+        return _circuitSimulatorIncludeStrayCapacitance;
+    }
+    void Settings::set_circuit_simulator_include_stray_capacitance(bool value) {
+        _circuitSimulatorIncludeStrayCapacitance = value;
     }
 
     int Settings::get_circuit_simulator_core_loss_topology() const {
