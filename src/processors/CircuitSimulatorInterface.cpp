@@ -144,6 +144,20 @@ double CircuitSimulatorExporter::ladder_model(double x[], double frequency, doub
             return 1e30;  // Large penalty value instead of 0
         }
     }
+    // Reject UNPHYSICAL ladder inductors (x[1],x[3],x[5],x[7],x[9]). A winding
+    // AC-resistance ladder's breakpoint inductors are ~nH-µH scale; levmar
+    // sometimes finds a low-average-error solution using a huge inductor (e.g.
+    // ~10 mH) that fits the broadband curve on average but gives an L/R settling
+    // time of hundreds of µs that never reaches steady state in the transient
+    // regulate deck, so pin/efficiency are grossly mismeasured (a 50 W transformer
+    // read as dissipating ~150 W -> 24.7% "efficiency"). Penalising inductors
+    // above ~a magnetizing-inductance scale keeps the fit physical and fast-
+    // settling; the winding's operating-band resistance is unchanged. See abt #71.
+    for (int i = 1; i < 10; i += 2) {
+        if (x[i] > 1e-4) {
+            return 1e30;
+        }
+    }
 
     return (R0 + parallel(L1, R1 + parallel(L2, R2 + parallel(L3, R3 + parallel(L4, R4 + parallel(L5, R5)))))).real();
 }
@@ -1483,7 +1497,27 @@ std::string emit_mutual_resistance_network_spice(
     if (mutualCoeffs.empty() || numWindings < 2) {
         return "";  // No mutual resistance to model
     }
-    
+
+    // The auxiliary-winding mutual-resistance model couples an extra inductor LA_ij (k=0.1)
+    // into BOTH magnetizing inductors of every winding pair. For a 2-winding transformer the
+    // resulting coupled-inductor system {Lmag_1, Lmag_2, LA_12} is small and positive-definite,
+    // so ngspice solves it. For n >= 3 windings the pairs share the magnetizing inductors
+    // (LA_12 and LA_13 both couple Lmag_1) but carry NO direct LA-LA coupling, so ngspice sees a
+    // single coupled system whose K matrix is INCOMPLETE (the missing entries are implicitly 0)
+    // and NOT positive definite -> the transient collapses ("Timestep too small"). The mutual
+    // (cross-coupling) resistance is a SECOND-ORDER loss term; the dominant per-winding self AC
+    // resistance (Rdc + ladder) is emitted separately and is unaffected. Rather than emit an
+    // unsimulatable deck, skip this term for n >= 3 and say so loudly. (A PD-safe behavioural
+    // current-controlled implementation that keeps the term for n >= 3 is follow-up — abt #50.)
+    if (numWindings >= 3) {
+        return "\n* ==== MUTUAL RESISTANCE NETWORK: SKIPPED ====\n"
+               "* Skipped for " + std::to_string(numWindings) + "-winding transformer: the "
+               "auxiliary-winding (Hesterman 2020) coupled-inductor realization yields a "
+               "non-positive-definite\n* coupled-L matrix in ngspice for >=3 windings (incomplete "
+               "LA-LA K couplings). The dominant per-winding\n* self AC resistance is still "
+               "modelled; only the second-order cross-coupling loss term is omitted (abt #50).\n";
+    }
+
     std::string s;
     s += "\n* ==== MUTUAL RESISTANCE NETWORK ====\n";
     s += "* Based on Hesterman (2020) - Auxiliary windings for cross-coupling losses\n";
@@ -1604,17 +1638,48 @@ static void strip_utf8_bom(std::string& s) {
     }
 }
 
+std::vector<std::string> CircuitSimulationReader::split_fields(const std::string& line, char separator) {
+    // Mirrors getline(ss, token, separator) but treats a separator as literal
+    // when it sits inside a double-quoted field or inside balanced parentheses.
+    // Parenthesis-awareness is what keeps LTspice differential probes like
+    // V(N009,d) from being split into two columns on a comma-separated file.
+    std::vector<std::string> fields;
+    std::string current;
+    bool inQuotes = false;
+    int parenDepth = 0;
+    for (char c : line) {
+        if (c == '"') {
+            inQuotes = !inQuotes;
+            current.push_back(c);  // keep quotes; the caller strips surrounding ones
+            continue;
+        }
+        if (!inQuotes) {
+            if (c == '(') {
+                parenDepth++;
+            }
+            else if (c == ')' && parenDepth > 0) {
+                parenDepth--;
+            }
+        }
+        if (c == separator && !inQuotes && parenDepth == 0) {
+            fields.push_back(current);
+            current.clear();
+            continue;
+        }
+        current.push_back(c);
+    }
+    fields.push_back(current);
+    return fields;
+}
+
 void CircuitSimulationReader::process_line(std::string line, char separator) {
     process_line_with_context(line, separator, 0);
 }
 
 void CircuitSimulationReader::process_line_with_context(const std::string& line, char separator, size_t lineNumber) {
-    std::stringstream ss(line);
-    std::string token;
-
     if (_columns.size() == 0) {
         // Header row: collect column names. Strip CR and surrounding quotes from each token.
-        while(getline(ss, token, separator)) {
+        for (std::string token : split_fields(line, separator)) {
             // Strip CR anywhere in the token (handles CRLF files).
             token.erase(std::remove(token.begin(), token.end(), '\r'), token.end());
             // Strip surrounding quotes only (preserves quoted commas/separators within names).
@@ -1631,7 +1696,7 @@ void CircuitSimulationReader::process_line_with_context(const std::string& line,
     }
     else {
         size_t currentColumnIndex = 0;
-        while(getline(ss, token, separator)) {
+        for (std::string token : split_fields(line, separator)) {
             // Same CR/quote/whitespace cleanup as the header so a stray CR in the
             // last field of a CRLF file does not break std::stod.
             token.erase(std::remove(token.begin(), token.end(), '\r'), token.end());
@@ -1846,22 +1911,34 @@ bool CircuitSimulationReader::can_be_current(std::vector<double> data, double li
 
 char CircuitSimulationReader::guess_separator(std::string line){
     // Pick the candidate that produces the most columns (≥2), counting only
-    // separator characters that appear *outside* double-quoted fields. This
-    // lets us correctly detect ';' as the separator in
+    // separator characters that appear *outside* double-quoted fields AND
+    // outside balanced parentheses. This lets us correctly detect ';' as the
+    // separator in
     //     "Voltage, primary";"Current, primary";"Time / s"
-    // which a naive std::count would mis-detect as ',' because it would also
-    // count the commas inside the quoted column names.
+    // (commas live inside quotes) and ',' as the separator in an LTspice header
+    //     time,V(N009,d),V(n016),I(L1)
+    // where the comma inside the differential probe V(N009,d) must not be
+    // counted — a naive std::count would over-count commas in both cases.
     static const std::vector<char> possibleSeparators = {',', ';', '\t', '|'};
 
-    auto count_outside_quotes = [&](char sep) -> size_t {
+    auto count_separators = [&](char sep) -> size_t {
         size_t count = 0;
         bool inQuotes = false;
+        int parenDepth = 0;
         for (char c : line) {
             if (c == '"') {
                 inQuotes = !inQuotes;
                 continue;
             }
-            if (!inQuotes && c == sep) {
+            if (!inQuotes) {
+                if (c == '(') {
+                    parenDepth++;
+                }
+                else if (c == ')' && parenDepth > 0) {
+                    parenDepth--;
+                }
+            }
+            if (!inQuotes && parenDepth == 0 && c == sep) {
                 ++count;
             }
         }
@@ -1872,7 +1949,7 @@ char CircuitSimulationReader::guess_separator(std::string line){
     size_t bestColumns = 1;
 
     for (auto separator : possibleSeparators) {
-        size_t numberColumns = count_outside_quotes(separator) + 1;
+        size_t numberColumns = count_separators(separator) + 1;
         if (numberColumns > bestColumns) {
             bestColumns = numberColumns;
             bestSeparator = separator;
