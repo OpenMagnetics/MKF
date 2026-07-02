@@ -61,4 +61,16 @@ std::string emit_mutual_resistance_behavioural_spice(
     size_t numWindings,
     double frequency);
 
+// Behavioural large-signal (Generalized Steinmetz) core-loss element in parallel with the
+// magnetizing inductance (nodeIn->nodeOut). Emits a flux-integrator node plus an eps-smoothed
+// dissipative current source realizing p = k1*|dB/dt|^alpha*|B|^(beta-alpha). Shared by the
+// ngspice and LTspice exporters (both accept the same B/G/C constructs); quoteExpression wraps
+// the B-source expression in single quotes for ngspice and leaves it bare for LTspice.
+std::string emit_gse_core_loss_spice(
+    const GseCoreLossParams& params,
+    const std::string& windingIndex,
+    const std::string& nodeIn,
+    const std::string& nodeOut,
+    bool quoteExpression);
+
 } // namespace OpenMagnetics

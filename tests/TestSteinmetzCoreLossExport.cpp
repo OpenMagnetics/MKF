@@ -38,6 +38,16 @@ std::string export_core_loss(OpenMagnetics::Magnetic magnetic, bool steinmetz, d
     return s;
 }
 
+std::string export_core_loss_ltspice(OpenMagnetics::Magnetic magnetic, bool steinmetz, double freq) {
+    auto& settings = Settings::GetInstance();
+    bool previous = settings.get_circuit_simulator_include_steinmetz_core_loss();
+    settings.set_circuit_simulator_include_steinmetz_core_loss(steinmetz);
+    CircuitSimulatorExporterLtspiceModel exporter;
+    auto s = exporter.export_magnetic_as_subcircuit(magnetic, freq, 25.0);
+    settings.set_circuit_simulator_include_steinmetz_core_loss(previous);
+    return s;
+}
+
 }  // namespace
 
 TEST_CASE("steinmetz core loss: OFF by default (no behavioural element)", "[circuit][coreloss][export]") {
@@ -67,4 +77,17 @@ TEST_CASE("steinmetz core loss: ON emits the behavioural GSE injector", "[circui
     CHECK(p.beta > p.alpha);
     CHECK(p.gc > 0.0);
     CHECK(std::isfinite(p.gc));
+}
+
+TEST_CASE("steinmetz core loss: LTspice emits the same behavioural element, unquoted", "[circuit][coreloss][export]") {
+    auto magnetic = make_inductor(30);
+    // Off by default -> no behavioural element.
+    auto off = export_core_loss_ltspice(magnetic, false, 100000.0);
+    CHECK(off.find("Bcloss_") == std::string::npos);
+    // On -> the behavioural GSE element, with the B-source expression UNQUOTED for LTspice.
+    auto on = export_core_loss_ltspice(magnetic, true, 100000.0);
+    REQUIRE(on.find("Behavioural GSE core loss") != std::string::npos);
+    CHECK(on.find("Bcloss_1 Node_R_Lmag_1 P1- I=") != std::string::npos);
+    CHECK(on.find("Bcloss_1 Node_R_Lmag_1 P1- I='") == std::string::npos);  // no single quotes
+    CHECK(on.find("Gcl_flux_1") != std::string::npos);
 }

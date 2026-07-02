@@ -248,9 +248,23 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
         }
     }
 
+    // Core losses. Opt-in LARGE-SIGNAL behavioural GSE element (tracks instantaneous dB/dt + flux,
+    // so the loss follows Steinmetz f^alpha*B^beta under any waveform); LTspice accepts the same
+    // B/G/C constructs as ngspice, only the B-source expression is emitted unquoted. It REPLACES the
+    // small-signal mu(f) resistance ladder (default) on the main winding's magnetizing branch.
+    GseCoreLossParams gseParams_lt;
+    if (settings.get_circuit_simulator_include_steinmetz_core_loss()) {
+        gseParams_lt = CircuitSimulatorExporter::calculate_gse_core_loss_params(magnetic, frequency, temperature);
+    }
+    if (gseParams_lt.valid) {
+        circuitString += emit_gse_core_loss_spice(gseParams_lt, "1", "Node_R_Lmag_1", "P1-", /*quote=*/false);
+    }
+
     // Core losses: frequency-dependent resistance network in parallel with Lmag
     auto coreLossTopology_lt = static_cast<CoreLossTopology>(settings.get_circuit_simulator_core_loss_topology());
-    auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology_lt);
+    auto coreResistanceCoefficients = gseParams_lt.valid
+        ? std::vector<double>{}  // the behavioural GSE element replaces the small-signal ladder
+        : CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology_lt);
     if (!coreResistanceCoefficients.empty()) {
         if (coreLossTopology_lt == CoreLossTopology::ROSANO) {
             circuitString += emit_core_rosano_spice(coreResistanceCoefficients, coil.get_functional_description().size());

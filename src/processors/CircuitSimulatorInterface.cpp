@@ -2735,5 +2735,46 @@ GseCoreLossParams CircuitSimulatorExporter::calculate_gse_core_loss_params(
 }
 
 
+std::string emit_gse_core_loss_spice(
+    const GseCoreLossParams& params,
+    const std::string& windingIndex,
+    const std::string& nodeIn,
+    const std::string& nodeOut,
+    bool quoteExpression) {
+
+    if (!params.valid) {
+        return "";
+    }
+    std::string fluxNode = "Node_Bflux_" + windingIndex;
+    // Smooth (Lipschitz) realization of I = gc*sgn(V_L)*|V_L|^(alpha-1)*|lambda|^(beta-alpha),
+    // written as V_L*(V_L^2+epsV^2)^((alpha-2)/2) * (lambda^2+epsL^2)^((beta-alpha)/2). The raw
+    // |V_L|^(alpha-1) has an infinite slope at V_L=0 (every voltage zero-crossing) and stalls the
+    // transient ("timestep too small"); the +eps^2 forms are bounded everywhere with negligible
+    // bias (eps << any real winding voltage / flux linkage), so the element converges at full speed.
+    double halfAlphaM2 = (params.alpha - 2.0) / 2.0;
+    double halfBetaMAlpha = (params.beta - params.alpha) / 2.0;
+    const double epsV2 = 1e-6;   // (1 mV)^2 voltage floor
+    const double epsL2 = 1e-18;  // (1 nWb)^2 flux-linkage floor
+    std::string vL = "V(" + nodeIn + "," + nodeOut + ")";
+    std::string expr = to_string(params.gc, 15) + "*" + vL +
+        "*pow(" + vL + "*" + vL + "+" + to_string(epsV2, 12) + "," + to_string(halfAlphaM2, 9) + ")" +
+        "*pow(V(" + fluxNode + ")*V(" + fluxNode + ")+" + to_string(epsL2, 21) + "," +
+        to_string(halfBetaMAlpha, 9) + ")";
+    std::string q = quoteExpression ? "'" : "";
+
+    std::string s;
+    s += "* Behavioural GSE core loss (winding " + windingIndex +
+         "): p=k1*|dB/dt|^alpha*|B|^(beta-alpha)\n";
+    s += "* alpha=" + to_string(params.alpha, 4) + " beta=" + to_string(params.beta, 4) +
+         " gc=" + to_string(params.gc, 15) + "\n";
+    // Flux linkage lambda = integral(V_L) dt : winding voltage integrated into a 1 F cap node.
+    s += "Gcl_flux_" + windingIndex + " 0 " + fluxNode + " " + nodeIn + " " + nodeOut + " 1\n";
+    s += "Ccl_flux_" + windingIndex + " " + fluxNode + " 0 1\n";
+    s += "Rcl_flux_" + windingIndex + " " + fluxNode + " 0 1e12\n";  // keep the flux node non-floating
+    s += "Bcloss_" + windingIndex + " " + nodeIn + " " + nodeOut + " I=" + q + expr + q + "\n";
+    return s;
+}
+
+
 } // namespace OpenMagnetics
 

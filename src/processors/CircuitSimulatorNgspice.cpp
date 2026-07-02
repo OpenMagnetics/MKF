@@ -77,55 +77,8 @@ static std::string emit_saturating_inductor_ngspice(
     return s;
 }
 
-// Behavioural large-signal core loss (Generalized Steinmetz Equation) in parallel with the
-// magnetizing inductance of the main winding. The instantaneous volumetric loss
-// p(t) = k1*|dB/dt|^alpha*|B|^(beta-alpha) is injected as a dissipative current
-// I_loss = gc*sgn(V_L)*|V_L|^(alpha-1)*|lambda|^(beta-alpha), where V_L is the winding voltage
-// (nodeIn->nodeOut, so dB/dt = V_L/(N*A_e)) and lambda = integral(V_L)dt its flux linkage
-// (B = lambda/(N*A_e)). Unlike the small-signal mu(f) resistance ladder, this tracks the actual
-// dB/dt AND flux amplitude, so its cycle-average follows the Steinmetz f^alpha*B^beta law. Both
-// exponents are >= 0 (alpha-1 can be slightly negative for alpha<1, handled by ngspice pow of a
-// non-negative base; beta-alpha>=0 by construction) so there is no division singularity.
-static std::string emit_gse_core_loss_ngspice(
-    const GseCoreLossParams& p,
-    const std::string& windingIndex,
-    const std::string& nodeIn,
-    const std::string& nodeOut) {
-
-    if (!p.valid) {
-        return "";
-    }
-    std::string fluxNode = "Node_Bflux_" + windingIndex;
-    // Smooth (Lipschitz) realization of the loss current
-    //   I = gc * sgn(V_L)*|V_L|^(alpha-1) * |lambda|^(beta-alpha)
-    // written as       V_L*(V_L^2+epsV^2)^((alpha-2)/2) * (lambda^2+epsL^2)^((beta-alpha)/2).
-    // For alpha<2 the raw |V_L|^(alpha-1) has an INFINITE slope at V_L=0 (every voltage zero-
-    // crossing), which stalls ngspice ("timestep too small"). The +eps^2 forms are smooth and
-    // bounded everywhere with negligible bias (eps << any real winding voltage / flux linkage),
-    // so the element converges at full speed. Both eps are tiny absolute floors.
-    double halfAlphaM2 = (p.alpha - 2.0) / 2.0;   // (alpha-2)/2, negative for alpha<2
-    double halfBetaMAlpha = (p.beta - p.alpha) / 2.0;
-    const double epsV2 = 1e-6;   // (1 mV)^2 voltage floor
-    const double epsL2 = 1e-18;  // (1 nWb)^2 flux-linkage floor
-    std::string vL = "V(" + nodeIn + "," + nodeOut + ")";
-
-    std::string s;
-    s += "* Behavioural GSE core loss (winding " + windingIndex +
-         "): p=k1*|dB/dt|^alpha*|B|^(beta-alpha)\n";
-    s += "* alpha=" + to_string(p.alpha, 4) + " beta=" + to_string(p.beta, 4) +
-         " gc=" + to_string(p.gc, 15) + "\n";
-    // Flux linkage lambda = integral(V_L) dt : winding voltage integrated into a 1 F cap node.
-    s += "Gcl_flux_" + windingIndex + " 0 " + fluxNode + " " + nodeIn + " " + nodeOut + " 1\n";
-    s += "Ccl_flux_" + windingIndex + " " + fluxNode + " 0 1\n";
-    s += "Rcl_flux_" + windingIndex + " " + fluxNode + " 0 1e12\n";  // keep the flux node non-floating
-    // Dissipative loss current in parallel with Lmag (V_L supplies the sign; eps-smoothed powers).
-    s += "Bcloss_" + windingIndex + " " + nodeIn + " " + nodeOut + " I='" +
-         to_string(p.gc, 15) + "*" + vL +
-         "*pow(" + vL + "*" + vL + "+" + to_string(epsV2, 12) + "," + to_string(halfAlphaM2, 9) + ")" +
-         "*pow(V(" + fluxNode + ")*V(" + fluxNode + ")+" + to_string(epsL2, 21) + "," +
-         to_string(halfBetaMAlpha, 9) + ")'\n";
-    return s;
-}
+// Behavioural large-signal core loss (Generalized Steinmetz Equation) is emitted by the shared
+// emit_gse_core_loss_spice (CircuitSimulatorInterface.cpp); ngspice quotes the B-source expression.
 
 std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, double temperature, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     std::string headerString = "* Magnetic model made with OpenMagnetics\n";
@@ -354,7 +307,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         gseParams = CircuitSimulatorExporter::calculate_gse_core_loss_params(magnetic, frequency, temperature);
     }
     if (gseParams.valid) {
-        circuitString += emit_gse_core_loss_ngspice(gseParams, "1", "Node_R_Lmag_1", "P1-");
+        circuitString += emit_gse_core_loss_spice(gseParams, "1", "Node_R_Lmag_1", "P1-", /*quote=*/true);
     }
 
     // Core losses: frequency-dependent resistance network in parallel with Lmag
