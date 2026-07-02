@@ -456,7 +456,6 @@ add_custom_command(
     -S ${MAS_DIR}/schemas/inputs/designRequirements.json
     -S ${MAS_DIR}/schemas/inputs/operatingConditions.json
     -S ${MAS_DIR}/schemas/inputs/operatingPoint.json
-    -S ${MAS_DIR}/schemas/inputs/operatingPointExcitation.json
     -S ${MAS_DIR}/schemas/inputs/topologies/flyback.json
     -S ${MAS_DIR}/schemas/inputs/topologies/currentTransformer.json
     -S ${MAS_DIR}/schemas/inputs/topologies/boost.json
