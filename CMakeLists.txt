@@ -133,14 +133,13 @@ option(MKF_USE_KIRCHHOFF "Link the Kirchhoff converter-model library (libKirchho
 if(MKF_USE_KIRCHHOFF)
     include(ExternalProject)
     # Kirchhoff is configured in its OWN CMake context (isolated from MKF's targets). Two ways to provide it:
-    #   * a local working tree via KIRCHHOFF_SOURCE_DIR (DEFAULT — what works today), or
-    #   * a GitHub clone (set KIRCHHOFF_SOURCE_DIR="" to use GIT_REPOSITORY/GIT_TAG below).
-    # NOTE: the GitHub path is currently BLOCKED — Kirchhoff's `AAS` submodule
-    # (git@github.com:Power-Supply-Manufacturers-Association/AAS.git) is not published on GitHub ("Repository
-    # not found"), so a recursive clone of Kirchhoff fails. Publish AAS (its siblings PEAS/RAS/CAS/SAS/MAS/
-    # CIAS/CTAS resolve fine) to enable the github-fetch default; until then the local working tree is required.
+    #   * a GitHub clone (DEFAULT — GIT_REPOSITORY/GIT_TAG below; recursive, so KH's submodules come too), or
+    #   * a local working tree by setting KIRCHHOFF_SOURCE_DIR to a path.
+    # The github-fetch default became usable once Kirchhoff's `AAS` submodule was published on GitHub
+    # (its siblings PEAS/RAS/CAS/SAS/MAS/CIAS/TAS/CONAS/CTAS and deps/MKF all resolve). To develop against
+    # a local KH checkout instead, pass -DKIRCHHOFF_SOURCE_DIR=/path/to/Kirchhoff.
     set(KIRCHHOFF_GIT_TAG "main" CACHE STRING "Kirchhoff git tag/branch to build (when fetching from GitHub)")
-    set(KIRCHHOFF_SOURCE_DIR "/home/alf/OpenConverters/Kirchhoff" CACHE PATH "Local Kirchhoff working tree (clear to fetch from GitHub)")
+    set(KIRCHHOFF_SOURCE_DIR "" CACHE PATH "Local Kirchhoff working tree (leave empty to fetch from GitHub)")
     set(KIRCHHOFF_BUILD_DIR "${CMAKE_BINARY_DIR}/kirchhoff-build")
     set(KIRCHHOFF_API_LIB "${KIRCHHOFF_BUILD_DIR}/libKirchhoffApi.so")
     if(KIRCHHOFF_SOURCE_DIR)
