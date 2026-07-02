@@ -1,3 +1,4 @@
+import json
 import pandas
 import ndjson
 import pathlib
@@ -104,6 +105,39 @@ for material in materials:
             "value": row["imaginary"]
         })
 
+    # Strip empty placeholder blocks before persisting: advanced_core_materials records
+    # are name-keyed patches merged onto the base material; an empty block carries no
+    # information and corrupts both the MKF merge and merged-schema validation.
+    _p = mas_advanced_datum.get("permeability")
+    if isinstance(_p, dict):
+        if _p.get("amplitude") == []:
+            _p.pop("amplitude")
+        _c = _p.get("complex")
+        if isinstance(_c, dict) and _c.get("real") == [] and _c.get("imaginary") == []:
+            _p.pop("complex")
+        if not _p:
+            mas_advanced_datum.pop("permeability")
+    _vl = mas_advanced_datum.get("volumetricLosses")
+    if isinstance(_vl, dict):
+        _d = [x for x in _vl.get("default", []) if x != []]
+        if _d:
+            _vl["default"] = _d
+        else:
+            mas_advanced_datum.pop("volumetricLosses")
+    if len(mas_advanced_datum.get("bhCycle", [])) < 4:
+        # a B-H "cycle" of fewer than 4 points is an extraction fragment (schema minItems: 4)
+        mas_advanced_datum.pop("bhCycle", None)
+    _vl2 = mas_advanced_datum.get("volumetricLosses")
+    if isinstance(_vl2, dict):
+        for _i, _entry in enumerate(_vl2.get("default", [])):
+            if isinstance(_entry, list):
+                _seen = set(); _out = []
+                for _pt in _entry:
+                    _k = json.dumps(_pt, sort_keys=True)
+                    if _k in _seen:
+                        continue  # exact duplicate point (schema uniqueItems)
+                    _seen.add(_k); _out.append(_pt)
+                _vl2["default"][_i] = _out
     mas_advanced_data.append(mas_advanced_datum)
 
 # print(mas_data)
