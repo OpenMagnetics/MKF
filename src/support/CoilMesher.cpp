@@ -32,6 +32,27 @@ std::shared_ptr<CoilMesherModel> CoilMesherModel::factory(CoilMesherModels model
 
 std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
     auto commonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
+    if (commonHarmonicIndexes.empty()) {
+        // An empty selection means every winding's current has zero AC content
+        // (a DC-only excitation, e.g. a choke bias point). That is a valid
+        // operating point whose AC inducing field — and thus proximity losses —
+        // is exactly zero, not an error. Mesh the fundamental with its zero
+        // amplitude so both the inducing and induced meshes keep one consistent
+        // harmonic and downstream consumers don't see COIL_NOT_PROCESSED.
+        // Only degrade this way when a fundamental with a real frequency exists;
+        // otherwise the excitation is genuinely malformed and the mesher throws.
+        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            auto current = excitation.get_current();
+            if (!current || !current->get_harmonics()) {
+                continue;
+            }
+            auto frequencies = current->get_harmonics().value().get_frequencies();
+            if (frequencies.size() > 1 && frequencies[1] > 0) {
+                return {1};
+            }
+        }
+        return commonHarmonicIndexes;
+    }
     if (commonHarmonicIndexes.size() > operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size() * _quickModeForManyHarmonicsThreshold) {
         return get_common_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold * 3);
     }
