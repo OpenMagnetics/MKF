@@ -171,8 +171,10 @@ class Settings
 
         // Circuit simulator stray/parasitic capacitance (false = no capacitance, true = include the
         // per-winding self and inter-winding lumped capacitances from StrayCapacitance). Adds terminal
-        // capacitors that set self-resonance and inter-winding (CM) coupling. Default to disabled.
-        bool _circuitSimulatorIncludeStrayCapacitance = false;
+        // capacitors that set self-resonance and inter-winding (CM) coupling. Default to ENABLED — must
+        // match reset() (Settings.cpp), since the singleton is constructed without calling reset(): a
+        // stale `false` here silently disables stray-cap emission in the SPICE export at runtime.
+        bool _circuitSimulatorIncludeStrayCapacitance = true;
 
         // Circuit simulator large-signal core loss (false = small-signal mu(f) resistance ladder,
         // true = a behavioural GSE/Steinmetz core-loss element that tracks the instantaneous dB/dt and
