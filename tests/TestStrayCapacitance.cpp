@@ -8,6 +8,7 @@
 #include "processors/Sweeper.h"
 #include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 
@@ -45,6 +46,40 @@ TEST_CASE("Calculate capacitance among two windings each with 1 turn and 1 paral
             CHECK_THAT(capacitance, WithinRel(expectedValues[firstKey][secondKey], maximumError));
         }
     }
+}
+
+TEST_CASE("Tripole is the positive 3-cap pi-model; 6C is the canonical Biela/Kolar network", "[physical-model][stray-capacitance][models]") {
+    settings.reset();
+    auto coilJsonStr = R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 10, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 10, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })";
+    auto coreJsonStr = R"({"name": "core", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
+    auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+
+    auto output = StrayCapacitance().calculate_capacitance(coil);
+    auto amongWindings = output.get_capacitance_among_windings().value();
+    auto tripole = output.get_tripole_capacitance_per_winding().value().at("Primary").at("Secondary");
+    auto sixCap = output.get_six_capacitor_network_per_winding().value().at("Primary").at("Secondary");
+
+    double cselfP = amongWindings.at("Primary").at("Primary");
+    double cselfS = amongWindings.at("Secondary").at("Secondary");
+    double cinter = amongWindings.at("Primary").at("Secondary");
+
+    // Tripole = the measurable positive 3-capacitor pi-model: {primary self, secondary self, inter}.
+    CHECK(tripole.get_c1() == Catch::Approx(cselfP));
+    CHECK(tripole.get_c2() == Catch::Approx(cselfS));
+    CHECK(tripole.get_c3() == Catch::Approx(cinter));
+    // The three tripole caps must be strictly positive (the whole point of the pi-model).
+    CHECK(tripole.get_c1() > 0.0);
+    CHECK(tripole.get_c2() > 0.0);
+    CHECK(tripole.get_c3() > 0.0);
+
+    // Six-capacitor network = Biela/Kolar eq. (30) from C0 = the inter-winding static capacitance:
+    // C1=C2=-C0/6, C3=C4=C0/3, C5=C6=C0/6.
+    CHECK(sixCap.get_c3() == Catch::Approx(cinter / 3.0));
+    CHECK(sixCap.get_c4() == Catch::Approx(sixCap.get_c3()));
+    CHECK(sixCap.get_c1() == Catch::Approx(-sixCap.get_c3() / 2.0));   // -C0/6 = -(C0/3)/2
+    CHECK(sixCap.get_c2() == Catch::Approx(sixCap.get_c1()));
+    CHECK(sixCap.get_c5() == Catch::Approx(sixCap.get_c3() / 2.0));    // C0/6 = (C0/3)/2
+    CHECK(sixCap.get_c6() == Catch::Approx(sixCap.get_c5()));
 }
 
 TEST_CASE("Calculate capacitance of a winding with 8 turns and 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {

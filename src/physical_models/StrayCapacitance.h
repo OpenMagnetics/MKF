@@ -142,8 +142,15 @@ class StrayCapacitance{
     static double bipolar_tau_at_point(double lx, double ly, double a);
     static double bipolar_energy_density_at_point(double px, double py, const BipolarParams& params, double voltageDrop, double epsilonEff);
 
+    // Internal three-input-multipole matrix used for the floating-node (V3) convergence and exposed
+    // as the informational per-pair capacitance matrix. NOT the terminal Maxwell matrix (that is
+    // calculate_maxwell_capacitance_matrix, built from the positive static capacitances).
     static ScalarMatrixAtFrequency calculate_capacitance_matrix_between_windings(double energy, double voltageDrop, double relativeTurnsRatio);
-        static std::pair<SixCapacitorNetworkPerWinding, TripoleCapacitancePerWinding> calculate_capacitance_models_between_windings(double energy, double voltageDrop, double relativeTurnsRatio);
+    // Canonical Biela/Kolar six-capacitor two-port network for a winding pair, built from the
+    // static inter-winding capacitance C0 (energy method). Contains the intrinsic negative self
+    // terms (-C0/6) — a valid math equivalent, NOT a passive netlist (see the .cpp for the node
+    // topology). For circuit simulation use the positive tripole/pi-model instead.
+    static SixCapacitorNetworkPerWinding calculate_six_capacitor_network(double staticInterwindingCapacitance);
         static std::vector<ScalarMatrixAtFrequency> calculate_maxwell_capacitance_matrix(Coil coil, std::map<std::string, std::map<std::string, double>> capacitanceAmongWindings);
 
 };

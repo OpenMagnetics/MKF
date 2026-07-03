@@ -1599,37 +1599,12 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
  */
 ScalarMatrixAtFrequency StrayCapacitance::calculate_capacitance_matrix_between_windings(double energy, double voltageDrop, double relativeTurnsRatio) {
     ScalarMatrixAtFrequency scalarMatrixAtFrequency;
-    // C0: Total equivalent capacitance from energy method
-    // C = 2E/V² (from E = ½CV²)
+    // C0: Total equivalent capacitance from energy method, C = 2E/V² (from E = ½CV²).
+    // This assembles the internal three-input-multipole coefficients whose ["*"]["3"] entries drive
+    // the floating-node (V3) convergence in calculate_capacitance_with_voltages. It is an internal
+    // solver representation, NOT the terminal Maxwell matrix (see calculate_maxwell_capacitance_matrix).
     double C0 = energy * 2 / pow(voltageDrop, 2);
     scalarMatrixAtFrequency.set_frequency(0);  // Static result
-
-    // Six-capacitor network values (per Biela/Kolar Section V-A)
-    // Symmetric distribution of C0 among the six capacitors
-    auto gamma1 = -C0 / 6;  // Primary self-capacitance (negative)
-    auto gamma2 = -C0 / 6;  // Secondary self-capacitance (negative)
-    auto gamma3 = C0 / 3;   // Primary-to-secondary mutual (positive)
-    auto gamma4 = C0 / 3;   // Primary-to-secondary mutual (positive)
-    auto gamma5 = C0 / 6;   // Cross-coupling term
-    auto gamma6 = C0 / 6;   // Cross-coupling term
-
-    // Transform to 3x3 matrix with turns ratio scaling
-    // Note: Uses turns ratio (not inductance ratio) for voltage-dependent scaling
-    scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["1"].set_nominal(gamma1 + relativeTurnsRatio * (gamma4 + gamma5));
-    scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["2"].set_nominal(-2 * gamma4);
-    scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["3"].set_nominal(2 * relativeTurnsRatio * gamma5);
-    scalarMatrixAtFrequency.get_mutable_magnitude()["2"]["2"].set_nominal(gamma2 + gamma4 + gamma6);
-    scalarMatrixAtFrequency.get_mutable_magnitude()["2"]["3"].set_nominal(2 * gamma6);
-    scalarMatrixAtFrequency.get_mutable_magnitude()["3"]["3"].set_nominal(gamma3 + gamma5 + gamma6);
-
-    return scalarMatrixAtFrequency;
-
-}
-
-std::pair<SixCapacitorNetworkPerWinding, TripoleCapacitancePerWinding> StrayCapacitance::calculate_capacitance_models_between_windings(double energy, double voltageDrop, double relativeTurnsRatio) {
-    std::map<std::string, double> result;
-
-    double C0 = energy * 2 / pow(voltageDrop, 2);
 
     auto gamma1 = -C0 / 6;
     auto gamma2 = -C0 / 6;
@@ -1638,24 +1613,38 @@ std::pair<SixCapacitorNetworkPerWinding, TripoleCapacitancePerWinding> StrayCapa
     auto gamma5 = C0 / 6;
     auto gamma6 = C0 / 6;
 
-    SixCapacitorNetworkPerWinding sixCapacitorNetworkPerWinding;
-    sixCapacitorNetworkPerWinding.set_c1(gamma1);
-    sixCapacitorNetworkPerWinding.set_c2(gamma2);
-    sixCapacitorNetworkPerWinding.set_c3(gamma3);
-    sixCapacitorNetworkPerWinding.set_c4(gamma4);
-    sixCapacitorNetworkPerWinding.set_c5(gamma5);
-    sixCapacitorNetworkPerWinding.set_c6(gamma6);
+    scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["1"].set_nominal(gamma1 + relativeTurnsRatio * (gamma4 + gamma5));
+    scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["2"].set_nominal(-2 * gamma4);
+    scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["3"].set_nominal(2 * relativeTurnsRatio * gamma5);
+    scalarMatrixAtFrequency.get_mutable_magnitude()["2"]["2"].set_nominal(gamma2 + gamma4 + gamma6);
+    scalarMatrixAtFrequency.get_mutable_magnitude()["2"]["3"].set_nominal(2 * gamma6);
+    scalarMatrixAtFrequency.get_mutable_magnitude()["3"]["3"].set_nominal(gamma3 + gamma5 + gamma6);
 
-    auto C1 = gamma1 + relativeTurnsRatio * gamma2;
-    auto C2 = gamma5 + gamma6;
-    auto C3 = gamma3;
+    return scalarMatrixAtFrequency;
+}
 
-    TripoleCapacitancePerWinding tripoleCapacitancePerWinding;
-    tripoleCapacitancePerWinding.set_c1(C1);
-    tripoleCapacitancePerWinding.set_c2(C2);
-    tripoleCapacitancePerWinding.set_c3(C3);
-
-    return {sixCapacitorNetworkPerWinding, tripoleCapacitancePerWinding};
+// Canonical Biela & Kolar six-capacitor two-port network (IEEE Trans. Ind. Appl. 2008, eq. 30) for
+// a winding pair, from the static inter-winding capacitance C0 by the electrostatic energy method.
+// Node topology (their Fig. 16), terminals P1+ P1- P2+ P2-:
+//   C1: P1+ - P1-  (primary self)     = -C0/6
+//   C2: P2+ - P2-  (secondary self)   = -C0/6
+//   C3: P1+ - P2+  (top-to-top)       =  C0/3
+//   C4: P1- - P2-  (bottom-to-bottom) =  C0/3
+//   C5: P1+ - P2-  (cross)            =  C0/6
+//   C6: P1- - P2+  (cross)            =  C0/6
+// The -C0/6 self terms are INTRINSIC to this complete energy-equivalent representation (a valid
+// mathematical two-port, not a passive netlist). Do NOT emit this to transient SPICE — use the
+// positive three-capacitor pi/tripole model for simulation.
+SixCapacitorNetworkPerWinding StrayCapacitance::calculate_six_capacitor_network(double staticInterwindingCapacitance) {
+    const double C0 = staticInterwindingCapacitance;
+    SixCapacitorNetworkPerWinding n;
+    n.set_c1(-C0 / 6.0);
+    n.set_c2(-C0 / 6.0);
+    n.set_c3(C0 / 3.0);
+    n.set_c4(C0 / 3.0);
+    n.set_c5(C0 / 6.0);
+    n.set_c6(C0 / 6.0);
+    return n;
 }
 
 
@@ -1803,11 +1792,9 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
             }
             capacitanceMatrix[firstWindingName][secondWindingName] = capacitanceMatrixBetweenWindings;
             capacitanceMatrix[secondWindingName][firstWindingName] = capacitanceMatrixBetweenWindings;
-            auto [sixCapacitorNetworkPerWindingBetweenWindings, tripoleCapacitancePerWindingBetweenWindings] = calculate_capacitance_models_between_windings(energyInBetweenTheseWindings, voltageDropBetweenWindings, relativeTurnsRatio);
-            sixCapacitorNetworkPerWinding[firstWindingName][secondWindingName] = sixCapacitorNetworkPerWindingBetweenWindings;
-            sixCapacitorNetworkPerWinding[secondWindingName][firstWindingName] = sixCapacitorNetworkPerWindingBetweenWindings;
-            tripoleCapacitancePerWinding[firstWindingName][secondWindingName] = tripoleCapacitancePerWindingBetweenWindings;
-            tripoleCapacitancePerWinding[secondWindingName][firstWindingName] = tripoleCapacitancePerWindingBetweenWindings;
+            // 6-capacitor network + positive 3-capacitor (tripole/pi) model are derived below, once
+            // the full positive self+inter capacitance map is available (the tripole needs BOTH
+            // windings' self-capacitances, which are only complete after this loop).
         }
     }
 
@@ -1828,6 +1815,37 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
             auto capacitance = capacitanceMapPerWindings[windingsKey];
             staticCapacitanceMapPerWindings[firstWinding.get_name()][secondWinding.get_name()] = capacitance;
             staticCapacitanceMapPerWindings[secondWinding.get_name()][firstWinding.get_name()] = capacitance;
+        }
+    }
+
+    // Positive 3-capacitor (pi / tripole) model + canonical 6-capacitor network per winding PAIR,
+    // now that the full positive self+inter capacitance map is known. The tripole is the measurable,
+    // SPICE-friendly model (Lu/Zhu/Hui 2003; Coilcraft/OMICRON vendor models): C1 = self-capacitance
+    // of the first winding, C2 = self of the second, C3 = the inter-winding capacitance — all
+    // positive, straight from the energy method (the same values the SPICE export uses). The 6C is
+    // the complete Biela/Kolar energy-equivalent (with its intrinsic negative self terms) built from
+    // the inter-winding static capacitance.
+    for (size_t i = 0; i < windings.size(); ++i) {
+        std::string wi = windings[i].get_name();
+        for (size_t j = i + 1; j < windings.size(); ++j) {
+            std::string wj = windings[j].get_name();
+            if (!staticCapacitanceMapPerWindings.contains(wi) || !staticCapacitanceMapPerWindings.at(wi).contains(wj)) {
+                continue;
+            }
+            double cinter = staticCapacitanceMapPerWindings.at(wi).at(wj);
+            double cselfI = staticCapacitanceMapPerWindings.at(wi).contains(wi) ? staticCapacitanceMapPerWindings.at(wi).at(wi) : 0.0;
+            double cselfJ = staticCapacitanceMapPerWindings.at(wj).contains(wj) ? staticCapacitanceMapPerWindings.at(wj).at(wj) : 0.0;
+
+            TripoleCapacitancePerWinding tripole;
+            tripole.set_c1(cselfI);
+            tripole.set_c2(cselfJ);
+            tripole.set_c3(cinter);
+            tripoleCapacitancePerWinding[wi][wj] = tripole;
+            tripoleCapacitancePerWinding[wj][wi] = tripole;
+
+            auto sixCap = calculate_six_capacitor_network(cinter);
+            sixCapacitorNetworkPerWinding[wi][wj] = sixCap;
+            sixCapacitorNetworkPerWinding[wj][wi] = sixCap;
         }
     }
 

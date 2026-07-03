@@ -607,8 +607,17 @@ target_link_libraries(MKF PUBLIC ${LIBS})
 # up by the SOURCES glob; here we add the include path + the imported .so + the build-order dependency.
 if(MKF_USE_KIRCHHOFF)
     add_dependencies(MKF kirchhoff_ext)
+    # The KH source tree lives at KIRCHHOFF_SOURCE_DIR when a local checkout is passed, or at the
+    # ExternalProject fetch location when we clone from GitHub (the default). Pick the right one so the
+    # KirchhoffApi.hpp include resolves in BOTH modes — an empty KIRCHHOFF_SOURCE_DIR must NOT collapse
+    # to "/src" (which silently drops the include and breaks the KirchhoffBridge.cpp compile).
+    if(KIRCHHOFF_SOURCE_DIR)
+        set(_kirchhoff_include_dir "${KIRCHHOFF_SOURCE_DIR}/src")
+    else()
+        set(_kirchhoff_include_dir "${CMAKE_BINARY_DIR}/kirchhoff_ext-prefix/src/kirchhoff_ext/src")
+    endif()
     # PUBLIC so consumers/tests that include KirchhoffBridge.h (-> KirchhoffApi.hpp) find it too.
-    target_include_directories(MKF PUBLIC "${KIRCHHOFF_SOURCE_DIR}/src")
+    target_include_directories(MKF PUBLIC "${_kirchhoff_include_dir}")
     target_link_libraries(MKF PUBLIC KirchhoffApi)
 endif()
 

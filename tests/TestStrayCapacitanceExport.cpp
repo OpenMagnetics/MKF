@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "processors/CircuitSimulatorInterface.h"
+#include "constructive_models/Magnetic.h"
 #include "support/Settings.h"
 #include "TestingUtils.h"
 
@@ -18,7 +19,7 @@ using namespace OpenMagnetics;
 
 namespace {
 
-Magnetic wound_magnetic(const std::vector<int64_t>& numberTurns) {
+OpenMagnetics::Magnetic wound_magnetic(const std::vector<int64_t>& numberTurns) {
     auto gapping = OpenMagneticsTesting::get_residual_gap();
     auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 39", gapping, numberTurns, 1, "3C97");
     auto coil = magnetic.get_coil();
