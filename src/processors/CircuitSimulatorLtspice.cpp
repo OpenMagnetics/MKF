@@ -284,6 +284,10 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
         }
     }
 
+    // Stray/parasitic capacitance (positive 3-cap model) — same shared emitter as ngspice; the
+    // frontend's SPICE downloads use the LTspice format, so this is where users actually get it.
+    circuitString += emit_stray_capacitance_spice(coil, numWindings);
+
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
 }
 

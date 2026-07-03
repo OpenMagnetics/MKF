@@ -174,7 +174,7 @@ namespace OpenMagnetics {
         _circuitSimulatorFracpoleOptions = std::nullopt;
         _circuitSimulatorIncludeSaturation = false;
         _circuitSimulatorIncludeMutualResistance = false;
-        _circuitSimulatorIncludeStrayCapacitance = false;
+        _circuitSimulatorIncludeStrayCapacitance = true;
         _circuitSimulatorIncludeSteinmetzCoreLoss = false;
         _circuitSimulatorCoreLossTopology = 1;
 

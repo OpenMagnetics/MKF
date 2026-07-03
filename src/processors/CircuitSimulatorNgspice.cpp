@@ -362,38 +362,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     // add no convergence risk and behave identically in AC and transient; being terminal-
     // referenced they need no core/ground pin. Gated (default off) like the saturation and
     // mutual-resistance terms; only wired when the coil is wound.
-    if (settings.get_circuit_simulator_include_stray_capacitance() && coil.get_turns_description()) {
-        auto capAmongWindings = StrayCapacitance().calculate_capacitance(coil).get_capacitance_among_windings();
-        if (capAmongWindings) {
-            const auto& capMap = capAmongWindings.value();
-            const auto& fd = coil.get_functional_description();
-            std::string capString = "\n* ==== STRAY CAPACITANCE NETWORK ====\n";
-            capString += "* Per-winding self-capacitance (self-resonance) + inter-winding\n";
-            capString += "* capacitance (CM coupling), lumped positive caps from StrayCapacitance.\n";
-            for (size_t a = 0; a < numWindings; ++a) {
-                std::string an = fd[a].get_name();
-                std::string as = std::to_string(a + 1);
-                if (capMap.contains(an) && capMap.at(an).contains(an)) {
-                    double cself = capMap.at(an).at(an);
-                    if (std::isfinite(cself) && cself > 0) {
-                        capString += "Cself_" + as + " P" + as + "+ P" + as + "- " + to_string(cself, 18) + "\n";
-                    }
-                }
-                for (size_t b = a + 1; b < numWindings; ++b) {
-                    std::string bn = fd[b].get_name();
-                    if (capMap.contains(an) && capMap.at(an).contains(bn)) {
-                        double cinter = capMap.at(an).at(bn);
-                        if (std::isfinite(cinter) && cinter > 0) {
-                            capString += "Cwind_" + as + "_" + std::to_string(b + 1) +
-                                         " P" + as + "+ P" + std::to_string(b + 1) + "+ " +
-                                         to_string(cinter, 18) + "\n";
-                        }
-                    }
-                }
-            }
-            circuitString += capString;
-        }
-    }
+    circuitString += emit_stray_capacitance_spice(coil, numWindings);
 
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
 }

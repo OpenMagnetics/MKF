@@ -16,6 +16,7 @@
 #include "support/Exceptions.h"
 #include "physical_models/CoreLosses.h"
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/StrayCapacitance.h"
 
 namespace OpenMagnetics {
 
@@ -1698,6 +1699,50 @@ std::string emit_mutual_resistance_behavioural_spice(
     }
     s += "\n";
     return s;
+}
+
+// Stray/parasitic capacitance network (positive 3-capacitor / pi-model). Shared verbatim by the
+// ngspice and LTspice exporters — the caps are plain `C…` terminal elements with identical syntax
+// in both. See the header for the model rationale.
+std::string emit_stray_capacitance_spice(const Coil& coil, size_t numWindings) {
+    auto& settings = Settings::GetInstance();
+    if (!settings.get_circuit_simulator_include_stray_capacitance() || !coil.get_turns_description()) {
+        return "";
+    }
+    auto capAmongWindings = StrayCapacitance().calculate_capacitance(coil).get_capacitance_among_windings();
+    if (!capAmongWindings) {
+        return "";
+    }
+    const auto& capMap = capAmongWindings.value();
+    const auto& fd = coil.get_functional_description();
+    std::string capString = "\n* ==== STRAY CAPACITANCE NETWORK ====\n";
+    capString += "* Per-winding self-capacitance (self-resonance) + inter-winding\n";
+    capString += "* capacitance (CM coupling), lumped positive caps from StrayCapacitance.\n";
+    bool emittedAny = false;
+    for (size_t a = 0; a < numWindings; ++a) {
+        std::string an = fd[a].get_name();
+        std::string as = std::to_string(a + 1);
+        if (capMap.contains(an) && capMap.at(an).contains(an)) {
+            double cself = capMap.at(an).at(an);
+            if (std::isfinite(cself) && cself > 0) {
+                capString += "Cself_" + as + " P" + as + "+ P" + as + "- " + to_string(cself, 18) + "\n";
+                emittedAny = true;
+            }
+        }
+        for (size_t b = a + 1; b < numWindings; ++b) {
+            std::string bn = fd[b].get_name();
+            if (capMap.contains(an) && capMap.at(an).contains(bn)) {
+                double cinter = capMap.at(an).at(bn);
+                if (std::isfinite(cinter) && cinter > 0) {
+                    capString += "Cwind_" + as + "_" + std::to_string(b + 1) +
+                                 " P" + as + "+ P" + std::to_string(b + 1) + "+ " +
+                                 to_string(cinter, 18) + "\n";
+                    emittedAny = true;
+                }
+            }
+        }
+    }
+    return emittedAny ? capString : "";
 }
 
 

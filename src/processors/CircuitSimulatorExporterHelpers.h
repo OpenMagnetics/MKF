@@ -73,4 +73,13 @@ std::string emit_gse_core_loss_spice(
     const std::string& nodeOut,
     bool quoteExpression);
 
+// Stray/parasitic capacitance network (positive 3-capacitor / pi-model): one self-capacitance
+// across each winding (P<i>+ -> P<i>-, self-resonance) + one inter-winding capacitance between
+// each winding pair (P<i>+ -> P<j>+, common-mode coupling), as plain positive terminal caps from
+// StrayCapacitance's energy method (capacitance_among_windings). Standard SPICE `C…` syntax, so it
+// is shared verbatim by the ngspice and LTspice exporters. Gated by
+// circuit_simulator_include_stray_capacitance and only emitted when the coil is wound (turns
+// description present); returns "" otherwise.
+std::string emit_stray_capacitance_spice(const Coil& coil, size_t numWindings);
+
 } // namespace OpenMagnetics
