@@ -1213,31 +1213,31 @@ double WindingProximityEffectLossesVandelacModel::calculate_proximity_factor(Wir
 
     // F1(p) = [sinh(2p) + sin(2p)] / [cosh(2p) - cos(2p)]  (Eq. 29)
     // F2(p) = [sinh(p)·cos(p) + cosh(p)·sin(p)] / [cosh(2p) - cos(2p)]  (Eq. 30)
-    double denom, F1, F2;
+    //
+    // Pure-proximity kernel (α=1, β=0 in Vandelac & Ziogas Eq. 25):
+    //   Q'_prox = (1 + α²)·F1 - 4α·F2 = 2·F1 - 4·F2
+    // (the previous 2 -> 3 typo used (1+α²)=3, which corresponds to no valid α and
+    //  breaks the DC limit — see below.)
+    double kernel;
     if (p < 1e-4) {
-        // Taylor series: F1 → 1, F2 → 1/2  as p→0
-        F1 = 1.0;
-        F2 = 0.5;
+        // As p→0 the individual F1→1/p and F2→1/(2p) BOTH diverge (the old
+        // F1=1,F2=1/2 "Taylor" values were false), but the proximity combination
+        // 2·F1 - 4·F2 → p³/3 → 0: proximity loss must vanish at DC (~ω²).
+        // Evaluating 2F1-4F2 directly here is catastrophic cancellation (2e4-2e4),
+        // so use the vanishing asymptote (≈0 at this threshold).
+        kernel = 0.0;
     }
     else {
-        denom = std::cosh(2.0 * p) - std::cos(2.0 * p);
-        F1 = (std::sinh(2.0 * p) + std::sin(2.0 * p)) / denom;
-        F2 = (std::sinh(p) * std::cos(p) + std::cosh(p) * std::sin(p)) / denom;
+        double denom = std::cosh(2.0 * p) - std::cos(2.0 * p);
+        double F1 = (std::sinh(2.0 * p) + std::sin(2.0 * p)) / denom;
+        double F2 = (std::sinh(p) * std::cos(p) + std::cosh(p) * std::sin(p)) / denom;
+        kernel = 2.0 * F1 - 4.0 * F2;
     }
 
-    // Proximity-only case (α=1, β=0), from Eq. 25 differentiated:
-    //   Q_prox = H²_e·ρ / δ · [3·F1 - 4·F2] / 2
-    // Per-unit-length for conductor width a:
-    //   P_prox/l = Q_prox · a = H²_e · (a·ρ·(3·F1-4·F2)) / (2·δ)
-    //
-    // Note: at α=1 the total loss from Eq. 25 is:
-    //   Q_total = H²/(2·σ·δ) · [(1+α²)·F1 - 2α·F2]
-    //           = H²·ρ/δ · [(1+1)·F1 - 2·F2] / 2
-    //           = H²·ρ/δ · [2·F1 - 2·F2] / 2
-    //           = H²·ρ/δ · (F1 - F2)     [for field on BOTH surfaces]
-    // But in our architecture H is the EXTERNAL field (one side only, proximity only):
-    //   factor = a · ρ · (3·F1 - 4·F2) / (2·δ)
-    double factor = a * resistivity * (3.0 * F1 - 4.0 * F2) / (2.0 * skinDepth);
+    // Per-unit-length proximity loss for conductor width a, from Eq. 25 with the
+    // g=2 (sine-harmonic) normalisation folded into the 1/2:
+    //   P_prox/l = H²_e · a·ρ·(2·F1 - 4·F2) / (2·δ)
+    double factor = a * resistivity * kernel / (2.0 * skinDepth);
 
     // Guard against negative factor at extreme p
     if (factor < 0) factor = 0;
