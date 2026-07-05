@@ -131,8 +131,9 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
             "(effective parameters/shape unresolved). Run magnetic autocomplete / process the core first.");
     }
 
-    auto originallyIncludeFringing = settings.get_magnetic_field_include_fringing();
-    settings.set_magnetic_field_include_fringing(false);
+    // RAII: any throw between the manual set/restore pair (several are right below) used
+    // to leave fringing globally disabled for the rest of the process.
+    SettingsGuard<bool> fringingGuard(settings, &Settings::get_magnetic_field_include_fringing, &Settings::set_magnetic_field_include_fringing, false);
 
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()){
@@ -173,13 +174,13 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
     dimensionWithTolerance.set_nominal(leakageInductance);
     leakageInductanceOutput.set_leakage_inductance_per_winding({dimensionWithTolerance});
 
-    settings.set_magnetic_field_include_fringing(originallyIncludeFringing);
-
     return leakageInductanceOutput;
 }
 
 ComplexField LeakageInductance::calculate_leakage_magnetic_field(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
-    settings.set_magnetic_field_include_fringing(false);
+    // RAII: this function never restored the flag at all — one call permanently
+    // disabled fringing for every later field computation in the process.
+    SettingsGuard<bool> fringingGuard(settings, &Settings::get_magnetic_field_include_fringing, &Settings::set_magnetic_field_include_fringing, false);
 
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()){
@@ -279,8 +280,8 @@ double LeakageInductance::calculate_leakage_field_energy(Magnetic magnetic, cons
             ") does not match number of windings (" + std::to_string(numberWindings) + ")");
     }
 
-    auto originallyIncludeFringing = settings.get_magnetic_field_include_fringing();
-    settings.set_magnetic_field_include_fringing(false);
+    // RAII guard (see calculate_leakage_inductance above).
+    SettingsGuard<bool> fringingGuard(settings, &Settings::get_magnetic_field_include_fringing, &Settings::set_magnetic_field_include_fringing, false);
 
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()){
@@ -306,7 +307,6 @@ double LeakageInductance::calculate_leakage_field_energy(Magnetic magnetic, cons
 
     double energy = integrate_leakage_energy(magnetic, field, dA);
 
-    settings.set_magnetic_field_include_fringing(originallyIncludeFringing);
     return energy;
 }
 

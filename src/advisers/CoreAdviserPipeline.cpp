@@ -10,6 +10,7 @@
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoreAdviserInternal.h"
 #include "advisers/CoilAdviser.h"             // ABT #4 proximity re-rank winds a representative coil
+#include "Constants.h"                         // Constants::residualGap for the DMC gap pre-filter
 #include "advisers/MagneticFilter.h"
 #include "advisers/MagneticFilterInternal.h"  // for is_energy_storing_topology() / is_inductor()
 #include "processors/MagneticSimulator.h"     // ABT #4 proximity re-rank full-simulates the wound candidate
@@ -538,8 +539,20 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
                                       materialType == MAS::MaterialType::AMORPHOUS ||
                                       materialType == MAS::MaterialType::NANOCRYSTALLINE ||
                                       materialType == MAS::MaterialType::ELECTRICAL_STEEL);
-            bool hasGap = !core.get_functional_description().get_gapping().empty() &&
-                          core.get_functional_description().get_gapping()[0].get_length() > 0;
+            // A REAL gap, not a residual one: ~1734 catalogue cores carry a RESIDUAL gap
+            // entry (Constants::residualGap = 5e-6 m > 0) representing the unavoidable
+            // ungapped-core reluctance, so the old `length > 0` test treated ungapped high-µ
+            // ferrite as "gapped" and let exactly the instant-saturation cores this filter
+            // exists to remove pass through.
+            const auto& gapping = core.get_functional_description().get_gapping();
+            bool hasGap = false;
+            for (const auto& gap : gapping) {
+                if (gap.get_type() != MAS::GapType::RESIDUAL &&
+                    gap.get_length() > Constants().residualGap) {
+                    hasGap = true;
+                    break;
+                }
+            }
             if (isHighSatMaterial || hasGap) {
                 dmcFiltered.push_back(entry);
             }

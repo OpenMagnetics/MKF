@@ -146,8 +146,36 @@ if(MKF_USE_KIRCHHOFF)
         set(_kirchhoff_src SOURCE_DIR "${KIRCHHOFF_SOURCE_DIR}")
     else()
         set(_kirchhoff_src GIT_REPOSITORY "git@github.com:OpenConverters/Kirchhoff.git"
-                           GIT_TAG "${KIRCHHOFF_GIT_TAG}")
+                           GIT_TAG "${KIRCHHOFF_GIT_TAG}"
+                           # KH's deps/MKF submodule is the circular back-reference to THIS repo, and its
+                           # recorded pin can be a commit that never reached origin ("not our ref"). KH only
+                           # needs MKF for the shared WaveformProcessor.cpp, which we hand it directly via
+                           # -DMKF_DIR below — so init every KH submodule EXCEPT deps/MKF.
+                           GIT_SUBMODULES "deps/PEAS;deps/RAS;deps/CAS;deps/SAS;deps/MAS;deps/CIAS;deps/TAS;deps/AAS;deps/CONAS;deps/CTAS")
     endif()
+
+    # Kelvin — KH's shared TAS component selector (consumed via src/KelvinBridge.cpp). Since ~mid-2026 KH
+    # requires it (add_subdirectory(KELVIN_DIR)), but it is NOT a KH submodule, so MKF must supply the
+    # source. KH builds it in-tree reusing KH's own PEAS, so we only need the checkout, not a separate
+    # build. MKF itself uses NOTHING from Kelvin (it is behind the libKirchhoffApi.so facade); this only
+    # exists to let KH configure. Point -DKIRCHHOFF_KELVIN_DIR at a local checkout, else it is fetched.
+    set(KIRCHHOFF_KELVIN_DIR "" CACHE PATH "Local Kelvin checkout for the Kirchhoff build (empty = fetch)")
+    if(NOT KIRCHHOFF_KELVIN_DIR)
+        set(KIRCHHOFF_KELVIN_GIT_TAG "main" CACHE STRING "Kelvin git tag/branch (when fetched for Kirchhoff)")
+        include(FetchContent)
+        FetchContent_Declare(kirchhoff_kelvin
+            GIT_REPOSITORY "git@github.com:OpenConverters/Kelvin.git"
+            GIT_TAG "${KIRCHHOFF_KELVIN_GIT_TAG}"
+            GIT_SUBMODULES ""   # KH overrides KELVIN_PEAS_DIR to its own PEAS; Kelvin's own submodules are unused
+            SOURCE_DIR "${CMAKE_BINARY_DIR}/kirchhoff-kelvin-src")
+        # Download only — KH does the add_subdirectory(KELVIN_DIR) in its own context.
+        FetchContent_GetProperties(kirchhoff_kelvin)
+        if(NOT kirchhoff_kelvin_POPULATED)
+            FetchContent_Populate(kirchhoff_kelvin)
+        endif()
+        set(KIRCHHOFF_KELVIN_DIR "${kirchhoff_kelvin_SOURCE_DIR}")
+    endif()
+
     ExternalProject_Add(kirchhoff_ext
         ${_kirchhoff_src}
         BINARY_DIR "${KIRCHHOFF_BUILD_DIR}"
@@ -156,6 +184,8 @@ if(MKF_USE_KIRCHHOFF)
             -DKIRCHHOFF_BUILD_SHARED_API=ON   # emit libKirchhoffApi.so (string facade, hidden internals)
             -DKIRCHHOFF_BUILD_PYBIND=OFF
             -DENABLE_NGSPICE=ON               # KH carries the simulator MKF stopped building
+            -DMKF_DIR=${CMAKE_CURRENT_SOURCE_DIR}          # this MKF checkout supplies KH's shared WaveformProcessor
+            -DKELVIN_DIR=${KIRCHHOFF_KELVIN_DIR}           # Kelvin source (fetched above or a local checkout)
         BUILD_ALWAYS OFF
         INSTALL_COMMAND ""
         BUILD_BYPRODUCTS "${KIRCHHOFF_API_LIB}")
@@ -405,8 +435,11 @@ if(INCLUDE_MKF_TESTS)
 endif()
 
 # MAS
-find_program(NAMES quicktype REQUIRED)
-find_program(NAMES libgtest-dev REQUIRED)
+# NOTE: the previous form `find_program(NAMES quicktype REQUIRED)` was malformed — the
+# result variable was literally named "NAMES", so REQUIRED never actually verified quicktype
+# existed. The libgtest-dev probe was doubly wrong (gtest isn't used — Catch2 is — and it is
+# a package, not a program) and has been dropped.
+find_program(QUICKTYPE_EXECUTABLE NAMES quicktype REQUIRED)
 
 if(NOT DEFINED MAS_DIRECTORY)
     set(MAS_DIRECTORY "${CMAKE_BINARY_DIR}/MAS/")

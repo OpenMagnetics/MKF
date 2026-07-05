@@ -50,11 +50,17 @@ public:
     // Get underlying engine for custom distributions
     std::mt19937& engine() { return _engine; }
 
-    // Reseed the generator (for reproducible tests if needed)
+    // Reseed the generator (call with std::random_device{}() to opt back into fuzzing).
     void seed(unsigned int s) { _engine.seed(s); }
 
 private:
-    RandomGenerator() : _engine(std::random_device{}()) {}
+    // Fixed default seed so tests are REPRODUCIBLE: the generator used to seed from
+    // std::random_device, making every random-input test nondeterministic run-to-run. Combined
+    // with the tests that can only pass (catch-and-continue / if(size>0) checks), that produced
+    // the worst case — nondeterministic AND unable to fail. A caller that genuinely wants
+    // fuzzing can still opt in via seed(std::random_device{}()). (abt #116)
+    static constexpr unsigned int kDefaultSeed = 42;
+    RandomGenerator() : _engine(kDefaultSeed) {}
     std::mt19937 _engine;
 };
 

@@ -76,7 +76,7 @@ inline void from_json(const json & j, CoreCrossReferencerFilters & x) {
     if (j == "Permeance" || j == "permeance" || j == "PERMEANCE") x = CoreCrossReferencerFilters::PERMEANCE;
     else if (j == "CoreLosses" || j == "corelosses" || j == "CORELOSSES") x = CoreCrossReferencerFilters::CORE_LOSSES;
     else if (j == "Saturation" || j == "saturation" || j == "SATURATION") x = CoreCrossReferencerFilters::SATURATION;
-    if (j == "WindingWindowArea" || j == "windingwindowarea" || j == "WINDINGWINDOWAREA") x = CoreCrossReferencerFilters::WINDING_WINDOW_AREA;
+    else if (j == "WindingWindowArea" || j == "windingwindowarea" || j == "WINDINGWINDOWAREA") x = CoreCrossReferencerFilters::WINDING_WINDOW_AREA;
     else if (j == "EnvelopingVolume" || j == "envelopingvolume" || j == "ENVELOPINGVOLUME") x = CoreCrossReferencerFilters::ENVELOPING_VOLUME;
     else if (j == "EffectiveArea" || j == "effectivearea" || j == "EFFECTIVEAREA") x = CoreCrossReferencerFilters::EFFECTIVE_AREA;
     else { throw std::runtime_error("Input JSON does not conform to CoreCrossReferencerFilters schema: " + to_string(j)); }
@@ -112,7 +112,7 @@ inline void from_json(const json & j, CoreMaterialCrossReferencerFilters & x) {
     else if (j == "Remanence" || j == "remanence" || j == "REMANENCE") x = CoreMaterialCrossReferencerFilters::REMANENCE;
     else if (j == "CoerciveForce" || j == "coerciveforce" || j == "COERCIVEFORCE") x = CoreMaterialCrossReferencerFilters::COERCIVE_FORCE;
     else if (j == "Saturation" || j == "saturation" || j == "SATURATION") x = CoreMaterialCrossReferencerFilters::SATURATION;
-    if (j == "CurieTemperature" || j == "curietemperature" || j == "CURIETEMPERATURE") x = CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE;
+    else if (j == "CurieTemperature" || j == "curietemperature" || j == "CURIETEMPERATURE") x = CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE;
     else if (j == "VolumetricLosses" || j == "volumetriclosses" || j == "VOLUMETRICLOSSES") x = CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES;
     else if (j == "Resistivity" || j == "resistivity" || j == "RESISTIVITY") x = CoreMaterialCrossReferencerFilters::RESISTIVITY;
     else { throw std::runtime_error("Input JSON does not conform to CoreMaterialCrossReferencerFilters schema: " + to_string(j)); }
@@ -150,18 +150,18 @@ void from_json(const json & j, OrderedIsolationSide & x);
 void to_json(json & j, const OrderedIsolationSide & x);
 
 inline void from_json(const json & j, OrderedIsolationSide & x) {
-    if (j == "primary" || j == "primary" || j == "PRIMARY") x = OrderedIsolationSide::PRIMARY;
-    else if (j == "secondary" || j == "secondary" || j == "SECONDARY") x = OrderedIsolationSide::SECONDARY;
-    else if (j == "tertiary" || j == "tertiary" || j == "TERTIARY") x = OrderedIsolationSide::TERTIARY;
-    if (j == "quaternary" || j == "quaternary" || j == "QUATERNARY") x = OrderedIsolationSide::QUATERNARY;
-    else if (j == "quinary" || j == "quinary" || j == "QUINARY") x = OrderedIsolationSide::QUINARY;
-    else if (j == "senary" || j == "senary" || j == "SENARY") x = OrderedIsolationSide::SENARY;
-    if (j == "septenary" || j == "septenary" || j == "SEPTENARY") x = OrderedIsolationSide::SEPTENARY;
-    else if (j == "octonary" || j == "octonary" || j == "OCTONARY") x = OrderedIsolationSide::OCTONARY;
-    else if (j == "nonary" || j == "nonary" || j == "NONARY") x = OrderedIsolationSide::NONARY;
-    if (j == "denary" || j == "denary" || j == "DENARY") x = OrderedIsolationSide::DENARY;
-    else if (j == "undenary" || j == "undenary" || j == "UNDENARY") x = OrderedIsolationSide::UNDENARY;
-    else if (j == "duodenary" || j == "duodenary" || j == "DUODENARY") x = OrderedIsolationSide::DUODENARY;
+    if (j == "primary" || j == "Primary" || j == "PRIMARY") x = OrderedIsolationSide::PRIMARY;
+    else if (j == "secondary" || j == "Secondary" || j == "SECONDARY") x = OrderedIsolationSide::SECONDARY;
+    else if (j == "tertiary" || j == "Tertiary" || j == "TERTIARY") x = OrderedIsolationSide::TERTIARY;
+    else if (j == "quaternary" || j == "Quaternary" || j == "QUATERNARY") x = OrderedIsolationSide::QUATERNARY;
+    else if (j == "quinary" || j == "Quinary" || j == "QUINARY") x = OrderedIsolationSide::QUINARY;
+    else if (j == "senary" || j == "Senary" || j == "SENARY") x = OrderedIsolationSide::SENARY;
+    else if (j == "septenary" || j == "Septenary" || j == "SEPTENARY") x = OrderedIsolationSide::SEPTENARY;
+    else if (j == "octonary" || j == "Octonary" || j == "OCTONARY") x = OrderedIsolationSide::OCTONARY;
+    else if (j == "nonary" || j == "Nonary" || j == "NONARY") x = OrderedIsolationSide::NONARY;
+    else if (j == "denary" || j == "Denary" || j == "DENARY") x = OrderedIsolationSide::DENARY;
+    else if (j == "undenary" || j == "Undenary" || j == "UNDENARY") x = OrderedIsolationSide::UNDENARY;
+    else if (j == "duodenary" || j == "Duodenary" || j == "DUODENARY") x = OrderedIsolationSide::DUODENARY;
     else { throw std::runtime_error("Input JSON does not conform to OrderedIsolationSide schema: " + to_string(j)); }
 }
 
@@ -239,6 +239,7 @@ inline void to_json(json & j, const MagneticFieldStrengthFringingEffectModels & 
     switch (x) {
         case MagneticFieldStrengthFringingEffectModels::ROSHEN: j = "Roshen"; break;
         case MagneticFieldStrengthFringingEffectModels::ALBACH: j = "Albach"; break;
+        case MagneticFieldStrengthFringingEffectModels::SULLIVAN: j = "Sullivan"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"MagneticFieldStrengthFringingEffectModels\": " + std::to_string(static_cast<int>(x)));
     }
 }
@@ -246,6 +247,7 @@ inline void to_json(json & j, const MagneticFieldStrengthFringingEffectModels & 
 inline void from_json(const json & j, MagneticFieldStrengthFringingEffectModels & x) {
     if (j == "Roshen" || j == "roshen" || j == "ROSHEN") x = MagneticFieldStrengthFringingEffectModels::ROSHEN;
     else if (j == "Albach" || j == "albach" || j == "ALBACH") x = MagneticFieldStrengthFringingEffectModels::ALBACH;
+    else if (j == "Sullivan" || j == "sullivan" || j == "SULLIVAN") x = MagneticFieldStrengthFringingEffectModels::SULLIVAN;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFieldStrengthFringingEffectModels schema: " + to_string(j)); }
 }
 
@@ -705,6 +707,13 @@ double resolve_dimensional_values(MAS::Dimension dimensionValue, DimensionalValu
 inline double resolve_dimensional_values(MAS::Dimension dimensionValue, DimensionalValues preferredValue) {
     double doubleValue = 0;
     if (std::holds_alternative<MAS::DimensionWithTolerance>(dimensionValue)) {
+        // The canonical PEAS resolver throws when no bound is present; a silent 0 here
+        // would flow into inductance/turns math as a real value.
+        if (!std::get<MAS::DimensionWithTolerance>(dimensionValue).get_nominal().has_value() &&
+            !std::get<MAS::DimensionWithTolerance>(dimensionValue).get_minimum().has_value() &&
+            !std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().has_value()) {
+            throw std::runtime_error("resolve_dimensional_values: DimensionWithTolerance has neither nominal, minimum nor maximum set");
+        }
         switch (preferredValue) {
             case DimensionalValues::MAXIMUM:
                 if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())

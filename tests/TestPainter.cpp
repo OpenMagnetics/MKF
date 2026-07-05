@@ -3913,7 +3913,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Electric_Field_Compare_Both_Methods", "[support][painter][electric-field-painter][comparison][benchmark]") {
+    TEST_CASE("Test_Electric_Field_Compare_Both_Methods", "[support][painter][electric-field-painter][comparison][!benchmark]") {
         std::vector<int64_t> numberTurns = {10, 10};
         std::vector<int64_t> numberParallels = {1, 1};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};

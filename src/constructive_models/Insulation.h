@@ -411,7 +411,7 @@ class InsulationIEC60335Model : public InsulationStandard {
     double calculate_clearance(Inputs& inputs);
     double calculate_creepage_distance(Inputs& inputs, bool includeClearance = false);
     double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage);
-    double get_clearance_table_16(PollutionDegree pollutionDegree, WiringTechnology wiringType, IsolationClass insulationType, double ratedImpulseWithstandVoltage);
+    double get_clearance_table_16(PollutionDegree pollutionDegree, std::optional<WiringTechnology> wiringType, IsolationClass insulationType, double ratedImpulseWithstandVoltage);
     double get_distance_through_insulation_table_19(OvervoltageCategory overvoltageCategory, double ratedVoltage);
     double get_withstand_voltage_table_7(IsolationClass insulationType, double ratedVoltage);
     double get_withstand_voltage_formula_table_7(IsolationClass insulationType, double workingVoltage);

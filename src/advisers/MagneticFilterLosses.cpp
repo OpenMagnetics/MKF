@@ -19,9 +19,8 @@
 
 namespace OpenMagnetics {
 
-MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs) {
-    MagneticFilterCoreAndDcLosses(inputs, default_loss_filter_models());
-}
+MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs)
+    : MagneticFilterCoreAndDcLosses(inputs, default_loss_filter_models()) {}
 
 MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses() {
     auto models = default_loss_filter_models();
@@ -217,9 +216,8 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                                     magnetic, inputs, outputs, _maximumPowerMean);
 }
 
-MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inputs) {
-    MagneticFilterCoreDcAndSkinLosses(inputs, default_loss_filter_models());
-}
+MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inputs)
+    : MagneticFilterCoreDcAndSkinLosses(inputs, default_loss_filter_models()) {}
 
 MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses() {
     auto models = default_loss_filter_models();

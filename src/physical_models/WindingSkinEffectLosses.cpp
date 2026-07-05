@@ -1008,13 +1008,17 @@ double WindingSkinEffectLossesMuehlethalerModel::calculate_skin_factor(const Wir
         return 0.5 * (alpha / modified_bessel_ratio_I1_I0(alpha)).real();
     }
     else {
-        // Foil/rectangular/planar: Eq. (4.20)
-        // FF = (Δ/4)·(sinh Δ + sin Δ)/(cosh Δ − cos Δ)
+        // Foil/rectangular/planar: standalone-foil Dowell skin factor
+        // Fs = (Δ/2)·(sinh Δ + sin Δ)/(cosh Δ − cos Δ), which tends to 1 at DC.
+        // The previous Δ/4 form tended to 0.5, so calculate_turn_losses below
+        // (dcLoss·(Fs−1)) returned NEGATIVE loss at low frequency and half the
+        // true skin loss at high frequency — the same convention bug fixed in the
+        // Ferreira model (see the Δ/2 comment there); this foil branch was missed.
         double h = std::min(resolve_dimensional_values(wire.get_conducting_width().value()),
                             resolve_dimensional_values(wire.get_conducting_height().value()));
         double delta = h / skinDepth;
         if (delta < 1e-10) return 1.0;
-        return (delta / 4.0) * (sinh(delta) + sin(delta)) / (cosh(delta) - cos(delta));
+        return (delta / 2.0) * (sinh(delta) + sin(delta)) / (cosh(delta) - cos(delta));
     }
 }
 

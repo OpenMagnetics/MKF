@@ -115,7 +115,11 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "SM 60");
+        // July 2026 re-baseline: the volumetric-losses filter now scores by absolute distance from
+        // the reference (removing the score=0 ceiling that tied every better-than-reference material)
+        // and culls NaN-loss candidates instead of DBL_MAX — the same fix CoreCrossReferencer already
+        // had. The corrected similarity ranking now puts SM 40 (was SM 60) closest to Kool Mu MAX 26.
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "SM 40");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals_Ferrite", "[adviser][core-material-cross-referencer][smoke-test]") {
@@ -233,7 +237,9 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "95");
+        // July 2026 re-baseline: corrected volumetric-losses scoring (absolute distance, NaN cull —
+        // see the note above / CoreCrossReferencer) now ranks Fair-Rite 98 (was 95) closest.
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "98");
     }
 
 }  // namespace

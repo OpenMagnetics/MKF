@@ -198,11 +198,14 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         }
         
         auto& exc = operatingPoint.get_excitations_per_winding()[windingIndex];
-        if (!exc.get_current() || !exc.get_current()->get_processed()) {
+        if (!exc.get_current() || !exc.get_current()->get_processed() || !exc.get_current()->get_processed()->get_rms()) {
+            // Missing RMS is handled the same way as a missing current spec (the guard
+            // used to stop at get_processed() and then .value() the RMS — a raw
+            // bad_optional_access instead of the documented absent-data path).
             dcCurrentPerWinding.push_back(0);
             continue;
         }
-        
+
         double currentRms = exc.get_current()->get_processed()->get_rms().value();
         dcCurrentPerWinding.push_back(currentRms);
     }

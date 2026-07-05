@@ -92,7 +92,10 @@ class WireAdviser {
         std::optional<WireSolidInsulationRequirements> _wireSolidInsulationRequirements;
         std::optional<WireStandard> _commonWireStandard;
         int _maximumNumberParallels;
-        double _maximumOuterAreaProportion;
+        // Initialized and reset per advise call: it is read through std::max while
+        // filtering, and exposed via get_maximum_area_proportion(); without the
+        // initializer the first read is of an indeterminate value.
+        double _maximumOuterAreaProportion = 0;
         double _wireToWireDistance = defaults.minimumWireToWireDistance;
         double _borderToWireDistance = defaults.minimumBorderToWireDistance;
         // ABT #5: synthesize fine-strand litz candidates for HF AC designs. Gated

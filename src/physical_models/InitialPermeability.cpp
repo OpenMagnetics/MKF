@@ -227,7 +227,7 @@ double InitialPermeability::get_initial_permeability_formula(CoreMaterial coreMa
                 initialPermeabilityValue *= (1 + permeabilityVariationDueToFrequency);
             }
 
-            if (magneticFieldDcBias) {
+            if (magneticFieldDcBias && modifiers.get_magnetic_field_dc_bias_factor()) {  // factor optional checked like the temperature/frequency siblings (deref of a disengaged optional is UB)
                 auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
                 double a = magneticFieldDcBiasFactor->get_a();
                 double b = magneticFieldDcBiasFactor->get_b();
@@ -271,7 +271,7 @@ double InitialPermeability::get_initial_permeability_formula(CoreMaterial coreMa
                 initialPermeabilityValue *= (1 + permeabilityVariationDueToTemperature * 0.01);
             }
 
-            if (magneticFieldDcBias) {
+            if (magneticFieldDcBias && modifiers.get_magnetic_field_dc_bias_factor()) {  // factor optional checked like the temperature/frequency siblings (deref of a disengaged optional is UB)
                 auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
                 double a = magneticFieldDcBiasFactor->get_a();
                 double b = magneticFieldDcBiasFactor->get_b();
@@ -283,7 +283,7 @@ double InitialPermeability::get_initial_permeability_formula(CoreMaterial coreMa
                 initialPermeabilityValue *= permeabilityVariationDueToMagneticFieldDcBias * 0.01;
             }
 
-            if (magneticFluxDensity) {
+            if (magneticFluxDensity && modifiers.get_magnetic_flux_density_factor()) {  // factor optional checked like the siblings
                 auto magneticFluxDensityFactor = modifiers.get_magnetic_flux_density_factor();
                 double a = magneticFluxDensityFactor->get_a();
                 double b = magneticFluxDensityFactor->get_b();
@@ -298,7 +298,7 @@ double InitialPermeability::get_initial_permeability_formula(CoreMaterial coreMa
             }
         }
         else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::POCO) {
-            if (magneticFieldDcBias) {
+            if (magneticFieldDcBias && modifiers.get_magnetic_field_dc_bias_factor()) {  // factor optional checked like the temperature/frequency siblings (deref of a disengaged optional is UB)
                 auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
                 double a = magneticFieldDcBiasFactor->get_a();
                 double b = magneticFieldDcBiasFactor->get_b();
@@ -312,7 +312,7 @@ double InitialPermeability::get_initial_permeability_formula(CoreMaterial coreMa
             }
         }
         else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::TDG) {
-            if (magneticFieldDcBias) {
+            if (magneticFieldDcBias && modifiers.get_magnetic_field_dc_bias_factor()) {  // factor optional checked like the temperature/frequency siblings (deref of a disengaged optional is UB)
                 auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
                 double a = magneticFieldDcBiasFactor->get_a();
                 double b = magneticFieldDcBiasFactor->get_b();
@@ -679,6 +679,13 @@ double InitialPermeability::get_initial_permeability_frequency_dependent(CoreMat
     }
 
     if (!initialPermeabilityFrequencyInterps.contains(coreMaterial.get_name())) {
+        // Sort by frequency so spline x values are strictly increasing (the temperature
+        // sibling sorts; this one relied on DB order — tk::spline asserts/UB on unsorted input).
+        std::sort(permeabilityPoints.begin(), permeabilityPoints.end(),
+            [](const auto& a, const auto& b) {
+                return *a.get_frequency() < *b.get_frequency();
+            });
+
         int n = permeabilityPoints.size();
         std::vector<double> x, y;
 
@@ -722,6 +729,13 @@ double InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_depe
     }
 
     if (!initialPermeabilityMagneticFieldDcBiasInterps.contains(coreMaterial.get_name())) {
+        // Sort by H bias so spline x values are strictly increasing (see the temperature
+        // sibling; unsorted DB order would be UB in tk::spline).
+        std::sort(permeabilityPoints.begin(), permeabilityPoints.end(),
+            [](const auto& a, const auto& b) {
+                return *a.get_magnetic_field_dc_bias() < *b.get_magnetic_field_dc_bias();
+            });
+
         int n = permeabilityPoints.size();
         std::vector<double> x, y;
 

@@ -126,6 +126,11 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire,
 
     bool simpleMode = settings.get_painter_simple_litz();
     auto coating = wire.resolve_coating();
+    // The branches below dereference the optional with ->; the old null-check at the
+    // coating-color block came AFTER those dereferences (UB on a coating-less litz).
+    if (!coating) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Litz wire has no resolvable coating to paint");
+    }
     size_t numberConductors = wire.get_number_conductors().value();
 
     double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
@@ -476,6 +481,15 @@ void Painter::paint_toroidal_coil_sections(Magnetic magnetic) {
 
     for (size_t i = 0; i < sections.size(); ++i){
         {
+            // Toroids never render insulation sections: they are the inter-winding gap (a
+            // visualization artifact), not a physical part the user added. Drawing them as
+            // radial arcs produces stray wedge/triangle shapes — especially with a core coating,
+            // which shrinks the winding window so the gap no longer collapses onto the axis.
+            // Only conduction sections draw here; user-defined margins draw separately in
+            // paint_toroidal_margin.
+            if (sections[i].get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
             double strokeWidth = sections[i].get_dimensions()[0];
             double circleDiameter = (initialRadius - sections[i].get_coordinates()[0]) * 2;
 
@@ -569,6 +583,11 @@ void Painter::paint_toroidal_coil_layers(Magnetic magnetic) {
 
     for (size_t i = 0; i < layers.size(); ++i){
         {
+            // Toroids never render insulation layers — same rationale as
+            // paint_toroidal_coil_sections (inter-winding gap artifact, not a physical part).
+            if (layers[i].get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
             double strokeWidth = layers[i].get_dimensions()[0];
             double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
 
@@ -768,38 +787,11 @@ void Painter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLay
 
     // Only paint insulation layers and margin if not skipped
     if (!skipMarginAndLayers) {
-        auto layers = winding.get_layers_description().value();
-
-        for (size_t i = 0; i < layers.size(); ++i){
-            if (layers[i].get_type() == ElectricalType::INSULATION) {
-
-                double strokeWidth = layers[i].get_dimensions()[0];
-                double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
-                double angleProportion = layers[i].get_dimensions()[1] / 360;
-                std::string termination = angleProportion < 1? "butt" : "round";
-
-                // Wedge-at-origin collapse: when the insulation layer's radial
-                // thickness spans the full winding window, stroking the circle
-                // produces a pie-slice from origin to bobbin wall. This is the
-                // visualization artifact of an inter-winding gap (the spacer is
-                // already drawn by paint_toroidal_margin), not a physical part.
-                // Same pattern fixed in paint_toroidal_coil_sections / _layers
-                // by 385d2ba2; the turns view needs the same guard.
-                if (strokeWidth >= circleDiameter - 1e-12) {
-                    continue;
-                }
-
-                std::string cssClassName = generate_random_string();
-                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
-                paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
-
-                if (layers[i].get_additional_coordinates()) {
-                    circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
-                    paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
-                }
-            }
-        }
-
+        // Toroids never render insulation layers: they are the inter-winding gap artifact, not a
+        // physical part the user added (any real spacer is drawn by paint_toroidal_margin below).
+        // Drawing them as radial arcs produced stray wedge/triangle shapes — worse with a core
+        // coating, which shrinks the winding window so the gap no longer collapses onto the axis
+        // and the old wedge-collapse guard (strokeWidth >= circleDiameter) missed it.
         paint_toroidal_margin(magnetic);
     }
     // _root.autoscale();
@@ -993,6 +985,18 @@ void Painter::paint_toroidal_core(Core core) {
 
     double strokeWidth = mainColumn.get_width();
     double circleDiameter = processedDescription.get_width() - strokeWidth;
+
+    // Draw the core coating (if any) as a ring UNDER the ferrite, sharing the same centre radius.
+    // The coating lines both the bore and the OD, so it widens the drawn cross-section by the
+    // coating thickness on EACH side (stroke += 2*coating). Without it the winding — which is
+    // wound over the coated bore/OD — appears to float over bare ferrite. Only an explicit
+    // catalogue coating is drawn; a no-op otherwise.
+    double coatingThickness = core.get_functional_description().get_coating() ? core.get_coating_thickness() : 0.0;
+    if (coatingThickness > 0) {
+        std::string coatingCssClassName = generate_random_string();
+        _root.style("." + coatingCssClassName).set_attr("stroke-width", (strokeWidth + 2 * coatingThickness) * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
+        paint_circle(0, 0, circleDiameter / 2, coatingCssClassName, nullptr);
+    }
 
     std::string cssClassName = generate_random_string();
     _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_ferrite()), std::regex("0x"), "#"));

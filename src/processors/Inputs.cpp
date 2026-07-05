@@ -1127,7 +1127,6 @@ Waveform Inputs::calculate_integral_waveform(Waveform waveform, bool subtractAve
         integral += data[i] * timePerPoint;
         integration.push_back(integral);
     }
-    while (integration.size() > time.size()) { integration.pop_back(); }
     resultWaveform.set_data(integration);
 
     if (subtractAverage) {

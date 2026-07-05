@@ -431,6 +431,18 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
 
     auto temperature = inputs.get_maximum_temperature();
     auto [referenceCoreLossesWithTemperature, referenceCoreMagneticFluxDensitySaturationPeak] = calculate_average_core_losses_and_magnetic_flux_density(referenceCore, referenceNumberTurns, inputs, models);
+    if (std::isnan(referenceCoreLossesWithTemperature)) {
+        // The reference core's losses are uncomputable (its material has no usable loss
+        // model). `calculate_average_core_losses_and_magnetic_flux_density`'s contract says
+        // the caller MUST isnan-check the NaN sentinel — without this, every candidate hit
+        // `fabs(NaN - x)/NaN < limit` (always false) and the whole set was silently culled.
+        // Mirror the logged pass-through the material cross-referencer already does.
+        logEntry("CoreCrossReferencer: reference core '" + referenceCore.get_name().value_or("?")
+                     + "' has uncomputable core losses at " + std::to_string(temperature)
+                     + " degC; skipping the loss dimension and cross-referencing on the remaining filters",
+                 "CoreCrossReferencer");
+        return *unfilteredCores;
+    }
     auto referenceMaterialMagneticFluxDensitySaturationPeak = referenceCore.get_magnetic_flux_density_saturation(temperature, true);
     double referenceSaturationRatio = 1 + (referenceCoreMagneticFluxDensitySaturationPeak - referenceMaterialMagneticFluxDensitySaturationPeak) / referenceMaterialMagneticFluxDensitySaturationPeak;
     add_scored_value("Reference", CoreCrossReferencerFilters::CORE_LOSSES, referenceCoreLossesWithTemperature);

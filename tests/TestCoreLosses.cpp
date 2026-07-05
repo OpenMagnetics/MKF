@@ -2648,6 +2648,42 @@ TEST_CASE("Test_Manufacturer_Magnetec", "[physical-model][core-losses][smoke-tes
     REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(29685.6, 29685.6 * maxError));
 }
 
+TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model][core-losses][smoke-test]") {
+    // Regression: downstream consumers (e.g. El Choker's supplier obfuscation) may rebrand a
+    // core material's manufacturer to a single house name while leaving the loss METHOD intact.
+    // Proprietary loss dispatch must key on the declared method, not the manufacturer string, so
+    // an obfuscated Magnetec part still computes losses identically instead of throwing
+    // MATERIAL_DATA_MISSING ("No proprietary mass losses method for manufacturer: ...").
+    auto models =
+        json::parse(R"({"coreLosses": "PROPRIETARY", "coreTemperature": "MANIKTALA", "gapReluctance": "ZHANG"})");
+    auto core = Core(json::parse(R"({"functionalDescription": {"gapping": [], "material": "Nanoperm 80000", "numberStacks": 1, "shape": {"magneticCircuit": "closed", "type": "custom", "family": "t", "aliases": [], "name": "T 63/50/30", "dimensions": {"A": {"nominal": 0.063}, "B": {"nominal": 0.050}, "C": {"nominal": 0.030}}}, "type": "toroidal"}, "manufacturerInfo": null, "name": "My Core"})"));
+
+    // Load the real Nanoperm 80000 (manufacturer "Magnetec") and rebrand it, then embed the
+    // rebranded material object in the core so resolve_material() returns the obfuscated version.
+    auto obfuscatedMaterial = find_core_material_by_name("Nanoperm 80000");
+    ManufacturerInfo rebranded;
+    rebranded.set_name("Würth Elektronik");
+    obfuscatedMaterial.set_manufacturer_info(rebranded);
+    REQUIRE(obfuscatedMaterial.get_manufacturer_info().get_name() == "Würth Elektronik");
+    core.set_material(obfuscatedMaterial);
+
+    auto winding = OpenMagnetics::Coil(json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
+    auto operatingPoint = OperatingPoint(json::parse(R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
+
+    MagnetizingInductance magnetizingInductanceModel(std::string{models["gapReluctance"]});
+    OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+    auto aux = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint);
+    auto magneticFluxDensity = aux.second;
+    excitation.set_magnetic_flux_density(magneticFluxDensity);
+    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+
+    auto coreLossesModel = CoreLossesModel::factory(models);
+    auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+
+    // Identical to Test_Manufacturer_Magnetec: obfuscating the manufacturer must not change the physics.
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(29685.6, 29685.6 * maxError));
+}
+
 TEST_CASE("Test_XFlux_19", "[physical-model][core-losses][smoke-test]") {
     auto models = json::parse("{\"coreLosses\": \"PROPRIETARY\", \"gapReluctance\": \"BALAKRISHNAN\"}");
     auto core = Core(json::parse(

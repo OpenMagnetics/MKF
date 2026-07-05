@@ -3,7 +3,6 @@
 #include "processors/MagneticSimulator.h"
 #include "support/Utils.h"
 #include "support/Logger.h"
-#include "support/DatabaseManager.h"
 #include "json.hpp"
 
 #include <math.h>
@@ -2563,6 +2562,11 @@ std::map<std::string, double> normalize_scoring(std::map<std::string, double> sc
         if (std::isnan(value)) {
             throw std::invalid_argument("scoring cannot be nan in normalize_scoring");
         }
+        // A raw score of exactly 0 under log would be log10(0) = -inf; clamp to the
+        // same floor as minimumScoring so the batch stays finite.
+        if (log && value == 0) {
+            value = 1e-10;
+        }
         double normalizedScoring = 0;
         if (maximumScoring != minimumScoring) {
 
@@ -2608,27 +2612,37 @@ std::vector<double> normalize_scoring(std::vector<double> scoring, double weight
     double minimumScoring = *std::min_element(scoring.begin(), scoring.end());
     std::vector<double> normalizedScorings;
 
+    // Same log-of-zero clamp as the map overload above: without it one raw score of
+    // exactly 0 under log makes the whole batch -inf/NaN and silently poisons the sort.
+    if (log && minimumScoring == 0) {
+        minimumScoring = 1e-10;
+    }
+
     for (size_t i = 0; i < scoring.size(); ++i) {
         double normalizedScoring = 0;
         if (std::isnan(scoring[i])) {
             throw std::invalid_argument("scoring cannot be nan in normalize_scoring");
         }
+        double value = scoring[i];
+        if (log && value == 0) {
+            value = 1e-10;
+        }
         if (maximumScoring != minimumScoring) {
 
             if (log){
                 if (invert) {
-                    normalizedScoring += weight * (1 - (std::log10(scoring[i]) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
+                    normalizedScoring += weight * (1 - (std::log10(value) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
                 }
                 else {
-                    normalizedScoring += weight * (std::log10(scoring[i]) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
+                    normalizedScoring += weight * (std::log10(value) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
                 }
             }
             else {
                 if (invert) {
-                    normalizedScoring += weight * (1 - (scoring[i] - minimumScoring) / (maximumScoring - minimumScoring));
+                    normalizedScoring += weight * (1 - (value - minimumScoring) / (maximumScoring - minimumScoring));
                 }
                 else {
-                    normalizedScoring += weight * (scoring[i] - minimumScoring) / (maximumScoring - minimumScoring);
+                    normalizedScoring += weight * (value - minimumScoring) / (maximumScoring - minimumScoring);
                 }
             }
         }

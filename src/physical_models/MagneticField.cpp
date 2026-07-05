@@ -834,6 +834,12 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         double tetha2 = atan((y + b) / (x + a));
         double tetha3 = atan((y - b) / (x + a));
         double tetha4 = atan((y - b) / (x - a));
+        // The 0-field branches (inside the conductor, degenerate corner thetas) must NOT
+        // fall through to the field computation below: they used to set Hx=Hy=0 and then
+        // be overwritten by the unconditional recompute at the end, so inside-conductor
+        // points got the formula with unadjusted quadrant thetas (garbage) and NaN-theta
+        // points threw instead of the intended graceful 0 (the round-wire path returns 0
+        // inside the wire for the same reason).
         if (fabs(x) < a && fabs(y) < b) {
             Hx = 0;
             Hy = 0;
@@ -841,7 +847,7 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         else if (std::isnan(tetha1) || std::isnan(tetha2) || std::isnan(tetha3) || std::isnan(tetha4)) {
             Hx = 0;
             Hy = 0;
-        } 
+        }
         else {
             if (x == a) {
                 if ((y + b) > 0) {
@@ -890,14 +896,14 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
                     tetha4 += std::numbers::pi;
                 }
             }
-        }
 
-        double common_part = inducingFieldPoint.get_value() / (8.0 * std::numbers::pi * a * b);
-        Hx = common_part * ((y + b) * (tetha1 - tetha2) - (y - b) * (tetha4 - tetha3) + (x + a) * log(r2 / r3) - (x - a) * log(r1 / r4));
+            double common_part = inducingFieldPoint.get_value() / (8.0 * std::numbers::pi * a * b);
+            Hx = common_part * ((y + b) * (tetha1 - tetha2) - (y - b) * (tetha4 - tetha3) + (x + a) * log(r2 / r3) - (x - a) * log(r1 / r4));
 
-        Hy = -common_part * ((x + a) * (tetha2 - tetha3) - (x - a) * (tetha1 - tetha4) + (y + b) * log(r2 / r1) - (y - b) * log(r3 / r4));
-        if (std::isnan(Hx) || std::isnan(Hy)) {
-            throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
+            Hy = -common_part * ((x + a) * (tetha2 - tetha3) - (x - a) * (tetha1 - tetha4) + (y + b) * log(r2 / r1) - (y - b) * log(r3 / r4));
+            if (std::isnan(Hx) || std::isnan(Hy)) {
+                throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
+            }
         }
     }
 
@@ -939,7 +945,11 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
         turnLength = inducingFieldPoint.get_turn_length().value();
     }
     double distance = hypot(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0]);
-    double angle = atan2(inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1]);
+    // atan2 takes (dy, dx): the arguments were swapped, which mirrors the field about
+    // the line y = x — a point due EAST of the wire got a radial field pointing at the
+    // wire instead of the azimuthal field of a line current. With (dy, dx) the unit
+    // vector (cos(angle - pi/2), sin(angle - pi/2)) is the correct azimuthal direction.
+    double angle = atan2(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0]);
 
     if (inducingWireIndex) {
         if (_wirePerWinding[inducingWireIndex.value()].get_type() != WireType::ROUND && _wirePerWinding[inducingWireIndex.value()].get_type() != WireType::LITZ) {
@@ -951,16 +961,19 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
             Hy = 0;
         }
         else {
-            double ex = cos(angle - std::numbers::pi / 2);
-            double ey = sin(angle - std::numbers::pi / 2);
+            // Azimuthal unit vector: with angle = atan2(dy, dx) the correct in-plane rotation is
+            // +pi/2 (not -pi/2), which — together with the leading minus in the module below —
+            // gives the same clockwise field a line current produces in the Binns-Lawrenson model.
+            double ex = cos(angle + std::numbers::pi / 2);
+            double ey = sin(angle + std::numbers::pi / 2);
             double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * turnLength / hypot(turnLength, distance);
             Hx = magneticFiledStrengthModule * ex;
             Hy = magneticFiledStrengthModule * ey;
         }
     }
     else {
-        double ex = cos(angle - std::numbers::pi / 2);
-        double ey = sin(angle - std::numbers::pi / 2);
+        double ex = cos(angle + std::numbers::pi / 2);
+        double ey = sin(angle + std::numbers::pi / 2);
         double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * turnLength / hypot(turnLength, distance);
         Hx = magneticFiledStrengthModule * ex;
         Hy = magneticFiledStrengthModule * ey;
@@ -996,7 +1009,15 @@ FieldPoint MagneticFieldStrengthAlbachModel::get_equivalent_inducing_point_for_g
     if (x < 0) {
         throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something went wrong with Albach method with x");
     }
-    double current = (magneticFieldStrengthGap * gap.get_length()) / (0.25 - 1.569 * xi + 4.34 * pow(xi, 2) - 7.042 * pow(xi, 3));
+    // The fitted denominator polynomial crosses zero at xi ~ 0.2755 — BEFORE the x < 0
+    // guard above fires (xi ~ 0.42) — so gaps in that band produced a diverging,
+    // sign-flipping equivalent fringing current with no error. Albach's fit is only
+    // valid for small xi; fail loudly outside it instead of returning garbage.
+    double denominator = 0.25 - 1.569 * xi + 4.34 * pow(xi, 2) - 7.042 * pow(xi, 3);
+    if (denominator <= 0) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Albach fringing model out of its validity range: gap length / column diameter ratio too large (xi = " + std::to_string(xi) + ")");
+    }
+    double current = (magneticFieldStrengthGap * gap.get_length()) / denominator;
     double eta = x * rc;
 
     if (eta > gap.get_section_dimensions().value()[0] / 2) {

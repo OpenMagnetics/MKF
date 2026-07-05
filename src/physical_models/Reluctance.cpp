@@ -709,6 +709,14 @@ AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap g
     auto gapArea = *(gapInfo.get_area());
     double reluctance;
     double fringingFactor = 1;
+    // Guard the optionals before dereferencing (the Zhang/other siblings check these; this
+    // model dereferenced them raw, which is UB when a gap lacks section geometry).
+    if (!gapInfo.get_distance_closest_normal_surface()) {
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap distance to closest normal surface is not set");
+    }
+    if (!gapInfo.get_section_dimensions()) {
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap section dimensions are not set");
+    }
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto gapSectionDepth = gapSectionDimensions[1];

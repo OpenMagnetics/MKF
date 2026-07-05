@@ -5778,9 +5778,6 @@ bool Coil::wind_by_rectangular_turns() {
                             turn.set_cross_sectional_shape(TurnCrossSectionalShape::RECTANGULAR);
                         }
                         turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
-                        if (turn.get_name() == "winding 1 parallel 1 turn 0") {
-                        }
-
                         turns.push_back(turn);
                         currentTurnCenterWidth += currentTurnWidthIncrement;
                         currentTurnCenterHeight -= currentTurnHeightIncrement;
@@ -8647,8 +8644,12 @@ std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType cor
 
     std::vector<std::vector<size_t>> sectionPatterns;
     
-    // Generate patterns based on isolation side permutations
-    for(size_t i = 0; i < tgamma(isolationSidesRequired.size() + 1) / 2; ++i) {
+    // Generate patterns based on isolation side permutations. Bound = n!/2 but at least 1:
+    // the old float form tgamma(n+1)/2 evaluated to 0.5 for a single isolation side and the
+    // `i < 0.5` comparison still ran one iteration; integer n!/2 would truncate to 0 and
+    // produce NO pattern at all for plain inductors. (FIX L-COIL-3 factorial helper.)
+    size_t patternBound = std::max<size_t>(1, factorial(isolationSidesRequired.size()) / 2);
+    for(size_t i = 0; i < patternBound; ++i) {
         std::vector<size_t> sectionPattern;
         for (auto isolationSide : isolationSidesRequired) {
             for (size_t windingIndex = 0; windingIndex < numWindings; ++windingIndex) {

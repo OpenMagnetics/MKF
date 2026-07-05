@@ -981,11 +981,14 @@ ProcessedWaveform WaveformProcessor::calculate_processed_data(Harmonics harmonic
     }
 
     {
-        if (is_waveform_sampled(waveform, numberPointsSampledWaveforms)) {
+        // calculate_waveform_average dereferences waveform.get_time() (UB for a data-only
+        // waveform, which the schema allows) — for those, average the resampled uniform
+        // waveform instead, same as the sampled branch.
+        if (is_waveform_sampled(waveform, numberPointsSampledWaveforms) || !waveform.get_time()) {
             processedResult.set_average(std::accumulate(std::begin(sampledDataToProcess.get_data()), std::end(sampledDataToProcess.get_data()), 0.0) /
                              sampledDataToProcess.get_data().size());
         }
-        else {;
+        else {
             auto average = calculate_waveform_average(waveform);
             processedResult.set_average(average);
         }

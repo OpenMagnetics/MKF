@@ -775,6 +775,9 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_wire(std::vecto
                                                                                         double temperature,
                                                                                         uint8_t numberSections,
                                                                                         size_t maximumNumberResults){
+    // WireAdviser instances are long-lived (CoilAdviser holds one across cores);
+    // without this reset the reported maximum accumulates across advise calls.
+    _maximumOuterAreaProportion = 0;
     auto coilsWithScoring = create_dataset(winding, wires, section, current, temperature);
 
 

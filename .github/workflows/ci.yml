@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, master, develop ]
   workflow_dispatch:
+  schedule:
+    # Nightly full-suite run (the smoke gate on push/PR only exercises ~7% of .cpp lines).
+    - cron: '0 3 * * *'
 
 env:
   BUILD_TYPE: Release
@@ -28,8 +31,6 @@ jobs:
           cmake \
           ninja-build \
           g++-13 \
-          libgnuplot-iostream-dev \
-          liblapack-dev \
           graphviz \
           doxygen
         
@@ -54,14 +55,14 @@ jobs:
     
     - name: Run tests
       working-directory: ${{github.workspace}}/build
-      run: ./MKF_tests "[smoke-test]" --reporter console
-    
+      run: ./MKF_tests "[smoke-test]" --reporter console --reporter JUnit::out=test-results.xml
+
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-results-linux
-        path: ${{github.workspace}}/build/Testing/
+        path: ${{github.workspace}}/build/test-results.xml
         if-no-files-found: ignore
 
   build-windows:
@@ -96,14 +97,62 @@ jobs:
     
     - name: Run tests
       working-directory: ${{github.workspace}}/build
-      run: .\MKF_tests.exe "[smoke-test]" --reporter console
-    
+      run: .\MKF_tests.exe "[smoke-test]" --reporter console --reporter JUnit::out=test-results.xml
+
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-results-windows
-        path: ${{github.workspace}}/build/Testing/
+        path: ${{github.workspace}}/build/test-results.xml
+        if-no-files-found: ignore
+
+  full-suite:
+    name: Full test suite (nightly)
+    runs-on: ubuntu-latest
+    # Only on the nightly schedule or a manual dispatch — the full suite is far heavier
+    # than the smoke gate (the [adviser] whole-DB sweeps are the long pole).
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 300
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-13 graphviz doxygen
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
+
+    - name: Install quicktype
+      run: npm install -g quicktype@23.2.6
+
+    - name: Configure CMake
+      run: |
+        cmake -B ${{github.workspace}}/build \
+          -G Ninja \
+          -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
+          -DCMAKE_CXX_COMPILER=g++-13 \
+          -DINCLUDE_MKF_TESTS=ON \
+          -DEMBED_MAS_DATA=ON
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+    - name: Run full suite (all non-hidden tests)
+      working-directory: ${{github.workspace}}/build
+      run: ./MKF_tests --reporter console --reporter JUnit::out=full-results.xml
+
+    - name: Upload full-suite results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: full-suite-results
+        path: ${{github.workspace}}/build/full-results.xml
         if-no-files-found: ignore
 
   coverage:
@@ -142,7 +191,8 @@ jobs:
 
     - name: Run smoke tests
       working-directory: ${{github.workspace}}/build
-      run: ./MKF_tests "[smoke-test]" --reporter console || true
+      # NOTE: '|| true' was removed — a failing smoke run must fail this job, not be masked.
+      run: ./MKF_tests "[smoke-test]" --reporter console
 
     - name: Collect coverage
       run: |

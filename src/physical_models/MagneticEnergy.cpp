@@ -24,7 +24,10 @@ double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(Core core, std:
         return get_ungapped_core_maximum_magnetic_energy(core, temperature, frequency, saturationProportion);
     }
     else {
-        return get_ungapped_core_maximum_magnetic_energy(core, temperature, saturationProportion);
+        // frequency must be passed explicitly: a 3-arg call would bind the bool
+        // saturationProportion to the std::optional<double> frequency parameter
+        // (evaluating permeability at 0/1 Hz and ignoring the caller's request).
+        return get_ungapped_core_maximum_magnetic_energy(core, temperature, std::nullopt, saturationProportion);
     }
 }
 
@@ -124,10 +127,14 @@ double MagneticEnergy::calculate_gap_length_by_saturation_constraint(CoreGap gap
 
 double MagneticEnergy::calculate_core_maximum_magnetic_energy(Core core, std::optional<OperatingPoint> operatingPoint, bool saturationProportion){
     double temperature = Defaults().ambientTemperature;
+    std::optional<double> frequency = std::nullopt;
     if (operatingPoint) {
         temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
+        frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
     }
-    return calculate_core_maximum_magnetic_energy(core, temperature, saturationProportion);
+    // frequency must be passed explicitly: a 3-arg call would bind the bool
+    // saturationProportion to the std::optional<double> frequency parameter.
+    return calculate_core_maximum_magnetic_energy(core, temperature, frequency, saturationProportion);
 }
 
 double MagneticEnergy::calculate_core_maximum_magnetic_energy(Core core, double temperature, std::optional<double> frequency, bool saturationProportion){
@@ -168,11 +175,14 @@ DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(Inputs
         return magnetizingInductance * pow(magnetizingCurrentPeak, 2) / 2;
     };
 
+    // E = L*Ipk^2/2 is monotone increasing in L, so the energy bounds map directly:
+    // minimum L -> minimum energy, maximum L -> maximum energy (they were crossed,
+    // producing an inverted interval whenever nominal L was absent).
     if (desiredMagnetizingInductance.get_maximum()) {
-        magneticEnergyRequirement.set_minimum(get_energy(*desiredMagnetizingInductance.get_maximum()));
+        magneticEnergyRequirement.set_maximum(get_energy(*desiredMagnetizingInductance.get_maximum()));
     }
     if (desiredMagnetizingInductance.get_minimum()) {
-        magneticEnergyRequirement.set_maximum(get_energy(*desiredMagnetizingInductance.get_minimum()));
+        magneticEnergyRequirement.set_minimum(get_energy(*desiredMagnetizingInductance.get_minimum()));
     }
     if (desiredMagnetizingInductance.get_nominal()) {
         magneticEnergyRequirement.set_nominal(get_energy(*desiredMagnetizingInductance.get_nominal()));

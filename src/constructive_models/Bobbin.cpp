@@ -562,6 +562,19 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
         bobbinWindingWindowShape = WindingWindowShape::RECTANGULAR;
     }
 
+    // A catalogue coating lines the toroid on ALL sides. Core::process_data already shrinks the
+    // winding-window radial height (the bore) by the coating; the OUTER wrap, however, is derived
+    // from the bobbin column, so fold the coating into the toroid column thickness here. It flows
+    // into column_width (= coreColumn.width/2 + columnThickness) below, so the outer passes wrap
+    // the coated OD for EVERY wind path — autocomplete and the coil-only wind alike, since the
+    // latter reuses this resolved bobbin. get_air_cored_reluctance uses (column_width -
+    // column_thickness), so the coating cancels there and the magnetic path stays bare ferrite;
+    // the residual effect is on winding geometry (turn-to-core distance, mean turn length), which
+    // is physically correct. Only an explicit coating on a toroid; a no-op otherwise.
+    if (bobbinWindingWindowShape == WindingWindowShape::ROUND && core.get_functional_description().get_coating()) {
+        columnThickness += core.get_coating_thickness();
+    }
+
     auto coreCentralColumn = core.get_processed_description()->get_columns()[0];
     CoreBobbinProcessedDescription coreBobbinProcessedDescription;
     std::vector<WindingWindowElement> bobbinWindingWindows;
@@ -650,7 +663,9 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
     }
     else {
         coreBobbinProcessedDescription.set_wall_thickness(0);
-        coreBobbinProcessedDescription.set_column_thickness(0);
+        // Toroid: no bobbin plastic, but carry the coating folded into columnThickness above so
+        // the coated-OD outer wrap is preserved (and cancels out of get_air_cored_reluctance).
+        coreBobbinProcessedDescription.set_column_thickness(columnThickness);
     }
 
     // NOTE: column_depth/column_shape/column_width describe the centre/main

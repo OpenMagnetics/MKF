@@ -2691,7 +2691,7 @@ TEST_CASE("Test_CoreAdviserStandardCores_No_Toroidal_Saturation_Debug", "[advise
     settings.reset();
 }
 
-TEST_CASE("Benchmark_CoreAdviser_Transformer_Turn_Variants_Overhead", "[adviser][core-adviser][benchmark]") {
+TEST_CASE("Benchmark_CoreAdviser_Transformer_Turn_Variants_Overhead", "[adviser][core-adviser][!benchmark]") {
     settings.reset();
     clear_databases();
     load_core_shapes();

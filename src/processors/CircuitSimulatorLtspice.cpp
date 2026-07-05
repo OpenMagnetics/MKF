@@ -83,14 +83,14 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
     auto leakageInductances = LeakageInductance().calculate_leakage_inductance_all_windings(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
 
     std::vector<FractionalPoleNetwork> fracpoleNets_lt;
-    std::optional<FractionalPoleNetwork> coreFracNet_lt;
     if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
         fracpoleNets_lt = CircuitSimulatorExporter::calculate_fracpole_networks_per_winding(magnetic, temperature);
-        try { coreFracNet_lt = CircuitSimulatorExporter::calculate_core_fracpole_network(magnetic, temperature); }
-        catch (...) {}
+        // NOTE: the core fracpole network used to be computed here too, swallowed
+        // failures with catch(...){}, and was never emitted by anyone (the emitter is
+        // #if 0). Removed: an expensive sweep whose result was always discarded.
     }
 
-    parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
+    parametersString += ".param MagnetizingInductance_Value=" + to_string(magnetizingInductance, 15) + "\n";
     parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
 
     // Check if saturation modeling is enabled
@@ -135,9 +135,12 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             if (leakageInductance < 0 || leakageInductance >= magnetizingInductance) {
                 throw std::runtime_error("Unphysical leakage inductance (" + std::to_string(leakageInductance) + " H vs Lmag " + std::to_string(magnetizingInductance) + " H) for winding " + is);
             }
-            double couplingCoefficient = sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance);
-            parametersString += ".param Llk_" + is + "_Value=" + std::to_string(leakageInductance) + "\n";
-            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient) + "\n";
+            // Clamp below 1: a coupling that rounds/prints as exactly 1 makes the SPICE
+            // coupling matrix singular (ngspice already clamps in the multi-winding path;
+            // the param emission and LTspice did not).
+            double couplingCoefficient = std::min(0.999999, sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance));
+            parametersString += ".param Llk_" + is + "_Value=" + to_string(leakageInductance, 15) + "\n";
+            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + to_string(couplingCoefficient, 12) + "\n";
         }
 
         std::vector<std::string> c = to_string(acResistanceCoefficientsPerWinding[index], 12);

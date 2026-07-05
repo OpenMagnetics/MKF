@@ -303,35 +303,37 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         magneticFluxDensityProcessed.set_offset(0);
         magneticFluxDensityProcessed.set_duty_cycle(0.5);
 
+        std::vector<std::pair<CoreMaterial, double>> filteredCoreMaterialsWithScoring;
         for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
             CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
             double volumetricLossesWithTemperature = calculate_average_volumetric_losses(coreMaterial, temperature, models);
             if (std::isnan(volumetricLossesWithTemperature)) {
-                volumetricLossesWithTemperature = DBL_MAX;
+                // Uncomputable losses for this candidate: cull it (like the core
+                // cross-referencer) rather than assigning DBL_MAX, which would blow up the
+                // min-max/log normalization for every other candidate in the batch.
+                continue;
             }
 
-            if (volumetricLossesWithTemperature < referenceVolumetricLossesWithTemperature) {
-                double scoring = 0;
-                newScoring.push_back(scoring);
-                add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, scoring);
-            }
-            else {
-                double scoring = fabs(referenceVolumetricLossesWithTemperature - volumetricLossesWithTemperature);
-                newScoring.push_back(scoring);
-                add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, scoring);
-            }
+            // Score by absolute distance from the reference ALWAYS. The old branch hardcoded
+            // scoring=0 ("perfect distance") for every better-than-reference material, tying
+            // them all at the normalized maximum — the same score-ceiling bug the core
+            // cross-referencer already fixed (CoreCrossReferencer Phase 1).
+            double scoring = fabs(referenceVolumetricLossesWithTemperature - volumetricLossesWithTemperature);
+            newScoring.push_back(scoring);
+            add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, scoring);
 
             add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, volumetricLossesWithTemperature);
+            filteredCoreMaterialsWithScoring.push_back((*unfilteredCoreMaterials)[coreMaterialIndex]);
         }
 
-        if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        if (filteredCoreMaterialsWithScoring.size() != newScoring.size()) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of filteredCoreMaterials: " + std::to_string(filteredCoreMaterialsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
         }
 
-        if ((*unfilteredCoreMaterials).size() > 0) {
-            normalize_scoring(unfilteredCoreMaterials, &newScoring, weight, (*_filterConfiguration)[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES]);
+        if (filteredCoreMaterialsWithScoring.size() > 0) {
+            normalize_scoring(&filteredCoreMaterialsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES]);
         }
-        return *unfilteredCoreMaterials;
+        return filteredCoreMaterialsWithScoring;
     }
     catch(const std::invalid_argument& re)
     {

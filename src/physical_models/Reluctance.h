@@ -36,7 +36,12 @@ class ReluctanceModel {
         auto gapLength = gapInfo.get_length();
         auto gapArea = *(gapInfo.get_area());
 
-        double energyStoredInGap = 0.5 / constants.vacuumPermeability * gapLength * gapArea * fringingFactor *
+        // E = 0.5 * Phi^2 * R_gap with Phi = Bsat * A and R_gap = lg / (mu0 * A * F):
+        // fringing LOWERS the gap reluctance, so the storable energy at core saturation
+        // scales with 1/F. This is the same June fix already applied to the duplicate of
+        // this formula in MagneticEnergy::get_gap_maximum_magnetic_energy — this copy had
+        // drifted and still multiplied by F, overestimating by F^2.
+        double energyStoredInGap = 0.5 / constants.vacuumPermeability * gapLength * gapArea / fringingFactor *
                                       pow(_magneticFluxDensitySaturation, 2);
 
         return energyStoredInGap;

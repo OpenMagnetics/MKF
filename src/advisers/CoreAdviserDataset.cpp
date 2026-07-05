@@ -784,54 +784,8 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     }
 }
 
-std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vector<std::pair<Magnetic, double>> magneticsWithScoring, const Inputs& inputs) {
-    Impedance impedance;
-    std::vector<std::pair<Magnetic, double>> magneticsWithScoringAndTurns;
-    for (size_t i = 0; i < magneticsWithScoring.size(); ++i){
-        auto [magnetic, scoring] = magneticsWithScoring[i];
-        Core core = magnetic.get_core();
-        if (!core.get_processed_description()) {
-            core.process_data();
-            core.process_gap();
-        }
-        Bobbin bobbin;
-        if (inputs.get_wiring_technology() == WiringTechnology::PRINTED) {
-            bobbin = Bobbin::create_quick_bobbin(core, true);
-        }
-        else {
-            bobbin = Bobbin::create_quick_bobbin(core);
-        }
-        magnetic.get_mutable_coil().set_bobbin(bobbin);
-
-        double initialNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
-
-        try {
-            initialNumberTurns = impedance.calculate_minimum_number_turns(magnetic, inputs);
-            if (initialNumberTurns < 1) {
-                logEntry("add_initial_turns_by_impedance: core " + core.get_name().value_or("?") + " returned turns=" + std::to_string(initialNumberTurns) + ", skipping", "CoreAdviser", 2);
-                continue;
-            }
-        }
-        catch (const std::exception& e) {
-            logEntry(std::string("add_initial_turns_by_impedance: core ") + core.get_name().value_or("?") + " threw: " + e.what(), "CoreAdviser", 2);
-            continue;
-        }
-        catch (...) {
-            logEntry("add_initial_turns_by_impedance: core " + core.get_name().value_or("?") + " threw unknown exception", "CoreAdviser", 2);
-            continue;
-        }
-        if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
-            NumberTurns numberTurns(initialNumberTurns, inputs.get_design_requirements());
-            auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-            initialNumberTurns = numberTurnsCombination[0];
-        }
-
-        magnetic.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(initialNumberTurns);
-        magneticsWithScoringAndTurns.push_back({magnetic, scoring});
-    }
-
-    return magneticsWithScoringAndTurns;
-}
+// NOTE (July 2026 health pass): the never-called add_initial_turns_by_impedance was
+// removed (impedance-driven turn seeding lives in the CMC pipeline now).
 
 void add_alternative_materials(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     CoreMaterialCrossReferencer coreMaterialCrossReferencer(std::map<std::string, std::string>{{"coreLosses", "Steinmetz"}});

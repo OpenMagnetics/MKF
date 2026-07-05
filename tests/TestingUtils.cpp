@@ -512,7 +512,10 @@ void check_sections_description(OpenMagnetics::Coil coil,
     }
 
     CHECK(roundFloat(bobbinArea, 6) == roundFloat(sectionsArea, 6));
-    for (size_t i = 0; i < numberAssignedParallels.size() - 1; ++i){
+    // Per-element check: the old `- 1` bound was a copy-paste from the adjacent-pair loop
+    // above and silently skipped the LAST winding (for single-winding coils it skipped the
+    // check entirely, so parallels/physical-turns consistency was never validated).
+    for (size_t i = 0; i < numberAssignedParallels.size(); ++i){
         CHECK(round(numberAssignedParallels[i]) == round(numberParallels[i]));
         CHECK(round(numberAssignedPhysicalTurns[i]) == round(numberTurns[i] * numberParallels[i]));
     }

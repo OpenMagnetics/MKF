@@ -21,6 +21,10 @@ namespace OpenMagnetics {
         // Initialize centralized model configuration from defaults
         _magneticFieldStrengthModel = defaults.magneticFieldStrengthModelDefault;
         _magneticFieldStrengthFringingEffectModel = defaults.magneticFieldStrengthFringingEffectModelDefault;
+        // Same ctor/reset asymmetry class as the stray-capacitance flag fixed in 0929c972:
+        // reset() sets this but the constructor didn't, leaving it indeterminate until the
+        // first reset() while LeakageInductance reads it on every calculation.
+        _leakageInductanceMagneticFieldStrengthModel = MagneticFieldStrengthModels::BINNS_LAWRENSON;  // BINNS works best for leakage (no fringing)
         _reluctanceModel = defaults.reluctanceModelDefault;
         _coreTemperatureModel = defaults.coreTemperatureModelDefault;
         _coreThermalResistanceModel = defaults.coreThermalResistanceModelDefault;

@@ -258,6 +258,10 @@ namespace {
         magnetic.set_coil(coil);
 
         MagneticField magneticField(MagneticFieldStrengthModels::LAMMERANER);
+        // Disable core-wall image currents so the test checks the free-space two-wire field against
+        // the closed-form -2*I/(2*pi*d), exactly like the Binns-Lawrenson sibling above. Without this
+        // the default mirroring adds image contributions (~1.1x) and the closed form no longer applies.
+        settings.set_magnetic_field_mirroring_dimension(0);
         settings.set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
@@ -266,7 +270,11 @@ namespace {
         double distanceCenterPoint = fieldPoint.get_point()[0] - turn_0.get_coordinates()[0];
         double expectedValue = -2 * harmonicAmplitude / (2 * M_PI * distanceCenterPoint);
 
-        REQUIRE((expectedValue - field.get_data()[0].get_real()) / expectedValue < maximumError);
+        // July 2026: after the Lammeraner atan2(dy,dx) fix the field is correctly AZIMUTHAL — for two
+        // horizontally-separated turns probed on their shared axis it lands in the imaginary (Y)
+        // component, like the Binns-Lawrenson sibling above. The old swapped atan2 rotated it 90 deg
+        // into the real (X) component, which this test used to check.
+        REQUIRE((expectedValue - field.get_data()[0].get_imaginary()) / expectedValue < maximumError);
         settings.reset();
     }
 

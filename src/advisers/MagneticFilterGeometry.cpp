@@ -145,7 +145,15 @@ std::pair<bool, double> MagneticFilterTemperatureRise::evaluate_magnetic(Magneti
 
     auto coreTemperatureModel = CoreTemperatureModel::factory(defaults.coreTemperatureModelDefault);
 
-    auto coreTemperature = coreTemperatureModel->get_core_temperature(magnetic->get_core(), losses, defaults.ambientTemperature);
+    // Base the temperature rise on the actual operating-point ambient, not a hardcoded 25 degC
+    // default: a design specified at an 85 degC ambient runs hotter than one at 25 degC, and the
+    // TemperatureRise score should reflect that. Fall back to the default only if the inputs
+    // carry no operating point (abt #121).
+    double ambientTemperature = defaults.ambientTemperature;
+    if (inputs != nullptr && !inputs->get_operating_points().empty()) {
+        ambientTemperature = inputs->get_maximum_temperature();
+    }
+    auto coreTemperature = coreTemperatureModel->get_core_temperature(magnetic->get_core(), losses, ambientTemperature);
     double calculatedTemperature = coreTemperature.get_maximum_temperature();
 
     return {true, calculatedTemperature};

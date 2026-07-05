@@ -72,8 +72,9 @@ LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(Magnetic
 
 WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& operatingPoint, Magnetic magnetic, std::optional<double> temperature){
     auto& settings = OpenMagnetics::Settings::GetInstance();
-    auto oldMagneticFieldMirroringDimension = settings.get_magnetic_field_mirroring_dimension();
-    settings.set_magnetic_field_mirroring_dimension(1);
+    // RAII: if calculate_losses throws, the manual restore below never ran and the
+    // process kept mirroring=1 for every subsequent computation.
+    SettingsGuard<int> mirroringGuard(settings, &Settings::get_magnetic_field_mirroring_dimension, &Settings::set_magnetic_field_mirroring_dimension, 1);
 
     double simulationTemperature;
     if (!temperature) {
@@ -85,7 +86,6 @@ WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& 
     WindingLosses windingLosses;
     // windingLosses.set_winding_losses_harmonic_amplitude_threshold(0.01);
     auto losses = windingLosses.calculate_losses(magnetic, operatingPoint, simulationTemperature);
-    settings.set_magnetic_field_mirroring_dimension(oldMagneticFieldMirroringDimension);
     return losses;
 }
 
