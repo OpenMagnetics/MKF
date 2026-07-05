@@ -18,6 +18,22 @@
 
 namespace OpenMagnetics {
 
+// Effective solid-conductor diameter of a round/litz wire. Litz wires carry NO
+// wire-level conducting_diameter (it lives on the strand), so several skin/proximity
+// models that shared a single `ROUND || LITZ` branch and read
+// wire.get_conducting_diameter().value() threw std::bad_optional_access (opaque, no
+// context) on every litz turn. Resolve the strand for litz; use the wire's own
+// diameter for solid round; throw a specific error if it is genuinely absent.
+inline double resolve_conducting_diameter(const Wire& wire) {
+    if (wire.get_type() == WireType::LITZ) {
+        auto strand = Wire::resolve_strand(wire);
+        return resolve_dimensional_values(strand.get_conducting_diameter());
+    }
+    if (!wire.get_conducting_diameter()) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting diameter in round wire");
+    }
+    return resolve_dimensional_values(wire.get_conducting_diameter().value());
+}
 
 // PERF-003: Cached ResistivityModel to avoid repeated factory() calls
 inline std::shared_ptr<ResistivityModel>& get_cached_resistivity_model() {
@@ -341,7 +357,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
     double penetrationRatio;
     switch(wire.get_type()) {
         case WireType::ROUND: {
-            penetrationRatio = pow(std::numbers::pi / 4.0, 3.0 / 4.0) * resolve_dimensional_values(wire.get_conducting_diameter().value()) / skinDepth * sqrt(resolve_dimensional_values(wire.get_conducting_diameter().value()) / resolve_dimensional_values(wire.get_outer_diameter().value()));
+            penetrationRatio = pow(std::numbers::pi / 4.0, 3.0 / 4.0) * resolve_conducting_diameter(wire) / skinDepth * sqrt(resolve_conducting_diameter(wire) / resolve_dimensional_values(wire.get_outer_diameter().value()));
             break;
         }
         case WireType::LITZ: {
@@ -479,7 +495,7 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
         if (!wire.get_conducting_diameter()) {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting diameter for round wire");
         }
-        wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+        wireRadius = resolve_conducting_diameter(wire) / 2;
         if (!wire.get_outer_diameter()) {
             wireOuterRadius = Wire::calculate_outer_diameter(wire, OpenMagnetics::DimensionalValues::NOMINAL) / 2;
         } else {
@@ -603,15 +619,34 @@ double WindingSkinEffectLossesPayneModel::calculate_turn_losses(Wire wire, doubl
     double thinDimension;
     double thickDimension;
 
-    if (resolve_dimensional_values(wire.get_conducting_height().value()) > resolve_dimensional_values(wire.get_conducting_width().value())) {
-        thinDimension = resolve_dimensional_values(wire.get_conducting_width().value());
-        thickDimension = resolve_dimensional_values(wire.get_conducting_height().value());
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        // Payne ("AC Resistance of Rectangular Conductors") is a rectangular model;
+        // map round/litz to the equal-area square (side = d·√(π/4)), as the other skin
+        // models do. Litz carries the diameter on the strand — resolve it (was an
+        // unguarded get_conducting_height()/width().value() → bad_optional_access).
+        double d;
+        if (wire.get_type() == WireType::LITZ) {
+            auto strand = wire.resolve_strand();
+            d = resolve_dimensional_values(strand.get_conducting_diameter());
+        }
+        else {
+            if (!wire.get_conducting_diameter()) {
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting diameter in round wire");
+            }
+            d = resolve_conducting_diameter(wire);
+        }
+        thinDimension = thickDimension = d * std::sqrt(std::numbers::pi / 4.0);
     }
     else {
-        thinDimension = resolve_dimensional_values(wire.get_conducting_height().value());
-        thickDimension = resolve_dimensional_values(wire.get_conducting_width().value());
+        if (!wire.get_conducting_height() || !wire.get_conducting_width()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width/height in wire");
+        }
+        double h = resolve_dimensional_values(wire.get_conducting_height().value());
+        double w = resolve_dimensional_values(wire.get_conducting_width().value());
+        if (h > w) { thinDimension = w; thickDimension = h; }
+        else       { thinDimension = h; thickDimension = w; }
     }
-    double A = resolve_dimensional_values(wire.get_conducting_width().value()) * resolve_dimensional_values(wire.get_conducting_height().value()) * 1000000;  // en mm2, shame on you Payne...
+    double A = thinDimension * thickDimension * 1000000;  // en mm2, shame on you Payne... (= equal-area square for round/litz)
 
     double p = pow(A, 0.5) / (1.26 * skinDepth * 1000);
     double Ff = 1.0 - exp(-0.026 * p);
@@ -664,7 +699,7 @@ double WindingSkinEffectLossesFerreiraModel::calculate_skin_factor(const Wire& w
         wireHeight = std::min(resolve_dimensional_values(wire.get_conducting_width().value()), resolve_dimensional_values(wire.get_conducting_height().value()));
     }
     else if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
-        wireHeight = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        wireHeight = resolve_conducting_diameter(wire);
     }
     else {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
@@ -742,8 +777,8 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[may
         a = aPrima * b / bPrima;
     }
     else if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
-        b = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
-        a = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+        b = resolve_conducting_diameter(wire) / 2;
+        a = resolve_conducting_diameter(wire) / 2;
     }
     else {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
@@ -808,8 +843,8 @@ double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(Wire wire, doub
         aPrima = std::min(resolve_dimensional_values(wire.get_conducting_height().value()), resolve_dimensional_values(wire.get_conducting_width().value())) / 2;
     }
     else if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
-        bPrima = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
-        aPrima = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+        bPrima = resolve_conducting_diameter(wire) / 2;
+        aPrima = resolve_conducting_diameter(wire) / 2;
     }
     else {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
@@ -850,7 +885,7 @@ double WindingSkinEffectLossesDowellModel::calculate_skin_factor(const Wire& wir
     }
     else if (wire.get_type() == WireType::ROUND) {
         // Dowell replaces round with equivalent square of same area: h = d·√(π/4)
-        conductorHeight = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+        conductorHeight = resolve_conducting_diameter(wire) * sqrt(std::numbers::pi / 4.0);
     }
     else if (wire.get_type() == WireType::LITZ) {
         auto strand = Wire::resolve_strand(wire);
@@ -895,7 +930,7 @@ double WindingSkinEffectLossesPerryModel::calculate_skin_factor(const Wire& wire
                                        resolve_dimensional_values(wire.get_conducting_height().value()));
     }
     else if (wire.get_type() == WireType::ROUND) {
-        conductorThickness = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+        conductorThickness = resolve_conducting_diameter(wire) * sqrt(std::numbers::pi / 4.0);
     }
     else if (wire.get_type() == WireType::LITZ) {
         auto strand = Wire::resolve_strand(wire);
@@ -941,7 +976,7 @@ double WindingSkinEffectLossesDimitrakakisModel::calculate_skin_factor(const Wir
             auto strand = Wire::resolve_strand(wire);
             wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
         } else {
-            wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+            wireRadius = resolve_conducting_diameter(wire) / 2;
         }
         if (wireRadius / skinDepth < 1e-10) return 1.0;
 
@@ -996,7 +1031,7 @@ double WindingSkinEffectLossesMuehlethalerModel::calculate_skin_factor(const Wir
             auto strand = Wire::resolve_strand(wire);
             wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
         } else {
-            wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+            wireRadius = resolve_conducting_diameter(wire) / 2;
         }
         if (wireRadius / skinDepth < 1e-10) return 1.0;
 
@@ -1050,7 +1085,7 @@ double WindingSkinEffectLossesNanModel::calculate_skin_factor(const Wire& wire, 
                                        resolve_dimensional_values(wire.get_conducting_height().value()));
     }
     else if (wire.get_type() == WireType::ROUND) {
-        conductorDimension = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+        conductorDimension = resolve_conducting_diameter(wire) * sqrt(std::numbers::pi / 4.0);
     }
     else if (wire.get_type() == WireType::LITZ) {
         auto strand = Wire::resolve_strand(wire);
@@ -1096,7 +1131,7 @@ double WindingSkinEffectLossesKazimierczukModel::calculate_skin_factor(const Wir
                                    resolve_dimensional_values(wire.get_conducting_height().value()));
     }
     else if (wire.get_type() == WireType::ROUND) {
-        conductorHeight = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+        conductorHeight = resolve_conducting_diameter(wire) * sqrt(std::numbers::pi / 4.0);
     }
     else if (wire.get_type() == WireType::LITZ) {
         auto strand = Wire::resolve_strand(wire);
@@ -1148,7 +1183,7 @@ double WindingSkinEffectLossesWangModel::calculate_turn_losses(Wire wire, double
             auto strand = Wire::resolve_strand(wire);
             d = resolve_dimensional_values(strand.get_conducting_diameter()) * sqrt(std::numbers::pi / 4.0);
         } else {
-            d = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+            d = resolve_conducting_diameter(wire) * sqrt(std::numbers::pi / 4.0);
         }
         double zeta = d / skinDepth;
         if (zeta < 1e-10) return 0.0;
@@ -1209,7 +1244,7 @@ double WindingSkinEffectLossesHolguinModel::calculate_skin_factor(const Wire& wi
             auto strand = Wire::resolve_strand(wire);
             wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
         } else {
-            wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+            wireRadius = resolve_conducting_diameter(wire) / 2;
         }
         if (wireRadius / skinDepth < 1e-10) return 1.0;
 

@@ -612,9 +612,20 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
         d = resolve_dimensional_values(wire.get_conducting_width().value());
         c = resolve_dimensional_values(wire.get_conducting_height().value());
     }
-    else {
+    else if (wire.get_type() == WireType::LITZ) {
+        // Litz wires carry the conductor diameter on the STRAND, not the wire, so
+        // wire.get_conducting_diameter() is empty — resolve the strand like the
+        // Vandelac/Bartoli models do (was an unguarded .value() → bad_optional_access).
+        auto strand = wire.resolve_strand();
+        d = resolve_dimensional_values(strand.get_conducting_diameter());
+        c = d;
+    }
+    else {  // ROUND (solid)
+        if (!wire.get_conducting_diameter()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting diameter in round wire");
+        }
         d = resolve_dimensional_values(wire.get_conducting_diameter().value());
-        c = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        c = d;
     }
     std::complex<double> alpha(1, 1);
     alpha /= skinDepth;
@@ -629,7 +640,9 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
     // (June 2026 planar/foil over-prediction regression, reverted).
     double turnLosses = c * resistivity * He2_rms * (alpha * d * tanh(alpha * d / 2.0)).real();
 
-    turnLosses *= wire.get_number_conductors().value();
+    // Solid round/foil/rect wires carry no explicit number_conductors — default to 1
+    // (was an unguarded .value()); litz supplies its strand count.
+    turnLosses *= wire.get_number_conductors().value_or(1);
 
     if (std::isnan(turnLosses)) {
         throw NaNResultException("NaN found in Albach's model for proximity effect losses");
