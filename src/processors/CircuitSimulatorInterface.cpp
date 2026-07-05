@@ -1372,38 +1372,43 @@ std::string emit_core_rosano_spice(
     double L2 = coeffs[4];
     double C1 = coeffs[5];
 
+    // The network can only be terminated to P1- (ground) through the RLC
+    // stage 3 (L2 || (R3+C1)). Every coefficient must be finite and positive
+    // for the R + RL + RLC topology to be well-formed. If the fit is
+    // degenerate, DO NOT close the branch with the old `Rcore_gnd .. 1e-6`
+    // fallback: with stages 1/2 also skipped that dropped a ~1 uOhm resistor
+    // straight across Node_R_Lmag_1..P1- and SHORTED the magnetizing
+    // inductance (ABT #120.3). Return "" so the caller simply omits the
+    // core-loss branch (Lmag stands alone) rather than shorting it.
+    if (!std::isfinite(R1) || !std::isfinite(R2) || !std::isfinite(L1) ||
+        !std::isfinite(R3) || !std::isfinite(L2) || !std::isfinite(C1) ||
+        R1 <= 0 || R2 <= 0 || L1 <= 0 || R3 <= 0 || L2 <= 0 || C1 <= 0) {
+        return "";
+    }
+
     std::string s;
     s += "* Core loss Rosano network (R + RL + RLC series stages)\n";
 
     // Stage 1 (R): series R from core node
     std::string prevNode = "Node_R_Lmag_1";
     std::string nextNode = "Node_core_s1";
-    if (R1 > 0) {
-        s += "Rcore_s1 " + prevNode + " " + nextNode + " " + to_string(R1, 12) + "\n";
-        prevNode = nextNode;
-    }
+    s += "Rcore_s1 " + prevNode + " " + nextNode + " " + to_string(R1, 12) + "\n";
+    prevNode = nextNode;
 
     // Stage 2 (RL): L1 || R2 between prevNode and nextNode
     nextNode = "Node_core_s2";
-    if (R2 > 0 && L1 > 0) {
-        // R2 path
-        s += "Rcore_s2 " + prevNode + " " + nextNode + " " + to_string(R2, 12) + "\n";
-        // L1 in parallel (same two nodes)
-        s += "Lcore_s2 " + prevNode + " " + nextNode + " " + to_string(L1, 12) + "\n";
-        prevNode = nextNode;
-    }
+    // R2 path
+    s += "Rcore_s2 " + prevNode + " " + nextNode + " " + to_string(R2, 12) + "\n";
+    // L1 in parallel (same two nodes)
+    s += "Lcore_s2 " + prevNode + " " + nextNode + " " + to_string(L1, 12) + "\n";
+    prevNode = nextNode;
 
     // Stage 3 (RLC): L2 || (R3 + C1) between prevNode and ground
-    if (R3 > 0 && L2 > 0 && C1 > 0) {
-        // L2 path: prevNode to ground
-        s += "Lcore_s3 " + prevNode + " P1- " + to_string(L2, 12) + "\n";
-        // R3 + C1 path (in series): prevNode → R3 → C1 → ground
-        s += "Rcore_s3 " + prevNode + " Node_core_s3c " + to_string(R3, 12) + "\n";
-        s += "Ccore_s3 Node_core_s3c P1- " + to_string(C1, 12) + "\n";
-    } else {
-        // If RLC stage invalid, just connect to ground
-        s += "Rcore_gnd " + prevNode + " P1- 1e-6\n";
-    }
+    // L2 path: prevNode to ground
+    s += "Lcore_s3 " + prevNode + " P1- " + to_string(L2, 12) + "\n";
+    // R3 + C1 path (in series): prevNode → R3 → C1 → ground
+    s += "Rcore_s3 " + prevNode + " Node_core_s3c " + to_string(R3, 12) + "\n";
+    s += "Ccore_s3 Node_core_s3c P1- " + to_string(C1, 12) + "\n";
 
     return s;
 }

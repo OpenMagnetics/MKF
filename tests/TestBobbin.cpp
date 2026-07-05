@@ -1,5 +1,6 @@
 #include <source_location>
 #include "constructive_models/Bobbin.h"
+#include "constructive_models/Core.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "json.hpp"
@@ -20,6 +21,80 @@ using namespace OpenMagnetics;
 namespace {
 const auto masPath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("MAS/").string();
 const double max_error = 0.05;
+
+// ABT #107: every named-catalogue bobbin family must store the winding-window
+// x-coordinate as the window CENTRE (consumers compute left = coords[0] - width/2,
+// matching create_quick_bobbin). This regression test locks that convention across
+// both historical bug classes so the three coexisting conventions can never return:
+//   - inner-edge families (E/EP/PM/RM/EFD) that stored only the column surface, and
+//   - full-diameter families (ETD/PQ/EC) that stored 2× the inner radius (the centre
+//     ended up beyond the window's own outer edge).
+// The invariant checked for each: coords[0] - width/2 == the column-surface inner
+// edge (positive, sane), i.e. coords[0] is the true centre. Values captured from the
+// datasheet dimensions of the named bobbins below.
+TEST_CASE("Bobbin winding window coordinate is the window centre (ABT #107)",
+          "[constructive-model][bobbin][abt107]") {
+    struct Case { std::string name; double expectedInnerEdge; };
+    // RM 10  (round, inner-edge family): D2/2 = 0.0062, width (D1-D2)/2 = 0.00425
+    // EC 35  (round, full-diameter family): D2/2 = 0.0061, width (D1-D2)/2 = 0.004675
+    const std::vector<Case> cases = {
+        {"Bobbin RM 10", 0.0062},
+        {"Bobbin EC 35", 0.0061},
+    };
+    for (const auto& c : cases) {
+        auto bobbin = OpenMagnetics::find_bobbin_by_name(c.name);
+        auto proc = bobbin.get_processed_description().value();
+        auto windingWindows = proc.get_winding_windows();
+        REQUIRE(!windingWindows.empty());
+        REQUIRE(windingWindows[0].get_coordinates().has_value());
+        REQUIRE(windingWindows[0].get_width().has_value());
+        double centre = windingWindows[0].get_coordinates().value()[0];
+        double width = windingWindows[0].get_width().value();
+        double leftEdge = centre - width / 2;
+        INFO("bobbin=" << c.name << " centre=" << centre << " width=" << width << " leftEdge=" << leftEdge);
+        // Left edge sits at the column surface, not inside the column or at 2× it.
+        REQUIRE_THAT(leftEdge, Catch::Matchers::WithinRel(c.expectedInnerEdge, 1e-6));
+        // Centre is strictly outside the column surface (the historical inner-edge bug
+        // put the centre AT the surface; the full-diameter bug put it past the far edge).
+        REQUIRE(centre > leftEdge);
+        REQUIRE(centre < leftEdge + width);
+    }
+}
+
+// The E19_5 sample (rectangular E family) exercises the third processor path.
+TEST_CASE("Bobbin E sample winding window is centred (ABT #107)",
+          "[constructive-model][bobbin][abt107]") {
+    auto wireFilePath = masPath + "samples/magnetic/bobbin/bobbin_E19_5.json";
+    std::ifstream json_file(wireFilePath);
+    auto bobbinJson = json::parse(json_file);
+    OpenMagnetics::Bobbin bobbin(bobbinJson);
+    auto proc = bobbin.get_processed_description().value();
+    auto windingWindows = proc.get_winding_windows();
+    double centre = windingWindows[0].get_coordinates().value()[0];
+    double width = windingWindows[0].get_width().value();
+    // Inner edge = f/2 + s1 = 0.00485/2 + 0.0008 = 0.003225 (column surface).
+    REQUIRE_THAT(centre - width / 2, Catch::Matchers::WithinRel(0.003225, 1e-6));
+}
+
+// ABT #107: the CORE winding-window coordinate must also be the window CENTRE.
+// The E-family core pieces stored only the inner edge (F/2); consumers (PainterImpl,
+// create_quick_bobbin sign check) and the U/Ur/C pieces expect the centre. Invariant:
+// window left edge (coords[0] - width/2) == central-column half-width (the column surface).
+TEST_CASE("Core winding window coordinate is the window centre (ABT #107)",
+          "[constructive-model][core][abt107]") {
+    auto core = OpenMagnetics::Core::create_quick_core("E 42/21/15", "3C97");
+    auto processed = core.get_processed_description().value();
+    auto windingWindows = processed.get_winding_windows();
+    auto columns = processed.get_columns();
+    REQUIRE(!windingWindows.empty());
+    REQUIRE(!columns.empty());
+    double centre = windingWindows[0].get_coordinates().value()[0];
+    double width = windingWindows[0].get_width().value();
+    double columnHalfWidth = columns[0].get_width() / 2;   // F/2, the central-column surface
+    INFO("centre=" << centre << " width=" << width << " columnHalfWidth=" << columnHalfWidth);
+    REQUIRE_THAT(centre - width / 2, Catch::Matchers::WithinRel(columnHalfWidth, 1e-6));
+    REQUIRE(centre > columnHalfWidth);   // strictly outside the column surface (was AT it before the fix)
+}
 
 TEST_CASE("Sample_Bobbin", "[constructive-model][bobbin][smoke-test]") {
     auto wireFilePath = masPath + "samples/magnetic/bobbin/bobbin_E19_5.json";

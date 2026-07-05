@@ -62,6 +62,116 @@ private:
     bool _restoreCores = false;
     bool _restoreWires = false;
 };
+
+// Outcome of processing one wound candidate through the full validation path.
+enum class WoundCandidateOutcome {
+    Skipped,       // failed a guard/dedup/simulate/saturation check — drop, keep going
+    Added,         // accepted into masData — keep going
+    PerCoreCapHit, // accepted, but this core's per-core coil cap is now reached — stop this core
+    GlobalCapHit   // accepted, but the global candidate cap is now reached — stop everything
+};
+
+// The full per-candidate body shared by the main core loop and the
+// retry-without-toroids loop (ABT #105). Before this existed the retry loop
+// pushed raw wound candidates with neither simulate() nor the final saturation
+// gate, so retry results came back unsimulated and never saturation-checked.
+// Extracting the body guarantees both passes apply the identical
+// guards → sections/margin dedup → delimit_and_compact → simulate → final isat
+// gate before a candidate enters the pool.
+WoundCandidateOutcome process_wound_candidate(
+    Mas mas,
+    MagneticSimulator& magneticSimulator,
+    Settings& settings,
+    bool previousCoilIncludeAdditionalCoordinates,
+    size_t perCoreCoilCap,
+    size_t globalCandidateCap,
+    std::vector<std::pair<size_t, double>>& usedNumberSectionsAndMargin,
+    std::vector<Mas>& masData,
+    size_t& processedCoils) {
+
+    auto sectionsOpt = mas.get_magnetic().get_coil().get_sections_description();
+    if (!sectionsOpt || sectionsOpt->empty()) {
+        return WoundCandidateOutcome::Skipped;
+    }
+    // A candidate whose turns never wound (sections laid out but turn placement
+    // bailed — e.g. a toroid whose turns can't physically fit) must not enter
+    // the result pool: downstream simulate()/painter throw COIL_NOT_PROCESSED
+    // on the missing turns.
+    if (!mas.get_magnetic().get_coil().get_turns_description()) {
+        return WoundCandidateOutcome::Skipped;
+    }
+    size_t numberSections = sectionsOpt->size();
+
+    double margin = 0;
+    if ((*sectionsOpt)[0].get_margin()) {
+        margin = Coil::resolve_margin((*sectionsOpt)[0])[0];
+    }
+    std::pair<size_t, double> numberSectionsAndMarginCombination = {numberSections, margin};
+    if (std::find(usedNumberSectionsAndMargin.begin(), usedNumberSectionsAndMargin.end(), numberSectionsAndMarginCombination) != usedNumberSectionsAndMargin.end()) {
+        return WoundCandidateOutcome::Skipped;
+    }
+
+    if (previousCoilIncludeAdditionalCoordinates) {
+        settings.set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
+        mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
+        settings.set_coil_include_additional_coordinates(false);
+    }
+    try {
+        mas = magneticSimulator.simulate(mas);
+    } catch (const std::exception& e) {
+        logEntry(std::string("MagneticAdviser: skipping candidate, simulate failed: ") + e.what(), "MagneticAdviser", 2);
+        return WoundCandidateOutcome::Skipped;
+    }
+
+    processedCoils++;
+
+    // Final saturation gate on the ASSEMBLED magnetic. score_magnetics only
+    // scores (it discards the validity flag), and the CoreAdviser saturation
+    // gate ran on the SEED turns — but the coil adviser / loss optimisation can
+    // finalise a higher turn count, lowering the gap-aware saturation current
+    // below the margin. Drop inductor designs whose FINAL isat no longer clears
+    // margin * ipeak (the same identity downstream realism checks use).
+    // Transformers are excluded: their flux is voltage-driven and more turns
+    // LOWERS B.
+    {
+        bool isInductor = is_inductor(mas.get_mutable_inputs());
+        if (isInductor) {
+            double saturationMargin = settings.get_core_adviser_saturation_margin();
+            bool saturates = false;
+            for (auto& op : mas.get_mutable_inputs().get_operating_points()) {
+                auto excitation = op.get_excitations_per_winding()[0];
+                if (!excitation.get_current() || !excitation.get_current()->get_processed()
+                    || !excitation.get_current()->get_processed()->get_peak()) {
+                    continue;
+                }
+                double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
+                // Derating (ABT #13): hot junction corner + RAW B_sat, matching
+                // the saturation filter's inductor gate.
+                double temperature = saturation_derating_temperature(op.get_conditions().get_ambient_temperature());
+                double saturationCurrent = mas.get_mutable_magnetic().calculate_saturation_current(temperature, /*proportion=*/false);
+                if (saturationCurrent < saturationMargin * currentPeak) {
+                    saturates = true;
+                    break;
+                }
+            }
+            if (saturates) {
+                logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference()
+                         + "' — final saturation current below margin", "MagneticAdviser", 2);
+                return WoundCandidateOutcome::Skipped;
+            }
+        }
+    }
+
+    masData.push_back(mas);
+    if (masData.size() >= globalCandidateCap) {
+        return WoundCandidateOutcome::GlobalCapHit;
+    }
+    if (processedCoils >= perCoreCoilCap) {
+        usedNumberSectionsAndMargin.push_back(numberSectionsAndMarginCombination);
+        return WoundCandidateOutcome::PerCoreCapHit;
+    }
+    return WoundCandidateOutcome::Added;
+}
 } // namespace
 
 void MagneticAdviser::set_unique_core_shapes(bool value) {
@@ -655,91 +765,15 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             }
             size_t processedCoils = 0;
             for (auto mas : masMagneticsWithCoreAndCoil) {
-
-                auto sectionsOpt = mas.get_magnetic().get_coil().get_sections_description();
-                if (!sectionsOpt || sectionsOpt->empty()) {
-                    continue;
-                }
-                // A candidate whose turns never wound (sections laid out but
-                // turn placement bailed — e.g. a toroid whose turns can't
-                // physically fit) must not enter the result pool: downstream
-                // simulate()/painter throw COIL_NOT_PROCESSED on the missing
-                // turns. The retry-without-toroids loop below already applies
-                // this same guard; the main loop was missing it, so an
-                // unwindable core leaked through as a turns-less magnetic.
-                if (!mas.get_magnetic().get_coil().get_turns_description()) {
-                    continue;
-                }
-                size_t numberSections = sectionsOpt->size();
-
-                double margin = 0;
-                if ((*sectionsOpt)[0].get_margin()) {
-                    margin = Coil::resolve_margin((*sectionsOpt)[0])[0];
-                }
-                std::pair<size_t, double> numberSectionsAndMarginCombination = {numberSections, margin};
-                if (std::find(usedNumberSectionsAndMargin.begin(), usedNumberSectionsAndMargin.end(), numberSectionsAndMarginCombination) != usedNumberSectionsAndMargin.end()) {
-                    continue;
-                }
-
-                if (previousCoilIncludeAdditionalCoordinates) {
-                    settings.set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
-                    mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
-                    settings.set_coil_include_additional_coordinates(false);
-                }
-                try {
-                    mas = magneticSimulator.simulate(mas);
-                } catch (const std::exception& e) {
-                    logEntry(std::string("MagneticAdviser: skipping candidate, simulate failed: ") + e.what(), "MagneticAdviser", 2);
-                    continue;
-                }
-
-                processedCoils++;
-
-                // Final saturation gate on the ASSEMBLED magnetic. score_magnetics
-                // only scores (it discards the validity flag), and the CoreAdviser
-                // saturation gate ran on the SEED turns — but the coil adviser /
-                // loss optimisation can finalise a higher turn count, lowering the
-                // gap-aware saturation current below the margin. Drop inductor
-                // designs whose FINAL isat no longer clears margin * ipeak (the same
-                // identity downstream realism checks use). Transformers are excluded:
-                // their flux is voltage-driven and more turns LOWERS B.
-                {
-                    bool isInductor = is_inductor(mas.get_mutable_inputs());
-                    if (isInductor) {
-                        double saturationMargin = settings.get_core_adviser_saturation_margin();
-                        bool saturates = false;
-                        for (auto& op : mas.get_mutable_inputs().get_operating_points()) {
-                            auto excitation = op.get_excitations_per_winding()[0];
-                            if (!excitation.get_current() || !excitation.get_current()->get_processed()
-                                || !excitation.get_current()->get_processed()->get_peak()) {
-                                continue;
-                            }
-                            double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
-                            // Derating (ABT #13): hot junction corner + RAW B_sat,
-                            // matching the saturation filter's inductor gate.
-                            double temperature = saturation_derating_temperature(op.get_conditions().get_ambient_temperature());
-                            double saturationCurrent = mas.get_mutable_magnetic().calculate_saturation_current(temperature, /*proportion=*/false);
-                            if (saturationCurrent < saturationMargin * currentPeak) {
-                                saturates = true;
-                                break;
-                            }
-                        }
-                        if (saturates) {
-                            logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference()
-                                     + "' — final saturation current below margin", "MagneticAdviser", 2);
-                            continue;
-                        }
-                    }
-                }
-
-                masData.push_back(mas);
-                if (masData.size() >= globalCandidateCap) {
+                auto outcome = process_wound_candidate(
+                    mas, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
+                    perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
+                if (outcome == WoundCandidateOutcome::GlobalCapHit) {
                     logEntry("Reached globalCandidateCap (" + std::to_string(globalCandidateCap) + ")", "MagneticAdviser", 2);
                     globalCapReached = true;
                     break;
                 }
-                if (processedCoils >= perCoreCoilCap) {
-                    usedNumberSectionsAndMargin.push_back(numberSectionsAndMarginCombination);
+                if (outcome == WoundCandidateOutcome::PerCoreCapHit) {
                     break;
                 }
             }
@@ -827,18 +861,21 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 }
                 size_t processedCoils = 0;
 
+                // ABT #105: run retry candidates through the SAME validation path
+                // as the main loop (guards → dedup → delimit → simulate → final
+                // isat gate) instead of pushing raw, unsimulated, un-saturation-
+                // checked magnetics.
                 for (auto& masWithCoil : masMagneticsWithCoreAndCoil) {
-                    if (masWithCoil.get_magnetic().get_coil().get_turns_description()) {
-                        masData.push_back(masWithCoil);
-                        processedCoils++;
-                        if (masData.size() >= globalCandidateCap) {
-                            logEntry("Reached globalCandidateCap (" + std::to_string(globalCandidateCap) + ") in retry", "MagneticAdviser", 2);
-                            globalCapReached = true;
-                            break;
-                        }
-                        if (processedCoils >= perCoreCoilCap) {
-                            break;
-                        }
+                    auto outcome = process_wound_candidate(
+                        masWithCoil, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
+                        perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
+                    if (outcome == WoundCandidateOutcome::GlobalCapHit) {
+                        logEntry("Reached globalCandidateCap (" + std::to_string(globalCandidateCap) + ") in retry", "MagneticAdviser", 2);
+                        globalCapReached = true;
+                        break;
+                    }
+                    if (outcome == WoundCandidateOutcome::PerCoreCapHit) {
+                        break;
                     }
                 }
             }

@@ -35,10 +35,16 @@ class BobbinEDataProcessor : public BobbinDataProcessor{
             processedDescription.set_column_thickness(dimensions["s1"]);
             processedDescription.set_wall_thickness(dimensions["s2"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({dimensions["f"] / 2 + dimensions["s1"], 0});
+            // ABT #107: coordinates[0] is the winding-window CENTER (consumers do
+            // left = coords[0] - width/2). The window starts at the central-column
+            // surface (inner edge = f/2 + column thickness s1) and spans `windowWidth`,
+            // so the centre is innerEdge + windowWidth/2 — matching create_quick_bobbin.
+            double windowWidth = (dimensions["e"] - dimensions["f"] - 2 * dimensions["s1"]) / 2;
+            double innerEdge = dimensions["f"] / 2 + dimensions["s1"];
+            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
             windingWindowElement.set_height(dimensions["l2"] - 2 * dimensions["s2"]);
-            windingWindowElement.set_width((dimensions["e"] - dimensions["f"] - 2 * dimensions["s1"]) / 2);
+            windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -55,10 +61,14 @@ class BobbinRmDataProcessor : public BobbinDataProcessor{
             processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
             processedDescription.set_wall_thickness(dimensions["H5"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({dimensions["D2"] / 2, 0});
+            // ABT #107: coordinates[0] is the winding-window CENTER. Inner edge is the
+            // column surface radius D2/2; window spans windowWidth outward.
+            double windowWidth = (dimensions["D1"] - dimensions["D2"]) / 2;
+            double innerEdge = dimensions["D2"] / 2;
+            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
             windingWindowElement.set_height(dimensions["H2"] - dimensions["H4"] - dimensions["H5"]);
-            windingWindowElement.set_width((dimensions["D1"] - dimensions["D2"]) / 2);
+            windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -75,10 +85,13 @@ class BobbinEpDataProcessor : public BobbinDataProcessor{
             processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
             processedDescription.set_wall_thickness(dimensions["s"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({dimensions["d2"] / 2, 0});
+            // ABT #107: coordinates[0] is the winding-window CENTER (inner edge d2/2 + half width).
+            double windowWidth = (dimensions["d1"] - dimensions["d2"]) / 2;
+            double innerEdge = dimensions["d2"] / 2;
+            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
             windingWindowElement.set_height(dimensions["h"] - 2 * dimensions["s"]);
-            windingWindowElement.set_width((dimensions["d1"] - dimensions["d2"]) / 2);
+            windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
 
@@ -96,10 +109,16 @@ class BobbinEtdDataProcessor : public BobbinDataProcessor{
             processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
             processedDescription.set_wall_thickness((dimensions["h1"] - dimensions["h2"]) / 2);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({dimensions["d2"], 0});
+            // ABT #107: coordinates[0] is the winding-window CENTER. This branch
+            // previously stored the FULL diameter d2 (twice the inner-edge radius d2/2,
+            // placing the window centre beyond its own outer edge). Inner edge is the
+            // column surface radius d2/2; centre is d2/2 + windowWidth/2.
+            double windowWidth = (dimensions["d1"] - dimensions["d2"]) / 2;
+            double innerEdge = dimensions["d2"] / 2;
+            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
             windingWindowElement.set_height(dimensions["h2"]);
-            windingWindowElement.set_width((dimensions["d1"] - dimensions["d2"]) / 2);
+            windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
 
@@ -117,10 +136,13 @@ class BobbinPmDataProcessor : public BobbinDataProcessor{
             processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
             processedDescription.set_wall_thickness(dimensions["s1"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({dimensions["d2"] / 2, 0});
+            // ABT #107: coordinates[0] is the winding-window CENTER (inner edge d2/2 + half width).
+            double windowWidth = (dimensions["d1"] - dimensions["d2"]) / 2;
+            double innerEdge = dimensions["d2"] / 2;
+            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
             windingWindowElement.set_height(dimensions["h"] - dimensions["s1"] - dimensions["s2"]);
-            windingWindowElement.set_width((dimensions["d1"] - dimensions["d2"]) / 2);
+            windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -137,10 +159,14 @@ class BobbinPqDataProcessor : public BobbinDataProcessor{
             processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
             processedDescription.set_wall_thickness((dimensions["H1"] - dimensions["H2"]) / 2);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({dimensions["D2"], 0});
+            // ABT #107: coordinates[0] is the winding-window CENTER. Previously stored the
+            // FULL diameter D2 (twice the inner-edge radius). Centre is D2/2 + windowWidth/2.
+            double windowWidth = (dimensions["D1"] - dimensions["D2"]) / 2;
+            double innerEdge = dimensions["D2"] / 2;
+            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
             windingWindowElement.set_height(dimensions["H2"]);
-            windingWindowElement.set_width((dimensions["D1"] - dimensions["D2"]) / 2);
+            windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -157,10 +183,14 @@ class BobbinEcDataProcessor : public BobbinDataProcessor{
             processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
             processedDescription.set_wall_thickness((dimensions["H1"] - dimensions["H2"]) / 2);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({dimensions["D2"], 0});
+            // ABT #107: coordinates[0] is the winding-window CENTER. Previously stored the
+            // FULL diameter D2 (twice the inner-edge radius). Centre is D2/2 + windowWidth/2.
+            double windowWidth = (dimensions["D1"] - dimensions["D2"]) / 2;
+            double innerEdge = dimensions["D2"] / 2;
+            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
             windingWindowElement.set_height(dimensions["H2"]);
-            windingWindowElement.set_width((dimensions["D1"] - dimensions["D2"]) / 2);
+            windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -177,10 +207,13 @@ class BobbinEfdDataProcessor : public BobbinDataProcessor{
             processedDescription.set_column_thickness(dimensions["S1"]);
             processedDescription.set_wall_thickness(dimensions["S2"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({dimensions["f1"] / 2 + dimensions["S1"], 0});
+            // ABT #107: coordinates[0] is the winding-window CENTER (inner edge f1/2 + S1, + half width).
+            double windowWidth = (dimensions["e"] - dimensions["f1"] - 2 * dimensions["S1"]) / 2;
+            double innerEdge = dimensions["f1"] / 2 + dimensions["S1"];
+            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
             windingWindowElement.set_height(dimensions["d"] - 2 * dimensions["S2"]);
-            windingWindowElement.set_width((dimensions["e"] - dimensions["f1"] - 2 * dimensions["S1"]) / 2);
+            windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));

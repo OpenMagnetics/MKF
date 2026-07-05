@@ -81,7 +81,9 @@ class CorePieceE : public CorePiece {
         windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
+        // ABT #107: coordinates[0] is the winding-window CENTRE (innerEdge F/2 + width/2,
+        // width = (E-F)/2). Matches the U/Ur/C pieces, the bobbin processors and consumers.
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2 + (dimensions["E"] - dimensions["F"]) / 4, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -270,7 +272,9 @@ class CorePieceEl : public CorePieceE {
         windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
+        // ABT #107: coordinates[0] is the winding-window CENTRE (innerEdge F/2 + width/2,
+        // width = (E-F)/2). Matches the U/Ur/C pieces, the bobbin processors and consumers.
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2 + (dimensions["E"] - dimensions["F"]) / 4, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -706,7 +710,9 @@ class CorePieceRm : public CorePiece {
         windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
+        // ABT #107: coordinates[0] is the winding-window CENTRE (innerEdge F/2 + width/2,
+        // width = (E-F)/2). Matches the U/Ur/C pieces, the bobbin processors and consumers.
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2 + (dimensions["E"] - dimensions["F"]) / 4, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -877,7 +883,9 @@ class CorePiecePq : public CorePiece {
         windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
+        // ABT #107: coordinates[0] is the winding-window CENTRE (innerEdge F/2 + width/2,
+        // width = (E-F)/2). Matches the U/Ur/C pieces, the bobbin processors and consumers.
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2 + (dimensions["E"] - dimensions["F"]) / 4, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -1023,7 +1031,9 @@ class CorePiecePm : public CorePiece {
         windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
+        // ABT #107: coordinates[0] is the winding-window CENTRE (innerEdge F/2 + width/2,
+        // width = (E-F)/2). Matches the U/Ur/C pieces, the bobbin processors and consumers.
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2 + (dimensions["E"] - dimensions["F"]) / 4, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -1173,7 +1183,9 @@ class CorePieceP : public CorePiece {
         windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
+        // ABT #107: coordinates[0] is the winding-window CENTRE (innerEdge F/2 + width/2,
+        // width = (E-F)/2). Matches the U/Ur/C pieces, the bobbin processors and consumers.
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2 + (dimensions["E"] - dimensions["F"]) / 4, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -1604,7 +1616,9 @@ class CorePieceUt : public CorePiece {
         windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width(dimensions["E"]);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - dimensions["E"]) / 2, 0}));
+        // ABT #107: coordinates[0] is the winding-window CENTRE = innerEdge (A-E)/2 + width/2
+        // (width = E). Previously stored only the inner edge; the U/Ur/C pieces already centre.
+        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - dimensions["E"]) / 2 + dimensions["E"] / 2, 0}));
         set_winding_window(windingWindow);
     }
 

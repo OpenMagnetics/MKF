@@ -97,27 +97,23 @@ double Inductance::calculate_self_inductance(
     // Where Ll_i is the total leakage inductance as seen from winding i
     
     double Lm_i = calculate_magnetizing_inductance_referred_to_winding(magnetic, windingIndex, operatingPoint);
-    
-    // Calculate leakage inductance contribution
-    // For a multi-winding transformer, we sum the leakage contributions from all other windings
+
+    // Self-leakage of winding i is the diagonal of the energy-method leakage
+    // matrix (Λ_ii = 4·W(e_i)), the single source of leakage shared with
+    // calculate_inductance_matrix. The previous code summed "the maximum
+    // leakage across the other windings" but an unconditional break made the
+    // loop dead (only winding 0/1 ever used), and it added the full
+    // short-circuit pair leakage on the diagonal — which, combined with the
+    // ideal-k mutual term, double-counted leakage (ABT #104).
     size_t numWindings = magnetic.get_coil().get_functional_description().size();
-    double totalLeakage = 0.0;
-    
+    double selfLeakage = 0.0;
     if (numWindings > 1) {
-        // Use leakage inductance to the other windings
-        // For simplicity, we use the leakage to the "main" other winding (typically secondary)
-        for (size_t otherIndex = 0; otherIndex < numWindings; ++otherIndex) {
-            if (otherIndex != windingIndex) {
-                double leakage = calculate_leakage_inductance(magnetic, windingIndex, otherIndex, frequency);
-                // For multiple secondaries, we'd need a more sophisticated approach
-                // Here we take the maximum leakage as the effective leakage
-                totalLeakage = std::max(totalLeakage, leakage);
-                break; // Use only the first non-self winding for now
-            }
-        }
+        LeakageInductance leakageModel;
+        auto leakageMatrix = leakageModel.calculate_leakage_inductance_matrix(magnetic, frequency);
+        selfLeakage = leakageMatrix[windingIndex][windingIndex];
     }
-    
-    return Lm_i + totalLeakage;
+
+    return Lm_i + selfLeakage;
 }
 
 double Inductance::calculate_coupling_coefficient(
@@ -225,47 +221,55 @@ ScalarMatrixAtFrequency Inductance::calculate_inductance_matrix(
     // Calculate magnetizing inductance (referred to primary)
     auto magnetizingOutput = calculate_magnetizing_inductance(magnetic, operatingPoint);
     double Lm_primary = magnetizingOutput.get_magnetizing_inductance().get_nominal().value();
-    
+    double N_primary = functionalDescription[0].get_number_turns();
+
+    // Full inductance matrix = rank-1 ideal-coupling magnetizing term + energy-method
+    // leakage matrix, i.e. L_ij = Lm·(Ni/Np)(Nj/Np) + Λ_ij.
+    //
+    // ABT #104: the previous hand-rolled matrix put the FULL short-circuit pair
+    // leakage on both diagonals (L_ii = Lm_i + Ll_i) while the off-diagonal
+    // assumed perfect coupling (M_ij = Lm·(Ni/Np)(Nj/Np), k=1). Those two
+    // choices double-count the leakage: the short-circuit inductance
+    // L11 - M²/L22 came out ≈ 2·Ll (twice the leakage the model itself
+    // computes). The energy-method Λ from LeakageInductance already carries the
+    // correct per-winding self-leakage (diagonal) and mutual leakage
+    // (off-diagonal), so L = M_mag + Λ reproduces the standalone short-circuit
+    // leakage (validated to <0.02% on the ETD 39 40:20 case). Delegating to the
+    // model class also removes the parallel hand-rolled magnetics math.
+    // A single winding has no leakage (nothing to leak against): keep it free of
+    // the energy-method field simulation so single-winding inductors — the hot
+    // path through WindingLosses — cost exactly what they did before.
+    std::vector<std::vector<double>> leakageMatrix;
+    if (numWindings > 1) {
+        LeakageInductance leakageModel;
+        leakageMatrix = leakageModel.calculate_leakage_inductance_matrix(magnetic, frequency);
+    }
+
     // Build the inductance matrix (symmetric, so compute upper triangular + diagonal)
     for (size_t i = 0; i < numWindings; ++i) {
         std::string windingName_i = get_winding_name(magnetic, i);
         double turns_i = functionalDescription[i].get_number_turns();
-        
+
         for (size_t j = i; j < numWindings; ++j) {
             std::string windingName_j = get_winding_name(magnetic, j);
             double turns_j = functionalDescription[j].get_number_turns();
-            
+
+            double M_mag_ij = Lm_primary * (turns_i / N_primary) * (turns_j / N_primary);
+            double leakage_ij = (i < leakageMatrix.size() && j < leakageMatrix[i].size())
+                                    ? leakageMatrix[i][j]
+                                    : 0.0;
+
             DimensionWithTolerance inductanceValue;
-            
-            if (i == j) {
-                // Diagonal element: Self inductance L_ii = Lm_i + Ll_i
-                double Lm_i = Lm_primary * std::pow(turns_i / functionalDescription[0].get_number_turns(), 2);
-                
-                double Ll_i = 0.0;
-                if (numWindings > 1) {
-                    // Get leakage to the first other winding
-                    size_t otherWinding = (i == 0) ? 1 : 0;
-                    Ll_i = calculate_leakage_inductance(magnetic, i, otherWinding, frequency);
-                }
-                
-                inductanceValue.set_nominal(Lm_i + Ll_i);
-                magnitude[windingName_i][windingName_j] = inductanceValue;
-            } else {
-                // Off-diagonal element: Mutual inductance M_ij
-                // M_ij = Lm_primary * (N_i / N_primary) * (N_j / N_primary)
-                // This follows from M = k * sqrt(Lm_i * Lm_j) with k = 1
-                double N_primary = functionalDescription[0].get_number_turns();
-                double M_ij = Lm_primary * (turns_i / N_primary) * (turns_j / N_primary);
-                
-                inductanceValue.set_nominal(M_ij);
-                
-                // Set both M_ij and M_ji (symmetric)
-                magnitude[windingName_i][windingName_j] = inductanceValue;
+            inductanceValue.set_nominal(M_mag_ij + leakage_ij);
+
+            magnitude[windingName_i][windingName_j] = inductanceValue;
+            if (i != j) {
+                // Symmetric: L_ji = L_ij
                 magnitude[windingName_j][windingName_i] = inductanceValue;
             }
         }
     }
-    
+
     result.set_magnitude(magnitude);
     return result;
 }

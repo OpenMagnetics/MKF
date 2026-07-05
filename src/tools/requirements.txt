@@ -1,0 +1,6 @@
+ndjson
+openpyxl
+pandas
+scipy
+PyOpenMagnetics
+requests
