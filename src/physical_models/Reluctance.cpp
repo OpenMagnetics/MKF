@@ -338,6 +338,14 @@ AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap g
                          (gapLength / constants.vacuumPermeability / (gapSectionWidth / 2));
         reluctance = pow(gammaR, 2) * gapLength /
                      (constants.vacuumPermeability * std::numbers::pi * pow(gapSectionWidth / 2, 2));
+        // NOTE (ABT #119): the reluctance is scaled by gammaR² (= σ_x·σ_y, Mühlethaler
+        // Eq. 11), so for internal consistency (F = R_classic/R, as in the rectangular
+        // branch) this should report 1/gammaR². It reports 1/gammaR, which — via
+        // get_gap_maximum_storable_energy(·,F) that scales the stored energy by 1/F —
+        // makes the round-gap energy use gammaR instead of gammaR². Changing it to
+        // 1/gammaR² shifts the pinned PQ-40/40 energy snapshots ~32% with no FEA
+        // ground truth to arbitrate (models already disagree ~2×), so it is left as a
+        // flagged inconsistency pending a deliberate energy re-baseline.
         fringingFactor = 1 / gammaR;
     }
     else {
@@ -529,6 +537,18 @@ AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapI
         fringingFactor = 1 + gapLength / sqrt(gapArea) * log(2 * 2 * distanceClosestNormalSurface / gapLength);
     }
 
+    // Partridge/McLyman's log fringing factor is only valid for gaps small vs the
+    // winding-window height: for lg > 4·d the log argument (4·d/lg) drops below 1,
+    // so F < 1 (fringing impossibly INCREASING reluctance) and eventually F ≤ 0,
+    // which makes the reluctance below negative/infinite. Fail loudly rather than
+    // return an unphysical reluctance (ABT #119).
+    if (fringingFactor <= 0) {
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS,
+            "Partridge fringing model out of valid range: the log fringing factor went "
+            "non-positive (gap too large relative to the winding-window height). lg=" +
+            std::to_string(gapLength));
+    }
+
     reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
     AirGapReluctanceOutput airGapReluctanceOutput;
@@ -692,16 +712,17 @@ AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInf
  *            (Referenced by Zhang 2020 as [4])
  *
  * Uses conformal mapping (Schwarz-Christoffel transformation) for analytical solution
- * of fringing flux. Per-unit-length reluctance expressions from Section V (Eq. 14-17):
+ * of fringing flux. Per-unit-length reluctance expressions from Section V:
+ *   Eq. 14 basic post-plate (Fig 3a): w/(2d) + (2/π)(1 + ln(π h/(4d)))
+ *   Eq. 15 post-post      (Fig 3b): w/(2d) + (1/π)(1 + ln(π h/(2d)))
+ *   Eq. 16 post-plate     (Fig 3c): w/d   + (4/π)(1 + ln(π h/(4d)))
+ *   Eq. 17 post-post      (Fig 3d): w/d   + (2/π)(1 + ln(π h/(2d)))
  *
- * For post-plate configuration (Fig. 3a, Eq. 14):
- *   R_a = 1 / (μ₀ * (w/(2*d) + (2/π) * (1 + ln(π*h / (4*d)))))
- *
- * For post-post configuration (Fig. 3b, Eq. 15, used here):
- *   R_b = 1 / (μ₀ * (w/d + (4/π) * (1 + ln(π*h / (4*d)))))
- *
- * The implementation uses Eq. 15 form:
- *   R = 1 / (μ₀ * (A/lg + (2*depth/π) * (1 + ln(π*h / (2*lg)))))
+ * A core air gap between two core halves is the FULL post-post configuration
+ * (Fig 3d), so this uses Eq. 17 (2/π, ln(π h/(2·lg))) — NOT the post-plate 4/π,
+ * ln(π h/(4d)) forms. In 3-D the per-unit-length permeance is multiplied by the
+ * gap depth (A = w·depth):
+ *   R = 1 / (μ₀ * (A/lg + (2·depth/π) * (1 + ln(π·h / (2·lg)))))       [Eq. 17, ×depth]
  *
  * The fringing factor F = lg / (μ₀ * A * R)
  *
@@ -729,10 +750,21 @@ AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap g
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto gapSectionDepth = gapSectionDimensions[1];
 
-    reluctance = 1. / (constants.vacuumPermeability *
-                       (gapArea / gapLength +
-                        2. * gapSectionDepth / std::numbers::pi *
-                            (1 + log(std::numbers::pi * distanceClosestNormalSurface / (2 * gapLength)))));
+    // Eq. 17 permeance (per-unit-length, ×depth). The Schwarz-Christoffel log term
+    // 1+ln(π·h/(2·lg)) turns negative once lg > π·h·e/2 (~4.27·h) and can drive the
+    // effective permeance non-positive for very large gaps — the conformal-mapping
+    // approximation is simply out of range there. Return a loud error rather than a
+    // negative/near-infinite reluctance (ABT #119).
+    double permeance = gapArea / gapLength +
+                       2. * gapSectionDepth / std::numbers::pi *
+                           (1 + log(std::numbers::pi * distanceClosestNormalSurface / (2 * gapLength)));
+    if (permeance <= 0) {
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS,
+            "Balakrishnan fringing model out of valid range: the Schwarz-Christoffel "
+            "log term drove the effective gap permeance non-positive (gap too large "
+            "relative to the core height). lg=" + std::to_string(gapLength));
+    }
+    reluctance = 1. / (constants.vacuumPermeability * permeance);
 
     if (gapLength > 0) {
         fringingFactor = gapLength / (constants.vacuumPermeability * gapArea * reluctance);
