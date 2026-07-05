@@ -608,10 +608,18 @@ AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapI
         double lg = gapLength;
         double rc = gapSectionWidth / 2;
         double rx = gapSectionWidth / 2;
-        double aux1 = 1 + 2. / sqrt(std::numbers::pi) * lg / (2 * rc) * log(2.1 * rx / lg);
-        double aux2 = 1. / 6. * (pow(c, 2) + 2 * c * b + pow(b, 2)) / pow(b, 2);
+        // Stenglein Eq. 12 (γ for lM=0):
+        //   γ(lg) = aux1(lg) + [aux2 - aux1(l1)]·(lg/l1)^(2π)
+        // with aux1(x) = 1 + (2/√π)·(x/(2rc))·ln(2.1·rx/x) and, from Eq. 11,
+        //   aux2 = (1/6)·(c² + 2cb + 3b²)/rc².
+        // ABT #119/C3: aux2 previously read (c²+2cb+b²)/b² (wrong 3b² coefficient AND
+        // wrong /rc² denominator), and the bracket subtracted aux1 evaluated at lg
+        // instead of at l1. Both now match the paper (and γ(l1)=aux2=Eq. 11).
+        double aux1_lg = 1 + 2. / sqrt(std::numbers::pi) * lg / (2 * rc) * log(2.1 * rx / lg);
+        double aux1_l1 = 1 + 2. / sqrt(std::numbers::pi) * l1 / (2 * rc) * log(2.1 * rx / l1);
+        double aux2 = 1. / 6. * (pow(c, 2) + 2 * c * b + 3 * pow(b, 2)) / pow(rc, 2);
 
-        double gamma = aux1 + (aux2 - aux1) * pow(lg / l1, 2 * std::numbers::pi);
+        double gamma = aux1_lg + (aux2 - aux1_l1) * pow(lg / l1, 2 * std::numbers::pi);
 
         fringingFactor = alpha(rx, l1, lg) * pow(gapCoordinates[1] / l1, 2) + gamma;
     }

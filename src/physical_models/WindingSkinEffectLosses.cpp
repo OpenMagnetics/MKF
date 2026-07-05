@@ -1169,8 +1169,8 @@ double WindingSkinEffectLossesWangModel::calculate_turn_losses(Wire wire, double
         return z * (sinh(2 * z) + sin(2 * z)) / (cosh(2 * z) - cos(2 * z));
     };
 
-    double FR_x = f(h / skinDepth);
-    double FR_y = f(c / skinDepth);
+    double FR_x = f(h / skinDepth);   // 1-D skin R_ac/R_dc in the thin direction (→1 at DC)
+    double FR_y = f(c / skinDepth);   // 1-D skin R_ac/R_dc in the wide (edge) direction
 
     double lambdaH = lambda * h;
     double Hy_over_Hx = 0.0;
@@ -1178,7 +1178,16 @@ double WindingSkinEffectLossesWangModel::calculate_turn_losses(Wire wire, double
         Hy_over_Hx = c * (1.0 / lambdaH + 1.0 / (c - lambdaH)) / std::numbers::pi;
     }
 
-    double factor_2D = FR_x + pow(Hy_over_Hx, 2) * (h / c) * FR_y;
+    // R_ac/R_dc = skin term + edge (2-D) term. The 2-D edge contribution is an
+    // ADDED loss that must VANISH at DC (δ→∞): like every eddy/proximity effect it
+    // grows from zero with frequency. The previous form used FR_y directly, but
+    // f(c/δ)→1 at DC, so factor_2D → 1 + (Hy/Hx)²·(h/c) (~5 for a 10×0.2 mm foil) —
+    // a fabricated ~4× DC loss at arbitrarily low frequency (ABT #115). Use the
+    // excess skin factor (FR_y − 1), which → 0 at DC (restoring R_ac/R_dc → 1) and
+    // ≈ FR_y at HF (unchanged high-frequency behaviour). NB: the absolute Eq.-2
+    // magnitude (and the Hy/Hx normalisation) is not FEM-calibrated here — this
+    // fixes the DC-limit pathology only.
+    double factor_2D = FR_x + pow(Hy_over_Hx, 2) * (h / c) * (FR_y - 1.0);
     double turnLosses = dcLossTurn * (factor_2D - 1);
     return (turnLosses < 0) ? 0.0 : turnLosses;
 }
