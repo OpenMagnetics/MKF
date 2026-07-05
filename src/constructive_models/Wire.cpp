@@ -144,8 +144,10 @@ namespace OpenMagnetics {
         }
 
         if (!get_material()) {
-            set_material(defaults.defaultConductorMaterial);
-            // throw std::runtime_error("Wire is missing material information");
+            // ABT #114/A2: a silent copper default gives wrong resistivity (=> wrong
+            // ohmic/skin losses) for any wire that is really aluminium/etc. but simply
+            // omits its material tag. Fail loudly instead of substituting copper.
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing material information");
         }
 
         auto material = get_material().value();
@@ -160,14 +162,14 @@ namespace OpenMagnetics {
         }
     }
 
-    WireMaterial Wire::resolve_material(Wire wire) { 
+    WireMaterial Wire::resolve_material(Wire wire) {
         if (wire.get_type() == WireType::LITZ) {
             auto strand = wire.resolve_strand();
             return resolve_material(strand);
         }
         if (!wire.get_material()) {
-            wire.set_material(defaults.defaultConductorMaterial);
-            // throw std::runtime_error("Wire is missing material information");
+            // ABT #114/A2: no silent copper default (see resolve_material()).
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing material information");
         }
 
         auto material = wire.get_material().value();
@@ -183,10 +185,10 @@ namespace OpenMagnetics {
     }
 
 
-    WireMaterial Wire::resolve_material(WireRound wire) { 
+    WireMaterial Wire::resolve_material(WireRound wire) {
         if (!wire.get_material()) {
-            wire.set_material(defaults.defaultConductorMaterial);
-            // throw std::runtime_error("Wire is missing material information");
+            // ABT #114/A2: no silent copper default (see resolve_material()).
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing material information");
         }
 
         auto material = wire.get_material().value();
