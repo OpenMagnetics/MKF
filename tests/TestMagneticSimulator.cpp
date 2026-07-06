@@ -9,13 +9,46 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <cmath>
 #include <vector>
 
 using namespace MAS;
 using namespace OpenMagnetics;
 
-namespace { 
+namespace {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
+
+    // Shared sanity assertions for a simulated MAS: one output per operating point, and every
+    // output must carry a finite positive magnetizing inductance, core losses and winding
+    // losses. Broad physical bounds only — no goldens (a bench magnetic dissipating 10 kW is
+    // as wrong as a NaN).
+    void check_simulation_outputs_sane(OpenMagnetics::Mas& mas) {
+        REQUIRE(mas.get_outputs().size() > 0);
+        REQUIRE(mas.get_outputs().size() == mas.get_inputs().get_operating_points().size());
+        for (size_t opIdx = 0; opIdx < mas.get_outputs().size(); ++opIdx) {
+            INFO("Operating point " << opIdx);
+            auto& output = mas.get_outputs()[opIdx];
+
+            REQUIRE(output.get_inductance());
+            double magnetizingInductance = resolve_dimensional_values(
+                output.get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance());
+            CHECK(std::isfinite(magnetizingInductance));
+            CHECK(magnetizingInductance > 0);
+
+            REQUIRE(output.get_core_losses());
+            double coreLosses = output.get_core_losses()->get_core_losses();
+            CHECK(std::isfinite(coreLosses));
+            CHECK(coreLosses > 0);
+            CHECK(coreLosses < 1e4);
+
+            REQUIRE(output.get_winding_losses());
+            double windingLosses = output.get_winding_losses()->get_winding_losses();
+            CHECK(std::isfinite(windingLosses));
+            CHECK(windingLosses > 0);
+            CHECK(windingLosses < 1e4);
+        }
+    }
+
     TEST_CASE("MagneticSimulator", "[processor][magnetic-simulator]") {
 
         std::vector<double> turnsRatios;
@@ -258,6 +291,12 @@ namespace {
         json coreLossesJson;
         to_json(coreLossesJson, coreLosses);
 
+        check_simulation_outputs_sane(mas);
+        CHECK(std::isfinite(windingLosses.get_winding_losses()));
+        CHECK(windingLosses.get_winding_losses() > 0);
+        CHECK(std::isfinite(coreLosses.get_core_losses()));
+        CHECK(coreLosses.get_core_losses() > 0);
+
         // MagneticAdviser::preview_magnetic(mas);
 
         {
@@ -461,6 +500,12 @@ namespace {
         json coreLossesJson;
         to_json(coreLossesJson, coreLosses);
 
+        check_simulation_outputs_sane(mas);
+        CHECK(std::isfinite(windingLosses.get_winding_losses()));
+        CHECK(windingLosses.get_winding_losses() > 0);
+        CHECK(std::isfinite(coreLosses.get_core_losses()));
+        CHECK(coreLosses.get_core_losses() > 0);
+
         // MagneticAdviser::preview_magnetic(mas);
 
         {
@@ -642,6 +687,12 @@ namespace {
         auto mas = simulator.simulate(inputs, magnetic);
         json coreLossesJson;
         to_json(coreLossesJson, coreLosses);
+
+        check_simulation_outputs_sane(mas);
+        CHECK(std::isfinite(windingLosses.get_winding_losses()));
+        CHECK(windingLosses.get_winding_losses() > 0);
+        CHECK(std::isfinite(coreLosses.get_core_losses()));
+        CHECK(coreLosses.get_core_losses() > 0);
 
         // MagneticAdviser::preview_magnetic(mas);
 
@@ -830,6 +881,12 @@ namespace {
         json coreLossesJson;
         to_json(coreLossesJson, coreLosses);
 
+        check_simulation_outputs_sane(mas);
+        CHECK(std::isfinite(windingLosses.get_winding_losses()));
+        CHECK(windingLosses.get_winding_losses() > 0);
+        CHECK(std::isfinite(coreLosses.get_core_losses()));
+        CHECK(coreLosses.get_core_losses() > 0);
+
         // MagneticAdviser::preview_magnetic(mas);
 
         {
@@ -1017,6 +1074,8 @@ namespace {
         // json coreLossesJson;
         // to_json(coreLossesJson, coreLosses);
 
+        check_simulation_outputs_sane(mas);
+
         // MagneticAdviser::preview_magnetic(mas);
 
         {
@@ -1099,6 +1158,8 @@ namespace {
         auto simulator = MagneticSimulator();
         auto mas = simulator.simulate(inputs, magnetic);
 
+        check_simulation_outputs_sane(mas);
+
         // MagneticAdviser::preview_magnetic(mas);
     }
 
@@ -1114,6 +1175,8 @@ namespace {
         auto simulator = MagneticSimulator();
         auto mas = simulator.simulate(inputs, magnetic);
 
+        check_simulation_outputs_sane(mas);
+
         // MagneticAdviser::preview_magnetic(mas);
     }
 
@@ -1124,6 +1187,8 @@ namespace {
 
         auto simulator = MagneticSimulator();
         mas = simulator.simulate(mas.get_inputs(), mas.get_magnetic());
+
+        check_simulation_outputs_sane(mas);
 
         // MagneticAdviser::preview_magnetic(mas);
     }
@@ -1136,6 +1201,8 @@ namespace {
         auto simulator = MagneticSimulator();
         mas = simulator.simulate(mas.get_inputs(), mas.get_magnetic());
 
+        check_simulation_outputs_sane(mas);
+
         // MagneticAdviser::preview_magnetic(mas);
     }
 
@@ -1145,6 +1212,8 @@ namespace {
 
         auto simulator = MagneticSimulator();
         mas = simulator.simulate(mas.get_inputs(), mas.get_magnetic());
+
+        check_simulation_outputs_sane(mas);
 
         // MagneticAdviser::preview_magnetic(mas);
     }
