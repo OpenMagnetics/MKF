@@ -11,6 +11,7 @@
 #include "physical_models/Reluctance.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <chrono>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <algorithm>
@@ -826,6 +827,8 @@ TEST_CASE("Test_CoreAdviser_Web_0", "[adviser][core-adviser][available-cores][bu
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto masMagnetics = coreAdviser.get_advised_core(inputs, &cores, 1);
+    // Repro point: the adviser must return a core for these frontend inputs.
+    REQUIRE(masMagnetics.size() > 0);
 
     settings.reset();
 }
@@ -861,6 +864,7 @@ TEST_CASE("Test_CoreAdviser_Web_1", "[adviser][core-adviser][available-cores][bu
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto masMagnetics = coreAdviser.get_advised_core(inputs, &coresInInventory, 1000);
+    REQUIRE(masMagnetics.size() > 0);
     auto log = OpenMagnetics::read_log();
     auto scores = coreAdviser.get_scorings();
     json result;
@@ -915,6 +919,7 @@ TEST_CASE("Test_CoreAdviser_Web_2", "[adviser][core-adviser][available-cores][bu
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto masMagnetics = coreAdviser.get_advised_core(inputs, &coresInInventory, 100, 500);
+    REQUIRE(masMagnetics.size() > 0);
     auto log = OpenMagnetics::read_log();
     auto scores = coreAdviser.get_scorings();
     json result;
@@ -979,6 +984,7 @@ TEST_CASE("Test_CoreAdviser_Web_4", "[adviser][core-adviser][available-cores][bu
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &coresInInventory, 500);
+    REQUIRE(masMagnetics.size() > 0);
     auto log = OpenMagnetics::read_log();
     std::vector<std::string> listOfNames;
     for (size_t i = 0; i < masMagnetics.size(); ++i ){
@@ -1100,6 +1106,7 @@ TEST_CASE("Test_CoreAdviser_Web_7", "[adviser][core-adviser][available-cores][bu
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, maximumNumberResults);
+    REQUIRE(masMagnetics.size() > 0);
     auto log = OpenMagnetics::read_log();
     auto scoring = coreAdviser.get_scorings();
     std::map<std::string, std::map<std::string, double>> filteredScoring;
@@ -1167,6 +1174,7 @@ TEST_CASE("Test_CoreAdviser_Web_8", "[adviser][core-adviser][available-cores][bu
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, maximumNumberResults);
+    REQUIRE(masMagnetics.size() > 0);
     auto log = OpenMagnetics::read_log();
     auto scoring = coreAdviser.get_scorings();
     std::map<std::string, std::map<std::string, double>> filteredScoring;
@@ -1263,6 +1271,7 @@ TEST_CASE("Test_CoreAdviser_Web_9", "[adviser][core-adviser][available-cores][bu
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, maximumNumberResults);
+    REQUIRE(masMagnetics.size() > 0);
 
     auto log = OpenMagnetics::read_log();
     auto scoring = coreAdviser.get_scorings();
@@ -2184,6 +2193,8 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar_With_Log", "[adviser][core-ad
     
     // Get advised cores
     auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
+    // Repro point: STANDARD_CORES mode must propose cores for the planar design.
+    REQUIRE(masMagnetics.size() > 0);
     
     // Read and print the log
     auto log = read_log();
@@ -2222,6 +2233,10 @@ TEST_CASE("Test_E32_Specific_Configuration_19turns_640um", "[adviser][core-advis
     // Calculate required magnetic energy
     MagneticEnergy magneticEnergy;
     auto requiredEnergyDim = magneticEnergy.calculate_required_magnetic_energy(inputs);
+    // Repro point: the required-energy estimation must produce a finite positive value.
+    double requiredEnergy = resolve_dimensional_values(requiredEnergyDim);
+    CHECK(std::isfinite(requiredEnergy));
+    CHECK(requiredEnergy > 0);
     
     // Quick estimation
     
@@ -2673,6 +2688,8 @@ TEST_CASE("Test_CoreAdviserStandardCores_No_Toroidal_Saturation_Debug", "[advise
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
 
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 10);
+    // Repro point: the frontend scenario returned no cores; the adviser must find some.
+    REQUIRE(masMagnetics.size() > 0);
 
     std::cerr << "\n=== RESULTS ===" << std::endl;
     std::cerr << "Number of results: " << masMagnetics.size() << std::endl;
