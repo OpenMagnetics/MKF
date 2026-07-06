@@ -160,7 +160,13 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             }
         }
         else if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
-            circuitString += "E" + is + " P" + is + "+ Node_R_Lmag_" + is + " P" + is + "+ Node_R_Lmag_" + is + " Laplace = 1 /(" + c[0] + " + " + c[1] + " * sqrt(abs(s)/(2*pi)) + " + c[2] + " * abs(s)/(2*pi))\n";
+            // ABT #120.2: G-element (VCCS), not an E-source. A self-referenced VCCS
+            // with I = Y(s)·V(across itself) IS a two-terminal impedance Z = 1/Y —
+            // the standard LTspice behavioural-impedance idiom. The previous E-source
+            // (VCVS with output nodes equal to its control nodes) was an algebraic
+            // self-loop, not a series impedance. The Laplace expression is already
+            // the admittance of Z(f) = c0 + c1*sqrt(f) + c2*f (skin-effect fit).
+            circuitString += "G" + is + " P" + is + "+ Node_R_Lmag_" + is + " P" + is + "+ Node_R_Lmag_" + is + " Laplace = 1 /(" + c[0] + " + " + c[1] + " * sqrt(abs(s)/(2*pi)) + " + c[2] + " * abs(s)/(2*pi))\n";
             // Emit magnetizing inductance (saturating or linear)
             if (includeSaturation && satParams.valid) {
                 circuitString += emit_saturating_inductor_ltspice(satParams, is, "P" + is + "-", "Node_R_Lmag_" + is);

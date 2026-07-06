@@ -1170,8 +1170,13 @@ std::shared_ptr<CircuitSimulatorExporterModel> CircuitSimulatorExporterModel::fa
     else if (programName == CircuitSimulatorExporterModels::PLECS) {
         return std::make_shared<CircuitSimulatorExporterPlecsModel>();
     }
+    else if (programName == CircuitSimulatorExporterModels::NL5) {
+        // ABT #120.1: was missing — NL5 is in the enum with a full exporter class,
+        // but the factory threw "Unknown program" for it.
+        return std::make_shared<CircuitSimulatorExporterNl5Model>();
+    }
     else
-        throw ModelNotAvailableException("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE, LTSPICE, PLECS}");
+        throw ModelNotAvailableException("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE, LTSPICE, PLECS, NL5}");
 }
 
 std::string CircuitSimulatorExporter::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, double temperature, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {

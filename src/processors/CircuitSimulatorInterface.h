@@ -717,12 +717,23 @@ class CircuitSimulationReader {
     std::optional<CircuitSimulationReader::DataType> guess_type_by_name(std::string name);
 };
 
-class CircuitSimulatorExporterNl5Model {
+// ABT #120.1: derives from the base so the factory can construct it —
+// CircuitSimulatorExporter(NL5) used to throw "Unknown program" despite this
+// exporter being fully implemented.
+class CircuitSimulatorExporterNl5Model : public CircuitSimulatorExporterModel {
     private:
         int _precision = 10;
 
     public:
-        CircuitSimulatorExporterNl5Model() = default;
+        CircuitSimulatorExporterNl5Model() { programName = "Nl5"; }
+
+        // NL5 has no symbol-file concept comparable to LTspice .asy / Simba
+        // symbols; fail loudly rather than emit something fictional.
+        std::string export_magnetic_as_symbol(
+            [[maybe_unused]] Magnetic magnetic,
+            [[maybe_unused]] std::optional<std::string> filePathOrFile = std::nullopt) override {
+            throw NotImplementedException("NL5 exporter does not support symbol export");
+        }
 
         std::string export_magnetic_as_subcircuit(
             Magnetic magnetic,
@@ -730,7 +741,7 @@ class CircuitSimulatorExporterNl5Model {
             double temperature,
             std::optional<std::string> filePathOrFile = std::nullopt,
             CircuitSimulatorExporterCurveFittingModes mode =
-                CircuitSimulatorExporterCurveFittingModes::AUTO);
+                CircuitSimulatorExporterCurveFittingModes::AUTO) override;
 };
 
 
