@@ -579,7 +579,18 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 double bMax = maximum_allowed_magnetic_flux_density(bSatRaw);
                 double nFromSaturation = magnetizingInductance
                     .calculate_turns_from_volt_seconds_and_max_flux_density(core, maxVoltSeconds, bMax);
-                initialNumberTurns = nFromSaturation > 0 ? nFromSaturation : 5;
+                // ABT #121.4: no fabricated turn seed. A non-positive result means the
+                // inputs are unusable (zero volt-seconds from missing excitation, or a
+                // non-positive allowed flux ceiling) — reject the candidate loudly (the
+                // per-candidate sizing catch below drops it) instead of designing a
+                // fictitious 5-turn transformer.
+                if (nFromSaturation <= 0) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA,
+                        "Transformer turn seeding: volt-seconds solver returned no turns (maxVoltSeconds=" +
+                        std::to_string(maxVoltSeconds) + ", bMax=" + std::to_string(bMax) +
+                        ") for core " + core.get_name().value_or("?"));
+                }
+                initialNumberTurns = nFromSaturation;
 
                 // For resonant transformers with a specific Lm target
                 // (e.g. CLLLC, CLLC) we must size BOTH N and the gap so
@@ -718,7 +729,14 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                         Magnetic seeded = (*magneticsWithScoring)[i].first;
                         seeded.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(std::llround(initialNumberTurns)));
                         try { seededIsat = seeded.calculate_saturation_current(temperature, /*proportion=*/false); }
-                        catch (const std::exception&) { seededIsat = std::nullopt; }
+                        catch (const std::exception& e) {
+                            // ABT #121.4: was silent — the saturation-aware re-gap is
+                            // skipped for this candidate, so say so.
+                            logEntry(std::string("Inductor seeding: saturation current failed for core ") +
+                                     core.get_name().value_or("?") + ": " + e.what() +
+                                     " — saturation-aware re-gap skipped", "CoreAdviser", 2);
+                            seededIsat = std::nullopt;
+                        }
                     }
 
                     if (seededIsat && seededIsat.value() > 0 && seededIsat.value() < requiredIsat) {
@@ -762,6 +780,15 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                             initialNumberTurns = n;
                             core = acceptedCore;
                             (*magneticsWithScoring)[i].first.set_core(core);
+                        }
+                        else {
+                            // ABT #121.4: was silent — the candidate proceeds with the
+                            // seeded N and an unmet Isat requirement; the saturation
+                            // filter downstream is the remaining gate.
+                            logEntry(std::string("Inductor seeding: saturation-aware re-gap search failed for core ") +
+                                     core.get_name().value_or("?") +
+                                     " (required Isat=" + std::to_string(requiredIsat) +
+                                     " A) — proceeding with seeded turns, saturation filter must gate", "CoreAdviser", 2);
                         }
                     }
                 }

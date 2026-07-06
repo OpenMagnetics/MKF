@@ -124,7 +124,13 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                 saturationMagnetic.set_coil(coil);
                 double saturationCurrent = 0;
                 try { saturationCurrent = saturationMagnetic.calculate_saturation_current(temperature, /*proportion=*/false); }
-                catch (const std::exception&) { saturationCurrent = 0; }
+                catch (const std::exception& e) {
+                    // ABT #121.4: was silent — with saturationCurrent = 0 the
+                    // saturation cap on the turns sweep is disabled, so say so.
+                    logEntry(std::string("Losses filter: saturation current failed during turns sweep: ") +
+                             e.what() + " — saturation cap disabled for this sweep step", "CoreAdviser", 2);
+                    saturationCurrent = 0;
+                }
                 if (saturationCurrent > 0 && saturationCurrent < saturationMargin * saturationPeakCurrent) {
                     coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
                     settings.set_coil_delimit_and_compact(false);
@@ -357,7 +363,13 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 saturationMagnetic.set_coil(coil);
                 double saturationCurrent = 0;
                 try { saturationCurrent = saturationMagnetic.calculate_saturation_current(temperature, /*proportion=*/false); }
-                catch (const std::exception&) { saturationCurrent = 0; }
+                catch (const std::exception& e) {
+                    // ABT #121.4: was silent — with saturationCurrent = 0 the
+                    // saturation cap on the turns sweep is disabled, so say so.
+                    logEntry(std::string("Losses filter: saturation current failed during turns sweep: ") +
+                             e.what() + " — saturation cap disabled for this sweep step", "CoreAdviser", 2);
+                    saturationCurrent = 0;
+                }
                 if (saturationCurrent > 0 && saturationCurrent < saturationMargin * saturationPeakCurrent) {
                     coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
                     settings.set_coil_delimit_and_compact(false);

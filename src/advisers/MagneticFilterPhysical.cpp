@@ -77,10 +77,21 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             double voltagePeak = 0;
             double actualInductance = 0;
             
-            bool hasVoltage = excitation.get_voltage() && excitation.get_voltage()->get_processed() && 
+            bool hasVoltage = excitation.get_voltage() && excitation.get_voltage()->get_processed() &&
                 excitation.get_voltage()->get_processed()->get_peak();
             bool hasCurrentWaveform = excitation.get_current() && excitation.get_current()->get_waveform();
-            
+
+            // ABT #121.3: with neither voltage nor a current waveform, voltagePeak
+            // stayed 0 -> B = 0 -> bRatio = 0 -> the candidate silently PASSED the
+            // saturation gate with the best possible score. Missing excitation data
+            // must reject, not perfect-pass (the evaluate->cull scaffold logs and
+            // culls candidates on this exception).
+            if (!hasVoltage && !hasCurrentWaveform) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA,
+                    "Transformer saturation filter: primary excitation has neither processed voltage "
+                    "nor a current waveform, cannot compute peak flux density");
+            }
+
             if (hasVoltage) {
                 voltagePeak = excitation.get_voltage()->get_processed()->get_peak().value();
             } else if (hasCurrentWaveform) {
