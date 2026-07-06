@@ -4,12 +4,14 @@
 #include "physical_models/Resistivity.h"
 #include "Defaults.h"
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <numbers>
+#include <numeric>
 #include <streambuf>
 #include <vector>
 #include "support/Exceptions.h"
@@ -156,6 +158,15 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
     for (auto& complexField : fields) {
         auto frequency = complexField.get_frequency();
         auto dataForThisTurn = complexField.get_data();
+
+        if (!model->consumes_width_samples()) {
+            // Width-resolved samples are only consumed by the Wang flat-conductor
+            // model; models that average over the lumped surface points must not
+            // see them, or their point-average would be silently skewed.
+            dataForThisTurn.erase(std::remove_if(dataForThisTurn.begin(), dataForThisTurn.end(),
+                [](const ComplexFieldPoint& point) { return point.get_label() && point.get_label().value() == "widthsample"; }),
+                dataForThisTurn.end());
+        }
 
         auto turnLosses = model->calculate_turn_losses(wire, frequency, dataForThisTurn, temperature);
 
@@ -383,25 +394,37 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
 
     double Hx1 = 0, Hx2 = 0, Hy1 = 0, Hy2 = 0;
     double nonPlanarHe = 0;
+    size_t lumpedPointCount = 0;
+    std::vector<double> widthSamplesHPerpendicular;
     for (auto& datum : data) {
         if (!datum.get_label()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing label in induced point");
         }
         else if (datum.get_label().value() == "top") {
-            nonPlanarHe += datum.get_imaginary(); 
+            nonPlanarHe += datum.get_imaginary();
             Hx2 += datum.get_real();
+            lumpedPointCount++;
         }
         else if (datum.get_label().value() == "bottom") {
-            nonPlanarHe += datum.get_imaginary(); 
+            nonPlanarHe += datum.get_imaginary();
             Hx1 += datum.get_real();
+            lumpedPointCount++;
         }
         else if (datum.get_label().value() == "right") {
-            nonPlanarHe += datum.get_real(); 
+            nonPlanarHe += datum.get_real();
             Hy2 += datum.get_imaginary();
+            lumpedPointCount++;
         }
         else if (datum.get_label().value() == "left") {
-            nonPlanarHe += datum.get_real(); 
+            nonPlanarHe += datum.get_real();
             Hy1 += datum.get_imaginary();
+            lumpedPointCount++;
+        }
+        else if (datum.get_label().value() == "widthsample") {
+            // Width-resolved sample of the total (proximity + gap-fringing,
+            // superposed at field level) H component perpendicular to the wide
+            // face: y for planar/rectangular, x for foil.
+            widthSamplesHPerpendicular.push_back(wire.get_type() == WireType::FOIL ? datum.get_real() : datum.get_imaginary());
         }
     }
 
@@ -423,11 +446,67 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     // it to 2*c/delta: that dimensional rewrite over-predicts planar/foil
     // proximity by 1-2 orders of magnitude and was reverted (June 2026 regression).
     turnLosses += c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
-    turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
+    if (widthSamplesHPerpendicular.empty()) {
+        // Legacy lumped path (no width samples meshed, e.g. fringing disabled):
+        // perpendicular-field loss from the average of the two edge points.
+        turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
+    }
+    else {
+        // Width-resolved perpendicular-field eddy loss for a thin flat conductor,
+        // replacing the lumped edge-average term. The gap-fringing field varies
+        // strongly across a wide trace (Roshen 2007, IEEE TMAG 43(8):3387), so the
+        // loss must integrate the superposed total field Hperp(x) along the width.
+        // Two exact asymptotes joined by a Padé (harmonic-mean) bridge across the
+        // thin-sheet screening transition (delta^2 ~ w*t):
+        //  - LF: thin-strip vector-potential integral
+        //        P/m = omega^2*t/(2*rho) * integral (A(x)-<A>)^2 dx,  A(x) = -mu0 * integral Hperp dx
+        //    (reduces to Roshen Eq. I.3, (pi*mu0*f*Hperp)^2*w^3*t/(6*rho), for uniform Hperp.
+        //     Roshen's own skin correction Eq. VIII.1/2 is NOT used: it fails both
+        //     limits — it does not tend to 1 at low frequency and gives f^1.5
+        //     instead of sqrt(f) at high frequency.)
+        //  - HF: skin-limited surface integral P/m = C * rho/delta * integral Hperp(x)^2 dx
+        //    with C calibrated against 2D FEM (OMFEM planar-E suite: gaps
+        //    0.1/0.5/1/3/10 mm at 20/100/500 kHz; see tests).
+        // Field amplitudes are harmonic peaks -> factor 1/2 for time average.
+        // C calibrated against 2D FEM (OMFEM, planar E 64/10/50, 1 turn 20x0.209mm,
+        // gap y-offset 1.5mm): R_ac/R_dc matches FEM within -8%/+1% at 100/500 kHz
+        // and -33% at 20 kHz for the canonical 3 mm gap; sub-mm gaps under-predict
+        // 2-3.3x because the analytical fringing field decays faster with distance
+        // than the FEM field (image/core-guidance effects) — field-level follow-up.
+        constexpr double fringingLossCalibration = 8.0;
+        double wideDimension = (wire.get_type() == WireType::FOIL) ? h : c;
+        double thinDimension = (wire.get_type() == WireType::FOIL) ? c : h;
+        size_t numberSamples = widthSamplesHPerpendicular.size();
+        double sampleStep = wideDimension / double(numberSamples);
+        double vacuumPermeability = Constants().vacuumPermeability;
+        double angularFrequency = 2 * std::numbers::pi * frequency;
 
-    // BUG-003 FIX: Normalize nonPlanarHe by data.size()
-    if (nonPlanarHe != 0 && !data.empty()) {
-        nonPlanarHe /= data.size();
+        double integralHPerpendicularSquared = 0;
+        std::vector<double> fluxFunction(numberSamples);
+        double cumulativeFlux = 0;
+        for (size_t sampleIndex = 0; sampleIndex < numberSamples; ++sampleIndex) {
+            double HPerpendicular = widthSamplesHPerpendicular[sampleIndex];
+            integralHPerpendicularSquared += HPerpendicular * HPerpendicular * sampleStep;
+            cumulativeFlux += -vacuumPermeability * HPerpendicular * sampleStep;
+            fluxFunction[sampleIndex] = cumulativeFlux;
+        }
+        double fluxFunctionMean = std::accumulate(fluxFunction.begin(), fluxFunction.end(), 0.0) / double(numberSamples);
+        double integralFluxFunctionSquared = 0;
+        for (size_t sampleIndex = 0; sampleIndex < numberSamples; ++sampleIndex) {
+            integralFluxFunctionSquared += pow(fluxFunction[sampleIndex] - fluxFunctionMean, 2) * sampleStep;
+        }
+
+        double lossLowFrequency = 0.5 * pow(angularFrequency, 2) * thinDimension / (2 * resistivity) * integralFluxFunctionSquared;
+        double lossHighFrequency = 0.5 * fringingLossCalibration * resistivity / skinDepth * integralHPerpendicularSquared;
+        if (lossLowFrequency > 0 && lossHighFrequency > 0) {
+            turnLosses += 1.0 / (1.0 / lossLowFrequency + 1.0 / lossHighFrequency);
+        }
+    }
+
+    // BUG-003 FIX: Normalize nonPlanarHe by the lumped surface-point count
+    // (width samples do not contribute to it and must not dilute the average)
+    if (nonPlanarHe != 0 && lumpedPointCount > 0) {
+        nonPlanarHe /= lumpedPointCount;
         double proximityFactor = WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(wire, frequency, temperature);
         turnLosses += proximityFactor * pow(nonPlanarHe, 2);
     }

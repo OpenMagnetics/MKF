@@ -654,6 +654,34 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn tur
     fieldPoint.set_label("bottom");
     fieldPoints.push_back(fieldPoint);
 
+    // Width-resolved samples across the wide face, consumed by the Wang proximity
+    // model's perpendicular-field integral (Roshen 2007 gap fringing + thin-strip
+    // screening bridge). The gap-fringing field varies strongly (up to ~50x) across
+    // a wide flat conductor, so the 4 lumped surface points cannot represent
+    // integral(Hperp(x)^2 dx); these samples make the superposed total field
+    // (proximity + fringing, including their cross term) available along the width.
+    // Only generated when fringing is enabled: without a gap field the lumped
+    // mesh is sufficient and much cheaper.
+    if (settings.get_magnetic_field_include_fringing()) {
+        bool wideAlongY = (wire.get_type() == WireType::FOIL);
+        double wideDimension = wideAlongY ? wire.get_maximum_conducting_height() : wire.get_maximum_conducting_width();
+        double thinDimension = wideAlongY ? wire.get_maximum_conducting_width() : wire.get_maximum_conducting_height();
+        // Self-scaling sample count: enough to resolve the near-gap field decay on
+        // wide traces, cheap on near-square conductors.
+        size_t numberSamples = std::min(size_t(32), std::max(size_t(8), size_t(std::round(wideDimension / thinDimension))));
+        double sampleStep = wideDimension / double(numberSamples);
+        for (size_t sampleIndex = 0; sampleIndex < numberSamples; ++sampleIndex) {
+            double offset = -wideDimension / 2 + (sampleIndex + 0.5) * sampleStep;
+            if (wideAlongY) {
+                fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + offset});
+            }
+            else {
+                fieldPoint.set_point({turn.get_coordinates()[0] + offset, turn.get_coordinates()[1]});
+            }
+            fieldPoint.set_label("widthsample");
+            fieldPoints.push_back(fieldPoint);
+        }
+    }
 
     return fieldPoints;
 }

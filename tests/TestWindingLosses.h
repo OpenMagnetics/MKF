@@ -307,14 +307,23 @@ namespace WindingLossesTestData {
         // 500 kHz, matching the analytic estimate (geometric factor ~276,
         // x = r_strand/delta = 0.38); the old pins assumed ~no internal
         // proximity, which is implausible for a bundle this large
+        // Re-pinned (July 2026) after fixing the exact-== harmonic-frequency gate
+        // that silently disabled gap-fringing delivery (the FFT fundamental bin
+        // never equals the nominal frequency exactly). With the tolerance fix the
+        // ground-gap fringing reaches the winding: for this single turn the entire
+        // proximity field is fringing (0 -> ~21 A/m at 500 kHz). Mechanism
+        // FEM-checked on this geometry with a 1 mm gap (OMFEM axisymmetric,
+        // L within 1.4% of analytical): the fringing delta is real; MKF's
+        // fringing-inclusive sum(H^2) at the turns is ~2x FEM at 500 kHz, so these
+        // values are somewhat conservative. Field-level refinement: ABT #139.
         config.expectedValues = {
             {0.01, 0.00037562},
-            {25000, 0.00037632},
-            {50000, 0.00037843},
-            {100000, 0.00038686},
-            {200000, 0.00042055},
-            {250000, 0.00044581},
-            {500000, 0.00065586}
+            {25000, 0.00037675},
+            {50000, 0.00038012},
+            {100000, 0.00039362},
+            {200000, 0.00044758},
+            {250000, 0.00048803},
+            {500000, 0.00082443}
         };
         
         config.createMagnetic = []() {
@@ -367,14 +376,17 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 1;
         
+        // Re-pinned (July 2026): gap fringing is now actually delivered (see the
+        // One_Turn_Litz_Many_Strands note for the == gate fix and the OMFEM 1 mm
+        // mechanism check). Old pins captured the fringing-disabled bug state.
         config.expectedValues = {
-            {0.01, 0.03375},
-            {25000, 0.03371},
-            {50000, 0.03361},
-            {100000, 0.0339},
-            {200000, 0.03463},
-            {250000, 0.03553},
-            {500000, 0.04004}
+            {0.01, 0.033848},
+            {25000, 0.033953},
+            {50000, 0.034267},
+            {100000, 0.035526},
+            {200000, 0.040559},
+            {250000, 0.044332},
+            {500000, 0.075709}
         };
         
         config.createMagnetic = []() {
@@ -427,13 +439,16 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 1;
         
+        // Re-pinned (July 2026): gap fringing is now actually delivered (see the
+        // One_Turn_Litz_Many_Strands note for the == gate fix and the OMFEM 1 mm
+        // mechanism check). Old pins captured the fringing-disabled bug state.
         config.expectedValues = {
-            {0.01, 0.1133},
-            {25000, 0.1155},
-            {50000, 0.1165},
-            {100000, 0.1196},
-            {200000, 0.12944},
-            {250000, 0.13644}
+            {0.01, 0.10731},
+            {25000, 0.10897},
+            {50000, 0.11396},
+            {100000, 0.13389},
+            {200000, 0.21362},
+            {250000, 0.27338}
         };
         
         config.createMagnetic = []() {

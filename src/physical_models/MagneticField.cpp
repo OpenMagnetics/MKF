@@ -10,6 +10,7 @@
 #include "support/Settings.h"
 #include "support/Utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <magic_enum.hpp>
 
@@ -349,6 +350,28 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         inducedFields = coilMesher.generate_mesh_induced_coil(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold());
     }
 
+    // The width-resolved "widthsample" points drive the perpendicular-field integral
+    // in the Wang proximity model. That kernel is FEM-validated for the gap-fringing
+    // regime (a functional gap dominating the field at a flat conductor); for
+    // ungapped cores the inter-conductor perpendicular field it integrates lacks the
+    // stack self-screening a real conductor stack exhibits and over-predicts, so the
+    // lumped legacy path is kept there: strip the samples when no functional gap exists.
+    bool hasFunctionalGap = false;
+    for (auto& gap : gapping) {
+        if (gap.get_type() == GapType::SUBTRACTIVE || gap.get_type() == GapType::ADDITIVE) {
+            hasFunctionalGap = true;
+            break;
+        }
+    }
+    if (!hasFunctionalGap) {
+        for (auto& inducedField : inducedFields) {
+            auto& inducedData = inducedField.get_mutable_data();
+            inducedData.erase(std::remove_if(inducedData.begin(), inducedData.end(),
+                [](const FieldPoint& point) { return point.get_label() && point.get_label().value() == "widthsample"; }),
+                inducedData.end());
+        }
+    }
+
     // For ALBACH model, we only compute the turns contribution (air coil field).
     // The gap fringing field is handled by whichever fringing effect model is configured
     // (ALBACH or ROSHEN fringing). This allows users to choose their preferred fringing model.
@@ -357,6 +380,11 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     
     // Use the configured fringing model (default is ROSHEN, can be overridden to ALBACH)
     std::shared_ptr<MagneticFieldStrengthFringingEffectModel> fringingModel = _fringingEffectModel;
+
+    // Gaps too large for Albach's fitted validity range (xi = gapLength / columnDiameter
+    // > ~0.2755), routed through the Roshen conformal model per induced point instead.
+    std::vector<CoreGap> albachOutOfRangeGaps;
+    MagneticFieldStrengthRoshenModel albachFallbackRoshenModel;
 
     if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
         if (includeFringing) {
@@ -384,7 +412,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
             for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
 
-                if (inducingFields[harmonicIndex].get_frequency() == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
+                if (std::abs(inducingFields[harmonicIndex].get_frequency() - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
 
                     double frequency = inducingFields[harmonicIndex].get_frequency();
                     double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
@@ -392,8 +420,18 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                         if (gap.get_coordinates().value()[0] < 0) {
                             continue;
                         }
+                        // Albach's equivalent-current fit is only valid for small
+                        // gapLength / columnDiameter ratios; larger gaps are routed
+                        // through the Roshen conformal model per induced point below
+                        // (deterministic model routing by geometry, not a fallback).
+                        // Only one harmonic can pass the frequency-tolerance gate
+                        // (harmonics are integer multiples), so no dedup is needed.
+                        if (!MagneticFieldStrengthAlbachModel::is_gap_within_validity_range(gap)) {
+                            albachOutOfRangeGaps.push_back(gap);
+                            continue;
+                        }
                         auto fieldPoint = fringingModel->get_equivalent_inducing_point_for_gap(gap, magneticFieldStrengthGap);
-                        
+
                         inducingFields[harmonicIndex].get_mutable_data().push_back(fieldPoint);
                     }
                 }
@@ -449,12 +487,14 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 auto fringingFieldModel = factory(MagneticFieldStrengthModels::BINNS_LAWRENSON);
                 
                 // For ROSHEN and SULLIVAN fringing, we need the gap field strength
-                // (both use direct gap-to-point calculation via get_magnetic_field_strength_between_gap_and_point)
+                // (both use direct gap-to-point calculation via get_magnetic_field_strength_between_gap_and_point).
+                // Also needed when ALBACH fringing routed out-of-validity gaps to Roshen.
                 double magneticFieldStrengthGap = 0;
                 if ((_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN ||
-                     _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN) && includeFringing) {
+                     _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN ||
+                     !albachOutOfRangeGaps.empty()) && includeFringing) {
                     double frequency = inducingFields[harmonicIndex].get_frequency();
-                    if (frequency == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
+                    if (std::abs(frequency - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
                         magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
                     }
                 }
@@ -469,11 +509,17 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     auto complexFieldPoint = albach2DModel->calculateTotalFieldAtPoint(inducedFieldPoint);
                     
                     // Add fringing field contribution based on configured fringing model
-                    if (includeFringing && inducingFields[harmonicIndex].get_frequency() == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
+                    if (includeFringing && std::abs(inducingFields[harmonicIndex].get_frequency() - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
                         if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
                             // ALBACH fringing: use equivalent current loops
                             for (auto& fringingPoint : fringingPoints) {
                                 auto fringingContrib = fringingFieldModel->get_magnetic_field_strength_between_two_points(fringingPoint, inducedFieldPoint);
+                                complexFieldPoint.set_real(complexFieldPoint.get_real() + fringingContrib.get_real());
+                                complexFieldPoint.set_imaginary(complexFieldPoint.get_imaginary() + fringingContrib.get_imaginary());
+                            }
+                            // Gaps beyond Albach's fitted validity: Roshen conformal model
+                            for (auto& gap : albachOutOfRangeGaps) {
+                                auto fringingContrib = albachFallbackRoshenModel.get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, inducedFieldPoint);
                                 complexFieldPoint.set_real(complexFieldPoint.get_real() + fringingContrib.get_real());
                                 complexFieldPoint.set_imaginary(complexFieldPoint.get_imaginary() + fringingContrib.get_imaginary());
                             }
@@ -508,11 +554,15 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
             // ROSHEN and SULLIVAN fringing are computed per-point in this loop (not via equivalent current loops)
             // Skip if using ALBACH H-field model since fringing is already added in the ALBACH branch above
-            // ALBACH fringing model uses equivalent current loops which are added to inducingFields and processed below
+            // ALBACH fringing model uses equivalent current loops which are added to inducingFields and processed below,
+            // except for gaps beyond its fitted validity, which are routed through the Roshen model here.
+            bool albachRoutedGapsPending = _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH &&
+                                           !albachOutOfRangeGaps.empty();
             if (!isAlbach && (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN ||
-                              _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN)) {
+                              _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN ||
+                              albachRoutedGapsPending)) {
                 // For the main harmonic we calculate the fringing effect for each gap
-                if (includeFringing && inducedFields[harmonicIndex].get_frequency() == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
+                if (includeFringing && std::abs(inducedFields[harmonicIndex].get_frequency() - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
                     if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
                         auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
                         auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
@@ -535,11 +585,16 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     double frequency = inducingFields[harmonicIndex].get_frequency();
                     double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
 
-                    for (auto& gap : gapping) {
+                    // For ALBACH fringing only the out-of-validity gaps are handled here
+                    // (via Roshen); the in-range gaps went through equivalent current loops.
+                    auto& gapsToProcess = albachRoutedGapsPending ? albachOutOfRangeGaps : gapping;
+                    for (auto& gap : gapsToProcess) {
                         if (gap.get_coordinates().value()[0] < 0) {
                             continue;
                         }
-                        auto complexFieldPoint = _fringingEffectModel->get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, inducedFieldPoint);
+                        auto complexFieldPoint = albachRoutedGapsPending ?
+                            albachFallbackRoshenModel.get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, inducedFieldPoint) :
+                            _fringingEffectModel->get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, inducedFieldPoint);
 
                         totalInducedFieldX += complexFieldPoint.get_real();
                         totalInducedFieldY += complexFieldPoint.get_imaginary();
@@ -635,6 +690,16 @@ ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_be
             double distanceX = inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0];
             double distanceY = inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1];
             double distance = hypot(distanceX, distanceY);
+            if (inducedLabel == "widthsample") {
+                // Width samples are generic spatial points, not Wang's paired edge
+                // points, so the label-pair formulas below do not apply. Treat each
+                // Wang inducing point as a filament via Lammeraner. Wang's inducing
+                // points carry the full turn current (its own formulas halve it), so
+                // halve the filament current here to keep the total at I per turn.
+                FieldPoint halfCurrentPoint = inducingFieldPoint;
+                halfCurrentPoint.set_value(current * 0.5);
+                return MagneticFieldStrengthLammeranerModel().get_magnetic_field_strength_between_two_points(halfCurrentPoint, inducedFieldPoint);
+            }
             if (inducingLabel == "left") {
                 if (inducedLabel == "left") {
                     double tetha1 = asin(fabs(distanceY) / distance);
@@ -994,6 +1059,17 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
         complexFieldPoint.set_turn_length(inducedFieldPoint.get_turn_length().value());
     }
     return complexFieldPoint;
+}
+
+bool MagneticFieldStrengthAlbachModel::is_gap_within_validity_range(CoreGap gap) {
+    if (!gap.get_section_dimensions() || !gap.get_coordinates()) {
+        return false;
+    }
+    double rc = gap.get_section_dimensions().value()[0] / 2;
+    double xi = gap.get_length() / (2 * rc);
+    double x = 1 - 1.05 * xi - 2.88 * pow(xi, 2) - 8.8 * pow(xi, 3);
+    double denominator = 0.25 - 1.569 * xi + 4.34 * pow(xi, 2) - 7.042 * pow(xi, 3);
+    return x >= 0 && denominator > 0;
 }
 
 FieldPoint MagneticFieldStrengthAlbachModel::get_equivalent_inducing_point_for_gap(CoreGap gap, double magneticFieldStrengthGap) {

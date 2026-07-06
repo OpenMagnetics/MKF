@@ -134,6 +134,10 @@ class MagneticFieldStrengthAlbachModel : public MagneticFieldStrengthFringingEff
             throw std::runtime_error("Fringing field not implemented for this model");
         }
         FieldPoint get_equivalent_inducing_point_for_gap(CoreGap gap, double magneticFieldStrengthGap);
+        // Albach's fitted polynomials are only valid for small xi = gapLength / columnDiameter
+        // (the fitted denominator crosses zero at xi ~ 0.2755). Gaps outside this range are
+        // routed through the Roshen conformal model by the field calculation instead of throwing.
+        static bool is_gap_within_validity_range(CoreGap gap);
 };
 
 // ============================================================================

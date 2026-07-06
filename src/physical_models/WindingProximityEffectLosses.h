@@ -27,6 +27,12 @@ class WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Default";
     virtual double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) = 0;
+    // Whether the model consumes the "widthsample" mesh points (width-resolved
+    // perpendicular-field samples for flat conductors). Models that average over
+    // the lumped surface points must not see them, so the dispatcher strips them
+    // unless this returns true.
+    virtual bool consumes_width_samples() const { return false; }
+    virtual ~WindingProximityEffectLossesModel() = default;
     std::optional<double> try_get_proximity_factor(Wire wire, double frequency, double temperature);
     void set_proximity_factor(Wire wire, double frequency, double temperature, double proximityFactor);
     static std::shared_ptr<WindingProximityEffectLossesModel> factory(WindingProximityEffectLossesModels modelName);
@@ -58,6 +64,7 @@ class WindingProximityEffectLossesWangModel : public WindingProximityEffectLosse
   public:
     std::string methodName = "Wang";
     double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    bool consumes_width_samples() const override { return true; }
 };
 
 // Based on A New Approach to Analyse Conduction Losses in High Frequency Magnetic Components by J.A. Ferreira
