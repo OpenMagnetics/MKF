@@ -1135,6 +1135,7 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_1.svg");
+        std::filesystem::remove(outFile);
         auto json_path_1429 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coil_painter_web_1_1429.json");
         std::ifstream json_file_1429(json_path_1429);
         OpenMagnetics::Magnetic magnetic(json::parse(json_file_1429));
@@ -1144,7 +1145,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-
+        OpenMagneticsTesting::check_svg(outFile);
 
         settings.reset();
     }
@@ -1155,6 +1156,7 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_2.svg");
+        std::filesystem::remove(outFile);
         auto json_path_1446 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coil_painter_web_2_1446.json");
         std::ifstream json_file_1446(json_path_1446);
         OpenMagnetics::Magnetic magnetic(json::parse(json_file_1446));
@@ -1174,7 +1176,7 @@ namespace {
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-
+        OpenMagneticsTesting::check_svg(outFile);
 
         settings.reset();
     }
@@ -1185,6 +1187,7 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_3.svg");
+        std::filesystem::remove(outFile);
         auto json_path_1473 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coil_painter_web_3_1473.json");
         std::ifstream json_file_1473(json_path_1473);
         OpenMagnetics::Magnetic magnetic(json::parse(json_file_1473));
@@ -1197,7 +1200,7 @@ namespace {
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-
+        OpenMagneticsTesting::check_svg(outFile);
 
         settings.reset();
     }
@@ -1208,6 +1211,7 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_4.svg");
+        std::filesystem::remove(outFile);
         auto json_path_1493 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coil_painter_web_4_1493.json");
         std::ifstream json_file_1493(json_path_1493);
         OpenMagnetics::Magnetic magnetic(json::parse(json_file_1493));
@@ -1222,7 +1226,7 @@ namespace {
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-
+        OpenMagneticsTesting::check_svg(outFile);
 
         settings.reset();
     }
@@ -1233,6 +1237,7 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_5.svg");
+        std::filesystem::remove(outFile);
         std::string file_path_1513 = std::source_location::current().file_name();
         auto json_path_1513 = file_path_1513.substr(0, file_path_1513.rfind("/")).append("/testData/test_coil_painter_web_5_1513.json");
         std::ifstream json_file_1513(json_path_1513);
@@ -1243,7 +1248,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-
+        OpenMagneticsTesting::check_svg(outFile);
 
         settings.reset();
     }
@@ -1254,6 +1259,7 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_6.svg");
+        std::filesystem::remove(outFile);
         auto json_path_1530 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coil_painter_web_6_1530.json");
         std::ifstream json_file_1530(json_path_1530);
         OpenMagnetics::Magnetic magnetic(json::parse(json_file_1530));
@@ -1266,7 +1272,7 @@ namespace {
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-
+        OpenMagneticsTesting::check_svg(outFile);
 
         settings.reset();
     }
@@ -1280,12 +1286,13 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_7.svg");
+        std::filesystem::remove(outFile);
         Painter painter(outFile);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-
+        OpenMagneticsTesting::check_svg(outFile);
 
         settings.reset();
     }
@@ -1300,13 +1307,14 @@ namespace {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Painter_Web_8.svg");
+        std::filesystem::remove(outFile);
         Painter painter(outFile);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-
+        OpenMagneticsTesting::check_svg(outFile);
 
         settings.reset();
     }
@@ -3175,7 +3183,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3193,7 +3201,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3211,7 +3219,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3229,7 +3237,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3247,7 +3255,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3265,7 +3273,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3283,7 +3291,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3301,7 +3309,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3319,7 +3327,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3342,7 +3350,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3360,7 +3368,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3378,7 +3386,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3396,7 +3404,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3416,7 +3424,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3436,7 +3444,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3456,7 +3464,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3476,7 +3484,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -3522,7 +3530,7 @@ namespace {
             Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
-
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
