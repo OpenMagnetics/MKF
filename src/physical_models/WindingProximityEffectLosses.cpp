@@ -1202,19 +1202,27 @@ double WindingProximityEffectLossesBartoliModel::calculate_proximity_factor(Wire
             "Bartoli model only supports ROUND and LITZ wire");
     }
 
-    // Kelvin-Bessel proximity variable: y_s = d_s·√2 / δ  (Eq. 4 adapted)
+    // Kelvin-Bessel proximity variable. The paper (Bartoli et al., PESC'96, Eq. 4,
+    // DOI 10.1109/PESC.1996.548808) uses gamma = d/(delta*sqrt(2)); this bridge is
+    // written in y = d*sqrt(2)/delta = 2*gamma. Both asymptote coefficients below
+    // are for THIS convention.
     double y_s = d_s * std::sqrt(2.0) / skinDepth;
 
-    // Proximity Bessel factor K2(y):
-    //   Low-freq  (y→0):    K2 ≈ y⁴/64
-    //   High-freq (y→∞):    K2 ≈ y/(2√2)
-    //   Smooth Padé bridge:
+    // Proximity Bessel factor K2(y), bridging the exact Kelvin-function limits
+    // (ABT #115, verified against the paper + physical anchors):
+    //   Low-freq  (y->0): K2 = y^4/256 -> factor 2*pi*rho*K2 = pi*mu0^2*w^2*d^4/(128*rho),
+    //     the classical uniform-field cylinder eddy factor (same constant as the
+    //     Sullivan SFD model above). The former y^4/64 was calibrated for y = d/delta
+    //     and over-counted low-frequency proximity by exactly 4x.
+    //   High-freq (y->inf): K2 = y/(2*sqrt(2)) -> factor pi*rho*d/delta, the exact
+    //     Kelvin/Bessel asymptote (matches Rossmanith's 2*pi*rho*Re[alpha*I1/I0] -> 2*pi*rho*r/delta).
+    //   Smooth Pade (harmonic-mean) bridge between them.
     double K2;
     if (y_s < 0.01) {
-        K2 = std::pow(y_s, 4) / 64.0;
+        K2 = std::pow(y_s, 4) / 256.0;
     }
     else {
-        double low  = std::pow(y_s, 4) / 64.0;
+        double low  = std::pow(y_s, 4) / 256.0;
         double high = y_s / (2.0 * std::sqrt(2.0));
         K2 = (low * high) / (low + high);   // harmonic mean → low for small y, high for large y
     }
@@ -1236,7 +1244,14 @@ double WindingProximityEffectLossesBartoliModel::calculate_proximity_factor(Wire
 
         if (d_outer > 0) {
             double k_s = n_s * std::pow(d_s, 2) / std::pow(d_outer, 2);
-            // ×0.5 for twisted litz (Section II: 50% reduction of internal proximity)
+            // NOTE (ABT #115, checked against the paper): this is a HEURISTIC, not the
+            // paper's Eq. 16. Bartoli's internal term is driven by the bundle's OWN
+            // current (eta2^2 * p/(2*pi) with the strand-spacing porosity eta2), while
+            // this scales the EXTERNAL-field factor by 0.5*packing (the 0.5 is the
+            // Section-II twisted-wire reduction). Kept because the porosity spacings
+            // (t_s, t_0) are not available at this API level and the delivered field
+            // already supersedes the paper's solenoid-field assumption; the exact
+            // internal-bundle treatment lives in the Albach litz model.
             factor += 0.5 * k_s * factor_ext;
         }
     }
