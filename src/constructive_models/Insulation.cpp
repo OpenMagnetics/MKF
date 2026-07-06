@@ -15,9 +15,11 @@ double linear_table_interpolation(std::vector<std::pair<double, double>> table, 
         return (x - table.back().first) * slope + table.back().second;
     }
     if (x < table.front().first) {
-        if (table.size() < 2) return table.front().second;
-        double slope = (table[1].second - table[0].second) / (table[1].first - table[0].first);
-        return table.front().second + (x - table[0].first) * slope; // FIX H-INS-1: Correct extrapolation direction
+        // ABT #108: standards distance/withstand tables are floors — below the lowest
+        // tabulated stress the first row's value applies. Linear extrapolation below
+        // the first row (former H-INS-1 behaviour) produced NEGATIVE clearances and
+        // creepages at low voltages (e.g. IEC 60664-1 G.13 below ~41 V).
+        return table.front().second;
     }
 
 
