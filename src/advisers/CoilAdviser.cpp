@@ -361,7 +361,7 @@ namespace OpenMagnetics {
                 auto mas = invalidMagneticsWithScoring[i].first;
                 if (mas.get_magnetic().get_manufacturer_info()) {
                     auto info = mas.get_magnetic().get_manufacturer_info().value();
-                    info.set_reference("INVALID (failed validity filters): " + info.get_reference().value_or(""));
+                    info.set_reference(INVALID_COIL_REFERENCE_PREFIX + info.get_reference().value_or(""));
                     mas.get_mutable_magnetic().set_manufacturer_info(info);
                 }
                 masesWithoutScoring.push_back(mas);

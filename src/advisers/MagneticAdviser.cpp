@@ -16,6 +16,20 @@
 namespace OpenMagnetics {
 
 namespace {
+// Drop coil-invalid fallback designs (CoilAdviser stamps INVALID_COIL_REFERENCE_PREFIX on the best
+// design for a core it could not host a valid winding on) whenever ANY valid design exists — an
+// un-windable core must never outrank a windable one. Only when EVERY candidate is invalid do we keep
+// them (true last resort, so the caller still sees something rather than nothing). This mirrors the fast
+// path, which already skips un-wound candidates (ABT #42).
+void drop_invalid_when_valid_exists(std::vector<std::pair<Mas, double>>& scored) {
+    bool anyValid = false;
+    for (auto& entry : scored) {
+        if (!coil_failed_validity_filters(entry.first)) { anyValid = true; break; }
+    }
+    if (!anyValid) return;  // nothing valid anywhere → keep the invalid fallbacks (last resort)
+    std::erase_if(scored, [](std::pair<Mas, double>& entry) { return coil_failed_validity_filters(entry.first); });
+}
+
 // RAII: back up the global core/wire databases, replace them with constraint-
 // filtered copies for the duration of the scope, and restore on destruction
 // (also on exception). A no-op when the relevant section of `constraints` is
@@ -741,6 +755,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     logEntry("Found " + std::to_string(masData.size()) + " magnetics", "MagneticAdviser", 2);
     
     auto masMagneticsWithScoring = score_magnetics(masData, filterFlow);
+    drop_invalid_when_valid_exists(masMagneticsWithScoring);
 
         sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
             if (b1.second != b2.second) {
@@ -837,7 +852,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         
         logEntry("Found " + std::to_string(masData.size()) + " magnetics without toroids", "MagneticAdviser", 2);
         masMagneticsWithScoring = score_magnetics(masData, filterFlow);
-        
+        drop_invalid_when_valid_exists(masMagneticsWithScoring);
+
         sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
             return b1.second > b2.second;
         });

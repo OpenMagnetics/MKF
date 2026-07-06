@@ -10,6 +10,25 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+// Reference prefix that CoilAdviser stamps on a coil design which failed the validity filters and is
+// returned only as a last-resort fallback (no valid winding fit that core). Callers use this to demote
+// or exclude such designs — an un-windable core must never rank above a windable one.
+inline const std::string INVALID_COIL_REFERENCE_PREFIX = "INVALID (failed validity filters): ";
+
+// True if this magnetic carries the INVALID-fallback reference prefix (its coil failed validity filters).
+// MUST take OpenMagnetics::Mas (unqualified `Mas`), NOT MAS::Mas: the objects are OpenMagnetics::Mas and
+// its get_mutable_magnetic() returns the OpenMagnetics::Magnetic that CoilAdviser actually stamps — binding
+// to a MAS::Mas& base reads a DIFFERENT (unstamped) magnetic and never detects the fallback. The prefix
+// lands on the magnetic's own reference AND its manufacturerInfo reference; check both. rfind(...,0)==0 is
+// the starts-with test (std::string::starts_with matched nothing here under the wasm libc++).
+inline bool coil_failed_validity_filters(Mas& mas) {
+    auto& magnetic = mas.get_mutable_magnetic();
+    if (magnetic.get_reference().rfind(INVALID_COIL_REFERENCE_PREFIX, 0) == 0) return true;
+    auto info = magnetic.get_manufacturer_info();
+    return info && info->get_reference()
+        && info->get_reference()->rfind(INVALID_COIL_REFERENCE_PREFIX, 0) == 0;
+}
+
 /**
  * @class CoilAdviser
  * @brief Recommends complete coil configurations including winding patterns, wire selection, and insulation.
