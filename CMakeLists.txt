@@ -145,7 +145,7 @@ if(MKF_USE_KIRCHHOFF)
     if(KIRCHHOFF_SOURCE_DIR)
         set(_kirchhoff_src SOURCE_DIR "${KIRCHHOFF_SOURCE_DIR}")
     else()
-        set(_kirchhoff_src GIT_REPOSITORY "git@github.com:OpenConverters/Kirchhoff.git"
+        set(_kirchhoff_src GIT_REPOSITORY "https://github.com/OpenConverters/Kirchhoff.git"
                            GIT_TAG "${KIRCHHOFF_GIT_TAG}"
                            # KH's deps/MKF submodule is the circular back-reference to THIS repo, and its
                            # recorded pin can be a commit that never reached origin ("not our ref"). KH only
@@ -164,7 +164,7 @@ if(MKF_USE_KIRCHHOFF)
         set(KIRCHHOFF_KELVIN_GIT_TAG "main" CACHE STRING "Kelvin git tag/branch (when fetched for Kirchhoff)")
         include(FetchContent)
         FetchContent_Declare(kirchhoff_kelvin
-            GIT_REPOSITORY "git@github.com:OpenConverters/Kelvin.git"
+            GIT_REPOSITORY "https://github.com/OpenConverters/Kelvin.git"
             GIT_TAG "${KIRCHHOFF_KELVIN_GIT_TAG}"
             GIT_SUBMODULES ""   # KH overrides KELVIN_PEAS_DIR to its own PEAS; Kelvin's own submodules are unused
             SOURCE_DIR "${CMAKE_BINARY_DIR}/kirchhoff-kelvin-src")
