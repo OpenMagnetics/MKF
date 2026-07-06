@@ -117,8 +117,11 @@ std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string m
 // DC Permeability Loss Estimator (DPLE) — Mühlethaler et al. (APEC 2025)
 // Corrects Steinmetz-family core losses for DC bias by scaling with the
 // permeability ratio: P_v(H_DC) = P_v(0) × [μ'(0) / μ'(H_DC)]
-// Only applied when: material has DC bias permeability data, excitation has
-// nonzero DC flux offset, and model is not Roshen (which handles DC bias natively).
+// Applied when the material has DC bias permeability data and the excitation has
+// a nonzero DC flux offset. ABT #118: the former Roshen exemption ("handles DC
+// bias natively") was wrong — nothing in the Roshen path consumes the DC offset
+// (get_bh_loop is peak-based, the minor loop is symmetric), so Roshen produced
+// bias-INDEPENDENT losses while every other model got the multiplier.
 static double calculate_dple_factor(const CoreMaterial& material, const OperatingPointExcitation& excitation, double temperature) {
     if (!excitation.get_magnetic_flux_density() ||
         !excitation.get_magnetic_flux_density()->get_processed()) {
@@ -162,8 +165,10 @@ CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExci
 
     CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->get_core_losses(core, excitation, temperature);
 
-    // Apply DPLE correction for non-Roshen models (Roshen handles DC bias natively)
-    if (coreLossesOutput.get_method_used() != "Roshen") {
+    // Apply the DPLE DC-bias correction to EVERY model (ABT #118: Roshen was exempted
+    // as "handles DC bias natively", but its path never consumes the DC offset, so
+    // biased Roshen results were inconsistent with every other model's).
+    {
         double dpleFactor = calculate_dple_factor(core.resolve_material(), excitation, temperature);
         if (dpleFactor > 1.0) {
             coreLossesOutput.set_core_losses(coreLossesOutput.get_core_losses() * dpleFactor);
@@ -2096,7 +2101,20 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
     double volumetricLossesIntegration = 0;
     double timeDifference;
 
-    for (size_t i = 0; i < magneticFluxDensityWaveform.size() - 1; ++i) {
+    // ABT #118: limit the integration to a single switching period (same guard as
+    // iGSE/Albach/MSE). The integral is multiplied by `frequency` below, so an
+    // imported multi-cycle (SPICE) waveform over-counted the eddy losses ~N-fold.
+    size_t eddyNumberPoints = magneticFluxDensityWaveform.size();
+    if (!magneticFluxDensityTime.empty() && eddyNumberPoints > 1) {
+        double waveformDuration = magneticFluxDensityTime[eddyNumberPoints - 1] - magneticFluxDensityTime[0];
+        double switchingPeriod = 1.0 / frequency;
+        if (waveformDuration > 1.5 * switchingPeriod) {
+            double numCycles = waveformDuration * frequency;
+            eddyNumberPoints = std::max(static_cast<size_t>(2), static_cast<size_t>(round(eddyNumberPoints / numCycles)));
+        }
+    }
+
+    for (size_t i = 0; i < eddyNumberPoints - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
@@ -2154,7 +2172,19 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPo
     double volumetricLossesIntegration = 0;
     double timeDifference;
 
-    for (size_t i = 0; i < magneticFluxDensityWaveform.size() - 1; ++i) {
+    // ABT #118: same single-period guard as the eddy integration above — the
+    // integral is multiplied by `frequency`, so a multi-cycle waveform over-counts.
+    size_t excessNumberPoints = magneticFluxDensityWaveform.size();
+    if (!magneticFluxDensityTime.empty() && excessNumberPoints > 1) {
+        double waveformDuration = magneticFluxDensityTime[excessNumberPoints - 1] - magneticFluxDensityTime[0];
+        double switchingPeriod = 1.0 / frequency;
+        if (waveformDuration > 1.5 * switchingPeriod) {
+            double numCycles = waveformDuration * frequency;
+            excessNumberPoints = std::max(static_cast<size_t>(2), static_cast<size_t>(round(excessNumberPoints / numCycles)));
+        }
+    }
+
+    for (size_t i = 0; i < excessNumberPoints - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
@@ -2542,17 +2572,23 @@ double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial
         if (x.size() == 0) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "No loss factor points for material: " + coreMaterial.get_name());
         }
+        // ABT #118: never extrapolate beyond the measured frequency band — the spline
+        // (and the 2-point linear form) extrapolated freely and could go NEGATIVE,
+        // yielding a negative series resistance / negative core losses. Outside the
+        // band the endpoint value applies (standard loss-factor practice).
         else if (x.size() >= 3) {
             tk::spline interp(x, y, tk::spline::cspline_hermite);
+            double fMin = x.front(), fMax = x.back();
             lossFactorInterps[coreMaterial.get_name()] =
-                [interp](double f) { return interp(f); };
+                [interp, fMin, fMax](double f) { return interp(std::clamp(f, fMin, fMax)); };
         }
         else if (x.size() == 2) {
             // tk::spline requires >= 3 points. Do manual linear interpolation.
             double x0 = x[0], x1 = x[1], y0 = y[0], y1 = y[1];
             lossFactorInterps[coreMaterial.get_name()] =
                 [x0, x1, y0, y1](double f) {
-                    return y0 + (y1 - y0) * (f - x0) / (x1 - x0);
+                    double fClamped = std::clamp(f, x0, x1);
+                    return y0 + (y1 - y0) * (fClamped - x0) / (x1 - x0);
                 };
         }
         else {
@@ -2562,6 +2598,13 @@ double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial
         }
     }
     double lossFactorValue = lossFactorInterps[coreMaterial.get_name()](frequency);
+    // A negative loss factor inside the measured band means corrupt data or spline
+    // overshoot between sparse points — either way the result is unphysical.
+    if (lossFactorValue < 0) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR,
+            "Loss factor interpolation produced a negative value (" + std::to_string(lossFactorValue) +
+            ") for material " + coreMaterial.get_name() + " at " + std::to_string(frequency) + " Hz");
+    }
 
     auto lossTangent = lossFactorValue * initialPermeability;
     auto seriesResistance = lossTangent * 2 * std::numbers::pi * frequency * magnetizingInductance;
