@@ -140,6 +140,11 @@ bool check_turns_description(OpenMagnetics::Coil coil);
 bool check_wire_standards(OpenMagnetics::Coil coil);
 void check_winding_losses(OpenMagnetics::Mas mas);
 
+// Asserts that an exported SVG file exists, is non-empty, has an <svg root and
+// contains at least one drawn element. Callers should delete any stale file
+// before painting so the existence check is meaningful.
+void check_svg(const std::filesystem::path& svgPath);
+
 OpenMagnetics::Mas mas_loader(const std::filesystem::path& path);
 
 // Helper to create Core and Coil from JSON strings, process them, and optionally create magnetic
