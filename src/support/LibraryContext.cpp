@@ -207,6 +207,22 @@ LibraryContext::Scope::Scope(const LibraryContext* ctx) {
     if (!ctx || ctx->empty()) {
         return;  // nothing to do; global state untouched
     }
+    // ABT #113: Scope RAII-swaps the process-global catalogs, which stay
+    // SHARED between threads (deliberately not thread_local — see the
+    // THREAD-SAFETY CONTRACT in Utils.h; per-thread copies of the multi-MB
+    // catalogs would defeat the preload-once/share-read model of the
+    // multithreaded adviser). Swapping them under concurrent readers would be
+    // a data race, so constructing a Scope while databases are frozen throws
+    // loudly instead. Apply the Scope on the orchestrating thread BEFORE
+    // set_databases_frozen(true) and destroy it AFTER unfreezing — the
+    // destructor restore is a mutation too and must not run inside a frozen
+    // (parallel) region.
+    if (databases_frozen()) {
+        throw std::runtime_error(
+            "ABT #113: LibraryContext::Scope would swap the shared catalogs while "
+            "databases are frozen (a parallel region is active). Apply the Scope "
+            "before set_databases_frozen(true).");
+    }
     _active = true;
     _coreBackup = coreDatabase;
     _coreMaterialBackup = coreMaterialDatabase;
