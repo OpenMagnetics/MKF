@@ -55,6 +55,16 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
     auto minimumImpedanceRequirement = inputs->get_design_requirements().get_minimum_impedance().value();
     auto windingWindowArea = magnetic->get_mutable_coil().resolve_bobbin().get_winding_window_area();
 
+    // ABT #121.2: the complex-permeability impedance solve is temperature
+    // dependent, so evaluate it at the operating point's actual ambient (like
+    // MagneticFilterTemperatureRise) instead of the hardcoded 25 degC default.
+    // When there is genuinely no operating point (a pure-impedance CMC spec),
+    // there is no ambient to read — keep the documented default rather than
+    // throwing on a path that never carried a temperature.
+    double ambientTemperature = inputs->get_operating_points().size() > 0
+                                    ? inputs->get_maximum_temperature()
+                                    : defaults.ambientTemperature;
+
     // Compute the peak magnetizing current for DC bias correction.
     // For multi-winding chokes (DMC/CMC), the magnetizing current is set
     // by the converter model as the vector sum of all winding currents.
@@ -100,7 +110,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
                 double zUnit;
                 if (magnetizingCurrentPeak > 0 && effectiveLength > 0) {
                     double H_dc_unit = 1.0 * magnetizingCurrentPeak / effectiveLength;
-                    zUnit = abs(_impedanceModel.calculate_impedance(core, unitCoil, frequency, H_dc_unit, defaults.ambientTemperature));
+                    zUnit = abs(_impedanceModel.calculate_impedance(core, unitCoil, frequency, H_dc_unit, ambientTemperature));
                 } else {
                     zUnit = abs(_impedanceModel.calculate_impedance(core, unitCoil, frequency));
                 }
@@ -150,7 +160,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
                         double impedance;
                         if (magnetizingCurrentPeak > 0 && effectiveLength > 0) {
                             double H_dc = static_cast<double>(requiredN) * magnetizingCurrentPeak / effectiveLength;
-                            impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency, H_dc, defaults.ambientTemperature));
+                            impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency, H_dc, ambientTemperature));
                         } else {
                             impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency));
                         }
