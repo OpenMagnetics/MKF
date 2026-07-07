@@ -35,7 +35,7 @@ auto outputFilePath = std::filesystem::path {std::source_location::current().fil
 bool plot = true;
 
 TEST_CASE("Test_Coil_Json_0", "[constructive-model][coil][bug][smoke-test]") {
-    std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"Primary","name":"Primary","numberParallels":1,"numberTurns":23,"wire":"Dummy"}]})";
+    std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"primary","name":"Primary","numberParallels":1,"numberTurns":23,"wire":"Dummy"}]})";
 
     auto coilJson = json::parse(coilString);
     // The original line here was `auto Coil(coilJson);` — a most-vexing-parse variable
