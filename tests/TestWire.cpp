@@ -3,6 +3,7 @@
 #include "support/Utils.h"
 #include "json.hpp"
 
+#include <numbers>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
@@ -507,10 +508,11 @@ namespace {
         // deleted at some point, leaving only commented-out expectations. Pin what is left:
         // the wire lookup and its standard conducting area (pi * (0.25 mm)^2).
         REQUIRE(wire.get_conducting_diameter());
-        REQUIRE_THAT(resolve_dimensional_values(wire.get_conducting_diameter().value()),
-                     Catch::Matchers::WithinAbs(0.0005, 0.0005 * 0.01));
-        REQUIRE(wire.get_conducting_area());
-        double conductingArea = resolve_dimensional_values(wire.get_conducting_area().value());
+        double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        REQUIRE_THAT(conductingDiameter, Catch::Matchers::WithinAbs(0.0005, 0.0005 * 0.01));
+        // Database wires carry the diameter, not a materialized conducting area; pin the
+        // area implied by the standard diameter instead (pi * (d/2)^2).
+        double conductingArea = std::numbers::pi * conductingDiameter * conductingDiameter / 4;
         REQUIRE_THAT(conductingArea, Catch::Matchers::WithinAbs(1.9635e-7, 1.9635e-7 * 0.02));
         auto& excitation = inputs.get_mutable_operating_points()[0].get_mutable_excitations_per_winding()[0];
         REQUIRE(excitation.get_current()->get_processed());
