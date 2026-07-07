@@ -785,7 +785,15 @@ TEST_CASE("Test_CoilAdviser_Random_Base", "[adviser][coil-adviser][random]") {
     settings.reset();
 
     int count = 2;
+    int attempts = 0;
     while (count > 0) {
+        // Liveness guard: an adviser that returns 0 candidates for every random
+        // configuration used to spin this loop forever without failing.
+        ++attempts;
+        if (attempts > 25) {
+            FAIL("CoilAdviser produced fewer than 2 successful designs in " << (attempts - 1)
+                                                                            << " random configurations");
+        }
         std::vector<double> turnsRatios;
         int64_t numberStacks = 1;
 
@@ -984,6 +992,8 @@ TEST_CASE("Test_CoilAdviser_Random_0", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1040,6 +1050,8 @@ TEST_CASE("Test_CoilAdviser_Random_1", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1102,6 +1114,8 @@ TEST_CASE("Test_CoilAdviser_Random_2", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1170,6 +1184,8 @@ TEST_CASE("Test_CoilAdviser_Random_3", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1237,6 +1253,8 @@ TEST_CASE("Test_CoilAdviser_Random_4", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1307,6 +1325,8 @@ TEST_CASE("Test_CoilAdviser_Random_5", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1374,6 +1394,8 @@ TEST_CASE("Test_CoilAdviser_Random_6", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1442,6 +1464,8 @@ TEST_CASE("Test_CoilAdviser_Random_7", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1510,6 +1534,8 @@ TEST_CASE("Test_CoilAdviser_Random_8", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1578,6 +1604,8 @@ TEST_CASE("Test_CoilAdviser_Random_9", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1647,6 +1675,8 @@ TEST_CASE("Test_CoilAdviser_Random_10", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         // OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1713,6 +1743,8 @@ TEST_CASE("Test_CoilAdviser_Random_11", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         // OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
@@ -1792,6 +1824,8 @@ TEST_CASE("Test_CoilAdviser_Random_12", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
@@ -1859,6 +1893,8 @@ TEST_CASE("Test_CoilAdviser_Random_13", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
@@ -1928,6 +1964,8 @@ TEST_CASE("Test_CoilAdviser_Random_14", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0];
         OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
@@ -1957,6 +1995,8 @@ TEST_CASE("Test_CoilAdviser_Random_15", "[adviser][coil-adviser][bug]") {
 
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    // Repro point: the adviser must return at least one design.
+    REQUIRE(masMagneticsWithCoil.size() > 0);
 }
 
 TEST_CASE("Test_CoilAdviser_Random_16", "[adviser][coil-adviser][bug]") {
@@ -1971,6 +2011,8 @@ TEST_CASE("Test_CoilAdviser_Random_16", "[adviser][coil-adviser][bug]") {
 
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    // Repro point: the adviser must return at least one design.
+    REQUIRE(masMagneticsWithCoil.size() > 0);
 }
 
 TEST_CASE("Test_CoilAdviser_Random_17", "[adviser][coil-adviser][bug]") {
@@ -1987,6 +2029,8 @@ TEST_CASE("Test_CoilAdviser_Random_17", "[adviser][coil-adviser][bug]") {
 
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    // Repro point: the adviser must return at least one design (indexing [0] below was UB on empty).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
 
     json result = json();
     to_json(result, masMagneticsWithCoil[0]);
@@ -1995,12 +2039,14 @@ TEST_CASE("Test_CoilAdviser_Random_17", "[adviser][coil-adviser][bug]") {
     auto outFile = outputFilePath;
     std::string filename = "Test_CoilAdviser_Random_17.svg";
     outFile.append(filename);
+    std::filesystem::remove(outFile);
     Painter painter(outFile);
 
     painter.paint_core(masMagneticsWithCoil[0].get_mutable_magnetic());
     painter.paint_bobbin(masMagneticsWithCoil[0].get_mutable_magnetic());
     painter.paint_coil_turns(masMagneticsWithCoil[0].get_mutable_magnetic());
     painter.export_svg();
+    OpenMagneticsTesting::check_svg(outFile);
 }
 
 TEST_CASE("Test_SectionsAdviser_Web_0", "[adviser][coil-adviser][bug][smoke-test]") {
@@ -2014,6 +2060,8 @@ TEST_CASE("Test_SectionsAdviser_Web_0", "[adviser][coil-adviser][bug][smoke-test
     OpenMagnetics::Mas mas(json::parse(R"({"inputs":{"designRequirements":{"magnetizingInductance":{"nominal":0.0001},"name":"My Design Requirements","turnsRatios":[]},"operatingPoints":[{"name":"Operating Point No. 1","conditions":{"ambientTemperature":42},"excitationsPerWinding":[{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"ancillaryLabel":null,"data":[-5,5,-5],"numberPeriods":null,"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"triangular","acEffectiveFrequency":110746.40291779551,"effectiveFrequency":110746.40291779551,"peak":5,"rms":2.8874560332150576,"thd":0.12151487440704967},"harmonics":{"amplitudes":[1.1608769501236793e-14,4.05366124583194,1.787369544444173e-15,0.4511310569983995,9.749053004706756e-16,0.16293015292554872,4.036157626725542e-16,0.08352979924600704,3.4998295008010614e-16,0.0508569581336163,3.1489164048780735e-16,0.034320410449418075,3.142469873118059e-16,0.024811988673843106,2.3653352035940994e-16,0.018849001010678823,2.9306524147249266e-16,0.014866633059596499,1.796485796132569e-16,0.012077180559557785,1.6247782523152451e-16,0.010049063750920609,1.5324769149805092e-16,0.008529750975091871,1.0558579733068502e-16,0.007363501410705499,7.513269775674661e-17,0.006450045785294609,5.871414177162291e-17,0.005722473794997712,9.294731722001391e-17,0.005134763398167541,1.194820309200107e-16,0.004654430423785411,8.2422739080512e-17,0.004258029771397032,9.5067306351894e-17,0.0039283108282380024,1.7540347128474968e-16,0.0036523670873925395,9.623794010508822e-17,0.0034204021424253787,1.4083470894369491e-16,0.0032248884817922927,1.4749333016985644e-16,0.0030599828465501895,1.0448590642474364e-16,0.002921112944200383,7.575487373767413e-18,0.002804680975178716,7.419510610361002e-17,0.0027078483284668376,3.924741709073613e-17,0.0026283777262804953,2.2684279102637236e-17,0.0025645167846443107,8.997077625295079e-17,0.0025149120164513483,7.131074184849219e-17,0.0024785457043284276,9.354417496250849e-17,0.0024546904085875065,1.2488589642405877e-16,0.0024428775264784264],"frequencies":[0,100000,200000,300000,400000,500000,600000,700000,800000,900000,1000000,1100000,1200000,1300000,1400000,1500000,1600000,1700000,1800000,1900000,2000000,2100000,2200000,2300000,2400000,2500000,2600000,2700000,2800000,2900000,3000000,3100000,3200000,3300000,3400000,3500000,3600000,3700000,3800000,3900000,4000000,4100000,4200000,4300000,4400000,4500000,4600000,4700000,4800000,4900000,5000000,5100000,5200000,5300000,5400000,5500000,5600000,5700000,5800000,5900000,6000000,6100000,6200000,6300000]}},"voltage":{"waveform":{"ancillaryLabel":null,"data":[-50,50,50,-50,-50],"numberPeriods":null,"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"rectangular","acEffectiveFrequency":591485.536011839,"effectiveFrequency":591449.4202715514,"peak":50,"rms":50,"thd":0.48331514845248497},"harmonics":{"amplitudes":[0.78125,63.64919355013018,1.5625,21.18229569117569,1.5625,12.668415318245188,1.5625,9.004909382998164,1.5625,6.958128475647527,1.5625,5.646149502042871,1.5625,4.729755006746538,1.5625,4.050628933965765,1.5625,3.524943518639316,1.5625,3.104154363036517,1.5625,2.7581982345221827,1.5625,2.467457137437843,1.5625,2.2185795367095267,1.5625,2.0021587188071255,1.5625,1.8113717302085082,1.5625,1.6411450722498175,1.5625,1.487623666720196,1.5625,1.3478217691511587,1.5625,1.2193869682092893,1.5625,1.100436657601639,1.5625,0.9894422127774558,1.5625,0.8851453167661671,1.5625,0.7864964059364037,1.5625,0.6926086154544899,1.5625,0.60272275979863,1.5625,0.5161802771005264,1.5625,0.43240198459440116,1.5625,0.3508711083080249,1.5625,0.27111946896540395,1.5625,0.192715993963664,1.5625,0.11525692425384548,1.5625,0.03835722204524927],"frequencies":[0,100000,200000,300000,400000,500000,600000,700000,800000,900000,1000000,1100000,1200000,1300000,1400000,1500000,1600000,1700000,1800000,1900000,2000000,2100000,2200000,2300000,2400000,2500000,2600000,2700000,2800000,2900000,3000000,3100000,3200000,3300000,3400000,3500000,3600000,3700000,3800000,3900000,4000000,4100000,4200000,4300000,4400000,4500000,4600000,4700000,4800000,4900000,5000000,5100000,5200000,5300000,5400000,5500000,5600000,5700000,5800000,5900000,6000000,6100000,6200000,6300000]}}},{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"data":[-5,5,-5],"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"triangular"}},"voltage":{"waveform":{"data":[-20.5,70.5,70.5,-20.5,-20.5],"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"rectangular"}}},{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"data":[-5,5,-5],"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"triangular"}},"voltage":{"waveform":{"data":[-20.5,70.5,70.5,-20.5,-20.5],"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"rectangular"}}},{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"data":[-5,5,-5],"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"triangular"}},"voltage":{"waveform":{"data":[-20.5,70.5,70.5,-20.5,-20.5],"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"rectangular"}}},{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"data":[-5,5,-5],"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"triangular"}},"voltage":{"waveform":{"data":[-20.5,70.5,70.5,-20.5,-20.5],"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"rectangular"}}},{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"data":[-5,5,-5],"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"triangular"}},"voltage":{"waveform":{"data":[-20.5,70.5,70.5,-20.5,-20.5],"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"rectangular"}}},{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"data":[-5,5,-5],"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"triangular"}},"voltage":{"waveform":{"data":[-20.5,70.5,70.5,-20.5,-20.5],"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"rectangular"}}}]}]},"magnetic":{"coil":{"bobbin":"Dummy","functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":1,"numberTurns":1,"wire":"Dummy"}]},"core":{"distributorsInfo":null,"functionalDescription":{"coating":null,"gapping":[{"length":0.001,"type":"subtractive"},{"length":0.001,"type":"subtractive"},{"length":0.001,"type":"subtractive"},{"length":0.000005,"type":"residual"},{"length":0.000005,"type":"residual"}],"material":"3C98","numberStacks":1,"shape":{"aliases":[],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0414,"minimum":0.0396,"nominal":0.0405},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.01525,"minimum":0.01505,"nominal":0.01515},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0286,"minimum":0.0274,"nominal":0.028},"D":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.01015,"minimum":0.00985,"nominal":0.01},"E":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0376,"minimum":0.0364,"nominal":0.037},"F":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0152,"minimum":0.0146,"nominal":0.0149},"G":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":0.028,"nominal":null}},"family":"pq","familySubtype":null,"magneticCircuit":"open","name":"PQ 40/30","type":"standard"},"type":"twoPieceSet"},"geometricalDescription":[{"coordinates":[0,0,0],"dimensions":null,"insulationMaterial":null,"machining":null,"material":"","rotation":[3.141592653589793,3.141592653589793,0],"shape":{"aliases":[],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0414,"minimum":0.0396,"nominal":0.0405},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.01525,"minimum":0.01505,"nominal":0.01515},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0286,"minimum":0.0274,"nominal":0.028},"D":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.01015,"minimum":0.00985,"nominal":0.01},"E":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0376,"minimum":0.0364,"nominal":0.037},"F":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0152,"minimum":0.0146,"nominal":0.0149},"G":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":0.028,"nominal":null}},"family":"pq","familySubtype":null,"magneticCircuit":"open","name":"PQ 40/30","type":"standard"},"type":"halfSet"},{"coordinates":[0,0,0],"dimensions":null,"insulationMaterial":null,"machining":null,"material":"","rotation":[0,0,0],"shape":{"aliases":[],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0414,"minimum":0.0396,"nominal":0.0405},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.01525,"minimum":0.01505,"nominal":0.01515},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0286,"minimum":0.0274,"nominal":0.028},"D":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.01015,"minimum":0.00985,"nominal":0.01},"E":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0376,"minimum":0.0364,"nominal":0.037},"F":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0152,"minimum":0.0146,"nominal":0.0149},"G":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":0.028,"nominal":null}},"family":"pq","familySubtype":null,"magneticCircuit":"open","name":"PQ 40/30","type":"standard"},"type":"halfSet"}],"manufacturerInfo":null,"name":"DummyCore","processedDescription":{"columns":[{"area":0.000175,"coordinates":[0,0,0],"depth":0.0149,"height":0.02,"minimumDepth":null,"minimumWidth":null,"shape":"round","type":"central","width":0.0149},{"area":0.000101,"coordinates":[0.020304,0,0],"depth":0.028,"height":0.02,"minimumDepth":null,"minimumWidth":0.001751,"shape":"irregular","type":"lateral","width":0.003608},{"area":0.000101,"coordinates":[-0.020304,0,0],"depth":0.028,"height":0.02,"minimumDepth":null,"minimumWidth":0.001751,"shape":"irregular","type":"lateral","width":0.003608}],"depth":0.028,"effectiveParameters":{"effectiveArea":0.00019510490157384353,"effectiveLength":0.0740608824164849,"effectiveVolume":0.000014449641174340287,"minimumArea":0.0001743662462558675},"height":0.0303,"width":0.0405,"windingWindows":[{"angle":null,"area":0.00022099999999999998,"coordinates":[0.00745,0],"height":0.02,"radialHeight":null,"sectionsOrientation":null,"shape":null,"width":0.011049999999999999}]}}},"outputs":[]})"));
     mas.get_mutable_magnetic().get_mutable_coil().set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(mas.get_mutable_magnetic().get_mutable_core()));
     auto sections = CoilAdviser().get_advised_sections(mas, pattern, repetitions);
+    // Repro point: the sections adviser must propose at least one sectioning.
+    REQUIRE(sections.size() > 0);
 }
 
 TEST_CASE("Test_SectionsAdviser_Web_1", "[adviser][coil-adviser][bug][smoke-test]") {
@@ -2036,6 +2084,8 @@ TEST_CASE("Test_SectionsAdviser_Web_1", "[adviser][coil-adviser][bug][smoke-test
     mas.get_mutable_inputs().process();
 
     auto sections = CoilAdviser().get_advised_sections(mas, pattern, repetitions);
+    // Repro point: the sections adviser must propose at least one sectioning.
+    REQUIRE(sections.size() > 0);
 }
 
 TEST_CASE("Test_SectionsAdviser_Web_2", "[adviser][coil-adviser][bug][smoke-test]") {
@@ -2058,6 +2108,8 @@ TEST_CASE("Test_SectionsAdviser_Web_2", "[adviser][coil-adviser][bug][smoke-test
     mas.get_mutable_inputs().process();
 
     auto sections = CoilAdviser().get_advised_sections(mas, pattern, repetitions);
+    // Repro point: the sections adviser must propose at least one sectioning.
+    REQUIRE(sections.size() > 0);
 }
 
 TEST_CASE("Test_CoilAdviser_Web_3", "[adviser][coil-adviser][bug][smoke-test]") {
@@ -2075,6 +2127,8 @@ TEST_CASE("Test_CoilAdviser_Web_3", "[adviser][coil-adviser][bug][smoke-test]") 
 
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    // Repro point: the adviser must return at least one design.
+    REQUIRE(masMagneticsWithCoil.size() > 0);
 }
 
 TEST_CASE("Test_CoilAdviser_Web_4", "[adviser][coil-adviser][bug][smoke-test]") {
@@ -2176,6 +2230,8 @@ TEST_CASE("Test_CoilAdviser_Web_0", "[adviser][coil-adviser][bug]") {
 
     OpenMagnetics::CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    // Repro point: the adviser must return at least one design (indexing [0] below was UB on empty).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
 
     // Verify the design meets current density requirements
     auto& coil = masMagneticsWithCoil[0].get_mutable_magnetic().get_mutable_coil();
@@ -2346,12 +2402,11 @@ TEST_CASE("Test_CoilAdviser_Web_3_Planar_17_Turns", "[adviser][coil-adviser][bug
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
     
-    // TODO: This test currently fails because the planar coil adviser creates too many
-    // sections (17 conduction + 16 insulation) and the insulation sections are too small
-    // for the planar wires. This needs to be fixed in the CoilAdviser.
-    // For now, we just check that it doesn't crash.
-    // REQUIRE(masMagneticsWithCoil.size() > 0);
-    (void)masMagneticsWithCoil;  // Suppress unused variable warning
+    // Repro point: planar coils with 17 turns must be advisable ("No coil found" bug).
+    // This REQUIRE was left commented out with a TODO ("currently fails because the planar
+    // coil adviser creates too many sections"); it is now enabled so the 0-result failure
+    // mode is visible instead of silently passing.
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     settings.reset();
 }
 
@@ -2371,6 +2426,8 @@ TEST_CASE("Test_CoilAdviser_Web_1", "[adviser][coil-adviser][bug]") {
 
     OpenMagnetics::CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    // Repro point: the adviser must return at least one design (indexing [0] below was UB on empty).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
 
     // Verify the design meets current density requirements
     auto& coil = masMagneticsWithCoil[0].get_mutable_magnetic().get_mutable_coil();
@@ -2469,6 +2526,8 @@ TEST_CASE("Test_CoilAdviser_Direct_Planar_Wire", "[adviser][coil-adviser][wire][
     
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
     
+    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
+    REQUIRE(masMagneticsWithCoil.size() > 0);
     if (masMagneticsWithCoil.size() > 0) {
         auto resultCoil = masMagneticsWithCoil[0].get_magnetic().get_coil();
         
