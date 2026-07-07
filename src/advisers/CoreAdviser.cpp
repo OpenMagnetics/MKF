@@ -245,8 +245,15 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         std::vector<Core> partialCores;
         partialCores.reserve(last - i);
 
-        move((*cores).begin() + i, (*cores).begin() + last, std::back_inserter(partialCores));
-        
+        // ABT #164: COPY (not move) the batch out of the caller's vector. The
+        // batching entry point is fed &coreDatabase (the process-shared core
+        // catalog) by get_advised_core(...) above, so moving elements out gutted
+        // the shared database for every subsequent caller — even a sequential
+        // same-thread reuse — and silently corrupted the parallel fan-out. The
+        // extra memory is bounded to ONE batch (<= maximumNumberCores cores),
+        // transient per iteration, not a full-database copy.
+        std::copy((*cores).begin() + i, (*cores).begin() + last, std::back_inserter(partialCores));
+
         auto partialResult = get_advised_core(inputs, weights, &partialCores, maximumNumberResults);
         std::move(partialResult.begin(), partialResult.end(), std::back_inserter(results));
     }
