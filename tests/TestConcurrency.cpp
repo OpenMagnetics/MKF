@@ -15,7 +15,9 @@
 // main thread does all REQUIREs after join.
 #include "support/Settings.h"
 #include "support/Utils.h"
+#include "support/LibraryContext.h"
 #include "advisers/CoreAdviser.h"
+#include "advisers/MagneticAdviser.h"
 #include "physical_models/WindingLosses.h"
 #include "processors/Inputs.h"
 #include "TestingUtils.h"
@@ -147,6 +149,61 @@ struct DatabasesFreezeGuard {
 // explicitly (see Settings::GetInstance docs).
 void inherit_settings(const Settings& parentSnapshot) {
     Settings::GetInstance() = parentSnapshot;
+}
+
+// ABT #164: a single-family shape constraint (allowlist of exactly one family).
+AdviserConstraints shape_family_constraint(const std::string& family) {
+    AdviserConstraints constraints;
+    constraints.shapeFamily.allowed = {family};
+    return constraints;
+}
+
+struct MagneticAdviserOutcome {
+    bool completed = false;
+    std::string error;
+    size_t numberResults = 0;
+    bool allResultsRespectConstraint = false;  // every returned core is in the requested family
+    std::string topReference;
+    double topScore = std::numeric_limits<double>::quiet_NaN();
+};
+
+// Run one full MagneticAdviser design (STANDARD_CORES, POWER) under a
+// per-call shape-family constraint. Each call constructs its OWN MagneticAdviser
+// so the per-call `_constraints` is thread-local by construction; the fix under
+// test threads that constraint to the nested CoreAdviser/CoilAdviser as LOCAL
+// filtered views instead of swapping the process-shared catalogs.
+MagneticAdviserOutcome run_magnetic_adviser_query(const AdviserQuery& query,
+                                                  const AdviserConstraints& constraints) {
+    MagneticAdviserOutcome outcome;
+    try {
+        auto inputs = make_inputs(query);
+        MagneticAdviser adviser;
+        adviser.set_application(MAS::MagneticApplication::POWER);
+        adviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        auto results = adviser.get_advised_magnetic(inputs, size_t(1), nullptr, constraints);
+
+        outcome.numberResults = results.size();
+        outcome.allResultsRespectConstraint = true;
+        for (auto& [mas, score] : results) {
+            auto family = mas.get_mutable_magnetic().get_core().get_shape_family();
+            if (!constraints.shapeFamily.empty()
+                && !acceptsCoreShapeFamily(constraints.shapeFamily, family)) {
+                outcome.allResultsRespectConstraint = false;
+            }
+        }
+        if (!results.empty()) {
+            outcome.topReference = results[0].first.get_mutable_magnetic().get_core().get_name().value_or("<unnamed>");
+            outcome.topScore = results[0].second;
+        }
+        outcome.completed = true;
+    }
+    catch (const std::exception& e) {
+        outcome.error = e.what();
+    }
+    catch (...) {
+        outcome.error = "non-std exception";
+    }
+    return outcome;
 }
 
 } // namespace
@@ -328,6 +385,153 @@ TEST_CASE("Test_Concurrency_CoreAdviser_With_WindingLosses_Mixed", "[concurrency
         INFO("winding losses iteration " << iteration << " -> " << lossesResults[iteration]
              << " expected " << referenceLosses);
         CHECK(scores_match(lossesResults[iteration], referenceLosses));
+    }
+    settings.reset();
+}
+
+// ABT #164 (1): regression for the CoreAdviser batching path gutting the
+// caller's vector. The batching overload used to std::move elements OUT of the
+// vector it was handed; get_advised_core(...) feeds it a pointer to the
+// process-SHARED coreDatabase, so a single batched run emptied the global core
+// catalog for every subsequent caller (a latent single-threaded bug, and a
+// silent corruption of the frozen fan-out catalog). Single-threaded on purpose;
+// not [heavy].
+TEST_CASE("Test_Concurrency_CoreAdviser_Batching_Preserves_Shared_Database", "[concurrency][core-adviser]") {
+    settings.reset();
+    clear_databases();
+
+    // Populate the SHARED catalog with a small, fast shortlist so the batched
+    // run is quick while still exercising the exact hazard: batching over
+    // &coreDatabase.
+    coreDatabase = load_core_shortlist();
+    const size_t originalSize = coreDatabase.size();
+    REQUIRE(originalSize >= CORE_SHORTLIST_SIZE / 2);
+
+    auto inputs = make_inputs(QUERIES[0]);
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+
+    // Small batch size => several move-into-batches iterations against the
+    // shared vector (the pre-fix code emptied it here).
+    const size_t maximumNumberCores = std::max<size_t>(1, originalSize / 4);
+    auto first = coreAdviser.get_advised_core(inputs, weights, &coreDatabase, size_t(5), maximumNumberCores);
+
+    // The shared catalog must be intact after a batched run.
+    CHECK(coreDatabase.size() == originalSize);
+    REQUIRE(!first.empty());
+    const std::string firstTop = first[0].first.get_magnetic().get_core().get_name().value_or("<unnamed>");
+    const double firstScore = first[0].second;
+
+    // A second identical run must return identical top results — only possible
+    // if the shared database survived the first run intact.
+    auto second = coreAdviser.get_advised_core(inputs, weights, &coreDatabase, size_t(5), maximumNumberCores);
+    CHECK(coreDatabase.size() == originalSize);
+    REQUIRE(!second.empty());
+    CHECK(second.size() == first.size());
+    CHECK(second[0].first.get_magnetic().get_core().get_name().value_or("<unnamed>") == firstTop);
+    CHECK(scores_match(second[0].second, firstScore));
+
+    clear_databases();  // drop the injected shortlist so later tests reload the real catalog
+    settings.reset();
+}
+
+// ABT #164 (2): MagneticAdviser fan-out. Mirrors the CoreAdviser parallel test
+// but exercises the FULL adviser (CoreAdviser -> CoilAdviser -> analytical
+// MagneticSimulator -> scoring) with a per-thread shape-family constraint.
+// Before the fix, the ctx-aware overloads swapped the process-SHARED
+// coreDatabase/wireDatabase for a constraint-filtered copy for the duration of
+// the call, so concurrent workers saw each other's filtered catalogs. With the
+// fix each worker threads its constraint as a LOCAL view; the determinism check
+// (concurrent == isolated single-threaded reference) plus the per-worker
+// family check prove the isolation.
+TEST_CASE("Test_Concurrency_MagneticAdviser_Parallel_Constraints_Isolated", "[concurrency][heavy]") {
+    settings.reset();
+    clear_databases();
+
+    // Distinct (shape-family, query) specs per worker. ETD and PQ select
+    // disjoint cores, so a leaked/shared filtered catalog would surface as
+    // either a wrong-family core or a mismatch against the isolated
+    // single-threaded reference. Each family is paired with a query known to
+    // yield a feasible design under that family so the fan-out never degenerates
+    // to empty results (the test asserts >0 to prove the workers actually ran).
+    struct ThreadSpec { std::string family; size_t queryIndex; };
+    const std::vector<ThreadSpec> THREAD_SPECS = {
+        {"ETD", 0},
+        {"PQ",  1},
+        {"ETD", 0},
+        {"PQ",  1},
+    };
+    const size_t NUMBER_MAGNETIC_THREADS = THREAD_SPECS.size();
+    constexpr size_t MAGNETIC_ITERATIONS_PER_THREAD = 2;
+
+    load_all_databases();
+    const Settings parentSnapshot = Settings::GetInstance();
+
+    // Single-threaded references (isolated), computed BEFORE the parallel region
+    // so the fan-out determinism check compares against a known-good baseline.
+    std::vector<MagneticAdviserOutcome> references(NUMBER_MAGNETIC_THREADS);
+    for (size_t threadIndex = 0; threadIndex < NUMBER_MAGNETIC_THREADS; ++threadIndex) {
+        const auto& spec = THREAD_SPECS[threadIndex];
+        references[threadIndex] = run_magnetic_adviser_query(QUERIES[spec.queryIndex], shape_family_constraint(spec.family));
+        INFO("single-threaded MagneticAdviser reference " << threadIndex << " failed: " << references[threadIndex].error);
+        REQUIRE(references[threadIndex].completed);
+        REQUIRE(references[threadIndex].numberResults > 0);
+        REQUIRE(references[threadIndex].allResultsRespectConstraint);
+    }
+    // Sanity: the ETD-constrained and PQ-constrained references must select
+    // different cores — otherwise the constraint isn't biting and the isolation
+    // assertions below would be vacuous.
+    REQUIRE(references[0].topReference != references[1].topReference);
+
+    // Freeze the read-only catalogs for the parallel region; ANY shared-catalog
+    // mutation inside a worker (the pre-fix swap did exactly this) is then a
+    // loud failure or a determinism mismatch.
+    DatabasesFreezeGuard freezeGuard;
+
+    std::vector<std::vector<MagneticAdviserOutcome>> outcomes(
+        NUMBER_MAGNETIC_THREADS, std::vector<MagneticAdviserOutcome>(MAGNETIC_ITERATIONS_PER_THREAD));
+    std::barrier startBarrier(NUMBER_MAGNETIC_THREADS);
+    std::vector<std::thread> workers;
+    for (size_t threadIndex = 0; threadIndex < NUMBER_MAGNETIC_THREADS; ++threadIndex) {
+        workers.emplace_back([threadIndex, &outcomes, &startBarrier, &parentSnapshot, &THREAD_SPECS] {
+            inherit_settings(parentSnapshot);
+            const auto& spec = THREAD_SPECS[threadIndex];
+            const auto& query = QUERIES[spec.queryIndex];
+            const auto constraint = shape_family_constraint(spec.family);
+            for (size_t iteration = 0; iteration < MAGNETIC_ITERATIONS_PER_THREAD; ++iteration) {
+                startBarrier.arrive_and_wait();
+                outcomes[threadIndex][iteration] = run_magnetic_adviser_query(query, constraint);
+            }
+        });
+    }
+    for (auto& worker : workers) {
+        worker.join();
+    }
+    set_databases_frozen(false);
+
+    for (size_t threadIndex = 0; threadIndex < NUMBER_MAGNETIC_THREADS; ++threadIndex) {
+        const auto& reference = references[threadIndex];
+        for (size_t iteration = 0; iteration < MAGNETIC_ITERATIONS_PER_THREAD; ++iteration) {
+            const auto& outcome = outcomes[threadIndex][iteration];
+            INFO("MagneticAdviser thread " << threadIndex << " iteration " << iteration
+                 << " (family=" << THREAD_SPECS[threadIndex].family << ") error: " << outcome.error);
+            CHECK(outcome.completed);
+            if (!outcome.completed) {
+                continue;
+            }
+            CHECK(outcome.numberResults > 0);
+            CHECK(outcome.allResultsRespectConstraint);
+            INFO("thread " << threadIndex << " iteration " << iteration
+                 << " top=" << outcome.topReference << " score=" << outcome.topScore
+                 << " expected top=" << reference.topReference << " score=" << reference.topScore);
+            CHECK(outcome.topReference == reference.topReference);
+            CHECK(scores_match(outcome.topScore, reference.topScore));
+        }
     }
     settings.reset();
 }
