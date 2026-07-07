@@ -192,12 +192,18 @@ void check_top_n(const std::string& label,
 // 3.954 once the re-rank's proximity bonus is gone) and the tail fills with
 // PQ 20/20 variants instead of EFD/E. All valid small-and-sane power ferrites
 // (no tiny winding-killer cores).
+// Refreshed 2026-07-07 (ABT #126 investigation): drift root-caused bidirectionally
+// to two verified-correct changes — ABT #70 (dummy-coil parallels sized to current
+// density, shifting the loss-filter renormalization) and the health-pass
+// MagneticEnergy min/max interval fix (energy target at L_max -> 1.5x gap energy).
+// Same top core; 3C96/3C94 swap in slots 1-2; scores -1.4%. Regenerated with
+// kRegenerateBaselines on main 17e1f850.
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.9537973838027973},
-    {"PQ 20/20 - 3C94 - Gapped 0.472 mm",          3.9041828560647911},
-    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.9037914203219195},
-    {"PQ 20/20 - 3C90 - Gapped 0.472 mm",          3.8895346331612464},
-    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          3.876475147783558},
+    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.8966756636009796},
+    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.854716197272996},
+    {"PQ 20/20 - 3C94 - Gapped 0.472 mm",          3.8494928517386233},
+    {"PQ 20/20 - 3C90 - Gapped 0.472 mm",          3.8341659260385046},
+    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          3.8233252319348403},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
@@ -220,12 +226,18 @@ const std::vector<TopEntry> kTopAvailablePower = {
 // (3.8963…); without the re-rank the lexicographic tiebreak now seats EQ 25/6
 // at slot 1, and the tail fills with EP 20 / RM 10 variants in place of the
 // E 19/E 21 2-stacks. All valid small-and-sane power ferrites.
+// Refreshed 2026-07-07 (ABT #126 investigation): same two root causes as
+// kTopAvailablePower. The 1.5x gap-energy requirement re-solves every standard
+// gap larger (RM 10/ILP 0.24 -> 0.32 mm, exactly 1.5x on the E-stacks), which
+// displaces EQ 25/6 and seats RM 10/ILP at slot 1; the paralleled dummy coil
+// admits the 3/4-stack E 16/E 19 variants (physically sane for 100 uH /
+// 100 kHz / 600 Vpp). Regenerated on main 17e1f850, user-approved.
 const std::vector<TopEntry> kTopStandardPower = {
-    {"95 EQ 25/6 gapped 0.26 mm",                  3.8963165812464418},
-    {"98 EP 20 gapped 0.32 mm",                    3.7753243780925869},
-    {"98 RM 10/ILP gapped 0.24 mm",                3.701426173763287},
-    {"98 RM 10/13 gapped 0.27 mm",                 3.6502929639973449},
-    {"95 RM 10/13 gapped 0.27 mm",                 3.6478045073553771},
+    {"98 RM 10/ILP gapped 0.32 mm",                3.8624574793397786},
+    {"98 PQ 27/15 gapped 0.25 mm",                 3.7835392946594726},
+    {"98 E 16/7/5 4 stacks gapped 0.09 mm",        3.7500041208232733},
+    {"95 RM 10/ILP gapped 0.32 mm",                3.6867104806869007},
+    {"98 E 19/8/9 3 stacks gapped 0.08 mm",        3.6749555384431662},
 };
 
 // Refreshed 2026-06-16 (ABT #10) after landing the suppression returns-0 fix

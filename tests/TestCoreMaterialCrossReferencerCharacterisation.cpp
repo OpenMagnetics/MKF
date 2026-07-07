@@ -86,36 +86,44 @@ void check_top_n(const std::string& label,
 // ----------------------------------------------------------------------------
 // SNAPSHOTS — captured 2026-05-19. Leave a vector empty to auto-harvest.
 // ----------------------------------------------------------------------------
+// Refreshed 2026-07-07 (ABT #118 loss-factor band clamp, user-approved re-pin):
+// the interpolation no longer extrapolates a material's loss factor beyond its
+// measured frequency band, so materials whose scores rode on extrapolated
+// (lower) loss values lose that unearned advantage. FerriteDefault: same
+// ranking, ~1e-6 drifts. FerriteOnlyTdk: slots 4-5 change (N27/N92 -> N51/N41),
+// scores ~2%. PowderDefault: Kool Mu Ultra 26 drops from slot 2 to slot 5.
+// PowderOnlyMicrometals: SM 40 and SM 60 swap slots 1-2. Regenerated with
+// kRegenerateBaselines on main 17e1f850.
 const std::vector<TopEntry> kTopFerriteDefault = {
-    {"DMR95", 2.7229156168842046},
-    {"P45",   2.7216465717490372},
-    {"3C95",  2.7144645242903547},
-    {"P492",  2.7032348169719453},
-    {"P452",  2.6934204788417202},
+    {"DMR95", 2.7229069637902059},
+    {"P45",   2.7216369780206886},
+    {"3C95",  2.7144498861636723},
+    {"P492",  2.7032027114576547},
+    {"P452",  2.6934000403021439},
 };
 
 const std::vector<TopEntry> kTopFerriteOnlyTdk = {
-    {"PC47", 2.6839499384443108},
-    {"N95",  2.651360761361282},
-    {"N97",  2.5578230120884067},
-    {"N27",  2.4991932937788723},
-    {"N92",  2.4814549828497379},
+    {"PC47", 2.6293249731454225},
+    {"N95",  2.6251256255195439},
+    {"N97",  2.5377334445921855},
+    {"N51",  2.458893344562656},
+    {"N41",  2.4211654338911739},
 };
 
 const std::vector<TopEntry> kTopPowderDefault = {
-    {"Kool Mµ Hƒ 26",    2.7299983338570506},
-    {"Kool Mµ Ultra 26", 2.7299790326971172},
+    {"Kool Mµ Hƒ 26",    2.7212624022782093},
     {"Kool Mµ 26",       2.7211505563536287},
     {"Kool Mµ MAX 19",   2.7171791666466776},
     {"Kool Mµ MAX 40",   2.7166417605966702},
+    {"Kool Mµ Ultra 26", 2.7143812061192554},
 };
 
 const std::vector<TopEntry> kTopPowderOnlyMicrometals = {
-    {"SM 60", 2.6337004497830838},
-    {"SM 40", 2.6308271217456958},
-    {"SP 26", 2.6057980867714345},
-    {"SM 26", 2.5918014945962127},
-    {"OC 26", 2.5610286222647689},
+    {"SM 40", 2.6346308391155557},
+    {"SM 60", 2.6285960369736614},
+    {"SP 26", 2.6095998852559847},
+    {"SM 26", 2.5954523252716264},
+    {"OC 26", 2.5646142299287216},
 };
 
 } // namespace
