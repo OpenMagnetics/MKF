@@ -151,8 +151,11 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
 
             // Size this secondary's parallels to its own RMS current (both the DC
             // ~7 A/mm2 and effective ~12 A/mm2 limits), like get_dummy_coil does
-            // for the primary.
-            if (!inputs.get_operating_points().empty()) {
+            // for the primary. ABT #126: not for common-mode chokes — see
+            // get_dummy_coil; current-sized parallels made every CMC candidate
+            // unwindable and the suppression adviser returned zero results.
+            if (!inputs.get_operating_points().empty() &&
+                !Inputs::can_be_common_mode_choke(inputs.get_operating_points()[0])) {
                 const auto& secExcitations = inputs.get_operating_points()[0].get_excitations_per_winding();
                 if (windingIndex < secExcitations.size() && secExcitations[windingIndex].get_current()) {
                     auto secCurrent = secExcitations[windingIndex].get_current().value();
@@ -304,6 +307,52 @@ Inputs pre_process_inputs(Inputs inputs) {
         }
     }
     return inputs;
+}
+
+
+std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vector<std::pair<Magnetic, double>>& magneticsWithScoring,
+                                                                      Inputs& inputs,
+                                                                      size_t maximumNumberResults,
+                                                                      bool withAlternativeMaterials) {
+    // See the declaration comment (ABT #126): walk in score order, keep the first
+    // maximumNumberResults candidates that SURVIVE post-processing. Windings are
+    // corrected (and alternative materials looked up) per candidate, so tail
+    // candidates that are never reached cost nothing.
+    std::vector<std::pair<Mas, double>> masWithScoring;
+    std::vector<std::string> usedShapes;
+    const bool uniqueShapes = get_unique_core_shapes();
+    for (auto& magneticWithScoring : magneticsWithScoring) {
+        if (masWithScoring.size() >= maximumNumberResults) {
+            break;
+        }
+        std::string shapeName;
+        if (uniqueShapes) {
+            shapeName = magneticWithScoring.first.get_core().get_shape_name();
+            if (std::find(usedShapes.begin(), usedShapes.end(), shapeName) != usedShapes.end()) {
+                continue;
+            }
+        }
+        std::vector<std::pair<Magnetic, double>> candidate{magneticWithScoring};
+        correct_windings(&candidate, inputs);
+        if (withAlternativeMaterials) {
+            add_alternative_materials(&candidate, inputs);
+        }
+        try {
+            auto mas = post_process_core(candidate[0].first, inputs);
+            masWithScoring.push_back({mas, candidate[0].second});
+            if (uniqueShapes) {
+                usedShapes.push_back(shapeName);
+            }
+        } catch (const std::exception& e) {
+            // A scored core that cannot actually host the winding (e.g. a toroid
+            // whose turns don't physically fit) throws during post-processing --
+            // drop it and let the next-scored candidate backfill (ABT #126: the
+            // old resize-first order silently returned ZERO results when the
+            // top-N were unwindable while windable survivors had been discarded).
+            logEntry(std::string("CoreAdviser: dropping core that failed post-processing (backfilling): ") + e.what(), "CoreAdviser", 2);
+        }
+    }
+    return masWithScoring;
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
@@ -460,36 +509,8 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     // re-rank added (~1.8 s/advise, ~96% of it coil winding). Verified: ABT #4's
     // own core-adviser regression still lands ~4.3 W (was ~3.2 W) and the
     // magnetic-adviser default inductor ~3.2 W, both with the re-rank removed.
-    if (magneticsWithScoring.size() > maximumNumberResults) {
-        if (get_unique_core_shapes()) {
-            magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
-        }
-        else {
-            magneticsWithScoring.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
-        }
-    }
-
-    correct_windings(&magneticsWithScoring, inputs);
-
-    std::vector<std::pair<Mas, double>> masWithScoring;
-
-    for (const auto& [magnetic, scoring] : magneticsWithScoring) {
-        try {
-            auto mas = post_process_core(magnetic, inputs);
-            masWithScoring.push_back({mas, scoring});
-        } catch (const std::exception& e) {
-            // A scored core that cannot actually host the winding (e.g. a
-            // toroid whose turns don't physically fit) throws during
-            // post-processing — fast_wind() yields no turns, then the ohmic-loss
-            // calculation throws CoilNotProcessedException. Drop that single
-            // core instead of letting the exception abort the entire core
-            // search (which previously discarded every still-feasible core,
-            // including E-cores, after one unwindable toroid).
-            logEntry(std::string("CoreAdviser: dropping core that failed post-processing: ") + e.what(), "CoreAdviser", 2);
-        }
-    }
-
-    return masWithScoring;
+    // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
+    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults);
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
@@ -624,36 +645,8 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
         return {};
     }
 
-    if (magneticsWithScoring.size() > maximumNumberResults) {
-        if (get_unique_core_shapes()) {
-            magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
-        }
-        else {
-            magneticsWithScoring.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
-        }
-    }
-
-    correct_windings(&magneticsWithScoring, inputs);
-
-    std::vector<std::pair<Mas, double>> masWithScoring;
-
-    for (const auto& [magnetic, scoring] : magneticsWithScoring) {
-        try {
-            auto mas = post_process_core(magnetic, inputs);
-            masWithScoring.push_back({mas, scoring});
-        } catch (const std::exception& e) {
-            // A scored core that cannot actually host the winding (e.g. a
-            // toroid whose turns don't physically fit) throws during
-            // post-processing — fast_wind() yields no turns, then the ohmic-loss
-            // calculation throws CoilNotProcessedException. Drop that single
-            // core instead of letting the exception abort the entire core
-            // search (which previously discarded every still-feasible core,
-            // including E-cores, after one unwindable toroid).
-            logEntry(std::string("CoreAdviser: dropping core that failed post-processing: ") + e.what(), "CoreAdviser", 2);
-        }
-    }
-
-    return masWithScoring;
+    // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
+    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults);
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
@@ -909,37 +902,8 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // fringing ceiling (1.3) now prunes the catastrophic gap-fringing cores up
     // front, making the per-advise re-rank winding cost redundant. See the
     // matching note in the standard-cores pipeline above.
-    if (magneticsWithScoring.size() > maximumNumberResults) {
-        if (get_unique_core_shapes()) {
-            magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
-        }
-        else {
-            magneticsWithScoring.resize(maximumNumberResults);
-        }
-    }
-
-    correct_windings(&magneticsWithScoring, inputs);
-    add_alternative_materials(&magneticsWithScoring, inputs);
-
-    std::vector<std::pair<Mas, double>> masWithScoring;
-
-    for (const auto& [magnetic, scoring] : magneticsWithScoring) {
-        try {
-            auto mas = post_process_core(magnetic, inputs);
-            masWithScoring.push_back({mas, scoring});
-        } catch (const std::exception& e) {
-            // A scored core that cannot actually host the winding (e.g. a
-            // toroid whose turns don't physically fit) throws during
-            // post-processing — fast_wind() yields no turns, then the ohmic-loss
-            // calculation throws CoilNotProcessedException. Drop that single
-            // core instead of letting the exception abort the entire core
-            // search (which previously discarded every still-feasible core,
-            // including E-cores, after one unwindable toroid).
-            logEntry(std::string("CoreAdviser: dropping core that failed post-processing: ") + e.what(), "CoreAdviser", 2);
-        }
-    }
-
-    return masWithScoring;
+    // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
+    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true);
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interference_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
@@ -1019,37 +983,8 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
         return {};
     }
 
-    if (magneticsWithScoring.size() > maximumNumberResults) {
-        if (get_unique_core_shapes()) {
-            magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
-        }
-        else {
-            magneticsWithScoring.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
-        }
-    }
-
-    correct_windings(&magneticsWithScoring, inputs);
-    add_alternative_materials(&magneticsWithScoring, inputs);
-
-    std::vector<std::pair<Mas, double>> masWithScoring;
-
-    for (const auto& [magnetic, scoring] : magneticsWithScoring) {
-        try {
-            auto mas = post_process_core(magnetic, inputs);
-            masWithScoring.push_back({mas, scoring});
-        } catch (const std::exception& e) {
-            // A scored core that cannot actually host the winding (e.g. a
-            // toroid whose turns don't physically fit) throws during
-            // post-processing — fast_wind() yields no turns, then the ohmic-loss
-            // calculation throws CoilNotProcessedException. Drop that single
-            // core instead of letting the exception abort the entire core
-            // search (which previously discarded every still-feasible core,
-            // including E-cores, after one unwindable toroid).
-            logEntry(std::string("CoreAdviser: dropping core that failed post-processing: ") + e.what(), "CoreAdviser", 2);
-        }
-    }
-
-    return masWithScoring;
+    // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
+    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true);
 }
 
 } // namespace OpenMagnetics

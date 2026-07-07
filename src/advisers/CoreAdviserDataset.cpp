@@ -42,7 +42,12 @@
 
 namespace OpenMagnetics {
 
-Coil get_dummy_coil(const Inputs& inputs) {
+// sizeParallelsToCurrent: POWER flows size the dummy strands to the winding RMS
+// current (ABT #70); suppression/CMC flows must NOT (ABT #126) — the "current"
+// there is the full line current, and current-sized parallels of a skin-depth
+// strand fit no toroid window, killing every suppression candidate at
+// post-processing (adviser returned ZERO results).
+Coil get_dummy_coil(const Inputs& inputs, bool sizeParallelsToCurrent) {
     double temperature = inputs.get_maximum_temperature();
     double frequency = 0;
     // Phase 6 (perf): cache operating-points by const-ref.
@@ -74,8 +79,9 @@ Coil get_dummy_coil(const Inputs& inputs) {
     // the same check MagnetizingInductance uses downstream, so the
     // two stay in sync by construction.
     size_t numberOfWindings = 1;
-    if (!operatingPoints.empty() &&
-        Inputs::can_be_common_mode_choke(operatingPoints[0])) {
+    bool isCommonModeChoke = !operatingPoints.empty() &&
+                             Inputs::can_be_common_mode_choke(operatingPoints[0]);
+    if (isCommonModeChoke) {
         numberOfWindings = operatingPoints[0].get_excitations_per_winding().size();
         if (numberOfWindings < 1) numberOfWindings = 1;
     }
@@ -107,7 +113,14 @@ Coil get_dummy_coil(const Inputs& inputs) {
         // capacity, so the fast path left high-current windings under-coppered —
         // every winding at ~18 A/mm2 regardless of core (ABT #70). Use the same
         // helper the WireAdviser uses on the full path so both paths agree.
-        if (!operatingPoints.empty()) {
+        // ABT #126: NOT for common-mode chokes — sizing every CMC winding's
+        // parallels to the full line current with a skin-depth strand produced
+        // N x ~dozens of parallel strands that fit no toroid window, so every
+        // suppression candidate died at post-processing (fast_wind: no turns)
+        // and the adviser returned ZERO results. The CMC dummy keeps 1 parallel
+        // (the historical suppression behaviour); real copper sizing for CMCs
+        // is the wire adviser's job downstream.
+        if (sizeParallelsToCurrent && !isCommonModeChoke && !operatingPoints.empty()) {
             const auto& excitations = operatingPoints[0].get_excitations_per_winding();
             if (w < excitations.size() && excitations[w].get_current()) {
                 auto windingCurrent = excitations[w].get_current().value();
@@ -192,7 +205,7 @@ std::vector<CoreShape> CoreAdviser::create_custom_core_shapes(Inputs inputs) {
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(Inputs inputs, std::vector<Core>* cores, bool includeStacks) {
     std::vector<std::pair<Magnetic, double>> magnetics;
-    Coil coil = get_dummy_coil(inputs);
+    Coil coil = get_dummy_coil(inputs, get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
     auto includeConcentricCores = settings.get_use_concentric_cores();
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
@@ -309,7 +322,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(Inputs inputs, std::vector<CoreShape>* shapes, bool includeStacks) {
     std::vector<std::pair<Magnetic, double>> magnetics;
-    Coil coil = get_dummy_coil(inputs);
+    Coil coil = get_dummy_coil(inputs, get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
     auto includeConcentricCores = settings.get_use_concentric_cores();
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
@@ -429,7 +442,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
 }
 
 void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector<Core>* cores, std::vector<std::pair<Magnetic, double>>* magnetics) {
-    Coil coil = get_dummy_coil(inputs);
+    Coil coil = get_dummy_coil(inputs, get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
     double maximumHeight = std::numeric_limits<double>::infinity();
     if (inputs.get_design_requirements().get_maximum_dimensions()) {

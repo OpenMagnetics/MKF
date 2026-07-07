@@ -216,6 +216,19 @@ class CoreAdviser {
 
         Mas post_process_core(Magnetic magnetic, Inputs inputs);
 
+        // ABT #126: post-process candidates in score order and keep the first
+        // maximumNumberResults that SURVIVE post-processing (backfilling from the
+        // scored pool), instead of cutting to top-N first and then dropping
+        // unwindable ones — which turned "the top-N are unwindable" into a silent
+        // zero-result while windable survivors had already been discarded.
+        // Honours unique-core-shapes (a shape is only burned by a SURVIVING
+        // candidate). withAlternativeMaterials additionally runs the
+        // alternative-materials lookup per kept candidate (STANDARD_CORES path).
+        std::vector<std::pair<Mas, double>> post_process_and_cut(std::vector<std::pair<Magnetic, double>>& magneticsWithScoring,
+                                                                 Inputs& inputs,
+                                                                 size_t maximumNumberResults,
+                                                                 bool withAlternativeMaterials = false);
+
         /**
          * @brief Calculate gap constraints for STANDARD_CORES mode.
          * @param inputs Operating conditions with design requirements.
