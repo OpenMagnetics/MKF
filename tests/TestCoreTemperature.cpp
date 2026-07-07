@@ -2,6 +2,7 @@
 #include "TestingUtils.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
@@ -210,124 +211,68 @@ void test_core_temperature_miserable_43(CoreTemperatureModels modelName) {
     }
 }
 
-TEST_CASE("Test_Sotiris_47", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_47(CoreTemperatureModels::KAZIMIERCZUK);
+// ------------------------------------------------------------------
+// Model-matrix tests: each fixture below used to be duplicated once per
+// core-temperature model (5 near-identical 3-line TEST_CASEs per
+// fixture, suffixed _2.._5). One TEST_CASE per fixture now GENERATEs
+// over the models; INFO names the model so a failure is still
+// attributable. The tag list keeps every per-model tag so tag-based
+// selection still works.
+// ------------------------------------------------------------------
+
+#define ALL_CORE_TEMPERATURE_MODEL_TAGS                                                    \
+    "[kazimierczuk-core-temperature-model][maniktala-core-temperature-model]"              \
+    "[tdk-core-temperature-model][dixon-core-temperature-model]"                           \
+    "[amidon-core-temperature-model]"
+
+CoreTemperatureModels generate_all_core_temperature_models() {
+    return GENERATE(CoreTemperatureModels::KAZIMIERCZUK,
+                    CoreTemperatureModels::MANIKTALA,
+                    CoreTemperatureModels::TDK,
+                    CoreTemperatureModels::DIXON,
+                    CoreTemperatureModels::AMIDON);
 }
 
-TEST_CASE("Test_Sotiris_46", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_46(CoreTemperatureModels::KAZIMIERCZUK);
+TEST_CASE("Test_Sotiris_47",
+          "[physical-model][core-temperature]" ALL_CORE_TEMPERATURE_MODEL_TAGS "[smoke-test]") {
+    auto modelName = generate_all_core_temperature_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_temperature_sotiris_47(modelName);
 }
 
-TEST_CASE("Test_Sotiris_40", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_40(CoreTemperatureModels::KAZIMIERCZUK);
+TEST_CASE("Test_Sotiris_46",
+          "[physical-model][core-temperature]" ALL_CORE_TEMPERATURE_MODEL_TAGS "[smoke-test]") {
+    auto modelName = generate_all_core_temperature_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_temperature_sotiris_46(modelName);
 }
 
-TEST_CASE("Test_Sotiris_37", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_37(CoreTemperatureModels::KAZIMIERCZUK);
+TEST_CASE("Test_Sotiris_40",
+          "[physical-model][core-temperature]" ALL_CORE_TEMPERATURE_MODEL_TAGS "[smoke-test]") {
+    auto modelName = generate_all_core_temperature_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_temperature_sotiris_40(modelName);
 }
 
-TEST_CASE("Test_Miserable_40", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_40(CoreTemperatureModels::KAZIMIERCZUK);
+TEST_CASE("Test_Sotiris_37",
+          "[physical-model][core-temperature]" ALL_CORE_TEMPERATURE_MODEL_TAGS "[smoke-test]") {
+    auto modelName = generate_all_core_temperature_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_temperature_sotiris_37(modelName);
 }
 
-TEST_CASE("Test_Miserable_43", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_43(CoreTemperatureModels::KAZIMIERCZUK);
+TEST_CASE("Test_Miserable_40",
+          "[physical-model][core-temperature]" ALL_CORE_TEMPERATURE_MODEL_TAGS "[smoke-test]") {
+    auto modelName = generate_all_core_temperature_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_temperature_miserable_40(modelName);
 }
 
-TEST_CASE("Test_Sotiris_47_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_47(CoreTemperatureModels::MANIKTALA);
-}
-
-TEST_CASE("Test_Sotiris_46_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_46(CoreTemperatureModels::MANIKTALA);
-}
-
-TEST_CASE("Test_Sotiris_40_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_40(CoreTemperatureModels::MANIKTALA);
-}
-
-TEST_CASE("Test_Sotiris_37_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_37(CoreTemperatureModels::MANIKTALA);
-}
-
-TEST_CASE("Test_Miserable_40_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_40(CoreTemperatureModels::MANIKTALA);
-}
-
-TEST_CASE("Test_Miserable_43_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_43(CoreTemperatureModels::MANIKTALA);
-}
-
-TEST_CASE("Test_Sotiris_47_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_47(CoreTemperatureModels::TDK);
-}
-
-TEST_CASE("Test_Sotiris_46_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_46(CoreTemperatureModels::TDK);
-}
-
-TEST_CASE("Test_Sotiris_40_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_40(CoreTemperatureModels::TDK);
-}
-
-TEST_CASE("Test_Sotiris_37_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_37(CoreTemperatureModels::TDK);
-}
-
-TEST_CASE("Test_Miserable_40_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_40(CoreTemperatureModels::TDK);
-}
-
-TEST_CASE("Test_Miserable_43_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_43(CoreTemperatureModels::TDK);
-}
-
-TEST_CASE("Test_Sotiris_47_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_47(CoreTemperatureModels::DIXON);
-}
-
-TEST_CASE("Test_Sotiris_46_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_46(CoreTemperatureModels::DIXON);
-}
-
-TEST_CASE("Test_Sotiris_40_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_40(CoreTemperatureModels::DIXON);
-}
-
-TEST_CASE("Test_Sotiris_37_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_37(CoreTemperatureModels::DIXON);
-}
-
-TEST_CASE("Test_Miserable_40_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_40(CoreTemperatureModels::DIXON);
-}
-
-TEST_CASE("Test_Miserable_43_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_43(CoreTemperatureModels::DIXON);
-}
-
-TEST_CASE("Test_Sotiris_47_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_47(CoreTemperatureModels::AMIDON);
-}
-
-TEST_CASE("Test_Sotiris_46_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_46(CoreTemperatureModels::AMIDON);
-}
-
-TEST_CASE("Test_Sotiris_40_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_40(CoreTemperatureModels::AMIDON);
-}
-
-TEST_CASE("Test_Sotiris_37_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
-    test_core_temperature_sotiris_37(CoreTemperatureModels::AMIDON);
-}
-
-TEST_CASE("Test_Miserable_40_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_40(CoreTemperatureModels::AMIDON);
-}
-
-TEST_CASE("Test_Miserable_43_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
-    test_core_temperature_miserable_43(CoreTemperatureModels::AMIDON);
+TEST_CASE("Test_Miserable_43",
+          "[physical-model][core-temperature]" ALL_CORE_TEMPERATURE_MODEL_TAGS "[smoke-test]") {
+    auto modelName = generate_all_core_temperature_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_temperature_miserable_43(modelName);
 }
 
 }  // namespace

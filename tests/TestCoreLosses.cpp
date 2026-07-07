@@ -11,6 +11,7 @@
 #include <magic_enum.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
@@ -1776,56 +1777,132 @@ void test_core_losses_magnet_data(CoreLossesModels modelName,
     export_test_result_for_material(testResult, coreMaterial, modelName);
 }
 
-TEST_CASE("Test_PQ_20_20_3F4_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_verification_3F4(CoreLossesModels::STEINMETZ);
+// ------------------------------------------------------------------
+// Model-matrix tests: each fixture below (a material's magnet-datasheet
+// verification set, or its Magnet-sample CSV) used to be duplicated once
+// per core-losses model as a 3-line TEST_CASE. One TEST_CASE per fixture
+// now GENERATEs over the models; INFO names the model so a failure is
+// still attributable. The tag lists keep every per-model tag so
+// tag-based selection still works. Roshen has no 3F4/N30 coefficients,
+// so those fixtures generate over the 7 remaining models, and the
+// combinations that were SKIP'd as standalone TEST_CASEs keep skipping
+// (SKIP only aborts the current generator iteration).
+// ------------------------------------------------------------------
+
+#define ALL_CORE_LOSSES_MODEL_TAGS                                                         \
+    "[steinmetz-core-losses-model][igse-core-losses-model][cigse-core-losses-model]"       \
+    "[albach-core-losses-model][mse-core-losses-model][nse-core-losses-model]"             \
+    "[barg-core-losses-model][roshen-core-losses-model]"
+
+#define CORE_LOSSES_MODEL_TAGS_NO_ROSHEN                                                   \
+    "[steinmetz-core-losses-model][igse-core-losses-model][cigse-core-losses-model]"       \
+    "[albach-core-losses-model][mse-core-losses-model][nse-core-losses-model]"             \
+    "[barg-core-losses-model]"
+
+CoreLossesModels generate_all_core_losses_models() {
+    return GENERATE(CoreLossesModels::STEINMETZ,
+                    CoreLossesModels::IGSE,
+                    CoreLossesModels::CIGSE,
+                    CoreLossesModels::ALBACH,
+                    CoreLossesModels::MSE,
+                    CoreLossesModels::NSE,
+                    CoreLossesModels::BARG,
+                    CoreLossesModels::ROSHEN);
 }
 
-TEST_CASE("Test_PQ_20_20_N49_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_verification_N49(CoreLossesModels::STEINMETZ);
+CoreLossesModels generate_core_losses_models_without_roshen() {
+    return GENERATE(CoreLossesModels::STEINMETZ,
+                    CoreLossesModels::IGSE,
+                    CoreLossesModels::CIGSE,
+                    CoreLossesModels::ALBACH,
+                    CoreLossesModels::MSE,
+                    CoreLossesModels::NSE,
+                    CoreLossesModels::BARG);
 }
 
-TEST_CASE("Test_PQ_20_20_3C94_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_verification_3C94(CoreLossesModels::STEINMETZ);
+TEST_CASE("Test_PQ_20_20_3F4", "[physical-model][core-losses]" CORE_LOSSES_MODEL_TAGS_NO_ROSHEN) {
+    auto modelName = generate_core_losses_models_without_roshen();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_verification_3F4(modelName);
 }
 
-TEST_CASE("Test_PQ_20_20_N27_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_verification_N27(CoreLossesModels::STEINMETZ);
+TEST_CASE("Test_PQ_20_20_N49", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_verification_N49(modelName);
 }
 
-TEST_CASE("Test_PQ_20_20_N87_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_verification_N87(CoreLossesModels::STEINMETZ);
+TEST_CASE("Test_PQ_20_20_3C94", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_verification_3C94(modelName);
 }
 
-TEST_CASE("Test_PQ_20_20_3C90_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_verification_3C90(CoreLossesModels::STEINMETZ);
+TEST_CASE("Test_PQ_20_20_N27", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_verification_N27(modelName);
 }
 
-TEST_CASE("Test_Magnet_3C90_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::STEINMETZ, "3C90");
+TEST_CASE("Test_PQ_20_20_N87", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_verification_N87(modelName);
 }
 
-TEST_CASE("Test_Magnet_3C94_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::STEINMETZ, "3C94");
+TEST_CASE("Test_PQ_20_20_3C90", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_verification_3C90(modelName);
 }
 
-TEST_CASE("Test_Magnet_3F4_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::STEINMETZ, "3F4");
+TEST_CASE("Test_Magnet_3C90", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_data(modelName, "3C90");
 }
 
-TEST_CASE("Test_Magnet_N27_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::STEINMETZ, "N27");
+TEST_CASE("Test_Magnet_3C94", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_data(modelName, "3C94");
 }
 
-TEST_CASE("Test_Magnet_N30_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::STEINMETZ, "N30");
+TEST_CASE("Test_Magnet_3F4", "[physical-model][core-losses]" CORE_LOSSES_MODEL_TAGS_NO_ROSHEN) {
+    auto modelName = generate_core_losses_models_without_roshen();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    if (modelName == CoreLossesModels::ALBACH || modelName == CoreLossesModels::MSE ||
+        modelName == CoreLossesModels::NSE || modelName == CoreLossesModels::BARG) {
+        SKIP("Test needs investigation");
+    }
+    test_core_losses_magnet_data(modelName, "3F4");
 }
 
-TEST_CASE("Test_Magnet_N49_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::STEINMETZ, "N49");
+TEST_CASE("Test_Magnet_N27", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    if (modelName == CoreLossesModels::IGSE || modelName == CoreLossesModels::CIGSE) {
+        SKIP("Test needs investigation");
+    }
+    test_core_losses_magnet_data(modelName, "N27");
 }
 
-TEST_CASE("Test_Magnet_N87_Steinmetz", "[physical-model][core-losses][steinmetz-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::STEINMETZ, "N87");
+TEST_CASE("Test_Magnet_N30", "[physical-model][core-losses]" CORE_LOSSES_MODEL_TAGS_NO_ROSHEN) {
+    auto modelName = generate_core_losses_models_without_roshen();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_data(modelName, "N30");
+}
+
+TEST_CASE("Test_Magnet_N49", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_data(modelName, "N49");
+}
+
+TEST_CASE("Test_Magnet_N87", "[physical-model][core-losses]" ALL_CORE_LOSSES_MODEL_TAGS) {
+    auto modelName = generate_all_core_losses_models();
+    INFO("Model: " << magic_enum::enum_name(modelName));
+    test_core_losses_magnet_data(modelName, "N87");
 }
 
 TEST_CASE("Test_Ki_3C95_Steinmetz", "[physical-model][core-losses][igse-core-losses-model]") {
@@ -1841,59 +1918,6 @@ TEST_CASE("Test_Ki_3C95_Steinmetz", "[physical-model][core-losses][igse-core-los
     double expectedKi = 0.0635;
 
     REQUIRE_THAT(ki, Catch::Matchers::WithinAbs(expectedKi, expectedKi * 0.1));
-}
-
-TEST_CASE("Test_PQ_20_20_3F4_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_verification_3F4(CoreLossesModels::IGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N49_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_verification_N49(CoreLossesModels::IGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_3C94_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_verification_3C94(CoreLossesModels::IGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N27_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_verification_N27(CoreLossesModels::IGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N87_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_verification_N87(CoreLossesModels::IGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_3C90_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_verification_3C90(CoreLossesModels::IGSE);
-}
-
-TEST_CASE("Test_Magnet_3C90_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::IGSE, "3C90");
-}
-
-TEST_CASE("Test_Magnet_3C94_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::IGSE, "3C94");
-}
-
-TEST_CASE("Test_Magnet_3F4_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::IGSE, "3F4");
-}
-
-TEST_CASE("Test_Magnet_N27_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    SKIP("Test needs investigation");
-    test_core_losses_magnet_data(CoreLossesModels::IGSE, "N27");
-}
-
-TEST_CASE("Test_Magnet_N30_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::IGSE, "N30");
-}
-
-TEST_CASE("Test_Magnet_N49_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::IGSE, "N49");
-}
-
-TEST_CASE("Test_Magnet_N87_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::IGSE, "N87");
 }
 
 // Regression test for composite waveforms where excitation frequency (e.g. 60 Hz)
@@ -1961,311 +1985,6 @@ TEST_CASE("Test_IGSE_composite_waveform_low_excitation_frequency", "[physical-mo
     // (within 10x), not 100x-1000x higher as the bug caused
     REQUIRE(volumetricLosses < refVolumetricLosses * 10);
     REQUIRE(volumetricLosses > 0);
-}
-
-TEST_CASE("Test_PQ_20_20_3F4_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_verification_3F4(CoreLossesModels::CIGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N49_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_verification_N49(CoreLossesModels::CIGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_3C94_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_verification_3C94(CoreLossesModels::CIGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N27_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_verification_N27(CoreLossesModels::CIGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N87_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_verification_N87(CoreLossesModels::CIGSE);
-}
-
-TEST_CASE("Test_PQ_20_20_3C90_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_verification_3C90(CoreLossesModels::CIGSE);
-}
-
-TEST_CASE("Test_Magnet_3C90_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "3C90");
-}
-
-TEST_CASE("Test_Magnet_3C94_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "3C94");
-}
-
-TEST_CASE("Test_Magnet_3F4_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "3F4");
-}
-
-TEST_CASE("Test_Magnet_N27_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    SKIP("Test needs investigation");
-    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "N27");
-}
-
-TEST_CASE("Test_Magnet_N30_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "N30");
-}
-
-TEST_CASE("Test_Magnet_N49_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "N49");
-}
-
-TEST_CASE("Test_Magnet_N87_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "N87");
-}
-
-TEST_CASE("Test_PQ_20_20_3F4_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_verification_3F4(CoreLossesModels::ALBACH);
-}
-
-TEST_CASE("Test_PQ_20_20_N49_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_verification_N49(CoreLossesModels::ALBACH);
-}
-
-TEST_CASE("Test_PQ_20_20_3C94_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_verification_3C94(CoreLossesModels::ALBACH);
-}
-
-TEST_CASE("Test_PQ_20_20_N27_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_verification_N27(CoreLossesModels::ALBACH);
-}
-
-TEST_CASE("Test_PQ_20_20_N87_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_verification_N87(CoreLossesModels::ALBACH);
-}
-
-TEST_CASE("Test_PQ_20_20_3C90_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_verification_3C90(CoreLossesModels::ALBACH);
-}
-
-TEST_CASE("Test_Magnet_3C90_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ALBACH, "3C90");
-}
-
-TEST_CASE("Test_Magnet_3C94_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ALBACH, "3C94");
-}
-
-TEST_CASE("Test_Magnet_3F4_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    SKIP("Test needs investigation");
-    test_core_losses_magnet_data(CoreLossesModels::ALBACH, "3F4");
-}
-
-TEST_CASE("Test_Magnet_N27_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ALBACH, "N27");
-}
-
-TEST_CASE("Test_Magnet_N30_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ALBACH, "N30");
-}
-
-TEST_CASE("Test_Magnet_N49_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ALBACH, "N49");
-}
-
-TEST_CASE("Test_Magnet_N87_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ALBACH, "N87");
-}
-
-TEST_CASE("Test_PQ_20_20_3F4_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_verification_3F4(CoreLossesModels::MSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N49_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_verification_N49(CoreLossesModels::MSE);
-}
-
-TEST_CASE("Test_PQ_20_20_3C94_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_verification_3C94(CoreLossesModels::MSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N27_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_verification_N27(CoreLossesModels::MSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N87_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_verification_N87(CoreLossesModels::MSE);
-}
-
-TEST_CASE("Test_PQ_20_20_3C90_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_verification_3C90(CoreLossesModels::MSE);
-}
-
-TEST_CASE("Test_Magnet_3C90_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::MSE, "3C90");
-}
-
-TEST_CASE("Test_Magnet_3C94_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::MSE, "3C94");
-}
-
-TEST_CASE("Test_Magnet_3F4_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    SKIP("Test needs investigation");
-    test_core_losses_magnet_data(CoreLossesModels::MSE, "3F4");
-}
-
-TEST_CASE("Test_Magnet_N27_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::MSE, "N27");
-}
-
-TEST_CASE("Test_Magnet_N30_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::MSE, "N30");
-}
-
-TEST_CASE("Test_Magnet_N49_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::MSE, "N49");
-}
-
-TEST_CASE("Test_Magnet_N87_MSE", "[physical-model][core-losses][mse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::MSE, "N87");
-}
-
-TEST_CASE("Test_PQ_20_20_3F4_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_verification_3F4(CoreLossesModels::NSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N49_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_verification_N49(CoreLossesModels::NSE);
-}
-
-TEST_CASE("Test_PQ_20_20_3C94_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_verification_3C94(CoreLossesModels::NSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N27_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_verification_N27(CoreLossesModels::NSE);
-}
-
-TEST_CASE("Test_PQ_20_20_N87_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_verification_N87(CoreLossesModels::NSE);
-}
-
-TEST_CASE("Test_PQ_20_20_3C90_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_verification_3C90(CoreLossesModels::NSE);
-}
-
-TEST_CASE("Test_Magnet_3C90_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::NSE, "3C90");
-}
-
-TEST_CASE("Test_Magnet_3C94_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::NSE, "3C94");
-}
-
-TEST_CASE("Test_Magnet_3F4_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    SKIP("Test needs investigation");
-    test_core_losses_magnet_data(CoreLossesModels::NSE, "3F4");
-}
-
-TEST_CASE("Test_Magnet_N27_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::NSE, "N27");
-}
-
-TEST_CASE("Test_Magnet_N30_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::NSE, "N30");
-}
-
-TEST_CASE("Test_Magnet_N49_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::NSE, "N49");
-}
-
-TEST_CASE("Test_Magnet_N87_NSE", "[physical-model][core-losses][nse-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::NSE, "N87");
-}
-
-TEST_CASE("Test_PQ_20_20_3F4_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_verification_3F4(CoreLossesModels::BARG);
-}
-
-TEST_CASE("Test_PQ_20_20_N49_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_verification_N49(CoreLossesModels::BARG);
-}
-
-TEST_CASE("Test_PQ_20_20_3C94_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_verification_3C94(CoreLossesModels::BARG);
-}
-
-TEST_CASE("Test_PQ_20_20_N27_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_verification_N27(CoreLossesModels::BARG);
-}
-
-TEST_CASE("Test_PQ_20_20_N87_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_verification_N87(CoreLossesModels::BARG);
-}
-
-TEST_CASE("Test_PQ_20_20_3C90_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_verification_3C90(CoreLossesModels::BARG);
-}
-
-TEST_CASE("Test_Magnet_3C90_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::BARG, "3C90");
-}
-
-TEST_CASE("Test_Magnet_3C94_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::BARG, "3C94");
-}
-
-TEST_CASE("Test_Magnet_3F4_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    SKIP("Test needs investigation");
-    test_core_losses_magnet_data(CoreLossesModels::BARG, "3F4");
-}
-
-TEST_CASE("Test_Magnet_N27_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::BARG, "N27");
-}
-
-TEST_CASE("Test_Magnet_N30_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::BARG, "N30");
-}
-
-TEST_CASE("Test_Magnet_N49_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::BARG, "N49");
-}
-
-TEST_CASE("Test_Magnet_N87_Barg", "[physical-model][core-losses][barg-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::BARG, "N87");
-}
-
-TEST_CASE("Test_PQ_20_20_N49_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_verification_N49(CoreLossesModels::ROSHEN);
-}
-
-TEST_CASE("Test_PQ_20_20_3C94_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_verification_3C94(CoreLossesModels::ROSHEN);
-}
-
-TEST_CASE("Test_PQ_20_20_N27_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_verification_N27(CoreLossesModels::ROSHEN);
-}
-
-TEST_CASE("Test_PQ_20_20_N87_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_verification_N87(CoreLossesModels::ROSHEN);
-}
-
-TEST_CASE("Test_PQ_20_20_3C90_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_verification_3C90(CoreLossesModels::ROSHEN);
-}
-
-TEST_CASE("Test_Magnet_3C90_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ROSHEN, "3C90");
-}
-
-TEST_CASE("Test_Magnet_3C94_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ROSHEN, "3C94");
-}
-
-TEST_CASE("Test_Magnet_N27_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ROSHEN, "N27");
-}
-
-TEST_CASE("Test_Magnet_N49_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ROSHEN, "N49");
-}
-
-TEST_CASE("Test_Magnet_N87_Roshen", "[physical-model][core-losses][roshen-core-losses-model]") {
-    test_core_losses_magnet_data(CoreLossesModels::ROSHEN, "N87");
 }
 
 TEST_CASE("Voltage_And_Current", "[physical-model][core-losses][smoke-test]") {
