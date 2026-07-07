@@ -21,7 +21,9 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-inline std::map<std::string, std::function<double(double)>> lossFactorInterps;
+// ABT #113: per-thread memo cache (lazily built from the frozen material
+// catalog; per-thread copies are lock-free and semantically transparent).
+inline thread_local std::map<std::string, std::function<double(double)>> lossFactorInterps;
 
 // ============================================================================
 // Core Losses Models
@@ -287,7 +289,7 @@ struct ciGSECoefficients {
 class CoreLossesciGSEModel : public CoreLossesSteinmetzModel {
   private:
     // Cache for loaded coefficients
-    static std::vector<ciGSECoefficients> _coefficientsCache;
+    static thread_local std::vector<ciGSECoefficients> _coefficientsCache;  // ABT #113: per-thread memo
     static bool _coefficientsLoaded;
     
     // Load coefficients from JSON file

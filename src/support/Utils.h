@@ -49,7 +49,16 @@ inline const OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 // its own. Each thread's `settings` binds to its own Settings.
 inline thread_local OpenMagnetics::Settings& settings = OpenMagnetics::Settings::GetInstance();
 
-inline std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
+// ABT #113: the mutable memo caches below (_scorings, _inductanceFluxCache,
+// magneticsCache — and the interp memos in ComplexPermeability.h,
+// InitialPermeability.h, CoreLosses.h, Wire.h, Bobbin.h) are thread_local:
+// each thread builds its own memo lazily and lock-free. They are pure
+// derived-data caches keyed by immutable inputs, so per-thread copies are
+// semantically transparent (a cold cache recomputes the same values a warm
+// one would return). NOTE: they are NOT shared across threads — pre-warming
+// a cache on one thread does not benefit another, and anything loaded into
+// magneticsCache is only visible to the loading thread.
+inline thread_local std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
 
 // Per-adviser-invocation cache for the iterative
 // MagnetizingInductance::calculate_inductance_and_magnetic_flux_density
@@ -78,7 +87,7 @@ struct InductanceFluxCacheEntry {
     double inductance;
     MAS::SignalDescriptor magneticFluxDensity;
 };
-inline std::map<std::string, std::map<size_t, InductanceFluxCacheEntry>> _inductanceFluxCache;
+inline thread_local std::map<std::string, std::map<size_t, InductanceFluxCacheEntry>> _inductanceFluxCache;
 
 // THREAD-SAFETY CONTRACT (ABT #113): these process-global catalogs are
 // populated with a lazy "if (db.empty()) load_db();" check-then-load pattern
@@ -106,7 +115,7 @@ inline std::map<std::string, OpenMagnetics::Bobbin> bobbinDatabase;
 inline std::map<std::string, OpenMagnetics::InsulationMaterial> insulationMaterialDatabase;
 inline std::map<std::string, MAS::WireMaterial> wireMaterialDatabase;
 
-inline OpenMagnetics::MagneticsCache magneticsCache;
+inline thread_local OpenMagnetics::MagneticsCache magneticsCache;  // thread_local: see memo-cache note above (ABT #113)
 
 void add_scoring(std::string name, OpenMagnetics::MagneticFilters filter, double scoring);
 void clear_scoring();

@@ -15,17 +15,16 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
     
-inline std::map<std::string, tk::spline> wireCoatingThicknessProportionInterps;
-// WARNING: These global caches are NOT thread-safe. If OpenMagnetics is used in a
-// multi-threaded context, wrap access in std::shared_mutex or use a thread-safe singleton.
-// See code review finding L-3.
-inline std::map<std::string, tk::spline> wireFillingFactorInterps;
-inline std::map<std::string, tk::spline> wirePackingFactorInterps;
-inline std::map<std::string, tk::spline> wireConductingAreaProportionInterps;
-inline std::map<std::string, double> minWireConductingDimensions;
-inline std::map<std::string, double> maxWireConductingDimensions;
-inline std::map<std::string, int64_t> minLitzWireNumberConductors;
-inline std::map<std::string, int64_t> maxLitzWireNumberConductors;
+// ABT #113: per-thread memo caches, lazily rebuilt per thread from the
+// (frozen) wire catalog — lock-free and semantically transparent.
+inline thread_local std::map<std::string, tk::spline> wireCoatingThicknessProportionInterps;
+inline thread_local std::map<std::string, tk::spline> wireFillingFactorInterps;
+inline thread_local std::map<std::string, tk::spline> wirePackingFactorInterps;
+inline thread_local std::map<std::string, tk::spline> wireConductingAreaProportionInterps;
+inline thread_local std::map<std::string, double> minWireConductingDimensions;
+inline thread_local std::map<std::string, double> maxWireConductingDimensions;
+inline thread_local std::map<std::string, int64_t> minLitzWireNumberConductors;
+inline thread_local std::map<std::string, int64_t> maxLitzWireNumberConductors;
 
 class WireSolidInsulationRequirements {
     public:

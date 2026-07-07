@@ -134,7 +134,9 @@ std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model
     // harmonic on every wire-advise pass. Profiled with callgrind: that path was
     // ~45% of CoreAdviser time. Single-threaded per the library's documented
     // threading contract (see Utils.h), consistent with the other model caches.
-    static std::map<WindingSkinEffectLossesModels, std::shared_ptr<WindingSkinEffectLossesModel>> persistentModels;
+    // ABT #113: thread_local — the persistent models hold mutable per-wire
+    // skin-factor caches, so they must not be shared between threads.
+    static thread_local std::map<WindingSkinEffectLossesModels, std::shared_ptr<WindingSkinEffectLossesModel>> persistentModels;
     auto cached = persistentModels.find(resolvedModel);
     if (cached != persistentModels.end()) {
         return cached->second;

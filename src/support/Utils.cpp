@@ -842,8 +842,9 @@ std::vector<Wire> get_wires(std::optional<WireType> wireType, std::optional<Wire
     // The wireDatabase is loaded once and immutable, so the filtered+copied
     // list is safe to memoize by (type, standard).
     using CacheKey = std::pair<int, int>;
-    static std::map<CacheKey, std::vector<Wire>> filteredWiresCache;
-    static size_t cachedDatabaseSize = 0;
+    // ABT #113: thread_local — per-thread memo over the frozen wireDatabase.
+    static thread_local std::map<CacheKey, std::vector<Wire>> filteredWiresCache;
+    static thread_local size_t cachedDatabaseSize = 0;
     if (cachedDatabaseSize != wireDatabase.size()) {
         // Database was reloaded since we last cached; invalidate.
         filteredWiresCache.clear();

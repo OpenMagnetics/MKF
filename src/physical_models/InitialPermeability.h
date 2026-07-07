@@ -16,9 +16,11 @@
 using namespace MAS;
 
 namespace OpenMagnetics {
-inline std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityMagneticFieldDcBiasInterps;
-inline std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityFrequencyInterps;
-inline std::map<std::string, std::function<double(double)>> initialPermeabilityTemperatureInterps;
+// ABT #113: per-thread memo caches (lazily built from the frozen material
+// catalog; per-thread copies are lock-free and semantically transparent).
+inline thread_local std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityMagneticFieldDcBiasInterps;
+inline thread_local std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityFrequencyInterps;
+inline thread_local std::map<std::string, std::function<double(double)>> initialPermeabilityTemperatureInterps;
 
 class InitialPermeability {
 
@@ -64,4 +66,4 @@ class InitialPermeability {
                                                        std::optional<double> magneticFluxDensity);
 };
 
-} // namespace OpenMagnetics
+} // namespace OpenMagnetics

@@ -5,8 +5,10 @@
 using namespace MAS;
 
 namespace OpenMagnetics {
-inline std::map<std::string, tk::spline> complexPermeabilityRealInterps;
-inline std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
+// ABT #113: per-thread memo caches (lazily built from the frozen material
+// catalog; per-thread copies are lock-free and semantically transparent).
+inline thread_local std::map<std::string, tk::spline> complexPermeabilityRealInterps;
+inline thread_local std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
 
 class ComplexPermeability {
     private:
@@ -24,4 +26,4 @@ class ComplexPermeability {
         ComplexPermeabilityData calculate_complex_permeability_from_frequency_dependent_initial_permeability(std::string coreMaterialName);
 };
 
-} // namespace OpenMagnetics
+} // namespace OpenMagnetics

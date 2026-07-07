@@ -962,7 +962,7 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
 // ============================================================================
 
 // Static member initialization
-std::vector<ciGSECoefficients> CoreLossesciGSEModel::_coefficientsCache;
+thread_local std::vector<ciGSECoefficients> CoreLossesciGSEModel::_coefficientsCache;
 bool CoreLossesciGSEModel::_coefficientsLoaded = false;
 
 /**

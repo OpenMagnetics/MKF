@@ -20,25 +20,29 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
-inline tk::spline bobbinFillingFactorInterpWidth;
-inline tk::spline bobbinFillingFactorInterpHeight;
-inline tk::spline bobbinWindingWindowProportionInterpWidth;
-inline tk::spline bobbinWindingWindowProportionInterpHeight;
+// ABT #113: per-thread memo caches, lazily rebuilt per thread from the
+// (frozen) bobbin catalog — lock-free and semantically transparent. The
+// min/max trackers below are built together with the splines and must stay
+// in the same thread_local group.
+inline thread_local tk::spline bobbinFillingFactorInterpWidth;
+inline thread_local tk::spline bobbinFillingFactorInterpHeight;
+inline thread_local tk::spline bobbinWindingWindowProportionInterpWidth;
+inline thread_local tk::spline bobbinWindingWindowProportionInterpHeight;
 
-inline double minBobbinWidth;
-inline double maxBobbinWidth;
-inline double minBobbinHeight;
-inline double maxBobbinHeight;
-inline double minWindingWindowWidth;
-inline double maxWindingWindowWidth;
-inline double minWindingWindowHeight;
-inline double maxWindingWindowHeight;
+inline thread_local double minBobbinWidth;
+inline thread_local double maxBobbinWidth;
+inline thread_local double minBobbinHeight;
+inline thread_local double maxBobbinHeight;
+inline thread_local double minWindingWindowWidth;
+inline thread_local double maxWindingWindowWidth;
+inline thread_local double minWindingWindowHeight;
+inline thread_local double maxWindingWindowHeight;
 
 // Smallest wall/column thickness observed in the bobbin database. Used as a hard
 // lower bound when constructing quick bobbins for cores outside the interpolator's
 // training range, where the proportion clamp would otherwise yield ~µm walls.
-inline double minBobbinWallThickness;
-inline double minBobbinColumnThickness;
+inline thread_local double minBobbinWallThickness;
+inline thread_local double minBobbinColumnThickness;
 
 class Bobbin : public MAS::Bobbin {
   private:
