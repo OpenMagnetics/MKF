@@ -234,10 +234,12 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         magnetic.set_manufacturer_info(manufacturerInfo);
     }
 
-    auto previousCoilDelimitAndCompact = settings.get_coil_delimit_and_compact();
-    settings.set_coil_delimit_and_compact(false);
-    magnetic.get_mutable_coil().fast_wind();
-    settings.set_coil_delimit_and_compact(previousCoilDelimitAndCompact);
+    {
+        // RAII (ABT #113 sweep): exception-safe replacement for the manual
+        // save/set/restore — fast_wind can throw.
+        SettingsGuard<bool> coilDelimitGuard(settings, &Settings::get_coil_delimit_and_compact, &Settings::set_coil_delimit_and_compact, false);
+        magnetic.get_mutable_coil().fast_wind();
+    }
 
     // Store the magnetic AFTER fast_wind so the returned Mas carries the wound
     // coil (sections/layers/turns). Previously set_magnetic ran before
@@ -457,13 +459,16 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         if (magneticsWithScoring.size() == 0 && settings.get_core_adviser_saturation_margin() > 1.0) {
             double originalSaturationMargin = settings.get_core_adviser_saturation_margin();
             logEntry("Still no cores. Relaxing saturation margin from " + std::to_string(originalSaturationMargin) + " to 1.0 (results will be tagged)...", "CoreAdviser");
-            settings.set_core_adviser_saturation_margin(1.0);
-            magneticsWithScoring = *magnetics;
-            magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
-            magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
-            add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
-            magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-            settings.set_core_adviser_saturation_margin(originalSaturationMargin);
+            {
+                // RAII (ABT #113 sweep): the retry filters below can throw; a
+                // manual restore would leak the relaxed 1.0 margin.
+                SettingsGuard<double> saturationMarginGuard(settings, &Settings::get_core_adviser_saturation_margin, &Settings::set_core_adviser_saturation_margin, 1.0);
+                magneticsWithScoring = *magnetics;
+                magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+                magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+                add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+                magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+            }
             reducedSaturationMargin = !magneticsWithScoring.empty();
             log_stage("retry Saturation (margin 1.0)", magneticsWithScoring.size());
         }

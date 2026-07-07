@@ -1229,10 +1229,12 @@ bool Coil::fast_wind() {
     if (!get_layers_description()) {
         return false;
     }
-    auto previousIncludeAdditionalCoordinates = settings.get_coil_include_additional_coordinates();
-    settings.set_coil_include_additional_coordinates(false);
-    wind_by_turns();
-    settings.set_coil_include_additional_coordinates(previousIncludeAdditionalCoordinates);
+    {
+        // RAII (ABT #113 sweep): exception-safe replacement for the manual
+        // save/set/restore — wind_by_turns can throw.
+        SettingsGuard<bool> includeAdditionalCoordinatesGuard(settings, &Settings::get_coil_include_additional_coordinates, &Settings::set_coil_include_additional_coordinates, false);
+        wind_by_turns();
+    }
 
     if (!get_turns_description()) {
         return false;
@@ -9026,8 +9028,9 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
 }
 
 std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> dcResistances, double maxError) {
-    auto oldSetting = settings.get_coil_wind_even_if_not_fit();
-    settings.set_coil_wind_even_if_not_fit(true);
+    // RAII (ABT #113 sweep): the loop below winds/simulates repeatedly and can
+    // throw; the manual restore at the end leaked wind_even_if_not_fit=true.
+    SettingsGuard<bool> windEvenIfNotFitGuard(settings, &Settings::get_coil_wind_even_if_not_fit, &Settings::set_coil_wind_even_if_not_fit, true);
 
     double maximumError = DBL_MAX;
     size_t timeout = 100;
@@ -9060,7 +9063,6 @@ std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> 
         }
     }
 
-    settings.set_coil_wind_even_if_not_fit(oldSetting);
     return get_wires();
 }
 

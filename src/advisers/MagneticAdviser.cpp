@@ -112,9 +112,10 @@ WoundCandidateOutcome process_wound_candidate(
     }
 
     if (previousCoilIncludeAdditionalCoordinates) {
-        settings.set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
+        // RAII (ABT #113 sweep): delimit_and_compact can throw; the manual
+        // set-back-to-false would then be skipped.
+        SettingsGuard<bool> includeAdditionalCoordinatesGuard(settings, &Settings::get_coil_include_additional_coordinates, &Settings::set_coil_include_additional_coordinates, previousCoilIncludeAdditionalCoordinates);
         mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
-        settings.set_coil_include_additional_coordinates(false);
     }
     try {
         mas = magneticSimulator.simulate(mas);

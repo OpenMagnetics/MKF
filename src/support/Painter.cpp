@@ -545,9 +545,11 @@ Field PainterInterface::calculate_electric_field_sdf(OperatingPoint operatingPoi
     bool includeFringing = settings.get_painter_include_fringing();
     int mirroringDimension = settings.get_painter_mirroring_dimension();
 
-    auto oldCoilMesherInsideTurnsFactor = settings.get_coil_mesher_inside_turns_factor();
-    // Use same factor as LEGACY method for consistent mesh generation
-    settings.set_coil_mesher_inside_turns_factor(1.2);
+    // Use same factor as LEGACY method for consistent mesh generation.
+    // RAII (ABT #113 sweep): previously saved/restored by hand at three of the
+    // four exits — the `!coil.get_turns_description()` early return leaked the
+    // 1.2 factor, and any exception leaked it too.
+    SettingsGuard<double> mesherFactorGuard(settings, &Settings::get_coil_mesher_inside_turns_factor, &Settings::set_coil_mesher_inside_turns_factor, 1.2);
     // RAII: restore the global magnetic-field settings on scope exit. They used to be
     // overwritten permanently, leaking the painter's fringing/mirroring choice into
     // every later physics computation in the process.
@@ -571,7 +573,6 @@ Field PainterInterface::calculate_electric_field_sdf(OperatingPoint operatingPoi
     auto voltageDropAmongTurnsOpt = capacitanceOutput.get_voltage_drop_among_turns();
     if (!voltageDropAmongTurnsOpt) {
         // Return the mesh field even without voltage data
-        settings.set_coil_mesher_inside_turns_factor(oldCoilMesherInsideTurnsFactor);
         return inducedField;
     }
     auto voltageDropAmongTurns = voltageDropAmongTurnsOpt.value();
@@ -580,8 +581,6 @@ Field PainterInterface::calculate_electric_field_sdf(OperatingPoint operatingPoi
         return inducedField;
     }
     auto turns = coil.get_turns_description().value();
-
-    settings.set_coil_mesher_inside_turns_factor(oldCoilMesherInsideTurnsFactor);
 
     // Clear values to zero - we just want the mesh grid positions
     for (size_t i = 0; i < inducedField.get_data().size(); ++i) {
@@ -631,7 +630,6 @@ Field PainterInterface::calculate_electric_field_sdf(OperatingPoint operatingPoi
 
     // If no pairs found, return the empty field
     if (pairInfos.empty()) {
-        settings.set_coil_mesher_inside_turns_factor(oldCoilMesherInsideTurnsFactor);
         return inducedField;
     }
 
@@ -736,10 +734,13 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
 
     size_t numberPointsX = settings.get_painter_number_points_x();
     size_t numberPointsY = settings.get_painter_number_points_y();
-    auto oldCoilMesherInsideTurnsFactor = settings.get_coil_mesher_inside_turns_factor();
-    settings.set_coil_mesher_inside_turns_factor(1.2);
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false).first;
-    settings.set_coil_mesher_inside_turns_factor(oldCoilMesherInsideTurnsFactor);
+    Field inducedField;
+    {
+        // RAII (ABT #113 sweep): exception-safe replacement for the manual
+        // save/set/restore around the mesh generation.
+        SettingsGuard<double> mesherFactorGuard(settings, &Settings::get_coil_mesher_inside_turns_factor, &Settings::set_coil_mesher_inside_turns_factor, 1.2);
+        inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false).first;
+    }
 
     auto strayCapacitanceModel = settings.get_stray_capacitance_model();
     StrayCapacitance strayCapacitance(strayCapacitanceModel);
