@@ -2972,4 +2972,59 @@ TEST_CASE("Test_CoreAdviser_RejectsWindingKillingGaps", "[adviser][core-adviser]
     settings.reset();
 }
 
+// ABT #153: PFC boost-inductor inputs (line-frequency 50 Hz operating point
+// carrying switching ripple, high DC/AC current, ~mH inductance) return zero
+// candidates in the default STANDARD_CORES mode, while AVAILABLE_CORES finds
+// valid powder toroids. The standard-cores catalogue must serve line-frequency
+// high-energy inductor designs too (powder toroids belong in the standard set).
+TEST_CASE("Test_CoreAdviser_PFC_Boost_Inductor_StandardCores", "[core-adviser][abt153]") {
+    clear_databases();
+    auto json_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "PFC_Inputs.mas.json");
+    std::ifstream json_file(json_path);
+    std::string inputsString((std::istreambuf_iterator<char>(json_file)), std::istreambuf_iterator<char>());
+    json inputsJson = json::parse(inputsString);
+    // Ticket's PFC boost inductor requirement: L = 1.896 mH (the captured file
+    // carries the same 50 Hz line-frequency operating point at a lower L). At
+    // this high energy target the standard-cores catalogue returned zero.
+    inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 0.001896;
+    OpenMagnetics::Inputs inputs(inputsJson);
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights = {
+        {CoreAdviser::CoreAdviserFilters::EFFICIENCY, 1.0},
+        {CoreAdviser::CoreAdviserFilters::DIMENSIONS, 1.0},
+        {CoreAdviser::CoreAdviserFilters::COST, 1.0},
+    };
+
+    OpenMagnetics::read_log();  // register the capture sink before the runs
+
+    // AVAILABLE_CORES finds powder toroids for this PFC boost inductor (ticket: 3 results).
+    CoreAdviser coreAdviserAvailable;
+    coreAdviserAvailable.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto availableResults = coreAdviserAvailable.get_advised_core(inputs, weights, 3);
+    WARN("AVAILABLE_CORES results: " << availableResults.size());
+    for (auto& [mas, scoring] : availableResults) {
+        WARN("  available: " << mas.get_magnetic().get_manufacturer_info().value().get_reference().value());
+    }
+
+    // STANDARD_CORES must also serve this line-frequency high-energy inductor.
+    OpenMagnetics::read_log();  // drain available-run entries so the log below is standard-only
+    CoreAdviser coreAdviserStandard;
+    coreAdviserStandard.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    auto standardResults = coreAdviserStandard.get_advised_core(inputs, weights, 3);
+    auto log = OpenMagnetics::read_log();
+    WARN("STANDARD_CORES results: " << standardResults.size());
+    WARN("STANDARD_CORES log:\n" << log);
+    // ABT #153 fix: STANDARD_CORES no longer returns an empty set for this PFC
+    // boost inductor; when its synthetic catalogue cannot serve the design it
+    // falls through to the AVAILABLE_CORES manufacturer catalogue and TAGS every
+    // result so the mode substitution is explicit (no silent fallback).
+    REQUIRE(standardResults.size() > 0);
+    for (auto& [mas, scoring] : standardResults) {
+        auto reference = mas.get_magnetic().get_manufacturer_info().value().get_reference().value();
+        WARN("  standard: " << reference);
+        CHECK(reference.find("available-cores catalogue") != std::string::npos);
+    }
+    settings.reset();
+}
+
 }  // namespace
