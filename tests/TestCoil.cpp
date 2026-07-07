@@ -5584,6 +5584,10 @@ TEST_CASE("Test_Wind_By_Section_With_Insulation_Sections", "[constructive-model]
     CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
     
     auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+    // This test re-winds the no-compact coil after construction; the no-compact
+    // environment is part of its intent, so set it explicitly (the builder no longer
+    // leaks the flag globally).
+    settings.set_coil_delimit_and_compact(false);
     double voltagePeakToPeak = 400;
     auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
     coil.set_inputs(inputs);
@@ -5591,6 +5595,7 @@ TEST_CASE("Test_Wind_By_Section_With_Insulation_Sections", "[constructive-model]
     auto log = coil.read_log();
 
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, sectionOrientation);
+    settings.reset();
 }
 
 TEST_CASE("Test_Wind_By_Section_Pattern", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
@@ -5605,9 +5610,14 @@ TEST_CASE("Test_Wind_By_Section_Pattern", "[constructive-model][coil][rectangula
     size_t repetitions = 2;
 
     auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+    // This test re-winds the no-compact coil after construction; the no-compact
+    // environment is part of its intent, so set it explicitly (the builder no longer
+    // leaks the flag globally).
+    settings.set_coil_delimit_and_compact(false);
 
     coil.wind_by_sections(pattern, repetitions);
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
+    settings.reset();
 }
 
 TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
@@ -5627,6 +5637,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer", "[constructive-model
     auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
     auto layersDescription = coil.get_layers_description().value();
     OpenMagneticsTesting::check_layers_description(coil);
+    settings.reset();
 }
 
 TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_Two_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
@@ -5927,6 +5938,10 @@ TEST_CASE("Test_Wind_By_Layers_With_Insulation_Layers", "[constructive-model][co
     CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
     
     auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+    // This test re-winds the no-compact coil after construction; the no-compact
+    // environment is part of its intent, so set it explicitly (the builder no longer
+    // leaks the flag globally).
+    settings.set_coil_delimit_and_compact(false);
     double voltagePeakToPeak = 400;
     auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
     coil.set_inputs(inputs);
@@ -5934,6 +5949,7 @@ TEST_CASE("Test_Wind_By_Layers_With_Insulation_Layers", "[constructive-model][co
     auto log = coil.read_log();
 
     OpenMagneticsTesting::check_layers_description(coil);
+    settings.reset();
 }
 
 TEST_CASE("Test_External_Insulation_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
