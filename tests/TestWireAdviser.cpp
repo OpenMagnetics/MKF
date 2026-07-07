@@ -359,6 +359,8 @@ namespace {
                                                                  25,
                                                                  1,
                                                                  1);
+        // Repro point: the wire adviser must return at least one wire (indexing [0] below was UB on empty).
+        REQUIRE(masMagneticsWithCoil.size() > 0);
 
         {
             auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
@@ -375,6 +377,7 @@ namespace {
 
             painter.paint_wire(wire);
             painter.export_svg();
+            OpenMagneticsTesting::check_svg(outFile);
         }
     }
 

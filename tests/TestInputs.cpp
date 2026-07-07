@@ -1311,6 +1311,10 @@ TEST_CASE("Test_Json_Web", "[processor][inputs][smoke-test]") {
     json inputsJson = json::parse(inputString);
     OperatingPoint operatingPoint;
     from_json(inputsJson, operatingPoint);
+    // Repro point: the frontend operating-point JSON must parse into a populated object.
+    REQUIRE(operatingPoint.get_excitations_per_winding().size() > 0);
+    CHECK(operatingPoint.get_conditions().get_ambient_temperature() == 42);
+    REQUIRE(operatingPoint.get_excitations_per_winding()[0].get_current());
 }
 
 TEST_CASE("Test_Induced_Voltage", "[processor][inputs][smoke-test]") {
@@ -1802,6 +1806,11 @@ TEST_CASE("Test_Standardize_Waveform", "[processor][inputs][smoke-test]") {
     SignalDescriptor signalDescriptor = json::parse(R"({"harmonics":{"amplitudes":[7,3.321,10],"frequencies":[0,50,50000]},"processed":null,"waveform":null})");
 
     auto standardSignalDescriptor = OpenMagnetics::Inputs::standardize_waveform(signalDescriptor, 50);
+    // Standardizing a harmonics-only descriptor must synthesize both a waveform and harmonics.
+    REQUIRE(standardSignalDescriptor.get_waveform().has_value());
+    CHECK(standardSignalDescriptor.get_waveform()->get_data().size() > 0);
+    REQUIRE(standardSignalDescriptor.get_harmonics().has_value());
+    CHECK(standardSignalDescriptor.get_harmonics()->get_amplitudes().size() > 0);
 
     #ifdef ENABLE_MATPLOTPP
         auto outFile = outputFilePath;

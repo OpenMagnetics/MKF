@@ -1339,9 +1339,15 @@ TEST_CASE("Core_Processed_Description_Web_2", "[constructive-model][core][proces
     inputs.set_design_requirements(designRequirements);
 
     auto gapping =  magnetizingInductanceModel.calculate_gapping_from_number_turns_and_inductance(ungappedCore, coil, &inputs, OpenMagnetics::GappingType::GROUND);
+    // Repro point: a ground gap must be computable for the requested inductance.
+    REQUIRE(gapping.size() > 0);
+    for (auto& gap : gapping) {
+        CHECK(gap.get_length() > 0);
+    }
     ungappedCore.get_mutable_functional_description().set_gapping(gapping);
     ungappedCore.process_gap();
     auto functionalDescription = ungappedCore.get_functional_description();
+    REQUIRE(functionalDescription.get_gapping().size() == gapping.size());
 }
 
 TEST_CASE("E_19_8_5_Geometrical_Description", "[constructive-model][core][geometrical-description][smoke-test]") {
@@ -1636,6 +1642,12 @@ TEST_CASE("Test_Core_Functional_Description_Web_0", "[constructive-model][core][
     Core core(coreJson, true);
 
     auto functionalDescription = core.get_functional_description();
+    // Repro point: construction must fully process the core (these were segfault/crash repros).
+    REQUIRE(core.get_processed_description());
+    auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+    CHECK(effectiveParameters.get_effective_area() > 0);
+    CHECK(effectiveParameters.get_effective_length() > 0);
+    CHECK(effectiveParameters.get_effective_volume() > 0);
 }
 
 TEST_CASE("Test_Core_Functional_Description_Web_1", "[constructive-model][core][functional-description][bug][smoke-test]") {
@@ -1717,6 +1729,12 @@ TEST_CASE("Test_Core_Functional_Description_Web_3", "[constructive-model][core][
     Core core(coreJson, true);
 
     auto functionalDescription = core.get_functional_description();
+    // Repro point: construction must fully process the core (these were segfault/crash repros).
+    REQUIRE(core.get_processed_description());
+    auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+    CHECK(effectiveParameters.get_effective_area() > 0);
+    CHECK(effectiveParameters.get_effective_length() > 0);
+    CHECK(effectiveParameters.get_effective_volume() > 0);
 }
 
 TEST_CASE("Test_Core_Functional_Description_Web_4", "[constructive-model][core][functional-description][bug][smoke-test]") {
@@ -1739,6 +1757,12 @@ TEST_CASE("Test_Core_Functional_Description_Web_4", "[constructive-model][core][
     Core core(coreJson, true);
 
     auto functionalDescription = core.get_functional_description();
+    // Repro point: construction must fully process the core (these were segfault/crash repros).
+    REQUIRE(core.get_processed_description());
+    auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+    CHECK(effectiveParameters.get_effective_area() > 0);
+    CHECK(effectiveParameters.get_effective_length() > 0);
+    CHECK(effectiveParameters.get_effective_volume() > 0);
 }
 
 TEST_CASE("Test_Core_Functional_Description_Web_5", "[constructive-model][core][functional-description][bug][smoke-test]") {
@@ -1828,6 +1852,12 @@ TEST_CASE("Missing_Core_Hermes", "[constructive-model][core][functional-descript
     Core core(coreJson, true);
 
     auto functionalDescription = core.get_functional_description();
+    // Repro point: construction must fully process the core (these were segfault/crash repros).
+    REQUIRE(core.get_processed_description());
+    auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+    CHECK(effectiveParameters.get_effective_area() > 0);
+    CHECK(effectiveParameters.get_effective_length() > 0);
+    CHECK(effectiveParameters.get_effective_volume() > 0);
 }
 
 TEST_CASE("Test_Core_Initial_Permeability", "[constructive-model][core][functional-description][smoke-test]") {

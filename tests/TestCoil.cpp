@@ -8,6 +8,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 
+#include <cmath>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
@@ -37,7 +38,13 @@ TEST_CASE("Test_Coil_Json_0", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"Primary","name":"Primary","numberParallels":1,"numberTurns":23,"wire":"Dummy"}]})";
 
     auto coilJson = json::parse(coilString);
-    auto Coil(coilJson);
+    // The original line here was `auto Coil(coilJson);` — a most-vexing-parse variable
+    // declaration that just copied the json and never constructed a Coil at all.
+    OpenMagnetics::Coil coil(coilJson, false);
+    REQUIRE(coil.get_functional_description().size() == 1);
+    CHECK(coil.get_functional_description()[0].get_name() == "Primary");
+    CHECK(coil.get_functional_description()[0].get_number_turns() == 23);
+    CHECK(coil.get_functional_description()[0].get_number_parallels() == 1);
 }
 
 TEST_CASE("Test_Coil_Json_1", "[constructive-model][coil][bug][smoke-test]") {
@@ -289,15 +296,23 @@ TEST_CASE("Test_Coil_Json_8", "[constructive-model][coil][bug][smoke-test]") {
     json coilJson = json::parse(json_file_282);
     OpenMagnetics::Coil coil(coilJson, false);
     auto layers = coil.get_layers_description().value();
+    REQUIRE(layers.size() > 0);
 
+    // Repro point: resolving the insulation material of every insulation layer must work.
+    size_t insulationLayerCount = 0;
     for (auto layer : layers) {
         if (layer.get_type() == ElectricalType::INSULATION) {
+            insulationLayerCount++;
             auto material = OpenMagnetics::Coil::resolve_insulation_layer_insulation_material(coil, layer.get_name());
-            json mierda;
-            to_json(mierda, material);
+            json materialJson;
+            to_json(materialJson, material);
+            INFO("Layer: " << layer.get_name());
+            CHECK(!materialJson.empty());
         }
 
     }
+    // The fixture contains insulation layers; the loop above must not be vacuous.
+    REQUIRE(insulationLayerCount > 0);
 }
 
 TEST_CASE("Test_Coil_Json_9", "[constructive-model][coil][bug][smoke-test]") {
@@ -358,8 +373,13 @@ TEST_CASE("Test_Coil_Json_9", "[constructive-model][coil][bug][smoke-test]") {
         }
     }
 
+    // Repro point: winding by sections must actually produce a sections description.
+    REQUIRE(coil.get_sections_description());
+    CHECK(coil.get_sections_description_conduction().size() > 0);
+
     json result;
     to_json(result, coil);
+    CHECK(!result.empty());
 }
 
 TEST_CASE("Test_Coil_Json_10", "[constructive-model][coil][bug][smoke-test]") {
@@ -395,8 +415,13 @@ TEST_CASE("Test_Coil_Json_10", "[constructive-model][coil][bug][smoke-test]") {
     coil.set_layers_description(coilLayersDescription);
     coil.wind_by_turns();
 
+    // Repro point: winding by turns over preset sections/layers must produce turns.
+    REQUIRE(coil.get_turns_description());
+    CHECK(coil.get_turns_description()->size() > 0);
+
     json result;
     to_json(result, coil);
+    CHECK(!result.empty());
 }
 
 TEST_CASE("Test_Coil_Json_11", "[constructive-model][coil][bug][smoke-test]") {
@@ -5927,11 +5952,20 @@ TEST_CASE("Test_External_Insulation_Layers", "[constructive-model][coil][rectang
         insulationLayers[windingsMapKey] = layers;
     }
 
-    OpenMagnetics::Coil coil;
-
-    if (insulationLayers.size() > 0) {
-        coil.set_insulation_layers(insulationLayers);
+    // The fixture defines insulation layers for the (0,1), (1,2) and (2,0) winding pairs.
+    REQUIRE(insulationLayers.size() == 3);
+    for (auto& [windingsMapKey, layers] : insulationLayers) {
+        REQUIRE(layers.size() == 2);
+        for (auto& layer : layers) {
+            CHECK(layer.get_type() == ElectricalType::INSULATION);
+            REQUIRE(layer.get_dimensions().size() == 2);
+            CHECK(layer.get_dimensions()[0] > 0);
+            CHECK(layer.get_dimensions()[1] > 0);
+        }
     }
+
+    OpenMagnetics::Coil coil;
+    CHECK_NOTHROW(coil.set_insulation_layers(insulationLayers));
 }
 
 TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
@@ -11269,6 +11303,18 @@ TEST_CASE("Demo_Real_Vs_Ideal_Connection_Geometry", "[real-geometry-demo]") {
     }
     std::cout << "  reserved connection rectangles: " << reserved.size() << "\n";
 
+    // Demo invariants: same sectioning, real geometry reserves connection space and can only
+    // add resistance (lead length) relative to the ideal path.
+    REQUIRE(sectionsIdeal.size() == sectionsReal.size());
+    REQUIRE(resistanceIdeal.size() == resistanceReal.size());
+    CHECK(reserved.size() > 0);
+    for (size_t w = 0; w < resistanceIdeal.size(); ++w) {
+        INFO("Winding " << w);
+        CHECK(std::isfinite(resistanceReal[w]));
+        CHECK(resistanceIdeal[w] > 0);
+        CHECK(resistanceReal[w] >= resistanceIdeal[w]);
+    }
+
     OpenMagnetics::Magnetic magneticIdeal; magneticIdeal.set_core(core); magneticIdeal.set_coil(coilIdeal);
     OpenMagnetics::Magnetic magneticReal;  magneticReal.set_core(core);  magneticReal.set_coil(coilReal);
 
@@ -11280,6 +11326,7 @@ TEST_CASE("Demo_Real_Vs_Ideal_Connection_Geometry", "[real-geometry-demo]") {
         painter.paint_bobbin(magneticIdeal);
         painter.paint_coil_turns(magneticIdeal);
         painter.export_svg();
+        OpenMagneticsTesting::check_svg(outFile);
     }
     {
         auto outFile = outputFilePath; outFile.append("Demo_Connection_Real.svg");
@@ -11290,6 +11337,7 @@ TEST_CASE("Demo_Real_Vs_Ideal_Connection_Geometry", "[real-geometry-demo]") {
         painter.paint_coil_turns(magneticReal);
         painter.paint_coil_connections(magneticReal);
         painter.export_svg();
+        OpenMagneticsTesting::check_svg(outFile);
     }
     std::cout << "  SVGs written to " << outputFilePath.string() << "/Demo_Connection_{Ideal,Real}.svg\n" << std::endl;
 

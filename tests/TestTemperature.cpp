@@ -630,16 +630,19 @@ TEST_CASE("Temperature: T36 Two Windings Schematic Only", "[temperature][round-w
     // Build thermal circuit and generate schematic (minimal solve)
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
-    
+    // The thermal network must actually have been built.
+    CHECK(temp.getNodes().size() > 0);
+    CHECK(temp.getResistances().size() > 0);
+
     // Paint the magnetic geometry for visualization
     Painter painter;
     painter.paint_core(magnetic);
     painter.paint_coil_turns(magnetic);
     auto svg = painter.export_svg();
+    CHECK(svg.find("<svg") != std::string::npos);
     std::ofstream file("output/T36_geometry_visualization.svg");
     file << svg;
     file.close();
-    
 }
 
 TEST_CASE("Temperature: T20 Two Windings Quadrant Visualization", "[temperature][round-winding-window][smoke-test]") {
@@ -732,7 +735,10 @@ TEST_CASE("Temperature: Toroidal Quadrant Visualization", "[temperature][round-w
     
     // Calculate temperatures (builds network and generates schematic even if solver fails)
     auto result = temp.calculateTemperatures();
-    
+    // The thermal network must actually have been built and the schematic written.
+    CHECK(temp.getNodes().size() > 0);
+    CHECK(temp.getResistances().size() > 0);
+    CHECK(std::filesystem::exists(config.schematicOutputPath));
 }
 
 

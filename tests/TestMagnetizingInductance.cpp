@@ -120,7 +120,10 @@ namespace {
         OpenMagnetics::Coil winding(windingData);
         OperatingPoint operatingPoint(operatingPointData);
         MagnetizingInductance magnetizing_inductance("ZHANG");
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        double computedMagnetizingInductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        // The computed magnetizing inductance must be finite and positive.
+        CHECK(std::isfinite(computedMagnetizingInductance));
+        CHECK(computedMagnetizingInductance > 0);
     }
 
     TEST_CASE("Test_Inductance_Powder_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
@@ -178,7 +181,10 @@ namespace {
         OpenMagnetics::Coil winding(windingData);
         OperatingPoint operatingPoint(operatingPointData);
         MagnetizingInductance magnetizing_inductance("ZHANG");
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        double computedMagnetizingInductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        // The computed magnetizing inductance must be finite and positive.
+        CHECK(std::isfinite(computedMagnetizingInductance));
+        CHECK(computedMagnetizingInductance > 0);
     }
 
     TEST_CASE("Test_Inductance_High_Flux_40_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
@@ -197,7 +203,10 @@ namespace {
         OpenMagnetics::Inputs inputs(inputsData);
         auto operatingPoint = inputs.get_operating_point(0);
         MagnetizingInductance magnetizing_inductance("ZHANG");
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        double computedMagnetizingInductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        // The computed magnetizing inductance must be finite and positive.
+        CHECK(std::isfinite(computedMagnetizingInductance));
+        CHECK(computedMagnetizingInductance > 0);
     }
 
     TEST_CASE("Test_Inductance_Ferrite_Spacer", "[physical-model][magnetizing-inductance][smoke-test]") {
@@ -600,6 +609,11 @@ namespace {
         MagnetizingInductance magnetizing_inductance("CLASSIC");
         auto gapping =
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
+        // Repro point: a 5-gap ground gapping must be computable for these web inputs.
+        REQUIRE(gapping.size() == 5);
+        for (auto& gap : gapping) {
+            CHECK(gap.get_length() > 0);
+        }
     }
 
     TEST_CASE("Test_Magnetizing_Inductance", "[physical-model][magnetizing-inductance][smoke-test]") {
@@ -765,7 +779,10 @@ namespace {
         OpenMagnetics::Coil winding(windingData);
         OperatingPoint operatingPoint(operatingPointData);
         MagnetizingInductance magnetizing_inductance("ZHANG");
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        double computedMagnetizingInductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        // The computed magnetizing inductance must be finite and positive.
+        CHECK(std::isfinite(computedMagnetizingInductance));
+        CHECK(computedMagnetizingInductance > 0);
         auto primaryExcitation = operatingPoint.get_mutable_excitations_per_winding()[0];
         double currentPeakToPeak = 10;
         double voltagePeakToPeak = 105;
@@ -894,7 +911,10 @@ namespace {
                                 coreMaterial, core, winding, inputs);
 
         auto operatingPoint = inputs.get_operating_point(0);
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        double computedMagnetizingInductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        // The computed magnetizing inductance must be finite and positive.
+        CHECK(std::isfinite(computedMagnetizingInductance));
+        CHECK(computedMagnetizingInductance > 0);
     }
 
     TEST_CASE("Test_Magnetizing_Inductance_Error_Web_0", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
@@ -1045,7 +1065,10 @@ namespace {
         OpenMagnetics::Coil winding(windingData);
         OperatingPoint operatingPoint(operatingPointData);
         MagnetizingInductance magnetizingInductance("ZHANG");
-        magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        double computedMagnetizingInductance = magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        // The computed magnetizing inductance must be finite and positive.
+        CHECK(std::isfinite(computedMagnetizingInductance));
+        CHECK(computedMagnetizingInductance > 0);
     }
 
     TEST_CASE("Test_Inductance_Bug_Web_1", "[physical-model][magnetizing-inductance][bug]") {
@@ -1060,7 +1083,10 @@ namespace {
         OpenMagnetics::Coil winding(windingData);
         OperatingPoint operatingPoint(operatingPointData);
         MagnetizingInductance magnetizingInductance("ZHANG");
-        magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        double computedMagnetizingInductance = magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        // The computed magnetizing inductance must be finite and positive.
+        CHECK(std::isfinite(computedMagnetizingInductance));
+        CHECK(computedMagnetizingInductance > 0);
     }
 
     TEST_CASE("Test_Magnetizing_Inductance_Error_Web_2", "[physical-model][magnetizing-inductance][bug][smoke-test]") {

@@ -11,6 +11,7 @@
 #include "Fixtures.h"
 #include <magic_enum.hpp>
 
+#include <cmath>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -2031,6 +2032,9 @@ TEST_CASE("Voltage_And_Current", "[physical-model][core-losses][smoke-test]") {
 
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+    // Repro point: the computed core losses must be finite and positive.
+    CHECK(std::isfinite(coreLosses.get_core_losses()));
+    CHECK(coreLosses.get_core_losses() > 0);
 }
 
 TEST_CASE("Only_Current_0", "[physical-model][core-losses][smoke-test]") {
@@ -2220,6 +2224,9 @@ TEST_CASE("Crash_Losses", "[physical-model][core-losses][bug][smoke-test]") {
 
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+    // Repro point: the computed core losses must be finite and positive.
+    CHECK(std::isfinite(coreLosses.get_core_losses()));
+    CHECK(coreLosses.get_core_losses() > 0);
 }
 
 TEST_CASE("Crash_Toroids", "[physical-model][core-losses][bug][smoke-test]") {
@@ -2643,10 +2650,17 @@ TEST_CASE("Test_Core_Losses_Simple_Inductor", "[physical-model][core-losses][smo
     auto magneticFluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
     excitation.set_magnetic_flux_density(magneticFluxDensity);
 
-    [[maybe_unused]] double magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    double magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
 
     double frequency = OpenMagnetics::Inputs::get_switching_frequency(excitation);
-    [[maybe_unused]] double magneticFluxDensityAcPeakToPeak = OpenMagnetics::Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
+    double magneticFluxDensityAcPeakToPeak = OpenMagnetics::Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
+
+    // The derived excitation quantities must be finite and positive.
+    CHECK(std::isfinite(magneticFluxDensityPeak));
+    CHECK(magneticFluxDensityPeak > 0);
+    CHECK(frequency > 0);
+    CHECK(std::isfinite(magneticFluxDensityAcPeakToPeak));
+    CHECK(magneticFluxDensityAcPeakToPeak > 0);
 }
 
 TEST_CASE("Test_Core_Losses_Hoganas", "[physical-model][core-losses]") {
@@ -2734,10 +2748,14 @@ TEST_CASE("Test_MagnetizingInductanceModel_From_Excitation", "[physical-model][c
 
 TEST_CASE("Test_CoreLosses_Model_3C95", "[physical-model][core-losses][smoke-test]") {
     auto coreLossesModel = CoreLosses().get_core_losses_model("3C95");
+    // A loss model must exist for this stock ferrite material.
+    REQUIRE(coreLossesModel != nullptr);
 }
 
 TEST_CASE("Test_CoreLosses_Model_Nanoperm_8000", "[physical-model][core-losses][smoke-test]") {
     auto coreLossesModel = CoreLosses().get_core_losses_model("Nanoperm 8000");
+    // A loss model must exist for this nanocrystalline material (proprietary-method repro).
+    REQUIRE(coreLossesModel != nullptr);
 }
 
 TEST_CASE("Test_Core_Losses_Nanoperm_8000", "[physical-model][core-losses][smoke-test]") {

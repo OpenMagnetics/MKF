@@ -219,6 +219,14 @@ TEST_CASE("Get_Winding_Window_Dimensions_All_Shapes_With_Bobbin", "[constructive
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
         auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
         auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
+
+        // The bobbin winding window must be positive and fit inside the core winding window.
+        INFO("Shape: " << shapeName);
+        REQUIRE(windingWindowDimensions.size() == 2);
+        CHECK(windingWindowDimensions[0] > 0);
+        CHECK(windingWindowDimensions[0] <= coreWindingWindow.get_width().value());
+        CHECK(windingWindowDimensions[1] > 0);
+        CHECK(windingWindowDimensions[1] <= coreWindingWindow.get_height().value());
     }
 }
 

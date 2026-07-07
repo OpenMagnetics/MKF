@@ -3,6 +3,7 @@
 #include "physical_models/Reluctance.h"
 #include "TestingUtils.h"
 
+#include <cmath>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -451,6 +452,11 @@ namespace {
         CoreGap coreGap(json::parse(coreGapData));
 
         auto coreGapResult = reluctanceModel->get_gap_reluctance(coreGap);
+        // Repro point: the gap reluctance for this web gap must be finite and positive,
+        // with a physical fringing factor (>= 1).
+        CHECK(std::isfinite(coreGapResult.get_reluctance()));
+        CHECK(coreGapResult.get_reluctance() > 0);
+        CHECK(coreGapResult.get_fringing_factor() >= 1);
     }
 
 }  // namespace
