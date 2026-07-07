@@ -738,7 +738,8 @@ TEST_CASE("Temperature: Toroidal Quadrant Visualization", "[temperature][round-w
     // The thermal network must actually have been built and the schematic written.
     CHECK(temp.getNodes().size() > 0);
     CHECK(temp.getResistances().size() > 0);
-    CHECK(std::filesystem::exists(config.schematicOutputPath));
+    // Temperature::plotSchematic writes the schematic as '<path>.json'.
+    CHECK(std::filesystem::exists(config.schematicOutputPath + ".json"));
 }
 
 
