@@ -3989,7 +3989,10 @@ TEST_CASE("Temperature: BuckInductor T134_77_27 from MAS file", "[temperature][c
     try {
         result = temp.calculateTemperatures();
         exportTemperatureFieldSvg("BuckInductor_T134", magnetic, result.nodeTemperatures, config.ambientTemperature);
-    } catch (...) {}
+    } catch (const std::exception& e) {
+        // A throw used to be silently swallowed here; it must fail the test.
+        FAIL("calculateTemperatures/exportTemperatureFieldSvg threw: " << e.what());
+    }
     exportThermalCircuitSchematic("BuckInductor_T134", temp);
 
     REQUIRE(result.converged);

@@ -6022,7 +6022,7 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding", "[constructive-model][coil][r
 
                 }
             }
-            catch (...) {
+            catch (const std::exception& e) {
                 for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
                     std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
                 }
@@ -6031,7 +6031,8 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding", "[constructive-model][coil][r
                 }
                 std::cout << "interleavingLevel: " << double(interleavingLevel) << std::endl;
                 std::cout << "windingOrientationIndex: " << windingOrientationIndex << std::endl;
-                return;
+                // A throw used to be swallowed here (early return -> test passed). It must fail.
+                FAIL("get_quick_coil threw for the combination printed above: " << e.what());
             }
         }
     }

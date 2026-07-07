@@ -3086,22 +3086,8 @@ namespace {
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
-        try
-        {
-            painter.paint_coil_turns(magnetic);
-            painter.export_svg();
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            REQUIRE(false);
-        }
-        catch (const std::exception &e)
-        {
-            painter.export_svg();
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            REQUIRE(true);
-            std::cerr << e.what() << std::endl;
-        }
+        // Turns that do not fit the window must make paint_coil_turns throw.
+        REQUIRE_THROWS_AS(painter.paint_coil_turns(magnetic), std::exception);
         settings.reset();
     }
 

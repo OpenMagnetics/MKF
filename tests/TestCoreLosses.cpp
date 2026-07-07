@@ -3452,9 +3452,17 @@ TEST_CASE("Test_Core_Losses_All_Models_Comparison_Table",
                     materialErrorSum += error;
                     testCount++;
                     if (error > maxErr) maxErr = error;
+
+                    // Every model/material/test-point combination must produce a finite positive loss.
+                    INFO(md.name << " / " << material << " @ " << tp.frequency << " Hz, "
+                                 << tp.magneticFluxDensityPeak << " T, " << tp.temperature << " C");
+                    CHECK(std::isfinite(volumetricLosses));
+                    CHECK(volumetricLosses > 0);
                 }
                 catch (const std::exception& e) {
-                    // Model not available for this material/config — skip silently
+                    // A model/material combination that throws used to be skipped silently.
+                    FAIL_CHECK(md.name << " / " << material << " @ " << tp.frequency << " Hz threw: "
+                                       << e.what());
                 }
             }
 

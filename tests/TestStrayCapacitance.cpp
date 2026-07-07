@@ -1104,35 +1104,40 @@ TEST_CASE("Bug: beta is NAN in capacitance calculation with processed coil", "[s
                     if (strandCoating && strandCoating->get_grade()) {
                     }
                 } catch (const std::exception& e) {
+                    FAIL_CHECK("resolve_strand/resolve_coating threw for winding " << i << ": " << e.what());
                 }
             }
         }
     }
-    
-    // Try to calculate capacitance with different models
-    for (auto model : {OpenMagnetics::StrayCapacitanceModels::ALBACH, 
+
+    // Repro point (beta was NAN): every model must produce a Maxwell capacitance
+    // matrix whose entries are all finite.
+    for (auto model : {OpenMagnetics::StrayCapacitanceModels::ALBACH,
                        OpenMagnetics::StrayCapacitanceModels::KOCH,
                        OpenMagnetics::StrayCapacitanceModels::MASSARINI,
                        OpenMagnetics::StrayCapacitanceModels::DUERDOTH}) {
-        
-        
+        INFO("Model: " << magic_enum::enum_name(model));
         try {
             StrayCapacitance strayCapacitance(model);
             auto output = strayCapacitance.calculate_capacitance(coil);
-            
-            if (output.get_maxwell_capacitance_matrix()) {
-                auto matrix = output.get_maxwell_capacitance_matrix().value();
-                if (matrix.size() > 0) {
+
+            REQUIRE(output.get_maxwell_capacitance_matrix());
+            auto matrix = output.get_maxwell_capacitance_matrix().value();
+            CHECK(matrix.size() > 0);
+            for (const auto& entry : matrix) {
+                for (const auto& [winding1, innerMap] : entry.get_magnitude()) {
+                    for (const auto& [winding2, capacitance] : innerMap) {
+                        double value = OpenMagnetics::resolve_dimensional_values(capacitance);
+                        INFO("Capacitance " << winding1 << " / " << winding2);
+                        CHECK(std::isfinite(value));
+                    }
                 }
             }
-            
         } catch (const std::exception& e) {
-            // Don't fail the test, just report the error
+            FAIL_CHECK("calculate_capacitance threw for model "
+                       << magic_enum::enum_name(model) << ": " << e.what());
         }
     }
-    
-    // The test should complete without crashing
-    REQUIRE(true);
 }
 
 TEST_CASE("Investigate capacitance calculation from bug_capacitance_error_2.json", "[physical-model][stray-capacitance][bug-investigation]") {
