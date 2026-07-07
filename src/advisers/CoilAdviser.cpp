@@ -152,6 +152,12 @@ namespace OpenMagnetics {
         std::string jsonLine;
         std::vector<Wire> wires;
         for (const auto& [key, wire] : wireDatabase) {
+            // ABT #164: honour a per-call wireType constraint locally instead of
+            // MagneticAdviser swapping the shared wireDatabase. Empty
+            // _wireConstraints.wireType => accepts every type.
+            if (!acceptsWireType(_wireConstraints.wireType, wire.get_type())) {
+                continue;
+            }
             if ((settings.get_wire_adviser_include_planar() || wire.get_type() != WireType::PLANAR) &&
                 (settings.get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
                 (settings.get_wire_adviser_include_rectangular() || wire.get_type() != WireType::RECTANGULAR) &&

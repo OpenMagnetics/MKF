@@ -30,37 +30,23 @@ void drop_invalid_when_valid_exists(std::vector<std::pair<Mas, double>>& scored)
     std::erase_if(scored, [](std::pair<Mas, double>& entry) { return coil_failed_validity_filters(entry.first); });
 }
 
-// RAII: back up the global core/wire databases, replace them with constraint-
-// filtered copies for the duration of the scope, and restore on destruction
-// (also on exception). A no-op when the relevant section of `constraints` is
-// empty — safe to construct unconditionally at the top of any ctx-aware
-// adviser overload.
-struct DatabaseFilterScope {
-    explicit DatabaseFilterScope(const AdviserConstraints& constraints) {
-        if (!constraints.shapeFamily.empty() || !constraints.coreMaterialType.empty()) {
-            if (coreDatabase.empty()) load_cores();
-            _coreBackup = coreDatabase;
-            coreDatabase = filterCoresByConstraints(coreDatabase, constraints);
-            _restoreCores = true;
-        }
-        if (!constraints.wireType.empty()) {
-            if (wireDatabase.empty()) load_wires();
-            _wireBackup = wireDatabase;
-            wireDatabase = filterWiresByConstraints(wireDatabase, constraints);
-            _restoreWires = true;
-        }
-    }
-    ~DatabaseFilterScope() {
-        if (_restoreCores) coreDatabase = std::move(_coreBackup);
-        if (_restoreWires) wireDatabase = std::move(_wireBackup);
-    }
-    DatabaseFilterScope(const DatabaseFilterScope&) = delete;
-    DatabaseFilterScope& operator=(const DatabaseFilterScope&) = delete;
-private:
-    std::vector<Core> _coreBackup;
-    std::map<std::string, Wire> _wireBackup;
-    bool _restoreCores = false;
-    bool _restoreWires = false;
+// ABT #164: RAII scope that installs the per-call type constraints on the
+// adviser instance for the duration of a ctx-aware overload, restoring the
+// previous value on exit (also on exception). Unlike the old
+// DatabaseFilterScope this NEVER touches the process-shared
+// coreDatabase/wireDatabase: the base flow reads `_constraints` and threads it
+// to the nested CoreAdviser/CoilAdviser as LOCAL filtered views, so concurrent
+// MagneticAdviser calls no longer see each other's filtered catalogs and the
+// frozen-database contract is respected (no shared mutation inside a parallel
+// region).
+struct ConstraintsScope {
+    AdviserConstraints& slot;
+    AdviserConstraints previous;
+    ConstraintsScope(AdviserConstraints& s, const AdviserConstraints& next)
+        : slot(s), previous(s) { slot = next; }
+    ~ConstraintsScope() { slot = previous; }
+    ConstraintsScope(const ConstraintsScope&) = delete;
+    ConstraintsScope& operator=(const ConstraintsScope&) = delete;
 };
 
 // Outcome of processing one wound candidate through the full validation path.
@@ -233,8 +219,18 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     coreAdviser.set_application(get_application());
     coreAdviser.set_mode(get_core_mode());
 
-    // Step 1: Create Magnetic objects from all cores in the database
-    auto magneticsWithScoring = coreAdviser.create_magnetic_dataset(inputs, &coreDatabase, false);
+    // Step 1: Create Magnetic objects from all cores in the database.
+    // ABT #164: when type constraints are active, build the dataset from a
+    // LOCAL constraint-filtered copy instead of the process-shared coreDatabase
+    // (never mutate the shared catalog — fan-out-safe). Empty _constraints =>
+    // point straight at coreDatabase, no copy.
+    std::vector<Core> filteredCores;
+    std::vector<Core>* coresForDataset = &coreDatabase;
+    if (!_constraints.shapeFamily.empty() || !_constraints.coreMaterialType.empty()) {
+        filteredCores = filterCoresByConstraints(coreDatabase, _constraints);
+        coresForDataset = &filteredCores;
+    }
+    auto magneticsWithScoring = coreAdviser.create_magnetic_dataset(inputs, coresForDataset, false);
 
     // Step 2: Area product filter — sorted by AP score, fast binary filter
     CoreAdviser::MagneticCoreFilterAreaProduct filterAreaProduct(inputs);
@@ -517,7 +513,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
     auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
-    DatabaseFilterScope dbScope(constraints);
+    ConstraintsScope constraintsScope(_constraints, constraints);
     return get_advised_magnetic(inputs, _defaultCustomMagneticFilterFlow, maximumNumberResults);
 }
 
@@ -528,7 +524,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
     auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
-    DatabaseFilterScope dbScope(constraints);
+    ConstraintsScope constraintsScope(_constraints, constraints);
     return get_advised_magnetic(inputs, weights, maximumNumberResults);
 }
 
@@ -539,7 +535,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
     auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
-    DatabaseFilterScope dbScope(constraints);
+    ConstraintsScope constraintsScope(_constraints, constraints);
     return get_advised_magnetic(inputs, filterFlow, maximumNumberResults);
 }
 
@@ -549,7 +545,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
     auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
-    DatabaseFilterScope dbScope(constraints);
+    ConstraintsScope constraintsScope(_constraints, constraints);
     return get_advised_magnetic_fast(inputs, maximumNumberResults);
 }
 
@@ -699,6 +695,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     coreAdviser.set_application(get_application());
     coreAdviser.set_mode(get_core_mode());
     CoilAdviser coilAdviser;
+    // ABT #164: thread the per-call wire-type constraints into the CoilAdviser
+    // as a LOCAL filter (it prunes its own wire list) instead of swapping the
+    // process-shared wireDatabase. Empty constraints => no wire pruning.
+    coilAdviser.set_wire_constraints(_constraints);
     MagneticSimulator magneticSimulator;
     size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
     size_t coresWound = 0;
@@ -728,7 +728,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores && !globalCapReached) {
         whileIteration++;
         requestedCores += 20;  // Linear growth instead of exponential
-        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores);
+        // ABT #164: constraint-aware overload filters a LOCAL core/shape view
+        // (ctx=nullptr; any ctx catalog override was already applied by the
+        // outer LibraryContext::Scope). Empty _constraints => identical to the
+        // plain get_advised_core(inputs, weights, requestedCores) path.
+        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores, nullptr, _constraints);
 
         if (previouslyObtainedCores == masMagneticsWithCore.size()) {
             break;
@@ -826,13 +830,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores && !globalCapReached) {
             whileIteration++;
             requestedCores += 20;
-            auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores);
+            auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores, nullptr, _constraints);
 
             if (previouslyObtainedCores == masMagneticsWithCore.size()) {
                 break;
             }
             previouslyObtainedCores = masMagneticsWithCore.size();
-            
+
             for (auto& [mas, coreScoring] : masMagneticsWithCore) {
                 auto coreNameOpt = mas.get_magnetic().get_core().get_name();
                 if (!coreNameOpt) {

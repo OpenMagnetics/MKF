@@ -97,6 +97,12 @@ class CoilAdviser : public WireAdviser {
     private:
         bool _allowMarginTape = true;
         bool _allowInsulatedWire = true;
+        // ABT #164: optional per-call wire-type constraints. Applied as a LOCAL
+        // filter when building the candidate wire list from the shared
+        // wireDatabase (mirrors the existing settings-based type filters), so
+        // MagneticAdviser no longer has to swap the process-shared wireDatabase
+        // to honour a wireType constraint. Empty => no additional pruning.
+        AdviserConstraints _wireConstraints;
         std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;
         std::vector<MagneticFilterOperation> _loadedFilterFlow;
         OpenMagnetics::WireAdviser _wireAdviser;
@@ -123,6 +129,9 @@ class CoilAdviser : public WireAdviser {
         }
         void set_allow_insulated_wire(bool value) {
             _allowInsulatedWire = value;
+        }
+        void set_wire_constraints(const AdviserConstraints& constraints) {
+            _wireConstraints = constraints;
         }
         void set_common_wire_standard(std::optional<WireStandard> commonWireStandard) {
             _commonWireStandard = commonWireStandard;

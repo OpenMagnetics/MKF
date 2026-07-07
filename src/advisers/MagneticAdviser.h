@@ -154,6 +154,15 @@ class MagneticAdviser{
         };
         bool _simulateResults = true;
         bool _uniqueCoreShapes = false;
+        // ABT #164: active type constraints for the in-flight call. Set by the
+        // ctx-aware overloads (via a scoped RAII guard) and consumed by the base
+        // flow, which threads them to the nested CoreAdviser/CoilAdviser as
+        // LOCAL filtered views. Replaces the old DatabaseFilterScope that
+        // swapped the process-shared coreDatabase/wireDatabase in place (not
+        // fan-out-safe: concurrent MagneticAdviser calls saw each other's
+        // filtered catalogs). Default-empty => no filtering, identical to the
+        // pre-#164 base-overload behaviour.
+        AdviserConstraints _constraints;
         MAS::MagneticApplication _application = MAS::MagneticApplication::POWER;
         CoreAdviser::CoreAdviserModes _coreAdviserMode = CoreAdviser::CoreAdviserModes::STANDARD_CORES;
 
