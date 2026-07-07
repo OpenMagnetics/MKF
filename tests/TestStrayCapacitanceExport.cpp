@@ -52,14 +52,14 @@ std::string export_ltspice_with_capacitance(const std::vector<int64_t>& numberTu
 
 }  // namespace
 
-TEST_CASE("stray capacitance: OFF by default (no Cself_/Cwind_ emitted)", "[circuit][capacitance][export]") {
+TEST_CASE("stray capacitance: OFF by default (no Cself_/Cwind_ emitted)", "[circuit][capacitance][export][smoke-test]") {
     auto subckt = export_with_capacitance({20, 20}, false);
     CHECK(subckt.find("STRAY CAPACITANCE NETWORK") == std::string::npos);
     CHECK(subckt.find("Cself_") == std::string::npos);
     CHECK(subckt.find("Cwind_") == std::string::npos);
 }
 
-TEST_CASE("stray capacitance: 2-winding emits self + inter-winding caps", "[circuit][capacitance][export]") {
+TEST_CASE("stray capacitance: 2-winding emits self + inter-winding caps", "[circuit][capacitance][export][smoke-test]") {
     auto subckt = export_with_capacitance({20, 20}, true);
 
     REQUIRE(subckt.find("STRAY CAPACITANCE NETWORK") != std::string::npos);
@@ -70,7 +70,7 @@ TEST_CASE("stray capacitance: 2-winding emits self + inter-winding caps", "[circ
     CHECK(subckt.find("Cwind_1_2 P1+ P2+") != std::string::npos);
 }
 
-TEST_CASE("stray capacitance: single inductor emits a self-capacitance", "[circuit][capacitance][export]") {
+TEST_CASE("stray capacitance: single inductor emits a self-capacitance", "[circuit][capacitance][export][smoke-test]") {
     auto subckt = export_with_capacitance({30}, true);
     // A one-winding inductor still gets a self-capacitance (its self-resonance) and no
     // inter-winding term.
@@ -80,13 +80,13 @@ TEST_CASE("stray capacitance: single inductor emits a self-capacitance", "[circu
 
 // The frontend's SPICE downloads use the LTspice-format exporter, so it must emit the same
 // positive 3-cap network as ngspice (shared emit_stray_capacitance_spice).
-TEST_CASE("stray capacitance: LTspice OFF by default", "[circuit][capacitance][export]") {
+TEST_CASE("stray capacitance: LTspice OFF by default", "[circuit][capacitance][export][smoke-test]") {
     auto subckt = export_ltspice_with_capacitance({20, 20}, false);
     CHECK(subckt.find("Cself_") == std::string::npos);
     CHECK(subckt.find("Cwind_") == std::string::npos);
 }
 
-TEST_CASE("stray capacitance: LTspice 2-winding emits self + inter-winding caps", "[circuit][capacitance][export]") {
+TEST_CASE("stray capacitance: LTspice 2-winding emits self + inter-winding caps", "[circuit][capacitance][export][smoke-test]") {
     auto subckt = export_ltspice_with_capacitance({20, 20}, true);
     REQUIRE(subckt.find("STRAY CAPACITANCE NETWORK") != std::string::npos);
     CHECK(subckt.find("Cself_1 P1+ P1-") != std::string::npos);
@@ -94,7 +94,7 @@ TEST_CASE("stray capacitance: LTspice 2-winding emits self + inter-winding caps"
     CHECK(subckt.find("Cwind_1_2 P1+ P2+") != std::string::npos);
 }
 
-TEST_CASE("stray capacitance: LTspice single inductor emits a self-capacitance", "[circuit][capacitance][export]") {
+TEST_CASE("stray capacitance: LTspice single inductor emits a self-capacitance", "[circuit][capacitance][export][smoke-test]") {
     auto subckt = export_ltspice_with_capacitance({30}, true);
     CHECK(subckt.find("Cself_1 P1+ P1-") != std::string::npos);
     CHECK(subckt.find("Cwind_") == std::string::npos);

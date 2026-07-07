@@ -50,13 +50,13 @@ std::string export_core_loss_ltspice(OpenMagnetics::Magnetic magnetic, bool stei
 
 }  // namespace
 
-TEST_CASE("steinmetz core loss: OFF by default (no behavioural element)", "[circuit][core-losses][export]") {
+TEST_CASE("steinmetz core loss: OFF by default (no behavioural element)", "[circuit][core-losses][export][smoke-test]") {
     auto s = export_core_loss(make_inductor(30), false, 100000.0);
     CHECK(s.find("Bcloss_") == std::string::npos);
     CHECK(s.find("Behavioural GSE core loss") == std::string::npos);
 }
 
-TEST_CASE("steinmetz core loss: ON emits the behavioural GSE injector", "[circuit][core-losses][export]") {
+TEST_CASE("steinmetz core loss: ON emits the behavioural GSE injector", "[circuit][core-losses][export][smoke-test]") {
     double freq = 100000.0;
     auto magnetic = make_inductor(30);
     auto s = export_core_loss(magnetic, true, freq);
@@ -79,7 +79,7 @@ TEST_CASE("steinmetz core loss: ON emits the behavioural GSE injector", "[circui
     CHECK(std::isfinite(p.gc));
 }
 
-TEST_CASE("steinmetz core loss: LTspice emits the same behavioural element, unquoted", "[circuit][core-losses][export]") {
+TEST_CASE("steinmetz core loss: LTspice emits the same behavioural element, unquoted", "[circuit][core-losses][export][smoke-test]") {
     auto magnetic = make_inductor(30);
     // Off by default -> no behavioural element.
     auto off = export_core_loss_ltspice(magnetic, false, 100000.0);

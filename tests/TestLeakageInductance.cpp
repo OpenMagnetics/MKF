@@ -720,7 +720,7 @@ struct LeakageTestCase {
     double expectedLeakageInductance;
 };
 
-TEST_CASE("Leakage inductance H-field model comparison study", "[physical-model][leakage-inductance][model-comparison]") {
+TEST_CASE("Leakage inductance H-field model comparison study", "[physical-model][leakage-inductance][model-comparison][heavy]") {
     settings.reset();
     
     std::vector<LeakageTestCase> testCases = {

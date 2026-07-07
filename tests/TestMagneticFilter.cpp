@@ -248,47 +248,47 @@ std::vector<Core> load_test_cores(size_t limit = std::numeric_limits<size_t>::ma
 //
 // Tag layout:
 //   [magnetic-filter]                always
-//   [characterisation]               always
+//   [characterisation][heavy]        always (heavy: excluded from smoke runs)
 //   [<filter-name-lowercased>]       so a specific filter can be re-run alone
 //
 
 TEST_CASE("MagneticFilter AREA_PRODUCT snapshot",
-          "[magnetic-filter][characterisation][area-product]") {
+          "[magnetic-filter][characterisation][heavy][area-product]") {
     evaluate_and_check("AREA_PRODUCT", MagneticFilters::AREA_PRODUCT);
 }
 
 TEST_CASE("MagneticFilter ENERGY_STORED snapshot",
-          "[magnetic-filter][characterisation][energy-stored]") {
+          "[magnetic-filter][characterisation][heavy][energy-stored]") {
     evaluate_and_check("ENERGY_STORED", MagneticFilters::ENERGY_STORED);
 }
 
 TEST_CASE("MagneticFilter ESTIMATED_COST snapshot",
-          "[magnetic-filter][characterisation][estimated-cost]") {
+          "[magnetic-filter][characterisation][heavy][estimated-cost]") {
     evaluate_and_check("ESTIMATED_COST", MagneticFilters::ESTIMATED_COST);
 }
 
 TEST_CASE("MagneticFilter COST snapshot",
-          "[magnetic-filter][characterisation][cost]") {
+          "[magnetic-filter][characterisation][heavy][cost]") {
     evaluate_and_check("COST", MagneticFilters::COST);
 }
 
 TEST_CASE("MagneticFilter CORE_AND_DC_LOSSES snapshot",
-          "[magnetic-filter][characterisation][core-and-dc-losses]") {
+          "[magnetic-filter][characterisation][heavy][core-and-dc-losses]") {
     evaluate_and_check("CORE_AND_DC_LOSSES", MagneticFilters::CORE_AND_DC_LOSSES);
 }
 
 TEST_CASE("MagneticFilter CORE_DC_AND_SKIN_LOSSES snapshot",
-          "[magnetic-filter][characterisation][core-dc-and-skin-losses]") {
+          "[magnetic-filter][characterisation][heavy][core-dc-and-skin-losses]") {
     evaluate_and_check("CORE_DC_AND_SKIN_LOSSES", MagneticFilters::CORE_DC_AND_SKIN_LOSSES);
 }
 
 TEST_CASE("MagneticFilter LOSSES snapshot",
-          "[magnetic-filter][characterisation][losses]") {
+          "[magnetic-filter][characterisation][heavy][losses]") {
     evaluate_and_check("LOSSES", MagneticFilters::LOSSES);
 }
 
 TEST_CASE("MagneticFilter LOSSES_NO_PROXIMITY snapshot",
-          "[magnetic-filter][characterisation][losses-no-proximity]") {
+          "[magnetic-filter][characterisation][heavy][losses-no-proximity]") {
     // LOCKS BUG: MagneticFilterLossesNoProximity calls
     // calculate_skin_effect_losses() TWICE (MagneticFilter.cpp:1070–1071).
     // The captured snapshot reflects this double-count; once fixed, snapshot
@@ -297,12 +297,12 @@ TEST_CASE("MagneticFilter LOSSES_NO_PROXIMITY snapshot",
 }
 
 TEST_CASE("MagneticFilter DIMENSIONS snapshot",
-          "[magnetic-filter][characterisation][dimensions]") {
+          "[magnetic-filter][characterisation][heavy][dimensions]") {
     evaluate_and_check("DIMENSIONS", MagneticFilters::DIMENSIONS);
 }
 
 TEST_CASE("MagneticFilter CORE_MINIMUM_IMPEDANCE snapshot",
-          "[magnetic-filter][characterisation][core-minimum-impedance]") {
+          "[magnetic-filter][characterisation][heavy][core-minimum-impedance]") {
     // CONTRACT: CORE_MINIMUM_IMPEDANCE requires the design requirements to
     // carry a minimum-impedance spec. With our reference Inputs (a regular
     // power-converter setup, no impedance requirement) the filter throws —
@@ -315,12 +315,12 @@ TEST_CASE("MagneticFilter CORE_MINIMUM_IMPEDANCE snapshot",
 }
 
 TEST_CASE("MagneticFilter AREA_NO_PARALLELS snapshot",
-          "[magnetic-filter][characterisation][area-no-parallels]") {
+          "[magnetic-filter][characterisation][heavy][area-no-parallels]") {
     evaluate_and_check("AREA_NO_PARALLELS", MagneticFilters::AREA_NO_PARALLELS);
 }
 
 TEST_CASE("MagneticFilter AREA_WITH_PARALLELS snapshot",
-          "[magnetic-filter][characterisation][area-with-parallels]") {
+          "[magnetic-filter][characterisation][heavy][area-with-parallels]") {
     // CONTRACT: AREA_WITH_PARALLELS needs the coil's conducting area, which
     // requires a fully delimited+compacted winding. Our reference magnetic
     // is only wound (not delimit_and_compact'd) so the filter throws
@@ -334,57 +334,57 @@ TEST_CASE("MagneticFilter AREA_WITH_PARALLELS snapshot",
 }
 
 TEST_CASE("MagneticFilter EFFECTIVE_RESISTANCE snapshot",
-          "[magnetic-filter][characterisation][effective-resistance]") {
+          "[magnetic-filter][characterisation][heavy][effective-resistance]") {
     evaluate_and_check("EFFECTIVE_RESISTANCE", MagneticFilters::EFFECTIVE_RESISTANCE);
 }
 
 TEST_CASE("MagneticFilter PROXIMITY_FACTOR snapshot",
-          "[magnetic-filter][characterisation][proximity-factor]") {
+          "[magnetic-filter][characterisation][heavy][proximity-factor]") {
     evaluate_and_check("PROXIMITY_FACTOR", MagneticFilters::PROXIMITY_FACTOR);
 }
 
 TEST_CASE("MagneticFilter TURNS_RATIOS snapshot",
-          "[magnetic-filter][characterisation][turns-ratios]") {
+          "[magnetic-filter][characterisation][heavy][turns-ratios]") {
     evaluate_and_check("TURNS_RATIOS", MagneticFilters::TURNS_RATIOS);
 }
 
 TEST_CASE("MagneticFilter MAXIMUM_DIMENSIONS snapshot",
-          "[magnetic-filter][characterisation][maximum-dimensions]") {
+          "[magnetic-filter][characterisation][heavy][maximum-dimensions]") {
     evaluate_and_check("MAXIMUM_DIMENSIONS", MagneticFilters::MAXIMUM_DIMENSIONS);
 }
 
 TEST_CASE("MagneticFilter SATURATION snapshot",
-          "[magnetic-filter][characterisation][saturation]") {
+          "[magnetic-filter][characterisation][heavy][saturation]") {
     evaluate_and_check("SATURATION", MagneticFilters::SATURATION);
 }
 
 TEST_CASE("MagneticFilter DC_CURRENT_DENSITY snapshot",
-          "[magnetic-filter][characterisation][dc-current-density]") {
+          "[magnetic-filter][characterisation][heavy][dc-current-density]") {
     evaluate_and_check("DC_CURRENT_DENSITY", MagneticFilters::DC_CURRENT_DENSITY);
 }
 
 TEST_CASE("MagneticFilter EFFECTIVE_CURRENT_DENSITY snapshot",
-          "[magnetic-filter][characterisation][effective-current-density]") {
+          "[magnetic-filter][characterisation][heavy][effective-current-density]") {
     evaluate_and_check("EFFECTIVE_CURRENT_DENSITY", MagneticFilters::EFFECTIVE_CURRENT_DENSITY);
 }
 
 TEST_CASE("MagneticFilter IMPEDANCE snapshot",
-          "[magnetic-filter][characterisation][impedance]") {
+          "[magnetic-filter][characterisation][heavy][impedance]") {
     evaluate_and_check("IMPEDANCE", MagneticFilters::IMPEDANCE);
 }
 
 TEST_CASE("MagneticFilter MAGNETIZING_INDUCTANCE snapshot",
-          "[magnetic-filter][characterisation][magnetizing-inductance]") {
+          "[magnetic-filter][characterisation][heavy][magnetizing-inductance]") {
     evaluate_and_check("MAGNETIZING_INDUCTANCE", MagneticFilters::MAGNETIZING_INDUCTANCE);
 }
 
 TEST_CASE("MagneticFilter SKIN_LOSSES_DENSITY snapshot",
-          "[magnetic-filter][characterisation][skin-losses-density]") {
+          "[magnetic-filter][characterisation][heavy][skin-losses-density]") {
     evaluate_and_check("SKIN_LOSSES_DENSITY", MagneticFilters::SKIN_LOSSES_DENSITY);
 }
 
 TEST_CASE("MagneticFilter FRINGING_FACTOR snapshot",
-          "[magnetic-filter][characterisation][fringing-factor]") {
+          "[magnetic-filter][characterisation][heavy][fringing-factor]") {
     // Phase 1 fix applied: MagneticFilter::factory(FRINGING_FACTOR) now
     // routes through the Inputs-aware ctor at MagneticFilter.cpp:128 so
     // _reluctanceModel is initialised. Previously the factory used the
@@ -397,7 +397,7 @@ TEST_CASE("MagneticFilter FRINGING_FACTOR snapshot",
 }
 
 TEST_CASE("MagneticFilter VOLUME snapshot",
-          "[magnetic-filter][characterisation][volume]") {
+          "[magnetic-filter][characterisation][heavy][volume]") {
     // CONTRACT: VOLUME iterates the wound coil's turns to compute the
     // bounding volume. Our reference magnetic doesn't have a fully processed
     // turns_description so it throws — Phase 1 should keep this loud.
@@ -410,7 +410,7 @@ TEST_CASE("MagneticFilter VOLUME snapshot",
 }
 
 TEST_CASE("MagneticFilter AREA snapshot",
-          "[magnetic-filter][characterisation][area]") {
+          "[magnetic-filter][characterisation][heavy][area]") {
     settings.reset();
     auto magnetic = make_reference_magnetic();
     auto inputs = make_reference_inputs();
@@ -420,7 +420,7 @@ TEST_CASE("MagneticFilter AREA snapshot",
 }
 
 TEST_CASE("MagneticFilter HEIGHT snapshot",
-          "[magnetic-filter][characterisation][height]") {
+          "[magnetic-filter][characterisation][heavy][height]") {
     settings.reset();
     auto magnetic = make_reference_magnetic();
     auto inputs = make_reference_inputs();
@@ -430,12 +430,12 @@ TEST_CASE("MagneticFilter HEIGHT snapshot",
 }
 
 TEST_CASE("MagneticFilter TEMPERATURE_RISE snapshot",
-          "[magnetic-filter][characterisation][temperature-rise]") {
+          "[magnetic-filter][characterisation][heavy][temperature-rise]") {
     evaluate_and_check("TEMPERATURE_RISE", MagneticFilters::TEMPERATURE_RISE);
 }
 
 TEST_CASE("MagneticFilter LOSSES_TIMES_VOLUME snapshot",
-          "[magnetic-filter][characterisation][losses-times-volume]") {
+          "[magnetic-filter][characterisation][heavy][losses-times-volume]") {
     // Same precondition as VOLUME — wound + delimited coil required.
     settings.reset();
     auto magnetic = make_reference_magnetic();
@@ -446,7 +446,7 @@ TEST_CASE("MagneticFilter LOSSES_TIMES_VOLUME snapshot",
 }
 
 TEST_CASE("MagneticFilter VOLUME_TIMES_TEMPERATURE_RISE snapshot",
-          "[magnetic-filter][characterisation][volume-times-temperature-rise]") {
+          "[magnetic-filter][characterisation][heavy][volume-times-temperature-rise]") {
     settings.reset();
     auto magnetic = make_reference_magnetic();
     auto inputs = make_reference_inputs();
@@ -456,7 +456,7 @@ TEST_CASE("MagneticFilter VOLUME_TIMES_TEMPERATURE_RISE snapshot",
 }
 
 TEST_CASE("MagneticFilter LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE snapshot",
-          "[magnetic-filter][characterisation][losses-times-volume-times-temperature-rise]") {
+          "[magnetic-filter][characterisation][heavy][losses-times-volume-times-temperature-rise]") {
     settings.reset();
     auto magnetic = make_reference_magnetic();
     auto inputs = make_reference_inputs();
@@ -467,7 +467,7 @@ TEST_CASE("MagneticFilter LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE snapshot",
 }
 
 TEST_CASE("MagneticFilter MAGNETOMOTIVE_FORCE snapshot",
-          "[magnetic-filter][characterisation][magnetomotive-force]") {
+          "[magnetic-filter][characterisation][heavy][magnetomotive-force]") {
     // LOCKS BUG: MagnetomotiveForce only push_backs in the INSULATION branch
     // (MagneticFilter.cpp:2310); CONDUCTION branch updates a dead local. The
     // E35 / 100 µH reference is a conduction case; snapshot captures whatever
@@ -476,7 +476,7 @@ TEST_CASE("MagneticFilter MAGNETOMOTIVE_FORCE snapshot",
 }
 
 TEST_CASE("MagneticFilter LEAKAGE_INDUCTANCE throws on missing turns description",
-          "[magnetic-filter][characterisation][leakage-inductance]") {
+          "[magnetic-filter][characterisation][heavy][leakage-inductance]") {
     // Phase 1: removed the catch-all that returned (false, DBL_MAX) sentinel
     // in MagneticFilterLeakageInductance::evaluate_magnetic. The reference
     // 2-winding fixture has no fully processed turns/sections so the leakage
@@ -491,7 +491,7 @@ TEST_CASE("MagneticFilter LEAKAGE_INDUCTANCE throws on missing turns description
 }
 
 TEST_CASE("MagneticFilter TEMPERATURE snapshot",
-          "[magnetic-filter][characterisation][temperature][smoke-test]") {
+          "[magnetic-filter][characterisation][heavy][temperature][smoke-test]") {
     // LOCKS BUG: MagneticFilter::factory(TEMPERATURE) goes through the
     // default ctor (MagneticFilter.cpp:158) leaving _coreLossesModel null,
     // which dereferences at cpp:2420. The default ctor path is therefore a
@@ -516,7 +516,7 @@ TEST_CASE("MagneticFilter TEMPERATURE snapshot",
 }
 
 TEST_CASE("MagneticFilter TURN_COUNT snapshot",
-          "[magnetic-filter][characterisation][turn-count]") {
+          "[magnetic-filter][characterisation][heavy][turn-count]") {
     evaluate_and_check("TURN_COUNT", MagneticFilters::TURN_COUNT);
 }
 
@@ -583,7 +583,7 @@ OpenMagnetics::Magnetic make_datasheet_magnetic(const MagneticDatasheetElectrica
 }  // namespace
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS rejects over-rated current (the bug)",
-          "[magnetic-filter][datasheet-limits]") {
+          "[magnetic-filter][datasheet-limits][smoke-test]") {
     // #1: ratedCurrents=[1.0], operating RMS 1.5 A ⇒ reject.
     settings.reset();
     MagneticDatasheetElectrical electrical;
@@ -597,7 +597,7 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS rejects over-rated current (the bug)"
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS passes comfortable current and scores headroom",
-          "[magnetic-filter][datasheet-limits]") {
+          "[magnetic-filter][datasheet-limits][smoke-test]") {
     // #2: ratedCurrents=[2.0], operating RMS 1.0 A ⇒ valid, score ≈ 0.5.
     settings.reset();
     MagneticDatasheetElectrical electrical;
@@ -611,7 +611,7 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS passes comfortable current and scores
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS is a no-op for custom magnetics",
-          "[magnetic-filter][datasheet-limits]") {
+          "[magnetic-filter][datasheet-limits][smoke-test]") {
     // #3: no manufacturerInfo/datasheetInfo ⇒ neutral pass. Proves zero effect
     // on designed parts even when the operating current is enormous.
     settings.reset();
@@ -624,7 +624,7 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS is a no-op for custom magnetics",
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS skips limits the datasheet omits",
-          "[magnetic-filter][datasheet-limits]") {
+          "[magnetic-filter][datasheet-limits][smoke-test]") {
     // #4: datasheet present but only publishes inductance (no current/voltage
     // limit) ⇒ nothing to gate on ⇒ neutral pass.
     settings.reset();
@@ -641,7 +641,7 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS skips limits the datasheet omits",
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces rated AC voltage",
-          "[magnetic-filter][datasheet-limits]") {
+          "[magnetic-filter][datasheet-limits][smoke-test]") {
     // #5: ratedVoltageAc=250, operating 400 V RMS ⇒ reject.
     settings.reset();
     MagneticDatasheetElectrical electrical;
@@ -655,7 +655,7 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces rated AC voltage",
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces saturation current peak",
-          "[magnetic-filter][datasheet-limits]") {
+          "[magnetic-filter][datasheet-limits][smoke-test]") {
     // #6: saturationCurrentPeak=1.5, operating peak 2.0 A ⇒ reject.
     settings.reset();
     MagneticDatasheetElectrical electrical;
@@ -669,7 +669,7 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces saturation current peak",
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS gates each winding against its own rated current",
-          "[magnetic-filter][datasheet-limits]") {
+          "[magnetic-filter][datasheet-limits][smoke-test]") {
     // #7: ratedCurrents=[1.0, 3.0] (multi-entry ⇒ per winding).
     settings.reset();
     MagneticDatasheetElectrical electrical;
@@ -702,31 +702,31 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS gates each winding against its own ra
 // Filters that require Inputs at construction must throw if none is provided.
 
 TEST_CASE("MagneticFilter factory requires Inputs for AREA_PRODUCT",
-          "[magnetic-filter][characterisation][factory-contract]") {
+          "[magnetic-filter][characterisation][factory-contract][smoke-test]") {
     REQUIRE_THROWS_AS(MagneticFilter::factory(MagneticFilters::AREA_PRODUCT, std::nullopt),
                       InvalidInputException);
 }
 
 TEST_CASE("MagneticFilter factory requires Inputs for ENERGY_STORED",
-          "[magnetic-filter][characterisation][factory-contract]") {
+          "[magnetic-filter][characterisation][factory-contract][smoke-test]") {
     REQUIRE_THROWS_AS(MagneticFilter::factory(MagneticFilters::ENERGY_STORED, std::nullopt),
                       InvalidInputException);
 }
 
 TEST_CASE("MagneticFilter factory requires Inputs for ESTIMATED_COST",
-          "[magnetic-filter][characterisation][factory-contract]") {
+          "[magnetic-filter][characterisation][factory-contract][smoke-test]") {
     REQUIRE_THROWS_AS(MagneticFilter::factory(MagneticFilters::ESTIMATED_COST, std::nullopt),
                       InvalidInputException);
 }
 
 TEST_CASE("MagneticFilter factory requires Inputs for CORE_AND_DC_LOSSES",
-          "[magnetic-filter][characterisation][factory-contract]") {
+          "[magnetic-filter][characterisation][factory-contract][smoke-test]") {
     REQUIRE_THROWS_AS(MagneticFilter::factory(MagneticFilters::CORE_AND_DC_LOSSES, std::nullopt),
                       InvalidInputException);
 }
 
 TEST_CASE("MagneticFilter factory requires Inputs for CORE_DC_AND_SKIN_LOSSES",
-          "[magnetic-filter][characterisation][factory-contract]") {
+          "[magnetic-filter][characterisation][factory-contract][smoke-test]") {
     REQUIRE_THROWS_AS(MagneticFilter::factory(MagneticFilters::CORE_DC_AND_SKIN_LOSSES, std::nullopt),
                       InvalidInputException);
 }

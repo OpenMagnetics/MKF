@@ -3326,7 +3326,7 @@ TEST_CASE("Calculate_Steinmetz_Coefficients", "[physical-model][core-losses]") {
 // ============================================================================
 
 TEST_CASE("Test_Core_Losses_All_Models_Comparison_Table",
-          "[physical-model][core-losses][comparison]") {
+          "[physical-model][core-losses][comparison][heavy]") {
 
     // --- Model definitions ---
     struct ModelDef {

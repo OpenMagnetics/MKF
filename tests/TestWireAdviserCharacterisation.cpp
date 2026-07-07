@@ -184,7 +184,7 @@ const std::vector<TopEntry> kTopPlanar = {
 // =============================================================================
 
 TEST_CASE("WireAdviser ALL_TYPES top-5 snapshot",
-          "[adviser][wire-adviser][characterisation][all-types]") {
+          "[adviser][wire-adviser][characterisation][heavy][all-types]") {
     settings.reset();
     clear_databases();
     enable_all_wire_types();
@@ -200,7 +200,7 @@ TEST_CASE("WireAdviser ALL_TYPES top-5 snapshot",
 }
 
 TEST_CASE("WireAdviser LITZ_ONLY high-frequency top-5 snapshot",
-          "[adviser][wire-adviser][characterisation][litz-high-freq]") {
+          "[adviser][wire-adviser][characterisation][heavy][litz-high-freq]") {
     settings.reset();
     clear_databases();
     enable_only_litz();
@@ -216,7 +216,7 @@ TEST_CASE("WireAdviser LITZ_ONLY high-frequency top-5 snapshot",
 }
 
 TEST_CASE("WireAdviser PLANAR top-5 snapshot",
-          "[adviser][wire-adviser][characterisation][planar]") {
+          "[adviser][wire-adviser][characterisation][heavy][planar]") {
     settings.reset();
     clear_databases();
     settings.set_wire_adviser_include_planar(true);

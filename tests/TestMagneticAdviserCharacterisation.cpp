@@ -198,7 +198,7 @@ const std::vector<MagneticEntry> kTopThreeWinding = {
 // =============================================================================
 
 TEST_CASE("MagneticAdviser 3-winding end-to-end top-3 snapshot",
-          "[adviser][magnetic-adviser][characterisation][end-to-end]") {
+          "[adviser][magnetic-adviser][characterisation][heavy][end-to-end]") {
     settings.reset();
     settings.set_coil_allow_margin_tape(true);
     settings.set_coil_allow_insulated_wire(false);

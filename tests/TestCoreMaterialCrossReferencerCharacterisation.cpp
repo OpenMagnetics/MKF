@@ -133,7 +133,7 @@ const std::vector<TopEntry> kTopPowderOnlyMicrometals = {
 // =============================================================================
 
 TEST_CASE("CoreMaterialCrossReferencer 3C97 default top-5 snapshot",
-          "[adviser][core-material-cross-referencer][characterisation][ferrite-default]") {
+          "[adviser][core-material-cross-referencer][characterisation][heavy][ferrite-default]") {
     settings.reset();
     clear_databases();
 
@@ -145,7 +145,7 @@ TEST_CASE("CoreMaterialCrossReferencer 3C97 default top-5 snapshot",
 }
 
 TEST_CASE("CoreMaterialCrossReferencer 3C97 only-TDK top-5 snapshot",
-          "[adviser][core-material-cross-referencer][characterisation][only-tdk]") {
+          "[adviser][core-material-cross-referencer][characterisation][heavy][only-tdk]") {
     settings.reset();
     clear_databases();
 
@@ -157,7 +157,7 @@ TEST_CASE("CoreMaterialCrossReferencer 3C97 only-TDK top-5 snapshot",
 }
 
 TEST_CASE("CoreMaterialCrossReferencer Kool Mµ MAX 26 default top-5 snapshot",
-          "[adviser][core-material-cross-referencer][characterisation][powder-default]") {
+          "[adviser][core-material-cross-referencer][characterisation][heavy][powder-default]") {
     settings.reset();
     clear_databases();
 
@@ -168,7 +168,7 @@ TEST_CASE("CoreMaterialCrossReferencer Kool Mµ MAX 26 default top-5 snapshot",
 }
 
 TEST_CASE("CoreMaterialCrossReferencer Kool Mµ MAX 26 only-Micrometals top-5 snapshot",
-          "[adviser][core-material-cross-referencer][characterisation][only-micrometals]") {
+          "[adviser][core-material-cross-referencer][characterisation][heavy][only-micrometals]") {
     settings.reset();
     clear_databases();
 

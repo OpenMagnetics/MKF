@@ -172,7 +172,7 @@ const std::vector<TopEntry> kTopPowder = {
 // =============================================================================
 
 TEST_CASE("CoreCrossReferencer default ferrite top-5 snapshot",
-          "[adviser][core-cross-referencer][characterisation][default]") {
+          "[adviser][core-cross-referencer][characterisation][heavy][default]") {
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
     clear_databases();
@@ -185,7 +185,7 @@ TEST_CASE("CoreCrossReferencer default ferrite top-5 snapshot",
 }
 
 TEST_CASE("CoreCrossReferencer same-material top-5 snapshot",
-          "[adviser][core-cross-referencer][characterisation][same-material]") {
+          "[adviser][core-cross-referencer][characterisation][heavy][same-material]") {
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
     clear_databases();
@@ -199,7 +199,7 @@ TEST_CASE("CoreCrossReferencer same-material top-5 snapshot",
 }
 
 TEST_CASE("CoreCrossReferencer only-TDK top-5 snapshot",
-          "[adviser][core-cross-referencer][characterisation][only-tdk]") {
+          "[adviser][core-cross-referencer][characterisation][heavy][only-tdk]") {
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
     clear_databases();
@@ -213,7 +213,7 @@ TEST_CASE("CoreCrossReferencer only-TDK top-5 snapshot",
 }
 
 TEST_CASE("CoreCrossReferencer powder reference top-5 snapshot",
-          "[adviser][core-cross-referencer][characterisation][powder]") {
+          "[adviser][core-cross-referencer][characterisation][heavy][powder]") {
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
     clear_databases();

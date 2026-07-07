@@ -148,7 +148,7 @@ TEST_CASE("Kirchhoff bridge -> MagneticAdviser: converter to advised magnetic (e
     }
 }
 
-TEST_CASE("Kirchhoff bridge simulates through KH's ngspice", "[kirchhoff][bridge][ngspice]") {
+TEST_CASE("Kirchhoff bridge simulates through KH's ngspice", "[kirchhoff][bridge][ngspice][heavy]") {
     // The ngspice-via-KH path MKF now relies on (its own ngspice was removed). Smoke a couple of topologies.
     for (const std::string topo : {"buck", "llc"}) {
         DYNAMIC_SECTION("simulate " << topo) {

@@ -1353,7 +1353,7 @@ TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes", "[adviser][core-adviser][s
     }
 }
 
-TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes_Two_Windings", "[adviser][core-adviser][standard-cores][smoke-test]") {
+TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes_Two_Windings", "[adviser][core-adviser][standard-cores][heavy]") {
     settings.reset();
     clear_databases();
     load_core_shapes();
@@ -1939,7 +1939,7 @@ TEST_CASE("Test_CoreAdviserStandardCores_Planar_Inductor", "[adviser][core-advis
     REQUIRE(foundPlanarCore);
 }
 
-TEST_CASE("Test_CoreAdviserStandardCores_Planar_Transformer", "[adviser][core-adviser][standard-cores][smoke-test]") {
+TEST_CASE("Test_CoreAdviserStandardCores_Planar_Transformer", "[adviser][core-adviser][standard-cores][heavy]") {
     settings.reset();
     clear_databases();
     load_core_shapes();

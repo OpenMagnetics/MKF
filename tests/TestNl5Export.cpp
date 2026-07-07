@@ -29,12 +29,12 @@ OpenMagnetics::Magnetic wound_magnetic(const std::vector<int64_t>& numberTurns) 
 
 } // namespace
 
-TEST_CASE("nl5: factory constructs the exporter", "[circuit][export][nl5]") {
+TEST_CASE("nl5: factory constructs the exporter", "[circuit][export][nl5][smoke-test]") {
     // Used to throw ModelNotAvailableException("Unknown Circuit Simulator program...")
     CHECK_NOTHROW(CircuitSimulatorExporter(CircuitSimulatorExporterModels::NL5));
 }
 
-TEST_CASE("nl5: subcircuit export emits winding components", "[circuit][export][nl5]") {
+TEST_CASE("nl5: subcircuit export emits winding components", "[circuit][export][nl5][smoke-test]") {
     auto magnetic = wound_magnetic({10, 5});
     CircuitSimulatorExporter exporter(CircuitSimulatorExporterModels::NL5);
     std::string subckt = exporter.export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0);
@@ -44,7 +44,7 @@ TEST_CASE("nl5: subcircuit export emits winding components", "[circuit][export][
     CHECK(subckt.find("Cmp") != std::string::npos);
 }
 
-TEST_CASE("nl5: symbol export fails loudly (not implemented)", "[circuit][export][nl5]") {
+TEST_CASE("nl5: symbol export fails loudly (not implemented)", "[circuit][export][nl5][smoke-test]") {
     auto magnetic = wound_magnetic({10});
     CircuitSimulatorExporter exporter(CircuitSimulatorExporterModels::NL5);
     CHECK_THROWS(exporter.export_magnetic_as_symbol(magnetic));

@@ -180,7 +180,7 @@ namespace TestWindingLossesRound {
         settings.reset();
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
         // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae
         // (Wojda 3/4 integer division, Payne FR vs FR-1, Lotfi current scaling).
         // Test to evaluate skin effect losses, as no fringing or proximity are present
@@ -192,7 +192,7 @@ namespace TestWindingLossesRound {
              {600000, 0.0048621}, {700000, 0.0051882}, {800000, 0.0054789}, {900000, 0.0057414}, {1000000, 0.0059805}});
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
         // SKIP: Model shows ~118% error at 3MHz. High frequency proximity effect needs improvement.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
@@ -205,7 +205,7 @@ namespace TestWindingLossesRound {
              {3000000, 0.34496}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
         // SKIP: Model shows ~101% error at 20kHz due to fringing effect overestimation.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
@@ -216,7 +216,7 @@ namespace TestWindingLossesRound {
              {600000, 649.64}, {700000, 699.9}, {800000, 746.3}, {900000, 789.66}, {1000000, 830.49}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
         // SKIP: Model shows ~56% error at higher frequencies with distant fringing.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Worst error in this one - use 40% tolerance
@@ -229,7 +229,7 @@ namespace TestWindingLossesRound {
             0.4);  // 40% max error for this test
     }
 
-    TEST_CASE("Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
         // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae.
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
@@ -314,7 +314,7 @@ namespace TestWindingLossesRound {
         settings.reset();
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
         // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae.
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
@@ -325,7 +325,7 @@ namespace TestWindingLossesRound {
              {600000, 0.1411}, {700000, 0.14206}, {800000, 0.14314}, {900000, 0.14437}, {1000000, 0.14572}});
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
         // SKIP: Model shows ~41% error. Non-interleaved winding model needs calibration.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
@@ -392,7 +392,7 @@ namespace TestWindingLossesRectangular {
     MagnetizingInductance magnetizingInductanceModel("ZHANG");
     double maximumError = 0.2;
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing", "[physical-model][winding-losses][rectangular][rectangular-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing", "[physical-model][winding-losses][rectangular][rectangular-winding-window][!mayfail]") {
         // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae.
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing.json", 22,
@@ -584,7 +584,7 @@ namespace TestWindingLossesPlanar {
     MagnetizingInductance magnetizingInductanceModel("ZHANG");
     double maximumError = 0.3;
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar][!mayfail]") {
         // Round-column planar core (ER 28/6.5/21, 3C97, ungapped), 1 turn of
         // 5 mm × 0.5 mm Cu PCB trace, 500 A peak sinusoidal. Round post makes
         // this case naturally axisymmetric so it can be cross-checked with 2D
@@ -1132,7 +1132,7 @@ namespace TestWindingLossesWeb {
 namespace TestWindingLossesModelComparison {
     using namespace WindingLossesTestData;
 
-    TEST_CASE("Comprehensive_Model_Comparison_All_Tests", "[physical-model][winding-losses][model-comparison]") {
+    TEST_CASE("Comprehensive_Model_Comparison_All_Tests", "[physical-model][winding-losses][model-comparison][heavy]") {
         // Comprehensive model comparison with EXPECTED VALUE validation
         // Uses shared test data from TestWindingLosses.h
         
@@ -1256,7 +1256,7 @@ namespace TestWindingLossesModelComparison {
         settings.reset();
     }
 
-    TEST_CASE("Comprehensive_Model_Comparison_All_H_Field_And_Fringing_Models", "[physical-model][winding-losses][model-comparison][full-comparison]") {
+    TEST_CASE("Comprehensive_Model_Comparison_All_H_Field_And_Fringing_Models", "[physical-model][winding-losses][model-comparison][full-comparison][heavy]") {
         // Comprehensive model comparison testing ALL 4 H-field models with BOTH fringing effect models
         // Uses shared test data from TestWindingLosses.h
         // This test validates each model against real measurements
@@ -1634,7 +1634,7 @@ TEST_CASE("Test_WindingLosses_NaN_Detection", "[winding-losses][nan-detection][d
     }
 }
 
-TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[physical-model][winding-losses][model-comparison][skin-proximity-comparison]") {
+TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[physical-model][winding-losses][model-comparison][skin-proximity-comparison][heavy]") {
     // Comprehensive comparison of ALL skin effect and proximity effect loss models
     // Uses the best H-field model (ALBACH) and best fringing model (ALBACH) as determined
     // from previous comprehensive testing
@@ -1969,7 +1969,7 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     settings.reset();
 }
 
-TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model][winding-losses][ultimate-comparison][all-models]") {
+TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model][winding-losses][ultimate-comparison][all-models][heavy]") {
     // Ultimate comprehensive test: Find the best combination of ALL 4 model types:
     // 1. H-field model (5 options)
     // 2. H-field fringing model (3 options)

@@ -262,7 +262,7 @@ const std::vector<TopEntry> kTopAvailableInterference = {
 // =============================================================================
 
 TEST_CASE("CoreAdviser AVAILABLE_CORES x POWER top-5 snapshot",
-          "[adviser][core-adviser][characterisation][available-cores][power]") {
+          "[adviser][core-adviser][characterisation][heavy][available-cores][power]") {
     clear_databases();
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
@@ -283,7 +283,7 @@ TEST_CASE("CoreAdviser AVAILABLE_CORES x POWER top-5 snapshot",
 }
 
 TEST_CASE("CoreAdviser STANDARD_CORES x POWER top-5 snapshot",
-          "[adviser][core-adviser][characterisation][standard-cores][power]") {
+          "[adviser][core-adviser][characterisation][heavy][standard-cores][power]") {
     clear_databases();
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
@@ -303,7 +303,7 @@ TEST_CASE("CoreAdviser STANDARD_CORES x POWER top-5 snapshot",
 }
 
 TEST_CASE("CoreAdviser AVAILABLE_CORES x INTERFERENCE_SUPPRESSION top-3 snapshot",
-          "[adviser][core-adviser][characterisation][available-cores][interference-suppression]") {
+          "[adviser][core-adviser][characterisation][heavy][available-cores][interference-suppression]") {
     clear_databases();
     settings.reset();
     settings.set_use_concentric_cores(false);

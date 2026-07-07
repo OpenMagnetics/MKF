@@ -11,7 +11,7 @@ using namespace OpenMagnetics;
 
 namespace {
 
-TEST_CASE("LibraryContext: TypeFilterSet predicate", "[library-context]") {
+TEST_CASE("LibraryContext: TypeFilterSet predicate", "[library-context][smoke-test]") {
     TypeFilterSet f;
     REQUIRE(f.empty());
     REQUIRE(f.accepts("anything"));
@@ -26,7 +26,7 @@ TEST_CASE("LibraryContext: TypeFilterSet predicate", "[library-context]") {
     REQUIRE_FALSE(f.accepts("ETD"));
 }
 
-TEST_CASE("LibraryContext: enum predicates case-insensitive", "[library-context]") {
+TEST_CASE("LibraryContext: enum predicates case-insensitive", "[library-context][smoke-test]") {
     TypeFilterSet f;
     f.allowed = {"etd"};
     REQUIRE(acceptsCoreShapeFamily(f, CoreShapeFamily::ETD));
@@ -43,13 +43,13 @@ TEST_CASE("LibraryContext: enum predicates case-insensitive", "[library-context]
     REQUIRE_FALSE(acceptsCoreMaterialType(m, MaterialType::POWDER));
 }
 
-TEST_CASE("LibraryContext: bad JSON throws", "[library-context]") {
+TEST_CASE("LibraryContext: bad JSON throws", "[library-context][smoke-test]") {
     LibraryContext ctx;
     REQUIRE_THROWS(ctx.loadFromString("{ this is not json", LibraryContext::LoadMode::Merge));
     REQUIRE_THROWS(ctx.loadFromString(R"({"cores":[{"name":"x","bogus":1}]})", LibraryContext::LoadMode::Replace));
 }
 
-TEST_CASE("LibraryContext: empty context Scope is a no-op", "[library-context]") {
+TEST_CASE("LibraryContext: empty context Scope is a no-op", "[library-context][smoke-test]") {
     if (wireDatabase.empty()) load_wires();
     auto before = wireDatabase.size();
     {
@@ -60,7 +60,7 @@ TEST_CASE("LibraryContext: empty context Scope is a no-op", "[library-context]")
     REQUIRE(wireDatabase.size() == before);
 }
 
-TEST_CASE("LibraryContext: Replace mode wipes only provided kinds", "[library-context]") {
+TEST_CASE("LibraryContext: Replace mode wipes only provided kinds", "[library-context][smoke-test]") {
     if (wireDatabase.empty()) load_wires();
     if (coreShapeDatabase.empty()) load_core_shapes();
     auto coreShapeCountBefore = coreShapeDatabase.size();
@@ -78,7 +78,7 @@ TEST_CASE("LibraryContext: Replace mode wipes only provided kinds", "[library-co
     REQUIRE(wireDatabase.size() == wireCountBefore);
 }
 
-TEST_CASE("LibraryContext: filterCoresByConstraints respects shape family", "[library-context]") {
+TEST_CASE("LibraryContext: filterCoresByConstraints respects shape family", "[library-context][smoke-test]") {
     if (coreDatabase.empty()) load_cores();
     if (coreShapeDatabase.empty()) load_core_shapes();
 
@@ -98,7 +98,7 @@ TEST_CASE("LibraryContext: filterCoresByConstraints respects shape family", "[li
     }
 }
 
-TEST_CASE("LibraryContext: filterWiresByConstraints respects wire type", "[library-context]") {
+TEST_CASE("LibraryContext: filterWiresByConstraints respects wire type", "[library-context][smoke-test]") {
     if (wireDatabase.empty()) load_wires();
     AdviserConstraints c;
     c.wireType.allowed = {"litz"};  // case-insensitive

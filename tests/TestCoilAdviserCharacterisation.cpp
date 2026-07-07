@@ -183,7 +183,7 @@ const std::vector<CoilStructural> kTopFlyback = {
 // =============================================================================
 
 TEST_CASE("CoilAdviser flyback 2-winding top-3 structural snapshot",
-          "[adviser][coil-adviser][characterisation][flyback]") {
+          "[adviser][coil-adviser][characterisation][heavy][flyback]") {
     settings.reset();
     settings.set_coil_allow_margin_tape(false);
     settings.set_coil_allow_insulated_wire(true);

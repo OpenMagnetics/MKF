@@ -39,7 +39,7 @@ std::string export_transformer_subckt(const std::vector<int64_t>& numberTurns) {
 
 }  // namespace
 
-TEST_CASE("mutual resistance: 2-winding keeps the auxiliary-winding realization", "[circuit][mutual][export]") {
+TEST_CASE("mutual resistance: 2-winding keeps the auxiliary-winding realization", "[circuit][mutual][export][smoke-test]") {
     auto subckt = export_transformer_subckt({20, 20});
     // The 2-winding path is positive-definite already and left untouched (abt #72):
     // it still uses the coupled auxiliary winding LA_ and its KA_ couplings, and it
@@ -51,7 +51,7 @@ TEST_CASE("mutual resistance: 2-winding keeps the auxiliary-winding realization"
     CHECK(subckt.find("Node_Wtop_") == std::string::npos);
 }
 
-TEST_CASE("mutual resistance: 3-winding uses the PD-safe behavioural realization", "[circuit][mutual][export]") {
+TEST_CASE("mutual resistance: 3-winding uses the PD-safe behavioural realization", "[circuit][mutual][export][smoke-test]") {
     auto subckt = export_transformer_subckt({20, 20, 20});
 
     // The cross-coupling term is KEPT for n>=3, not skipped ...
