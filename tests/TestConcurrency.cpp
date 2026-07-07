@@ -131,6 +131,24 @@ bool scores_match(double a, double b) {
     return std::abs(a - b) <= SCORE_RELATIVE_TOLERANCE * std::max(scale, 1e-300);
 }
 
+// RAII: guarantee the process is unfrozen on every exit path (a failing
+// assertion between freeze and unfreeze must not poison later test cases,
+// whose Settings listener calls reset() -> clear_loaded_cores()).
+struct DatabasesFreezeGuard {
+    DatabasesFreezeGuard() { set_databases_frozen(true); }
+    ~DatabasesFreezeGuard() { set_databases_frozen(false); }
+    DatabasesFreezeGuard(const DatabasesFreezeGuard&) = delete;
+    DatabasesFreezeGuard& operator=(const DatabasesFreezeGuard&) = delete;
+};
+
+// Copy the spawning thread's Settings into this (worker) thread.
+// Settings is a thread_local singleton: worker threads start with a
+// default-constructed instance and must inherit the parent's configuration
+// explicitly (see Settings::GetInstance docs).
+void inherit_settings(const Settings& parentSnapshot) {
+    Settings::GetInstance() = parentSnapshot;
+}
+
 } // namespace
 
 TEST_CASE("Test_Concurrency_CoreAdviser_Parallel_Deterministic", "[concurrency][heavy]") {
@@ -140,22 +158,27 @@ TEST_CASE("Test_Concurrency_CoreAdviser_Parallel_Deterministic", "[concurrency][
     auto coreShortlist = load_core_shortlist();
     REQUIRE(coreShortlist.size() >= CORE_SHORTLIST_SIZE / 2);
 
-    // The parallel region runs FIRST, on cold memo caches: concurrent workers
-    // must build their interpolator/inductance memos (and, pre-fix, would race
-    // to lazy-load the shared catalogs) instead of merely reading state warmed
-    // by a preceding single-threaded pass. The single-threaded references are
-    // computed AFTER the join; determinism therefore also proves the memo
-    // caches are semantically transparent (cold vs warm gives the same
-    // physics).
-    // Pre-fix version of this harness: no freeze/force-load API exists yet,
-    // so the workers themselves trigger the lazy catalog loads concurrently —
-    // exactly the disease this harness must detect.
+    // The parallel region runs FIRST, on cold per-thread memo caches:
+    // concurrent workers must build their interpolator/inductance memos
+    // instead of merely reading state warmed by a preceding single-threaded
+    // pass (the pre-fix version of this harness ran exactly like this and
+    // SIGSEGVed on the then-shared caches/lazy catalog loads). The
+    // single-threaded references are computed AFTER the join; determinism
+    // therefore also proves the memo caches are semantically transparent
+    // (cold vs warm gives the same physics).
+    //
+    // Read-only catalogs are force-loaded before fan-out and frozen for the
+    // duration: any mutation attempt inside the parallel region throws.
+    load_all_databases();
+    const Settings parentSnapshot = Settings::GetInstance();
+    DatabasesFreezeGuard freezeGuard;
 
     std::vector<std::vector<AdviserOutcome>> outcomes(NUMBER_THREADS, std::vector<AdviserOutcome>(ITERATIONS_PER_THREAD));
     std::barrier startBarrier(NUMBER_THREADS);
     std::vector<std::thread> workers;
     for (size_t threadIndex = 0; threadIndex < NUMBER_THREADS; ++threadIndex) {
-        workers.emplace_back([threadIndex, &outcomes, &startBarrier, &coreShortlist] {
+        workers.emplace_back([threadIndex, &outcomes, &startBarrier, &coreShortlist, &parentSnapshot] {
+            inherit_settings(parentSnapshot);
             const auto& query = QUERIES[threadIndex % QUERIES.size()];
             for (size_t iteration = 0; iteration < ITERATIONS_PER_THREAD; ++iteration) {
                 // Line every worker up before each iteration to maximize overlap.
@@ -167,6 +190,7 @@ TEST_CASE("Test_Concurrency_CoreAdviser_Parallel_Deterministic", "[concurrency][
     for (auto& worker : workers) {
         worker.join();
     }
+    set_databases_frozen(false);  // references below may lazy-load/clear freely
 
     // Single-threaded references, computed after the parallel region.
     std::vector<AdviserOutcome> references;
@@ -238,6 +262,8 @@ TEST_CASE("Test_Concurrency_CoreAdviser_With_WindingLosses_Mixed", "[concurrency
     double referenceLosses = WindingLosses().calculate_losses(magnetic, lossesOperatingPoint, 25).get_winding_losses();
     REQUIRE(referenceLosses > 0);
 
+    load_all_databases();
+
     constexpr size_t NUMBER_ADVISER_THREADS = 4;
     constexpr size_t LOSSES_ITERATIONS = 6;
     std::vector<AdviserOutcome> adviserReferences;
@@ -249,6 +275,9 @@ TEST_CASE("Test_Concurrency_CoreAdviser_With_WindingLosses_Mixed", "[concurrency
         adviserReferences.push_back(reference);
     }
 
+    const Settings parentSnapshot = Settings::GetInstance();
+    DatabasesFreezeGuard freezeGuard;
+
     std::vector<AdviserOutcome> adviserOutcomes(NUMBER_ADVISER_THREADS);
     std::vector<double> lossesResults(LOSSES_ITERATIONS, std::numeric_limits<double>::quiet_NaN());
     std::string lossesError;
@@ -256,12 +285,14 @@ TEST_CASE("Test_Concurrency_CoreAdviser_With_WindingLosses_Mixed", "[concurrency
 
     std::vector<std::thread> workers;
     for (size_t threadIndex = 0; threadIndex < NUMBER_ADVISER_THREADS; ++threadIndex) {
-        workers.emplace_back([threadIndex, &adviserOutcomes, &startBarrier, &coreShortlist] {
+        workers.emplace_back([threadIndex, &adviserOutcomes, &startBarrier, &coreShortlist, &parentSnapshot] {
+            inherit_settings(parentSnapshot);
             startBarrier.arrive_and_wait();
             adviserOutcomes[threadIndex] = run_core_adviser_query(QUERIES[threadIndex % QUERIES.size()], coreShortlist);
         });
     }
     workers.emplace_back([&, LOSSES_ITERATIONS] {
+        inherit_settings(parentSnapshot);
         startBarrier.arrive_and_wait();
         try {
             for (size_t iteration = 0; iteration < LOSSES_ITERATIONS; ++iteration) {

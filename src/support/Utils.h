@@ -80,17 +80,23 @@ struct InductanceFluxCacheEntry {
 };
 inline std::map<std::string, std::map<size_t, InductanceFluxCacheEntry>> _inductanceFluxCache;
 
-// THREAD-SAFETY (latent): these process-global catalogs are populated with a
-// lazy "if (db.empty()) load_db();" check-then-load pattern (see find_*_by_name
-// in Utils.cpp). That, and the memo caches above (_scorings,
-// _inductanceFluxCache), are NOT synchronized: concurrent callers can double-load
-// or read a map while another thread is inserting (iterator invalidation → UB).
-// This is safe today because MKF is driven single-threaded (one adviser run at a
-// time; WASM/Python bindings are single-threaded). DO NOT call into MKF from
-// multiple threads without first giving these globals a synchronization contract
-// (e.g. std::call_once per database for loads + a shared_mutex for reads).
-// Flagged in docs/technical_debt — needs a deliberate design decision, not an
-// ad-hoc lock sprinkle. See TRACKER Cluster F.
+// THREAD-SAFETY CONTRACT (ABT #113): these process-global catalogs are
+// populated with a lazy "if (db.empty()) load_db();" check-then-load pattern
+// (see find_*_by_name in Utils.cpp), which is NOT synchronized. They are
+// SHARED between threads (deliberately not thread_local — the core catalog
+// alone is thousands of objects, and the multithreaded adviser needs one
+// read-only copy, not one per worker). The rule that makes this safe:
+//
+//   1. BEFORE any parallel region, force-load every catalog with
+//      load_all_databases() on the orchestrating thread.
+//   2. Freeze them with set_databases_frozen(true) for the duration of the
+//      parallel region. While frozen, EVERY mutating entry point (load_*,
+//      clear_*, load_databases, LibraryContext::Scope) THROWS
+//      — a lazy load that would have raced is a loud failure, not a lock.
+//   3. Unfreeze after joining the workers.
+//
+// Single-threaded callers are unaffected (the flag defaults to false and
+// lazy loading keeps working exactly as before).
 inline std::vector<OpenMagnetics::Core> coreDatabase;
 inline std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
 inline std::map<std::string, MAS::CoreShape> coreShapeDatabase;
@@ -137,6 +143,14 @@ double get_error_by_winding_window_area(CoreShape shape, double windingWindowAre
 double get_error_by_winding_window_dimensions(CoreShape shape, double widthOrRadius, double height);
 double get_error_by_effective_parameters(CoreShape shape, double effectiveLength, double effectiveArea, double effectiveVolume);
 
+
+// ABT #113 parallel-region support (see the THREAD-SAFETY CONTRACT above).
+// databases_frozen() is cheap (relaxed atomic read); set_databases_frozen
+// toggles the freeze; load_all_databases() force-loads every catalog that is
+// still empty so nothing lazy-loads inside the parallel region.
+bool databases_frozen();
+void set_databases_frozen(bool frozen);
+void load_all_databases();
 
 void clear_loaded_cores();
 void clear_loaded_core_shapes();

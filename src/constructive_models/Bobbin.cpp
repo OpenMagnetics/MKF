@@ -299,7 +299,14 @@ void load_interpolators() {
         bobbinFillingFactorInterpHeight.get_x().size() == 0 || 
         bobbinWindingWindowProportionInterpWidth.get_x().size() == 0 || 
         bobbinWindingWindowProportionInterpHeight.get_x().size() == 0) {
-        load_bobbins();
+        // ABT #113: only load when the catalog is actually missing. This used
+        // to call load_bobbins() unconditionally whenever an interpolator was
+        // cold, RELOADING the shared bobbin catalog — a mutation, which throws
+        // while databases are frozen (each thread's interpolators are
+        // thread_local and start cold; the shared catalog stays loaded).
+        if (bobbinDatabase.empty()) {
+            load_bobbins();
+        }
 
         struct AuxFillingFactorWidth
         {

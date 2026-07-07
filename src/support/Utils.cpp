@@ -5,6 +5,7 @@
 #include "support/Logger.h"
 #include "json.hpp"
 
+#include <atomic>
 #include <math.h>
 #include <cmath>
 #include <filesystem>
@@ -107,6 +108,54 @@ static std::string load_ndjson_data(const std::string& resourcePath, std::option
 
 namespace OpenMagnetics {
 
+// ABT #113: freeze flag for the shared read-only catalogs (see the
+// THREAD-SAFETY CONTRACT in Utils.h). Atomic so workers can read it without
+// synchronization; only the orchestrating thread toggles it.
+static std::atomic<bool> _databasesFrozen{false};
+
+bool databases_frozen() {
+    return _databasesFrozen.load(std::memory_order_acquire);
+}
+
+void set_databases_frozen(bool frozen) {
+    _databasesFrozen.store(frozen, std::memory_order_release);
+}
+
+static void throw_if_databases_frozen(const char* operation) {
+    if (databases_frozen()) {
+        throw std::runtime_error(
+            std::string("ABT #113: '") + operation +
+            "' would mutate a shared catalog while databases are frozen (a parallel "
+            "region is active). Call load_all_databases() BEFORE set_databases_frozen(true), "
+            "and never lazy-load, reload, or clear catalogs from worker threads.");
+    }
+}
+
+void load_all_databases() {
+    throw_if_databases_frozen("load_all_databases");
+    if (coreDatabase.empty()) {
+        load_cores();
+    }
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+    if (wireDatabase.empty()) {
+        load_wires();
+    }
+    if (bobbinDatabase.empty()) {
+        load_bobbins();
+    }
+    if (insulationMaterialDatabase.empty()) {
+        load_insulation_materials();
+    }
+    if (wireMaterialDatabase.empty()) {
+        load_wire_materials();
+    }
+}
+
 void clear_scoring() {
     _scorings.clear();
     _inductanceFluxCache.clear();
@@ -177,6 +226,7 @@ void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {
 }
 
 void load_cores(std::optional<std::string> fileToLoad) {
+    throw_if_databases_frozen("load_cores");
     bool includeToroidalCores = settings.get_use_toroidal_cores();
     bool includeConcentricCores = settings.get_use_concentric_cores();
     bool useOnlyCoresInStock = settings.get_use_only_cores_in_stock();
@@ -207,15 +257,18 @@ void load_cores(std::optional<std::string> fileToLoad) {
 }
 
 void clear_loaded_cores() {
+    throw_if_databases_frozen("clear_loaded_cores");
     coreDatabase.clear();
 }
 
 void clear_loaded_core_shapes() {
+    throw_if_databases_frozen("clear_loaded_core_shapes");
     coreShapeDatabase.clear();
     coreShapeFamiliesInDatabase.clear();
 }
 
 void clear_databases() {
+    throw_if_databases_frozen("clear_databases");
     coreDatabase.clear();
     coreMaterialDatabase.clear();
     coreShapeDatabase.clear();
@@ -227,6 +280,7 @@ void clear_databases() {
 }
 
 void load_core_materials(std::optional<std::string> fileToLoad) {
+    throw_if_databases_frozen("load_core_materials");
     if (!_addInternalData) {
         return;
     }
@@ -238,6 +292,7 @@ void load_core_materials(std::optional<std::string> fileToLoad) {
 }
 
 void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManufacturer) {
+    throw_if_databases_frozen("load_advanced_core_materials");
     parse_ndjson(fileToLoad, [onlyDataFromManufacturer](const json& jf) {
         auto it = coreMaterialDatabase.find(jf["name"]);
         if (it == coreMaterialDatabase.end()) return;
@@ -276,6 +331,7 @@ void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManuf
 }
 
 void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
+    throw_if_databases_frozen("load_core_shapes");
     if (!_addInternalData) {
         return;
     }
@@ -300,6 +356,7 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
 }
 
 void load_wires(std::optional<std::string> fileToLoad) {
+    throw_if_databases_frozen("load_wires");
     if (!_addInternalData) {
         return;
     }
@@ -311,6 +368,7 @@ void load_wires(std::optional<std::string> fileToLoad) {
 }
 
 void load_bobbins() {
+    throw_if_databases_frozen("load_bobbins");
     if (!_addInternalData) {
         return;
     }
@@ -322,6 +380,7 @@ void load_bobbins() {
 }
 
 void load_insulation_materials() {
+    throw_if_databases_frozen("load_insulation_materials");
     if (!_addInternalData) {
         return;
     }
@@ -333,6 +392,7 @@ void load_insulation_materials() {
 }
 
 void load_wire_materials() {
+    throw_if_databases_frozen("load_wire_materials");
     if (!_addInternalData) {
         return;
     }
@@ -344,6 +404,7 @@ void load_wire_materials() {
 }
 
 void load_databases(json data, bool withAliases, bool addInternalData) {
+    throw_if_databases_frozen("load_databases");
     _addInternalData = addInternalData;
     if (addInternalData) {
         if (coreMaterialDatabase.empty()) {
