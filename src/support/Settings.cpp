@@ -2,6 +2,9 @@
 #include "support/Settings.h"
 #include "processors/CircuitSimulatorInterface.h"
 #include <magic_enum.hpp>
+#include <cstdlib>
+#include <filesystem>
+#include <source_location>
 
 namespace OpenMagnetics {
 
@@ -124,7 +127,7 @@ namespace OpenMagnetics {
         _painterColorLines = "0x010000";
         _painterColorText = "0x000000";
         _painterColorCurrentDensity = "0x0892D0";
-        _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../../cci_coords/coordinates/");
+        _painterCciCoordinatesPath = std::nullopt;  // resolved at use time, see get_painter_cci_coordinates_path
         _painterColorMagneticFieldMinimum = "0x2b35f5";
         _painterColorMagneticFieldMaximum = "0xe84922";
         _painterMagneticFieldStrengthModel = std::nullopt;
@@ -495,7 +498,55 @@ namespace OpenMagnetics {
     }
 
     std::string Settings::get_painter_cci_coordinates_path() const {
-        return _painterCciCoordinatesPath;
+        // Resolution order (first hit wins). Note the painter itself no longer
+        // reads coordinate FILES for N <= 1000 strands — those are embedded at
+        // build time (CciCoordinatesData) — so this path only matters to
+        // consumers that explicitly ask for the on-disk coordinate catalog.
+        //
+        // 1) Explicit set_painter_cci_coordinates_path() — caller's word is law.
+        if (_painterCciCoordinatesPath) {
+            return _painterCciCoordinatesPath.value();
+        }
+        auto withTrailingSeparator = [](std::string path) {
+            if (!path.empty() && path.back() != '/' && path.back() != '\\') {
+                path.push_back('/');
+            }
+            return path;
+        };
+        // 2) Environment override for relocated installs (wheels, prod hosts).
+        //    Pointing it at a missing directory is a hard error, not a fallthrough.
+        if (const char* environmentPath = std::getenv("MKF_CCI_COORDINATES_PATH")) {
+            if (!std::filesystem::is_directory(environmentPath)) {
+                throw std::runtime_error(
+                    "MKF_CCI_COORDINATES_PATH is set to '" + std::string(environmentPath) +
+                    "' but that is not an existing directory.");
+            }
+            return withTrailingSeparator(environmentPath);
+        }
+        // 3) Dev checkout: <this file's dir>/../../cci_coords/coordinates/ —
+        //    the historical default, but now only if it actually exists on THIS
+        //    machine (the old code baked the BUILD machine's absolute path into
+        //    the value, breaking relocated wheels/WASM).
+        const std::string selfFilePath = std::source_location::current().file_name();
+        auto lastSeparator = selfFilePath.find_last_of("/\\");
+        if (lastSeparator != std::string::npos) {
+            std::string sourceCandidate =
+                selfFilePath.substr(0, lastSeparator) + "/../../cci_coords/coordinates/";
+            if (std::filesystem::is_directory(sourceCandidate)) {
+                return sourceCandidate;
+            }
+        }
+        // 4) Current working directory.
+        std::string cwdCandidate = "cci_coords/coordinates/";
+        if (std::filesystem::is_directory(cwdCandidate)) {
+            return withTrailingSeparator(std::filesystem::absolute(cwdCandidate).string());
+        }
+        // 5) Loudly refuse to guess.
+        throw std::runtime_error(
+            "CCI coordinates directory not found. Set it explicitly with "
+            "set_painter_cci_coordinates_path(), export MKF_CCI_COORDINATES_PATH, or run "
+            "from a directory containing cci_coords/coordinates/. (Strand counts up to "
+            "1000 use build-time embedded coordinates and do not need this path.)");
     }
     void Settings::set_painter_cci_coordinates_path(std::string value) {
         _painterCciCoordinatesPath = value;

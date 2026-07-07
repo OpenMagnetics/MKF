@@ -1,5 +1,4 @@
 #pragma once
-#include <source_location>
 #include "MAS.hpp"
 #include "Definitions.h"
 #include "Models.h"
@@ -28,7 +27,6 @@ class Settings
 {
     private:
         Settings();
-        std::string selfFilePath = std::source_location::current().file_name();
 
         bool _useToroidalCores = true;
         bool _useConcentricCores = true;
@@ -85,7 +83,13 @@ class Settings
         std::string _painterColorLines = "0x010000";
         std::string _painterColorText = "0x000000";
         std::string _painterColorCurrentDensity = "0x0892D0";
-        std::string _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../../cci_coords/coordinates/");
+        // CCI strand-coordinate directory for the painter. Resolved AT USE
+        // TIME by get_painter_cci_coordinates_path() (explicit set > env
+        // MKF_CCI_COORDINATES_PATH > dev-checkout source location > cwd);
+        // nullopt = "not explicitly set". The previous initializer baked
+        // std::source_location::current().file_name() — the BUILD machine's
+        // absolute path — into the value, which broke relocated wheels/WASM.
+        std::optional<std::string> _painterCciCoordinatesPath = std::nullopt;
         std::string _painterColorMagneticFieldMinimum = "0x2b35f5";
         std::string _painterColorMagneticFieldMaximum = "0xe84922";
         std::optional<MagneticFieldStrengthModels> _painterMagneticFieldStrengthModel = std::nullopt;
