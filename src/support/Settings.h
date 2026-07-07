@@ -194,11 +194,21 @@ class Settings
 
     public:
         bool _debug = false;
-        Settings(Settings &other) = delete;
-        void operator=(const Settings &) = delete;
-        Settings(Settings &&other) = delete;
-        void operator=(Settings &&) = delete;
+        // ABT #113: Settings is COPYABLE so worker threads can inherit the
+        // spawning thread's configuration (GetInstance() is a thread_local
+        // singleton — new threads start default-constructed):
+        //     const Settings parentSnapshot = Settings::GetInstance(); // parent
+        //     Settings::GetInstance() = parentSnapshot;                // worker
+        // Direct construction stays private: instances other than snapshots
+        // of GetInstance() are not meant to exist.
+        Settings(const Settings& other) = default;
+        Settings& operator=(const Settings& other) = default;
+        Settings(Settings&& other) = delete;
+        void operator=(Settings&&) = delete;
 
+        // Returns the CALLING THREAD's Settings instance (thread_local
+        // Meyers singleton, see Settings.cpp for the worker-thread
+        // inheritance recipe).
         static Settings& GetInstance();
 
         void reset();

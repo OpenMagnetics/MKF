@@ -7,7 +7,22 @@ namespace OpenMagnetics {
 
     Settings& Settings::GetInstance()
     {
-        static Settings instance;
+        // ABT #113: one Settings instance PER THREAD. Every thread that calls
+        // into MKF sees its own configuration, so concurrent adviser runs can
+        // not observe each other's mid-computation Settings mutations (the
+        // SettingsGuard/RAII patterns all become thread-confined).
+        //
+        // WRINKLE: a freshly spawned worker thread starts with a
+        // DEFAULT-CONSTRUCTED Settings, NOT a copy of the spawning thread's.
+        // Workers that must inherit the parent configuration copy it
+        // explicitly at thread start:
+        //
+        //     const Settings parentSnapshot = Settings::GetInstance(); // parent
+        //     std::thread worker([parentSnapshot] {
+        //         Settings::GetInstance() = parentSnapshot;            // worker
+        //         ...
+        //     });
+        static thread_local Settings instance;
         return instance;
     }
 

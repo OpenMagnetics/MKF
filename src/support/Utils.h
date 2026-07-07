@@ -42,7 +42,12 @@ inline std::vector<double> linspace(double start, double end, size_t num) {
 
 inline const OpenMagnetics::Defaults defaults = OpenMagnetics::Defaults();
 inline const OpenMagnetics::Constants constants = OpenMagnetics::Constants();
-inline OpenMagnetics::Settings& settings = OpenMagnetics::Settings::GetInstance();
+// ABT #113: Settings::GetInstance() is a thread_local singleton, so this
+// convenience alias must be thread_local too — otherwise it would be
+// initialized once (on whichever thread first touches it) and every other
+// thread reading `settings` would alias THAT thread's instance instead of
+// its own. Each thread's `settings` binds to its own Settings.
+inline thread_local OpenMagnetics::Settings& settings = OpenMagnetics::Settings::GetInstance();
 
 inline std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
 
