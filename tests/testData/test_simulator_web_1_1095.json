@@ -151,7 +151,7 @@
           },
           "edgeRadius": null,
           "manufacturerInfo": null,
-          "material": null,
+          "material": "copper",
           "name": null,
           "numberConductors": null,
           "outerDiameter": null,
