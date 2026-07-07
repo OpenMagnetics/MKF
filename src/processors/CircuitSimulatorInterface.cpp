@@ -1622,15 +1622,17 @@ std::string emit_mutual_resistance_behavioural_spice(
     size_t numWindings,
     double frequency) {
 
-    if (mutualCoeffs.empty() || numWindings < 3) {
-        return "";  // Behavioural realization is only needed for n>=3 (n==2 is PD already)
+    if (mutualCoeffs.empty() || numWindings < 2) {
+        return "";  // No winding pair to couple
     }
 
     // PD-safe behavioural realization of the cross-coupling (mutual) resistance loss for
-    // n>=3 windings (abt #50/#72). The auxiliary-winding (Hesterman 2020) model couples an
+    // n>=2 windings (abt #50/#72/#76). The auxiliary-winding (Hesterman 2020) model couples an
     // extra inductor into TWO magnetizing inductors at once; for n>=3 the shared-but-
     // uncoupled auxiliaries leave the coupled-L matrix non-positive-definite and ngspice
-    // collapses ("Timestep too small"), so it was skipped. Here each winding i instead
+    // collapses ("Timestep too small"), so it was skipped, and for n==2 the emitted ladder did
+    // not reproduce its own fitted model (DC impedance was the last-stage R, not
+    // dcMutualResistance — abt #76). Here each winding i instead
     // carries a series voltage drop sum_{j!=i} R_ij*I_j realized with LINEAR current-
     // controlled voltage sources (H), so NO inductor and NO coupling is added: the Lmag
     // coupled-L matrix is byte-identical to the no-mutual case and stays positive-definite.
@@ -1650,10 +1652,10 @@ std::string emit_mutual_resistance_behavioural_spice(
     std::vector<std::vector<std::pair<size_t, double>>> drops(numWindings);
 
     std::string s;
-    s += "\n* ==== MUTUAL RESISTANCE NETWORK (PD-safe behavioural, n>=3) ====\n";
+    s += "\n* ==== MUTUAL RESISTANCE NETWORK (PD-safe behavioural, n>=2) ====\n";
     s += "* Cross-coupling loss sum_{i!=j} R_ij*I_i*I_j via linear current-controlled\n";
     s += "* voltage sources (no inductors, no coupling) so the Lmag matrix stays\n";
-    s += "* positive-definite (abt #50/#72). R_ij is the mutual resistance at the export\n";
+    s += "* positive-definite (abt #50/#72/#76). R_ij is the mutual resistance at the export\n";
     s += "* frequency (real part of the fitted ladder; the reactance lives in the K's).\n\n";
 
     for (const auto& mc : mutualCoeffs) {

@@ -721,6 +721,18 @@ if(INCLUDE_MKF_TESTS)
     target_link_libraries(MKF_tests PUBLIC MKF)
     target_include_directories(MKF_tests PUBLIC "${PROJECT_SOURCE_DIR}/src/")
 
+    # tests/KirchhoffNgspiceRunnerShim.cpp compiles Kirchhoff's in-process libngspice runner
+    # (Kirchhoff::run_ngspice_in_process) into the test binary: libKirchhoffApi.so hides it
+    # (only the api:: string facade is exported), and the export-verification tests (abt #76)
+    # must run an emitted magnetic subcircuit deck — not a TAS — through the integrated
+    # engine. Link the same libngspice the Kirchhoff build found.
+    if(MKF_USE_KIRCHHOFF)
+        find_library(MKF_TESTS_NGSPICE_LIB ngspice REQUIRED)
+        find_path(MKF_TESTS_NGSPICE_INCLUDE_DIR ngspice/sharedspice.h REQUIRED)
+        target_include_directories(MKF_tests PRIVATE "${MKF_TESTS_NGSPICE_INCLUDE_DIR}")
+        target_link_libraries(MKF_tests PRIVATE "${MKF_TESTS_NGSPICE_LIB}")
+    endif()
+
     # Precompiled header for the test target.
     #
     # The TestTopology*.cpp files (3k LOC each, 10+ of them) each parse the

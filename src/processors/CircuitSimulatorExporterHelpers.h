@@ -52,10 +52,12 @@ std::string emit_mutual_resistance_network_spice(
     size_t numWindings);
 
 // PD-safe behavioural realization of the mutual (cross-coupling) resistance loss for
-// n>=3 windings (abt #50/#72): grounded uncoupled ladders + sense/behavioural sources,
+// n>=2 windings (abt #50/#72/#76): grounded uncoupled ladders + sense/behavioural sources,
 // adding NO magnetically coupled inductors, so the Lmag coupled-L matrix stays
-// positive-definite. Requires the winding series path to be routed through the
-// Node_Wtop_<k> nodes (see export_magnetic_as_subcircuit, LADDER mode).
+// positive-definite. For n==2 it replaces the old auxiliary-winding ladder whose emitted
+// topology did not reproduce its own fitted model (abt #76). Requires the winding series
+// path to be routed through the Node_Wtop_<k> nodes (see export_magnetic_as_subcircuit,
+// LADDER mode).
 std::string emit_mutual_resistance_behavioural_spice(
     const std::vector<CircuitSimulatorExporter::MutualResistanceCoefficients>& mutualCoeffs,
     size_t numWindings,
