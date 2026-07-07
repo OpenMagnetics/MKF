@@ -123,14 +123,16 @@ CoreAdviser::MagneticCoreFilterAreaProduct::MagneticCoreFilterAreaProduct(Inputs
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterAreaProduct::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMagnetics;
-    }
+    // ABT #121.1: the hard VALIDITY gate runs regardless of weight; only the
+    // SCORE contribution is preference-weighted. A zero user weight must drop
+    // this filter's ranking influence, NOT disable its feasibility cull.
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
         unfilteredMagnetics, inputs,
         [this](Magnetic* m, Inputs* i) { return _filter.evaluate_magnetic(m, i); },
         /*writeBack=*/false, "AreaProduct");
-    apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
+    if (weight > 0) {
+        apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
+    }
     return filteredMagneticsWithScoring;
 }
 
@@ -139,14 +141,14 @@ CoreAdviser::MagneticCoreFilterEnergyStored::MagneticCoreFilterEnergyStored(Inpu
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterEnergyStored::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMagnetics;
-    }
+    // ABT #121.1: validity gate always; score only when weighted (see AreaProduct).
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
         unfilteredMagnetics, inputs,
         [this](Magnetic* m, Inputs* i) { return _filter.evaluate_magnetic(m, i); },
         /*writeBack=*/true, "EnergyStored");
-    apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
+    if (weight > 0) {
+        apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
+    }
     return filteredMagneticsWithScoring;
 }
 
@@ -155,14 +157,17 @@ CoreAdviser::MagneticCoreFilterFringingFactor::MagneticCoreFilterFringingFactor(
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterFringingFactor::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMagnetics;
-    }
+    // ABT #121.1: the fringing-factor cull is a winding-killer feasibility gate
+    // (a gap so large the coil cannot be wound / proximity losses explode) —
+    // it must run even when the EFFICIENCY weight scaling it is zero. Score only
+    // when weighted.
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
         unfilteredMagnetics, inputs,
         [this](Magnetic* m, Inputs* i) { return _filter.evaluate_magnetic(m, i); },
         /*writeBack=*/true, "FringingFactor");
-    apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
+    if (weight > 0) {
+        apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
+    }
     return filteredMagneticsWithScoring;
 }
 
@@ -171,14 +176,16 @@ CoreAdviser::MagneticCoreFilterCost::MagneticCoreFilterCost(Inputs inputs) {
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterCost::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMagnetics;
-    }
+    // ABT #121.1: the Cost filter also carries the winding-window-fit feasibility
+    // gate (rejects candidates whose turns cannot physically fit the window).
+    // Run it regardless of the COST weight; score only when weighted.
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
         unfilteredMagnetics, inputs,
         [this](Magnetic* m, Inputs* i) { return _filter.evaluate_magnetic(m, i); },
         /*writeBack=*/false, "Cost");
-    apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::COST);
+    if (weight > 0) {
+        apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::COST);
+    }
     return filteredMagneticsWithScoring;
 }
 
@@ -188,6 +195,16 @@ CoreAdviser::MagneticCoreFilterLosses::MagneticCoreFilterLosses(Inputs inputs, s
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
     if (weight <= 0) {
+        // ABT #121.1: unlike the cheap gate filters above, the loss filter's
+        // "gate" is a per-candidate N-sweep simulation (seconds over the pool),
+        // and its only hard reject — the coil could not be wound — is already
+        // enforced upstream by the Cost filter's winding-window-fit gate, which
+        // now runs at any weight. Losses is therefore an efficiency-optimisation
+        // filter with no independent feasibility gate, so at zero EFFICIENCY
+        // weight we skip it (and its expensive simulation) rather than run it
+        // purely to reproduce a cull the pipeline already performed.
+        logEntry("Losses filter skipped at zero weight (optimisation-only; coil-fit "
+                 "feasibility is gated by the Cost filter).", "CoreAdviser", 2);
         return *unfilteredMagnetics;
     }
     // Restore coil_delimit_and_compact even if the loss evaluation (which flips it) throws.
@@ -228,14 +245,16 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterDimensions::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMagnetics;
-    }
+    // ABT #121.1: the Dimensions filter carries the planar-core-for-wound-wire
+    // hard reject. Run that feasibility gate regardless of the DIMENSIONS weight;
+    // score only when weighted.
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
         unfilteredMagnetics, inputs,
         [this](Magnetic* m, Inputs* i) { return _filter.evaluate_magnetic(m, i); },
         /*writeBack=*/false, "Dimensions");
-    apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::DIMENSIONS);
+    if (weight > 0) {
+        apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::DIMENSIONS);
+    }
     return filteredMagneticsWithScoring;
 }
 
@@ -277,6 +296,14 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterTurnCoun
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMinimumImpedance::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
     if (weight <= 0) {
+        // ABT #121.1: the minimum-impedance gate IS a hard feasibility check, but
+        // it is an expensive complex-permeability solve and the pipeline always
+        // invokes it with a fixed positive gating weight (0.001) — it is never
+        // user-zeroed. Guard defensively with a note rather than run the solve at
+        // zero weight; if a caller ever passes weight<=0 the impedance
+        // feasibility is intentionally not enforced here.
+        logEntry("MinimumImpedance filter skipped at zero weight (expensive solve; "
+                 "pipeline always gates it at a fixed positive weight).", "CoreAdviser", 2);
         return *unfilteredMagnetics;
     }
     auto& settings = Settings::GetInstance();
@@ -292,9 +319,12 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMinimumI
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMagneticInductance::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMagnetics;
-    }
+    // ABT #121.1: meeting the magnetizing-inductance requirement is spec
+    // compliance, not an efficiency preference — the gate must run even when the
+    // (small) EFFICIENCY weight scaling it is zero, or the adviser would return
+    // cores that miss the required inductance. Run the gate always; score only
+    // when weighted. (This per-candidate solve is not free, but a correct answer
+    // outranks the runtime saved by skipping it at zero weight.)
     auto& settings = Settings::GetInstance();
     SettingsGuard<bool> coilCompactGuard(settings, &Settings::get_coil_delimit_and_compact,
                                          &Settings::set_coil_delimit_and_compact,
@@ -303,20 +333,23 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMagnetic
         unfilteredMagnetics, inputs,
         [this](Magnetic* m, Inputs* i) { return _filter.evaluate_magnetic(m, i); },
         /*writeBack=*/true, "MagneticInductance");
-    apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
+    if (weight > 0) {
+        apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
+    }
     return filteredMagneticsWithScoring;
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterSaturation::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMagnetics;
-    }
+    // ABT #121.1: the saturation cull (B_peak under the safe flux ceiling) is a
+    // hard feasibility gate — a saturating core is never a valid design — so it
+    // runs regardless of weight. Score only when weighted AND not the first
+    // (pure-gating) pass.
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
         unfilteredMagnetics, inputs,
         [this](Magnetic* m, Inputs* i) { return _filter.evaluate_magnetic(m, i); },
         /*writeBack=*/true, "Saturation");
     // Saturation only contributes a headroom SCORE when it is not the first (gating) pass.
-    if (!firstFilter) {
+    if (!firstFilter && weight > 0) {
         apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
     }
     return filteredMagneticsWithScoring;
@@ -332,6 +365,13 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterTemperat
     std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter)
 {
     if (weight <= 0) {
+        // ABT #121.1: the temperature-rise cull is a full thermal solve per
+        // candidate (expensive) and is itself gated off by default
+        // (core_adviser_enable_temperature_filter). It is an efficiency-scoped
+        // preference, so at zero EFFICIENCY weight we skip it (and its solve)
+        // rather than run it purely to gate.
+        logEntry("Temperature filter skipped at zero weight (expensive thermal solve; "
+                 "efficiency-scoped preference).", "CoreAdviser", 2);
         return *unfilteredMagnetics;
     }
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
