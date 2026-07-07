@@ -5591,7 +5591,6 @@ bool Coil::wind_by_rectangular_turns() {
     if (!get_layers_description()) {
         return false;
     }
-    bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
     auto wirePerWinding = get_wires();
     std::vector<std::vector<int64_t>> currentTurnIndex;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -5677,10 +5676,19 @@ bool Coil::wind_by_rectangular_turns() {
 
             } 
             else {
+                // Place the turns at the geometry the caller committed to (the preset layer's
+                // coordinates/dimensions). Whether that geometry actually fits the winding window is a
+                // SEPARATE decision, owned by are_sections_and_layers_fitting() and enforced upstream in
+                // wind()/rewind() (which only call wind_by_turns once fit — or windEvenIfNotFit — holds).
+                // The old veto here ("contiguous turns wider than the window -> return false") re-made
+                // that fit decision inside the turn placer, but ONLY for the contiguous branch: the
+                // OVERLAPPING branch above and the round winder both render preset over-full layers
+                // without objection. That asymmetry meant a direct wind_by_turns() over a preset,
+                // over-full contiguous-rectangular coil (web bug 359 / ABT #160) uniquely produced no
+                // turns at all, while every other orientation rendered them. Drop the veto so the
+                // rectangular contiguous branch behaves like its siblings; degenerate placements (a turn
+                // pushed to a non-positive radius) are still rejected by the turn-length guards below.
                 totalLayerWidth = roundFloat(physicalTurnsInLayer * wireWidth, 9);
-                if (!windEvenIfNotFit && totalLayerWidth > std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows()[0].get_width().value()) {
-                    return false;
-                }
                 totalLayerHeight = layer.get_dimensions()[1];
                 currentTurnHeightIncrement = 0;
                 currentTurnCenterHeight = roundFloat(layer.get_coordinates()[1], 9);
