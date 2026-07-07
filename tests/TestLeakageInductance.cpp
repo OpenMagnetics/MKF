@@ -774,12 +774,18 @@ TEST_CASE("Leakage inductance H-field model comparison study", "[physical-model]
                 auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, tc.frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
                 double error = (leakageInductance - tc.expectedLeakageInductance) / tc.expectedLeakageInductance * 100;
                 errorsPerModel[modelName].push_back(fabs(error));
-                
+
+                // Every H-field model must produce a finite positive leakage inductance.
+                INFO(tc.name << " / " << modelName);
+                CHECK(std::isfinite(leakageInductance));
+                CHECK(leakageInductance > 0);
+
                 std::string errorStr = (error > 0 ? "+" : "") + std::to_string(static_cast<int>(error)) + "%";
-                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << (leakageInductance * 1e6) 
+                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << (leakageInductance * 1e6)
                           << " µH (" << std::setw(5) << errorStr << ") | ";
             } catch (const std::exception& e) {
                 std::cout << std::setw(18) << "ERROR" << " | ";
+                FAIL_CHECK(tc.name << " / " << modelName << " threw: " << e.what());
             }
         }
         std::cout << std::endl;

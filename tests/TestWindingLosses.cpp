@@ -308,6 +308,11 @@ namespace TestWindingLossesRound {
 
                     WindingLosses windingLosses;
                     auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
+
+                    // Every field/fringing model combination must produce a finite positive loss.
+                    INFO(fieldModelName << "+" << fringingModelName << " @ " << frequency << " Hz");
+                    CHECK(std::isfinite(ohmicLosses.get_winding_losses()));
+                    CHECK(ohmicLosses.get_winding_losses() > 0);
                 }
             }
         }
@@ -733,6 +738,11 @@ namespace TestWindingLossesPlanar {
 
                     WindingLosses windingLosses;
                     auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
+
+                    // Every field/fringing model combination must produce a finite positive loss.
+                    INFO(fieldModelName << "+" << fringingModelName << " @ " << frequency << " Hz");
+                    CHECK(std::isfinite(ohmicLosses.get_winding_losses()));
+                    CHECK(ohmicLosses.get_winding_losses() > 0);
                 }
             }
         }
@@ -1072,8 +1082,15 @@ namespace TestWindingLossesWeb {
         //     std::cout << "losses.get_proximity_effect_losses(): " << losses.get_proximity_effect_losses()->get_losses_per_harmonic()[1] << std::endl;
         // }
 
+        // Repro point: all three planar variants must produce finite positive winding losses.
+        for (auto [label, losses] : {std::pair<const char*, double>{"planar_1", losses1.get_winding_losses()},
+                                     {"planar_2", losses2.get_winding_losses()},
+                                     {"planar_3", losses3.get_winding_losses()}}) {
+            INFO(label);
+            CHECK(std::isfinite(losses));
+            CHECK(losses > 0);
+        }
         settings.set_painter_include_fringing(false);
-        // REQUIRE(losses.get_winding_losses() <  2);
         {
             auto outFile = outputFilePath;
             outFile.append("Test_Winding_Losses_Web_3_1.svg");
@@ -1084,6 +1101,7 @@ namespace TestWindingLossesWeb {
             painter.paint_bobbin(magnetic1);
             painter.paint_coil_turns(magnetic1);
             painter.export_svg();
+            OpenMagneticsTesting::check_svg(outFile);
         }
         {
             auto outFile = outputFilePath;
@@ -1095,6 +1113,7 @@ namespace TestWindingLossesWeb {
             painter.paint_bobbin(magnetic2);
             painter.paint_coil_turns(magnetic2);
             painter.export_svg();
+            OpenMagneticsTesting::check_svg(outFile);
         }
         {
             auto outFile = outputFilePath;
@@ -1106,6 +1125,7 @@ namespace TestWindingLossesWeb {
             painter.paint_bobbin(magnetic3);
             painter.paint_coil_turns(magnetic3);
             painter.export_svg();
+            OpenMagneticsTesting::check_svg(outFile);
         }
         settings.reset();
     }
@@ -1124,6 +1144,10 @@ namespace TestWindingLossesWeb {
         auto inputs = mas.get_inputs();
 
         auto losses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
+
+        // Repro point: the CSV-defined planar must produce finite positive winding losses.
+        CHECK(std::isfinite(losses.get_winding_losses()));
+        CHECK(losses.get_winding_losses() > 0);
 
         settings.reset();
     }
@@ -1189,13 +1213,15 @@ namespace TestWindingLossesModelComparison {
                         totalError += errorPct;
                         validCount++;
 
-                        if (errorPct < 15) {
-                        } else if (errorPct < 50) {
-                        } else {
-                        }
+                        // Every model combination must produce a finite positive loss.
+                        INFO(config.name << " / " << fieldModelName << " @ " << frequency << " Hz");
+                        CHECK(std::isfinite(actual));
+                        CHECK(actual > 0);
 
                         allResults.push_back({config.name, wireTypeToString(config.wireType), fieldModelName, frequency, expectedValue, actual, errorPct});
                     } catch (std::exception& e) {
+                        FAIL_CHECK(config.name << " / " << fieldModelName << " @ " << frequency
+                                               << " Hz threw: " << e.what());
                     }
                 }
                 if (validCount > 0) {
@@ -1303,6 +1329,7 @@ namespace TestWindingLossesModelComparison {
                 magnetic = config.createMagnetic();
                 magneticCreated = true;
             } catch (const std::exception& e) {
+                FAIL_CHECK(config.name << ": createMagnetic threw: " << e.what());
                 return;
             }
 
@@ -1363,9 +1390,16 @@ namespace TestWindingLossesModelComparison {
                             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature);
                             actual = ohmicLosses.get_winding_losses();
                             errorPct = 100.0 * std::abs(actual - expectedValue) / expectedValue;
+
+                            // Every model combination must produce a finite positive loss.
+                            INFO(config.name << " / " << combinedName << " @ " << frequency << " Hz");
+                            CHECK(std::isfinite(actual));
+                            CHECK(actual > 0);
                         } catch (const std::exception& e) {
                             crashed = true;
                             anyCrashed = true;
+                            FAIL_CHECK(config.name << " / " << combinedName << " @ " << frequency
+                                                   << " Hz threw: " << e.what());
                         }
 
                         // Record result
@@ -1707,6 +1741,7 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
         try {
             magnetic = config.createMagnetic();
         } catch (const std::exception& e) {
+            FAIL_CHECK(config.name << ": createMagnetic threw: " << e.what());
             return false;
         }
         
@@ -1743,13 +1778,20 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
                 auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
                     frequency, config.magnetizingInductance, config.temperature,
                     config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
-                
+
                 WindingLosses windingLosses;
                 auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature);
                 actual = ohmicLosses.get_winding_losses();
                 errorPct = 100.0 * std::abs(actual - expectedValue) / expectedValue;
+
+                // Every model combination must produce a finite positive loss.
+                INFO(config.name << " / " << skinModelName << "+" << proximityModelName << " @ " << frequency << " Hz");
+                CHECK(std::isfinite(actual));
+                CHECK(actual > 0);
             } catch (const std::exception& e) {
                 crashed = true;
+                FAIL_CHECK(config.name << " / " << skinModelName << "+" << proximityModelName << " @ "
+                                       << frequency << " Hz threw: " << e.what());
             }
             
             // Record result
@@ -2106,17 +2148,26 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
                                 auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
                                     frequency, config.magnetizingInductance, config.temperature,
                                     config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
-                                
+
                                 WindingLosses windingLosses;
                                 auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature);
                                 double actual = ohmicLosses.get_winding_losses();
                                 double errorPct = 100.0 * std::abs(actual - expectedValue) / expectedValue;
-                                
+
                                 totalError += errorPct;
                                 validCount++;
                                 if (errorPct > maxError) maxError = errorPct;
+
+                                // Every model combination must produce a finite positive loss.
+                                INFO(config.name << " / " << hFieldName << "+" << fringingName << "+"
+                                                 << skinName << "+" << proximityName << " @ " << frequency << " Hz");
+                                CHECK(std::isfinite(actual));
+                                CHECK(actual > 0);
                             } catch (const std::exception& e) {
                                 crashCount++;
+                                FAIL_CHECK(config.name << " / " << hFieldName << "+" << fringingName << "+"
+                                                       << skinName << "+" << proximityName << " @ " << frequency
+                                                       << " Hz threw: " << e.what());
                             }
                         }
                         
