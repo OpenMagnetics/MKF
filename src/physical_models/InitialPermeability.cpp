@@ -172,6 +172,11 @@ std::map<std::string, std::string> InitialPermeability::get_initial_permeability
             }
         }
         else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::POCO) {
+            auto frequencyFactor = modifiers.get_frequency_factor();
+            if (frequencyFactor) {
+                equations["frequencyFactor"] = "(a / (1 + (f / b)^c) + d) * 0.01";
+            }
+
             auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
             if (magneticFieldDcBiasFactor) {
                 equations["magneticFieldDcBiasFactor"] = "a / (1 + (H / 79.57747 / b)^c) + d";
@@ -298,6 +303,23 @@ double InitialPermeability::get_initial_permeability_formula(CoreMaterial coreMa
             }
         }
         else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::POCO) {
+            // ABT #169: percent-of-initial rolloff fitted to the POCO catalog
+            // "Permeability vs Frequency" curves. Same logistic shape as the
+            // POCO DC-bias factor: a is the rolling-off share, d the
+            // high-frequency asymptote (a + d = 100 at DC), b the corner
+            // frequency in Hz and c the steepness.
+            auto frequencyFactor = modifiers.get_frequency_factor();
+            if (frequency && frequencyFactor) {
+                double a = frequencyFactor->get_a();
+                double b = frequencyFactor->get_b();
+                double c = frequencyFactor->get_c();
+                double d = frequencyFactor->get_d();
+                double f = frequency.value();
+                double permeabilityVariationDueToFrequency = a / (1 + pow(f / b, c)) + d;
+
+                initialPermeabilityValue *= permeabilityVariationDueToFrequency * 0.01;
+            }
+
             if (magneticFieldDcBias && modifiers.get_magnetic_field_dc_bias_factor()) {  // factor optional checked like the temperature/frequency siblings (deref of a disengaged optional is UB)
                 auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
                 double a = magneticFieldDcBiasFactor->get_a();
@@ -513,6 +535,15 @@ std::vector<PermeabilityPoint> InitialPermeability::sample_initial_permeability_
             double d = modifiers.get_frequency_factor()->get_d();
             double f = frequency;
             initialPermeabilityValue = 1.0 / (a + b * pow(f, c)) + d;
+        }
+        else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::POCO) {
+            // ABT #169: same percent-rolloff form as get_initial_permeability_formula.
+            double a = modifiers.get_frequency_factor()->get_a();
+            double b = modifiers.get_frequency_factor()->get_b();
+            double c = modifiers.get_frequency_factor()->get_c();
+            double d = modifiers.get_frequency_factor()->get_d();
+            double f = frequency;
+            initialPermeabilityValue = permeabilityPoint.get_value() * (a / (1 + pow(f / b, c)) + d) * 0.01;
         }
 
         PermeabilityPoint point;

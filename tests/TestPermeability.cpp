@@ -404,6 +404,35 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
 
+    // ABT #169: POCO NPF materials carry a fitted poco frequencyFactor (from
+    // the POCO catalog V2026 permeability-vs-frequency curves), which both
+    // makes mu_i(f) frequency-dependent and unlocks the Mueller complex-
+    // permeability derivation for materials without stored complex curves.
+    TEST_CASE("Test_Initial_Permeability_Frequency_NPF_60", "[physical-model][initial-permeability]") {
+        InitialPermeability initialPermeability;
+        std::string materialName = "NPF 60";
+        // Datasheet: ~100 % at 10 kHz, ~95 % at 1 MHz, ~80 % at 10 MHz.
+        double at10k = initialPermeability.get_initial_permeability(materialName, std::nullopt, std::nullopt, 10000);
+        double at1M = initialPermeability.get_initial_permeability(materialName, std::nullopt, std::nullopt, 1000000);
+        double at10M = initialPermeability.get_initial_permeability(materialName, std::nullopt, std::nullopt, 10000000);
+        REQUIRE_THAT(at10k, Catch::Matchers::WithinAbs(60.0, 60.0 * 0.02));
+        REQUIRE_THAT(at1M, Catch::Matchers::WithinAbs(60.0 * 0.95, 60.0 * 0.02));
+        REQUIRE_THAT(at10M, Catch::Matchers::WithinAbs(60.0 * 0.80, 60.0 * 0.02));
+    }
+
+    TEST_CASE("Test_Complex_Permeability_NPF_60", "[physical-model][complex-permeability]") {
+        ComplexPermeability complexPermeability;
+        std::string materialName = "NPF 60";
+        // Previously threw MATERIAL_DATA_MISSING; the poco frequencyFactor
+        // anchors the frequency-dependent derivation.
+        auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialName, 100000);
+        auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialName, 10000000);
+        REQUIRE(std::isfinite(complexPermeabilityValueAt100000.first));
+        REQUIRE(std::isfinite(complexPermeabilityValueAt100000.second));
+        REQUIRE(complexPermeabilityValueAt100000.first > 1);
+        REQUIRE(complexPermeabilityValueAt100000.first >= complexPermeabilityValueAt10000000.first);
+    }
+
     TEST_CASE("Test_Complex_Permeability_N49", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "N49";
