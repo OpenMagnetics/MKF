@@ -848,6 +848,16 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
             effectiveRelativePermittivityLayers = get_effective_relative_permittivity(distancesThroughLayers[index - 1], effectiveRelativePermittivityLayers, distancesThroughLayers[index], relativePermittivityLayers[index]);
         }
     }
+    // The insulation layers are collected along the winding path, not the turns'
+    // closest approach, so their summed thickness can exceed the actual
+    // surface-to-surface separation (seen on the boundary turns of a
+    // separated-winding toroidal CMC: 4.7 mm of layers across a 2.8 mm gap).
+    // The dielectric between two turns cannot be thicker than their gap — cap it,
+    // or distanceThroughAir goes negative and corrupts every downstream formula
+    // (ABT #173: negative static capacitance).
+    if (distanceThroughLayers > std::max(distanceBetweenTurns, 0.0)) {
+        distanceThroughLayers = std::max(distanceBetweenTurns, 0.0);
+    }
     double distanceThroughAir = distanceBetweenTurns - distanceThroughLayers;
 
     if (distanceBetweenTurns < 0) {
@@ -1140,8 +1150,15 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
     // Z: Second-order correction term
     double Z = 1.0 / (pow(beta, 2) - 1)*((pow(beta, 2) - 2) * V - beta / 2) - std::numbers::pi / 4;
     
-    // Y1: Combined auxiliary function with insulation thickness correction
-    double Y1 = 1.0 / zeta * (V - std::numbers::pi / 4 + 1.0 / (2 * relativePermittivityWireCoating) * pow(distanceThroughLayers / (conductingRadius + wireCoatingThickness), 2) * Z / zeta);
+    // Y1: Combined auxiliary function with insulation thickness correction.
+    // The second-order term is a perturbation in the WIRE COATING thickness δ
+    // (cf. Koch eq. 7: (1/(8εr))·(2δ/r0)² — identical at leading order to
+    // (1/(2εr))·(δ/(r0+δ))² used here). It previously plugged in
+    // distanceThroughLayers (the inter-turn insulation stack): harmless for
+    // adjacent same-layer turns (0), but with millimetre layer stacks the
+    // "correction" dominated (Z < 0) and drove the capacitance NEGATIVE
+    // (ABT #173: -0.57 pF on the boundary turns of a separated-winding CMC).
+    double Y1 = 1.0 / zeta * (V - std::numbers::pi / 4 + 1.0 / (2 * relativePermittivityWireCoating) * pow(wireCoatingThickness / (conductingRadius + wireCoatingThickness), 2) * Z / zeta);
     
     // C0: Final capacitance with 2/3 geometric factor from Albach
     double C0 = 2.0 / 3 * vacuumPermittivity * averageTurnLength * Y1;

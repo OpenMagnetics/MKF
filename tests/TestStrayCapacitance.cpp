@@ -1727,3 +1727,41 @@ TEST_CASE("Calculate stray capacitance of custom planar flyback (through-core)",
         }
     }
 }
+
+// ABT #173: the boundary turns of a separated-winding toroidal CMC (where the two
+// windings face each other across the separation gap) got a NEGATIVE static
+// capacitance (-0.57 pF on WE 744834622): the insulation layers credited between
+// those turns (4.7 mm, collected along the winding path) exceeded the actual
+// 2.8 mm gap, driving distanceThroughAir negative, and the Albach second-order
+// correction — wrongly fed the layer stack instead of the wire coating thickness —
+// dominated with Z < 0. A negative pair capacitance propagated into a negative
+// among-windings off-diagonal, which silently killed the DM resonance and turned
+// the wideband leakage tank into a bare series inductor.
+TEST_CASE("Static turn capacitances are non-negative on a separated-winding toroidal CMC", "[physical-model][stray-capacitance]") {
+    settings.reset();
+    auto testDataPath = get_test_data_path(std::source_location::current(), "cmc_redexpert_744834622.json");
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    auto magneticJson = nlohmann::json::parse(file);
+    OpenMagnetics::Magnetic magnetic(magneticJson);
+    magnetic = magnetic_autocomplete(magnetic);
+    auto coil = magnetic.get_coil();
+    auto core = magnetic.get_core();
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+
+    auto amongTurns = OpenMagnetics::StrayCapacitance().calculate_capacitance_among_turns(coil);
+    for (auto& [key, capacitance] : amongTurns) {
+        UNSCOPED_INFO("C(turn " << key.first << ", turn " << key.second << ") = " << capacitance);
+        REQUIRE(capacitance >= 0.0);
+    }
+
+    auto amongWindings = OpenMagnetics::StrayCapacitance().calculate_capacitance(coil, core).get_capacitance_among_windings().value();
+    auto w0 = coil.get_functional_description()[0].get_name();
+    auto w1 = coil.get_functional_description()[1].get_name();
+    // The adjacent-winding off-diagonal must be a physical, positive lumped capacitance
+    // (it damps/places the DM resonance and the wideband leakage tank).
+    CHECK(amongWindings[w0][w1] > 0.0);
+    CHECK(amongWindings[w0][w1] < 1e-9);
+}
