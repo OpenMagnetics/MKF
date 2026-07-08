@@ -2,6 +2,7 @@
 #include "physical_models/InitialPermeability.h"
 
 #include "support/Utils.h"
+#include <algorithm>
 #include <math.h>
 #include "support/Exceptions.h"
 
@@ -140,11 +141,13 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
     const std::string& materialNameForCache = coreMaterial.get_name();
     if (complexPermeabilityRealInterps.contains(materialNameForCache) &&
         complexPermeabilityImaginaryInterps.contains(materialNameForCache)) {
-        double cachedReal = std::max(1., complexPermeabilityRealInterps[materialNameForCache](frequency));
+        auto realSpan = complexPermeabilityRealFrequencySpans[materialNameForCache];
+        double cachedReal = std::max(1., complexPermeabilityRealInterps[materialNameForCache](std::clamp(frequency, realSpan.first, realSpan.second)));
         if (std::isnan(cachedReal)) {
             throw NaNResultException("complex Permeability real part must be a number, not NaN");
         }
-        double cachedImag = complexPermeabilityImaginaryInterps[materialNameForCache](frequency);
+        auto imaginarySpan = complexPermeabilityImaginaryFrequencySpans[materialNameForCache];
+        double cachedImag = complexPermeabilityImaginaryInterps[materialNameForCache](std::clamp(frequency, imaginarySpan.first, imaginarySpan.second));
         if (std::isnan(cachedImag)) {
             throw NaNResultException("complex Permeability imaginary part must be a number, not NaN");
         }
@@ -198,8 +201,10 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
 
         tk::spline interp(x, y, tk::spline::cspline_hermite);
         complexPermeabilityRealInterps[coreMaterial.get_name()] = interp;
+        complexPermeabilityRealFrequencySpans[coreMaterial.get_name()] = {x.front(), x.back()};
     }
-    double complexPermeabilityRealValue = std::max(1., complexPermeabilityRealInterps[coreMaterial.get_name()](frequency));
+    auto realSpan = complexPermeabilityRealFrequencySpans[coreMaterial.get_name()];
+    double complexPermeabilityRealValue = std::max(1., complexPermeabilityRealInterps[coreMaterial.get_name()](std::clamp(frequency, realSpan.first, realSpan.second)));
 
     if (std::isnan(complexPermeabilityRealValue)) {
         throw NaNResultException("complex Permeability real part must be a number, not NaN");
@@ -224,8 +229,10 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
 
         tk::spline interp(x, y, tk::spline::cspline_hermite);
         complexPermeabilityImaginaryInterps[coreMaterial.get_name()] = interp;
+        complexPermeabilityImaginaryFrequencySpans[coreMaterial.get_name()] = {x.front(), x.back()};
     }
-    double complexPermeabilityImaginaryValue = complexPermeabilityImaginaryInterps[coreMaterial.get_name()](frequency);
+    auto imaginarySpan = complexPermeabilityImaginaryFrequencySpans[coreMaterial.get_name()];
+    double complexPermeabilityImaginaryValue = complexPermeabilityImaginaryInterps[coreMaterial.get_name()](std::clamp(frequency, imaginarySpan.first, imaginarySpan.second));
 
     if (std::isnan(complexPermeabilityImaginaryValue)) {
         throw NaNResultException("complex Permeability imaginary part must be a number, not NaN");

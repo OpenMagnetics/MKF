@@ -257,6 +257,21 @@ WidebandImpedanceModel Impedance::build_wideband_impedance_model(Magnetic magnet
     return model;
 }
 
+WidebandImpedanceModel Impedance::build_common_mode_impedance_model(Magnetic magnetic, double temperature) {
+    // All windings driven in parallel (the CM measurement): the leakage flux
+    // between them is not excited, so the terminal impedance is the magnetizing
+    // tank alone. The paralleled windings' series resistance (mΩ) is negligible
+    // against the µ''-damped magnetizing branch, so no extra loss term is added.
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+
+    WidebandImpedanceModel model;
+    model.coreMaterial = core.resolve_material();
+    model.temperature = temperature;
+    model.tanks.push_back(build_magnetizing_tank(core, coil));
+    return model;
+}
+
 std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double frequency, double temperature) {
     // Single-point common-mode/terminal impedance: just the magnetizing tank (the
     // first resonance). The wideband sweep adds the leakage tanks on top of this.

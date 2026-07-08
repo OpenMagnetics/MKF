@@ -59,6 +59,36 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
     return Curve2D(frequencies, impedances, title);
 }
 
+Curve2D Sweeper::sweep_common_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw ModelNotAvailableException("Unknown spaced array mode");
+    }
+
+    // Common mode drives all windings in parallel, so the leakage between them is
+    // not excited and the terminal impedance is the magnetizing tank alone: the
+    // air-cored inductance times the core complex permeability µ(f) (µ'' is the
+    // damping), shunted by the winding self-capacitance. The frequency-independent
+    // building blocks (reluctance, stray capacitance) are computed ONCE here; only
+    // µ(f) and the complex arithmetic run per point.
+    auto impedanceModel = OpenMagnetics::Impedance();
+    auto model = impedanceModel.build_common_mode_impedance_model(magnetic);
+
+    std::vector<double> impedances;
+    impedances.reserve(frequencies.size());
+    for (auto frequency : frequencies) {
+        impedances.push_back(abs(impedanceModel.impedance_from_model(model, frequency)));
+    }
+
+    return Curve2D(frequencies, impedances, title);
+}
+
 Curve2D Sweeper::sweep_differential_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {

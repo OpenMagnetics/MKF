@@ -108,6 +108,16 @@ class Impedance {
     // cheaply at each frequency. A sweep must call the first once and the second
     // per point. referenceFrequency is where the (frequency-flat) leakage is taken.
     WidebandImpedanceModel build_wideband_impedance_model(Magnetic magnetic, double referenceFrequency, double temperature = Defaults().ambientTemperature, bool fast = true);
+    // Common-mode impedance of a coupled magnetic (e.g. a common-mode choke): the
+    // datasheet/REDEXPERT CM measurement drives all windings in parallel, so the
+    // leakage between them carries no net ampere-turns and NO leakage resonance
+    // appears at the terminals — the CM impedance is the magnetizing tank alone
+    // (core µ(f), damped by µ''(f), in parallel with the winding self-capacitance).
+    // Contrast with build_wideband_impedance_model (one winding driven, the others
+    // floating), whose leakage tanks model the higher self-resonances of THAT
+    // measurement; serving that curve as "CM impedance" adds a near-undamped
+    // leakage spike that measured CM curves do not show (ABT #167).
+    WidebandImpedanceModel build_common_mode_impedance_model(Magnetic magnetic, double temperature = Defaults().ambientTemperature);
     std::complex<double> impedance_from_model(const WidebandImpedanceModel& model, double frequency);
     double calculate_q_factor(Magnetic magnetic, double frequency, double temperature = Defaults().ambientTemperature);
     double calculate_q_factor(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);

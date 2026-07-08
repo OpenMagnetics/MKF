@@ -19,6 +19,10 @@ class Sweeper {
     // resistance (analytic, cheap). fast=false additionally includes proximity
     // effect (field-based, slower) for a more accurate leakage-resonance damping.
     static Curve2D sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Impedance over frequency", bool fast = true);
+    // Common-mode impedance (all windings driven in parallel — the CMC datasheet /
+    // REDEXPERT CM measurement): the magnetizing tank alone, no leakage resonance.
+    // Use this, not sweep_impedance_over_frequency, for a choke's CM curve (ABT #167).
+    static Curve2D sweep_common_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Common-mode impedance over frequency");
     static Curve2D sweep_differential_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Differential-mode impedance over frequency");
     static Curve2D sweep_q_factor_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Impedance over frequency");
     static Curve2D sweep_magnetizing_inductance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature = defaults.ambientTemperature, std::string mode="log", std::string title = "Magnetizing Inductance over frequency");

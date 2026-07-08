@@ -1,7 +1,10 @@
 #include <source_location>
+#include <algorithm>
+#include <fstream>
 #include "support/Painter.h"
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/ComplexPermeability.h"
 #include "physical_models/StrayCapacitance.h"
 #include "support/Settings.h"
 #include "TestingUtils.h"
@@ -415,6 +418,72 @@ TEST_CASE("Test_Through_Core_Inter_Winding_Capacitance", "[physical-model][imped
     REQUIRE(throughCore > 0.0);
     REQUIRE(throughCore < 1e-9);             // physically bounded (sub-nF), no divergence
     REQUIRE(throughCore < naiveSeries);      // potential weighting reduces vs the naive sum
+}
+
+// ABT #167: the datasheet/REDEXPERT "typical impedance" of a common-mode choke is
+// the CM measurement (windings driven in parallel), which excites no leakage
+// resonance. sweep_impedance_over_frequency (one winding driven, other floating)
+// adds a leakage tank damped only by the mΩ winding resistance, producing a
+// near-undamped MΩ spike that measured CM curves do not show. The CM sweep must
+// place its single (magnetizing) resonance near the measured one.
+// Reference: WE 744834622 measured CM peak 56 kOhm at 0.299 MHz (REDEXPERT .s4p).
+TEST_CASE("Test_Impedance_Common_Mode_No_Leakage_Spike", "[physical-model][impedance]") {
+    settings.reset();
+    auto testDataPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_redexpert_744834405.json");
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    auto magneticJson = nlohmann::json::parse(file);
+    OpenMagnetics::Magnetic magnetic(magneticJson);
+    magnetic = magnetic_autocomplete(magnetic);
+
+    auto curve = Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, 10e3, 1e9, 300);
+    auto frequencies = curve.get_x_points();
+    auto impedances = curve.get_y_points();
+
+    size_t peakIndex = 0;
+    for (size_t i = 0; i < impedances.size(); ++i) {
+        if (impedances[i] > impedances[peakIndex]) {
+            peakIndex = i;
+        }
+    }
+
+    // Single magnetizing resonance near the measured 0.299 MHz (material data is
+    // reverse-engineered, so the window is generous but excludes the 1.68 MHz
+    // leakage-tank artifact the terminal sweep used to serve as the peak).
+    CHECK(frequencies[peakIndex] > 0.15e6);
+    CHECK(frequencies[peakIndex] < 0.7e6);
+    // No near-undamped leakage spike (the terminal sweep peaked at 1.17 MOhm).
+    CHECK(impedances[peakIndex] < 500e3);
+    // Capacitive rolloff after the resonance: the top decade must be far below the peak.
+    CHECK(impedances.back() < 0.01 * impedances[peakIndex]);
+}
+
+// ABT #167: complex-permeability splines are interpolators — past the last measured
+// point they diverged polynomially (A10's data ends at 1.3 MHz; µ'' extrapolated to
+// -2.5e6 at 1 GHz, i.e. an ACTIVE element), making CMC impedance sweeps rise
+// monotonically to 1 GHz instead of rolling off. Out-of-span queries must clamp to
+// the nearest measured endpoint: µ'' stays non-negative and the CM curve rolls off.
+TEST_CASE("Test_Impedance_Complex_Permeability_No_Extrapolation", "[physical-model][impedance]") {
+    settings.reset();
+    OpenMagnetics::ComplexPermeability complexPermeabilityModel;
+    for (double frequency : {2e6, 1e7, 1e8, 1e9}) {
+        auto [real, imaginary] = complexPermeabilityModel.get_complex_permeability(std::string("A10"), frequency);
+        CHECK(real >= 1.0);
+        CHECK(imaginary >= 0.0);
+    }
+
+    auto testDataPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_redexpert_744834622.json");
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    auto magneticJson = nlohmann::json::parse(file);
+    OpenMagnetics::Magnetic magnetic(magneticJson);
+    magnetic = magnetic_autocomplete(magnetic);
+
+    auto curve = Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, 10e3, 1e9, 300);
+    auto impedances = curve.get_y_points();
+    double peak = *std::max_element(impedances.begin(), impedances.end());
+    // Used to rise monotonically to the 1 GHz end of the sweep; now it must roll off.
+    CHECK(impedances.back() < 0.2 * peak);
 }
 
 }  // namespace
