@@ -15,6 +15,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -3301,6 +3302,77 @@ TEST_CASE("MagneticFluxDensity_From_Losses_Micrometals", "[physical-model][core-
     auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, excitation.get_frequency(), temperature, coreLosses.get_core_losses()); 
     double magneticFluxDensityFromCoreLossesPeak = magneticFluxDensityFromCoreLosses.get_processed().value().get_peak().value();
     REQUIRE_THAT(magneticFluxDensity.get_processed().value().get_peak().value(), Catch::Matchers::WithinAbs(magneticFluxDensityFromCoreLossesPeak, magneticFluxDensityFromCoreLossesPeak * maxError));
+}
+
+// ABT #168: the fitter must recover a known synthetic law and must throw on
+// under-determined inputs instead of silently returning seed coefficients.
+TEST_CASE("Calculate_Steinmetz_Coefficients_Synthetic", "[physical-model][core-losses][steinmetz-fit]") {
+    auto makePoint = [](double frequency, double peak, double temperature) {
+        json pointJson;
+        pointJson["temperature"] = temperature;
+        pointJson["value"] = 2.0 * pow(frequency, 1.5) * pow(peak, 2.7);
+        pointJson["origin"] = "manufacturer";
+        pointJson["magneticFluxDensity"]["frequency"] = frequency;
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["label"] = "Sinusoidal";
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["offset"] = 0;
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["peak"] = peak;
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["peakToPeak"] = 2 * peak;
+        return VolumetricLossesPoint(pointJson);
+    };
+    std::vector<double> testFrequencies = {25000, 50000, 100000, 200000, 400000};
+    std::vector<double> testPeaks = {0.025, 0.05, 0.1, 0.2, 0.3};
+
+    SECTION("Single-temperature grid recovers k, alpha, beta (reduced model)") {
+        std::vector<VolumetricLossesPoint> data;
+        for (auto frequency : testFrequencies) {
+            for (auto peak : testPeaks) {
+                data.push_back(makePoint(frequency, peak, 25));
+            }
+        }
+        auto [coefficientsPerRange, errorPerRange] = OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{10000, 1000000}});
+        REQUIRE(coefficientsPerRange.size() == 1);
+        CHECK_THAT(coefficientsPerRange[0].get_k(), Catch::Matchers::WithinRel(2.0, 0.02));
+        CHECK_THAT(coefficientsPerRange[0].get_alpha(), Catch::Matchers::WithinRel(1.5, 0.02));
+        CHECK_THAT(coefficientsPerRange[0].get_beta(), Catch::Matchers::WithinRel(2.7, 0.02));
+        REQUIRE(errorPerRange[0] < 0.02);
+    }
+
+    SECTION("Two-temperature grid recovers k, alpha, beta") {
+        std::vector<VolumetricLossesPoint> data;
+        for (auto temperature : {25.0, 100.0}) {
+            for (auto frequency : testFrequencies) {
+                for (auto peak : testPeaks) {
+                    data.push_back(makePoint(frequency, peak, temperature));
+                }
+            }
+        }
+        auto [coefficientsPerRange, errorPerRange] = OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{10000, 1000000}});
+        REQUIRE(coefficientsPerRange.size() == 1);
+        CHECK_THAT(coefficientsPerRange[0].get_k(), Catch::Matchers::WithinRel(2.0, 0.02));
+        CHECK_THAT(coefficientsPerRange[0].get_alpha(), Catch::Matchers::WithinRel(1.5, 0.02));
+        CHECK_THAT(coefficientsPerRange[0].get_beta(), Catch::Matchers::WithinRel(2.7, 0.02));
+        REQUIRE(errorPerRange[0] < 0.02);
+    }
+
+    SECTION("Single frequency throws (alpha under-determined)") {
+        std::vector<VolumetricLossesPoint> data;
+        for (auto peak : testPeaks) {
+            data.push_back(makePoint(100000, peak, 25));
+        }
+        REQUIRE_THROWS_WITH(
+            OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{10000, 1000000}}),
+            Catch::Matchers::ContainsSubstring("same frequency"));
+    }
+
+    SECTION("Single flux density throws (beta under-determined)") {
+        std::vector<VolumetricLossesPoint> data;
+        for (auto frequency : testFrequencies) {
+            data.push_back(makePoint(frequency, 0.1, 25));
+        }
+        REQUIRE_THROWS_WITH(
+            OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{10000, 1000000}}),
+            Catch::Matchers::ContainsSubstring("same flux density"));
+    }
 }
 
 TEST_CASE("Calculate_Steinmetz_Coefficients", "[physical-model][core-losses]") {

@@ -539,6 +539,35 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
         }
     }
 
+    // ABT #168: refuse under-determined fits loudly instead of returning
+    // whatever the optimizer leaves near its seed values. Alpha needs
+    // frequency variation and beta needs flux-density variation within each
+    // fitted range.
+    for (size_t chunkIndex = 0; chunkIndex < volumetricLossesChunks.size(); ++chunkIndex) {
+        std::vector<double> distinctFrequencies;
+        std::vector<double> distinctFluxDensities;
+        for (auto& point : volumetricLossesChunks[chunkIndex]) {
+            double frequency = point.get_magnetic_flux_density().get_frequency();
+            double peak = point.get_magnetic_flux_density().get_magnetic_flux_density()->get_processed()->get_peak().value();
+            if (std::find(distinctFrequencies.begin(), distinctFrequencies.end(), frequency) == distinctFrequencies.end()) {
+                distinctFrequencies.push_back(frequency);
+            }
+            if (std::find(distinctFluxDensities.begin(), distinctFluxDensities.end(), peak) == distinctFluxDensities.end()) {
+                distinctFluxDensities.push_back(peak);
+            }
+        }
+        if (distinctFrequencies.size() < 2) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                "Cannot fit Steinmetz alpha for range [" + std::to_string(ranges[chunkIndex].first) + ", " + std::to_string(ranges[chunkIndex].second) +
+                "] Hz: all its loss points share the same frequency. Provide points at two or more frequencies per range.");
+        }
+        if (distinctFluxDensities.size() < 2) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                "Cannot fit Steinmetz beta for range [" + std::to_string(ranges[chunkIndex].first) + ", " + std::to_string(ranges[chunkIndex].second) +
+                "] Hz: all its loss points share the same flux density. Provide points at two or more flux densities per range.");
+        }
+    }
+
     for (size_t chunkIndex = 0; chunkIndex < volumetricLossesChunks.size(); ++chunkIndex) {
         double bestError = DBL_MAX;
         double initialState = 10;
@@ -575,7 +604,15 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 }
             }
 
-            if (numberInputs == 3 && numberElements100C >= 3) {
+            if (numberInputs == 2) {
+                // ABT #168: single-temperature inputs are packed with stride 2
+                // (log f, log B), but steinmetz_equation_with_temperature_func
+                // reads with stride 3 — the optimizer fitted misaligned garbage
+                // and silently returned near-seed coefficients. Use the
+                // stride-2 objective, which fits the reduced k/alpha/beta model.
+                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_func, coefficients.data(), volumetricLossesArray.data(), numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs.data()));
+            }
+            else if (numberInputs == 3 && numberElements100C >= 3) {
                 std::vector<double> tempCoefficients(3);
                 for (size_t index = 0; index < 3; ++index) {
                     tempCoefficients[index] = initialState;
