@@ -96,6 +96,7 @@ namespace OpenMagnetics {
 
         _useOnlyCoresInStock = true;
         _usePowderCores = true;
+        _corePerColumnWindingWindows = false;
         _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
         _nanocrystallineStackingFactor = 0.80;
     _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
@@ -348,6 +349,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_use_powder_cores(bool value) {
         _usePowderCores = value;
+    }
+
+    bool Settings::get_core_per_column_winding_windows() const {
+        return _corePerColumnWindingWindows;
+    }
+    void Settings::set_core_per_column_winding_windows(bool value) {
+        _corePerColumnWindingWindows = value;
     }
 
     EffectiveParameterStandard Settings::get_effective_parameter_standard() const {

@@ -671,6 +671,11 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
             windingWindowElement.set_coordinates(std::vector<double>({bobbinWindingWindowDimensions[0], 0, 0}));
         }
         windingWindowElement.set_shape(bobbinWindingWindowShape);
+        // Multi-column winding support: carry the window->column edge from the core
+        // window so coil placement can resolve which column this bobbin window wraps.
+        if (coreWindingWindow.get_column()) {
+            windingWindowElement.set_column(coreWindingWindow.get_column());
+        }
 
         if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
             if ((windingWindowElement.get_width().value() < 0) || (windingWindowElement.get_width().value() > 1)) {

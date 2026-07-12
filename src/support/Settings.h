@@ -53,6 +53,13 @@ class Settings
 
         bool _useOnlyCoresInStock = true;
         bool _usePowderCores = true;
+        // When true, Core::process_data emits one winding-window entry per wound-column
+        // candidate: window[0] keeps its historical geometry and gains the explicit `column`
+        // edge, and every other window-adjacent column gets an entry with the geometry of
+        // its adjacent window region and its own `column`. Default off: the processed
+        // description stays byte-identical to the historical single-window output (no
+        // `column` stamped), so existing consumers and persisted data are unaffected.
+        bool _corePerColumnWindingWindows = false;
         EffectiveParameterStandard _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
         double _nanocrystallineStackingFactor = 0.80;  // Stacking factor for tape-wound nanocrystalline cores (0.75-0.85 typical)
 
@@ -273,6 +280,9 @@ class Settings
 
         bool get_use_powder_cores() const;
         void set_use_powder_cores(bool value);
+
+        bool get_core_per_column_winding_windows() const;
+        void set_core_per_column_winding_windows(bool value);
 
     EffectiveParameterStandard get_effective_parameter_standard() const;
     void set_effective_parameter_standard(EffectiveParameterStandard value);

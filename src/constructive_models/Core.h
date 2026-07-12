@@ -61,6 +61,15 @@ class Core : public MAS::MagneticCore {
     std::vector<ColumnElement> get_columns() const;
     std::vector<WindingWindowElement> get_winding_windows() const;
     WindingWindowElement get_winding_window(size_t windingWindowIndex = 0) const;
+    // Index of the main column: the first CENTRAL column, or the first column if there
+    // is no central one (e.g. U/UT cores). This is the column the historical single
+    // winding window wraps.
+    size_t get_main_column_index() const;
+    // Index of the column the turns placed in the given winding window are wound
+    // around: the window's `column` edge when present, else the main column (the
+    // schema-documented default). Throws if the window index or a stamped column
+    // index is out of range.
+    size_t get_winding_window_column_index(size_t windingWindowIndex = 0) const;
     double get_depth() const;
     double get_height() const;
     double get_width() const;

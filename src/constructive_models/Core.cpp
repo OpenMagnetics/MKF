@@ -1257,6 +1257,52 @@ double Core::get_coating_relative_permittivity() const {
     return material.get_relative_permittivity().value();
 }
 
+// Multi-column winding support: with the per-column-winding-windows setting on, the
+// processed description carries one winding-window entry per wound-column candidate
+// instead of only the historical main-column window. Window 0 keeps its historical
+// geometry and is stamped with the explicit window->column edge; every other
+// x-displaced column gets an entry with the geometry of the window region on its side
+// of the main column and its own column index (for shapes like U whose single window
+// region is shared by both legs, the extra entry duplicates the region with a
+// different column). Columns displaced only in z (the EP family's back leg) have no
+// representable window region in the 2D cross-section and are skipped.
+static void appendPerColumnWindingWindows(CoreProcessedDescription& processedDescription) {
+    auto& windingWindows = processedDescription.get_mutable_winding_windows();
+    auto columns = processedDescription.get_columns();
+    if (columns.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core has no columns");
+    }
+    size_t mainColumnIndex = 0;
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        if (columns[columnIndex].get_type() == ColumnType::CENTRAL) {
+            mainColumnIndex = columnIndex;
+            break;
+        }
+    }
+    auto mainWindow = windingWindows[0];
+    windingWindows[0].set_column(static_cast<int64_t>(mainColumnIndex));
+    if (!mainWindow.get_coordinates()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                    "Main winding window has no coordinates, cannot place per-column winding windows");
+    }
+    auto mainWindowCoordinates = mainWindow.get_coordinates().value();
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        if (columnIndex == mainColumnIndex) {
+            continue;
+        }
+        double columnX = columns[columnIndex].get_coordinates()[0];
+        if (columnX == 0) {
+            continue;
+        }
+        WindingWindowElement additionalWindow = mainWindow;
+        auto additionalWindowCoordinates = mainWindowCoordinates;
+        additionalWindowCoordinates[0] = (columnX < 0? -1.0 : 1.0) * std::abs(mainWindowCoordinates[0]);
+        additionalWindow.set_coordinates(additionalWindowCoordinates);
+        additionalWindow.set_column(static_cast<int64_t>(columnIndex));
+        windingWindows.push_back(additionalWindow);
+    }
+}
+
 void Core::process_data() {
     // If the shape is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(get_functional_description().get_shape())) {
@@ -1330,6 +1376,9 @@ void Core::process_data() {
                 windingWindow.set_area(std::numbers::pi * pow(coatedRadialHeight, 2));
             }
             processedDescription.get_mutable_winding_windows().push_back(windingWindow);
+            if (settings.get_core_per_column_winding_windows()) {
+                appendPerColumnWindingWindows(processedDescription);
+            }
             processedDescription.set_depth(corePiece->get_depth());
             processedDescription.set_height(corePiece->get_height());
             processedDescription.set_width(corePiece->get_width());
@@ -1351,6 +1400,9 @@ void Core::process_data() {
             coreWindingWindow.set_area(2 * coreWindingWindow.get_area().value());
             coreWindingWindow.set_height(2 * coreWindingWindow.get_height().value());
             processedDescription.get_mutable_winding_windows().push_back(coreWindingWindow);
+            if (settings.get_core_per_column_winding_windows()) {
+                appendPerColumnWindingWindows(processedDescription);
+            }
             processedDescription.set_depth(corePiece->get_depth());
             processedDescription.set_height(corePiece->get_height() * 2);
             processedDescription.set_width(corePiece->get_width());
@@ -1367,6 +1419,9 @@ void Core::process_data() {
             coreWindingWindow.set_area(2 * coreWindingWindow.get_area().value());
             coreWindingWindow.set_height(2 * coreWindingWindow.get_height().value());
             processedDescription.get_mutable_winding_windows().push_back(coreWindingWindow);
+            if (settings.get_core_per_column_winding_windows()) {
+                appendPerColumnWindingWindows(processedDescription);
+            }
             processedDescription.set_depth(corePiece->get_depth());
             processedDescription.set_height(corePiece->get_height() * 2);
             processedDescription.set_width(corePiece->get_width());
@@ -1588,6 +1643,45 @@ std::vector<WindingWindowElement> Core::get_winding_windows() const {
     else {
         return std::vector<WindingWindowElement>();
     }
+}
+
+size_t Core::get_main_column_index() const {
+    if (!get_processed_description()) {
+        throw CoreNotProcessedException("Core is not processed");
+    }
+    auto columns = get_processed_description().value().get_columns();
+    if (columns.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core has no columns");
+    }
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        if (columns[columnIndex].get_type() == ColumnType::CENTRAL) {
+            return columnIndex;
+        }
+    }
+    return 0;
+}
+
+size_t Core::get_winding_window_column_index(size_t windingWindowIndex) const {
+    if (!get_processed_description()) {
+        throw CoreNotProcessedException("Core is not processed");
+    }
+    auto windingWindows = get_processed_description().value().get_winding_windows();
+    if (windingWindowIndex >= windingWindows.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                    "Winding window index " + std::to_string(windingWindowIndex) + " out of range: core has " +
+                                        std::to_string(windingWindows.size()) + " winding windows");
+    }
+    auto column = windingWindows[windingWindowIndex].get_column();
+    if (!column) {
+        return get_main_column_index();
+    }
+    auto columns = get_processed_description().value().get_columns();
+    if (column.value() < 0 || static_cast<size_t>(column.value()) >= columns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                    "Winding window " + std::to_string(windingWindowIndex) + " references column " +
+                                        std::to_string(column.value()) + " but core has " + std::to_string(columns.size()) + " columns");
+    }
+    return static_cast<size_t>(column.value());
 }
 
 std::string Core::get_material_family() const {
