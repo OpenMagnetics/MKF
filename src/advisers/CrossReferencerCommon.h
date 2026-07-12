@@ -228,7 +228,8 @@ class CrossReferencerFilterBase {
 
     void add_scoring(std::string name, FilterEnum filter, double scoring) {
         if (std::isnan(scoring)) {
-            throw std::invalid_argument("scoring cannot be nan");
+            throw std::invalid_argument("scoring cannot be nan (candidate: " + name + ", filter index: " +
+                                        std::to_string(static_cast<int>(filter)) + ")");
         }
         if (scoring != -1) {
             if (_validScorings) (*_validScorings)[filter][name] = true;

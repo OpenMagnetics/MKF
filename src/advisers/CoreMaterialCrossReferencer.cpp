@@ -188,28 +188,47 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     std::vector<double> newScoring;
 
     double referenceCurieTemperatureWithTemperature = Core::get_curie_temperature(referenceCoreMaterial);
+    if (std::isnan(referenceCurieTemperatureWithTemperature)) {
+        // The reference material has no Curie temperature in the database. Rather than
+        // abort the whole cross-reference, skip this dimension and let the remaining
+        // dimensions rank the alternatives — same contract as the volumetric-losses
+        // filter. Logged, scoped pass-through.
+        logEntry("CoreMaterialCrossReferencer: reference material '" + referenceCoreMaterial.get_name() +
+                     "' has no Curie temperature; skipping the Curie dimension and cross-referencing on "
+                     "the remaining filters",
+                 "CoreMaterialCrossReferencer");
+        return *unfilteredCoreMaterials;
+    }
     add_scored_value("Reference", CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE, referenceCurieTemperatureWithTemperature);
 
-
+    std::vector<std::pair<CoreMaterial, double>> filteredCoreMaterialsWithScoring;
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
 
         double curieTemperatureWithTemperature = Core::get_curie_temperature(coreMaterial);
+        if (std::isnan(curieTemperatureWithTemperature)) {
+            // No Curie temperature in the database for this candidate (e.g. Poco NPU
+            // powders): cull it, matching the volumetric-losses filter — a NaN score
+            // would abort the whole run and a DBL_MAX score would blow up the min-max
+            // normalization for every other candidate in the batch.
+            continue;
+        }
 
         double scoring = fabs(referenceCurieTemperatureWithTemperature - curieTemperatureWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE, scoring);
         add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE, curieTemperatureWithTemperature);
+        filteredCoreMaterialsWithScoring.push_back((*unfilteredCoreMaterials)[coreMaterialIndex]);
     }
 
-    if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    if (filteredCoreMaterialsWithScoring.size() != newScoring.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of filteredCoreMaterials: " + std::to_string(filteredCoreMaterialsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
-    if ((*unfilteredCoreMaterials).size() > 0) {
-        normalize_scoring(unfilteredCoreMaterials, &newScoring, weight, (*_filterConfiguration)[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE]);
+    if (filteredCoreMaterialsWithScoring.size() > 0) {
+        normalize_scoring(&filteredCoreMaterialsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE]);
     }
-    return *unfilteredCoreMaterials;
+    return filteredCoreMaterialsWithScoring;
 }
 
 // CMCR-OPT-1 NOTE: This computes losses at 25 (B,f) points per material.
