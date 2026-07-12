@@ -2569,6 +2569,11 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
         bobbin.set_processed_description(processedDescription);
     }
     magnetic.get_mutable_coil().set_bobbin(bobbin);
+    // Multi-column winding support: give the coil the core columns so turn lengths
+    // around non-main columns can be computed when placement uses non-main windows.
+    if (magnetic.get_mutable_core().get_processed_description()) {
+        magnetic.get_mutable_coil().set_core_columns(magnetic.get_mutable_core().get_processed_description()->get_columns());
+    }
 
     if (!magnetic.get_mutable_coil().get_turns_description()) {
         if (configuration.contains("interleavingLevel")) {

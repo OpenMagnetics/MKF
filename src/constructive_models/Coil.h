@@ -107,6 +107,17 @@ struct ConnectionReservedSpace {
     bool isTerminal = false;
 };
 
+// The column a section's turns are wound around, in the winding frame (+x side of
+// the main column). Follows the bobbin scalar convention: columnWidth/columnDepth are
+// HALF the physical column dimension plus any bobbin/coating thickness, and axisX is
+// the x-coordinate of the column's axis (0 for the main column).
+struct WoundColumnFrame {
+    MAS::ColumnShape shape;
+    double columnWidth;
+    double columnDepth;
+    double axisX;
+};
+
 class Coil : public MAS::Coil {
     private:
         std::map<std::pair<size_t, size_t>, Section> _insulationSections;
@@ -142,6 +153,13 @@ class Coil : public MAS::Coil {
         size_t _currentRepetitions = 1;
         bool _strict = true;
         bool _bobbin_resolved = false;
+        // Multi-column winding support: the core's columns, injected via
+        // set_core_columns by callers that hold the core (autocomplete, advisers,
+        // tests). Needed to compute turn lengths around non-main columns — the
+        // bobbin only carries the main column's scalar dimensions. Transient
+        // (not part of the MAS coil); winding a section placed in a non-main
+        // winding window without it throws.
+        std::optional<std::vector<ColumnElement>> _coreColumns;
         Bobbin _bobbin;
         BobbinDataOrNameUnion bobbin;
         std::vector<Winding> functional_description;
@@ -169,10 +187,31 @@ class Coil : public MAS::Coil {
         // bobbins (all windings placed in column 0 by default — call
         // assign_windings_to_columns() to override).
         bool create_default_groups(Bobbin bobbin, WiringTechnology coilType = WiringTechnology::WOUND, double coreToLayerDistance = 0);
-        // Look up which winding window a group is anchored to, by matching
-        // the group's coordinates against each winding window. Returns 0 if
-        // no match (safe fallback for single-column behaviour).
+        // Look up which winding window a group is anchored to: the group's
+        // explicit windingWindow reference when present, else by matching the
+        // group's coordinates against each winding window. Returns 0 for
+        // single-window bobbins; throws for multi-window bobbins when the
+        // group cannot be resolved (a silent 0 would wind into the wrong
+        // window).
         size_t find_window_index_for_group(const std::string& groupName) const;
+        // Winding window a section is placed in: the section's explicit
+        // windingWindow reference when present, else its group's, else 0.
+        size_t resolve_section_winding_window_index(const Section& section) const;
+        // Column frame turns of the given section wrap around, in the winding
+        // frame. Window 0 resolves to the historical bobbin column scalars;
+        // other windows resolve their column edge against the core columns
+        // provided via set_core_columns (throws if those are missing).
+        WoundColumnFrame get_wound_column_frame_for_section(const std::string& sectionName);
+        // Length of one turn at radial position turnX wrapped around the given
+        // column frame; nullopt when the geometry is invalid (negative length),
+        // matching the winder's historical soft-failure.
+        std::optional<double> get_turn_length_in_frame(const WoundColumnFrame& frame, double turnX);
+        // Multi-column winding support: every group is wound in a window-local
+        // frame on the +x side of the main column, so the whole section/layer/
+        // turn machinery keeps a single geometry. This final winding step
+        // mirrors the elements of groups whose window sits on the negative-x
+        // side into their real position.
+        void apply_group_window_sides();
 
     public:
         // Distribute windings across the bobbin's winding windows. Creates one
@@ -183,6 +222,11 @@ class Coil : public MAS::Coil {
         // groupsDescription. Must be called BEFORE wind_by_sections() if you
         // want non-default column placement.
         void assign_windings_to_columns(const std::vector<std::vector<size_t>>& windingIndicesPerColumn);
+        // Multi-column winding support: inject the core's columns so turn lengths
+        // around non-main columns can be computed (the bobbin only describes the
+        // main column). Callers that hold the core (autocomplete, advisers) must
+        // call this before winding a coil whose placement uses non-main windows.
+        void set_core_columns(std::vector<ColumnElement> columns) { _coreColumns = columns; }
         bool wind_by_planar_sections(std::vector<size_t> stackUp, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
         bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);
@@ -224,7 +268,10 @@ class Coil : public MAS::Coil {
         void equalize_margins(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation);
 
         std::vector<double> get_proportion_per_winding_based_on_wires();
-        void apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation);
+        // sectionIndexOffset: flat offset of this group's first ordered section in
+        // _marginsPerSection (margins are indexed flat across all groups in winding
+        // order; single-group coils pass 0).
+        void apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation, size_t sectionIndexOffset = 0);
         std::vector<double> get_aligned_section_dimensions_rectangular_window(size_t sectionIndex);
         std::vector<double> get_aligned_section_dimensions_round_window(size_t sectionIndex);
         size_t convert_conduction_section_index_to_global(size_t conductionSectionIndex);

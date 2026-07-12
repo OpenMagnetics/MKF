@@ -116,3 +116,119 @@ TEST_CASE("MultiColumnWindows_QuickBobbin_PropagatesColumnEdge", "[constructive-
                   coreWindingWindows[windowIndex].get_coordinates().value()[0] > 0);
     }
 }
+
+TEST_CASE("MultiColumnWinding_ECore_PrimaryCentral_SecondaryLateral", "[constructive-model][coil][multi-column][smoke-test]") {
+    auto& settings = Settings::GetInstance();
+    settings.set_core_per_column_winding_windows(true);
+    auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+    auto columns = core.get_processed_description()->get_columns();
+    auto coreWindingWindows = core.get_processed_description()->get_winding_windows();
+    REQUIRE(coreWindingWindows.size() == 3);
+
+    json coilJson;
+    json bobbinJson;
+    to_json(bobbinJson, bobbin);
+    coilJson["bobbin"] = bobbinJson;
+    coilJson["functionalDescription"] = json::array();
+    coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
+                                                     {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+    coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                     {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+
+    OpenMagnetics::Coil coil(coilJson, false);
+    // Place the secondary in the left lateral window (index 2: mirrored region, left lateral column).
+    coil.get_mutable_functional_description()[1].set_winding_window(2);
+    coil.set_core_columns(columns);
+    REQUIRE(coil.wind());
+
+    REQUIRE(coil.get_sections_description());
+    REQUIRE(coil.get_layers_description());
+    REQUIRE(coil.get_turns_description());
+
+    size_t lateralColumnIndex = static_cast<size_t>(coreWindingWindows[2].get_column().value());
+    auto lateralColumn = columns[lateralColumnIndex];
+    REQUIRE(lateralColumn.get_type() == ColumnType::LATERAL);
+    REQUIRE(lateralColumn.get_coordinates()[0] < 0);
+
+    // Sections: primary in window 0 (positive x), secondary mirrored into the left window.
+    auto woundSections = coil.get_sections_description().value();
+    for (auto& section : woundSections) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        auto windingName = section.get_partial_windings()[0].get_winding();
+        if (windingName == "Primary") {
+            CHECK(section.get_coordinates()[0] > 0);
+        }
+        else {
+            REQUIRE(section.get_winding_window());
+            CHECK(section.get_winding_window().value() == 2);
+            CHECK(section.get_coordinates()[0] < 0);
+        }
+    }
+
+    // Turns: all present, secondary turns wrap the lateral column with the matching perimeter.
+    size_t primaryTurns = 0;
+    size_t secondaryTurns = 0;
+    double lateralColumnAxisX = std::abs(lateralColumn.get_coordinates()[0]);
+    double lateralHalfWidth = lateralColumn.get_width() / 2;
+    double lateralHalfDepth = lateralColumn.get_depth() / 2;
+    auto woundTurns = coil.get_turns_description().value();
+    for (auto& turn : woundTurns) {
+        if (turn.get_winding() == "Primary") {
+            primaryTurns++;
+            CHECK(turn.get_coordinates()[0] > 0);
+            CHECK(turn.get_length() > 0);
+        }
+        else {
+            secondaryTurns++;
+            CHECK(turn.get_coordinates()[0] < 0);
+            double radius = std::abs(std::abs(turn.get_coordinates()[0]) - lateralColumnAxisX);
+            double expectedLength = 4 * lateralHalfDepth + 4 * lateralHalfWidth + 2 * std::numbers::pi * (radius - lateralHalfWidth);
+            CHECK_THAT(turn.get_length(), Catch::Matchers::WithinRel(expectedLength, 1e-6));
+            // Mirrored turns are wound the opposite way around their column.
+            REQUIRE(turn.get_orientation());
+            CHECK(turn.get_orientation().value() == TurnOrientation::COUNTER_CLOCKWISE);
+        }
+    }
+    CHECK(primaryTurns == 20);
+    CHECK(secondaryTurns == 10);
+}
+
+TEST_CASE("MultiColumnWinding_DefaultPlacement_MatchesSingleWindow", "[constructive-model][coil][multi-column][smoke-test]") {
+    // With the flag on but every winding left at the default placement (window 0),
+    // the wound geometry must match the historical single-window result.
+    auto buildAndWind = [](bool perColumnWindows) {
+        auto& settings = Settings::GetInstance();
+        settings.set_core_per_column_winding_windows(perColumnWindows);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+        json coilJson;
+        json bobbinJson;
+        to_json(bobbinJson, bobbin);
+        coilJson["bobbin"] = bobbinJson;
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
+                                                         {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+        coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                         {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+        OpenMagnetics::Coil coil(coilJson, false);
+        coil.set_core_columns(core.get_processed_description()->get_columns());
+        REQUIRE(coil.wind());
+        return coil;
+    };
+
+    auto baselineCoil = buildAndWind(false);
+    auto multiWindowCoil = buildAndWind(true);
+
+    auto baselineTurns = baselineCoil.get_turns_description().value();
+    auto multiWindowTurns = multiWindowCoil.get_turns_description().value();
+    REQUIRE(baselineTurns.size() == multiWindowTurns.size());
+    for (size_t turnIndex = 0; turnIndex < baselineTurns.size(); ++turnIndex) {
+        CHECK(baselineTurns[turnIndex].get_coordinates()[0] == multiWindowTurns[turnIndex].get_coordinates()[0]);
+        CHECK(baselineTurns[turnIndex].get_coordinates()[1] == multiWindowTurns[turnIndex].get_coordinates()[1]);
+        CHECK(baselineTurns[turnIndex].get_length() == multiWindowTurns[turnIndex].get_length());
+    }
+}
+
