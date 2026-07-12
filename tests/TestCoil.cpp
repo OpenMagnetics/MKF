@@ -11460,6 +11460,29 @@ TEST_CASE("Test_Ideal_Winding_Unchanged_Multifilar", "[constructive-model][coil]
     settings.reset();
 }
 
+TEST_CASE("Test_Single_Layer_Winding_Emits_Terminal_Leads",
+          "[constructive-model][coil][real-geometry]") {
+    // A single-layer winding has no inter-layer links, but its entrance/exit TERMINAL
+    // leads exist all the same (drawn + connection loss). Regression for the early
+    // return that skipped ALL reserved spaces when fewer than two conduction layers.
+    std::vector<int64_t> numberTurns = {8};
+    std::vector<int64_t> numberParallels = {1};
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels,
+                                                     "PQ 28/20", 1);
+    REQUIRE(coil.get_layers_description_conduction().size() == 1);
+
+    auto spaces = coil.get_connection_reserved_spaces();
+    size_t drawnTerminals = 0;
+    size_t links = 0;
+    for (const auto& s : spaces) {
+        if (!s.layer.empty()) continue;
+        if (s.isTerminal) ++drawnTerminals; else ++links;
+    }
+    // One entrance + one exit lead (each may be a single own-level rect or a stub+run L).
+    REQUIRE(drawnTerminals >= 2);
+    REQUIRE(links == 0);
+}
+
 TEST_CASE("Test_Centered_Single_Turn_Toroidal_Emits_Outer_Crossing",
           "[constructive-model][coil][toroid][single-turn]") {
     // Toroid whose single turn's wire OD exceeds the winding-window radial height ->

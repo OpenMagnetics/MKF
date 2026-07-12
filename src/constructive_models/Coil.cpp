@@ -537,7 +537,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             allLayers.push_back(layer);
         }
     }
-    if (allLayers.size() < 2) {
+    // Single-layer windings still have entrance/exit TERMINAL leads (drawn, and feeding
+    // the connection loss); only the inter-layer links need >= 2 layers, and that loop
+    // no-ops naturally. Bail out only when there is no conduction layer at all.
+    if (allLayers.empty()) {
         return spaces;
     }
     bool layersAreContiguous = (allLayers[0].get_orientation() == WindingOrientation::CONTIGUOUS);
