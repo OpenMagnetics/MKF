@@ -11460,5 +11460,43 @@ TEST_CASE("Test_Ideal_Winding_Unchanged_Multifilar", "[constructive-model][coil]
     settings.reset();
 }
 
+TEST_CASE("Test_Centered_Single_Turn_Toroidal_Emits_Outer_Crossing",
+          "[constructive-model][coil][toroid][single-turn]") {
+    // Toroid whose single turn's wire OD exceeds the winding-window radial height ->
+    // wind() takes the build_centered_single_turn_toroidal() special path (skips the
+    // sections/layers fit pipeline). That path must still emit the outer XY-plane
+    // crossing (additionalCoordinates), with the same polar-mirror convention as
+    // wind_toroidal_additional_turns; without it downstream consumers (Painter, 3D
+    // builders) cannot know where the wire wraps the ring.
+    std::string coilString = R"({"bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.0,"columnWidth":0.002625,"coordinates":[0.0,0.0,0.0],"wallThickness":0.0,"windingWindows":[{"angle":360.0,"coordinates":[0.0074,0.0,0.0],"radialHeight":0.0074,"sectionsOrientation":"overlapping","shape":"round"}]}},"functionalDescription":[{"isolationSide":"primary","name":"primary","numberParallels":1,"numberTurns":1,"wire":{"coating":{"grade":1,"type":"enamelled"},"conductingDiameter":{"nominal":0.0095},"material":"copper","name":"Round 9.50 - Custom","numberConductors":1,"outerDiameter":{"nominal":0.010},"type":"round"}}]})";
+
+    CoilWindingConfig config;
+    config.coilJsonStr = coilString;
+    config.pattern = {0};
+    config.repetitions = 1;
+    auto coil = prepare_and_wind_coil(config);
+
+    auto turnsOpt = coil.get_turns_description();
+    REQUIRE(turnsOpt.has_value());
+    REQUIRE(turnsOpt->size() == 1);
+    const auto& turn = (*turnsOpt)[0];
+
+    // Inner crossing: geometric centre of the hole, converted to cartesian.
+    REQUIRE(turn.get_coordinate_system() == CoordinateSystem::CARTESIAN);
+    REQUIRE_THAT(turn.get_coordinates()[0], Catch::Matchers::WithinAbs(0.0, 1e-9));
+    REQUIRE_THAT(turn.get_coordinates()[1], Catch::Matchers::WithinAbs(0.0, 1e-9));
+
+    // Outer crossing: polar mirror {-2*columnWidth - radialHeight, 0 deg} ->
+    // cartesian radius 2*radialHeight + 2*columnWidth at angle 0.
+    auto addOpt = turn.get_additional_coordinates();
+    REQUIRE(addOpt.has_value());
+    REQUIRE(addOpt->size() == 1);
+    const auto& outer = (*addOpt)[0];
+    REQUIRE(outer.size() >= 2);
+    const double expectedRadius = 2 * 0.0074 + 2 * 0.002625;
+    REQUIRE_THAT(outer[0], Catch::Matchers::WithinAbs(expectedRadius, 1e-9));
+    REQUIRE_THAT(outer[1], Catch::Matchers::WithinAbs(0.0, 1e-9));
+}
+
 
 }  // namespace

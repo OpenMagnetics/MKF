@@ -5983,6 +5983,16 @@ bool Coil::build_centered_single_turn_toroidal() {
     }
     turn.set_coordinate_system(CoordinateSystem::POLAR);
 
+    // Outer XY-plane crossing, same polar-mirror convention as wind_toroidal_additional_turns
+    // ({-2*columnWidth - radialDepth, same angle}): the centered turn crosses the hole plane at
+    // the toroid centre AND at the mirrored point outside the ring. Every other toroidal wind
+    // path emits this via wind_toroidal_additional_turns; without it downstream consumers
+    // (Painter, 3D builders) cannot know where the wire wraps the ring.
+    if (settings.get_coil_include_additional_coordinates()) {
+        turn.set_additional_coordinates(std::vector<std::vector<double>>{
+            {-2 * bobbinColumnWidth - windingWindowRadialHeight, 0.0}});
+    }
+
     set_turns_description(std::vector<Turn>{turn});
     convert_turns_to_cartesian_coordinates();
     return true;
