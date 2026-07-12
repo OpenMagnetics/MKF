@@ -440,18 +440,43 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
         // to avoid cosh overflow according to https://cpp-lang.net/docs/std/math/mathematical_functions/cosh/
         cTerm = 710;
     }
-    // Wang 1D slab proximity per turn. NOTE: the cross-section prefactor (c*h)
-    // is intentional and FEM-validated (scripts/benchmark_planar_fem.py and an
-    // independent Maxwell cross-check on a 15 W planar flyback) — do NOT "simplify"
-    // it to 2*c/delta: that dimensional rewrite over-predicts planar/foil
-    // proximity by 1-2 orders of magnitude and was reverted (June 2026 regression).
+    if (wire.get_type() == WireType::FOIL) {
+        // FOIL (vertical sheet: thin dimension c across x, breadth h along y).
+        // Literature slab form (Dowell 1966 DOI 10.1049/piee.1966.0236; Lammeraner
+        // & Stafl 1966; ABT #182 arbitration): per-unit-length proximity of a slab
+        // in a tangential field is  P/l = breadth * rho / delta * Ha^2 * G(Delta),
+        // G = (sinh - sin)/(cosh + cos), Delta = penetrated thickness / delta.
+        // NO cross-section prefactor — the former c*h prefactor under-predicted
+        // by 1/c (~2500x at c = 0.4 mm). Field amplitudes are harmonic peaks; with
+        // the average-of-both-faces field this reproduces the Dowell m=2 proximity
+        // part within 15% (numerically arbitrated against F_R(Delta=1.2, m=2)=1.81).
+
+        // Parallel field: Hy at the left/right faces, penetrating the thickness c.
+        turnLosses += h * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
+
+        // Perpendicular field (Hx, normal to the wide face): rotated-slab end
+        // term from the top/bottom points — always applied, so losses do not
+        // depend on whether width samples are meshed (the integral below only
+        // carries the gap-fringing field, which the lumped end points do not
+        // see). Mean of squares, not square of the mean — the two foil ends
+        // dissipate independently and their Hx carry opposite signs in a
+        // symmetric window (a signed average silently cancels them).
+        turnLosses += c * resistivity / skinDepth * (pow(Hx1, 2) + pow(Hx2, 2)) / 2 * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
+    }
+    else {
+    // Wang 1D slab proximity per turn (PLANAR/RECTANGULAR). NOTE: the c*h
+    // prefactor here is dimensionally inconsistent with the slab literature (see
+    // the FOIL branch above and ABT #182) but is entangled with the C=8
+    // FEM-calibrated width integral below (single-turn planar benchmark, June
+    // 2026); correcting it requires re-running the OMFEM planar suite — ABT #139.
     turnLosses += c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
     if (widthSamplesHPerpendicular.empty()) {
         // Legacy lumped path (no width samples meshed, e.g. fringing disabled):
         // perpendicular-field loss from the average of the two edge points.
         turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
     }
-    else {
+    }
+    if (!widthSamplesHPerpendicular.empty()) {
         // Width-resolved perpendicular-field eddy loss for a thin flat conductor,
         // replacing the lumped edge-average term. The gap-fringing field varies
         // strongly across a wide trace (Roshen 2007, IEEE TMAG 43(8):3387), so the
@@ -505,7 +530,10 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
 
     // BUG-003 FIX: Normalize nonPlanarHe by the lumped surface-point count
     // (width samples do not contribute to it and must not dilute the average)
-    if (nonPlanarHe != 0 && lumpedPointCount > 0) {
+    // FOIL is excluded: its cross components (Hy at the ends, Hx at the faces)
+    // are already covered by the parallel/perpendicular slab terms above
+    // (ABT #182), so routing them through the Ferreira factor double-counts.
+    if (wire.get_type() != WireType::FOIL && nonPlanarHe != 0 && lumpedPointCount > 0) {
         nonPlanarHe /= lumpedPointCount;
         double proximityFactor = WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(wire, frequency, temperature);
         turnLosses += proximityFactor * pow(nonPlanarHe, 2);

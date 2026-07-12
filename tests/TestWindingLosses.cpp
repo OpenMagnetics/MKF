@@ -457,6 +457,143 @@ namespace TestWindingLossesFoil {
         auto config = WindingLossesTestData::createTenShortTurnsFoilConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
+
+    // ABT #182 regression battery: 2 kW / 40 kHz induction-heating matching
+    // transformer (E55/28/21 DMR95, effectively ungapped: 1 um subtractive +
+    // 5 um residuals), 4-turn foil primary 0.4x33 mm @ 46.2 A RMS, 36-turn litz
+    // secondary, interleaved S-P-S. Two historical failure modes on this design:
+    //  - widthsample path integrated fake inter-turn filament fields -> 208 W
+    //    foil "proximity" (F_R ~ 135) on a winding whose Dowell F_R is 1.8;
+    //  - lumped path carried an illegal cross-section prefactor -> 0.0002 W.
+    // Operating point 0 = the user's measured burst waveform, 1 = clean sine at
+    // the same RMS.
+    TEST_CASE("Test_Winding_Losses_Foil_IH_Transformer_Dowell_Band", "[physical-model][winding-losses][foil][smoke-test]") {
+        settings.reset();
+        clear_databases();
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_foil_proximity_ih_transformer.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+        double temperature = 25;
+
+        auto cleanSineLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(1), temperature);
+        auto perWinding = cleanSineLosses.get_winding_losses_per_winding().value();
+
+        double foilOhmic = perWinding[0].get_ohmic_losses()->get_losses();
+        double foilSkin = 0;
+        double foilProximity = 0;
+        auto skinLossesPerHarmonic = perWinding[0].get_skin_effect_losses()->get_losses_per_harmonic();
+        auto proximityLossesPerHarmonic = perWinding[0].get_proximity_effect_losses()->get_losses_per_harmonic();
+        for (auto loss : skinLossesPerHarmonic) {
+            foilSkin += loss;
+        }
+        for (auto loss : proximityLossesPerHarmonic) {
+            foilProximity += loss;
+        }
+
+        // Dowell for this foil: Delta = t/delta = 1.2 @ 40 kHz/25C, m = 2 layers
+        // per portion (S-P-S interleave) -> F_R = 1.81, proximity part ~ 0.79 W
+        // on R_dc*I^2 = 1.24 W. Band is generous (average-field method sits ~15%
+        // above Dowell; edge effects add 5-20%) but excludes both failure modes
+        // by orders of magnitude.
+        double foilFR = (foilOhmic + foilSkin + foilProximity) / foilOhmic;
+        CHECK(foilOhmic > 1.0);
+        CHECK(foilOhmic < 1.6);
+        CHECK(foilFR > 1.2);
+        CHECK(foilFR < 3.0);
+        CHECK(foilProximity > 0.2);
+        CHECK(foilProximity < 3.0);
+
+        // The user's real (heavily distorted, tail to 4.7 MHz) waveform: litz
+        // secondary proximity rises ~10x over the sine, foil stays Dowell-sane.
+        auto burstLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+        CHECK(burstLosses.get_winding_losses() < 40.0);
+        CHECK(burstLosses.get_winding_losses() > 4.0);
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Winding_Losses_Foil_Micro_Gap_Invariance", "[physical-model][winding-losses][foil]") {
+        // ABT #182: a 1 um subtractive gap (grinding residual) is physically the
+        // same core as residual-only gapping; winding losses must not depend on
+        // the gap-type label. Before the fix the subtractive variant activated
+        // the widthsample path and reported 20x the losses of the residual one.
+        settings.reset();
+        clear_databases();
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_foil_proximity_ih_transformer.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+        double temperature = 25;
+
+        auto subtractiveLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(1), temperature);
+
+        auto residualMagnetic = magnetic;
+        auto core = residualMagnetic.get_mutable_core();
+        auto functionalDescription = core.get_functional_description();
+        auto gapping = functionalDescription.get_gapping();
+        for (auto& gap : gapping) {
+            if (gap.get_type() == GapType::SUBTRACTIVE) {
+                gap.set_type(GapType::RESIDUAL);
+                gap.set_length(5e-6);
+            }
+        }
+        functionalDescription.set_gapping(gapping);
+        core.set_functional_description(functionalDescription);
+        core.process_data();
+        core.process_gap();
+        residualMagnetic.set_core(core);
+
+        auto residualLosses = WindingLosses().calculate_losses(residualMagnetic, inputs.get_operating_point(1), temperature);
+
+        CHECK_THAT(subtractiveLosses.get_winding_losses(),
+                   Catch::Matchers::WithinRel(residualLosses.get_winding_losses(), 0.05));
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Winding_Losses_Foil_Slab_Prefactor_Unit_Pin", "[physical-model][winding-losses][foil]") {
+        // ABT #182 unit pin: a foil conductor in a uniform tangential field must
+        // dissipate P/l = breadth * rho / delta * H^2 * G(t/delta) per unit
+        // length (Dowell 1966 / Lammeraner & Stafl 1966) — no cross-section
+        // prefactor (the old c*h form under-predicted by ~2500x at t = 0.4 mm).
+        settings.reset();
+        clear_databases();
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_foil_proximity_ih_transformer.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+        auto wire = magnetic.get_mutable_coil().resolve_wire(0);
+        REQUIRE(wire.get_type() == WireType::FOIL);
+
+        double temperature = 25;
+        double frequency = 40000;
+        double fieldAmplitude = 1000;  // A/m, harmonic peak
+
+        ComplexField field;
+        field.set_frequency(frequency);
+        std::vector<ComplexFieldPoint> points;
+        for (auto& label : std::vector<std::string>({"left", "right", "top", "bottom"})) {
+            ComplexFieldPoint point;
+            point.set_label(label);
+            point.set_point({0, 0});
+            point.set_real(0);
+            point.set_imaginary((label == "left" || label == "right") ? fieldAmplitude : 0);
+            points.push_back(point);
+        }
+        field.set_data(points);
+
+        auto lossesPerMeter = WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(
+            wire, temperature, {field}).first;
+
+        double thickness = resolve_dimensional_values(wire.get_conducting_width().value());
+        double breadth = resolve_dimensional_values(wire.get_conducting_height().value());
+        double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+        double resistivity = skinDepth * skinDepth * std::numbers::pi * frequency * Constants().vacuumPermeability;
+        double gTerm = thickness / skinDepth;
+        double expected = breadth * resistivity / skinDepth * fieldAmplitude * fieldAmplitude *
+                          (sinh(gTerm) - sin(gTerm)) / (cosh(gTerm) + cos(gTerm));
+
+        CHECK_THAT(lossesPerMeter, Catch::Matchers::WithinRel(expected, 0.01));
+        settings.reset();
+    }
 }
 
 
@@ -655,26 +792,34 @@ namespace TestWindingLossesPlanar {
         // superposition cannot see, so these values are ~30x conservative for the
         // stacked-parallel case. Isolated-trace values are FEM-validated (see the
         // One_Turn test). Screening follow-up: ABT #139.
+        // Re-pinned for ABT #182 (widthsamples now carry only the gap-fringing
+        // field): inter-trace filament fields no longer inflate the integral,
+        // values dropped ~15% toward the FEM reference (still conservative for
+        // this stacked-parallel case per the screening note above). The
+        // isolated-trace One_Turn pins were unchanged by #182 (byte-identical).
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json", 100,
-            {{10000, 3172.9}, {20000, 7523.8}, {30000, 11205}, {40000, 14260},
-             {50000, 16866}, {60000, 19152}, {70000, 21204}, {80000, 23077},
-             {90000, 24810}, {100000, 26429}, {200000, 39179}, {300000, 48920},
-             {400000, 57206}, {500000, 64535}, {600000, 71150}, {700000, 77196},
-             {800000, 82781}, {900000, 87984}, {1000000, 92867}},
+            {{10000, 2683.8}, {20000, 6321.5}, {30000, 9391.5}, {40000, 11936},
+             {50000, 14107}, {60000, 16012}, {70000, 17722}, {80000, 19284},
+             {90000, 20731}, {100000, 22084}, {200000, 32772}, {300000, 40989},
+             {400000, 48006}, {500000, 54225}, {600000, 59839}, {700000, 64968},
+             {800000, 69700}, {900000, 74103}, {1000000, 78230}},
             maximumError, true);  // includeFringing = true
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][planar]") {
         // MKF snapshot (July 2026, width-resolved gap-fringing kernel, C=8). See the
         // Close variant for the position-discrimination cross-check.
+        // Re-pinned for ABT #182 (fringing-only widthsamples), ~26% drop toward
+        // the FEM reference. Close/Far position discrimination preserved
+        // (3.6x at 100 kHz).
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json", 100,
-            {{10000, 1600.5}, {20000, 3188.4}, {30000, 4360.0}, {40000, 5299.3},
-             {50000, 6099.8}, {60000, 6808.8}, {70000, 7453.2}, {80000, 8049.2},
-             {90000, 8607.9}, {100000, 9136.6}, {200000, 13521}, {300000, 17125},
-             {400000, 20322}, {500000, 23204}, {600000, 25815}, {700000, 28189},
-             {800000, 30360}, {900000, 32358}, {1000000, 34212}},
+            {{10000, 1190.6}, {20000, 2248.3}, {30000, 3015.6}, {40000, 3633.0},
+             {50000, 4162.7}, {60000, 4635.2}, {70000, 5067.4}, {80000, 5469.8},
+             {90000, 5849.1}, {100000, 6210.0}, {200000, 9281.0}, {300000, 11901},
+             {400000, 14273}, {500000, 16432}, {600000, 18391}, {700000, 20166},
+             {800000, 21779}, {900000, 23255}, {1000000, 24614}},
             maximumError, true);  // includeFringing = true
     }
 

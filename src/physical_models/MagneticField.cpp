@@ -505,8 +505,30 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     if (is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
                         continue;
                     }
-                    
-                    auto complexFieldPoint = albach2DModel->calculateTotalFieldAtPoint(inducedFieldPoint);
+
+                    // Width samples feed the Wang perpendicular-field integral, whose
+                    // FEM validation covers ONLY the gap-fringing field. Turn fields at
+                    // these points are filament-discretization artifacts: a neighbouring
+                    // foil/planar sheet reduced to filaments reads kA/m of perpendicular
+                    // field where the real co-extensive sheet produces ~none (ABT #182,
+                    // 208 W on a 4-turn foil whose Dowell loss is ~2 W), and the induced
+                    // turn's own filaments add subdivision noise on top. Inter-conductor
+                    // proximity stays with the lumped labeled points.
+                    bool fringingOnlyPoint = inducedFieldPoint.get_label() &&
+                                             inducedFieldPoint.get_label().value() == "widthsample";
+                    ComplexFieldPoint complexFieldPoint;
+                    if (fringingOnlyPoint) {
+                        complexFieldPoint.set_real(0);
+                        complexFieldPoint.set_imaginary(0);
+                        complexFieldPoint.set_point(inducedFieldPoint.get_point());
+                        if (inducedFieldPoint.get_turn_index()) {
+                            complexFieldPoint.set_turn_index(inducedFieldPoint.get_turn_index().value());
+                        }
+                        complexFieldPoint.set_label(inducedFieldPoint.get_label().value());
+                    }
+                    else {
+                        complexFieldPoint = albach2DModel->calculateTotalFieldAtPoint(inducedFieldPoint);
+                    }
                     
                     // Add fringing field contribution based on configured fringing model
                     if (includeFringing && std::abs(inducingFields[harmonicIndex].get_frequency() - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
@@ -608,9 +630,20 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 }
             }
 
+            // Same fringing-only rule as the ALBACH branch above (ABT #182): width
+            // samples must not receive turn fields — filament representations of
+            // neighbouring flat conductors misread as kA/m of perpendicular field.
+            // Fringing contributions (added into totalInducedFieldX/Y above, and the
+            // Albach equivalent-current loops, which carry no turn_index) still apply.
+            bool fringingOnlyPoint = inducedFieldPoint.get_label() &&
+                                     inducedFieldPoint.get_label().value() == "widthsample";
+
             for (auto& inducingFieldPoint : inducingFields[harmonicIndex].get_data()) {
                 std::optional<size_t> windingIndex = std::nullopt;
                 if (inducingFieldPoint.get_turn_index()) {
+                    if (fringingOnlyPoint) {
+                        continue;
+                    }
                     windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingFieldPoint.get_turn_index().value()].get_winding());
                 }
                 if (inducingFieldPoint.get_turn_index()) {

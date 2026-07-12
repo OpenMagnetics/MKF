@@ -213,7 +213,26 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
         modelToUse = OpenMagnetics::MagneticFieldStrengthModels::WANG;
     }
     else {
-        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER;
+        bool hasFoil = false;
+        for (auto wire : magnetic.get_mutable_coil().get_wires()) {
+            if (wire.get_type() == WireType::FOIL) {
+                hasFoil = true;
+                break;
+            }
+        }
+        if (hasFoil) {
+            // Mixed foil + round/litz (e.g. foil primary, litz secondary): the
+            // Wang mesher represents a foil inducing turn as 2 end filaments,
+            // which only the Wang label-pair formulas can reconstruct into a
+            // sheet field. Feeding them to LAMMERANER places the whole foil
+            // current at the foil ENDS and inverts the MMF profile across the
+            // stack (ABT #182). ALBACH subdivides flat conductors into
+            // distributed filaments and handles mixed conductor types.
+            modelToUse = OpenMagnetics::MagneticFieldStrengthModels::ALBACH;
+        }
+        else {
+            modelToUse = OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER;
+        }
     }
     
     // Use fringing model: first _models, then Settings, then default ROSHEN
