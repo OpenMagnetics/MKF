@@ -289,6 +289,76 @@ namespace {
         REQUIRE(allCoreMaterialsWithExternal.size() > allCoreMaterials.size());
     }
 
+    TEST_CASE("Test_Load_Advanced_Core_Materials", "[support][utils][smoke-test]") {
+        // ABT #184: massLosses must merge like volumetricLosses, and a losses block
+        // without a non-empty "default" method list must throw instead of UB
+        auto makePoints = [](const std::string& lossesKey, const std::string& origin) {
+            json points = json::array();
+            for (auto [frequency, peak, value] : {std::tuple{100000.0, 0.05, 0.3}, {100000.0, 0.1, 1.2},
+                                                  {200000.0, 0.05, 0.7}, {200000.0, 0.1, 2.9}}) {
+                json point;
+                point["magneticFluxDensity"]["frequency"] = frequency;
+                point["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["label"] = "sinusoidal";
+                point["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["peak"] = peak;
+                point["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["offset"] = 0;
+                point["temperature"] = 25;
+                point["value"] = value;
+                point["origin"] = origin;
+                points.push_back(point);
+            }
+            json record;
+            record["name"] = "3C90";
+            record[lossesKey]["default"] = json::array({points});
+            return record;
+        };
+
+        clear_databases();
+        load_core_materials();
+        auto baseMaterial = coreMaterialDatabase["3C90"];
+        REQUIRE(!baseMaterial.get_mass_losses());
+        size_t baseVolumetricMethods = baseMaterial.get_volumetric_losses().at("default").size();
+
+        json database = json::array({makePoints("volumetricLosses", "manufacturer"),
+                                     makePoints("massLosses", "manufacturer")});
+        std::string ndjson;
+        for (auto& record : database) {
+            ndjson += record.dump() + "\n";
+        }
+        load_advanced_core_materials(ndjson);
+
+        auto material = coreMaterialDatabase["3C90"];
+        REQUIRE(material.get_volumetric_losses().at("default").size() == baseVolumetricMethods + 1);
+        REQUIRE(material.get_mass_losses());
+        auto massLossesMethods = material.get_mass_losses().value()["default"];
+        REQUIRE(massLossesMethods.size() == 1);
+        REQUIRE(std::get<std::vector<MassLossesPoint>>(massLossesMethods[0]).size() == 4);
+        REQUIRE(std::get<std::vector<MassLossesPoint>>(massLossesMethods[0])[0].get_origin() == "manufacturer");
+
+        // onlyDataFromManufacturer (the default) must filter non-manufacturer mass points
+        clear_databases();
+        load_core_materials();
+        json obfuscatedDatabase = json::array({makePoints("massLosses", "MagNet")});
+        load_advanced_core_materials(obfuscatedDatabase[0].dump() + "\n");
+        auto filteredMethods = coreMaterialDatabase["3C90"].get_mass_losses().value()["default"];
+        REQUIRE(filteredMethods.size() == 1);
+        REQUIRE(std::get<std::vector<MassLossesPoint>>(filteredMethods[0]).empty());
+
+        // a losses block without a non-empty "default" method list must throw loudly
+        clear_databases();
+        load_core_materials();
+        json noDefault;
+        noDefault["name"] = "3C90";
+        noDefault["volumetricLosses"] = json::object();
+        REQUIRE_THROWS_WITH(load_advanced_core_materials(noDefault.dump() + "\n"),
+                            Catch::Matchers::ContainsSubstring("non-empty \"default\""));
+        json emptyDefault;
+        emptyDefault["name"] = "3C90";
+        emptyDefault["massLosses"]["default"] = json::array();
+        REQUIRE_THROWS_WITH(load_advanced_core_materials(emptyDefault.dump() + "\n"),
+                            Catch::Matchers::ContainsSubstring("non-empty \"default\""));
+        clear_databases();
+    }
+
     TEST_CASE("Test_Core_Shapes_Families", "[support][utils][smoke-test]") {
         REQUIRE(get_core_shape_families().size() > 0);
     }

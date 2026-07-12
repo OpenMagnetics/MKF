@@ -306,20 +306,50 @@ void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManuf
             material.set_bh_cycle(bhCycle);
         }
         if (jf.contains("volumetricLosses")) {
-            std::vector<VolumetricLossesPoint> volumetricLosses;
-            from_json(jf["volumetricLosses"]["default"][0], volumetricLosses);
-            if (onlyDataFromManufacturer) {
-                std::vector<VolumetricLossesPoint> onlyManufacturerVolumetricLosses;
-                for (auto datum : volumetricLosses) {
-                    if (datum.get_origin() == "manufacturer") {
-                        onlyManufacturerVolumetricLosses.push_back(datum);
+            if (!jf["volumetricLosses"].contains("default") || jf["volumetricLosses"]["default"].empty()) {
+                throw std::runtime_error("Advanced core material '" + std::string(jf["name"]) +
+                                         "' carries volumetricLosses without a non-empty \"default\" method list");
+            }
+            for (const auto& methodEntry : jf["volumetricLosses"]["default"]) {
+                std::vector<VolumetricLossesPoint> volumetricLosses;
+                from_json(methodEntry, volumetricLosses);
+                if (onlyDataFromManufacturer) {
+                    std::vector<VolumetricLossesPoint> onlyManufacturerVolumetricLosses;
+                    for (auto datum : volumetricLosses) {
+                        if (datum.get_origin() == "manufacturer") {
+                            onlyManufacturerVolumetricLosses.push_back(datum);
+                        }
                     }
+                    material.get_mutable_volumetric_losses()["default"].push_back(onlyManufacturerVolumetricLosses);
                 }
-                material.get_mutable_volumetric_losses()["default"].push_back(onlyManufacturerVolumetricLosses);
+                else {
+                    material.get_mutable_volumetric_losses()["default"].push_back(volumetricLosses);
+                }
             }
-            else {
-                material.get_mutable_volumetric_losses()["default"].push_back(volumetricLosses);
+        }
+        if (jf.contains("massLosses")) {
+            if (!jf["massLosses"].contains("default") || jf["massLosses"]["default"].empty()) {
+                throw std::runtime_error("Advanced core material '" + std::string(jf["name"]) +
+                                         "' carries massLosses without a non-empty \"default\" method list");
             }
+            auto materialMassLosses = material.get_mass_losses().value_or(std::map<std::string, std::vector<MassLossesMethod>>());
+            for (const auto& methodEntry : jf["massLosses"]["default"]) {
+                std::vector<MassLossesPoint> massLosses;
+                from_json(methodEntry, massLosses);
+                if (onlyDataFromManufacturer) {
+                    std::vector<MassLossesPoint> onlyManufacturerMassLosses;
+                    for (auto datum : massLosses) {
+                        if (datum.get_origin() == "manufacturer") {
+                            onlyManufacturerMassLosses.push_back(datum);
+                        }
+                    }
+                    materialMassLosses["default"].push_back(onlyManufacturerMassLosses);
+                }
+                else {
+                    materialMassLosses["default"].push_back(massLosses);
+                }
+            }
+            material.set_mass_losses(materialMassLosses);
         }
         if (jf.contains("permeability")) {
             if (jf["permeability"].contains("amplitude")) {
