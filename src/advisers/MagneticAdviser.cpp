@@ -1296,8 +1296,9 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
 
                     if (windingIndex > 0) {
                         auto leakageInductance = output.get_inductance()->get_leakage_inductance();
-                        if (leakageInductance && windingIndex - 1 < leakageInductance->get_leakage_inductance_per_winding().size()) {
-                            auto nominalOpt = leakageInductance->get_leakage_inductance_per_winding()[windingIndex - 1].get_nominal();
+                        // Winding-indexed array (0 at the primary slot), same shape as the public API.
+                        if (leakageInductance && windingIndex < leakageInductance->get_leakage_inductance_per_winding().size()) {
+                            auto nominalOpt = leakageInductance->get_leakage_inductance_per_winding()[windingIndex].get_nominal();
                             if (nominalOpt) {
                                 double value = nominalOpt.value();
                                 text += "\t\t\tLeakage inductance referred to primary: " + std::to_string(value) + "\n";

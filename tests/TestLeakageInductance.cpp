@@ -657,7 +657,8 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 2", "
 
     OpenMagnetics::MagneticSimulator magneticSimulator;
     auto mas = magneticSimulator.simulate(inputs, magnetic);
-    auto leakageInductance = resolve_dimensional_values(mas.get_outputs()[0].get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding()[0]);
+    // Winding-indexed array with 0 at the primary slot: the first secondary is index 1.
+    auto leakageInductance = resolve_dimensional_values(mas.get_outputs()[0].get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding()[1]);
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
 
     {
@@ -855,5 +856,40 @@ TEST_CASE("Leakage inductance matrix is symmetric and reproduces pairwise leakag
         }
     }
 
+    settings.reset();
+}
+TEST_CASE("MagneticSimulator leakage output is winding-indexed with a zero primary slot", "[physical-model][leakage-inductance]") {
+    // Regression for web bug reports 125/134/139 (ABT #198): MagneticSimulator used to emit a
+    // secondaries-only (N-1) array into outputs.leakageInductance while the public
+    // calculate_leakage_inductance API emits a winding-indexed N array with 0 at the primary
+    // slot. Consumers reading the MAS field could not tell the shapes apart and displayed the
+    // primary's 0 as the secondary's leakage. Both producers must emit the same N-shape.
+    settings.reset();
+    std::vector<int64_t> numberTurns({64, 20});
+    std::vector<int64_t> numberParallels({1, 1});
+    std::string shapeName = "E 42/33/20";
+
+    std::vector<OpenMagnetics::Wire> wires;
+    wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 25));
+    wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 225));
+    auto coil = OpenMagnetics::Coil::create_quick_coil(shapeName, numberTurns, numberParallels, wires);
+
+    std::string coreMaterial = "3C97";
+    auto gapping = OpenMagnetics::Core::create_ground_gapping(2e-5, 3);
+    auto core = OpenMagnetics::Core::create_quick_core(shapeName, coreMaterial, gapping);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    double frequency = 100000;
+
+    auto simulatorPerWinding = MagneticSimulator::calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding();
+    REQUIRE(simulatorPerWinding.size() == 2);
+    REQUIRE(simulatorPerWinding[0].get_nominal());
+    CHECK(simulatorPerWinding[0].get_nominal().value() == 0.0);
+
+    auto pairwise = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
+    REQUIRE(simulatorPerWinding[1].get_nominal());
+    CHECK_THAT(simulatorPerWinding[1].get_nominal().value(), WithinRel(pairwise, 1e-9));
     settings.reset();
 }
