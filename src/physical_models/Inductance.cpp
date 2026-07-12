@@ -1,4 +1,5 @@
 #include "physical_models/Inductance.h"
+#include "physical_models/ReluctanceNetwork.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/Reluctance.h"
@@ -245,6 +246,23 @@ ScalarMatrixAtFrequency Inductance::calculate_inductance_matrix(
         leakageMatrix = leakageModel.calculate_leakage_inductance_matrix(magnetic, frequency);
     }
 
+    // Multi-column winding placement: replace the rank-1 ideal-coupling magnetizing
+    // term with the per-column reluctance network matrix. The network reproduces the
+    // rank-1 values exactly when every winding shares the main column, and the
+    // imperfect coupling of leg-separated windings when they don't. The energy-method
+    // window leakage is only meaningful between windings sharing a column;
+    // cross-column pairs take their coupling from the network alone until the window
+    // field solvers become window-aware.
+    bool multiColumnPlacement = ReluctanceNetwork::has_non_main_placement(magnetic);
+    std::vector<std::vector<double>> networkMatrix;
+    std::vector<size_t> columnIndexPerWinding;
+    if (multiColumnPlacement) {
+        ReluctanceNetwork magneticCircuit(magnetic.get_core(), magnetizingOutput.get_ungapped_core_reluctance().value(),
+                                        magnetizingOutput.get_reluctance_per_gap().value_or(std::vector<AirGapReluctanceOutput>{}));
+        networkMatrix = magneticCircuit.calculate_magnetizing_inductance_matrix(magnetic);
+        columnIndexPerWinding = ReluctanceNetwork::resolve_winding_column_indexes(magnetic);
+    }
+
     // Build the inductance matrix (symmetric, so compute upper triangular + diagonal)
     for (size_t i = 0; i < numWindings; ++i) {
         std::string windingName_i = get_winding_name(magnetic, i);
@@ -254,10 +272,14 @@ ScalarMatrixAtFrequency Inductance::calculate_inductance_matrix(
             std::string windingName_j = get_winding_name(magnetic, j);
             double turns_j = functionalDescription[j].get_number_turns();
 
-            double M_mag_ij = Lm_primary * (turns_i / N_primary) * (turns_j / N_primary);
+            double M_mag_ij = multiColumnPlacement ? networkMatrix[i][j]
+                                                   : Lm_primary * (turns_i / N_primary) * (turns_j / N_primary);
             double leakage_ij = (i < leakageMatrix.size() && j < leakageMatrix[i].size())
                                     ? leakageMatrix[i][j]
                                     : 0.0;
+            if (multiColumnPlacement && columnIndexPerWinding[i] != columnIndexPerWinding[j]) {
+                leakage_ij = 0.0;
+            }
 
             DimensionWithTolerance inductanceValue;
             inductanceValue.set_nominal(M_mag_ij + leakage_ij);

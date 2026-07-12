@@ -126,11 +126,17 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
         }
 
 
+        // Gaps on the wound (main) column are in series with the flux; gaps on the
+        // return columns are parallel branches. Keyed on column identity, not on
+        // ColumnType: shapes whose wound column is typed LATERAL (UT cores have both
+        // columns lateral) previously landed every gap — including the wound leg's —
+        // in the parallel term.
+        auto mainColumnIndex = core.get_main_column_index();
         for (const auto& gap : gapping) {
             auto gapReluctance = get_gap_reluctance(gap);
-            auto gapColumn = core.find_closest_column_by_coordinates(gap.get_coordinates().value());
+            auto gapColumnIndex = core.find_closest_column_index_by_coordinates(gap.get_coordinates().value());
             reluctancePerGap.push_back(gapReluctance);
-            if (gapColumn.get_type() == ColumnType::LATERAL) {
+            if (static_cast<size_t>(gapColumnIndex) != mainColumnIndex) {
                 calculatedLateralReluctance += 1 / gapReluctance.get_reluctance();
             }
             else {
