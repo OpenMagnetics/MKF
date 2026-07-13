@@ -33,7 +33,17 @@ class ReluctanceNetwork {
   private:
     Core _core;
     std::vector<double> _columnReluctances;
+    // One yoke segment (top plus bottom plate, in series along the loop) per window
+    // between x-adjacent legs. FD-validated as non-negligible (ABT #227): collapsing
+    // the yokes to perfect conductors overweights the far leg's return share.
+    std::vector<double> _yokeSegmentReluctances;
+    // Column indexes sorted by x position; the mesh loops run between adjacent legs.
+    std::vector<size_t> _orderedColumnIndexes;
     size_t _mainColumnIndex = 0;
+
+    // Mesh solve of the leg chain: per-ORIGINAL-column-index magnetomotive forces in,
+    // per-original-column-index fluxes out (positive along the common leg direction).
+    std::vector<double> solve_column_fluxes_for_magnetomotive_forces(const std::vector<double>& columnMagnetomotiveForces) const;
 
   public:
     /**
@@ -46,6 +56,8 @@ class ReluctanceNetwork {
     ReluctanceNetwork(Core core, double ungappedCoreReluctance, std::vector<AirGapReluctanceOutput> reluctancePerGap);
 
     const std::vector<double>& get_column_reluctances() const { return _columnReluctances; }
+    const std::vector<double>& get_yoke_segment_reluctances() const { return _yokeSegmentReluctances; }
+    const std::vector<size_t>& get_ordered_column_indexes() const { return _orderedColumnIndexes; }
     size_t get_main_column_index() const { return _mainColumnIndex; }
 
     /**

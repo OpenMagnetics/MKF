@@ -1,5 +1,6 @@
 #include "physical_models/ReluctanceNetwork.h"
 #include "support/Exceptions.h"
+#include <algorithm>
 #include <cmath>
 
 namespace OpenMagnetics {
@@ -16,44 +17,70 @@ ReluctanceNetwork::ReluctanceNetwork(Core core, double ungappedCoreReluctance, s
     _mainColumnIndex = core.get_main_column_index();
     auto columns = core.get_columns();
 
-    // Split the lumped ungapped reluctance geometrically across the column branches:
-    // relative branch reluctance = path length / area, where return branches carry
-    // their yoke share on top of the column length. The split is then scaled so the
-    // main-column driving-point combination (R_main + parallel of the returns)
-    // reproduces the lumped value exactly.
+    // Leg-chain mesh network: the legs ordered by x, one yoke segment (top plus
+    // bottom plate) per window between adjacent legs, n-1 mesh loops. The FD
+    // validation (ABT #227) showed the yoke segments are NOT negligible: even at
+    // high permeability the long span to the FAR leg rivals the leg reluctances, so
+    // collapsing the yokes to perfect conductors (plain parallel branches)
+    // overweights the far return path. Everything core is scaled so the main-column
+    // driving-point reluctance reproduces the lumped IEC value exactly.
+    _orderedColumnIndexes.resize(columns.size());
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        _orderedColumnIndexes[columnIndex] = columnIndex;
+    }
+    std::sort(_orderedColumnIndexes.begin(), _orderedColumnIndexes.end(), [&](size_t left, size_t right) {
+        return columns[left].get_coordinates()[0] < columns[right].get_coordinates()[0];
+    });
+
     std::vector<double> coreBranchReluctances(columns.size(), 0);
+    _yokeSegmentReluctances.assign(columns.size() > 1 ? columns.size() - 1 : 0, 0);
     if (columns.size() == 1) {
         coreBranchReluctances[0] = ungappedCoreReluctance;
     }
     else {
-        double totalColumnLength = 0;
-        for (auto& column : columns) {
-            totalColumnLength += column.get_height();
-        }
-        double yokeSharePerSide = std::max((core.get_effective_length() - totalColumnLength) / 2, 0.0);
-        std::vector<double> relativeBranchReluctances(columns.size(), 0);
+        std::vector<double> relativeLegReluctances(columns.size(), 0);
         for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
-            double pathLength = columns[columnIndex].get_height();
-            if (columnIndex != _mainColumnIndex) {
-                pathLength += 2 * yokeSharePerSide;
-            }
             if (columns[columnIndex].get_area() <= 0) {
                 throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                                             "Column " + std::to_string(columnIndex) + " has no positive area");
             }
-            relativeBranchReluctances[columnIndex] = pathLength / columns[columnIndex].get_area();
+            relativeLegReluctances[columnIndex] = columns[columnIndex].get_height() / columns[columnIndex].get_area();
         }
-        double returnAdmittance = 0;
+
+        auto windingWindows = core.get_winding_windows();
+        if (!windingWindows[0].get_height()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                        "Multi-column network needs a rectangular winding window with a height");
+        }
+        double yokeThickness = (core.get_processed_description().value().get_height() - windingWindows[0].get_height().value()) / 2;
+        double yokeArea = yokeThickness * columns[_mainColumnIndex].get_depth();
+        if (yokeArea <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core yoke has no positive area");
+        }
+        std::vector<double> relativeYokeReluctances(columns.size() - 1, 0);
+        for (size_t segmentIndex = 0; segmentIndex + 1 < columns.size(); ++segmentIndex) {
+            double span = std::abs(columns[_orderedColumnIndexes[segmentIndex + 1]].get_coordinates()[0] -
+                                   columns[_orderedColumnIndexes[segmentIndex]].get_coordinates()[0]);
+            // Top and bottom plates in series along the loop.
+            relativeYokeReluctances[segmentIndex] = 2 * span / yokeArea;
+        }
+
+        // Calibrate: the relative network's main-column driving-point reluctance must
+        // equal the lumped ungapped value.
+        std::vector<double> savedColumnReluctances = _columnReluctances;
+        _columnReluctances = relativeLegReluctances;
+        _yokeSegmentReluctances = relativeYokeReluctances;
+        std::vector<double> unitMagnetomotiveForce(columns.size(), 0);
+        unitMagnetomotiveForce[_mainColumnIndex] = 1.0;
+        double relativeDrivingReluctance = 1.0 / solve_column_fluxes_for_magnetomotive_forces(unitMagnetomotiveForce)[_mainColumnIndex];
+        double scale = ungappedCoreReluctance / relativeDrivingReluctance;
         for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
-            if (columnIndex != _mainColumnIndex) {
-                returnAdmittance += 1 / relativeBranchReluctances[columnIndex];
-            }
+            coreBranchReluctances[columnIndex] = scale * relativeLegReluctances[columnIndex];
         }
-        double relativeCombination = relativeBranchReluctances[_mainColumnIndex] + 1 / returnAdmittance;
-        double scale = ungappedCoreReluctance / relativeCombination;
-        for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
-            coreBranchReluctances[columnIndex] = scale * relativeBranchReluctances[columnIndex];
+        for (auto& yokeSegmentReluctance : _yokeSegmentReluctances) {
+            yokeSegmentReluctance *= scale;
         }
+        _columnReluctances = savedColumnReluctances;
     }
 
     // Add each gap's reluctance to the branch of the column it sits in. The per-gap
@@ -124,25 +151,94 @@ bool ReluctanceNetwork::has_non_main_placement(Magnetic magnetic) {
     return false;
 }
 
+std::vector<double> ReluctanceNetwork::solve_column_fluxes_for_magnetomotive_forces(const std::vector<double>& columnMagnetomotiveForces) const {
+    size_t numberColumns = _columnReluctances.size();
+    if (numberColumns == 1) {
+        return {columnMagnetomotiveForces[0] / _columnReluctances[0]};
+    }
+
+    // Mesh analysis over the leg chain (legs x-ordered, all oriented the same way):
+    // loop k circulates in the window between ordered legs k and k+1 through the yoke
+    // segment k. A[k][k] = R_k + R_{k+1} + Y_k, A[k][k±1] = -R_shared,
+    // rhs[k] = MMF_k − MMF_{k+1}; leg flux = φ_k − φ_{k−1}.
+    size_t numberLoops = numberColumns - 1;
+    std::vector<double> orderedLegReluctances(numberColumns);
+    std::vector<double> orderedMagnetomotiveForces(numberColumns);
+    for (size_t position = 0; position < numberColumns; ++position) {
+        orderedLegReluctances[position] = _columnReluctances[_orderedColumnIndexes[position]];
+        orderedMagnetomotiveForces[position] = columnMagnetomotiveForces[_orderedColumnIndexes[position]];
+    }
+
+    std::vector<std::vector<double>> meshMatrix(numberLoops, std::vector<double>(numberLoops, 0));
+    std::vector<double> rightHandSide(numberLoops, 0);
+    for (size_t loopIndex = 0; loopIndex < numberLoops; ++loopIndex) {
+        meshMatrix[loopIndex][loopIndex] = orderedLegReluctances[loopIndex] + orderedLegReluctances[loopIndex + 1] +
+                                           _yokeSegmentReluctances[loopIndex];
+        if (loopIndex > 0) {
+            meshMatrix[loopIndex][loopIndex - 1] = -orderedLegReluctances[loopIndex];
+        }
+        if (loopIndex + 1 < numberLoops) {
+            meshMatrix[loopIndex][loopIndex + 1] = -orderedLegReluctances[loopIndex + 1];
+        }
+        rightHandSide[loopIndex] = orderedMagnetomotiveForces[loopIndex] - orderedMagnetomotiveForces[loopIndex + 1];
+    }
+
+    // Gaussian elimination with partial pivoting (the system is tiny: n-1 loops).
+    std::vector<double> loopFluxes(numberLoops, 0);
+    for (size_t pivotIndex = 0; pivotIndex < numberLoops; ++pivotIndex) {
+        size_t bestRow = pivotIndex;
+        for (size_t row = pivotIndex + 1; row < numberLoops; ++row) {
+            if (std::abs(meshMatrix[row][pivotIndex]) > std::abs(meshMatrix[bestRow][pivotIndex])) {
+                bestRow = row;
+            }
+        }
+        std::swap(meshMatrix[pivotIndex], meshMatrix[bestRow]);
+        std::swap(rightHandSide[pivotIndex], rightHandSide[bestRow]);
+        if (meshMatrix[pivotIndex][pivotIndex] == 0) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Singular reluctance network");
+        }
+        for (size_t row = pivotIndex + 1; row < numberLoops; ++row) {
+            double factor = meshMatrix[row][pivotIndex] / meshMatrix[pivotIndex][pivotIndex];
+            for (size_t column = pivotIndex; column < numberLoops; ++column) {
+                meshMatrix[row][column] -= factor * meshMatrix[pivotIndex][column];
+            }
+            rightHandSide[row] -= factor * rightHandSide[pivotIndex];
+        }
+    }
+    for (size_t rowPlusOne = numberLoops; rowPlusOne > 0; --rowPlusOne) {
+        size_t row = rowPlusOne - 1;
+        double accumulated = rightHandSide[row];
+        for (size_t column = row + 1; column < numberLoops; ++column) {
+            accumulated -= meshMatrix[row][column] * loopFluxes[column];
+        }
+        loopFluxes[row] = accumulated / meshMatrix[row][row];
+    }
+
+    std::vector<double> columnFluxes(numberColumns, 0);
+    for (size_t position = 0; position < numberColumns; ++position) {
+        double flux = 0;
+        if (position < numberLoops) {
+            flux += loopFluxes[position];
+        }
+        if (position > 0) {
+            flux -= loopFluxes[position - 1];
+        }
+        columnFluxes[_orderedColumnIndexes[position]] = flux;
+    }
+    return columnFluxes;
+}
+
 std::vector<std::vector<double>> ReluctanceNetwork::calculate_magnetizing_inductance_matrix(Magnetic magnetic) const {
     auto columnIndexPerWinding = resolve_winding_column_indexes(magnetic);
     auto windings = magnetic.get_coil().get_functional_description();
 
-    std::vector<double> columnAdmittances;
-    double totalAdmittance = 0;
-    for (auto reluctance : _columnReluctances) {
-        columnAdmittances.push_back(1 / reluctance);
-        totalAdmittance += 1 / reluctance;
-    }
-
     std::vector<std::vector<double>> inductanceMatrix(windings.size(), std::vector<double>(windings.size(), 0));
-    for (size_t i = 0; i < windings.size(); ++i) {
-        for (size_t j = 0; j < windings.size(); ++j) {
-            double numberTurnsI = windings[i].get_number_turns();
-            double numberTurnsJ = windings[j].get_number_turns();
-            double sameColumnTerm = columnIndexPerWinding[i] == columnIndexPerWinding[j] ? columnAdmittances[columnIndexPerWinding[i]] : 0;
-            inductanceMatrix[i][j] = numberTurnsI * numberTurnsJ *
-                                     (sameColumnTerm - columnAdmittances[columnIndexPerWinding[i]] * columnAdmittances[columnIndexPerWinding[j]] / totalAdmittance);
+    for (size_t j = 0; j < windings.size(); ++j) {
+        std::vector<double> columnMagnetomotiveForces(_columnReluctances.size(), 0);
+        columnMagnetomotiveForces[columnIndexPerWinding[j]] = static_cast<double>(windings[j].get_number_turns());
+        auto columnFluxes = solve_column_fluxes_for_magnetomotive_forces(columnMagnetomotiveForces);
+        for (size_t i = 0; i < windings.size(); ++i) {
+            inductanceMatrix[i][j] = static_cast<double>(windings[i].get_number_turns()) * columnFluxes[columnIndexPerWinding[i]];
         }
     }
     return inductanceMatrix;
@@ -162,20 +258,7 @@ std::vector<double> ReluctanceNetwork::calculate_column_magnetic_fluxes(Magnetic
         columnMagnetomotiveForces[columnIndexPerWinding[windingIndex]] +=
             static_cast<double>(windings[windingIndex].get_number_turns()) * windingCurrents[windingIndex];
     }
-
-    double totalAdmittance = 0;
-    double drivenAdmittance = 0;
-    for (size_t columnIndex = 0; columnIndex < _columnReluctances.size(); ++columnIndex) {
-        totalAdmittance += 1 / _columnReluctances[columnIndex];
-        drivenAdmittance += columnMagnetomotiveForces[columnIndex] / _columnReluctances[columnIndex];
-    }
-    double yokePotentialDifference = drivenAdmittance / totalAdmittance;
-
-    std::vector<double> columnFluxes(_columnReluctances.size(), 0);
-    for (size_t columnIndex = 0; columnIndex < _columnReluctances.size(); ++columnIndex) {
-        columnFluxes[columnIndex] = (columnMagnetomotiveForces[columnIndex] - yokePotentialDifference) / _columnReluctances[columnIndex];
-    }
-    return columnFluxes;
+    return solve_column_fluxes_for_magnetomotive_forces(columnMagnetomotiveForces);
 }
 
 std::vector<double> ReluctanceNetwork::calculate_column_magnetic_flux_densities(Magnetic magnetic, const std::vector<double>& windingCurrents) const {
