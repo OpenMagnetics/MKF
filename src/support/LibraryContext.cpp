@@ -11,6 +11,12 @@
 
 namespace OpenMagnetics {
 
+namespace { int activeScopeCount = 0; }
+
+bool LibraryContext::Scope::anyActive() {
+    return activeScopeCount > 0;
+}
+
 namespace {
 
 // Iterate a JSON node that may be either an object map (name -> entry) or
@@ -51,14 +57,26 @@ void LibraryContext::loadFromJson(const json& data, LoadMode mode) {
         std::map<std::string, MAS::CoreShape> out;
         forEachEntry(data["coreShapes"], "coreShapes", [&](const std::string& name, const json& jf) {
             MAS::CoreShape shape;
-            json normalized = jf;
-            if (normalized.contains("family") && normalized["family"].is_string()) {
-                std::string family = normalized["family"];
-                std::transform(family.begin(), family.end(), family.begin(), ::toupper);
-                std::replace(family.begin(), family.end(), ' ', '_');
-                normalized["family"] = family;
+            // No case normalization: MAS enum spellings are exact (lowercase /
+            // camelCase, e.g. "pq", "planarE"). The previous ::toupper mangled
+            // every family ("pq" -> "PQ"), and the generated from_json leaves
+            // the enum DEFAULT-INITIALIZED on a miss instead of throwing — so
+            // every context shape silently decoded as family C and the
+            // advisers dropped them all (the live 'only my inventory' 0-results
+            // bug). Validate the spelling explicitly instead.
+            if (jf.contains("family") && jf["family"].is_string()) {
+                json probe = jf["family"];
+                MAS::CoreShapeFamily decoded;
+                from_json(probe, decoded);
+                json roundtrip;
+                to_json(roundtrip, decoded);
+                if (roundtrip != probe) {
+                    throw std::runtime_error(
+                        "LibraryContext coreShapes['" + name + "']: unknown shape family '"
+                        + probe.get<std::string>() + "' (MAS enum spellings are exact, e.g. \"pq\")");
+                }
             }
-            from_json(normalized, shape);
+            from_json(jf, shape);
             out[name] = shape;
         });
         _coreShapes = std::move(out);
@@ -224,6 +242,7 @@ LibraryContext::Scope::Scope(const LibraryContext* ctx) {
             "before set_databases_frozen(true).");
     }
     _active = true;
+    ++activeScopeCount;
     _coreBackup = coreDatabase;
     _coreMaterialBackup = coreMaterialDatabase;
     _coreShapeBackup = coreShapeDatabase;
@@ -235,39 +254,51 @@ LibraryContext::Scope::Scope(const LibraryContext* ctx) {
 
     const bool replace = (ctx->mode() == LoadMode::Replace);
 
+    // Replace semantics: the context IS the library. Every catalog is
+    // cleared, including categories the context does not provide — otherwise
+    // a partial context leaves dangling cross-references (e.g. the full core
+    // catalog kept iterating shape NAMES that no longer exist in a replaced
+    // shape database -> CORE_SHAPE_NOT_FOUND deep inside the advisers,
+    // reproduced live with a shapes+materials+wires-only inventory).
+    if (replace) {
+        coreDatabase.clear();
+        coreMaterialDatabase.clear();
+        coreShapeDatabase.clear();
+        wireDatabase.clear();
+        bobbinDatabase.clear();
+        insulationMaterialDatabase.clear();
+        wireMaterialDatabase.clear();
+    }
+
     if (ctx->cores()) {
-        if (replace) coreDatabase.clear();
         for (const auto& c : *ctx->cores()) coreDatabase.push_back(c);
     }
     if (ctx->coreMaterials()) {
-        if (replace) coreMaterialDatabase.clear();
         for (const auto& [k, v] : *ctx->coreMaterials()) coreMaterialDatabase[k] = v;
     }
     if (ctx->coreShapes()) {
-        if (replace) coreShapeDatabase.clear();
         for (const auto& [k, v] : *ctx->coreShapes()) coreShapeDatabase[k] = v;
+    }
+    if (replace || ctx->coreShapes()) {
         rebuildShapeFamilies();
     }
     if (ctx->wires()) {
-        if (replace) wireDatabase.clear();
         for (const auto& [k, v] : *ctx->wires()) wireDatabase[k] = v;
     }
     if (ctx->bobbins()) {
-        if (replace) bobbinDatabase.clear();
         for (const auto& [k, v] : *ctx->bobbins()) bobbinDatabase[k] = v;
     }
     if (ctx->insulationMaterials()) {
-        if (replace) insulationMaterialDatabase.clear();
         for (const auto& [k, v] : *ctx->insulationMaterials()) insulationMaterialDatabase[k] = v;
     }
     if (ctx->wireMaterials()) {
-        if (replace) wireMaterialDatabase.clear();
         for (const auto& [k, v] : *ctx->wireMaterials()) wireMaterialDatabase[k] = v;
     }
 }
 
 LibraryContext::Scope::~Scope() {
     if (!_active) return;
+    --activeScopeCount;
     coreDatabase = std::move(_coreBackup);
     coreMaterialDatabase = std::move(_coreMaterialBackup);
     coreShapeDatabase = std::move(_coreShapeBackup);

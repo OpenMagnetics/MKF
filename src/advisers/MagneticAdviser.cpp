@@ -211,7 +211,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
         load_filter_flow(filterFlow, inputs);
     }
 
-    if (coreDatabase.empty()) {
+    if (coreDatabase.empty() && !LibraryContext::Scope::anyActive()) {
         load_cores();
     }
 
@@ -662,7 +662,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         clear_loaded_core_shapes();
     }
 
-    if (coreDatabase.empty()) {
+    if (coreDatabase.empty() && !LibraryContext::Scope::anyActive()) {
         load_cores();
     }
     if (wireDatabase.empty()) {

@@ -57,6 +57,12 @@ public:
     // destruction, restores them. Use via LibraryContext::applyScoped().
     class Scope {
     public:
+        // True while ANY Scope has the global databases swapped. Lazy catalog
+        // loaders (e.g. CoreAdviser's load_cores-on-empty) must not repopulate
+        // the swapped databases: inside a scope, an empty catalog is
+        // authoritative ("the context IS the library").
+        static bool anyActive();
+
         Scope() = default;
         Scope(const LibraryContext* ctx);
         ~Scope();
