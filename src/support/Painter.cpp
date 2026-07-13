@@ -80,7 +80,7 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
 
     size_t numberPointsX = settings.get_painter_number_points_x();
     size_t numberPointsY = settings.get_painter_number_points_y();
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
+    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true, true, true).first;
 
     auto modelOverride = settings.get_painter_magnetic_field_strength_model();
     // Use painter override if set, otherwise use the simulation magnetic field strength model
@@ -151,7 +151,7 @@ ComplexField PainterInterface::calculate_magnetic_field_internal_only(OperatingP
 
     size_t numberPointsX = settings.get_painter_number_points_x();
     size_t numberPointsY = settings.get_painter_number_points_y();
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
+    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true, true, true).first;
 
     auto modelOverride = settings.get_painter_magnetic_field_strength_model();
     auto magneticFieldModel = modelOverride.value_or(settings.get_magnetic_field_strength_model());
@@ -198,7 +198,7 @@ ComplexField PainterInterface::calculate_magnetic_field_external_only(OperatingP
 
     size_t numberPointsX = settings.get_painter_number_points_x();
     size_t numberPointsY = settings.get_painter_number_points_y();
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
+    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true, true, true).first;
 
     auto modelOverride = settings.get_painter_magnetic_field_strength_model();
     auto magneticFieldModel = modelOverride.value_or(settings.get_magnetic_field_strength_model());
@@ -567,7 +567,7 @@ Field PainterInterface::calculate_electric_field_sdf(OperatingPoint operatingPoi
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
     size_t numberPointsX = settings.get_painter_number_points_x();
     size_t numberPointsY = settings.get_painter_number_points_y();
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false).first;
+    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false, true).first;
 
     auto capacitanceOutput = strayCapacitance.calculate_capacitance(coil, operatingPoint);
     auto voltageDropAmongTurnsOpt = capacitanceOutput.get_voltage_drop_among_turns();
@@ -739,7 +739,7 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
         // RAII (ABT #113 sweep): exception-safe replacement for the manual
         // save/set/restore around the mesh generation.
         SettingsGuard<double> mesherFactorGuard(settings, &Settings::get_coil_mesher_inside_turns_factor, &Settings::set_coil_mesher_inside_turns_factor, 1.2);
-        inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false).first;
+        inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false, true).first;
     }
 
     auto strayCapacitanceModel = settings.get_stray_capacitance_model();

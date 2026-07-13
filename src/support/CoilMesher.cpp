@@ -159,30 +159,77 @@ bool is_passed_from_all_turns(std::vector<Turn> turns, double pointX, double poi
     return noTurnsBelow ^ noTurnsAbove;
 }
 
-std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY, bool ignoreTurns, bool includeInsideTurns) {
+std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY, bool ignoreTurns, bool includeInsideTurns, bool meshAllWindows) {
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
 
     std::vector<FieldPoint> points;
     auto extraDimension = Coil::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
-    std::vector<double> bobbinPointsX;
-    std::vector<double> bobbinPointsY;
+    // One (xPoints, yPoints) grid per meshed region.
+    std::vector<std::pair<std::vector<double>, std::vector<double>>> regionGrids;
     double coreWidth = magnetic.get_mutable_core().get_width();
     double coreHeight = magnetic.get_mutable_core().get_height();
     double dA;
 
-    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        double bobbinWidthStart = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_coordinates().value()[0] - magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value() / 2;
-        double bobbinWidth = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value();
+    auto bobbinWindingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR &&
+        meshAllWindows && bobbinWindingWindows.size() > 1) {
+        // Multi-column cores: mesh every DISTINCT winding-window region. Windows
+        // sharing one region (the same region wound from two different columns)
+        // are meshed once; the regions of today's multi-window cores are congruent
+        // (mirrors or duplicates of window 0), which keeps dA uniform.
+        std::vector<std::vector<double>> meshedRegionCenters;
+        std::optional<double> commonPixelArea;
+        for (auto& windingWindow : bobbinWindingWindows) {
+            if (!windingWindow.get_coordinates() || !windingWindow.get_width() || !windingWindow.get_height()) {
+                continue;
+            }
+            auto regionCenter = windingWindow.get_coordinates().value();
+            bool alreadyMeshed = false;
+            for (auto& meshedCenter : meshedRegionCenters) {
+                if (std::abs(meshedCenter[0] - regionCenter[0]) < 1e-9 && std::abs(meshedCenter[1] - regionCenter[1]) < 1e-9) {
+                    alreadyMeshed = true;
+                    break;
+                }
+            }
+            if (alreadyMeshed) {
+                continue;
+            }
+            meshedRegionCenters.push_back(regionCenter);
+            double regionWidth = windingWindow.get_width().value();
+            double regionHeight = windingWindow.get_height().value();
+            double pixelXDimension = regionWidth / numberPointsX;
+            double pixelYDimension = regionHeight / numberPointsY;
+            double pixelArea = pixelXDimension * pixelYDimension;
+            if (!commonPixelArea) {
+                commonPixelArea = pixelArea;
+            }
+            else if (std::abs(pixelArea - commonPixelArea.value()) > commonPixelArea.value() * 1e-6) {
+                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                            "Cannot mesh winding windows of different sizes with a uniform grid");
+            }
+            regionGrids.push_back({linspace(regionCenter[0] - regionWidth / 2 + pixelXDimension / 2,
+                                            regionCenter[0] + regionWidth / 2 - pixelXDimension / 2, numberPointsX),
+                                   linspace(regionCenter[1] - regionHeight / 2 + pixelYDimension / 2,
+                                            regionCenter[1] + regionHeight / 2 - pixelYDimension / 2, numberPointsY)});
+        }
+        if (!commonPixelArea) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "No meshable winding window found");
+        }
+        dA = commonPixelArea.value();
+    }
+    else if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        double bobbinWidthStart = bobbinWindingWindows[0].get_coordinates().value()[0] - bobbinWindingWindows[0].get_width().value() / 2;
+        double bobbinWidth = bobbinWindingWindows[0].get_width().value();
         double coreColumnWidth = magnetic.get_mutable_core().get_columns()[0].get_width();
         double coreColumnHeight = magnetic.get_mutable_core().get_columns()[0].get_height();
 
         double totalWidthInGrid = bobbinWidthStart + bobbinWidth - coreColumnWidth / 2;
         double pixelXDimension = totalWidthInGrid / numberPointsX;
         double pixelYDimension = coreColumnHeight / numberPointsY;
-        
-        bobbinPointsX = linspace(coreColumnWidth / 2 + pixelXDimension / 2, bobbinWidthStart + bobbinWidth - pixelXDimension / 2, numberPointsX);
-        bobbinPointsY = linspace(-coreColumnHeight / 2 + pixelYDimension / 2, coreColumnHeight / 2 - pixelYDimension / 2, numberPointsY);
+
+        regionGrids.push_back({linspace(coreColumnWidth / 2 + pixelXDimension / 2, bobbinWidthStart + bobbinWidth - pixelXDimension / 2, numberPointsX),
+                               linspace(-coreColumnHeight / 2 + pixelYDimension / 2, coreColumnHeight / 2 - pixelYDimension / 2, numberPointsY)});
 
         double dx = totalWidthInGrid / numberPointsX;
         double dy = coreColumnHeight / numberPointsY;
@@ -191,9 +238,8 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
     else {
         // For toroidal cores with round winding windows, use standard Cartesian grid
         // This provides consistent behavior across all core types
-        auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
-        bobbinPointsX = linspace(-coreWidth / 2 * extraDimension, coreWidth / 2 * extraDimension, numberPointsX);
-        bobbinPointsY = linspace(-coreHeight / 2 * extraDimension, coreHeight / 2 * extraDimension, numberPointsY);
+        regionGrids.push_back({linspace(-coreWidth / 2 * extraDimension, coreWidth / 2 * extraDimension, numberPointsX),
+                               linspace(-coreHeight / 2 * extraDimension, coreHeight / 2 * extraDimension, numberPointsY)});
         double dx = coreWidth * extraDimension / numberPointsX;
         double dy = coreHeight * extraDimension / numberPointsY;
         dA = dx * dy;
@@ -210,30 +256,32 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
     if (windingOrientation && windingOrientation.value() == WindingOrientation::CONTIGUOUS) {
         checkOnlyDistance = false;
     }
-    for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
-        for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
-            if (!ignoreTurns) {
-                if (is_far_from_turns(turns, bobbinPointsX[i], bobbinPointsY[j]) && (checkOnlyDistance || is_passed_from_all_turns(turns, bobbinPointsX[i], bobbinPointsY[j]))) {
-                    continue;
-                }
-            }
-            if (isPlanar) {
+    for (auto& [bobbinPointsX, bobbinPointsY] : regionGrids) {
+        for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
+            for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
                 if (!ignoreTurns) {
-                    // Planar are so thin and can be so close, that we need to remove he copper part to avoid having a much larger value
-                    // TODO: Evaluate for other wires
+                    if (is_far_from_turns(turns, bobbinPointsX[i], bobbinPointsY[j]) && (checkOnlyDistance || is_passed_from_all_turns(turns, bobbinPointsX[i], bobbinPointsY[j]))) {
+                        continue;
+                    }
+                }
+                if (isPlanar) {
+                    if (!ignoreTurns) {
+                        // Planar are so thin and can be so close, that we need to remove he copper part to avoid having a much larger value
+                        // TODO: Evaluate for other wires
+                        if (is_inside_turns(turns, bobbinPointsX[i], bobbinPointsY[j])) {
+                            continue;
+                        }
+                    }
+                }
+                else if (!includeInsideTurns) {
                     if (is_inside_turns(turns, bobbinPointsX[i], bobbinPointsY[j])) {
                         continue;
                     }
                 }
+                FieldPoint fieldPoint;
+                fieldPoint.set_point(std::vector<double>{bobbinPointsX[i], bobbinPointsY[j]});
+                points.push_back(fieldPoint);
             }
-            else if (!includeInsideTurns) {
-                if (is_inside_turns(turns, bobbinPointsX[i], bobbinPointsY[j])) {
-                    continue;
-                }
-            }
-            FieldPoint fieldPoint;
-            fieldPoint.set_point(std::vector<double>{bobbinPointsX[i], bobbinPointsY[j]});
-            points.push_back(fieldPoint);
         }
     }
     Field inducedField;
