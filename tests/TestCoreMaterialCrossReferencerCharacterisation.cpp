@@ -94,28 +94,43 @@ void check_top_n(const std::string& label,
 // scores ~2%. PowderDefault: Kool Mu Ultra 26 drops from slot 2 to slot 5.
 // PowderOnlyMicrometals: SM 40 and SM 60 swap slots 1-2. Regenerated with
 // kRegenerateBaselines on main 17e1f850.
+// Re-baselined 2026-07-14 (ABT #224 + advance MAS to latest main 489ddd9, user-approved re-pin).
+// The MAS bump is 232c2f0 (TDG import) -> latest main: it also adds Changsung (CSC) powder cores,
+// Ferroxcube 3E/3F37, TDK PC40/PC44/PC90, VAC nanocrystalline (ABT #213-216, #189). Effects:
+// FerriteDefault: TPW33 (new TDG DMR95-class MnZn) is slot 0 — at 25 °C its μr (3325) tracks 3C97
+//   (3341) even closer than DMR95 (3480) with identical saturation & losses. Slots 1-3 unchanged;
+//   slot 4 is now "T" (new Magnetics MnZn power ferrite), a marginally closer match than P492.
+// FerriteOnlyTdk: N95 overtakes PC47 at slot 0. The previous PC47 pin's justification compared
+//   permeabilities at MISMATCHED temperatures (each material's first datasheet point: 3C97 at
+//   -40 °C, PC47/N95 at -60 °C). At the actual 25 °C evaluation 3C97≈3341, N95≈3008 (closer),
+//   PC47≈2330, and N95 is also closer on volumetric losses (both weight-1 filters) — so N95 is
+//   the correct 25 °C match. Slots 1-3 unchanged; slot 4 is now PC44 (new TDK power ferrite).
+// PowderDefault: CSC Sendust 26 (Changsung Sendust, same FeSiAl alloy and μ=26 as the Kool Mµ MAX
+//   26 reference) takes slot 0 as a near-identical same-family match. NPH-L 26 (Poco High-Flux)
+//   also participates now that the curie-NaN crash is fixed (6 Poco NPN/NPU materials gained
+//   curieTemperature in MAS). Kool Mµ MAX 40 falls off the top-5.
 const std::vector<TopEntry> kTopFerriteDefault = {
+    {"TPW33", 2.7280204415116578},
     {"DMR95", 2.7229069637902059},
     {"P45",   2.7216369780206886},
     {"3C95",  2.7144498861636723},
-    {"P492",  2.7032027114576547},
-    {"P452",  2.6934000403021439},
+    {"T",     2.71339927430376},
 };
 
 const std::vector<TopEntry> kTopFerriteOnlyTdk = {
-    {"PC47", 2.6293249731454225},
-    {"N95",  2.6251256255195439},
-    {"N97",  2.5377334445921855},
+    {"N95",  2.556455278905954},
+    {"PC47", 2.4863443793547764},
+    {"N97",  2.4851490946728743},
     {"N51",  2.458893344562656},
-    {"N41",  2.4211654338911739},
+    {"PC44", 2.4578606280817934},
 };
 
 const std::vector<TopEntry> kTopPowderDefault = {
-    {"Kool Mµ Hƒ 26",    2.7212624022782093},
-    {"Kool Mµ 26",       2.7211505563536287},
-    {"Kool Mµ MAX 19",   2.7171791666466776},
-    {"Kool Mµ MAX 40",   2.7166417605966702},
-    {"Kool Mµ Ultra 26", 2.7143812061192554},
+    {"CSC Sendust 26", 2.7250690223085345},
+    {"Kool Mµ Hƒ 26",  2.7212624022782093},
+    {"Kool Mµ 26",     2.7211505563536287},
+    {"NPH-L 26",       2.7191529873382989},
+    {"Kool Mµ MAX 19", 2.7171791666466776},
 };
 
 const std::vector<TopEntry> kTopPowderOnlyMicrometals = {

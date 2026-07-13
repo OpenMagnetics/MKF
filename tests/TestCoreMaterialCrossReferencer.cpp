@@ -30,7 +30,11 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "DMR95");
+        // ABT #224 (MAS TDG import): TPW33, a new DMR95-class MnZn power ferrite, is the closest
+        // match to 3C97. At 25 °C its initial permeability (3325) tracks 3C97 (3341) even more
+        // closely than DMR95 (3480), with identical saturation (0.371 T) and comparable losses.
+        // DMR95 is now the runner-up. Was DMR95 before TPW33 entered the database.
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "TPW33");
 
         auto scorings = coreMaterialCrossReferencer.get_scorings();
         auto scoredValues = coreMaterialCrossReferencer.get_scored_values();
@@ -75,12 +79,16 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        // PC47 tracks 3C97 far better than N95 on the scored parameters:
-        //   μr:   3C97=1140, PC47=1154 (1.2% off),  N95=2537 (2.2× off)
-        //   Br:   3C97=0.07, PC47=0.06,             N95=0.225 (3× off)
-        //   Hc:   3C97=8,    PC47=7,                N95=17.3 (2× off)
-        // Older MAS snapshots had stale property values that ranked N95 first.
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "PC47");
+        // ABT #224: N95 is the closest TDK match to 3C97 at the 25 °C evaluation point.
+        // A previous pin expected PC47, justified by "3C97=1140, PC47=1154, N95=2537" — but
+        // those are each material's FIRST datasheet permeability entry, at MISMATCHED
+        // temperatures (3C97's first point is -40 °C; PC47's and N95's are -60 °C). Comparing
+        // at the actual evaluation temperature (25 °C) inverts that conclusion:
+        //   μr @25 °C: 3C97≈3341,  N95≈3008 (closer),  PC47≈2330
+        //   volumetric losses (the other weight-1 filter): N95 also closer than PC47
+        // so N95 wins on both dominant filters. The TDK pool is unaffected by the TDG import;
+        // this was a pre-existing mis-pin, surfaced while triaging #224.
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "N95");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder", "[adviser][core-material-cross-referencer][smoke-test]") {
@@ -97,7 +105,11 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Kool M\xC2\xB5 H\xC6\x92 26");
+        // ABT #224 (MAS advanced to latest main): CSC Sendust 26 (Changsung) is the closest match
+        // to Kool Mu MAX 26 — both are FeSiAl (Sendust) powder at μ=26, i.e. the same alloy family
+        // and permeability, so it tracks the reference more tightly than any Kool Mu grade. Was
+        // Kool Mu Hf 26 before the Changsung powder cores entered the database (ABT #214).
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "CSC Sendust 26");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals", "[adviser][core-material-cross-referencer][smoke-test]") {

@@ -249,10 +249,14 @@ const std::vector<TopEntry> kTopStandardPower = {
 // the fix the SAME three cores as the 2026-05-19 baseline flow again (XFlux 26
 // toroids, identical identities + order); only the scores nudged < 0.6 % from
 // the 2026-06 loss/saturation recompute.
+// Score-only refresh 2026-07-14 (ABT #224 / advance MAS to latest main): the new
+// Changsung/Ferroxcube/TDK/VAC materials entered the interference-suppression
+// normalization pool, nudging slots 1-2 by ~1e-5 (min-max scores are pool-relative).
+// Identical cores + order; slot 0 unchanged.
 const std::vector<TopEntry> kTopAvailableInterference = {
     {"T 134/77/155 - XFlux 26 - Ungapped",         1.9451312382492831},
-    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8563034258168774},
-    {"T 167/87/27 - XFlux 26 - Ungapped",          1.5057090764821521},
+    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8562803208704106},
+    {"T 167/87/27 - XFlux 26 - Ungapped",          1.5056616982902709},
 };
 
 } // namespace
