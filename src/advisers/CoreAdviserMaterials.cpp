@@ -44,6 +44,14 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
     auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_powder_manufacturer());
+    if (coreMaterials.empty()) {
+        // Same degradation as gather_ferrite_materials_for_application: under
+        // a LibraryContext the preferred powder brand is usually absent.
+        logEntry(std::string("No '") + settings.get_preferred_core_material_powder_manufacturer()
+                 + "' powder materials in the current catalog; evaluating all available materials instead.",
+                 "CoreAdviser");
+        coreMaterials = get_core_material_names(std::nullopt);
+    }
     for (auto coreMaterial : coreMaterials) {
         auto resolved = Core::resolve_material(coreMaterial);
         if (Core::check_material_application(resolved, _application)) {
@@ -120,6 +128,16 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
 std::vector<CoreMaterial> CoreAdviser::gather_ferrite_materials_for_application() const {
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
     auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_ferrite_manufacturer());
+    if (coreMaterials.empty()) {
+        // The preferred manufacturer has no materials in the CURRENT catalog —
+        // which is the normal case under a LibraryContext (a user inventory
+        // rarely stocks the default brand). The preference is a tiebreak, not
+        // a hard gate: degrade to every material in the catalog, loudly.
+        logEntry(std::string("No '") + settings.get_preferred_core_material_ferrite_manufacturer()
+                 + "' ferrite materials in the current catalog; evaluating all available materials instead.",
+                 "CoreAdviser");
+        coreMaterials = get_core_material_names(std::nullopt);
+    }
     for (auto coreMaterial : coreMaterials) {
         auto resolved = Core::resolve_material(coreMaterial);
         if (Core::check_material_application(resolved, _application)) {

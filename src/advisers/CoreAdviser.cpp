@@ -158,7 +158,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(
     // filtering coreShapeDatabase indirectly via constraints on the cores
     // dataset later in the flow (see filter inside the shapes branch).
     if (get_mode() == CoreAdviserModes::AVAILABLE_CORES) {
-        if (coreDatabase.empty()) {
+        if (coreDatabase.empty() && !LibraryContext::Scope::anyActive()) {
             load_cores();
         }
         auto filtered = filterCoresByConstraints(coreDatabase, constraints);
@@ -196,7 +196,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
     if (get_mode() == CoreAdviserModes::AVAILABLE_CORES) {
-        if (coreDatabase.empty()) {
+        if (coreDatabase.empty() && !LibraryContext::Scope::anyActive()) {
             load_cores();
         }
         return get_advised_core(inputs, weights, &coreDatabase, maximumNumberResults);
@@ -240,7 +240,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         logEntry("STANDARD_CORES synthesis returned no candidates for this power design; "
                  "falling through to the AVAILABLE_CORES manufacturer catalogue "
                  "(results are tagged to make the mode substitution explicit).", "CoreAdviser");
-        if (coreDatabase.empty()) {
+        if (coreDatabase.empty() && !LibraryContext::Scope::anyActive()) {
             load_cores();
         }
         auto fallbackResults = get_advised_core(inputs, weights, &coreDatabase, maximumNumberResults);

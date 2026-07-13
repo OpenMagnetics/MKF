@@ -151,24 +151,35 @@ namespace OpenMagnetics {
         }
         std::string jsonLine;
         std::vector<Wire> wires;
-        for (const auto& [key, wire] : wireDatabase) {
-            // ABT #164: honour a per-call wireType constraint locally instead of
-            // MagneticAdviser swapping the shared wireDatabase. Empty
-            // _wireConstraints.wireType => accepts every type.
-            if (!acceptsWireType(_wireConstraints.wireType, wire.get_type())) {
-                continue;
+        // The common-wire-standard default (NEMA MW 1000 C) is a PREFERENCE:
+        // against a small catalog (e.g. a LibraryContext inventory of IEC
+        // 60317 wires) it must not empty the pool. Try the preferred standard
+        // first; if nothing survives, retry accepting every standard, loudly.
+        for (int standardPass = 0; standardPass < 2 && wires.empty(); ++standardPass) {
+            bool enforceStandard = (standardPass == 0);
+            if (!enforceStandard && _commonWireStandard) {
+                logEntry("No wires matching the preferred wire standard in the current catalog; "
+                         "accepting every standard instead.", "CoilAdviser");
             }
-            if ((settings.get_wire_adviser_include_planar() || wire.get_type() != WireType::PLANAR) &&
-                (settings.get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
-                (settings.get_wire_adviser_include_rectangular() || wire.get_type() != WireType::RECTANGULAR) &&
-                (settings.get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
-                (settings.get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
-
-                if (!_commonWireStandard || !wire.get_standard()) {
-                    wires.push_back(wire);
+            for (const auto& [key, wire] : wireDatabase) {
+                // ABT #164: honour a per-call wireType constraint locally instead of
+                // MagneticAdviser swapping the shared wireDatabase. Empty
+                // _wireConstraints.wireType => accepts every type.
+                if (!acceptsWireType(_wireConstraints.wireType, wire.get_type())) {
+                    continue;
                 }
-                else if (wire.get_standard().value() == _commonWireStandard){
-                    wires.push_back(wire);
+                if ((settings.get_wire_adviser_include_planar() || wire.get_type() != WireType::PLANAR) &&
+                    (settings.get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
+                    (settings.get_wire_adviser_include_rectangular() || wire.get_type() != WireType::RECTANGULAR) &&
+                    (settings.get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
+                    (settings.get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
+
+                    if (!enforceStandard || !_commonWireStandard || !wire.get_standard()) {
+                        wires.push_back(wire);
+                    }
+                    else if (wire.get_standard().value() == _commonWireStandard){
+                        wires.push_back(wire);
+                    }
                 }
             }
         }
