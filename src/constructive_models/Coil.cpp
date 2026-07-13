@@ -1293,6 +1293,35 @@ std::vector<size_t> Coil::extract_stack_up(std::vector<Section> sections) {
 }
 
 bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
+    // REAL WINDING: a wire that makes N turns crosses the winding-window plane N+1
+    // times — the beginning of the first turn occupies its own physical slot in the
+    // cross-section (for 3 turns, 4 wire crossings per parallel appear in the 2D
+    // projection). Wind one extra turn per winding (one extra slot per parallel, since
+    // slots = numberTurns x numberParallels): the first placed turn of each parallel is
+    // that beginning crossing; every following turn is the wrap ending at its own
+    // crossing. The bump lasts for the whole wind — including the turn-blocking
+    // re-winds — and the electrical turn count is restored on exit (RAII), so
+    // inductance and turns-ratio semantics are untouched.
+    struct RealWindingCrossingBump {
+        Coil& coil;
+        bool active = false;
+        explicit RealWindingCrossingBump(Coil& c) : coil(c) {}
+        void arm() {
+            if (active || !settings.get_coil_use_real_winding_geometry()) return;
+            for (auto& winding : coil.get_mutable_functional_description()) {
+                winding.set_number_turns(winding.get_number_turns() + 1);
+            }
+            active = true;
+        }
+        ~RealWindingCrossingBump() {
+            if (active) {
+                for (auto& winding : coil.get_mutable_functional_description()) {
+                    winding.set_number_turns(winding.get_number_turns() - 1);
+                }
+            }
+        }
+    } realWindingCrossingBump(*this);
+
     bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
     bool delimitAndCompact = settings.get_coil_delimit_and_compact();
     bool tryRewind = settings.get_coil_try_rewind();
@@ -1340,6 +1369,11 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                 logEntry("Building centered single-turn toroidal", "Coil", 2);
                 return build_centered_single_turn_toroidal();
             }
+
+            // REAL WINDING: arm the N+1-crossing bump (declared at function scope so it
+            // also covers the global turn-blocking re-wind below) only after the
+            // centered-single-turn special case has had its chance.
+            realWindingCrossingBump.arm();
 
             if (_insulationSections.size() == 0) {
 
@@ -1397,7 +1431,10 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         // leads cross what), so iterate to a fixpoint. Entirely gated behind the real-winding flag —
         // ideal winding never enters this loop, so its geometry is unchanged.
         logEntry("Applying real winding geometry (global turn blocking)", "Coil", 2);
-        const size_t maximumBlockingIterations = 8;
+        // Upper bound: each iteration can at most add one blocked slot per layer edge and
+        // spill one extra layer per section; window-sized windings converge in a handful,
+        // and the post-loop check below turns genuine divergence into a loud error.
+        const size_t maximumBlockingIterations = 16;
         for (size_t blockingIteration = 0; blockingIteration < maximumBlockingIterations; ++blockingIteration) {
             auto freshBlocked = compute_connection_blocked_slots_per_layer();
             // Accumulate the blocked slots MONOTONICALLY (element-wise max) instead of replacing them.
@@ -1434,12 +1471,31 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                     delimit_and_compact();
                 }
             }
+            // Align INSIDE the loop: packing the blocked layers' turns against their
+            // unblocked edge moves which slots the leads cross, so the next iteration's
+            // blocking must be derived from the ALIGNED geometry — aligning only after
+            // the loop leaves silently unblocked slots (turns inside terminal leads).
+            align_blocked_layer_turns();
+        }
+        // Verify the fixpoint actually converged: the last re-wind may have produced NEW
+        // blocking that the loop never re-applied (cap exhaustion) — silent residue leaves
+        // turns inside reserved lead slots.
+        {
+            auto residual = compute_connection_blocked_slots_per_layer();
+            for (const auto& [layerName, edges] : residual) {
+                const auto& accumulated = _connectionBlockedSlotsPerLayer[layerName];
+                if (edges.first > accumulated.first || edges.second > accumulated.second) {
+                    throw CoilException(
+                        ErrorCode::COIL_WINDING_ERROR,
+                        "Real winding turn blocking did not converge for layer '" + layerName +
+                        "' (needs {" + std::to_string(edges.first) + "," +
+                        std::to_string(edges.second) + "} blocked slots, applied {" +
+                        std::to_string(accumulated.first) + "," +
+                        std::to_string(accumulated.second) + "})");
+                }
+            }
         }
         result = are_sections_and_layers_fitting() && bool(get_turns_description());
-        // For Z-wound layers, pack the turns against the unblocked edge so the slots freed by blocking
-        // line up with the terminal leads at the window edges (delimit otherwise centres them, leaving
-        // a turn-sized gap on the unblocked side and clipping the terminal slot on the blocked side).
-        align_blocked_layer_turns();
         logEntry("Applying real winding geometry (connection reserved space)", "Coil", 2);
         apply_connection_reserved_space();
     }

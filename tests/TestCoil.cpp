@@ -11108,7 +11108,8 @@ TEST_CASE("Test_Real_Geometry_Multifilar_N_Filar", "[constructive-model][coil][r
 
         INFO("K=" << K << " Z");
         REQUIRE(coil.get_turns_description());
-        CHECK(coil.get_turns_description().value().size() == size_t(18 * K));
+        // Real winding: N turns cross the window plane N+1 times, one extra slot per parallel.
+        CHECK(coil.get_turns_description().value().size() == size_t((18 + 1) * K));
         CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == int(K));
         CHECK(layers_balanced_across_parallels(coil, "winding 0", K));
         CHECK(real_geometry_collisions(coil) == 0);
@@ -11145,7 +11146,8 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel);
 
     REQUIRE(coil.get_turns_description());
-    CHECK(coil.get_turns_description().value().size() == size_t(20 * 2 + 20 * 1));
+    // Real winding: one extra crossing per parallel ((20+1)*2 + (20+1)*1).
+    CHECK(coil.get_turns_description().value().size() == size_t((20 + 1) * 2 + (20 + 1) * 1));
     CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
     CHECK(layers_balanced_across_parallels(coil, "winding 0", 2));
     CHECK(layers_balanced_across_parallels(coil, "winding 1", 1));
@@ -11167,7 +11169,8 @@ TEST_CASE("Test_Real_Geometry_Rectangular_Contiguous", "[constructive-model][coi
         WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS);
 
     REQUIRE(coil.get_turns_description());
-    CHECK(coil.get_turns_description().value().size() == size_t(12 * 2));
+    // Real winding: one extra crossing per parallel ((12+1)*2).
+    CHECK(coil.get_turns_description().value().size() == size_t((12 + 1) * 2));
     // The transposed model must produce connection leads for the contiguous winding.
     CHECK(!coil.get_connection_reserved_spaces().empty());
     CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
@@ -11234,7 +11237,8 @@ TEST_CASE("Test_Real_Geometry_Toroidal", "[constructive-model][coil][real-geomet
         if (order == WindingOrder::U) rewindAs(coil, order);
         INFO("overlapping " << tag);
         REQUIRE(coil.get_turns_description());
-        CHECK(coil.get_turns_description().value().size() == size_t(40 * 2));
+        // Real winding: one extra crossing per parallel ((40+1)*2).
+        CHECK(coil.get_turns_description().value().size() == size_t((40 + 1) * 2));
         CHECK(toroidal_turn_overlaps(coil) == 0);
         CHECK(!coil.get_connection_reserved_spaces().empty());
         CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
