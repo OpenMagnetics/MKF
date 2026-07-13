@@ -1,6 +1,8 @@
 #include "support/CoilMesher.h"
 #include "physical_models/MagneticField.h"
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/ReluctanceNetwork.h"
+#include "physical_models/Reluctance.h"
 #include "MAS.hpp"
 #include "support/Utils.h"
 #include "json.hpp"
@@ -129,6 +131,33 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
         throw CoreNotProcessedException(
             "Cannot calculate leakage inductance: the core has no processed description "
             "(effective parameters/shape unresolved). Run magnetic autocomplete / process the core first.");
+    }
+
+    // Multi-column winding: the window-energy method below integrates the field of ONE
+    // window revolved around the main column — meaningless for a winding pair sitting
+    // on different columns, whose leakage flux closes through the other window and the
+    // air outside the core. Use the per-column reluctance network's short-circuit
+    // inductance (L_ss − L_sd²/L_dd, referred to the source): the magnetic-circuit
+    // leakage between leg-separated windings.
+    if (ReluctanceNetwork::has_non_main_placement(magnetic)) {
+        auto columnIndexPerWinding = ReluctanceNetwork::resolve_winding_column_indexes(magnetic);
+        if (columnIndexPerWinding[sourceIndex] != columnIndexPerWinding[destinationIndex]) {
+            auto reluctanceModel = ReluctanceModel::factory();
+            auto reluctanceOutput = reluctanceModel->get_core_reluctance(magnetic.get_mutable_core(), std::optional<OperatingPoint>(std::nullopt));
+            ReluctanceNetwork reluctanceNetwork(magnetic.get_core(), reluctanceOutput.get_ungapped_core_reluctance().value(),
+                                                reluctanceOutput.get_reluctance_per_gap().value_or(std::vector<AirGapReluctanceOutput>{}));
+            auto inductanceMatrix = reluctanceNetwork.calculate_magnetizing_inductance_matrix(magnetic);
+            double shortCircuitInductance = inductanceMatrix[sourceIndex][sourceIndex] -
+                                            inductanceMatrix[sourceIndex][destinationIndex] * inductanceMatrix[sourceIndex][destinationIndex] /
+                                                inductanceMatrix[destinationIndex][destinationIndex];
+            LeakageInductanceOutput leakageInductanceOutput;
+            leakageInductanceOutput.set_method_used("ReluctanceNetwork");
+            leakageInductanceOutput.set_origin(ResultOrigin::SIMULATION);
+            DimensionWithTolerance dimensionWithTolerance;
+            dimensionWithTolerance.set_nominal(shortCircuitInductance);
+            leakageInductanceOutput.set_leakage_inductance_per_winding({dimensionWithTolerance});
+            return leakageInductanceOutput;
+        }
     }
 
     // RAII: any throw between the manual set/restore pair (several are right below) used

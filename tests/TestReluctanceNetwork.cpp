@@ -2,6 +2,12 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/Inductance.h"
+#include "physical_models/LeakageInductance.h"
+#include "physical_models/WindingLosses.h"
+#include "processors/Inputs.h"
+#include "support/Painter.h"
+#include <filesystem>
+#include <source_location>
 #include "constructive_models/Core.h"
 #include "constructive_models/Bobbin.h"
 #include "support/Settings.h"
@@ -177,4 +183,72 @@ TEST_CASE("ReluctanceNetwork_InductanceMatrix_PlacementGate", "[physical-model][
     double couplingCoefficient = std::abs(mutual) / std::sqrt(selfPrimary * selfSecondary);
     CHECK(couplingCoefficient < 0.999);
     CHECK(magnitude["Primary"]["Secondary"].get_nominal().value() == magnitude["Secondary"]["Primary"].get_nominal().value());
+}
+
+TEST_CASE("MultiColumnWinding_CrossColumnLeakage_UsesNetworkShortCircuit", "[physical-model][magnetic-circuit][multi-column][smoke-test]") {
+    auto magnetic = buildTwoWindingMagnetic(2);
+    magnetic.get_mutable_coil().set_core_columns(magnetic.get_core().get_processed_description()->get_columns());
+    REQUIRE(magnetic.get_mutable_coil().wind());
+
+    LeakageInductance leakageModel;
+    auto leakageOutput = leakageModel.calculate_leakage_inductance(magnetic, 100000, 0, 1);
+    CHECK(leakageOutput.get_method_used() == "ReluctanceNetwork");
+    double leakageInductance = leakageOutput.get_leakage_inductance_per_winding()[0].get_nominal().value();
+
+    // The network's short-circuit inductance referred to the source.
+    auto circuit = buildCircuit(magnetic.get_core());
+    auto inductanceMatrix = circuit.calculate_magnetizing_inductance_matrix(magnetic);
+    double expected = inductanceMatrix[0][0] - inductanceMatrix[0][1] * inductanceMatrix[0][1] / inductanceMatrix[1][1];
+    CHECK_THAT(leakageInductance, Catch::Matchers::WithinRel(expected, 1e-6));
+    CHECK(leakageInductance > 0);
+    // Leg-separated windings couple much worse than concentric ones: the
+    // short-circuit inductance is a large fraction of the open-circuit one.
+    CHECK(leakageInductance / inductanceMatrix[0][0] > 0.05);
+}
+
+TEST_CASE("MultiColumnWinding_WindingLosses_CrossColumn", "[physical-model][magnetic-circuit][multi-column][smoke-test]") {
+    auto magnetic = buildTwoWindingMagnetic(2);
+    magnetic.get_mutable_coil().set_core_columns(magnetic.get_core().get_processed_description()->get_columns());
+    REQUIRE(magnetic.get_mutable_coil().wind());
+
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        100000, 100e-6, 25, WaveformLabel::SINUSOIDAL, 2, 0.5, 0, {2.0});
+    auto lossesOutput = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
+    double windingLosses = lossesOutput.get_winding_losses();
+    CHECK(std::isfinite(windingLosses));
+    CHECK(windingLosses > 0);
+
+    // Both windings must contribute losses: the lateral-column secondary carries the
+    // same RMS-scaled current and cannot come out lossless.
+    REQUIRE(lossesOutput.get_winding_losses_per_winding());
+    auto lossesPerWinding = lossesOutput.get_winding_losses_per_winding().value();
+    REQUIRE(lossesPerWinding.size() == 2);
+    for (auto& windingLossesElement : lossesPerWinding) {
+        double ohmic = windingLossesElement.get_ohmic_losses() ? windingLossesElement.get_ohmic_losses()->get_losses() : 0;
+        CHECK(ohmic > 0);
+    }
+}
+
+TEST_CASE("MultiColumnWinding_Painter_FullSilhouette", "[support][painter][multi-column][smoke-test]") {
+    auto magnetic = buildTwoWindingMagnetic(2);
+    magnetic.get_mutable_coil().set_core_columns(magnetic.get_core().get_processed_description()->get_columns());
+    REQUIRE(magnetic.get_mutable_coil().wind());
+
+    auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
+    auto outFile = outputFilePath;
+    outFile.append("Test_MultiColumn_Painter_FullSilhouette.svg");
+    std::filesystem::remove(outFile);
+    Painter painter(outFile);
+    painter.paint_core(magnetic);
+    painter.paint_bobbin(magnetic);
+    painter.paint_coil_turns(magnetic);
+    auto svg = painter.export_svg();
+
+    REQUIRE(std::filesystem::exists(outFile));
+    // The mirrored silhouette and the left-window turns must produce geometry at
+    // negative x: the viewBox (autoscaled bounding box) has to start left of zero.
+    auto viewBoxPosition = svg.find("viewBox=\"");
+    REQUIRE(viewBoxPosition != std::string::npos);
+    auto viewBoxContent = svg.substr(viewBoxPosition + 9, 20);
+    CHECK(viewBoxContent[0] == '-');
 }

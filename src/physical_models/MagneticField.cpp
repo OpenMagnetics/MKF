@@ -282,6 +282,17 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         _model = factory(_magneticFieldStrengthModel);
     }
 
+    // Multi-column winding: ALBACH folds r = |x|, modelling every turn as a circular
+    // loop around the MAIN column — the wrong topology for turns wound on another
+    // column (a lateral leg is not a solid of revolution about the central axis).
+    // Fall back to BINNS_LAWRENSON, whose 2D Cartesian filaments plus the per-window
+    // mirror images handle any placement.
+    bool multiWindowCore = coreShapeFamily != CoreShapeFamily::T && core.get_winding_windows().size() > 1;
+    if (multiWindowCore && _magneticFieldStrengthModel == MagneticFieldStrengthModels::ALBACH) {
+        _magneticFieldStrengthModel = MagneticFieldStrengthModels::BINNS_LAWRENSON;
+        _model = factory(_magneticFieldStrengthModel);
+    }
+
     std::vector<int8_t> currentDirectionPerWinding;
     if (!customCurrentDirectionPerWinding) {
         currentDirectionPerWinding.push_back(1);
@@ -607,6 +618,22 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     double frequency = inducingFields[harmonicIndex].get_frequency();
                     double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
 
+                    // Multi-column winding: the fringing conventions below are written
+                    // for the x>0 window (gaps at x<0 are skipped, edge selection
+                    // assumes the point sits right of the gap). Points in the mirrored
+                    // (x<0) window see the mirror-symmetric field of the symmetric
+                    // gap arrangement: evaluate at the mirrored point and flip the
+                    // odd (x) component. Exact for symmetric gapping; asymmetric
+                    // lateral gapping across sides is not represented yet.
+                    auto fringingInducedPoint = inducedFieldPoint;
+                    bool mirroredForFringing = false;
+                    if (multiWindowCore && inducedFieldPoint.get_point()[0] < 0) {
+                        auto mirroredPoint = inducedFieldPoint.get_point();
+                        mirroredPoint[0] = -mirroredPoint[0];
+                        fringingInducedPoint.set_point(mirroredPoint);
+                        mirroredForFringing = true;
+                    }
+
                     // For ALBACH fringing only the out-of-validity gaps are handled here
                     // (via Roshen); the in-range gaps went through equivalent current loops.
                     auto& gapsToProcess = albachRoutedGapsPending ? albachOutOfRangeGaps : gapping;
@@ -615,10 +642,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                             continue;
                         }
                         auto complexFieldPoint = albachRoutedGapsPending ?
-                            albachFallbackRoshenModel.get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, inducedFieldPoint) :
-                            _fringingEffectModel->get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, inducedFieldPoint);
+                            albachFallbackRoshenModel.get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, fringingInducedPoint) :
+                            _fringingEffectModel->get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, fringingInducedPoint);
 
-                        totalInducedFieldX += complexFieldPoint.get_real();
+                        totalInducedFieldX += mirroredForFringing ? -complexFieldPoint.get_real() : complexFieldPoint.get_real();
                         totalInducedFieldY += complexFieldPoint.get_imaginary();
                         if (std::isnan(complexFieldPoint.get_real())) {
                             throw NaNResultException("NaN found in fringing field calculation");
@@ -639,6 +666,15 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                                      inducedFieldPoint.get_label().value() == "widthsample";
 
             for (auto& inducingFieldPoint : inducingFields[harmonicIndex].get_data()) {
+                // Multi-column winding: the main column magnetically screens the two
+                // window sides from each other (the mirror-image walls). A turn on one
+                // side does not directly induce field on the other side; its influence
+                // travels through the shared core flux, which the per-column
+                // reluctance network accounts for.
+                if (multiWindowCore &&
+                    inducingFieldPoint.get_point()[0] * inducedFieldPoint.get_point()[0] < 0) {
+                    continue;
+                }
                 std::optional<size_t> windingIndex = std::nullopt;
                 if (inducingFieldPoint.get_turn_index()) {
                     if (fringingOnlyPoint) {

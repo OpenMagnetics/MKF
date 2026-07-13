@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 
 #include <cmath>
+#include <limits>
 #include <complex>
 #include <filesystem>
 #include <fstream>
@@ -478,15 +479,48 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
     auto processedDescription = core.get_processed_description().value();
     auto coreFamily = core.get_shape_family();
 
-    WindingWindowElement windingWindow = processedDescription.get_winding_windows()[0]; // Hardcoded
+    // Mirror against the winding window that CONTAINS the turn (multi-column winding
+    // support). Single-window cores keep the historical frame: window 0's inner edge
+    // coincides with the main column surface, so the expressions below reduce exactly
+    // to the old columnWidth/2-based ones.
+    auto windingWindows = processedDescription.get_winding_windows();
+    WindingWindowElement windingWindow = windingWindows[0];
+    if (windingWindows.size() > 1 && coreFamily != CoreShapeFamily::T) {
+        double turnX = turn.get_coordinates()[0];
+        double bestDistance = std::numeric_limits<double>::max();
+        for (auto& candidate : windingWindows) {
+            if (!candidate.get_coordinates() || !candidate.get_width()) {
+                continue;
+            }
+            double distance = std::abs(turnX - candidate.get_coordinates().value()[0]);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                windingWindow = candidate;
+            }
+        }
+    }
 
     if (coreFamily != CoreShapeFamily::T) {
         double A = windingWindow.get_width().value();
         double B = windingWindow.get_height().value();
-        double coreColumnWidth = core.get_columns()[0].get_width();
 
-        double turnA = turn.get_coordinates()[0] - coreColumnWidth / 2;
-        double turnB = turn.get_coordinates()[1] + B / 2;
+        double windowLeftEdgeX;
+        double windowBottomY;
+        if (windingWindows.size() > 1 && windingWindow.get_coordinates()) {
+            windowLeftEdgeX = windingWindow.get_coordinates().value()[0] - A / 2;
+            windowBottomY = windingWindow.get_coordinates().value()[1] - B / 2;
+        }
+        else {
+            // Historical single-window frame: window bounded left by the main column
+            // surface, vertically centered. Kept by construction so single-window
+            // magnetics are bit-identical to the pre-multi-column behavior.
+            double coreColumnWidth = core.get_columns()[0].get_width();
+            windowLeftEdgeX = coreColumnWidth / 2;
+            windowBottomY = -B / 2;
+        }
+
+        double turnA = turn.get_coordinates()[0] - windowLeftEdgeX;
+        double turnB = turn.get_coordinates()[1] - windowBottomY;
 
         for (int m = -M; m <= M; ++m)
         {
@@ -515,7 +549,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
                 else {
                     b = n * B + B - turnB;
                 }
-                mirroredFieldPoint.set_point(std::vector<double>{a + coreColumnWidth / 2, b - B / 2});
+                mirroredFieldPoint.set_point(std::vector<double>{a + windowLeftEdgeX, b + windowBottomY});
                 fieldPoints.push_back(mirroredFieldPoint);
             }
         }

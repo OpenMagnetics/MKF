@@ -5,6 +5,7 @@
 #include <cfloat>
 #include <cmath>
 #include <map>
+#include <set>
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
@@ -820,10 +821,35 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     double columnThickness = std::max(bobbinProcessedDescription.get_column_thickness(), minPixelData);
 
     double bobbinOuterWidth = bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() + bobbinProcessedDescription.get_winding_windows()[0].get_width().value();
+
+    // Multi-column winding: windows wrapping different columns are separate regions,
+    // not stacked chambers of one split bobbin — summing their heights would draw a
+    // bobbin several times too tall. Draw the main window's chamber and mirror it
+    // when any window sits on the negative-x side. Same-column multi-window bobbins
+    // (true split bobbins) keep the historical stacked-height sum.
+    auto bobbinWindingWindows = bobbinProcessedDescription.get_winding_windows();
+    bool perColumnWindows = false;
+    bool anyLeftWindow = false;
+    if (bobbinWindingWindows.size() > 1) {
+        std::set<int64_t> distinctColumns;
+        for (auto& windingWindow : bobbinWindingWindows) {
+            distinctColumns.insert(windingWindow.get_column().value_or(0));
+            if (windingWindow.get_coordinates() && windingWindow.get_coordinates().value()[0] < 0) {
+                anyLeftWindow = true;
+            }
+        }
+        perColumnWindows = distinctColumns.size() > 1;
+    }
+
     double bobbinOuterHeight = wallThickness;
-    for (auto& windingWindow: bobbinProcessedDescription.get_winding_windows()) {
-        bobbinOuterHeight += windingWindow.get_height().value();
-        bobbinOuterHeight += wallThickness;
+    if (perColumnWindows) {
+        bobbinOuterHeight += bobbinWindingWindows[0].get_height().value() + wallThickness;
+    }
+    else {
+        for (auto& windingWindow: bobbinWindingWindows) {
+            bobbinOuterHeight += windingWindow.get_height().value();
+            bobbinOuterHeight += wallThickness;
+        }
     }
 
     std::vector<SVG::Point> bobbinPoints = {};
@@ -853,6 +879,16 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     }
     else {
         sectionSvg->set_attr("class", "bobbin");
+    }
+
+    if (perColumnWindows && anyLeftWindow) {
+        std::vector<SVG::Point> mirroredBobbinPoints;
+        for (auto& point : bobbinPoints) {
+            mirroredBobbinPoints.push_back(SVG::Point(-point.first, point.second));
+        }
+        *shapes << SVG::Polygon(scale_points(mirroredBobbinPoints, 0, _scale));
+        auto mirroredSvg = _root.get_children<SVG::Polygon>().back();
+        mirroredSvg->set_attr("class", _fieldPainted ? "bobbin_translucent" : "bobbin");
     }
 }
 
@@ -963,17 +999,38 @@ void Painter::paint_two_piece_set_core(Core core) {
     bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset + highestHeightBottomCoreMainColumn));
     bottomPiecePoints.push_back(SVG::Point(0, bottomCoreOffset + highestHeightBottomCoreMainColumn));
 
+    // Multi-column winding: with per-column winding windows the coil can occupy the
+    // left window, so draw the full mirror-symmetric silhouette instead of the
+    // historical right half. C/U/UR shapes keep their asymmetric full drawing;
+    // single-window cores keep the historical half view untouched.
+    bool mirrorLeftHalf = processedDescription.get_winding_windows().size() > 1 &&
+                          family != MAS::CoreShapeFamily::C && family != MAS::CoreShapeFamily::U &&
+                          family != MAS::CoreShapeFamily::UR;
+    auto mirrorPoints = [](const std::vector<SVG::Point>& points) {
+        std::vector<SVG::Point> mirroredPoints;
+        for (auto& point : points) {
+            mirroredPoints.push_back(SVG::Point(-point.first, point.second));
+        }
+        return mirroredPoints;
+    };
+
     auto shapes = _root.add_child<SVG::Group>();
-    *shapes << SVG::Polygon(scale_points(topPiecePoints, 0, _scale));
-    auto topPiece = _root.get_children<SVG::Polygon>().back();
-    topPiece->set_attr("class", "ferrite");
-    *shapes << SVG::Polygon(scale_points(bottomPiecePoints, 0, _scale));
-    auto bottomPiece = _root.get_children<SVG::Polygon>().back();
-    bottomPiece->set_attr("class", "ferrite");
+    auto addFerritePolygon = [&](const std::vector<SVG::Point>& points) {
+        *shapes << SVG::Polygon(scale_points(points, 0, _scale));
+        auto polygon = _root.get_children<SVG::Polygon>().back();
+        polygon->set_attr("class", "ferrite");
+    };
+    addFerritePolygon(topPiecePoints);
+    addFerritePolygon(bottomPiecePoints);
     for (auto& chunk : gapChunks) {
-        *shapes << SVG::Polygon(scale_points(chunk, 0, _scale));
-        auto chunkPiece = _root.get_children<SVG::Polygon>().back();
-        chunkPiece->set_attr("class", "ferrite");
+        addFerritePolygon(chunk);
+    }
+    if (mirrorLeftHalf) {
+        addFerritePolygon(mirrorPoints(topPiecePoints));
+        addFerritePolygon(mirrorPoints(bottomPiecePoints));
+        for (auto& chunk : gapChunks) {
+            addFerritePolygon(mirrorPoints(chunk));
+        }
     }
 
     _root.autoscale();
