@@ -179,6 +179,9 @@ TEST_CASE("MultiColumnWinding_ECore_PrimaryCentral_SecondaryLateral", "[construc
         if (turn.get_winding() == "Primary") {
             primaryTurns++;
             CHECK(turn.get_coordinates()[0] > 0);
+            // Region sharing: the main winding's annulus keeps the inner half of the
+            // window, so the lateral winding's outer half can never overlap it.
+            CHECK(turn.get_coordinates()[0] < std::abs(coreWindingWindows[0].get_coordinates().value()[0]));
             CHECK(turn.get_length() > 0);
             // Second crossing of the main-column turn: the far side of the center leg.
             REQUIRE(turn.get_additional_coordinates());

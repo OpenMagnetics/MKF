@@ -3296,6 +3296,7 @@ bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, doubl
         g.set_partial_windings(partialWindingsPerWindow[i]);
         groups.push_back(g);
     }
+    split_shared_window_groups(groups, windingWindows);
     set_groups_description(groups);
 
     if (!anyExplicitPlacement) {
@@ -3305,6 +3306,65 @@ bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, doubl
                    "assign_windings_to_columns() to distribute.");
     }
     return true;
+}
+
+void Coil::split_shared_window_groups(std::vector<Group>& groups, const std::vector<WindingWindowElement>& windingWindows) {
+    // Region sharing: the main-column winding forms an annulus whose two crossings
+    // occupy the inner side of BOTH window regions, while a lateral winding hugs its
+    // leg on the outer side of its region. When both kinds are wound they share the
+    // region width: main-wound groups keep the inner half, lateral-wound groups the
+    // outer half. With only one kind wound, every group keeps the full region.
+    if (windingWindows.size() <= 1) {
+        return;
+    }
+    if (!windingWindows[0].get_width()) {
+        // Radial (toroidal) windows share by angle, not width; nothing to split.
+        return;
+    }
+    auto mainColumnEdge = windingWindows[0].get_column();
+    auto isLateralWound = [&](const Group& group) {
+        size_t windowIndex = group.get_winding_window() ? static_cast<size_t>(group.get_winding_window().value()) : 0;
+        if (windowIndex >= windingWindows.size()) {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                "Group " + group.get_name() + " references winding window " + std::to_string(windowIndex) +
+                " but the bobbin has " + std::to_string(windingWindows.size()) + " winding windows");
+        }
+        auto columnEdge = windingWindows[windowIndex].get_column();
+        return bool(columnEdge && (!mainColumnEdge || columnEdge.value() != mainColumnEdge.value()));
+    };
+
+    bool anyMainWound = false;
+    bool anyLateralWound = false;
+    for (auto& group : groups) {
+        if (group.get_partial_windings().empty()) {
+            continue;
+        }
+        if (isLateralWound(group)) {
+            anyLateralWound = true;
+        }
+        else {
+            anyMainWound = true;
+        }
+    }
+    if (!anyMainWound || !anyLateralWound) {
+        return;
+    }
+
+    for (auto& group : groups) {
+        if (group.get_partial_windings().empty()) {
+            continue;
+        }
+        auto dimensions = group.get_dimensions();
+        auto coordinates = group.get_coordinates();
+        double sideSign = coordinates[0] >= 0 ? 1.0 : -1.0;
+        // Lateral-wound groups shift toward their leg (outward), main-wound toward
+        // the main column (inward); each keeps half the region width.
+        double shift = dimensions[0] / 4 * (isLateralWound(group) ? 1.0 : -1.0) * sideSign;
+        coordinates[0] += shift;
+        dimensions[0] /= 2;
+        group.set_coordinates(coordinates);
+        group.set_dimensions(dimensions);
+    }
 }
 
 size_t Coil::find_window_index_for_group(const std::string& groupName) const {
@@ -3501,6 +3561,14 @@ void Coil::apply_group_window_sides() {
     std::map<std::string, SectionWindowTransform> transformPerSection;
 
     auto mainColumnEdge = windingWindows[0].get_column();
+    // Reflection pivots on the GROUP's allocated sub-region (which may be half the
+    // window when the region is shared with the main winding's annulus), falling
+    // back to the window itself for sections without a group.
+    std::map<std::string, double> groupCenterXByName;
+    auto placementGroups = get_groups_description().value();
+    for (auto& group : placementGroups) {
+        groupCenterXByName[group.get_name()] = group.get_coordinates()[0];
+    }
     auto sections = get_sections_description().value();
     bool anyTransform = false;
     for (auto& section : sections) {
@@ -3517,7 +3585,12 @@ void Coil::apply_group_window_sides() {
         // Schema default: a window without a column edge wraps the main column.
         bool lateralWound = columnEdge && (!mainColumnEdge || columnEdge.value() != mainColumnEdge.value());
         transform.reflectAcrossWindowCenter = lateralWound;
-        transform.windingFrameWindowCenterX = std::abs(windingWindow.get_coordinates().value()[0]);
+        if (section.get_group() && groupCenterXByName.contains(section.get_group().value())) {
+            transform.windingFrameWindowCenterX = std::abs(groupCenterXByName[section.get_group().value()]);
+        }
+        else {
+            transform.windingFrameWindowCenterX = std::abs(windingWindow.get_coordinates().value()[0]);
+        }
         if (lateralWound) {
             double windingFrameAxisX = get_wound_column_frame_for_section(section.get_name()).axisX;
             transform.finalColumnAxisX = transform.mirrorSide ? -windingFrameAxisX : windingFrameAxisX;
@@ -3657,6 +3730,7 @@ void Coil::assign_windings_to_columns(const std::vector<std::vector<size_t>>& wi
         g.set_partial_windings(partialWindings);
         groups.push_back(g);
     }
+    split_shared_window_groups(groups, windingWindows);
     set_groups_description(groups);
 }
 
@@ -7322,6 +7396,19 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
         auto windowCoordinates = windingWindows[0].get_coordinates().value();
         windowCoordinates[0] = -windowCoordinates[0];
         windingWindows[0].set_coordinates(windowCoordinates);
+    }
+    // Multi-window coils align against the group's allocated sub-region (which may be
+    // half the window when the region is shared with the main winding's annulus).
+    if (allWindingWindows.size() > 1 && sectionGroupOpt && get_groups_description()) {
+        auto alignmentGroups = get_groups_description().value();
+        for (auto& group : alignmentGroups) {
+            if (group.get_name() == sectionGroupOpt.value()) {
+                windingWindows[0].set_coordinates(std::vector<double>{std::abs(group.get_coordinates()[0]), group.get_coordinates()[1], 0});
+                windingWindows[0].set_width(group.get_dimensions()[0]);
+                windingWindows[0].set_height(group.get_dimensions()[1]);
+                break;
+            }
+        }
     }
     double windingWindowHeight = windingWindows[0].get_height().value();
     double windingWindowWidth = windingWindows[0].get_width().value();

@@ -861,6 +861,43 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
         perColumnWindows = distinctColumns.size() > 1;
     }
 
+    // Only windows that actually host a winding get a bobbin drawn, and when the
+    // main column and a lateral column are BOTH wound they share the window region:
+    // each bobbin's flanges stop at the window midline (half the winding window
+    // width), matching the winder's region split, so the two bobbins cannot overlap.
+    std::set<size_t> usedWindowIndexes;
+    for (auto& winding : magnetic.get_coil().get_functional_description()) {
+        usedWindowIndexes.insert(winding.get_winding_window() ? static_cast<size_t>(winding.get_winding_window().value()) : 0);
+    }
+    if (magnetic.get_coil().get_sections_description()) {
+        auto placedSections = magnetic.get_coil().get_sections_description().value();
+        for (auto& section : placedSections) {
+            if (section.get_winding_window()) {
+                usedWindowIndexes.insert(static_cast<size_t>(section.get_winding_window().value()));
+            }
+        }
+    }
+    bool mainColumnWound = !perColumnWindows;
+    bool lateralColumnWound = false;
+    if (perColumnWindows) {
+        auto mainColumnEdgeForSharing = bobbinWindingWindows[0].get_column();
+        for (auto windowIndex : usedWindowIndexes) {
+            if (windowIndex >= bobbinWindingWindows.size()) {
+                continue;  // invalid placements throw in the winder, not while drawing
+            }
+            auto columnEdge = bobbinWindingWindows[windowIndex].get_column();
+            if (columnEdge && (!mainColumnEdgeForSharing || columnEdge.value() != mainColumnEdgeForSharing.value())) {
+                lateralColumnWound = true;
+            }
+            else {
+                mainColumnWound = true;
+            }
+        }
+        if (mainColumnWound && lateralColumnWound) {
+            bobbinOuterWidth -= bobbinProcessedDescription.get_winding_windows()[0].get_width().value() / 2;
+        }
+    }
+
     double bobbinOuterHeight = wallThickness;
     if (perColumnWindows) {
         bobbinOuterHeight += bobbinWindingWindows[0].get_height().value() + wallThickness;
@@ -890,42 +927,72 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     bobbinPoints.push_back(SVG::Point(bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - columnThickness,
                                       bobbinCoordinates[1] - bobbinOuterHeight / 2));
 
-    *shapes << SVG::Polygon(scale_points(bobbinPoints, 0, _scale));
+    auto addBobbinPolygon = [&](const std::vector<SVG::Point>& points) {
+        *shapes << SVG::Polygon(scale_points(points, 0, _scale));
+        auto polygon = _root.get_children<SVG::Polygon>().back();
+        polygon->set_attr("class", _fieldPainted ? "bobbin_translucent" : "bobbin");
+    };
+    auto reflectAcross = [](const std::vector<SVG::Point>& points, double axisX) {
+        std::vector<SVG::Point> reflectedPoints;
+        for (auto& point : points) {
+            reflectedPoints.push_back(SVG::Point(2 * axisX - point.first, point.second));
+        }
+        return reflectedPoints;
+    };
+    auto mirrorSideOf = [](const std::vector<SVG::Point>& points) {
+        std::vector<SVG::Point> mirroredPoints;
+        for (auto& point : points) {
+            mirroredPoints.push_back(SVG::Point(-point.first, point.second));
+        }
+        return mirroredPoints;
+    };
 
-    auto sectionSvg = _root.get_children<SVG::Polygon>().back();
-    // sectionSvg->set_attr("class", "bobbin");
-    if (_fieldPainted) {
-        sectionSvg->set_attr("class", "bobbin_translucent");
-    }
-    else {
-        sectionSvg->set_attr("class", "bobbin");
+    // The historical polygon is only the +x HALF of the main bobbin (the column wall
+    // plus the flanges on one side of the leg). Whenever the drawing shows the whole
+    // leg — per-column multi-window plots and the asymmetric C/U/UR families — draw
+    // the other half too (its reflection across the leg axis at x=0).
+    auto coreShapeFamily = magnetic.get_mutable_core().get_shape_family();
+    bool fullMainLegDrawn = perColumnWindows || coreShapeFamily == MAS::CoreShapeFamily::C ||
+                            coreShapeFamily == MAS::CoreShapeFamily::U || coreShapeFamily == MAS::CoreShapeFamily::UR;
+    if (mainColumnWound) {
+        addBobbinPolygon(bobbinPoints);
+        if (fullMainLegDrawn) {
+            addBobbinPolygon(mirrorSideOf(bobbinPoints));
+        }
     }
 
     if (perColumnWindows) {
-        // One bobbin per lateral-wound window, wrapping ITS column: the main-window
-        // polygon reflected across the window center (so the column-side wall lands on
-        // the lateral leg's face), side-mirrored for negative-x windows.
+        // One bobbin per lateral-wound window, wrapping ITS column, drawn as BOTH
+        // halves: the window-side half (main polygon reflected across the window
+        // center so its column wall lands on the leg's inner face) and the
+        // outside-core half (that polygon reflected again across the leg's axis).
+        // Side-mirrored for negative-x windows.
         auto mainColumnEdge = bobbinWindingWindows[0].get_column();
+        auto coreColumns = magnetic.get_mutable_core().get_columns();
         for (size_t windowIndex = 1; windowIndex < bobbinWindingWindows.size(); ++windowIndex) {
             auto& windingWindow = bobbinWindingWindows[windowIndex];
             auto columnEdge = windingWindow.get_column();
             bool lateralWound = columnEdge && (!mainColumnEdge || columnEdge.value() != mainColumnEdge.value());
-            if (!lateralWound || !windingWindow.get_coordinates()) {
+            if (!lateralWound || !windingWindow.get_coordinates() || !usedWindowIndexes.contains(windowIndex)) {
                 continue;
             }
-            double windowCenterX = std::abs(windingWindow.get_coordinates().value()[0]);
-            bool mirrorSide = windingWindow.get_coordinates().value()[0] < 0;
-            std::vector<SVG::Point> lateralBobbinPoints;
-            for (auto& point : bobbinPoints) {
-                double x = 2 * windowCenterX - point.first;
-                if (mirrorSide) {
-                    x = -x;
-                }
-                lateralBobbinPoints.push_back(SVG::Point(x, point.second));
+            if (columnEdge.value() < 0 || static_cast<size_t>(columnEdge.value()) >= coreColumns.size()) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "Winding window " + std::to_string(windowIndex) + " references core column " +
+                        std::to_string(columnEdge.value()) + " but the core has " + std::to_string(coreColumns.size()) + " columns");
             }
-            *shapes << SVG::Polygon(scale_points(lateralBobbinPoints, 0, _scale));
-            auto lateralSvg = _root.get_children<SVG::Polygon>().back();
-            lateralSvg->set_attr("class", _fieldPainted ? "bobbin_translucent" : "bobbin");
+            double windowCenterX = std::abs(windingWindow.get_coordinates().value()[0]);
+            double legAxisX = std::abs(coreColumns[static_cast<size_t>(columnEdge.value())].get_coordinates()[0]);
+            bool mirrorSide = windingWindow.get_coordinates().value()[0] < 0;
+
+            auto innerHalf = reflectAcross(bobbinPoints, windowCenterX);
+            auto outerHalf = reflectAcross(innerHalf, legAxisX);
+            if (mirrorSide) {
+                innerHalf = mirrorSideOf(innerHalf);
+                outerHalf = mirrorSideOf(outerHalf);
+            }
+            addBobbinPolygon(innerHalf);
+            addBobbinPolygon(outerHalf);
         }
     }
 }
@@ -1000,22 +1067,30 @@ void Painter::paint_two_piece_set_core(Core core) {
         }
     }
 
-    topPiecePoints.push_back(SVG::Point(0, topCoreOffset + processedDescription.get_height() / 2));
+    // C/U/UR draw the whole (asymmetric) core, so the main leg must be shown in
+    // full: its left face sits at -width/2 of the main column, not at the leg's
+    // axis. Symmetric families keep x=0 (the left half is drawn as a mirror).
+    double mainLegLeftEdge = 0;
+    if (family == MAS::CoreShapeFamily::C || family == MAS::CoreShapeFamily::U || family == MAS::CoreShapeFamily::UR) {
+        mainLegLeftEdge = -showingMainColumnWidth;
+    }
+
+    topPiecePoints.push_back(SVG::Point(mainLegLeftEdge, topCoreOffset + processedDescription.get_height() / 2));
     topPiecePoints.push_back(SVG::Point(showingCoreWidth, topCoreOffset + processedDescription.get_height() / 2));
     topPiecePoints.push_back(SVG::Point(showingCoreWidth, topCoreOffset + lowestHeightTopCoreRightColumn));
     topPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, topCoreOffset + lowestHeightTopCoreRightColumn));
     topPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, topCoreOffset + rightColumn.get_height() / 2));
     topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, topCoreOffset + mainColumn.get_height() / 2));
     topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, topCoreOffset + lowestHeightTopCoreMainColumn));
-    topPiecePoints.push_back(SVG::Point(0, topCoreOffset + lowestHeightTopCoreMainColumn));
+    topPiecePoints.push_back(SVG::Point(mainLegLeftEdge, topCoreOffset + lowestHeightTopCoreMainColumn));
 
     for (size_t i = 1; i < gapsInMainColumn.size(); ++i)
     {
         std::vector<SVG::Point> chunk;
-        chunk.push_back(SVG::Point(0, gapsInMainColumn[i - 1].get_coordinates().value()[1] - gapsInMainColumn[i - 1].get_length() / 2));
+        chunk.push_back(SVG::Point(mainLegLeftEdge, gapsInMainColumn[i - 1].get_coordinates().value()[1] - gapsInMainColumn[i - 1].get_length() / 2));
         chunk.push_back(SVG::Point(showingMainColumnWidth, gapsInMainColumn[i - 1].get_coordinates().value()[1] - gapsInMainColumn[i - 1].get_length() / 2));
         chunk.push_back(SVG::Point(showingMainColumnWidth, gapsInMainColumn[i].get_coordinates().value()[1] + gapsInMainColumn[i].get_length() / 2));
-        chunk.push_back(SVG::Point(0, gapsInMainColumn[i].get_coordinates().value()[1] + gapsInMainColumn[i].get_length() / 2));
+        chunk.push_back(SVG::Point(mainLegLeftEdge, gapsInMainColumn[i].get_coordinates().value()[1] + gapsInMainColumn[i].get_length() / 2));
         gapChunks.push_back(chunk);
     }
     for (size_t i = 1; i < gapsInRightColumn.size(); ++i)
@@ -1028,14 +1103,14 @@ void Painter::paint_two_piece_set_core(Core core) {
         gapChunks.push_back(chunk);
     }
 
-    bottomPiecePoints.push_back(SVG::Point(0, bottomCoreOffset - processedDescription.get_height() / 2));
+    bottomPiecePoints.push_back(SVG::Point(mainLegLeftEdge, bottomCoreOffset - processedDescription.get_height() / 2));
     bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, bottomCoreOffset - processedDescription.get_height() / 2));
     bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, bottomCoreOffset + highestHeightBottomCoreRightColumn));
     bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, bottomCoreOffset + highestHeightBottomCoreRightColumn));
     bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, bottomCoreOffset - rightColumn.get_height() / 2));
     bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset - mainColumn.get_height() / 2));
     bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset + highestHeightBottomCoreMainColumn));
-    bottomPiecePoints.push_back(SVG::Point(0, bottomCoreOffset + highestHeightBottomCoreMainColumn));
+    bottomPiecePoints.push_back(SVG::Point(mainLegLeftEdge, bottomCoreOffset + highestHeightBottomCoreMainColumn));
 
     // Multi-column winding: with per-column winding windows the coil can occupy the
     // left window, so draw the full mirror-symmetric silhouette instead of the

@@ -197,6 +197,11 @@ class Coil : public MAS::Coil {
         // Winding window a section is placed in: the section's explicit
         // windingWindow reference when present, else its group's, else 0.
         size_t resolve_section_winding_window_index(const Section& section) const;
+        // Region sharing: when main-column and lateral-column windings coexist, the
+        // main winding's annulus occupies the inner side of every window region and
+        // each lateral winding the outer side of its own — halve and anchor each
+        // wound group accordingly so they can never claim overlapping space.
+        void split_shared_window_groups(std::vector<Group>& groups, const std::vector<WindingWindowElement>& windingWindows);
         // Column frame turns of the given section wrap around, in the winding
         // frame. Window 0 resolves to the historical bobbin column scalars;
         // other windows resolve their column edge against the core columns
