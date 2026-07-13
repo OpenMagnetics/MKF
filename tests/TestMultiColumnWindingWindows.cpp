@@ -172,8 +172,11 @@ TEST_CASE("MultiColumnWinding_ECore_PrimaryCentral_SecondaryLateral", "[construc
     size_t primaryTurns = 0;
     size_t secondaryTurns = 0;
     double lateralColumnAxisX = std::abs(lateralColumn.get_coordinates()[0]);
-    double lateralHalfWidth = lateralColumn.get_width() / 2;
-    double lateralHalfDepth = lateralColumn.get_depth() / 2;
+    // The lateral bobbin wraps its leg like the main one wraps the main column: one
+    // column-wall thickness (0.001 in this quick bobbin) sits between leg and wire.
+    double lateralBobbinColumnThickness = 0.001;
+    double lateralHalfWidth = lateralColumn.get_width() / 2 + lateralBobbinColumnThickness;
+    double lateralHalfDepth = lateralColumn.get_depth() / 2 + lateralBobbinColumnThickness;
     auto woundTurns = coil.get_turns_description().value();
     for (auto& turn : woundTurns) {
         if (turn.get_winding() == "Primary") {

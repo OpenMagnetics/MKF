@@ -893,9 +893,15 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
                 mainColumnWound = true;
             }
         }
-        if (mainColumnWound && lateralColumnWound) {
-            bobbinOuterWidth -= bobbinProcessedDescription.get_winding_windows()[0].get_width().value() / 2;
-        }
+    }
+    // The reflection axis that maps the main bobbin's wall face onto the leg face:
+    // the CORE window's midline. Reflecting the main polygon across it puts the
+    // lateral bobbin's wall on the WINDOW side of the leg (a wall reflected across
+    // the bobbin-window center would land inside the ferrite), and clipping the
+    // main flanges to it splits the shared region into equal winding spaces.
+    double coreWindowMidline = (bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - columnThickness + bobbinOuterWidth) / 2;
+    if (perColumnWindows && mainColumnWound && lateralColumnWound) {
+        bobbinOuterWidth = coreWindowMidline;
     }
 
     double bobbinOuterHeight = wallThickness;
@@ -981,11 +987,10 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
                     "Winding window " + std::to_string(windowIndex) + " references core column " +
                         std::to_string(columnEdge.value()) + " but the core has " + std::to_string(coreColumns.size()) + " columns");
             }
-            double windowCenterX = std::abs(windingWindow.get_coordinates().value()[0]);
             double legAxisX = std::abs(coreColumns[static_cast<size_t>(columnEdge.value())].get_coordinates()[0]);
             bool mirrorSide = windingWindow.get_coordinates().value()[0] < 0;
 
-            auto innerHalf = reflectAcross(bobbinPoints, windowCenterX);
+            auto innerHalf = reflectAcross(bobbinPoints, coreWindowMidline);
             auto outerHalf = reflectAcross(innerHalf, legAxisX);
             if (mirrorSide) {
                 innerHalf = mirrorSideOf(innerHalf);

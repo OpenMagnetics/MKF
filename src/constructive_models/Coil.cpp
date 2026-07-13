@@ -3346,22 +3346,43 @@ void Coil::split_shared_window_groups(std::vector<Group>& groups, const std::vec
             anyMainWound = true;
         }
     }
-    if (!anyMainWound || !anyLateralWound) {
+    if (!anyLateralWound) {
         return;
     }
+
+    // The lateral bobbin's column wall sits between the leg's face and the winding
+    // space (mirroring the main bobbin's wall against the main column), so every
+    // lateral-wound group gives up one columnThickness at its leg. Under sharing,
+    // the region is split at the CORE window's midline (main bobbin wall to leg
+    // face), which hands both sides equal winding space: wall + space inward, space
+    // + wall outward.
+    double columnThickness = resolve_bobbin().get_processed_description().value().get_column_thickness();
 
     for (auto& group : groups) {
         if (group.get_partial_windings().empty()) {
             continue;
         }
+        bool lateralWound = isLateralWound(group);
         auto dimensions = group.get_dimensions();
         auto coordinates = group.get_coordinates();
         double sideSign = coordinates[0] >= 0 ? 1.0 : -1.0;
-        // Lateral-wound groups shift toward their leg (outward), main-wound toward
-        // the main column (inward); each keeps half the region width.
-        double shift = dimensions[0] / 4 * (isLateralWound(group) ? 1.0 : -1.0) * sideSign;
-        coordinates[0] += shift;
-        dimensions[0] /= 2;
+        double regionInnerEdge = std::abs(coordinates[0]) - dimensions[0] / 2;
+        double regionOuterEdge = std::abs(coordinates[0]) + dimensions[0] / 2;
+        double newInnerEdge = regionInnerEdge;
+        double newOuterEdge = lateralWound ? regionOuterEdge - columnThickness : regionOuterEdge;
+        if (anyMainWound && anyLateralWound) {
+            // Core-window midline: from the main bobbin's wall face (inner edge minus
+            // its wall) to the leg face (region outer edge).
+            double coreWindowMidline = (regionInnerEdge - columnThickness + regionOuterEdge) / 2;
+            if (lateralWound) {
+                newInnerEdge = coreWindowMidline;
+            }
+            else {
+                newOuterEdge = coreWindowMidline;
+            }
+        }
+        coordinates[0] = sideSign * (newInnerEdge + newOuterEdge) / 2;
+        dimensions[0] = newOuterEdge - newInnerEdge;
         group.set_coordinates(coordinates);
         group.set_dimensions(dimensions);
     }
@@ -3498,9 +3519,10 @@ WoundColumnFrame Coil::get_wound_column_frame_for_section(const std::string& sec
     }
     WoundColumnFrame frame;
     frame.shape = column.get_shape();
-    // Non-main columns carry no bobbin: wrap the bare column.
-    frame.columnWidth = column.get_width() / 2;
-    frame.columnDepth = column.get_depth() / 2;
+    // The lateral bobbin wraps its leg like the main one wraps the main column:
+    // one column-wall thickness sits between the leg and the winding space.
+    frame.columnWidth = column.get_width() / 2 + bobbinProcessedDescription.get_column_thickness();
+    frame.columnDepth = column.get_depth() / 2 + bobbinProcessedDescription.get_column_thickness();
     // The winding frame is the +x side; mirrored (negative-x) windows are wound
     // against the mirrored column and flipped into place afterwards.
     frame.axisX = std::abs(column.get_coordinates()[0]);
