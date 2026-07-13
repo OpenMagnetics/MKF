@@ -716,6 +716,30 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
                 paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, "copper", shapes, 0, {0, 0}, turns[i].get_name());
             }
         }
+
+        // Second cross-section crossing (multi-column winding): a turn intersects the
+        // drawing plane twice; draw the additional coordinates like the toroidal
+        // painter does for the outer halves.
+        if (turns[i].get_additional_coordinates()) {
+            auto additionalCoordinatesList = turns[i].get_additional_coordinates().value();
+            for (auto& additionalCoordinates : additionalCoordinatesList) {
+                if (additionalCoordinates.size() < 2) {
+                    continue;
+                }
+                if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
+                    paint_round_wire(additionalCoordinates[0], additionalCoordinates[1], wirePerWinding[windingIndex], turns[i].get_name());
+                }
+                else if (wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+                    paint_litz_wire(additionalCoordinates[0], additionalCoordinates[1], wirePerWinding[windingIndex], turns[i].get_name());
+                }
+                else if (wire.get_outer_width() && wire.get_outer_height()) {
+                    paint_rectangle(additionalCoordinates[0], additionalCoordinates[1],
+                                    resolve_dimensional_values(wire.get_outer_width().value()),
+                                    resolve_dimensional_values(wire.get_outer_height().value()),
+                                    "turn_" + std::to_string(i), shapes, 0, {0, 0}, turns[i].get_name());
+                }
+            }
+        }
     }
 }
 
@@ -829,14 +853,10 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     // (true split bobbins) keep the historical stacked-height sum.
     auto bobbinWindingWindows = bobbinProcessedDescription.get_winding_windows();
     bool perColumnWindows = false;
-    bool anyLeftWindow = false;
     if (bobbinWindingWindows.size() > 1) {
         std::set<int64_t> distinctColumns;
         for (auto& windingWindow : bobbinWindingWindows) {
             distinctColumns.insert(windingWindow.get_column().value_or(0));
-            if (windingWindow.get_coordinates() && windingWindow.get_coordinates().value()[0] < 0) {
-                anyLeftWindow = true;
-            }
         }
         perColumnWindows = distinctColumns.size() > 1;
     }
@@ -881,14 +901,32 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
         sectionSvg->set_attr("class", "bobbin");
     }
 
-    if (perColumnWindows && anyLeftWindow) {
-        std::vector<SVG::Point> mirroredBobbinPoints;
-        for (auto& point : bobbinPoints) {
-            mirroredBobbinPoints.push_back(SVG::Point(-point.first, point.second));
+    if (perColumnWindows) {
+        // One bobbin per lateral-wound window, wrapping ITS column: the main-window
+        // polygon reflected across the window center (so the column-side wall lands on
+        // the lateral leg's face), side-mirrored for negative-x windows.
+        auto mainColumnEdge = bobbinWindingWindows[0].get_column();
+        for (size_t windowIndex = 1; windowIndex < bobbinWindingWindows.size(); ++windowIndex) {
+            auto& windingWindow = bobbinWindingWindows[windowIndex];
+            auto columnEdge = windingWindow.get_column();
+            bool lateralWound = columnEdge && (!mainColumnEdge || columnEdge.value() != mainColumnEdge.value());
+            if (!lateralWound || !windingWindow.get_coordinates()) {
+                continue;
+            }
+            double windowCenterX = std::abs(windingWindow.get_coordinates().value()[0]);
+            bool mirrorSide = windingWindow.get_coordinates().value()[0] < 0;
+            std::vector<SVG::Point> lateralBobbinPoints;
+            for (auto& point : bobbinPoints) {
+                double x = 2 * windowCenterX - point.first;
+                if (mirrorSide) {
+                    x = -x;
+                }
+                lateralBobbinPoints.push_back(SVG::Point(x, point.second));
+            }
+            *shapes << SVG::Polygon(scale_points(lateralBobbinPoints, 0, _scale));
+            auto lateralSvg = _root.get_children<SVG::Polygon>().back();
+            lateralSvg->set_attr("class", _fieldPainted ? "bobbin_translucent" : "bobbin");
         }
-        *shapes << SVG::Polygon(scale_points(mirroredBobbinPoints, 0, _scale));
-        auto mirroredSvg = _root.get_children<SVG::Polygon>().back();
-        mirroredSvg->set_attr("class", _fieldPainted ? "bobbin_translucent" : "bobbin");
     }
 }
 

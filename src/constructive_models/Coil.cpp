@@ -3481,9 +3481,28 @@ void Coil::apply_group_window_sides() {
         return;
     }
 
-    // Collect the sections whose winding window sits on the negative-x side.
-    std::set<std::string> mirroredSections;
+    // Per-section placement transform out of the +x winding frame:
+    // 1. Sections wound around a NON-main column are reflected across their window
+    //    center, so the winding hugs the column it actually wraps (the lateral leg's
+    //    face is the window's outer edge; the winder laid them against the inner edge
+    //    like a main-column winding). Their turn lengths are recomputed for the new
+    //    radius around the leg.
+    // 2. Sections whose window sits on the negative-x side are mirrored into place.
+    // 3. Every turn gets its SECOND cross-section crossing as an additional
+    //    coordinate: a turn around any column intersects the drawing plane twice
+    //    (main-column turns on the far side of the main column, lateral-column turns
+    //    outside the core), mirroring what toroidal turns already carry.
+    struct SectionWindowTransform {
+        bool reflectAcrossWindowCenter = false;
+        double windingFrameWindowCenterX = 0;
+        bool mirrorSide = false;
+        double finalColumnAxisX = 0;
+    };
+    std::map<std::string, SectionWindowTransform> transformPerSection;
+
+    auto mainColumnEdge = windingWindows[0].get_column();
     auto sections = get_sections_description().value();
+    bool anyTransform = false;
     for (auto& section : sections) {
         size_t windowIndex = resolve_section_winding_window_index(section);
         if (windowIndex >= windingWindows.size()) {
@@ -3491,38 +3510,60 @@ void Coil::apply_group_window_sides() {
                 "Section " + section.get_name() + " references winding window " + std::to_string(windowIndex) +
                 " but the bobbin has " + std::to_string(windingWindows.size()) + " winding windows");
         }
-        if (windingWindows[windowIndex].get_coordinates().value()[0] < 0) {
-            mirroredSections.insert(section.get_name());
+        auto& windingWindow = windingWindows[windowIndex];
+        SectionWindowTransform transform;
+        transform.mirrorSide = windingWindow.get_coordinates().value()[0] < 0;
+        auto columnEdge = windingWindow.get_column();
+        // Schema default: a window without a column edge wraps the main column.
+        bool lateralWound = columnEdge && (!mainColumnEdge || columnEdge.value() != mainColumnEdge.value());
+        transform.reflectAcrossWindowCenter = lateralWound;
+        transform.windingFrameWindowCenterX = std::abs(windingWindow.get_coordinates().value()[0]);
+        if (lateralWound) {
+            double windingFrameAxisX = get_wound_column_frame_for_section(section.get_name()).axisX;
+            transform.finalColumnAxisX = transform.mirrorSide ? -windingFrameAxisX : windingFrameAxisX;
         }
+        transformPerSection[section.get_name()] = transform;
+        anyTransform = anyTransform || transform.reflectAcrossWindowCenter || transform.mirrorSide;
     }
-    if (mirroredSections.empty()) {
+
+    bool emitBothCrossings = settings.get_coil_include_additional_coordinates();
+    if (!anyTransform && !emitBothCrossings) {
         return;
     }
 
-    auto mirrorX = [](std::vector<double> coordinates) {
-        coordinates[0] = -coordinates[0];
+    auto transformX = [](double x, const SectionWindowTransform& transform) {
+        if (transform.reflectAcrossWindowCenter) {
+            x = 2 * transform.windingFrameWindowCenterX - x;
+        }
+        if (transform.mirrorSide) {
+            x = -x;
+        }
+        return x;
+    };
+    auto transformCoordinates = [&](std::vector<double> coordinates, const SectionWindowTransform& transform) {
+        coordinates[0] = transformX(coordinates[0], transform);
         return coordinates;
     };
 
     for (auto& section : sections) {
-        if (mirroredSections.contains(section.get_name())) {
-            section.set_coordinates(mirrorX(section.get_coordinates()));
-        }
+        section.set_coordinates(transformCoordinates(section.get_coordinates(), transformPerSection[section.get_name()]));
     }
     set_sections_description(sections);
 
     if (get_layers_description()) {
         auto layers = get_layers_description().value();
         for (auto& layer : layers) {
-            if (layer.get_section() && mirroredSections.contains(layer.get_section().value())) {
-                layer.set_coordinates(mirrorX(layer.get_coordinates()));
-                if (layer.get_additional_coordinates()) {
-                    auto additionalCoordinates = layer.get_additional_coordinates().value();
-                    for (auto& coordinates : additionalCoordinates) {
-                        coordinates = mirrorX(coordinates);
-                    }
-                    layer.set_additional_coordinates(additionalCoordinates);
+            if (!layer.get_section() || !transformPerSection.contains(layer.get_section().value())) {
+                continue;
+            }
+            auto& transform = transformPerSection[layer.get_section().value()];
+            layer.set_coordinates(transformCoordinates(layer.get_coordinates(), transform));
+            if (layer.get_additional_coordinates()) {
+                auto additionalCoordinates = layer.get_additional_coordinates().value();
+                for (auto& coordinates : additionalCoordinates) {
+                    coordinates = transformCoordinates(coordinates, transform);
                 }
+                layer.set_additional_coordinates(additionalCoordinates);
             }
         }
         set_layers_description(layers);
@@ -3531,21 +3572,38 @@ void Coil::apply_group_window_sides() {
     if (get_turns_description()) {
         auto turns = get_turns_description().value();
         for (auto& turn : turns) {
-            if (turn.get_section() && mirroredSections.contains(turn.get_section().value())) {
-                turn.set_coordinates(mirrorX(turn.get_coordinates()));
-                if (turn.get_additional_coordinates()) {
-                    auto additionalCoordinates = turn.get_additional_coordinates().value();
-                    for (auto& coordinates : additionalCoordinates) {
-                        coordinates = mirrorX(coordinates);
-                    }
-                    turn.set_additional_coordinates(additionalCoordinates);
+            if (!turn.get_section() || !transformPerSection.contains(turn.get_section().value())) {
+                continue;
+            }
+            auto& transform = transformPerSection[turn.get_section().value()];
+            turn.set_coordinates(transformCoordinates(turn.get_coordinates(), transform));
+            if (transform.reflectAcrossWindowCenter) {
+                // The reflection changed the turn's radius around its column: recompute
+                // the length in the winding frame (absolute coordinates).
+                auto frame = get_wound_column_frame_for_section(turn.get_section().value());
+                auto turnLength = get_turn_length_in_frame(frame, std::abs(turn.get_coordinates()[0]));
+                if (!turnLength) {
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                        "Negative turn length after placing turn " + turn.get_name() + " around its column");
                 }
+                turn.set_length(turnLength.value());
+            }
+            if (transform.mirrorSide) {
                 // A mirrored turn is wound the opposite way around its column.
                 if (turn.get_orientation()) {
                     turn.set_orientation(turn.get_orientation().value() == TurnOrientation::CLOCKWISE
                                              ? TurnOrientation::COUNTER_CLOCKWISE
                                              : TurnOrientation::CLOCKWISE);
                 }
+            }
+            if (emitBothCrossings) {
+                // Second crossing of the turn with the drawing plane: the reflection of
+                // the first crossing across the wound column's axis (axis 0 for the
+                // main column: the far side of the center leg; the leg axis for
+                // lateral columns: outside the core).
+                double secondCrossingX = 2 * transform.finalColumnAxisX - turn.get_coordinates()[0];
+                turn.set_additional_coordinates(std::vector<std::vector<double>>{
+                    {secondCrossingX, turn.get_coordinates()[1]}});
             }
         }
         set_turns_description(turns);

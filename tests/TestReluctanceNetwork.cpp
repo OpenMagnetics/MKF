@@ -251,4 +251,16 @@ TEST_CASE("MultiColumnWinding_Painter_FullSilhouette", "[support][painter][multi
     REQUIRE(viewBoxPosition != std::string::npos);
     auto viewBoxContent = svg.substr(viewBoxPosition + 9, 20);
     CHECK(viewBoxContent[0] == '-');
+
+    // Full (not half-symmetric) E-core plot: every turn crosses the drawing plane
+    // twice, so the SVG must contain exactly two conductor circles per turn
+    // (paint_round_wire emits exactly one copper-class circle per crossing).
+    size_t copperCircleCount = 0;
+    size_t searchPosition = 0;
+    while ((searchPosition = svg.find("class=\"copper\"", searchPosition)) != std::string::npos) {
+        copperCircleCount++;
+        searchPosition++;
+    }
+    size_t totalTurns = magnetic.get_coil().get_turns_description()->size();
+    CHECK(copperCircleCount == 2 * totalTurns);
 }

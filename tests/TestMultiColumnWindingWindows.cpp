@@ -180,16 +180,27 @@ TEST_CASE("MultiColumnWinding_ECore_PrimaryCentral_SecondaryLateral", "[construc
             primaryTurns++;
             CHECK(turn.get_coordinates()[0] > 0);
             CHECK(turn.get_length() > 0);
+            // Second crossing of the main-column turn: the far side of the center leg.
+            REQUIRE(turn.get_additional_coordinates());
+            CHECK_THAT(turn.get_additional_coordinates().value()[0][0],
+                       Catch::Matchers::WithinRel(-turn.get_coordinates()[0], 1e-9));
         }
         else {
             secondaryTurns++;
             CHECK(turn.get_coordinates()[0] < 0);
+            // The winding hugs its leg: the turn sits on the leg side of the window.
+            CHECK(std::abs(turn.get_coordinates()[0]) > std::abs(coreWindingWindows[2].get_coordinates().value()[0]));
             double radius = std::abs(std::abs(turn.get_coordinates()[0]) - lateralColumnAxisX);
             double expectedLength = 4 * lateralHalfDepth + 4 * lateralHalfWidth + 2 * std::numbers::pi * (radius - lateralHalfWidth);
             CHECK_THAT(turn.get_length(), Catch::Matchers::WithinRel(expectedLength, 1e-6));
             // Mirrored turns are wound the opposite way around their column.
             REQUIRE(turn.get_orientation());
             CHECK(turn.get_orientation().value() == TurnOrientation::COUNTER_CLOCKWISE);
+            // Second crossing of the lateral turn: outside the core, mirrored across the leg axis.
+            REQUIRE(turn.get_additional_coordinates());
+            double secondCrossingX = turn.get_additional_coordinates().value()[0][0];
+            CHECK(secondCrossingX < -core.get_processed_description()->get_width() / 2 * 0.99);
+            CHECK_THAT(secondCrossingX, Catch::Matchers::WithinRel(2 * lateralColumn.get_coordinates()[0] - turn.get_coordinates()[0], 1e-9));
         }
     }
     CHECK(primaryTurns == 20);

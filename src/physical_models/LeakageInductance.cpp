@@ -98,7 +98,11 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     }
     auto turns = magnetic.get_coil().get_turns_description().value();
 
-    if (turns[0].get_additional_coordinates()) {
+    // Toroid-only outer-half stitching: concentric multi-window turns now also carry
+    // additional coordinates (their second crossing), but this radius-gated overwrite
+    // is derived for the round bore geometry — rectangular windows must skip it.
+    if (turns[0].get_additional_coordinates() &&
+        magnetic.get_mutable_coil().resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND) {
         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
             if (turns[turnIndex].get_additional_coordinates()) {
                 turns[turnIndex].set_coordinates(turns[turnIndex].get_additional_coordinates().value()[0]);
