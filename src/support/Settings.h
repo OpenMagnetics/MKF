@@ -60,6 +60,10 @@ class Settings
         // description stays byte-identical to the historical single-window output (no
         // `column` stamped), so existing consumers and persisted data are unaffected.
         bool _corePerColumnWindingWindows = false;
+        // Opt-in: CoilAdviser additionally proposes two-winding candidates with the
+        // secondary wound on a lateral leg (integrated-leakage designs). Off by
+        // default so the adviser surface is unchanged unless explicitly requested.
+        bool _coilAdviserAllowLateralPlacement = false;
         EffectiveParameterStandard _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
         double _nanocrystallineStackingFactor = 0.80;  // Stacking factor for tape-wound nanocrystalline cores (0.75-0.85 typical)
 
@@ -283,6 +287,9 @@ class Settings
 
         bool get_core_per_column_winding_windows() const;
         void set_core_per_column_winding_windows(bool value);
+
+        bool get_coil_adviser_allow_lateral_placement() const;
+        void set_coil_adviser_allow_lateral_placement(bool value);
 
     EffectiveParameterStandard get_effective_parameter_standard() const;
     void set_effective_parameter_standard(EffectiveParameterStandard value);

@@ -97,6 +97,7 @@ namespace OpenMagnetics {
         _useOnlyCoresInStock = true;
         _usePowderCores = true;
         _corePerColumnWindingWindows = false;
+        _coilAdviserAllowLateralPlacement = false;
         _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
         _nanocrystallineStackingFactor = 0.80;
     _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
@@ -356,6 +357,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_per_column_winding_windows(bool value) {
         _corePerColumnWindingWindows = value;
+    }
+
+    bool Settings::get_coil_adviser_allow_lateral_placement() const {
+        return _coilAdviserAllowLateralPlacement;
+    }
+    void Settings::set_coil_adviser_allow_lateral_placement(bool value) {
+        _coilAdviserAllowLateralPlacement = value;
     }
 
     EffectiveParameterStandard Settings::get_effective_parameter_standard() const {

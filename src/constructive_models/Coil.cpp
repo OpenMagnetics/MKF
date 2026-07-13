@@ -1250,6 +1250,7 @@ bool Coil::fast_wind() {
 }
 
 bool Coil::unwind() {
+    _groupWindowSidesApplied = false;
     set_sections_description(std::nullopt);
     set_layers_description(std::nullopt);
     set_turns_description(std::nullopt);
@@ -3550,8 +3551,14 @@ std::optional<double> Coil::get_turn_length_in_frame(const WoundColumnFrame& fra
     return length;
 }
 
-void Coil::apply_group_window_sides() {
+void Coil::apply_group_window_sides(bool inverse) {
     if (!get_groups_description() || !get_sections_description()) {
+        return;
+    }
+    if (inverse && !_groupWindowSidesApplied) {
+        return;
+    }
+    if (!inverse && _groupWindowSidesApplied) {
         return;
     }
     Bobbin bobbinResolved = resolve_bobbin();
@@ -3621,16 +3628,21 @@ void Coil::apply_group_window_sides() {
         anyTransform = anyTransform || transform.reflectAcrossWindowCenter || transform.mirrorSide;
     }
 
-    bool emitBothCrossings = settings.get_coil_include_additional_coordinates();
+    bool emitBothCrossings = settings.get_coil_include_additional_coordinates() && !inverse;
     if (!anyTransform && !emitBothCrossings) {
         return;
     }
 
-    auto transformX = [](double x, const SectionWindowTransform& transform) {
+    auto transformX = [inverse](double x, const SectionWindowTransform& transform) {
+        // Forward: reflect (hug the wound leg) then mirror (negative-x side).
+        // Inverse: same involutions in reverse order.
+        if (inverse && transform.mirrorSide) {
+            x = -x;
+        }
         if (transform.reflectAcrossWindowCenter) {
             x = 2 * transform.windingFrameWindowCenterX - x;
         }
-        if (transform.mirrorSide) {
+        if (!inverse && transform.mirrorSide) {
             x = -x;
         }
         return x;
@@ -3703,6 +3715,7 @@ void Coil::apply_group_window_sides() {
         }
         set_turns_description(turns);
     }
+    _groupWindowSidesApplied = !inverse;
 }
 
 void Coil::assign_windings_to_columns(const std::vector<std::vector<size_t>>& windingIndicesPerColumn) {
@@ -3793,6 +3806,8 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
     set_sections_description(std::nullopt);
     set_layers_description(std::nullopt);
     set_turns_description(std::nullopt);
+    // Fresh sections are wound in the +x winding frame.
+    _groupWindowSidesApplied = false;
 
     std::vector<size_t> maybeVirtualizedPattern = pattern;
     std::vector<double> maybeVirtualizedProportionPerWinding = proportionPerWinding;
@@ -7818,13 +7833,27 @@ bool Coil::delimit_and_compact() {
 
     auto bobbin = resolve_bobbin();
 
+    // The compaction cursor math lives in the +x winding frame. Callers may
+    // re-compact an already-placed multi-window coil (e.g. CoilAdviser after
+    // wind()): unwrap the placement transform, compact, and re-apply it.
+    bool rewrapGroupWindowSides = _groupWindowSidesApplied;
+    if (rewrapGroupWindowSides) {
+        apply_group_window_sides(true);
+    }
+
+    bool result;
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        return delimit_and_compact_rectangular_window();
+        result = delimit_and_compact_rectangular_window();
     }
     else {
-        return delimit_and_compact_round_window();
+        result = delimit_and_compact_round_window();
     }
+
+    if (rewrapGroupWindowSides) {
+        apply_group_window_sides(false);
+    }
+    return result;
 }
 
 WiringTechnology Coil::get_coil_type(size_t groupIndex) const {

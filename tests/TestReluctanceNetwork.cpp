@@ -11,6 +11,7 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Bobbin.h"
 #include "support/Settings.h"
+#include "advisers/CoilAdviser.h"
 #include "TestingUtils.h"
 #include "json.hpp"
 
@@ -90,16 +91,35 @@ TEST_CASE("ReluctanceNetwork_LateralPlacement_FluxDividerCoupling", "[physical-m
     REQUIRE(columnIndexes[1] != mainColumnIndex);
 
     auto columnReluctances = circuit.get_column_reluctances();
+    auto yokeReluctances = circuit.get_yoke_segment_reluctances();
+    auto orderedColumns = circuit.get_ordered_column_indexes();
     REQUIRE(columnReluctances.size() == 3);
+    REQUIRE(yokeReluctances.size() == 2);
 
-    // Closed-form driving-point inductances from the branch reluctances.
+    // Closed-form driving-point inductances from the leg-chain mesh (yoke segments
+    // between adjacent legs): driving the main leg sees the two (lateral + yoke)
+    // branches in parallel; driving a lateral leg sees its yoke in series, then the
+    // main leg in parallel with the far (lateral + yoke) chain.
     auto parallelOf = [](double a, double b) { return 1 / (1 / a + 1 / b); };
     size_t secondaryColumn = columnIndexes[1];
     size_t otherLateralColumn = 3 - mainColumnIndex - secondaryColumn;
+    auto yokeBetween = [&](size_t columnA, size_t columnB) {
+        for (size_t segmentIndex = 0; segmentIndex + 1 < orderedColumns.size(); ++segmentIndex) {
+            if ((orderedColumns[segmentIndex] == columnA && orderedColumns[segmentIndex + 1] == columnB) ||
+                (orderedColumns[segmentIndex] == columnB && orderedColumns[segmentIndex + 1] == columnA)) {
+                return yokeReluctances[segmentIndex];
+            }
+        }
+        throw std::runtime_error("no yoke segment between requested columns");
+    };
+    double yokeSecondary = yokeBetween(mainColumnIndex, secondaryColumn);
+    double yokeOther = yokeBetween(mainColumnIndex, otherLateralColumn);
     double primaryDrivingReluctance =
-        columnReluctances[mainColumnIndex] + parallelOf(columnReluctances[secondaryColumn], columnReluctances[otherLateralColumn]);
+        columnReluctances[mainColumnIndex] + parallelOf(columnReluctances[secondaryColumn] + yokeSecondary,
+                                                        columnReluctances[otherLateralColumn] + yokeOther);
     double secondaryDrivingReluctance =
-        columnReluctances[secondaryColumn] + parallelOf(columnReluctances[mainColumnIndex], columnReluctances[otherLateralColumn]);
+        columnReluctances[secondaryColumn] + yokeSecondary +
+        parallelOf(columnReluctances[mainColumnIndex], columnReluctances[otherLateralColumn] + yokeOther);
 
     auto inductanceMatrix = circuit.calculate_magnetizing_inductance_matrix(magnetic);
     CHECK_THAT(inductanceMatrix[0][0], Catch::Matchers::WithinRel(20.0 * 20.0 / primaryDrivingReluctance, 1e-9));
@@ -293,12 +313,76 @@ TEST_CASE("MultiColumnWinding_FluxDensity_DrivenColumn", "[physical-model][magne
     auto columnReluctances = circuit.get_column_reluctances();
     auto columns = mainPrimaryMagnetic.get_core().get_processed_description()->get_columns();
     auto parallelOf = [](double a, double b) { return 1 / (1 / a + 1 / b); };
+    auto yokeReluctances = circuit.get_yoke_segment_reluctances();
+    auto orderedColumns = circuit.get_ordered_column_indexes();
     size_t lateralIndex = static_cast<size_t>(
         mainPrimaryMagnetic.get_core().get_processed_description()->get_winding_windows()[2].get_column().value());
     size_t otherLateralIndex = 3 - 0 - lateralIndex;
-    double mainDrivingReluctance = columnReluctances[0] + parallelOf(columnReluctances[lateralIndex], columnReluctances[otherLateralIndex]);
-    double lateralDrivingReluctance = columnReluctances[lateralIndex] + parallelOf(columnReluctances[0], columnReluctances[otherLateralIndex]);
+    auto yokeBetween = [&](size_t columnA, size_t columnB) {
+        for (size_t segmentIndex = 0; segmentIndex + 1 < orderedColumns.size(); ++segmentIndex) {
+            if ((orderedColumns[segmentIndex] == columnA && orderedColumns[segmentIndex + 1] == columnB) ||
+                (orderedColumns[segmentIndex] == columnB && orderedColumns[segmentIndex + 1] == columnA)) {
+                return yokeReluctances[segmentIndex];
+            }
+        }
+        throw std::runtime_error("no yoke segment between requested columns");
+    };
+    double mainDrivingReluctance = columnReluctances[0] + parallelOf(columnReluctances[lateralIndex] + yokeBetween(0, lateralIndex),
+                                                                     columnReluctances[otherLateralIndex] + yokeBetween(0, otherLateralIndex));
+    double lateralDrivingReluctance = columnReluctances[lateralIndex] + yokeBetween(0, lateralIndex) +
+                                      parallelOf(columnReluctances[0], columnReluctances[otherLateralIndex] + yokeBetween(0, otherLateralIndex));
     double expectedRatio = (mainDrivingReluctance / lateralDrivingReluctance) * (columns[0].get_area() / columns[lateralIndex].get_area());
     CHECK_THAT(lateralPrimaryPeak / mainPrimaryPeak, Catch::Matchers::WithinRel(expectedRatio, 1e-6));
     CHECK(lateralPrimaryPeak > mainPrimaryPeak);
+}
+
+TEST_CASE("MultiColumnWinding_CoilAdviser_LateralPlacement", "[adviser][coil-adviser][multi-column][smoke-test]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_adviser_allow_lateral_placement(true);
+    settings.set_coil_allow_margin_tape(false);
+    settings.set_coil_try_rewind(false);
+
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    std::vector<int64_t> numberTurns = {24, 12};
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/20", gapping, numberTurns, 1, "3C97");
+    std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        100000, 100e-6, 25, WaveformLabel::SINUSOIDAL, 10, 0.5, 0, turnsRatios);
+
+    OpenMagnetics::Mas masMagnetic;
+    inputs.process();
+    masMagnetic.set_inputs(inputs);
+    masMagnetic.set_magnetic(magnetic);
+
+    CoilAdviser coilAdviser;
+    auto advisedMases = coilAdviser.get_advised_coil(masMagnetic, 10);
+    REQUIRE(advisedMases.size() > 0);
+
+    // At least one proposed design must place the secondary on a lateral leg, wound
+    // with real turns on the negative-x side of the core.
+    bool anyLateralCandidate = false;
+    for (auto& advisedMas : advisedMases) {
+        auto& coil = advisedMas.get_mutable_magnetic().get_mutable_coil();
+        auto secondaryWindow = coil.get_functional_description()[1].get_winding_window();
+        if (!secondaryWindow || secondaryWindow.value() == 0) {
+            continue;
+        }
+        anyLateralCandidate = true;
+        REQUIRE(coil.get_turns_description());
+        bool anyNegativeSecondaryTurn = false;
+        auto advisedTurns = coil.get_turns_description().value();
+        std::string secondaryTurnPositions;
+        for (auto& turn : advisedTurns) {
+            if (turn.get_winding() == coil.get_functional_description()[1].get_name()) {
+                secondaryTurnPositions += std::to_string(turn.get_coordinates()[0]) + " ";
+                if (turn.get_coordinates()[0] < 0) {
+                    anyNegativeSecondaryTurn = true;
+                }
+            }
+        }
+        INFO("secondary window index: " << secondaryWindow.value() << ", turn x: " << secondaryTurnPositions);
+        CHECK(anyNegativeSecondaryTurn);
+    }
+    CHECK(anyLateralCandidate);
 }

@@ -351,6 +351,67 @@ namespace OpenMagnetics {
             }
         }
 
+        // Multi-column winding placement (opt-in): for two-winding transformers on
+        // multi-leg two-piece cores, additionally propose the secondary wound on a
+        // lateral leg — the structural solution when a LARGE leakage inductance is
+        // wanted (integrated-leakage designs). Fully gated behind the setting; the
+        // candidates run through the same wire/insulation/winding/scoring flow, and
+        // their leakage/coupling comes from the per-column reluctance network.
+        if (settings.get_coil_adviser_allow_lateral_placement() && !isCmc && !isDmcMultiWinding &&
+            coreType == CoreType::TWO_PIECE_SET &&
+            mas.get_magnetic().get_coil().get_functional_description().size() == 2 &&
+            mas.get_mutable_inputs().get_wiring_technology() == WiringTechnology::WOUND) {
+            SettingsGuard<bool> perColumnWindowsGuard(settings, &Settings::get_core_per_column_winding_windows,
+                                                      &Settings::set_core_per_column_winding_windows, true);
+            Mas lateralMas = mas;
+            auto& lateralCore = lateralMas.get_mutable_magnetic().get_mutable_core();
+            lateralCore.set_processed_description(std::nullopt);
+            lateralCore.process_data();
+            lateralCore.process_gap();
+            auto lateralWindingWindows = lateralCore.get_winding_windows();
+            std::optional<size_t> lateralWindowIndex;
+            for (size_t windowIndex = 1; windowIndex < lateralWindingWindows.size(); ++windowIndex) {
+                if (lateralCore.get_winding_window_column_index(windowIndex) != lateralCore.get_main_column_index()) {
+                    lateralWindowIndex = windowIndex;
+                    // Prefer the mirrored (left) window: it does not share its region
+                    // with the primary, so both windings keep full window halves.
+                    if (lateralWindingWindows[windowIndex].get_coordinates() &&
+                        lateralWindingWindows[windowIndex].get_coordinates().value()[0] < 0) {
+                        break;
+                    }
+                }
+            }
+            if (lateralWindowIndex) {
+                auto lateralBobbin = Bobbin::create_quick_bobbin(lateralCore, false);
+                auto& lateralCoil = lateralMas.get_mutable_magnetic().get_mutable_coil();
+                lateralCoil.set_bobbin(lateralBobbin);
+                lateralCoil.get_mutable_functional_description()[1].set_winding_window(static_cast<int64_t>(lateralWindowIndex.value()));
+                lateralCoil.set_core_columns(lateralCore.get_columns());
+                lateralCoil.unwind();
+
+                std::vector<size_t> lateralPattern = {0, 1};
+                size_t lateralRepetition = 1;
+                auto aux = lateralCoil.check_pattern_and_repetitions_integrity(lateralPattern, lateralRepetition);
+                lateralPattern = aux.first;
+                lateralRepetition = aux.second;
+                auto lateralInsulationCombinations = InsulationCoordinator::get_solid_insulation_requirements_for_wires(
+                    lateralMas.get_mutable_inputs(), lateralPattern, lateralRepetition);
+                for (size_t insulationIndex = 0; insulationIndex < lateralInsulationCombinations.size(); ++insulationIndex) {
+                    std::string reference = "Custom";
+                    if (lateralMas.get_magnetic().get_manufacturer_info() && lateralMas.get_magnetic().get_manufacturer_info()->get_reference()) {
+                        reference = lateralMas.get_magnetic().get_manufacturer_info().value().get_reference().value();
+                    }
+                    reference += ", Turns: " + std::to_string(lateralMas.get_magnetic().get_coil().get_functional_description()[0].get_number_turns());
+                    reference += ", Lateral Secondary " + std::to_string(insulationIndex);
+                    auto lateralResults = get_advised_coil_for_pattern(wires, lateralMas, lateralPattern, lateralRepetition,
+                                                                       lateralInsulationCombinations[insulationIndex],
+                                                                       maximumNumberResultsPerPattern, reference);
+                    std::move(lateralResults.begin(), lateralResults.end(), std::back_inserter(masesWithCoil));
+                }
+                logEntry("Lateral-placement pass produced " + std::to_string(masesWithCoil.size()) + " total candidates", "CoilAdviser");
+            }
+        }
+
         logEntry("Found " + std::to_string(masesWithCoil.size()) + " magnetics", "CoilAdviser");
         std::vector<std::pair<Mas, double>> invalidMagneticsWithScoring;
         auto masMagneticsWithScoring = score_magnetics(masesWithCoil, _loadedFilterFlow, &invalidMagneticsWithScoring);

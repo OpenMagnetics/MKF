@@ -153,6 +153,9 @@ class Coil : public MAS::Coil {
         size_t _currentRepetitions = 1;
         bool _strict = true;
         bool _bobbin_resolved = false;
+        // True while sections/layers/turns sit at their FINAL multi-window positions
+        // (apply_group_window_sides ran); false while they are in the +x winding frame.
+        bool _groupWindowSidesApplied = false;
         // Multi-column winding support: the core's columns, injected via
         // set_core_columns by callers that hold the core (autocomplete, advisers,
         // tests). Needed to compute turn lengths around non-main columns — the
@@ -216,7 +219,10 @@ class Coil : public MAS::Coil {
         // turn machinery keeps a single geometry. This final winding step
         // mirrors the elements of groups whose window sits on the negative-x
         // side into their real position.
-        void apply_group_window_sides();
+        // inverse=true undoes the placement transform (used by delimit_and_compact,
+        // whose cursor math lives in the +x winding frame, to unwrap/rewrap when a
+        // caller re-compacts an already-placed multi-window coil).
+        void apply_group_window_sides(bool inverse = false);
 
     public:
         // Distribute windings across the bobbin's winding windows. Creates one
