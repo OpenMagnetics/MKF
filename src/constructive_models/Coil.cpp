@@ -8411,6 +8411,12 @@ bool Coil::delimit_and_compact_round_window() {
                                 turns[turnIndex].get_coordinates()[1] - compactingShiftAngle
                             }));
 
+                            // ABT #186: a toroidal turn's rotation is the cross-section azimuth and is
+                            // set equal to its polar angle at creation. The angular compaction above shifts
+                            // the polar angle, so rotation must be re-synced to it — otherwise MagneticField
+                            // rotates the induced-field images by a stale angle and painters mis-orient the box.
+                            turns[turnIndex].set_rotation(turns[turnIndex].get_coordinates()[1]);
+
 
                             if (bobbinColumnShape == ColumnShape::ROUND) {
                                 turns[turnIndex].set_length(2 * std::numbers::pi * (turns[turnIndex].get_coordinates()[0] + bobbinColumnWidth));

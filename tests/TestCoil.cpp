@@ -10566,8 +10566,72 @@ TEST_CASE("Test_Toroidal_Delimit_And_Compact_Multilayer", "[toroidal][coil][comp
         }
     }
     REQUIRE(allTurnsValid);
-    
+
     settings.reset();
+}
+
+TEST_CASE("Test_Toroidal_Compaction_Syncs_Turn_Rotation_To_Polar_Angle", "[toroidal][coil][compaction]") {
+    // ABT #186: angular compaction (delimit_and_compact_round_window) shifts each toroidal turn's
+    // polar angle, but historically left turn.rotation at its creation value, so rotation -- the
+    // cross-section azimuth read by MagneticField's induced-image rotation and by the painters --
+    // went stale. A multi-winding contiguous toroid compacts each section by tens of degrees, so
+    // this exercises the shift; guard that rotation == polar angle for every turn afterwards.
+    auto angularDiffDeg = [](double a, double b) {
+        double d = std::fmod(a - b, 360.0);
+        if (d > 180.0) d -= 360.0;
+        if (d < -180.0) d += 360.0;
+        return std::abs(d);
+    };
+
+    std::vector<int64_t> numberTurns = {60, 42};
+    std::vector<int64_t> numberParallels = {1, 1};
+
+    // Reference wind WITHOUT compaction: rotation trivially equals the polar angle at creation.
+    clear_databases();
+    settings.set_use_toroidal_cores(true);
+    settings.set_coil_wind_even_if_not_fit(true);
+    settings.set_coil_delimit_and_compact(false);
+    auto coilNoCompact = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "T 20/10/7", 1,
+                                                              WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
+                                                              CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    coilNoCompact.convert_turns_to_polar_coordinates();
+    auto turnsNoCompact = coilNoCompact.get_turns_description().value();
+    std::map<std::string, double> uncompactedAngleByName;
+    for (const auto& turn : turnsNoCompact) {
+        uncompactedAngleByName[turn.get_name()] = turn.get_coordinates()[1];
+    }
+    settings.reset();
+
+    // Compacted wind: the path that used to leave rotation stale.
+    clear_databases();
+    settings.set_use_toroidal_cores(true);
+    settings.set_coil_wind_even_if_not_fit(true);
+    settings.set_coil_delimit_and_compact(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "T 20/10/7", 1,
+                                                     WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    coil.convert_turns_to_polar_coordinates();
+    auto turns = coil.get_turns_description().value();
+    settings.reset();
+
+    REQUIRE(turns.size() == uncompactedAngleByName.size());
+
+    bool rotationMatchesAngle = true;
+    size_t shiftedTurns = 0;
+    for (const auto& turn : turns) {
+        REQUIRE(turn.get_rotation());
+        double rotation = turn.get_rotation().value();
+        double polarAngle = turn.get_coordinates()[1];
+        rotationMatchesAngle &= angularDiffDeg(rotation, polarAngle) < 1e-3;
+
+        // Confirm compaction actually moved this turn's angle relative to the uncompacted wind,
+        // so this test genuinely exercises (and would fail on) the stale-rotation bug.
+        if (angularDiffDeg(polarAngle, uncompactedAngleByName.at(turn.get_name())) > 1e-3) {
+            shiftedTurns++;
+        }
+    }
+    CHECK(rotationMatchesAngle);
+    CHECK(shiftedTurns > 0);
 }
 
 TEST_CASE("Test_Coil_Compacting_Tertiary_Winding", "[constructive-model][coil][bug][visualization]") {
