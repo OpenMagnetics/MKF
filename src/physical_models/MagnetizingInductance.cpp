@@ -294,6 +294,21 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                                             magnetizingInductanceOutput.get_reluctance_per_gap().value_or(std::vector<AirGapReluctanceOutput>{}));
             auto inductanceMatrix = magneticCircuit.calculate_magnetizing_inductance_matrix(magneticForPlacement);
             modifiedMagnetizingInductance = inductanceMatrix[0][0];
+
+            // Per-column flux density: the driven column carries the full
+            // driving-point flux through ITS area. The lumped B = Φ/Ae both uses the
+            // wrong reluctance for a lateral-driven leg and averages over the
+            // effective area; saturation is checked in the actual column.
+            if (operatingPoint && operatingPoint->get_mutable_excitations_per_winding().size() > 0 &&
+                operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
+                auto columnIndexPerWinding = ReluctanceNetwork::resolve_winding_column_indexes(magneticForPlacement);
+                double drivenColumnArea = core.get_columns()[columnIndexPerWinding[0]].get_area();
+                double drivingPointReluctance = pow(numberTurnsPrimary, 2) / modifiedMagnetizingInductance;
+                auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(
+                    operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
+                    drivingPointReluctance, numberTurnsPrimary);
+                result.second = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, drivenColumnArea);
+            }
         }
     }
 

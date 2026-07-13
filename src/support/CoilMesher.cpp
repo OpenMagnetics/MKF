@@ -567,38 +567,88 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
             windowBottomY = -B / 2;
         }
 
-        double turnA = turn.get_coordinates()[0] - windowLeftEdgeX;
-        double turnB = turn.get_coordinates()[1] - windowBottomY;
-
-        for (int m = -M; m <= M; ++m)
-        {
-            for (int n = -N; n <= N; ++n)
+        auto appendImageLattice = [&](const std::vector<double>& crossingPoint, double frameA, double frameB,
+                                      double frameLeftEdgeX, double frameBottomY, double signMultiplier) {
+            double crossingA = crossingPoint[0] - frameLeftEdgeX;
+            double crossingB = crossingPoint[1] - frameBottomY;
+            for (int m = -M; m <= M; ++m)
             {
-                FieldPoint mirroredFieldPoint;
-                double currentMultiplier = (corePermeability - std::max(fabs(m), fabs(n))) / (corePermeability + std::max(fabs(m), fabs(n)));
-                mirroredFieldPoint.set_value(currentMultiplier);  // Will be multiplied later
-                if (turnLength) {
-                    mirroredFieldPoint.set_turn_length(turnLength.value());
+                for (int n = -N; n <= N; ++n)
+                {
+                    FieldPoint mirroredFieldPoint;
+                    double currentMultiplier = (corePermeability - std::max(fabs(m), fabs(n))) / (corePermeability + std::max(fabs(m), fabs(n)));
+                    mirroredFieldPoint.set_value(signMultiplier * currentMultiplier);  // Will be multiplied later
+                    if (turnLength) {
+                        mirroredFieldPoint.set_turn_length(turnLength.value());
+                    }
+                    if (turnIndex) {
+                        mirroredFieldPoint.set_turn_index(turnIndex.value());
+                    }
+                    double a;
+                    double b;
+                    if (m % 2 == 0) {
+                        a = m * frameA + crossingA;
+                    }
+                    else {
+                        a = m * frameA + frameA - crossingA;
+                    }
+                    if (n % 2 == 0) {
+                        b = n * frameB + crossingB;
+                    }
+                    else {
+                        b = n * frameB + frameB - crossingB;
+                    }
+                    mirroredFieldPoint.set_point(std::vector<double>{a + frameLeftEdgeX, b + frameBottomY});
+                    fieldPoints.push_back(mirroredFieldPoint);
                 }
-                if (turnIndex) {
-                    mirroredFieldPoint.set_turn_index(turnIndex.value());
+            }
+        };
+
+        appendImageLattice(turn.get_coordinates(), A, B, windowLeftEdgeX, windowBottomY, 1.0);
+
+        // Multi-column winding: the turn's SECOND cross-section crossing carries the
+        // same current with the opposite out-of-plane direction. A crossing inside
+        // another window gets THAT window's mirror images (the main winding's
+        // annulus crossings seen in the far window); a crossing outside the core (a
+        // lateral winding's return conductor) sits in open air and gets a single
+        // unmirrored filament.
+        if (turn.get_additional_coordinates()) {
+            auto additionalCoordinatesList = turn.get_additional_coordinates().value();
+            for (auto& additionalCoordinates : additionalCoordinatesList) {
+                if (additionalCoordinates.size() < 2) {
+                    continue;
                 }
-                double a;
-                double b;
-                if (m % 2 == 0) {
-                    a = m * A + turnA;
+                std::optional<WindingWindowElement> containingWindow;
+                for (auto& candidate : windingWindows) {
+                    if (!candidate.get_coordinates() || !candidate.get_width() || !candidate.get_height()) {
+                        continue;
+                    }
+                    if (std::abs(additionalCoordinates[0] - candidate.get_coordinates().value()[0]) <= candidate.get_width().value() / 2 &&
+                        std::abs(additionalCoordinates[1] - candidate.get_coordinates().value()[1]) <= candidate.get_height().value() / 2) {
+                        containingWindow = candidate;
+                        break;
+                    }
+                }
+                if (containingWindow) {
+                    appendImageLattice(additionalCoordinates,
+                                       containingWindow->get_width().value(),
+                                       containingWindow->get_height().value(),
+                                       containingWindow->get_coordinates().value()[0] - containingWindow->get_width().value() / 2,
+                                       containingWindow->get_coordinates().value()[1] - containingWindow->get_height().value() / 2,
+                                       -1.0);
                 }
                 else {
-                    a = m * A + A - turnA;
+                    FieldPoint returnConductorPoint;
+                    returnConductorPoint.set_value(-1.0);  // Will be multiplied later
+                    if (turnLength) {
+                        returnConductorPoint.set_turn_length(turnLength.value());
+                    }
+                    if (turnIndex) {
+                        returnConductorPoint.set_turn_index(turnIndex.value());
+                    }
+                    returnConductorPoint.set_point(std::vector<double>{additionalCoordinates[0], additionalCoordinates[1]});
+                    fieldPoints.push_back(returnConductorPoint);
                 }
-                if (n % 2 == 0) {
-                    b = n * B + turnB;
-                }
-                else {
-                    b = n * B + B - turnB;
-                }
-                mirroredFieldPoint.set_point(std::vector<double>{a + windowLeftEdgeX, b + windowBottomY});
-                fieldPoints.push_back(mirroredFieldPoint);
             }
         }
     }

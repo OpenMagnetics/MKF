@@ -264,3 +264,41 @@ TEST_CASE("MultiColumnWinding_Painter_FullSilhouette", "[support][painter][multi
     size_t totalTurns = magnetic.get_coil().get_turns_description()->size();
     CHECK(copperCircleCount == 2 * totalTurns);
 }
+
+TEST_CASE("MultiColumnWinding_FluxDensity_DrivenColumn", "[physical-model][magnetic-circuit][multi-column][smoke-test]") {
+    // The reported flux density is the DRIVEN column's: full driving-point flux
+    // through that column's area, not the lumped Φ/Ae average.
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        100000, 100e-6, 25, WaveformLabel::SINUSOIDAL, 2, 0.5, 0, {2.0});
+    MagnetizingInductance magnetizingInductanceModel;
+
+    auto mainPrimaryMagnetic = buildTwoWindingMagnetic(2);  // primary main, secondary lateral: gate on
+    auto mainPrimaryOperatingPoint = inputs.get_operating_point(0);
+    auto mainPrimaryResult = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(
+        mainPrimaryMagnetic.get_mutable_core(), mainPrimaryMagnetic.get_mutable_coil(), &mainPrimaryOperatingPoint);
+    double mainPrimaryPeak = mainPrimaryResult.second.get_processed()->get_peak().value();
+
+    auto lateralPrimaryMagnetic = buildTwoWindingMagnetic(std::nullopt);
+    auto lateralPrimaryCoil = lateralPrimaryMagnetic.get_coil();
+    lateralPrimaryCoil.get_mutable_functional_description()[0].set_winding_window(2);
+    lateralPrimaryMagnetic.set_coil(lateralPrimaryCoil);
+    auto lateralPrimaryOperatingPoint = inputs.get_operating_point(0);
+    auto lateralPrimaryResult = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(
+        lateralPrimaryMagnetic.get_mutable_core(), lateralPrimaryMagnetic.get_mutable_coil(), &lateralPrimaryOperatingPoint);
+    double lateralPrimaryPeak = lateralPrimaryResult.second.get_processed()->get_peak().value();
+
+    // Exact identity from the network: B ratio = (R_driving,main / R_driving,lateral)
+    // × (A_main / A_lateral), same magnetizing current in both runs.
+    auto circuit = buildCircuit(mainPrimaryMagnetic.get_core());
+    auto columnReluctances = circuit.get_column_reluctances();
+    auto columns = mainPrimaryMagnetic.get_core().get_processed_description()->get_columns();
+    auto parallelOf = [](double a, double b) { return 1 / (1 / a + 1 / b); };
+    size_t lateralIndex = static_cast<size_t>(
+        mainPrimaryMagnetic.get_core().get_processed_description()->get_winding_windows()[2].get_column().value());
+    size_t otherLateralIndex = 3 - 0 - lateralIndex;
+    double mainDrivingReluctance = columnReluctances[0] + parallelOf(columnReluctances[lateralIndex], columnReluctances[otherLateralIndex]);
+    double lateralDrivingReluctance = columnReluctances[lateralIndex] + parallelOf(columnReluctances[0], columnReluctances[otherLateralIndex]);
+    double expectedRatio = (mainDrivingReluctance / lateralDrivingReluctance) * (columns[0].get_area() / columns[lateralIndex].get_area());
+    CHECK_THAT(lateralPrimaryPeak / mainPrimaryPeak, Catch::Matchers::WithinRel(expectedRatio, 1e-6));
+    CHECK(lateralPrimaryPeak > mainPrimaryPeak);
+}
