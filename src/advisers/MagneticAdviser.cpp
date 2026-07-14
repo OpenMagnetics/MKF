@@ -665,7 +665,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     if (coreDatabase.empty() && !LibraryContext::Scope::anyActive()) {
         load_cores();
     }
-    if (wireDatabase.empty()) {
+    // Same rule as load_cores() above: inside a LibraryContext scope the
+    // (possibly empty) wireDatabase IS the inventory — never refill it from
+    // the public catalog (ABT #232).
+    if (wireDatabase.empty() && !LibraryContext::Scope::anyActive()) {
         load_wires();
     }
 
