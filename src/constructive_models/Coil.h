@@ -557,6 +557,10 @@ inline void from_json(const json & j, Winding& x) {
     x.set_number_parallels(j.at("numberParallels").get<int64_t>());
     x.set_number_turns(j.at("numberTurns").get<int64_t>());
     x.set_wire(j.at("wire").get<OpenMagnetics::WireDataOrNameUnion>());
+    // Multi-column placement: without this, a winding-level windingWindow set
+    // through any JSON boundary (WASM, file load) was silently discarded and
+    // the winder placed everything in window 0.
+    x.set_winding_window(get_stack_optional<int64_t>(j, "windingWindow"));
 }
 
 inline void to_json(json & j, const Coil & x) {
@@ -577,6 +581,7 @@ inline void to_json(json & j, const Winding & x) {
     j["numberParallels"] = x.get_number_parallels();
     j["numberTurns"] = x.get_number_turns();
     j["wire"] = x.get_wire();
+    j["windingWindow"] = x.get_winding_window();
 }
 } // namespace OpenMagnetics
 
