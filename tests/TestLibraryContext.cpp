@@ -1,6 +1,7 @@
 #include "support/LibraryContext.h"
 #include "support/Utils.h"
 #include "advisers/MagneticAdviser.h"
+#include "advisers/WireAdviser.h"
 #include "processors/Inputs.h"
 #include "json.hpp"
 
@@ -234,4 +235,53 @@ TEST_CASE("LibraryContext: Replace ctx adviser returns results from the context 
 
     // The public catalog must be intact after the scoped calls.
     REQUIRE(coreShapeDatabase.size() > 100);
+}
+
+TEST_CASE("LibraryContext: wire advising inside a scope never lazily reloads the public catalog", "[library-context][adviser]") {
+    // A Replace context WITHOUT wires: inside its scope the wire pool is
+    // empty and must STAY empty. The lazy load_wires() fallbacks in
+    // WireAdviser/CoilAdviser would otherwise silently refill the shared
+    // catalog and un-restrict 'only my inventory' wire advising (same
+    // defect class as the gated load_cores() in CoreAdviser). Without the
+    // gate this test FAILS: the adviser returns wires from the full catalog.
+    if (coreShapeDatabase.empty()) load_core_shapes();
+    if (wireDatabase.empty()) load_wires();
+
+    json ctxJson;
+    ctxJson["coreShapes"] = json::object();
+    REQUIRE(coreShapeDatabase.count("PQ 26/20") == 1);
+    json shapeJson;
+    to_json(shapeJson, coreShapeDatabase.at("PQ 26/20"));
+    ctxJson["coreShapes"]["PQ 26/20"] = shapeJson;
+
+    LibraryContext ctx;
+    ctx.loadFromString(ctxJson.dump(), LibraryContext::LoadMode::Replace);
+
+    OpenMagnetics::Winding winding;
+    winding.set_isolation_side(IsolationSide::PRIMARY);
+    winding.set_name("primary");
+    winding.set_number_parallels(1);
+    winding.set_number_turns(10);
+    winding.set_wire("Dummy");
+
+    Section section;
+    section.set_dimensions({0.005, 0.015});
+    section.set_coordinate_system(CoordinateSystem::CARTESIAN);
+
+    SignalDescriptor current;
+    ProcessedWaveform processed;
+    processed.set_peak_to_peak(2 * 2 * 1.4142);
+    processed.set_rms(2);
+    processed.set_effective_frequency(13456);
+    processed.set_offset(0);
+    processed.set_label(MAS::WaveformLabel::TRIANGULAR);
+    current.set_processed(processed);
+
+    OpenMagnetics::WireAdviser wireAdviser;
+    auto results = wireAdviser.get_advised_wire(winding, section, current, 25, 1, 5,
+                                                &ctx, OpenMagnetics::AdviserConstraints{});
+    REQUIRE(results.empty());
+
+    // The public catalog is restored once the scoped call returns.
+    REQUIRE(!wireDatabase.empty());
 }
