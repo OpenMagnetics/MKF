@@ -1,5 +1,6 @@
 #include "processors/Inputs.h"
 #include "advisers/CoilAdviser.h"
+#include "support/LibraryContext.h"
 #include "Models.h"
 #include "constructive_models/Insulation.h"
 #include "physical_models/WindingSkinEffectLosses.h"
@@ -146,7 +147,11 @@ namespace OpenMagnetics {
 
     std::vector<Mas> CoilAdviser::get_advised_coil(Mas mas, size_t maximumNumberResults){
         logEntry("Starting Coil Adviser without wires", "CoilAdviser");
-        if (wireDatabase.empty()) {
+        // Inside a LibraryContext scope the (possibly empty) wireDatabase IS
+        // the inventory — lazily reloading the full public catalog here would
+        // silently un-restrict 'only my inventory' wire advising (same defect
+        // class as the gated load_cores() in CoreAdviser).
+        if (wireDatabase.empty() && !LibraryContext::Scope::anyActive()) {
             load_wires();
         }
         std::string jsonLine;
