@@ -301,6 +301,11 @@ class Coil : public MAS::Coil {
         void convert_turns_to_polar_coordinates();
         std::vector<std::pair<double, std::vector<double>>> get_collision_distances(std::vector<double> turnCoordinates, std::vector<std::vector<double>> placedTurnsCoordinates, double wireHeight);
 
+        // Custom-rectangle re-flow (winding studio): re-run layers+turns INSIDE the
+        // current section rectangles, without recomputing the sections and without
+        // the compaction pass that would undo a hand-edited placement. Handles the
+        // final-frame/+x-frame wrap like delimit_and_compact does.
+        bool rewind_layers_and_turns();
         bool wind_by_sections();
         bool wind_by_sections(size_t repetitions);
         bool wind_by_sections(std::vector<double> proportionPerWinding);

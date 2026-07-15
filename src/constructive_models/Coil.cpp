@@ -1264,6 +1264,31 @@ bool Coil::unwind() {
     return true;
 }
 
+bool Coil::rewind_layers_and_turns() {
+    if (!get_sections_description()) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "rewind_layers_and_turns needs a sections description to re-flow into");
+    }
+    // Sections may arrive at their FINAL multi-window positions (hand-edited or
+    // deserialized); the layer/turn placement math lives in the +x winding
+    // frame, so unwrap, re-flow, and re-apply — the custom rectangles round-trip
+    // through the same transform.
+    bool rewrapGroupWindowSides = _groupWindowSidesApplied;
+    if (rewrapGroupWindowSides) {
+        apply_group_window_sides(true);
+    }
+    wind_by_layers();
+    bool result = false;
+    if (get_layers_description()) {
+        wind_by_turns();
+        result = get_turns_description().has_value();
+    }
+    if (rewrapGroupWindowSides) {
+        apply_group_window_sides(false);
+    }
+    return result;
+}
+
 bool Coil::wind() {
     std::vector<double> proportionPerWinding;
 
