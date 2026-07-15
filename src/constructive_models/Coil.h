@@ -163,6 +163,9 @@ class Coil : public MAS::Coil {
         // (not part of the MAS coil); winding a section placed in a non-main
         // winding window without it throws.
         std::optional<std::vector<ColumnElement>> _coreColumns;
+        // Hand-drawn section rectangles (winding studio): section name ->
+        // {coordinates, dimensions}, re-imposed at the end of every wind.
+        std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> _customSectionRects;
         Bobbin _bobbin;
         BobbinDataOrNameUnion bobbin;
         std::vector<Winding> functional_description;
@@ -245,6 +248,14 @@ class Coil : public MAS::Coil {
         // applied, or a later delimit_and_compact() re-compacts mirrored-window
         // sections as if they were still frame-local.
         void set_group_window_sides_applied(bool value) { _groupWindowSidesApplied = value; }
+        // Hand-drawn section rectangles (winding studio), keyed by section name:
+        // {coordinates, dimensions} in the final frame. Preload before wind();
+        // after the standard placement (including compaction and mirroring),
+        // matching sections are overridden with their drawn rect and layers+
+        // turns re-flowed inside it — compaction never moves a drawn section.
+        // Transient, like preload_margins: not part of the MAS coil.
+        void preload_custom_section_rects(std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> rects) { _customSectionRects = rects; }
+        bool apply_custom_section_rects();
         bool wind_by_planar_sections(std::vector<size_t> stackUp, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
         bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);

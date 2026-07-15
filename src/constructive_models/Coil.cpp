@@ -1537,8 +1537,36 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         // mirror the ones whose winding window sits on the negative-x side into
         // their real position. No-op for single-window coils.
         apply_group_window_sides();
+        // Hand-drawn section rectangles (winding studio) override the computed
+        // placement LAST — after compaction and mirroring — so no later pass
+        // can move them; layers+turns are re-flowed inside each drawn rect.
+        result = apply_custom_section_rects();
     }
     return result;
+}
+
+bool Coil::apply_custom_section_rects() {
+    if (_customSectionRects.empty() || !get_sections_description()) {
+        return true;
+    }
+    auto sections = get_sections_description().value();
+    bool anyApplied = false;
+    for (auto& section : sections) {
+        auto customRect = _customSectionRects.find(section.get_name());
+        if (customRect == _customSectionRects.end()) {
+            continue;
+        }
+        section.set_coordinates(customRect->second.first);
+        section.set_dimensions(customRect->second.second);
+        anyApplied = true;
+    }
+    if (!anyApplied) {
+        // Stale names (the pattern changed and the drawn sections no longer
+        // exist) are the caller's to clean up; the wound result stays valid.
+        return true;
+    }
+    set_sections_description(sections);
+    return rewind_layers_and_turns();
 }
 
 bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance, std::map<size_t, double> wireToWireDistance, std::map<std::pair<size_t, size_t>, double> insulationThickness, double coreToLayerDistance) {
