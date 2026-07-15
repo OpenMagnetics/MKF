@@ -233,6 +233,13 @@ Coil::Coil(const MAS::Coil coil) {
         hasTurnsData = true;
         set_turns_description(coil.get_turns_description());
     }
+    if (hasSectionsData) {
+        // Externally-provided descriptions always sit at their FINAL multi-window
+        // positions (the +x winding frame is transient inside wind()); without
+        // this a later delimit_and_compact would re-compact mirrored-window
+        // sections as if they were frame-local.
+        set_group_window_sides_applied(true);
+    }
     auto delimitAndCompact = settings.get_coil_delimit_and_compact();
 
     if (!hasSectionsData || !hasLayersData || (!hasTurnsData && are_sections_and_layers_fitting())) {

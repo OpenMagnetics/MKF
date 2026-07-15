@@ -238,6 +238,13 @@ class Coil : public MAS::Coil {
         // main column). Callers that hold the core (autocomplete, advisers) must
         // call this before winding a coil whose placement uses non-main windows.
         void set_core_columns(std::vector<ColumnElement> columns) { _coreColumns = columns; }
+        // Serialized wound coils always carry their sections/layers/turns at the
+        // FINAL multi-window positions (the +x winding frame exists only
+        // transiently inside wind()). Entry points that install descriptions
+        // from outside (JSON, MAS::Coil) must mark the placement transform as
+        // applied, or a later delimit_and_compact() re-compacts mirrored-window
+        // sections as if they were still frame-local.
+        void set_group_window_sides_applied(bool value) { _groupWindowSidesApplied = value; }
         bool wind_by_planar_sections(std::vector<size_t> stackUp, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
         bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);
@@ -548,6 +555,10 @@ inline void from_json(const json & j, Coil& x) {
     x.set_sections_description(get_stack_optional<std::vector<Section>>(j, "sectionsDescription"));
     x.set_turns_description(get_stack_optional<std::vector<Turn>>(j, "turnsDescription"));
     x.set_groups_description(get_stack_optional<std::vector<Group>>(j, "groupsDescription"));
+    if (x.get_sections_description()) {
+        // Serialized descriptions are in their FINAL multi-window positions.
+        x.set_group_window_sides_applied(true);
+    }
 }
 
 inline void from_json(const json & j, Winding& x) {
