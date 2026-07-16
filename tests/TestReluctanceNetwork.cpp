@@ -386,3 +386,32 @@ TEST_CASE("MultiColumnWinding_CoilAdviser_LateralPlacement", "[adviser][coil-adv
     }
     CHECK(anyLateralCandidate);
 }
+
+// 48d05d4c: the network resolved placement from the WINDING level only; a
+// lateral-placed coil whose placement lives on its wound SECTIONS (hand-
+// authored MAS files, intents carried by sections) got the ideal rank-1
+// coupling instead of the real flux divider — silently wrong matrix.
+TEST_CASE("ReluctanceNetwork_SectionLevelPlacement_MatchesWindingLevel", "[physical-model][magnetic-circuit][multi-column][smoke-test]") {
+    auto reference = buildTwoWindingMagnetic(2);
+    auto referenceCircuit = buildCircuit(reference.get_core());
+    auto referenceMatrix = referenceCircuit.calculate_magnetizing_inductance_matrix(reference);
+    REQUIRE(referenceMatrix[0][1] < 0);
+
+    // Same design, placement carried ONLY by the wound sections.
+    auto magnetic = buildTwoWindingMagnetic(2);
+    auto coil = magnetic.get_coil();
+    coil.set_core_columns(magnetic.get_core().get_processed_description()->get_columns());
+    REQUIRE(coil.wind());
+    coil.get_mutable_functional_description()[1].set_winding_window(std::nullopt);
+    magnetic.set_coil(coil);
+
+    REQUIRE(ReluctanceNetwork::has_non_main_placement(magnetic));
+    auto circuit = buildCircuit(magnetic.get_core());
+    auto matrix = circuit.calculate_magnetizing_inductance_matrix(magnetic);
+    CHECK(matrix[0][1] < 0);
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 2; ++j) {
+            CHECK_THAT(matrix[i][j], Catch::Matchers::WithinRel(referenceMatrix[i][j], 1e-9));
+        }
+    }
+}

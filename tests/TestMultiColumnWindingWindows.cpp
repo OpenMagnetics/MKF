@@ -249,3 +249,220 @@ TEST_CASE("MultiColumnWinding_DefaultPlacement_MatchesSingleWindow", "[construct
     }
 }
 
+// ---------------------------------------------------------------------------
+// JSON-boundary + custom-rectangle regressions (July 2026 winding-studio audit).
+// Every bug below shipped silently: the C++ tests all built their coils in
+// process, so nothing exercised the serializers or the hand-edited-section
+// paths the web studio drives.
+// ---------------------------------------------------------------------------
+
+namespace {
+struct WoundLateralE42 {
+    Core core;
+    std::vector<ColumnElement> columns;
+    OpenMagnetics::Coil coil;
+};
+
+WoundLateralE42 build_wound_e42_lateral_secondary() {
+    auto& settings = Settings::GetInstance();
+    settings.set_core_per_column_winding_windows(true);
+    auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+    auto columns = core.get_processed_description()->get_columns();
+    json coilJson;
+    json bobbinJson;
+    to_json(bobbinJson, bobbin);
+    coilJson["bobbin"] = bobbinJson;
+    coilJson["functionalDescription"] = json::array();
+    coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
+                                                     {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+    coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                     {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+    OpenMagnetics::Coil coil(coilJson, false);
+    coil.get_mutable_functional_description()[1].set_winding_window(2);
+    coil.set_core_columns(columns);
+    REQUIRE(coil.wind());
+    return {core, columns, coil};
+}
+
+double section_x(const OpenMagnetics::Coil& coil, const std::string& windingName) {
+    auto sections = coil.get_sections_description().value();
+    for (auto& section : sections) {
+        if (section.get_type() == ElectricalType::CONDUCTION &&
+            section.get_partial_windings()[0].get_winding() == windingName) {
+            return section.get_coordinates()[0];
+        }
+    }
+    throw std::runtime_error("no conduction section for " + windingName);
+}
+}  // namespace
+
+// f8ff5789: OpenMagnetics::Winding's hand-rolled from_json/to_json dropped the
+// winding-level windingWindow, so any placement set through a JSON boundary
+// (WASM bindings, file loads) was silently wound into window 0.
+TEST_CASE("MultiColumnWinding_JsonBoundary_WindingWindowSurvives", "[constructive-model][coil][multi-column][smoke-test]") {
+    auto wound = build_wound_e42_lateral_secondary();
+
+    json serialized;
+    to_json(serialized, wound.coil);
+    REQUIRE(serialized["functionalDescription"][1].contains("windingWindow"));
+    CHECK(serialized["functionalDescription"][1]["windingWindow"] == 2);
+
+    OpenMagnetics::Coil reloaded(serialized, false);
+    REQUIRE(reloaded.get_functional_description()[1].get_winding_window());
+    CHECK(reloaded.get_functional_description()[1].get_winding_window().value() == 2);
+
+    // A fresh wind of the reloaded coil still places the secondary laterally.
+    reloaded.set_core_columns(wound.columns);
+    REQUIRE(reloaded.wind());
+    CHECK(section_x(reloaded, "Primary") > 0);
+    CHECK(section_x(reloaded, "Secondary") < 0);
+}
+
+// 5eb32261: a coil reconstructed from JSON starts with the placement-transform
+// flag unset while its serialized sections are at their FINAL mirrored
+// positions; re-compacting moved the lateral section back to the main window.
+TEST_CASE("MultiColumnWinding_JsonReload_DelimitKeepsMirroredSections", "[constructive-model][coil][multi-column][smoke-test]") {
+    auto wound = build_wound_e42_lateral_secondary();
+
+    json serialized;
+    to_json(serialized, wound.coil);
+    OpenMagnetics::Coil reloaded(serialized, false);
+    reloaded.set_core_columns(wound.columns);
+    REQUIRE(section_x(reloaded, "Secondary") < 0);
+
+    REQUIRE(reloaded.delimit_and_compact());
+    CHECK(section_x(reloaded, "Secondary") < 0);
+    auto reloadedTurns = reloaded.get_turns_description().value();
+    for (auto& turn : reloadedTurns) {
+        if (turn.get_winding() == "Secondary") {
+            CHECK(turn.get_coordinates()[0] < 0);
+        }
+    }
+}
+
+// bdd2ae16 + e5f5d609 + 48d05d4c: a hand-drawn rectangle on a MIRRORED-window
+// section re-flows layers+turns INSIDE the rectangle (through the frame
+// round-trip), re-packing them (the stale numberLayers is cleared) and
+// surviving subsequent full winds.
+TEST_CASE("MultiColumnWinding_CustomSectionRect_RepacksAndSurvivesRewind", "[constructive-model][coil][multi-column][smoke-test]") {
+    auto wound = build_wound_e42_lateral_secondary();
+    auto& coil = wound.coil;
+
+    auto sections = coil.get_sections_description().value();
+    std::string sectionName;
+    std::vector<double> baseCoordinates;
+    std::vector<double> baseDimensions;
+    for (auto& section : sections) {
+        if (section.get_type() == ElectricalType::CONDUCTION &&
+            section.get_partial_windings()[0].get_winding() == "Secondary") {
+            sectionName = section.get_name();
+            baseCoordinates = section.get_coordinates();
+            baseDimensions = section.get_dimensions();
+        }
+    }
+    REQUIRE(!sectionName.empty());
+
+    // 2.2x wider (room for a second radial layer, clear of the exact-multiple
+    // float truncation) and 55% of the height, pushed toward the window top.
+    std::vector<double> customDimensions = {baseDimensions[0] * 2.2, baseDimensions[1] * 0.55};
+    std::vector<double> customCoordinates = {baseCoordinates[0], 0.0283 / 2 - customDimensions[1] / 2};
+    coil.preload_custom_section_rects({{sectionName, {customCoordinates, customDimensions}}});
+    REQUIRE(coil.apply_custom_section_rects());
+
+    auto check_custom_layout = [&]() {
+        auto woundSections = coil.get_sections_description().value();
+        size_t conductionLayers = 0;
+        for (auto& section : woundSections) {
+            if (section.get_name() == sectionName) {
+                CHECK_THAT(section.get_coordinates()[0], Catch::Matchers::WithinRel(customCoordinates[0], 1e-9));
+                CHECK_THAT(section.get_coordinates()[1], Catch::Matchers::WithinRel(customCoordinates[1], 1e-9));
+                CHECK_THAT(section.get_dimensions()[1], Catch::Matchers::WithinRel(customDimensions[1], 1e-9));
+            }
+        }
+        auto woundLayers = coil.get_layers_description().value();
+        for (auto& layer : woundLayers) {
+            if (layer.get_type() == ElectricalType::CONDUCTION && layer.get_section() == sectionName) {
+                conductionLayers++;
+            }
+        }
+        CHECK(conductionLayers == 2);
+        double yLow = customCoordinates[1] - customDimensions[1] / 2;
+        double yHigh = customCoordinates[1] + customDimensions[1] / 2;
+        auto woundTurns = coil.get_turns_description().value();
+        for (auto& turn : woundTurns) {
+            if (turn.get_winding() == "Secondary") {
+                CHECK(turn.get_coordinates()[0] < 0);
+                CHECK(turn.get_coordinates()[1] > yLow - 1e-9);
+                CHECK(turn.get_coordinates()[1] < yHigh + 1e-9);
+            }
+        }
+    };
+    check_custom_layout();
+
+    // The pin survives a FULL rewind with different proportions (compaction
+    // runs for the rest of the coil; the drawn section is re-imposed after).
+    REQUIRE(coil.wind(std::vector<double>{0.7, 0.3}, std::vector<size_t>{0, 1}, 1));
+    check_custom_layout();
+}
+
+// Three windings, two sharing the main window plus one lateral: the shared
+// window splits between the main-window windings and every turn lands.
+TEST_CASE("MultiColumnWinding_ThreeWindings_SharedMainPlusLateral", "[constructive-model][coil][multi-column][smoke-test]") {
+    auto& settings = Settings::GetInstance();
+    settings.set_core_per_column_winding_windows(true);
+    auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+    auto columns = core.get_processed_description()->get_columns();
+    json coilJson;
+    json bobbinJson;
+    to_json(bobbinJson, bobbin);
+    coilJson["bobbin"] = bobbinJson;
+    coilJson["functionalDescription"] = json::array();
+    coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
+                                                     {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+    coilJson["functionalDescription"].push_back(json{{"name", "Tertiary"}, {"numberTurns", 8}, {"numberParallels", 1},
+                                                     {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+    coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                     {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+    OpenMagnetics::Coil coil(coilJson, false);
+    coil.get_mutable_functional_description()[2].set_winding_window(2);
+    coil.set_core_columns(columns);
+    REQUIRE(coil.wind());
+
+    std::map<std::string, size_t> turnsPerWinding;
+    auto threeWindingTurns = coil.get_turns_description().value();
+    for (auto& turn : threeWindingTurns) {
+        turnsPerWinding[turn.get_winding()]++;
+        if (turn.get_winding() == "Secondary") {
+            CHECK(turn.get_coordinates()[0] < 0);
+        }
+        else {
+            CHECK(turn.get_coordinates()[0] > 0);
+        }
+    }
+    CHECK(turnsPerWinding["Primary"] == 20);
+    CHECK(turnsPerWinding["Tertiary"] == 8);
+    CHECK(turnsPerWinding["Secondary"] == 10);
+
+    // The two main-window sections split the window without overlapping.
+    double primaryX = section_x(coil, "Primary");
+    double tertiaryX = section_x(coil, "Tertiary");
+    CHECK(primaryX > 0);
+    CHECK(tertiaryX > 0);
+    double primaryHalfWidth = 0;
+    double tertiaryHalfWidth = 0;
+    auto threeWindingSections = coil.get_sections_description().value();
+    for (auto& section : threeWindingSections) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        if (section.get_partial_windings()[0].get_winding() == "Primary") {
+            primaryHalfWidth = section.get_dimensions()[0] / 2;
+        }
+        if (section.get_partial_windings()[0].get_winding() == "Tertiary") {
+            tertiaryHalfWidth = section.get_dimensions()[0] / 2;
+        }
+    }
+    CHECK(std::abs(primaryX - tertiaryX) > primaryHalfWidth + tertiaryHalfWidth - 1e-9);
+}
