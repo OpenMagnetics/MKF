@@ -105,6 +105,29 @@ ReluctanceNetwork::ReluctanceNetwork(Core core, double ungappedCoreReluctance, s
     }
 }
 
+// Placement precedence mirrors the winder: winding-level windingWindow wins,
+// else the winding's wound SECTIONS (via group, already resolved onto each
+// section) name the window. Returns nullopt when no placement is recorded.
+static std::optional<int64_t> resolve_window_from_sections(const OpenMagnetics::Coil& coil, const std::string& windingName) {
+    // Materialize the copy: the generated getter returns the optional BY VALUE,
+    // so iterating `get_sections_description().value()` directly dangles.
+    auto sectionsDescription = coil.get_sections_description();
+    if (!sectionsDescription) {
+        return std::nullopt;
+    }
+    for (const auto& section : sectionsDescription.value()) {
+        if (section.get_type() != ElectricalType::CONDUCTION || !section.get_winding_window()) {
+            continue;
+        }
+        for (const auto& partialWinding : section.get_partial_windings()) {
+            if (partialWinding.get_winding() == windingName) {
+                return section.get_winding_window();
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 std::vector<size_t> ReluctanceNetwork::resolve_winding_column_indexes(Magnetic magnetic) {
     auto core = magnetic.get_core();
     if (!core.get_processed_description()) {
@@ -115,6 +138,14 @@ std::vector<size_t> ReluctanceNetwork::resolve_winding_column_indexes(Magnetic m
     std::vector<size_t> columnIndexPerWinding;
     for (auto& winding : magnetic.get_coil().get_functional_description()) {
         auto windowIndex = winding.get_winding_window();
+        if (!windowIndex) {
+            // The placement may live on the SECTIONS instead of the winding
+            // (e.g. hand-authored MAS files, or intents carried by sections
+            // only). Without this fallback such a lateral-placed coil got the
+            // ideal rank-1 coupling instead of the real flux divider —
+            // a silently wrong inductance matrix.
+            windowIndex = resolve_window_from_sections(magnetic.get_coil(), winding.get_name());
+        }
         if (!windowIndex) {
             columnIndexPerWinding.push_back(mainColumnIndex);
             continue;
@@ -133,7 +164,7 @@ std::vector<size_t> ReluctanceNetwork::resolve_winding_column_indexes(Magnetic m
 bool ReluctanceNetwork::has_non_main_placement(Magnetic magnetic) {
     bool anyPlacement = false;
     for (auto& winding : magnetic.get_coil().get_functional_description()) {
-        if (winding.get_winding_window()) {
+        if (winding.get_winding_window() || resolve_window_from_sections(magnetic.get_coil(), winding.get_name())) {
             anyPlacement = true;
             break;
         }

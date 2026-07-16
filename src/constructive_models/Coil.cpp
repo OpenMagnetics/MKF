@@ -1558,6 +1558,11 @@ bool Coil::apply_custom_section_rects() {
         }
         section.set_coordinates(customRect->second.first);
         section.set_dimensions(customRect->second.second);
+        // The drawn rectangle invalidates the previously wound layer count —
+        // wind_by_layers honors a section's numberLayers when present, which
+        // would keep e.g. a single overflowing layer instead of re-packing
+        // into the new rect.
+        section.set_number_layers(std::nullopt);
         anyApplied = true;
     }
     if (!anyApplied) {
