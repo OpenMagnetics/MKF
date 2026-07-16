@@ -238,11 +238,31 @@ double get_magnetic_field_strength_gap(OperatingPoint& operatingPoint, Magnetic 
     if (!magnetizingCurrent.get_waveform()->get_time()) {
         magnetizingCurrent = Inputs::standardize_waveform(magnetizingCurrent, frequency);
     }
+    if (!magnetizingCurrent.get_harmonics()) {
+        auto waveform = magnetizingCurrent.get_waveform().value();
+        if (!Inputs::is_waveform_sampled(waveform)) {
+            waveform = Inputs::calculate_sampled_waveform(waveform, frequency);
+        }
+        magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(waveform, frequency));
+    }
     auto magneticFlux = MagneticField::calculate_magnetic_flux(magnetizingCurrent, reluctance, numberTurns);
     auto magneticFluxDensity = MagneticField::calculate_magnetic_flux_density(magneticFlux, magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area());
 
-    double magneticFieldStrengthGap = magneticFluxDensity.get_processed()->get_peak().value() / Constants().vacuumPermeability;
-    return magneticFieldStrengthGap;
+    // This gap field is superposed onto the driven (fundamental) harmonic and feeds the
+    // AC eddy/proximity loss integrals, so it must be an AC harmonic amplitude. The
+    // waveform peak used previously includes the DC bias, which fringes statically and
+    // drives no eddy loss (a 31 A-bias inductor read H_gap 5.5x high -> ~30x proximity
+    // loss, FEM-arbitrated 2026-07). The dominant AC harmonic is selected by AMPLITUDE,
+    // not by frequency label: frequency-swept operating points can carry harmonics on
+    // their original (stale) grid, but the amplitudes remain those of the waveform.
+    // Index 0 is the DC bin by MKF harmonics convention. For an unbiased sinusoid this
+    // equals the previous waveform-peak definition exactly.
+    auto harmonics = magneticFluxDensity.get_harmonics().value();
+    double acAmplitude = 0;
+    for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+        acAmplitude = std::max(acAmplitude, std::abs(harmonics.get_amplitudes()[harmonicIndex]));
+    }
+    return acAmplitude / Constants().vacuumPermeability;
 }
 
 WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
