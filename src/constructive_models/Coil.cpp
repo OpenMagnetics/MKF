@@ -1286,7 +1286,32 @@ bool Coil::rewind_layers_and_turns() {
     if (rewrapGroupWindowSides) {
         apply_group_window_sides(false);
     }
+    if (result) {
+        generate_toroidal_additional_coordinates();
+    }
     return result;
+}
+
+void Coil::generate_toroidal_additional_coordinates() {
+    // The outer return crossings of toroidal turns (additionalCoordinates) are
+    // generated inside delimit_and_compact_round_window; re-flow paths that skip
+    // compaction (custom-rect rewinds, compact-off winds) must rebuild them or
+    // the external half of every turn silently disappears from the description.
+    if (!settings.get_coil_include_additional_coordinates()) {
+        return;
+    }
+    if (!get_turns_description() || !get_layers_description()) {
+        return;
+    }
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::ROUND) {
+        return;
+    }
+    // Same frame dance as delimit_and_compact_round_window: the additional-turn
+    // math runs on polar turns, the stored description is cartesian.
+    convert_turns_to_polar_coordinates();
+    wind_toroidal_additional_turns();
+    convert_turns_to_cartesian_coordinates();
 }
 
 bool Coil::wind() {
@@ -1541,6 +1566,11 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         // placement LAST — after compaction and mirroring — so no later pass
         // can move them; layers+turns are re-flowed inside each drawn rect.
         result = apply_custom_section_rects();
+        if (result && !delimitAndCompact) {
+            // Compact-off toroid winds skipped delimit_and_compact_round_window,
+            // the only place the outer return crossings are normally generated.
+            generate_toroidal_additional_coordinates();
+        }
     }
     return result;
 }

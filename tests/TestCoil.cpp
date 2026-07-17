@@ -9294,6 +9294,50 @@ TEST_CASE("Test_Additiona_Turns_Bug", "[constructive-model][coil][round-winding-
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Rewind_Keeps_Additional_Coordinates", "[constructive-model][coil][round-winding-window][multi-column][bug]") {
+    // Winding-studio regression: rewind_layers_and_turns (the custom-rect
+    // re-flow) skipped delimit_and_compact_round_window, the only pass that
+    // generates the toroidal outer return crossings — every studio edit on a
+    // toroid silently dropped all additionalCoordinates.
+    clear_databases();
+    settings.set_use_toroidal_cores(true);
+    settings.set_coil_include_additional_coordinates(true);
+
+    std::vector<int64_t> numberTurns = {30, 30};
+    std::vector<int64_t> numberParallels = {1, 1};
+    uint8_t interleavingLevel = 1;
+    std::string coreShape = "T 25/15/10";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel,
+                                                     WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::SPREAD, CoilAlignment::SPREAD);
+
+    auto woundTurns = coil.get_turns_description().value();
+    for (auto& turn : woundTurns) {
+        REQUIRE(turn.get_additional_coordinates());
+    }
+    size_t numberTurnsBefore = woundTurns.size();
+
+    REQUIRE(coil.rewind_layers_and_turns());
+
+    auto rewoundTurns = coil.get_turns_description().value();
+    CHECK(rewoundTurns.size() == numberTurnsBefore);
+    for (auto& turn : rewoundTurns) {
+        REQUIRE(turn.get_coordinate_system());
+        CHECK(turn.get_coordinate_system().value() == CoordinateSystem::CARTESIAN);
+        REQUIRE(turn.get_additional_coordinates());
+        // The outer crossing sits outside the ring: strictly farther from the
+        // axis than the in-window position.
+        auto coordinates = turn.get_coordinates();
+        auto additionalCoordinates = turn.get_additional_coordinates().value();
+        REQUIRE(additionalCoordinates.size() >= 1);
+        double innerRadius = std::hypot(coordinates[0], coordinates[1]);
+        double outerRadius = std::hypot(additionalCoordinates[0][0], additionalCoordinates[0][1]);
+        CHECK(outerRadius > innerRadius);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread_Top_Additional_Coordinates", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);

@@ -317,6 +317,12 @@ class Coil : public MAS::Coil {
         // the compaction pass that would undo a hand-edited placement. Handles the
         // final-frame/+x-frame wrap like delimit_and_compact does.
         bool rewind_layers_and_turns();
+        // Rebuild the outer return crossings of toroidal turns
+        // (additionalCoordinates) for paths that skip
+        // delimit_and_compact_round_window, the only pass that normally
+        // generates them. No-op for non-round windows or when the
+        // include-additional-coordinates setting is off.
+        void generate_toroidal_additional_coordinates();
         bool wind_by_sections();
         bool wind_by_sections(size_t repetitions);
         bool wind_by_sections(std::vector<double> proportionPerWinding);
