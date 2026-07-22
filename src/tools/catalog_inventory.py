@@ -140,6 +140,37 @@ def adaptive_round(v):
     v = float(v)
     return round(v) if v >= 10 else round(v, 1) if v >= 1 else round(v, 2)
 
+def _fmt(v):
+    """Toroid dims keep their real precision (12.7, not 13) so the emitted shape is exact."""
+    return ("%g" % round(float(v), 3))
+
+def load_existing_shapes():
+    """Existing MAS core shapes: family -> [(name, [A,B,C mm])] for dedup / numeric matching."""
+    from collections import defaultdict
+    fams = defaultdict(list)
+    path = os.path.join(MAS_DATA, "core_shapes.ndjson")
+    if not os.path.exists(path):
+        return fams
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("version"):
+                continue
+            o = json.loads(line)
+            dims = o.get("dimensions", {})
+            def nom(k):
+                d = dims.get(k)
+                return (d.get("nominal") if isinstance(d, dict) else d) if d else None
+            fams[o.get("family")].append((o["name"], [nom("A"), nom("B"), nom("C")]))
+    return fams
+
+def toroid_shape_record(od, idd, ht):
+    return {"magneticCircuit": "closed", "type": "standard", "family": "t",
+            "name": f"T {_fmt(od)}/{_fmt(idd)}/{_fmt(ht)}",
+            "dimensions": {"A": {"nominal": round(od / 1000, 6)},
+                           "B": {"nominal": round(idd / 1000, 6)},
+                           "C": {"nominal": round(ht / 1000, 6)}}}
+
 
 # ----------------------------------------------------------------- generic build
 def build_inventory(mfr_key, limit=None):
@@ -147,7 +178,46 @@ def build_inventory(mfr_key, limit=None):
     by_name, by_mfr = load_materials()
     mfr_mats = by_mfr.get(cfg["manufacturer"], [])
     df = cfg["reader"](cfg)
-    cores, stats = {}, {"rows": 0, "no_material": 0, "no_shape": 0, "made": 0, "gap_fail": 0}
+    existing_shapes = load_existing_shapes()
+    new_shapes = {}   # name -> shape record emitted for toroid sizes not already in MAS
+    cores, stats = {}, {"rows": 0, "no_material": 0, "no_shape": 0, "made": 0, "gap_fail": 0, "new_shapes": 0}
+
+    existing_names = {n for lst in existing_shapes.values() for n, _ in lst}
+
+    def clean_dim(d):
+        return {k: v for k, v in d.items() if v is not None} if isinstance(d, dict) else d
+
+    def ensure_concentric_shape(name):
+        """Resolve a matched (PyOM-library) shape to its CANONICAL name; emit its record if that
+        canonical name is not yet in MAS. Returns the canonical name to reference from the core
+        (PyOM lists short aliases like 'E 42/15' that canonicalize to 'E 42/21/15')."""
+        s = PyOpenMagnetics.find_core_shape_by_name(name)
+        canonical = s.get("name") or name
+        if canonical in existing_names or canonical in new_shapes:
+            return canonical
+        rec = {k: s[k] for k in ("magneticCircuit", "type", "family", "aliases", "name") if k in s}
+        rec.setdefault("name", canonical)
+        rec.setdefault("family", canonical.split(" ")[0].lower())
+        rec["dimensions"] = {k: clean_dim(v) for k, v in s.get("dimensions", {}).items() if v}
+        new_shapes[canonical] = rec
+        existing_names.add(canonical)
+        stats["new_shapes"] += 1
+        return canonical
+
+    def toroid_shape(od, idd, ht):
+        """Return an existing toroid shape name matched by numeric dims (0.06 mm tol), else emit one."""
+        for name, (a, b, c) in ((n, (d[0], d[1], d[2])) for n, d in existing_shapes.get("t", [])):
+            if None in (a, b, c):
+                continue
+            if abs(a * 1000 - od) < 0.06 and abs(b * 1000 - idd) < 0.06 and abs(c * 1000 - ht) < 0.06:
+                return name
+        rec = toroid_shape_record(od, idd, ht)
+        if rec["name"] not in new_shapes:
+            new_shapes[rec["name"]] = rec
+            existing_shapes["t"].append((rec["name"], [od / 1000, idd / 1000, ht / 1000]))
+            stats["new_shapes"] += 1
+        return rec["name"]
+
     for _, row in df.iterrows():
         stats["rows"] += 1
         if limit and stats["made"] >= limit:
@@ -163,13 +233,15 @@ def build_inventory(mfr_key, limit=None):
         family = r["family"]
         # --- shape ---
         if family in ("T", "R"):
-            shape = f"T {adaptive_round(r['od'])}/{adaptive_round(r['id'])}/{adaptive_round(r['ht'])}"
+            shape = toroid_shape(float(r["od"]), float(r["id"]), float(r["ht"]))
         else:
             shape = None
             if r.get("ae") and r.get("le"):
                 shape = match_shape_by_effective(family, r["ae"] / 1e6, r["le"] / 1e3)
+            if shape is not None:
+                shape = ensure_concentric_shape(shape)
         if shape is None:
-            stats["no_shape"] += 1
+            stats["no_shape"] += 1   # non-toroid size with no existing MAS shape (needs A-F dims -> not fabricated)
             continue
         coating = r.get("coating")
         # --- gapping ---
@@ -195,7 +267,7 @@ def build_inventory(mfr_key, limit=None):
                        "reference": r.get("part"), "datasheetUrl": cfg.get("datasheet")},
                        "distributorsInfo": [], "functionalDescription": fd}
         stats["made"] += 1
-    return list(cores.values()), stats
+    return list(new_shapes.values()), list(cores.values()), stats
 
 
 # ----------------------------------------------------------------- manufacturer registry
@@ -256,10 +328,15 @@ if __name__ == "__main__":
     import sys
     key = sys.argv[1] if len(sys.argv) > 1 else "magnetics"
     lim = int(sys.argv[2]) if len(sys.argv) > 2 else None
-    cores, stats = build_inventory(key, limit=lim)
+    shapes, cores, stats = build_inventory(key, limit=lim)
     print("stats:", stats)
+    shp = HERE / f"{key}_shapes_inventory.ndjson"
+    with open(shp, "w") as f:
+        for s in shapes:
+            f.write(json.dumps(s, ensure_ascii=False) + "\n")
     out = HERE / f"{key}_cores_inventory.ndjson"
     with open(out, "w") as f:
         for c in cores:
             f.write(json.dumps(c, ensure_ascii=False) + "\n")
+    print(f"wrote {len(shapes)} new shapes -> {shp}")
     print(f"wrote {len(cores)} cores -> {out}")
