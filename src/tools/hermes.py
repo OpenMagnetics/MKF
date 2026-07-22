@@ -265,6 +265,41 @@ class Stocker():
 
         self.core_data.iloc[row_index] = [core_series]
 
+    def _build_mpn_index(self):
+        """Map normalized manufacturer part number -> inventory core name (built once)."""
+        self._mpn_index = {}
+        for _, core in self.core_data.iterrows():
+            mi = core.get('manufacturerInfo')
+            if isinstance(mi, str):
+                try:
+                    mi = ast.literal_eval(mi)
+                except (ValueError, SyntaxError):
+                    mi = None
+            ref = mi.get('reference') if isinstance(mi, dict) else None
+            if ref:
+                self._mpn_index[str(ref).upper().replace(' ', '').replace('-', '')] = core['name']
+
+    def add_distributor_by_mpn(self, mpn, core_manufacturer, distributor_reference, product_url,
+                               quantity, cost, distributor_name=None):
+        """Generic distributor matcher: attach stock/pricing to the inventory core whose
+        manufacturer part number equals the distributor's MPN — no per-manufacturer
+        description parser (process_<mfr>_product) needed. Any manufacturer that hephaestus /
+        catalog_inventory covers (i.e. whose cores carry manufacturerInfo.reference) becomes
+        stockable from any distributor via this one path. Returns True if matched.
+        """
+        if not hasattr(self, '_mpn_index'):
+            self._build_mpn_index()
+        if not hasattr(self, 'unfound_descriptions'):
+            self.unfound_descriptions = {}
+        key = str(mpn).upper().replace(' ', '').replace('-', '')
+        core_name = self._mpn_index.get(key)
+        if core_name is None:
+            self.unfound_descriptions[mpn] = (core_manufacturer, distributor_name)
+            return False
+        self.add_distributor(core_name, core_manufacturer, distributor_reference, product_url,
+                             quantity, cost, distributor_name)
+        return True
+
     def get_gapping(self, core_data, manufacturer_name, al_value, number_gaps=1):
         constants = PyOpenMagnetics.get_constants()
         inductance = 1
