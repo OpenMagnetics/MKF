@@ -188,10 +188,16 @@ def build_inventory(mfr_key, limit=None):
         return {k: v for k, v in d.items() if v is not None} if isinstance(d, dict) else d
 
     def ensure_concentric_shape(name):
-        """Resolve a matched (PyOM-library) shape to its CANONICAL name; emit its record if that
+        """Resolve a matched or named shape to its CANONICAL name; emit its record if that
         canonical name is not yet in MAS. Returns the canonical name to reference from the core
-        (PyOM lists short aliases like 'E 42/15' that canonicalize to 'E 42/21/15')."""
-        s = PyOpenMagnetics.find_core_shape_by_name(name)
+        (PyOM lists short aliases like 'E 42/15' that canonicalize to 'E 42/21/15'), or None if
+        the name is not a known shape."""
+        try:
+            s = PyOpenMagnetics.find_core_shape_by_name(name)
+        except Exception:
+            return None
+        if not s or not s.get("dimensions"):
+            return None
         canonical = s.get("name") or name
         if canonical in existing_names or canonical in new_shapes:
             return canonical
@@ -234,6 +240,8 @@ def build_inventory(mfr_key, limit=None):
         # --- shape ---
         if family in ("T", "R"):
             shape = toroid_shape(float(r["od"]), float(r["id"]), float(r["ht"]))
+        elif r.get("shape_name"):        # source gives the shape designation directly (e.g. TDK IEC size)
+            shape = ensure_concentric_shape(r["shape_name"])
         else:
             shape = None
             if r.get("ae") and r.get("le"):
@@ -308,7 +316,52 @@ def _magnetics_material(r, mfr_mats):
     # ferrite grades are single letters (C,E,F,J,L,M,P,R,T,V,W); accept if that letter is a known material
     return r["mat_letter"] if r["mat_letter"] in mfr_mats else None
 
+def _csv_reader(cfg):
+    return pandas.read_csv(cfg["source"])
+
+def _tdk_map(row, cfg):
+    """TDK ferrite-core CSV (pulled from product.tdk.com/pdc_api .../list.csv). Shape designation
+    is the IEC 'Size' column; gap is given directly; material is 'Material Name'."""
+    shape_col = str(row.get("Core Shape") or "")
+    size = row.get("Size (IEC62317) A x B x C")
+    size = None if (size is None or (isinstance(size, float) and math.isnan(size))) else str(size).strip()
+    part = str(row.get("Part No.") or "").split(" (")[0].strip()
+    material = str(row.get("Material Name") or "").strip()
+    if not part or not material:
+        return None
+    r = {"part": part, "material_name": material, "status": "production"}
+    is_toroid = "Toroid" in shape_col or "(T)" in shape_col or (size and size[0] in "R")
+    if is_toroid:
+        try:
+            r.update(family="T", od=float(row["Dimm. A"]), id=float(row["Dimm. B"]), ht=float(row["Dimm. C"]),
+                     coating="epoxy" if "EMC" in shape_col else None)
+        except (TypeError, ValueError):
+            return None
+    else:
+        if not size:
+            return None
+        r.update(family=size.split()[0], shape_name=size)
+    gap = row.get("Air Gap / mm")
+    try:
+        if gap is not None and float(gap) > 0:
+            r["gap_mm"] = float(gap)
+    except (TypeError, ValueError):
+        pass
+    return r
+
+def _by_material_name(r, mfr_mats):
+    return r["material_name"] if r["material_name"] in mfr_mats else None
+
+
 MANUFACTURERS = {
+    "tdk": {
+        "manufacturer": "TDK",
+        "source": os.environ.get("TDK_CSV", str(HERE / "tdk_cores.csv")),
+        "datasheet": "https://product.tdk.com/en/search/ferrite/ferrite/ferrite-core/list",
+        "reader": _csv_reader,
+        "map": _tdk_map,
+        "resolve_material": _by_material_name,
+    },
     "magnetics": {
         "manufacturer": "Magnetics",
         "source": os.environ.get("MAGNETICS_XLSX",
