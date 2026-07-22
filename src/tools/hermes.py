@@ -644,6 +644,21 @@ class DigikeyStocker(Stocker):
                 continue
             if product['QuantityAvailable'] == 0:
                 continue
+
+            # Generic path first: match the Manufacturer Part Number straight against the
+            # inventory (manufacturerInfo.reference). Any manufacturer covered by hephaestus /
+            # catalog_inventory is stocked without a bespoke process_<mfr>_product parser; the
+            # per-manufacturer parsers below remain as a fallback when naming differs from the MPN.
+            if self.add_distributor_by_mpn(
+                    product.get('ManufacturerPartNumber'),
+                    product['Manufacturer']['Value'],
+                    product.get('DigiKeyPartNumber'),
+                    product.get('ProductUrl'),
+                    product.get('QuantityAvailable'),
+                    {"value": product.get('UnitPrice'), "currency": "USD"},
+                    "Digi-Key"):
+                continue
+
             if product['Manufacturer']['Value'] == 'Ferroxcube':
                 # print("Ferroxcube")
                 self.process_ferroxcube_product(product)

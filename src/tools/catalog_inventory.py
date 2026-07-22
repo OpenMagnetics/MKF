@@ -377,17 +377,43 @@ MANUFACTURERS = {
 }
 
 
+def build_all(keys=None, limit=None):
+    """Build every configured (or the given) manufacturer and merge shapes + cores, deduped by
+    name. Drop-in for hephaestus: writes cores_inventory.ndjson / shapes_inventory.ndjson.
+    A manufacturer whose source file is missing is skipped with a warning (its data must be
+    fetched first, e.g. the TDK CSV via the Playwright-MCP pull)."""
+    keys = keys or list(MANUFACTURERS)
+    all_shapes, all_cores = {}, {}
+    for key in keys:
+        src = MANUFACTURERS[key].get("source")
+        if src and not os.path.exists(src):
+            print(f"[skip] {key}: source not found ({src}) — fetch it first")
+            continue
+        shapes, cores, stats = build_inventory(key, limit=limit)
+        for s in shapes:
+            all_shapes.setdefault(s["name"], s)
+        for c in cores:
+            all_cores.setdefault(c["name"], c)
+        print(f"[{key}] {stats}")
+    return list(all_shapes.values()), list(all_cores.values())
+
+
 if __name__ == "__main__":
     import sys
     key = sys.argv[1] if len(sys.argv) > 1 else "magnetics"
     lim = int(sys.argv[2]) if len(sys.argv) > 2 else None
-    shapes, cores, stats = build_inventory(key, limit=lim)
-    print("stats:", stats)
-    shp = HERE / f"{key}_shapes_inventory.ndjson"
+    if key == "all":
+        shapes, cores = build_all(limit=lim)
+        base = "inventory"
+    else:
+        shapes, cores, stats = build_inventory(key, limit=lim)
+        print("stats:", stats)
+        base = key
+    shp = HERE / f"{base}_shapes.ndjson"
     with open(shp, "w") as f:
         for s in shapes:
             f.write(json.dumps(s, ensure_ascii=False) + "\n")
-    out = HERE / f"{key}_cores_inventory.ndjson"
+    out = HERE / f"{base}_cores.ndjson"
     with open(out, "w") as f:
         for c in cores:
             f.write(json.dumps(c, ensure_ascii=False) + "\n")
