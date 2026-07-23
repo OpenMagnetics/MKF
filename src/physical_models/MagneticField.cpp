@@ -601,6 +601,21 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             }
         }
 
+        // Hoist the winding-index lookup out of the O(N^2) pair loop below: it depends
+        // only on the inducing point, so compute it once per inducing point instead of
+        // once per (induced, inducing) pair. get_winding_index_by_name is a string lookup
+        // that can cost many times the Biot-Savart arithmetic per pair, so it dominates the
+        // field solve on large multi-winding coils (e.g. the leakage-inductance grid solve).
+        const auto& inducingPointsForHarmonic = inducingFields[harmonicIndex].get_data();
+        std::vector<std::optional<size_t>> windingIndexPerInducingPoint(inducingPointsForHarmonic.size(), std::nullopt);
+        for (size_t inducingPointIndex = 0; inducingPointIndex < inducingPointsForHarmonic.size(); ++inducingPointIndex) {
+            if (inducingPointsForHarmonic[inducingPointIndex].get_turn_index()) {
+                windingIndexPerInducingPoint[inducingPointIndex] =
+                    magnetic.get_mutable_coil().get_winding_index_by_name(
+                        turns[inducingPointsForHarmonic[inducingPointIndex].get_turn_index().value()].get_winding());
+            }
+        }
+
         for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
             double totalInducedFieldX = 0;
             double totalInducedFieldY = 0;
@@ -685,7 +700,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             bool fringingOnlyPoint = inducedFieldPoint.get_label() &&
                                      inducedFieldPoint.get_label().value() == "widthsample";
 
-            for (auto& inducingFieldPoint : inducingFields[harmonicIndex].get_data()) {
+            for (size_t inducingPointIndex = 0; inducingPointIndex < inducingPointsForHarmonic.size(); ++inducingPointIndex) {
+                const auto& inducingFieldPoint = inducingPointsForHarmonic[inducingPointIndex];
                 // Multi-column winding: the main column magnetically screens the two
                 // window sides from each other (the mirror-image walls). A turn on one
                 // side does not directly induce field on the other side; its influence
@@ -700,7 +716,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     if (fringingOnlyPoint) {
                         continue;
                     }
-                    windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingFieldPoint.get_turn_index().value()].get_winding());
+                    windingIndex = windingIndexPerInducingPoint[inducingPointIndex];
                 }
                 if (inducingFieldPoint.get_turn_index()) {
                     if (inducedFieldPoint.get_turn_index()) {
