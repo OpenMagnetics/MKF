@@ -870,7 +870,16 @@ OpenMagnetics::Mas mas_loader(const std::filesystem::path& path) {
         //     several tests downstream.
         try {
             MagnetizingInductance magnetizingInductanceModel;
-            double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance().get_nominal().value();
+            // ABT #278: slim MAS files carry the core functionally (shape/material possibly by
+            // name, no processed description) and the physics models take Core BY VALUE, so heal a
+            // THROWAWAY copy here — the returned MAS keeps the file's raw (unprocessed) core, which
+            // Test_Expand_Magnetic documents as the loader contract (autocomplete does the rest).
+            auto coreForInductance = magnetic.get_core();
+            if (!coreForInductance.get_processed_description()) {
+                coreForInductance.process_data();
+                coreForInductance.process_gap();
+            }
+            double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(coreForInductance, magnetic.get_coil()).get_magnetizing_inductance().get_nominal().value();
             inputs = OpenMagnetics::Inputs(inputsJson, true, magnetizingInductance);
         }
         catch (const std::exception& e)

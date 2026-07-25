@@ -1921,11 +1921,20 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             if (!get_layers_description()) {
                 break;
             }
-            if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
-                wind_by_turns();
-                if (delimitAndCompact) {
-                    delimit_and_compact();
-                }
+            // Wind turns even when the grown layout momentarily stops fitting: the loop MEASURES
+            // blocking from the drawn geometry, so skipping the turns here makes the next iteration
+            // measure STALE turns against the re-grown layers (phantom crossings) or, once the
+            // stale turns are cleared, end the loop early with a turnless coil even though the
+            // fixpoint exists (ABT #278: the ER 9.5 current-sense example died mid-loop at a
+            // transiently-unfitting state; with the measurement geometry kept alive it converges
+            // to a FITTING 15-layer layout). The post-loop `result` check still enforces the real
+            // fitting contract; this only keeps the measurement geometry alive.
+            wind_by_turns();
+            if (!get_turns_description()) {
+                break;
+            }
+            if (delimitAndCompact) {
+                delimit_and_compact();
             }
             // Align INSIDE the loop: packing the blocked layers' turns against their
             // unblocked edge moves which slots the leads cross, so the next iteration's

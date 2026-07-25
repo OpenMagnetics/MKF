@@ -1805,7 +1805,21 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
                 if (firstWindingName != secondWindingName) {
                     V3calculated = fabs(-(resolve_dimensional_values(capacitanceMatrixBetweenWindings.get_mutable_magnitude()["1"]["3"]) * maxVoltageInFirstWinding + resolve_dimensional_values(capacitanceMatrixBetweenWindings.get_mutable_magnitude()["2"]["3"]) * fabs(minVoltageInSecondWinding)) / resolve_dimensional_values(capacitanceMatrixBetweenWindings.get_mutable_magnitude()["3"]["3"]));
                 }
-                capacitanceMapPerWindings[windingsKey] = energyInBetweenTheseWindings * 2 / pow(voltageDropBetweenWindings, 2);
+                // ABT #278: a single-turn winding has no intra-winding turn pairs, so its
+                // self-capacitance term has zero energy AND zero voltage drop — the formula's 0/0
+                // produced NaN (found by the example battery on the 1-turn current-sense primary).
+                // Zero energy means zero capacitance exactly, whatever the voltage drop; a nonzero
+                // energy with no voltage drop is inconsistent and must fail loudly, not divide.
+                if (energyInBetweenTheseWindings == 0) {
+                    capacitanceMapPerWindings[windingsKey] = 0;
+                }
+                else if (voltageDropBetweenWindings == 0) {
+                    throw NaNResultException("Nonzero inter-turn energy with zero voltage drop between windings '"
+                                             + firstWindingName + "' and '" + secondWindingName + "'");
+                }
+                else {
+                    capacitanceMapPerWindings[windingsKey] = energyInBetweenTheseWindings * 2 / pow(voltageDropBetweenWindings, 2);
+                }
             }
             capacitanceMatrix[firstWindingName][secondWindingName] = capacitanceMatrixBetweenWindings;
             capacitanceMatrix[secondWindingName][firstWindingName] = capacitanceMatrixBetweenWindings;

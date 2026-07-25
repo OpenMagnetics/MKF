@@ -11753,4 +11753,26 @@ TEST_CASE("Test_Centered_Single_Turn_Toroidal_Emits_Outer_Crossing",
 
 
 
+// ABT #278: the mid-loop measurement gap in the rectangular blocking loop (wind() skipping
+// wind_by_turns when the grown layout transiently stopped fitting) silently produced a turnless
+// coil for a fitting design. Guard the contract: a design that winds ideally must also wind with
+// real geometry when its blocking fixpoint fits, and real winding adds one crossing per conductor.
+TEST_CASE("Test_Real_Geometry_Wind_Survives_Transient_Unfit", "[constructive-model][coil][real-geometry]") {
+    namespace fs = std::filesystem;
+    auto file = fs::path{std::source_location::current().file_name()}.parent_path().append("..").append("MAS").append("examples").append("13_current_sense_er95_n87.json");
+    settings.reset();
+    std::ifstream f(file);
+    std::string data((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    json masJson = json::parse(data);
+    OpenMagnetics::compat::migrate_pre_1_0(masJson);
+    auto magneticIn = OpenMagnetics::Magnetic(masJson["magnetic"]);
+    settings.set_coil_use_real_winding_geometry(true);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    // 1-turn primary + 100-turn secondary + one real-winding crossing per conductor.
+    CHECK(coil.get_turns_description().value().size() == size_t(1 + 100 + 2));
+    settings.reset();
+}
+
 }  // namespace

@@ -219,8 +219,14 @@ OpenMagnetics::Mas mas_from_payload(const json& payload, const std::string& fixt
     } else {
         try {
             OpenMagnetics::MagnetizingInductance model;
+            // ABT #278: heal a THROWAWAY copy (models take Core by value); keep the fixture's core raw.
+            auto coreForInductance = magnetic.get_core();
+            if (!coreForInductance.get_processed_description()) {
+                coreForInductance.process_data();
+                coreForInductance.process_gap();
+            }
             double L = model.calculate_inductance_from_number_turns_and_gapping(
-                            magnetic.get_core(), magnetic.get_coil())
+                            coreForInductance, magnetic.get_coil())
                             .get_magnetizing_inductance()
                             .get_nominal()
                             .value();

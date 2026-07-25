@@ -982,7 +982,20 @@ bool Core::is_gap_processed() {
 bool Core::process_gap() {
     std::vector<CoreGap> newGapping;
     auto gapping = get_functional_description().get_gapping();
-    auto family = std::get<CoreShape>(get_functional_description().get_shape()).get_family();
+    // resolve_shape(), not std::get<CoreShape>: a core loaded from MAS json may carry the shape as
+    // its NAME string (the 1.0 examples do), which made this std::get throw "wrong index for
+    // variant" for every concentric core reaching process_gap() without a prior process_data().
+    // resolve_shape() handles both alternatives and memoizes the resolved object back into the
+    // functional description, so downstream std::get<CoreShape> readers see the object too.
+    auto family = resolve_shape().get_family();
+    if (!get_processed_description()) {
+        // A functionally-complete core that was never processed (e.g. deserialized from a slim MAS
+        // file and fed straight into a reluctance/inductance model): derive the processed
+        // description now, exactly as the json constructor does before calling process_gap(). This
+        // is deterministic derivation from the core's own data, not a fallback; previously this
+        // line crashed with bad_optional_access.
+        process_data();
+    }
     auto processedDescription = get_processed_description().value();
     auto columns = processedDescription.get_columns();
 
