@@ -392,6 +392,54 @@ def _by_material_name(r, mfr_mats):
     return r["material_name"] if r["material_name"] in mfr_mats else None
 
 
+def _normalized_map(row, cfg):
+    """Map for a pre-normalized vendor CSV produced by an extraction script. Recognised columns:
+    part, family, (od,id,ht | shape_name | ae,le), material_name, coating, gap_mm, target_al.
+    Extraction (PDF/HTML table parsing) lives in the per-vendor scripts under vendor_cores/ so the
+    engine stays source-agnostic; the CSV is the contract."""
+    def val(k):
+        v = row.get(k)
+        if v is None:
+            return None
+        try:
+            if isinstance(v, float) and math.isnan(v):
+                return None
+        except (TypeError, ValueError):
+            pass
+        s = str(v).strip()
+        return s if s and s.lower() != "nan" else None
+    part = val("part"); material = val("material_name"); family = val("family")
+    if not part or not material or not family:
+        return None
+    r = {"part": part, "material_name": material, "family": family, "status": "production"}
+    if family in ("T", "R"):
+        for k in ("od", "id", "ht"):
+            if val(k) is None:
+                return None
+        r.update(od=float(row["od"]), id=float(row["id"]), ht=float(row["ht"]))
+    elif val("shape_name"):
+        r["shape_name"] = val("shape_name")
+    elif val("ae") and val("le"):
+        r.update(ae=float(row["ae"]), le=float(row["le"]))
+    else:
+        return None
+    if val("coating"):
+        r["coating"] = val("coating")
+    if val("gap_mm"):
+        r["gap_mm"] = float(row["gap_mm"])
+    elif val("target_al"):
+        r["target_al"] = float(row["target_al"])
+    return r
+
+
+def _norm_cfg(manufacturer, env_var, default_file, datasheet):
+    """Build a MANUFACTURERS entry for a vendor sourced from a normalized CSV."""
+    return {"manufacturer": manufacturer,
+            "source": os.environ.get(env_var, str(HERE / "vendor_cores" / default_file)),
+            "datasheet": datasheet, "reader": _csv_reader,
+            "map": _normalized_map, "resolve_material": _by_material_name}
+
+
 MANUFACTURERS = {
     "tdk": {
         "manufacturer": "TDK",
@@ -410,9 +458,22 @@ MANUFACTURERS = {
         "map": _magnetics_map,
         "resolve_material": _magnetics_material,
     },
+    # Vendors sourced from a normalized CSV (extraction script -> vendor_cores/<file>.csv).
+    "atm": _norm_cfg("AT&M", "ATM_CSV", "atm_cores.csv",
+                     "https://www.antai-emarketing.com/transformer-cores-7/"),
+    "proterial": _norm_cfg("Proterial", "PROTERIAL_CSV", "proterial_cores.csv",
+                           "https://www.india.proterial.com/products/"),
+    "metglas": _norm_cfg("Metglas", "METGLAS_CSV", "metglas_cores.csv",
+                         "https://metglas.com/"),
+    "vac": _norm_cfg("Vacuumschmelze", "VAC_CSV", "vac_cores.csv",
+                     "https://vacuumschmelze.com/products/inductive-components-and-cores/amorphous-and-nanocrystalline-cores"),
+    "cosmo": _norm_cfg("Cosmo Ferrites", "COSMO_CSV", "cosmo_cores.csv",
+                       "https://www.cosmoferrites.com/uploads/Catalogue_2026.pdf"),
+    "dmegc": _norm_cfg("DMEGC", "DMEGC_CSV", "dmegc_cores.csv",
+                       "https://www.dmegc.com.cn/product/9.html?lang=en"),
+    "tdg": _norm_cfg("TDG", "TDG_CSV", "tdg_cores.csv",
+                     "https://www.tdgcore.com/en/technical-support/data-download"),
     # To add a manufacturer, append an entry with its parametric source file + these callables.
-    # e.g. "tdg": { manufacturer:"TDG", source:"tdg_cores.csv", reader:_csv_reader, map:_tdg_map,
-    #               resolve_material:_by_grade, datasheet:... }
 }
 
 
