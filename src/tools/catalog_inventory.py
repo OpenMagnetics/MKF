@@ -77,14 +77,23 @@ def shapes_of_family(family):
         _family_shapes[family] = out
     return _family_shapes[family]
 
-def match_shape_by_effective(family, ae, le, tol=0.05):
-    """Closest existing shape by |dAe|+|dLe| within tol on each (Stocker.find_shape_closest_*)."""
-    best, best_d = None, math.inf
+def match_shape_by_effective(family, ae, le, tol=0.05, prefer=None):
+    """Closest existing shape by |dAe|+|dLe| within tol on each (Stocker.find_shape_closest_*).
+
+    When several shapes match within tolerance, prefer the variant THIS manufacturer already uses
+    most in MAS (`prefer` = {shape_name: usage_count}). Sibling shape variants (e.g. pot cores
+    'P 11/7' vs 'P 11/7/I') differ only by a feature dimension that barely moves Ae/Le, so a
+    pure-distance match can pick the variant MAS does NOT canonically use for that part — creating
+    a physical duplicate under an alternate shape name. Magnetics pot cores, for instance, are
+    recorded '/I' 162x vs bare 17x; ranking by usage picks '/I'. Distance only breaks usage ties."""
+    prefer = prefer or {}
+    best, best_key = None, None  # key = (usage_count, -distance); maximise
     for nm, sae, sle, sve in shapes_of_family(family):
         if abs(sae - ae) / ae < tol and abs(sle - le) / le < tol:
             d = abs(sae - ae) / ae + abs(sle - le) / le
-            if d < best_d:
-                best, best_d = nm, d
+            key = (prefer.get(nm, 0), -d)
+            if best_key is None or key > best_key:
+                best, best_key = nm, key
     return best
 
 _al_coil = {"bobbin": "Dummy", "functionalDescription": [
@@ -144,6 +153,34 @@ def _fmt(v):
     """Toroid dims keep their real precision (12.7, not 13) so the emitted shape is exact."""
     return ("%g" % round(float(v), 3))
 
+def load_shape_usage_by_cores(manufacturer=None):
+    """{shape_name: usage_count} across existing MAS cores, optionally restricted to one
+    manufacturer. This is the canonical variant MAS uses for each part; match_shape_by_effective
+    ranks Ae/Le matches by it so we don't emit shadow-duplicate cores under a sibling shape name
+    (e.g. Magnetics pot cores are '/I' 162x vs bare 17x)."""
+    from collections import Counter
+    usage = Counter()
+    path = os.path.join(MAS_DATA, "cores.ndjson")
+    if not os.path.exists(path):
+        return usage
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("version"):
+                continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            if manufacturer and (o.get("manufacturerInfo") or {}).get("name") != manufacturer:
+                continue
+            sh = o.get("functionalDescription", {}).get("shape")
+            nm = sh if isinstance(sh, str) else (sh.get("name") if isinstance(sh, dict) else None)
+            if nm:
+                usage[nm] += 1
+    return usage
+
+
 def load_existing_shapes():
     """Existing MAS core shapes: family -> [(name, [A,B,C mm])] for dedup / numeric matching."""
     from collections import defaultdict
@@ -179,6 +216,8 @@ def build_inventory(mfr_key, limit=None):
     mfr_mats = by_mfr.get(cfg["manufacturer"], [])
     df = cfg["reader"](cfg)
     existing_shapes = load_existing_shapes()
+    # usage-weighted, manufacturer-specific: pick the shape variant THIS mfr already uses most
+    shape_usage = load_shape_usage_by_cores(cfg["manufacturer"]) or load_shape_usage_by_cores()
     new_shapes = {}   # name -> shape record emitted for toroid sizes not already in MAS
     cores, stats = {}, {"rows": 0, "no_material": 0, "no_shape": 0, "made": 0, "gap_fail": 0, "new_shapes": 0}
 
@@ -245,7 +284,7 @@ def build_inventory(mfr_key, limit=None):
         else:
             shape = None
             if r.get("ae") and r.get("le"):
-                shape = match_shape_by_effective(family, r["ae"] / 1e6, r["le"] / 1e3)
+                shape = match_shape_by_effective(family, r["ae"] / 1e6, r["le"] / 1e3, prefer=shape_usage)
             if shape is not None:
                 shape = ensure_concentric_shape(shape)
         if shape is None:
