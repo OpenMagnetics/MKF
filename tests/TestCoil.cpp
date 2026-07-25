@@ -11363,10 +11363,72 @@ static int toroidal_turn_overlaps(OpenMagnetics::Coil& coil) {
             double minSeparation = 0.9 * std::min(turns[i].get_dimensions().value()[0], turns[j].get_dimensions().value()[0]);
             if (std::hypot(a[0] - b[0], a[1] - b[1]) < minSeparation) {
                 overlaps++;
+                std::cout << "[TOVER] " << turns[i].get_name() << " (layer " << turns[i].get_layer().value_or("?")
+                          << " az=" << std::atan2(a[1], a[0]) * 180.0 / std::numbers::pi << " r=" << std::hypot(a[0], a[1])
+                          << ") vs " << turns[j].get_name() << " (layer " << turns[j].get_layer().value_or("?")
+                          << " az=" << std::atan2(b[1], b[0]) * 180.0 / std::numbers::pi << " r=" << std::hypot(b[0], b[1]) << ")\n";
             }
         }
     }
     return overlaps;
+}
+
+// ABT #187: number of turns sitting inside a connection lead's angular corridor on their own ring.
+// A radial terminal lead crossing a ring emits a marker (layer = ring name, rotation = azimuth);
+// the ring's turns must clear the corridor: angular distance >= marker half-angle + turn half-angle.
+static int toroidal_corridor_intrusions(OpenMagnetics::Coil& coil) {
+    if (!coil.get_turns_description()) {
+        return -1;
+    }
+    auto turns = coil.get_turns_description().value();
+    auto spaces = coil.get_connection_reserved_spaces();
+    auto wires = coil.get_wires();
+    std::map<std::string, std::pair<double, size_t>> radiusAccumulator;
+    for (auto& turn : turns) {
+        if (turn.get_layer()) {
+            auto& acc = radiusAccumulator[turn.get_layer().value()];
+            acc.first += std::hypot(turn.get_coordinates()[0], turn.get_coordinates()[1]);
+            acc.second++;
+        }
+    }
+    auto angularDistance = [](double a, double b) {
+        return std::abs(std::fmod(a - b + 540.0, 360.0) - 180.0);
+    };
+    int intrusions = 0;
+    for (auto& space : spaces) {
+        if (space.layer.empty() || !radiusAccumulator.count(space.layer)) {
+            continue;
+        }
+        double ringRadius = radiusAccumulator[space.layer].first / double(radiusAccumulator[space.layer].second);
+        double markerHalf = OpenMagnetics::wound_distance_to_angle(space.dimensions[1], ringRadius) / 2;
+        for (auto& turn : turns) {
+            if (!turn.get_layer() || turn.get_layer().value() != space.layer) {
+                continue;
+            }
+            size_t windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+            double turnHalf = OpenMagnetics::wound_distance_to_angle(wires[windingIndex].get_maximum_outer_height(), ringRadius) / 2;
+            double turnAngle = std::atan2(turn.get_coordinates()[1], turn.get_coordinates()[0]) * 180.0 / std::numbers::pi;
+            if (angularDistance(turnAngle, space.rotation) < markerHalf + turnHalf - 0.01) {
+                intrusions++;
+                std::cout << "[TORCOLL] turn " << turn.get_name() << " angle=" << turnAngle
+                          << " inside corridor of lead(w=" << space.winding << " p=" << space.parallel
+                          << ") at " << space.rotation << " on " << space.layer << "\n";
+            }
+        }
+    }
+    return intrusions;
+}
+
+// ABT #187: number of crossing markers (spaces that name a ring) — proves the radial leads actually
+// declared their ring crossings for the corridor machinery.
+static int toroidal_crossing_markers(OpenMagnetics::Coil& coil) {
+    int markers = 0;
+    for (auto& space : coil.get_connection_reserved_spaces()) {
+        if (!space.layer.empty()) {
+            markers++;
+        }
+    }
+    return markers;
 }
 
 TEST_CASE("Test_Real_Geometry_Toroidal", "[constructive-model][coil][real-geometry]") {
@@ -11401,6 +11463,10 @@ TEST_CASE("Test_Real_Geometry_Toroidal", "[constructive-model][coil][real-geomet
         CHECK(toroidal_turn_overlaps(coil) == 0);
         CHECK(!coil.get_connection_reserved_spaces().empty());
         CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
+        // ABT #187: the exit leads (innermost ring) cross the outer ring(s) radially — those
+        // crossings must be declared as markers, and no turn may sit inside a lead's corridor.
+        CHECK(toroidal_crossing_markers(coil) > 0);
+        CHECK(toroidal_corridor_intrusions(coil) == 0);
         paint_connection_demo(coil, shape, "Test_Real_Toroidal_Overlapping_" + tag + ".svg", true);
     }
 
@@ -11417,6 +11483,7 @@ TEST_CASE("Test_Real_Geometry_Toroidal", "[constructive-model][coil][real-geomet
         CHECK(!coil.get_connection_reserved_spaces().empty());
         CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 1);
         CHECK(distinct_parallels_with_terminal_leads(coil, "winding 1") == 1);
+        CHECK(toroidal_corridor_intrusions(coil) == 0);
         paint_connection_demo(coil, shape, "Test_Real_Toroidal_SectionContiguous_" + tag + ".svg", true);
     }
 

@@ -389,6 +389,16 @@ class Coil : public MAS::Coil {
         // leads run (top edge for top-crossing leads, bottom for bottom) and no window space is wasted
         // with an empty gap on the unblocked side. Real winding geometry only.
         void align_blocked_layer_turns();
+        // ABT #187: toroidal analog of align_blocked_layer_turns. Radial terminal leads emit angular
+        // crossing markers on every ring they pass over (toroidal_connection_reserved_spaces); this
+        // re-spreads each crossed ring's turns over the angular space OUTSIDE those corridors —
+        // within the ring's own SECTION span, so sector windings stay in their sector — keeping the
+        // 2D geometry (field, painter, 3D consumers) free of leads running through turns.
+        // Displacement-only (no re-wind). Returns, per ring that could NOT be cleared by
+        // displacement, the CAPACITY deficit in that ring's own turn slots; wind()'s toroidal
+        // blocking loop reserves those slots (turns spill inward) and re-winds, after which
+        // displacement succeeds. Round windows only; no-op (empty map) otherwise.
+        std::map<std::string, uint64_t> align_blocked_ring_turns();
 
         std::vector<Section> get_sections_description_conduction() const;
         std::vector<Layer> get_layers_description_conduction() const;
