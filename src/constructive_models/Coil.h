@@ -105,6 +105,13 @@ struct ConnectionReservedSpace {
     // drawn and its length feeds the connection loss, but it does not squeeze a conduction layer.
     // A non-terminal lead is an inter-layer transition that squeezes the crossed layer.
     bool isTerminal = false;
+    // ABT #229: distance from the window edge this run routes along to the run's INNER side (i.e.
+    // the run occupies the band [edge, edge -/+ edgeDepth] ... [edgeDepth - wireHeight, edgeDepth]).
+    // Each edge-routed run (terminal lead or U interleaved continuation) is allocated its own row by
+    // the per-edge row allocator so the K parallels of an N-filar group no longer coincide; blocking
+    // (compute_connection_blocked_slots_per_layer) derives each crossed layer's freed slots from the
+    // DEEPEST run crossing it. 0 = not an edge-routed run (radial exits, stubs, Z diagonals).
+    double edgeDepth = 0;
 };
 
 // The column a section's turns are wound around, in the winding frame (+x side of

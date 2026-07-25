@@ -596,6 +596,35 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
     double windowTopY = windowCenterY + windowSizeTurnAxis / 2;
     double windowBottomY = windowCenterY - windowSizeTurnAxis / 2;
 
+    // ABT #229: per-(window, edge) row allocator. Every run that routes ALONG a window edge (a
+    // terminal lead or a U interleaved continuation) is a separate physical conductor, so each gets
+    // its own row, stacked inward from the edge in allocation order — the K parallels of an N-filar
+    // group can no longer be drawn on the SAME line (which made 3D consumers' collision gates throw
+    // on coincident centrelines). Rows are per window (multi-column groups run in the +x frame here,
+    // so different windows must not share a stack) and per edge (top/bottom). The allocator is the
+    // single source of truth: the drawn geometry AND the turn blocking both follow its decision.
+    std::map<std::string, size_t> windowIndexBySection;
+    if (get_sections_description()) {
+        for (const auto& section : get_sections_description().value()) {
+            windowIndexBySection[section.get_name()] = resolve_section_winding_window_index(section);
+        }
+    }
+    auto windowIndexOf = [&](const std::string& sectionName) -> size_t {
+        auto found = windowIndexBySection.find(sectionName);
+        return found == windowIndexBySection.end() ? 0 : found->second;
+    };
+    // {windowIndex, edge (0 = top, 1 = bottom)} -> stacked depth already used, measured from the edge.
+    std::map<std::pair<size_t, int>, double> usedEdgeDepth;
+    // Allocates the next free row for a run of height `wireHeight`; returns {edgeY, runDepth} where
+    // edgeY is the row's centre and runDepth the distance from the window edge to the row's inner side.
+    auto allocateEdgeRow = [&](size_t windowIndex, bool atTop, double wireHeight) -> std::pair<double, double> {
+        double& used = usedEdgeDepth[{windowIndex, atTop ? 0 : 1}];
+        double edgeY = atTop ? roundFloat(windowTopY - used - wireHeight / 2, 9)
+                             : roundFloat(windowBottomY + used + wireHeight / 2, 9);
+        used += wireHeight;
+        return {edgeY, used};
+    };
+
     // First-wound (entrance) and last-wound (exit) turn of each (winding, parallel): each parallel of
     // a bifilar/N-filar group is its own physical conductor and gets its own entrance/exit terminal
     // leads. Likewise the first/last turn of each (layer, parallel), used to tell a U turnaround (the
@@ -671,10 +700,13 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
 
             // Crosses outer layers: route along the window edge NEAREST the end so the lead sits in the
             // extreme slots that turn-blocking frees on the crossed layers. A short stub bridges the end
-            // turn up/down to that edge within its own column.
+            // turn up/down to that edge within its own column. ABT #229: the row on that edge comes from
+            // the per-edge allocator, so each parallel's lead is its own line. Allocating in parallel
+            // order matches the order the parallels' end turns stack from the edge, so for uniform wire
+            // the k-th parallel's lead lines up with its own turn and the stub degenerates.
             bool turnAtTop = (turnY >= windowCenterY);
-            double edgeY = turnAtTop ? roundFloat(windowTopY - wireOuterHeight / 2, 9)
-                                     : roundFloat(windowBottomY + wireOuterHeight / 2, 9);
+            auto [edgeY, runDepth] = allocateEdgeRow(windowIndexOf(connectingTurn.get_section().value_or("")),
+                                                     turnAtTop, wireOuterHeight);
             for (const Layer* crossed : crossedLayers) {
                 ConnectionReservedSpace space;
                 space.isTerminal = true;
@@ -684,6 +716,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 space.layer = crossed->get_name();
                 space.coordinates = {crossed->get_coordinates()[0], edgeY};
                 space.dimensions = {wireOuterWidth, wireOuterHeight};
+                space.edgeDepth = runDepth;
                 spaces.push_back(space);
             }
             if (std::abs(edgeY - turnY) > wireOuterHeight / 2) {
@@ -707,6 +740,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             lead.layer = "";
             lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), edgeY};
             lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
+            lead.edgeDepth = runDepth;
             spaces.push_back(lead);
         };
         for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
@@ -757,8 +791,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             // next layer naturally sits there; squeeze the crossed layers at the top edge to match.
             // (Squeeze at the WINDOW edge, not the crossed layer's own edge — once the layer is
             // centred/shrunk its edge is where its end turn sits, which would put the slot on a turn.)
-            double routeEdgeY = roundFloat(windowTopY - wireOuterHeight / 2, 9);
             WindingOrder windingOrder = get_winding_order(windingLayers[i].get_section().value());
+            bool routesAlongEdge = (windingOrder == WindingOrder::U) && crossesIntervening;
+            size_t routeWindowIndex = windowIndexOf(windingLayers[i].get_section().value_or(""));
 
             // Each parallel is its own conductor: it has its own last-turn-of-layer-i and
             // first-turn-of-layer-(i+1), its own crossing squeezes, and its own drawn link.
@@ -771,6 +806,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 const auto& exitTurn = lastTurnByLayerParallel.at(exitKey);
                 const auto& entryTurn = firstTurnByLayerParallel.at(entryKey);
 
+                // ABT #229: a U interleaved continuation routes along the edge, so each parallel's run
+                // is its own conductor and takes its own allocated row (stacking with the terminal
+                // leads already on that edge). Z dragbacks route diagonally and reserve no edge row;
+                // their squeeze markers (filling-factor only, skipped by blocking) stay at the nominal
+                // edge row.
+                double routeEdgeY = roundFloat(windowTopY - wireOuterHeight / 2, 9);
+                double runDepth = 0;
+                if (routesAlongEdge) {
+                    std::tie(routeEdgeY, runDepth) = allocateEdgeRow(routeWindowIndex, true, wireOuterHeight);
+                }
+
                 // Per-layer squeeze: this parallel's interleaved continuation crosses (and squeezes)
                 // each intervening layer. These entries (layer set) drive the filling factor and are
                 // NOT drawn — the link itself is drawn below.
@@ -782,7 +828,27 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     squeeze.parallel = parallel;
                     squeeze.coordinates = {crossed->get_coordinates()[0], routeEdgeY};
                     squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
+                    squeeze.edgeDepth = runDepth;
                     spaces.push_back(squeeze);
+                }
+
+                // ABT #229: a run deeper than the first row carries its half-wire corner overhang over
+                // its ENDPOINT layers' columns below the window edge, so those layers' turns must also
+                // clear the corridor. At row 0 the overhang meets the connecting end turn itself (the
+                // same conductor drawn as one continuous wire); deeper rows would clip OTHER turns of
+                // the endpoint layers, so squeeze them too.
+                if (routesAlongEdge && runDepth > wireOuterHeight + 1e-12) {
+                    for (const Layer* endpoint : {&windingLayers[i], &windingLayers[i + 1]}) {
+                        ConnectionReservedSpace squeeze;
+                        squeeze.section = endpoint->get_section().value();
+                        squeeze.layer = endpoint->get_name();
+                        squeeze.winding = windingName;
+                        squeeze.parallel = parallel;
+                        squeeze.coordinates = {endpoint->get_coordinates()[0], routeEdgeY};
+                        squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
+                        squeeze.edgeDepth = runDepth;
+                        spaces.push_back(squeeze);
+                    }
                 }
                 // The continuation does NOT reserve a slot on its endpoint layers (the source's end turn
                 // and the destination's start turn): the link is those turns' own wire continuing, so
@@ -819,7 +885,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     // stub from each turn up/down to the edge, and a horizontal run along the edge
                     // across the intervening layer(s) — so the wire never cuts through the crossed
                     // layer's turns (centre-to-centre would clip them).
-                    auto pushLink = [&](double cx, double cy, double w, double h) {
+                    auto pushLink = [&](double cx, double cy, double w, double h, double depth = 0) {
                         ConnectionReservedSpace seg;
                         seg.winding = windingName;
                         seg.parallel = parallel;
@@ -827,6 +893,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         seg.layer = "";
                         seg.coordinates = {roundFloat(cx, 9), roundFloat(cy, 9)};
                         seg.dimensions = {roundFloat(w, 9), roundFloat(h, 9)};
+                        seg.edgeDepth = depth;
                         spaces.push_back(seg);
                     };
                     // Verticals start at the turn CENTRE (y1 / y2), not covering the whole turn, and
@@ -835,7 +902,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         double far1 = routeEdgeY + ((routeEdgeY >= y1) ? 1.0 : -1.0) * wireOuterHeight / 2;
                         pushLink(x1, (y1 + far1) / 2, wireOuterWidth, std::abs(far1 - y1));
                     }
-                    pushLink((x1 + x2) / 2, routeEdgeY, std::abs(x2 - x1) + wireOuterWidth, wireOuterHeight);
+                    pushLink((x1 + x2) / 2, routeEdgeY, std::abs(x2 - x1) + wireOuterWidth, wireOuterHeight, runDepth);
                     if (std::abs(y2 - routeEdgeY) > 0.5 * wireOuterHeight) {
                         double far2 = routeEdgeY + ((routeEdgeY >= y2) ? 1.0 : -1.0) * wireOuterHeight / 2;
                         pushLink(x2, (y2 + far2) / 2, wireOuterWidth, std::abs(far2 - y2));
@@ -915,15 +982,18 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
             layerWireHeight[layer.get_name()] = wires[windingIndex].get_maximum_outer_height();
         }
     }
-    // At a given edge of a layer, the leads of ONE parallel pile together along the window margin, so
-    // that parallel's height cost is the TALLEST of its connections there (the max). The leads of
-    // DIFFERENT parallels of a bifilar/N-filar group are separate physical conductors that stack on
-    // top of each other, so their heights SUM. The stacked height is then converted to turn slots of
-    // the CROSSED layer's own wire: a thick stack over a thin layer displaces several thin turns
-    // (ceil), a thin stack over a thick layer still costs at least one thick turn. Z dragbacks route
-    // diagonally and do not displace turns; only terminals block in Z. (For a single parallel this
-    // reduces to the previous max-then-ceil rule.)
-    std::map<std::string, std::map<int64_t, std::pair<double, double>>> perParallelMaxHeight;  // layer -> parallel -> {top, bottom}
+    // ABT #229: every edge-routed run (terminal lead or U interleaved continuation) now carries the
+    // DEPTH the per-edge row allocator assigned it (distance from the window edge to the run's inner
+    // side, see edgeDepth in ConnectionReservedSpace) — the drawn geometry is the single source of
+    // truth. A crossed layer must free the band from the window edge down to the DEEPEST run that
+    // crosses it: blocked height = max over its markers of edgeDepth, converted to turn slots of the
+    // CROSSED layer's own wire (ceil: a deep stack over a thin layer displaces several thin turns, a
+    // shallow stack over a thick layer still costs at least one thick turn). Since parallels'
+    // (and different windings') runs stack in distinct rows, this replaces the old per-parallel
+    // max-then-SUM rule — which coincided all runs on one line and merged different windings that
+    // shared a parallel index. Z dragbacks route diagonally and do not displace turns; only
+    // terminals block in Z.
+    std::map<std::string, std::pair<double, double>> maxRunDepth;  // layer -> {top, bottom}
     for (const auto& space : get_connection_reserved_spaces()) {
         if (space.layer.empty()) {
             continue;
@@ -935,28 +1005,25 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
         if (found == layerCenterHeight.end()) {
             continue;
         }
-        auto& edges = perParallelMaxHeight[space.layer][space.parallel];
+        // Defensive: a marker without an allocated depth still costs its own height (one row).
+        double depth = std::max(space.edgeDepth, space.dimensions[1]);
+        auto& edges = maxRunDepth[space.layer];
         if (space.coordinates[1] >= found->second) {
-            edges.first = std::max(edges.first, space.dimensions[1]);
+            edges.first = std::max(edges.first, depth);
         }
         else {
-            edges.second = std::max(edges.second, space.dimensions[1]);
+            edges.second = std::max(edges.second, depth);
         }
     }
-    for (const auto& [layerName, perParallel] : perParallelMaxHeight) {
+    for (const auto& [layerName, edges] : maxRunDepth) {
         double crossedWireHeight = layerWireHeight.count(layerName) ? layerWireHeight.at(layerName) : 0.0;
         if (crossedWireHeight <= 0) {
             continue;
         }
-        double topHeight = 0, bottomHeight = 0;
-        for (const auto& [parallel, edges] : perParallel) {
-            topHeight += edges.first;
-            bottomHeight += edges.second;
-        }
         auto slots = [&](double connectionHeight) -> uint64_t {
             return connectionHeight > 1e-12 ? uint64_t(std::ceil(connectionHeight / crossedWireHeight - 1e-9)) : 0u;
         };
-        blockedSlotsPerLayer[layerName] = {slots(topHeight), slots(bottomHeight)};
+        blockedSlotsPerLayer[layerName] = {slots(edges.first), slots(edges.second)};
     }
     return blockedSlotsPerLayer;
 }
@@ -5586,6 +5653,32 @@ bool Coil::wind_by_rectangular_layers() {
                     builtLayers++;
                 }
                 numberLayers = realPerLayerTurns.size();
+            }
+
+            // ABT #229 root-cause fix: an N-filar winding laid CONSECUTIVE_PARALLELS holds its K
+            // parallels side by side, so a layer's usable capacity is a whole number of K-turn rows
+            // (floor(capacity / K) rows). numberLayers above was derived from the RAW capacity, so
+            // whenever the per-parallel ceil split exceeds the rounded capacity the first layer
+            // overflows (e.g. 3 parallels x 19 crossings in 20-slot layers: ceil(57/20)=3 layers ->
+            // per-parallel 7/6/6 -> 21 > 20, filling factor > 1, and wind() then silently skipped
+            // the whole real-winding blocking machinery because the coil "did not fit"). Grow the
+            // layer count to what the rows actually need (the compaction pass shrinks the section to
+            // its content afterwards, so an extra layer only needs window space, which the fitting
+            // check still verifies via maximumNumberLayersFittingInSection).
+            if (!realWindingBlocking && numberParallels > 1 && !sections[sectionIndex].get_number_layers()
+                && maximumNumberPhysicalTurnsPerLayer > 0 && numberLayers > 0) {
+                WindingStyle tentativeStyle = sections[sectionIndex].get_winding_style()
+                    ? sections[sectionIndex].get_winding_style().value()
+                    : wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers);
+                uint64_t rowsPerLayer = maximumNumberPhysicalTurnsPerLayer / uint64_t(numberParallels);
+                if (tentativeStyle == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS && rowsPerLayer > 0) {
+                    uint64_t perParallelTurns = uint64_t(std::ceil(double(physicalTurnsInSection) / double(numberParallels) - 1e-9));
+                    uint64_t perLayerSplit = uint64_t(std::ceil(double(perParallelTurns) / double(numberLayers) - 1e-9));
+                    if (perLayerSplit * uint64_t(numberParallels) > maximumNumberPhysicalTurnsPerLayer) {
+                        uint64_t layersNeededForRows = uint64_t(std::ceil(double(perParallelTurns) / double(rowsPerLayer) - 1e-9));
+                        numberLayers = std::min(std::max(numberLayers, layersNeededForRows), maximumNumberLayersFittingInSection);
+                    }
+                }
             }
 
             auto turnsAlignment = get_turns_alignment(sections[sectionIndex].get_name());

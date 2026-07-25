@@ -10832,6 +10832,53 @@ static int real_geometry_collisions(OpenMagnetics::Coil& coil) {
     return collisions;
 }
 
+// ABT #229: number of pairs of drawn HORIZONTAL lead runs belonging to DIFFERENT conductors
+// (winding, parallel) that geometrically overlap — the ticket's exact defect was the K parallels'
+// terminal leads all drawn on the SAME edge line (coincident centrelines, which 3D consumers' gates
+// throw on). Scope matches the per-edge row allocator's domain: terminal leads (edge-routed runs and
+// own-level radial exits) and edge-routed U interleaved continuations (edgeDepth > 0). Vertical
+// stubs and U adjacent-layer turnaround links are excluded: those are short link segments at one
+// angular position, physically separated azimuthally (out of the 2D plane) in a real multifilar
+// winding. 0 means every conductor's horizontal run has its own line.
+static int coincident_connection_runs(OpenMagnetics::Coil& coil) {
+    auto spaces = coil.get_connection_reserved_spaces();
+    std::vector<const OpenMagnetics::ConnectionReservedSpace*> runs;
+    for (auto& s : spaces) {
+        if (!s.layer.empty()) {
+            continue;  // per-layer squeeze markers, not drawn runs
+        }
+        if (std::abs(s.rotation) > 1e-9) {
+            continue;  // diagonal (Z) or polar (toroidal) — not row-allocated
+        }
+        if (s.dimensions[1] > s.dimensions[0]) {
+            continue;  // vertical stub/link — azimuthally separated in 3D, not a row
+        }
+        if (!s.isTerminal && s.edgeDepth <= 0) {
+            continue;  // U adjacent-layer turnaround stretch at turn level — not edge-routed
+        }
+        runs.push_back(&s);
+    }
+    int overlaps = 0;
+    for (size_t i = 0; i < runs.size(); ++i) {
+        for (size_t j = i + 1; j < runs.size(); ++j) {
+            const auto* a = runs[i];
+            const auto* b = runs[j];
+            if (a->winding == b->winding && a->parallel == b->parallel) {
+                continue;  // segments of the SAME conductor may touch (stub-to-run corners)
+            }
+            double overlapX = (a->dimensions[0] + b->dimensions[0]) / 2 - std::abs(a->coordinates[0] - b->coordinates[0]);
+            double overlapY = (a->dimensions[1] + b->dimensions[1]) / 2 - std::abs(a->coordinates[1] - b->coordinates[1]);
+            if (overlapX > 1e-6 && overlapY > 1e-6) {
+                overlaps++;
+                std::cout << "[RUNCOLL] run(w=" << a->winding << " p=" << a->parallel << " c=" << a->coordinates[0]
+                          << "," << a->coordinates[1] << ") vs run(w=" << b->winding << " p=" << b->parallel
+                          << " c=" << b->coordinates[0] << "," << b->coordinates[1] << ")\n";
+            }
+        }
+    }
+    return overlaps;
+}
+
 static void paint_connection_demo(OpenMagnetics::Coil coil, const std::string& shapeName, const std::string& filename, bool withConnections) {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     auto outFile = outputFilePath;
@@ -11221,6 +11268,8 @@ TEST_CASE("Test_Real_Geometry_Multifilar_N_Filar", "[constructive-model][coil][r
         CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == int(K));
         CHECK(layers_balanced_across_parallels(coil, "winding 0", K));
         CHECK(real_geometry_collisions(coil) == 0);
+        // ABT #229: the K parallels' leads must not be drawn on the same line.
+        CHECK(coincident_connection_runs(coil) == 0);
         paint_connection_demo(coil, "PQ 28/20", "Test_Real_Multifilar_K" + std::to_string(K) + "_Z.svg", true);
 
         // Same coil wound U.
@@ -11237,6 +11286,7 @@ TEST_CASE("Test_Real_Geometry_Multifilar_N_Filar", "[constructive-model][coil][r
         REQUIRE(coil.get_turns_description());
         CHECK(layers_balanced_across_parallels(coil, "winding 0", K));
         CHECK(real_geometry_collisions(coil) == 0);
+        CHECK(coincident_connection_runs(coil) == 0);
         paint_connection_demo(coil, "PQ 28/20", "Test_Real_Multifilar_K" + std::to_string(K) + "_U.svg", true);
 
         settings.reset();
@@ -11260,6 +11310,7 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
     CHECK(layers_balanced_across_parallels(coil, "winding 0", 2));
     CHECK(layers_balanced_across_parallels(coil, "winding 1", 1));
     CHECK(real_geometry_collisions(coil) == 0);
+    CHECK(coincident_connection_runs(coil) == 0);
     paint_connection_demo(coil, "PQ 40/40", "Test_Real_Bifilar_Interleaved_Z.svg", true);
 
     settings.reset();
@@ -11632,6 +11683,7 @@ TEST_CASE("Test_Centered_Single_Turn_Toroidal_Emits_Outer_Crossing",
     REQUIRE_THAT(outer[0], Catch::Matchers::WithinAbs(expectedRadius, 1e-9));
     REQUIRE_THAT(outer[1], Catch::Matchers::WithinAbs(0.0, 1e-9));
 }
+
 
 
 }  // namespace
