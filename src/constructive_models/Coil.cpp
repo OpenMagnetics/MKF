@@ -8650,8 +8650,42 @@ std::string Coil::get_wire_name(size_t windingIndex) {
     return get_wire_name(get_functional_description()[windingIndex]);
 }
 
-Bobbin Coil::resolve_bobbin(Coil coil) { 
+Bobbin Coil::resolve_bobbin(Coil coil) {
     return coil.resolve_bobbin();
+}
+
+Bobbin Coil::merge_per_column_bobbins(const std::vector<BobbinDataOrNameUnion> & perColumnBobbins) {
+    auto resolveElement = [](const BobbinDataOrNameUnion & element, size_t columnIndex) -> Bobbin {
+        if (std::holds_alternative<std::string>(element)) {
+            auto name = std::get<std::string>(element);
+            if (name == "Dummy") {
+                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "coil.bobbin[" + std::to_string(columnIndex) + "] is Dummy: every element of the per-column bobbin array must be a real bobbin");
+            }
+            return find_bobbin_by_name(name);
+        }
+        return Bobbin(std::get<Bobbin>(element));
+    };
+
+    Bobbin mergedBobbin = resolveElement(perColumnBobbins[0], 0);
+    if (!mergedBobbin.get_processed_description()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "coil.bobbin[0] (centre column) has no processedDescription: cannot merge per-column bobbins");
+    }
+    auto mergedProcessedDescription = mergedBobbin.get_processed_description().value();
+    auto mergedWindingWindows = mergedProcessedDescription.get_winding_windows();
+    for (size_t columnIndex = 1; columnIndex < perColumnBobbins.size(); ++columnIndex) {
+        auto columnBobbin = resolveElement(perColumnBobbins[columnIndex], columnIndex);
+        if (!columnBobbin.get_processed_description()) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "coil.bobbin[" + std::to_string(columnIndex) + "] has no processedDescription: cannot merge per-column bobbins");
+        }
+        auto columnWindingWindows = columnBobbin.get_processed_description().value().get_winding_windows();
+        if (columnWindingWindows.empty()) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "coil.bobbin[" + std::to_string(columnIndex) + "] has no winding windows");
+        }
+        mergedWindingWindows.insert(mergedWindingWindows.end(), columnWindingWindows.begin(), columnWindingWindows.end());
+    }
+    mergedProcessedDescription.set_winding_windows(mergedWindingWindows);
+    mergedBobbin.set_processed_description(mergedProcessedDescription);
+    return mergedBobbin;
 }
 
 Bobbin Coil::resolve_bobbin() {

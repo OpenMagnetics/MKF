@@ -406,6 +406,89 @@ TEST_CASE("MultiColumnWinding_CustomSectionRect_RepacksAndSurvivesRewind", "[con
     check_custom_layout();
 }
 
+// Per-column bobbin ARRAY (MAS coil.bobbin array form): a catalog-style centre
+// bobbin plus an ad-hoc lateral bobbin — two BOM items. The boundary must
+// merge them into one effective multi-window bobbin for winding while
+// serialization keeps the honest two-element array. Each element's windows
+// carry their own column edge, which is what the winder follows.
+TEST_CASE("MultiColumnWinding_PerColumnBobbinArray_MergesWindsAndRoundTrips", "[constructive-model][coil][multi-column][smoke-test]") {
+    auto& settings = Settings::GetInstance();
+    settings.set_core_per_column_winding_windows(true);
+    auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
+    auto quickBobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+    auto columns = core.get_processed_description()->get_columns();
+    auto quickWindows = quickBobbin.get_processed_description()->get_winding_windows();
+    REQUIRE(quickWindows.size() == 3);
+
+    // Centre part: window 0 only (what a real catalog bobbin describes).
+    auto centerBobbin = quickBobbin;
+    auto centerProcessedDescription = centerBobbin.get_processed_description().value();
+    centerProcessedDescription.set_winding_windows({quickWindows[0]});
+    centerBobbin.set_processed_description(centerProcessedDescription);
+
+    // Ad-hoc lateral part: the left-lateral window only, its column edge intact.
+    auto lateralBobbin = quickBobbin;
+    auto lateralProcessedDescription = lateralBobbin.get_processed_description().value();
+    lateralProcessedDescription.set_winding_windows({quickWindows[2]});
+    lateralBobbin.set_processed_description(lateralProcessedDescription);
+    size_t lateralColumnIndex = static_cast<size_t>(quickWindows[2].get_column().value());
+    REQUIRE(columns[lateralColumnIndex].get_type() == ColumnType::LATERAL);
+
+    json centerJson;
+    json lateralJson;
+    to_json(centerJson, centerBobbin);
+    to_json(lateralJson, lateralBobbin);
+    json coilJson;
+    coilJson["bobbin"] = json::array({centerJson, lateralJson});
+    coilJson["functionalDescription"] = json::array();
+    coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
+                                                     {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+    coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                     {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+
+    OpenMagnetics::Coil coil(coilJson, false);
+
+    // The effective bobbin is the merge: centre window + lateral window.
+    auto mergedWindows = coil.resolve_bobbin().get_processed_description()->get_winding_windows();
+    REQUIRE(mergedWindows.size() == 2);
+    REQUIRE(mergedWindows[1].get_column());
+    CHECK(static_cast<size_t>(mergedWindows[1].get_column().value()) == lateralColumnIndex);
+
+    // Wind the secondary in the lateral window (merged index 1).
+    coil.get_mutable_functional_description()[1].set_winding_window(1);
+    coil.set_core_columns(columns);
+    REQUIRE(coil.wind());
+    CHECK(section_x(coil, "Primary") > 0);
+    CHECK(section_x(coil, "Secondary") < 0);
+    size_t secondaryTurns = 0;
+    auto woundTurns = coil.get_turns_description().value();
+    for (auto& turn : woundTurns) {
+        if (turn.get_winding() == "Secondary") {
+            secondaryTurns++;
+            CHECK(turn.get_coordinates()[0] < 0);
+        }
+    }
+    CHECK(secondaryTurns == 10);
+
+    // Serialization must re-emit the two-element array (the honest BOM), with
+    // each part keeping its own single window — never the merged working bobbin.
+    json serialized;
+    to_json(serialized, coil);
+    REQUIRE(serialized["bobbin"].is_array());
+    REQUIRE(serialized["bobbin"].size() == 2);
+    CHECK(serialized["bobbin"][0]["processedDescription"]["windingWindows"].size() == 1);
+    CHECK(serialized["bobbin"][1]["processedDescription"]["windingWindows"].size() == 1);
+
+    // Reload and rewind: placement and merge survive the round trip.
+    OpenMagnetics::Coil reloaded(serialized, false);
+    REQUIRE(reloaded.get_per_column_bobbins());
+    CHECK(reloaded.get_per_column_bobbins()->size() == 2);
+    reloaded.set_core_columns(columns);
+    CHECK(section_x(reloaded, "Secondary") < 0);
+    REQUIRE(reloaded.wind());
+    CHECK(section_x(reloaded, "Secondary") < 0);
+}
+
 // Three windings, two sharing the main window plus one lateral: the shared
 // window splits between the main-window windings and every turn lands.
 TEST_CASE("MultiColumnWinding_ThreeWindings_SharedMainPlusLateral", "[constructive-model][coil][multi-column][smoke-test]") {
