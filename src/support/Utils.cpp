@@ -376,8 +376,12 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
                 coreShapeFamiliesInDatabase.push_back(coreShape.get_family());
             }
             coreShapeDatabase[jf["name"]] = coreShape;
-            if (withAliases) {
-                for (auto& alias : jf["aliases"]) {
+            // jf is CONST here: operator[] on a missing key is UB (no insertion) — with the
+            // first alias-less entries (2026-07 vendor toroid batches) it yielded a garbage
+            // scalar whose iteration crashed every named-shape lookup with
+            // "type must be string, but is number". Guard instead of indexing.
+            if (withAliases && jf.contains("aliases")) {
+                for (auto& alias : jf.at("aliases")) {
                     coreShapeDatabase[alias] = coreShape;
                 }
             }
@@ -492,8 +496,8 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
 
         coreShapeDatabase[jf["name"]] = coreShape;
 
-        if (withAliases) {
-            for (auto& alias : jf["aliases"]) {
+        if (withAliases && jf.contains("aliases")) {
+            for (auto& alias : jf.at("aliases")) {
                 coreShapeDatabase[alias] = coreShape;
             }
         }
