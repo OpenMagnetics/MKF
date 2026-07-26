@@ -486,4 +486,22 @@ TEST_CASE("Test_Impedance_Complex_Permeability_No_Extrapolation", "[physical-mod
     CHECK(impedances.back() < 0.2 * peak);
 }
 
+
+TEST_CASE("PROBE_CMC622_CM_Curve_Dump", "[probe622]") {
+    settings.reset();
+    auto testDataPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_redexpert_744834622.json");
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    auto magneticJson = nlohmann::json::parse(file);
+    OpenMagnetics::Magnetic magnetic(magneticJson);
+    magnetic = magnetic_autocomplete(magnetic);
+    auto curve = Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, 1e4, 1e8, 120);
+    std::ofstream out("/tmp/mkf_zcm_622.txt");
+    auto fs = curve.get_x_points();
+    auto zs = curve.get_y_points();
+    for (size_t i = 0; i < fs.size(); ++i) out << fs[i] << " " << zs[i] << "\n";
+    out.close();
+    CHECK(fs.size() == 120);
+}
+
 }  // namespace

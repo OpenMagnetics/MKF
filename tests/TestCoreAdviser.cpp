@@ -311,6 +311,53 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
     settings.reset();
 }
 
+// Regression for ABT #236: the standalone/web CMC core adviser returned ZERO
+// cores for the default CMC design (230 V / 10 A line, 500 Ohm @ 150 kHz). Root
+// cause: a common-mode choke is classified as an inductor (all windings on one
+// isolation side), so MagneticFilterSaturation applied its energy-storing-
+// inductor saturation-current gate against the RAW 10 A line-current peak.
+// But the CMC line current is DIFFERENTIAL — its flux cancels in the core — so
+// that gate rejected every EMI toroid (isat ~1-3 A << 10 A). The fix skips the
+// isat-current gate for common-mode chokes; the B-based gate (which uses the
+// common-mode magnetizing current) remains the saturation check. This test
+// feeds the EXACT inputs the web CMC wizard produces (captured from the
+// frontend), so it guards the real user-facing flow, unlike
+// Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance which drops the
+// DC current to 0 to dodge this very gate.
+TEST_CASE("Test_CoreAdviser_CMC_Default_Web_Design_Returns_Cores", "[adviser][core-adviser][available-cores][suppression]") {
+    clear_databases();
+    settings.set_use_toroidal_cores(true);
+    settings.set_use_concentric_cores(false);
+    settings.set_use_only_cores_in_stock(false);
+
+    auto inputsPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc/cmc_default_web_inputs.json");
+    std::ifstream inputsFile(inputsPath);
+    REQUIRE(inputsFile.good());
+    json inputsJson;
+    inputsFile >> inputsJson;
+
+    OpenMagnetics::Inputs inputs(inputsJson);
+    // Sanity: this is a 2-winding common-mode choke carrying real DC line current.
+    REQUIRE(OpenMagnetics::Inputs::can_be_common_mode_choke(inputs.get_operating_points()[0]));
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1.0 / 3;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1.0 / 3;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1.0 / 3;
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
+
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 5);
+
+    REQUIRE(masMagnetics.size() > 0);
+    for (auto& [mas, scoring] : masMagnetics) {
+        CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TOROIDAL);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Load_Internally_Only_Stock", "[adviser][core-adviser][available-cores][smoke-test]") {
     clear_databases();
     double voltagePeakToPeak = 600;

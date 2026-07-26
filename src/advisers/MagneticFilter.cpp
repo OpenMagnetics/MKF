@@ -299,11 +299,21 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     // the complex permeability at the noise frequency. Checking inductance here would use
     // DC-biased real permeability (which rolls off significantly), producing a false rejection
     // of physically valid cores. The impedance check is authoritative for these topologies.
+    //
+    // Detect suppression by EITHER the topology tag OR the INTERFERENCE_SUPPRESSION
+    // application: the web CMC/DMC wizards tag designRequirements.application =
+    // interferenceSuppression (+ subApplication) but do NOT set designRequirements.topology,
+    // so a topology-only check silently misses every web-generated CMC/DMC and the derived
+    // Z/(2πf) inductance floor false-rejects the entire candidate set (ABT #236).
     {
         auto topology = inputs->get_design_requirements().get_topology();
-        if (topology.has_value() &&
+        bool topologyIsSuppression = topology.has_value() &&
             (topology.value() == MAS::Topology::COMMON_MODE_CHOKE ||
-             topology.value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE)) {
+             topology.value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE);
+        auto application = inputs->get_design_requirements().get_application();
+        bool applicationIsSuppression = application.has_value() &&
+            application.value() == "interferenceSuppression";
+        if (topologyIsSuppression || applicationIsSuppression) {
             return {true, 0};
         }
     }

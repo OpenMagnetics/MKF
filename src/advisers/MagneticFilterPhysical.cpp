@@ -176,7 +176,34 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             return {false, 0.0};
         }
 
-        if (!isTransformer) {
+        // Common-mode chokes are classified as inductors (all windings on one
+        // isolation side) but their line current is DIFFERENTIAL: the flux of
+        // the line/neutral windings cancels in the core, so the raw line
+        // current does NOT saturate it (only the tiny common-mode current
+        // does, which the B-based gate above already evaluates via the
+        // common-mode magnetizing current). The energy-storing-inductor isat
+        // gate below compares the core saturation current against the RAW
+        // primary line-current peak — physically wrong for a CMC, and it
+        // rejects every EMI toroid (isat 1-3 A << line current) -> zero cores
+        // for every web CMC design (ABT #236). Skip it for CMCs; the B-based
+        // gate is the correct saturation check here.
+        //
+        // CMC-ONLY, deliberately: a differential-mode choke ALSO has 2-4
+        // matching-current windings (can_be_common_mode_choke is true for it
+        // too), but a DMC's flux does NOT cancel — it carries the full line
+        // current additively and genuinely saturates — so a DMC must KEEP this
+        // gate. Distinguish by the CMC tag (topology or the web wizard's
+        // subApplication), then confirm current symmetry with
+        // can_be_common_mode_choke so a mis-tagged asymmetric design still
+        // gets checked.
+        auto cmcTopology = inputs->get_design_requirements().get_topology();
+        auto cmcSubApplication = inputs->get_design_requirements().get_sub_application();
+        bool taggedCommonMode =
+            (cmcTopology.has_value() && cmcTopology.value() == MAS::Topology::COMMON_MODE_CHOKE) ||
+            (cmcSubApplication.has_value() && cmcSubApplication.value() == "commonModeNoiseFiltering");
+        bool isCommonModeChoke = taggedCommonMode && Inputs::can_be_common_mode_choke(operatingPoint);
+
+        if (!isTransformer && !isCommonModeChoke) {
             // Authoritative saturation-current gate for energy-storing
             // inductors: require the gap-aware saturation current to clear the
             // peak current by the margin. The B-based check above evaluates B at
