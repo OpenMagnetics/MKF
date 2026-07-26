@@ -469,6 +469,8 @@ MANUFACTURERS = {
                      "https://vacuumschmelze.com/products/inductive-components-and-cores/amorphous-and-nanocrystalline-cores"),
     "cosmo": _norm_cfg("Cosmo Ferrites", "COSMO_CSV", "cosmo_cores.csv",
                        "https://www.cosmoferrites.com/uploads/Catalogue_2026.pdf"),
+    "cosmoconcentric": _norm_cfg("Cosmo Ferrites", "COSMO_CONC_CSV", "cosmo_concentric_cores.csv",
+                                 "https://www.cosmoferrites.com/uploads/Catalogue_2026.pdf"),
     "dmegc": _norm_cfg("DMEGC", "DMEGC_CSV", "dmegc_cores.csv",
                        "https://www.dmegc.com.cn/product/9.html?lang=en"),
     "tdg": _norm_cfg("TDG", "TDG_CSV", "tdg_cores.csv",
