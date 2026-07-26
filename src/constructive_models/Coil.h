@@ -173,8 +173,17 @@ class Coil : public MAS::Coil {
         // Hand-drawn section rectangles (winding studio): section name ->
         // {coordinates, dimensions}, re-imposed at the end of every wind.
         std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> _customSectionRects;
+        // Winding-style overrides (winding studio), keyed by winding name.
+        std::map<std::string, WindingStyle> _windingStyleOverridePerWinding;
         Bobbin _bobbin;
         BobbinDataOrNameUnion bobbin;
+        // MAS coil.bobbin ARRAY form (Convention A: element i is mounted on
+        // core.columns[i]; element 0 = centre/main column). Kept verbatim so
+        // to_json re-emits the honest per-column BOM; the scalar `bobbin`
+        // member holds the MERGED effective bobbin (element 0 + every
+        // element's winding windows concatenated, built once at parse), which
+        // is what every wind/paint/model path operates on.
+        std::optional<std::vector<BobbinDataOrNameUnion>> perColumnBobbins;
         std::vector<Winding> functional_description;
 
         bool wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
@@ -291,13 +300,33 @@ class Coil : public MAS::Coil {
         BobbinDataOrNameUnion & get_mutable_bobbin() { return bobbin; }
         void set_bobbin(const BobbinDataOrNameUnion & value) { this->bobbin = value; }
 
+        const std::optional<std::vector<BobbinDataOrNameUnion>> & get_per_column_bobbins() const { return perColumnBobbins; }
+        void set_per_column_bobbins(const std::optional<std::vector<BobbinDataOrNameUnion>> & value) { this->perColumnBobbins = value; }
+        // Assigns coil.bobbin from raw MAS JSON, handling BOTH the scalar form
+        // and the per-column ARRAY form. Every JSON boundary that sets a bobbin
+        // from user data must go through this — a plain set_bobbin(json) call
+        // silently ignores the array form (the variant serializer matches
+        // neither string nor object).
+        void set_bobbin_from_json(const json & bobbinJson);
+        // Resolves every element (names via the bobbin database) and returns
+        // element 0 with all elements' winding windows concatenated in array
+        // order. Throws when an element is Dummy or lacks a processedDescription.
+        static Bobbin merge_per_column_bobbins(const std::vector<BobbinDataOrNameUnion> & perColumnBobbins);
+
         const std::vector<Winding> & get_functional_description() const { return functional_description; }
         std::vector<Winding> & get_mutable_functional_description() { return functional_description; }
         void set_functional_description(const std::vector<Winding> & value) { this->functional_description = value; }
 
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);
-        WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots);
+        WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots, std::optional<size_t> windingIndex = std::nullopt);
+        // Winding-style overrides (winding studio): winding name → forced
+        // WIND_BY_CONSECUTIVE_PARALLELS (multifilar bundle) or _TURNS (each
+        // parallel wound separately). Transient, like preload_margins. The
+        // physical must-case (turns < slots with parallels > 1) still wins —
+        // honoring the override there would leave slots empty.
+        void preload_winding_style_overrides(std::map<std::string, WindingStyle> overrides) { _windingStyleOverridePerWinding = std::move(overrides); }
+        std::optional<WindingStyle> get_winding_style_override(size_t windingIndex) const;
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
         void remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, double>> orderedSections);
@@ -587,8 +616,31 @@ struct adl_serializer<std::variant<OpenMagnetics::Wire, std::string>> {
 
 
 namespace OpenMagnetics {
+inline void Coil::set_bobbin_from_json(const json & bobbinJson) {
+    if (bobbinJson.is_array()) {
+        // MAS array form: per-column bobbins (Convention A). Keep the raw
+        // array for serialization; install the merged effective bobbin as
+        // the scalar member so every downstream path winds/paints it like a
+        // multi-window bobbin. Merging happens ONCE here — wind-time
+        // normalization (set_bobbin at the end of section placement) must
+        // not be re-merged away.
+        if (bobbinJson.empty()) {
+            throw std::invalid_argument("coil.bobbin is an empty array: the per-column form needs at least the centre-column bobbin (element 0)");
+        }
+        std::vector<OpenMagnetics::BobbinDataOrNameUnion> parsedPerColumnBobbins;
+        for (const auto & elementJson : bobbinJson) {
+            parsedPerColumnBobbins.push_back(elementJson.get<OpenMagnetics::BobbinDataOrNameUnion>());
+        }
+        set_bobbin(Coil::merge_per_column_bobbins(parsedPerColumnBobbins));
+        set_per_column_bobbins(parsedPerColumnBobbins);
+    }
+    else {
+        set_bobbin(bobbinJson.get<OpenMagnetics::BobbinDataOrNameUnion>());
+    }
+}
+
 inline void from_json(const json & j, Coil& x) {
-    x.set_bobbin(j.at("bobbin").get<OpenMagnetics::BobbinDataOrNameUnion>());
+    x.set_bobbin_from_json(j.at("bobbin"));
     x.set_functional_description(j.at("functionalDescription").get<std::vector<Winding>>());
     x.set_layers_description(get_stack_optional<std::vector<Layer>>(j, "layersDescription"));
     x.set_sections_description(get_stack_optional<std::vector<Section>>(j, "sectionsDescription"));
@@ -611,11 +663,23 @@ inline void from_json(const json & j, Winding& x) {
     // through any JSON boundary (WASM, file load) was silently discarded and
     // the winder placed everything in window 0.
     x.set_winding_window(get_stack_optional<int64_t>(j, "windingWindow"));
+    // N-filar grouping: same JSON-boundary bug class — woundWith set through
+    // WASM/file loads was silently dropped, so the winder never grouped the
+    // windings into shared sections.
+    x.set_wound_with(get_stack_optional<std::vector<std::string>>(j, "woundWith"));
 }
 
 inline void to_json(json & j, const Coil & x) {
     j = json::object();
-    j["bobbin"] = x.get_bobbin();
+    if (x.get_per_column_bobbins()) {
+        // Re-emit the honest per-column array; the merged scalar bobbin is
+        // an in-memory working object and must never be serialized as the
+        // design's single part.
+        j["bobbin"] = x.get_per_column_bobbins().value();
+    }
+    else {
+        j["bobbin"] = x.get_bobbin();
+    }
     j["functionalDescription"] = x.get_functional_description();
     j["layersDescription"] = x.get_layers_description();
     j["sectionsDescription"] = x.get_sections_description();
@@ -632,6 +696,7 @@ inline void to_json(json & j, const Winding & x) {
     j["numberTurns"] = x.get_number_turns();
     j["wire"] = x.get_wire();
     j["windingWindow"] = x.get_winding_window();
+    j["woundWith"] = x.get_wound_with();
 }
 } // namespace OpenMagnetics
 
