@@ -600,10 +600,13 @@ TEST_CASE("WoundWith_SurvivesJsonBoundary_AndGroupsSections", "[constructive-mod
     CHECK(turnsPerWindingPattern["Bias"] == 12);
 }
 
-// Single-window coils: every turn still crosses the section plane twice (the
-// far side of the center leg) — the second crossing must be emitted there too
-// (the studio's both-sides render; the painter always drew the mirror).
-TEST_CASE("SingleWindow_CenterLegTurns_EmitFarSideCrossings", "[constructive-model][coil][multi-column][smoke-test]") {
+// Single-window coils must NOT gain additionalCoordinates from the placement
+// pass: StrayCapacitance/Temperature/CoilMesher interpret them as REAL
+// conductor positions, so emitting the center-leg mirror would silently
+// change their results for every classic design. The winding studio draws
+// that mirror as pure display geometry instead (a regression here would be a
+// physics change, not a display fix).
+TEST_CASE("SingleWindow_CenterLegTurns_NoAdditionalCoordinates", "[constructive-model][coil][multi-column][smoke-test]") {
     auto& settings = Settings::GetInstance();
     settings.set_core_per_column_winding_windows(false);
     settings.set_coil_include_additional_coordinates(true);
@@ -622,9 +625,7 @@ TEST_CASE("SingleWindow_CenterLegTurns_EmitFarSideCrossings", "[constructive-mod
     REQUIRE(woundTurns.size() == 10);
     for (auto& turn : woundTurns) {
         CHECK(turn.get_coordinates()[0] > 0);
-        REQUIRE(turn.get_additional_coordinates());
-        CHECK_THAT(turn.get_additional_coordinates().value()[0][0],
-                   Catch::Matchers::WithinRel(-turn.get_coordinates()[0], 1e-9));
+        CHECK(!turn.get_additional_coordinates());
     }
 }
 
