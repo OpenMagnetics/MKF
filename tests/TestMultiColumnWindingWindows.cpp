@@ -600,6 +600,34 @@ TEST_CASE("WoundWith_SurvivesJsonBoundary_AndGroupsSections", "[constructive-mod
     CHECK(turnsPerWindingPattern["Bias"] == 12);
 }
 
+// Single-window coils: every turn still crosses the section plane twice (the
+// far side of the center leg) — the second crossing must be emitted there too
+// (the studio's both-sides render; the painter always drew the mirror).
+TEST_CASE("SingleWindow_CenterLegTurns_EmitFarSideCrossings", "[constructive-model][coil][multi-column][smoke-test]") {
+    auto& settings = Settings::GetInstance();
+    settings.set_core_per_column_winding_windows(false);
+    settings.set_coil_include_additional_coordinates(true);
+    auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+    json coilJson;
+    json bobbinJson;
+    to_json(bobbinJson, bobbin);
+    coilJson["bobbin"] = bobbinJson;
+    coilJson["functionalDescription"] = json::array();
+    coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                     {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+    OpenMagnetics::Coil coil(coilJson, false);
+    REQUIRE(coil.wind());
+    auto woundTurns = coil.get_turns_description().value();
+    REQUIRE(woundTurns.size() == 10);
+    for (auto& turn : woundTurns) {
+        CHECK(turn.get_coordinates()[0] > 0);
+        REQUIRE(turn.get_additional_coordinates());
+        CHECK_THAT(turn.get_additional_coordinates().value()[0][0],
+                   Catch::Matchers::WithinRel(-turn.get_coordinates()[0], 1e-9));
+    }
+}
+
 // Grouping through the web fixture (multi-window bobbin): reproduces the WASM
 // wind path on the exact coil the studio sends.
 TEST_CASE("WoundWith_WebFixtureMultiWindowBobbin", "[constructive-model][coil][multi-column][smoke-test]") {

@@ -3690,7 +3690,15 @@ void Coil::apply_group_window_sides(bool inverse) {
         return;
     }
     auto windingWindows = bobbinResolved.get_processed_description().value().get_winding_windows();
-    if (windingWindows.size() <= 1) {
+    // Single-window coils have no placement transforms, but their turns STILL
+    // cross the section plane twice (the far side of the center leg) — the
+    // studio and any consumer of additionalCoordinates need the second
+    // crossing there too, mirroring what the painter draws. RECTANGULAR
+    // windows only: toroidal turns carry their own outer-return crossings
+    // (generate_toroidal_additional_coordinates) that must not be clobbered.
+    bool wantsBothCrossings = settings.get_coil_include_additional_coordinates() && !inverse
+        && bobbinResolved.get_winding_window_shape() == WindingWindowShape::RECTANGULAR;
+    if (windingWindows.size() <= 1 && !wantsBothCrossings) {
         return;
     }
 
@@ -3752,7 +3760,7 @@ void Coil::apply_group_window_sides(bool inverse) {
         anyTransform = anyTransform || transform.reflectAcrossWindowCenter || transform.mirrorSide;
     }
 
-    bool emitBothCrossings = settings.get_coil_include_additional_coordinates() && !inverse;
+    bool emitBothCrossings = wantsBothCrossings;
     if (!anyTransform && !emitBothCrossings) {
         return;
     }
