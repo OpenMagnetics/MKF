@@ -440,6 +440,14 @@ endif()
 # existed. The libgtest-dev probe was doubly wrong (gtest isn't used — Catch2 is — and it is
 # a package, not a program) and has been dropped.
 find_program(QUICKTYPE_EXECUTABLE NAMES quicktype REQUIRED)
+# ABT #283: quicktype >=24 has a C++ codegen regression — it fails with
+# "Internal error: Unknown type intersection" on the schema's allOf (PEAS-citizen
+# designRequirements etc.) AND on the nested WireDataOrNameUnion-in-array, so MAS.hpp
+# could not be regenerated from any schema change. 23.0.170 handles both correctly and
+# produces the same 126 types. Pin it via npx so the generator is reproducible regardless
+# of the globally-installed quicktype version.
+set(QUICKTYPE_VERSION "23.0.170" CACHE STRING "Pinned quicktype version (>=24 breaks on allOf/union, ABT #283)")
+set(QUICKTYPE_CMD npx -y quicktype@${QUICKTYPE_VERSION})
 
 if(NOT DEFINED MAS_DIRECTORY)
     set(MAS_DIRECTORY "${CMAKE_BINARY_DIR}/MAS/")
@@ -462,7 +470,7 @@ file(GLOB_RECURSE PEAS_SCHEMA_SOURCES CONFIGURE_DEPENDS "${PEAS_DIR}/schemas/*.j
 
 add_custom_command(
   OUTPUT "${MAS_DIRECTORY}/MAS.hpp"
-  COMMAND quicktype -l c++ -s schema ${MAS_DIR}/schemas/MAS.json 
+  COMMAND ${QUICKTYPE_CMD} -l c++ -s schema ${MAS_DIR}/schemas/MAS.json
     -S ${MAS_DIR}/schemas/magnetic.json
     -S ${MAS_DIR}/schemas/magnetic/core.json
     -S ${MAS_DIR}/schemas/magnetic/coil.json

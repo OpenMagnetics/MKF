@@ -51,15 +51,22 @@ Two proven patterns:
    to establish the session, then in-page `fetch` the JSON/CSV API (passes Akamai/Cloudflare that
    block raw curl). Used for TDK's `list.csv`. This replaces hephaestus' stale hardcoded cookies.
 
-### Coverage status
-- **Existing-cores classes (hephaestus):** Ferroxcube, TDK, Magnetics, Fair-Rite, Micrometals.
-- **catalog_inventory configs:** Magnetics (xlsx), TDK (list.csv via MCP) — both verified
-  (TDK: 14/63 generated cores exact-name-match existing MAS cores).
-- **Still need a parametric list** (materials present in MAS, cores absent): ACME, AT&M, Chang
-  Sung, Cosmo, DMEGC, Gaotune, JFE, KDM, Magnetec, Metglas, Nicera, Poco, Proterial, Samwha,
-  Sinomag, TDG, VAC, Würth. Each is a config entry once its core list is sourced (pattern 1 or 2).
-  Most are Chinese ferrite/powder makers whose catalogs are PDF/site-based — the sourcing is a
-  per-vendor discovery task, not an engine change.
+### Coverage status (2026-07-26: 17 manufacturers, ~18,085 cores)
+- **Imported via catalog_inventory:** Magnetics (xlsx), TDK (list.csv via MCP), and the 2026-07
+  batch — AT&M, Cosmo, DMEGC, Chang Sung, Magnetec, POCO, Sinomag, TDG (ferrite + metal-powder),
+  ACME, KDM, Proterial/Metglas (AMCC/F3CC cut C-cores). Plus the hephaestus classes (Ferroxcube,
+  Fair-Rite, Micrometals). Extraction per vendor done by subagents into normalized CSVs; validated
+  + merged centrally via `merge_vendor_cores.py`.
+- **Import rules that held:** powder/nanocryst materials encode permeability in the MAS name
+  (toroid×material); use BARE magnetic dims, never case/finished (VAC deferred — publishes only
+  case dims); concentric shapes matched by Ae/Le, proprietary sizes with no MKF match are dropped
+  (never fabricated); MKF-missing families skipped per tickets #263-#277; cut C-cores map by name
+  to MKF "C <AMCC-designation>" shapes.
+- **Deferred / still open:** VAC (case-dims only), Samwha (its MAS PL grades are ferrite, need the
+  ferrite catalog not the powder one), Proterial Microlite distributed-gap toroids (per-permeability
+  variant materials not in MAS), Würth (no bare power cores), Gaotune (no parametric data),
+  Shandong Jianuo (no public catalog), Höganäs (SMC material, not cores). Non-toroid special shapes
+  and MKF-missing families await the MKF engine tickets.
 
 ## Stocked side (hermes)
 `hermes.add_distributor_by_mpn(mpn, …)` matches a distributor product's Manufacturer Part Number
