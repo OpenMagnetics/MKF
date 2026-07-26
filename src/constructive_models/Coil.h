@@ -166,6 +166,8 @@ class Coil : public MAS::Coil {
         // Hand-drawn section rectangles (winding studio): section name ->
         // {coordinates, dimensions}, re-imposed at the end of every wind.
         std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> _customSectionRects;
+        // Winding-style overrides (winding studio), keyed by winding name.
+        std::map<std::string, WindingStyle> _windingStyleOverridePerWinding;
         Bobbin _bobbin;
         BobbinDataOrNameUnion bobbin;
         // MAS coil.bobbin ARRAY form (Convention A: element i is mounted on
@@ -310,7 +312,14 @@ class Coil : public MAS::Coil {
 
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);
-        WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots);
+        WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots, std::optional<size_t> windingIndex = std::nullopt);
+        // Winding-style overrides (winding studio): winding name → forced
+        // WIND_BY_CONSECUTIVE_PARALLELS (multifilar bundle) or _TURNS (each
+        // parallel wound separately). Transient, like preload_margins. The
+        // physical must-case (turns < slots with parallels > 1) still wins —
+        // honoring the override there would leave slots empty.
+        void preload_winding_style_overrides(std::map<std::string, WindingStyle> overrides) { _windingStyleOverridePerWinding = std::move(overrides); }
+        std::optional<WindingStyle> get_winding_style_override(size_t windingIndex) const;
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
         void remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, double>> orderedSections);
@@ -637,6 +646,10 @@ inline void from_json(const json & j, Winding& x) {
     // through any JSON boundary (WASM, file load) was silently discarded and
     // the winder placed everything in window 0.
     x.set_winding_window(get_stack_optional<int64_t>(j, "windingWindow"));
+    // N-filar grouping: same JSON-boundary bug class — woundWith set through
+    // WASM/file loads was silently dropped, so the winder never grouped the
+    // windings into shared sections.
+    x.set_wound_with(get_stack_optional<std::vector<std::string>>(j, "woundWith"));
 }
 
 inline void to_json(json & j, const Coil & x) {
@@ -666,6 +679,7 @@ inline void to_json(json & j, const Winding & x) {
     j["numberTurns"] = x.get_number_turns();
     j["wire"] = x.get_wire();
     j["windingWindow"] = x.get_winding_window();
+    j["woundWith"] = x.get_wound_with();
 }
 } // namespace OpenMagnetics
 
