@@ -1061,7 +1061,12 @@ namespace {
         inputsJson["designRequirements"] = json();
         inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 1000e-6;
         inputsJson["designRequirements"]["turnsRatios"] = json::array();
-        inputsJson["designRequirements"]["turnsRatios"].push_back(10);
+        // One ratio per secondary (three windings: 80 : 8 : 6), each a
+        // dimensionWithTolerance. A bare number parses into a DimensionWithTolerance
+        // with nothing set, and resolve_dimensional_values then throws
+        // "has neither nominal, minimum nor maximum set" (ABT #190).
+        inputsJson["designRequirements"]["turnsRatios"].push_back(json({{"nominal", 80.0 / 8}}));
+        inputsJson["designRequirements"]["turnsRatios"].push_back(json({{"nominal", 80.0 / 6}}));
 
         OpenMagnetics::Inputs inputs(inputsJson);
 
