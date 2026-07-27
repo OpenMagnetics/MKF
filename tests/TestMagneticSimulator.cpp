@@ -274,7 +274,10 @@ namespace {
         inputsJson["designRequirements"] = json();
         inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 200e-6;
         inputsJson["designRequirements"]["turnsRatios"] = json::array();
-        inputsJson["designRequirements"]["turnsRatios"].push_back(16);
+        // A bare number parses into a DimensionWithTolerance with nothing set, and the
+        // first resolver call then throws "has neither nominal, minimum nor maximum
+        // set" (ABT #190). turnsRatios entries are dimensionWithTolerance objects.
+        inputsJson["designRequirements"]["turnsRatios"].push_back(json({{"nominal", 16}}));
 
         OpenMagnetics::Inputs inputs(inputsJson);
 
@@ -864,7 +867,10 @@ namespace {
         inputsJson["designRequirements"] = json();
         inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 200e-6;
         inputsJson["designRequirements"]["turnsRatios"] = json::array();
-        inputsJson["designRequirements"]["turnsRatios"].push_back(16);
+        // A bare number parses into a DimensionWithTolerance with nothing set, and the
+        // first resolver call then throws "has neither nominal, minimum nor maximum
+        // set" (ABT #190). turnsRatios entries are dimensionWithTolerance objects.
+        inputsJson["designRequirements"]["turnsRatios"].push_back(json({{"nominal", 16}}));
 
         OpenMagnetics::Inputs inputs(inputsJson);
 

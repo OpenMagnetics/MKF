@@ -137,6 +137,44 @@ double WindingOhmicLosses::calculate_effective_resistance_per_meter(Wire wire, d
     return dcResistancePerMeter;
 };
 
+namespace {
+
+// ABT #246: a parallel branch whose series resistance is zero (or non-finite) has no
+// turns of that parallel in turnsDescription — an inconsistent coil, e.g. a stale or
+// corrupted wind. The parallel-combination arithmetic then runs 1/0 -> infinite
+// conductance -> zero parallel resistance -> 0/0 branch current = NaN, and that NaN
+// propagates into the winding-losses TOTAL, which nlohmann serialises as JSON null.
+// The emitted MAS then fails MAS's own schema (outputs.windingLosses.windingLosses is
+// a required number). Fail loudly, naming the branch, instead of emitting the NaN.
+std::map<std::pair<size_t, size_t>, size_t> count_turns_per_winding_per_parallel(Coil& coil, const std::vector<Turn>& turns) {
+    std::map<std::pair<size_t, size_t>, size_t> counts;
+    for (auto& turn : turns) {
+        counts[{coil.get_winding_index_by_name(turn.get_winding()), turn.get_parallel()}]++;
+    }
+    return counts;
+}
+
+void check_parallel_branch(Coil& coil,
+                           size_t windingIndex,
+                           size_t parallelIndex,
+                           double seriesResistance,
+                           const std::map<std::pair<size_t, size_t>, size_t>& turnCounts) {
+    if (std::isfinite(seriesResistance) && seriesResistance > 0) {
+        return;
+    }
+    auto found = turnCounts.find({windingIndex, parallelIndex});
+    size_t turnsThisParallel = found == turnCounts.end() ? 0 : found->second;
+    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+        "Winding '" + coil.get_functional_description()[windingIndex].get_name() + "' parallel " +
+        std::to_string(parallelIndex) + " has a series resistance of " + std::to_string(seriesResistance) +
+        " Ohm: " + std::to_string(turnsThisParallel) + " of its turns are in turnsDescription, while " +
+        "functionalDescription declares " + std::to_string(coil.get_number_turns(windingIndex)) +
+        " turns over " + std::to_string(coil.get_number_parallels(windingIndex)) +
+        " parallels. The coil must be re-wound before its losses can be computed.");
+}
+
+}  // namespace
+
 std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil coil, double temperature) {
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Missing turns description");
@@ -166,9 +204,12 @@ std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil
         }
     }
 
+    auto turnCounts = count_turns_per_winding_per_parallel(coil, turns);
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         double conductance = 0;
         for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
+            check_parallel_branch(coil, windingIndex, parallelIndex,
+                                  seriesResistancePerWindingPerParallel[windingIndex][parallelIndex], turnCounts);
             conductance += 1. / seriesResistancePerWindingPerParallel[windingIndex][parallelIndex];
         }
         double parallelResistance = 1. / conductance;
@@ -230,9 +271,12 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         }
     }
 
+    auto turnCounts = count_turns_per_winding_per_parallel(coil, turns);
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         double conductance = 0;
         for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
+            check_parallel_branch(coil, windingIndex, parallelIndex,
+                                  seriesResistancePerWindingPerParallel[windingIndex][parallelIndex], turnCounts);
             conductance += 1. / seriesResistancePerWindingPerParallel[windingIndex][parallelIndex];
         }
         double parallelResistance = 1. / conductance;
