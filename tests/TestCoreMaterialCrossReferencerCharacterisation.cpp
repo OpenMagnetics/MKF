@@ -109,20 +109,38 @@ void check_top_n(const std::string& label,
 //   26 reference) takes slot 0 as a near-identical same-family match. NPH-L 26 (Poco High-Flux)
 //   also participates now that the curie-NaN crash is fixed (6 Poco NPN/NPU materials gained
 //   curieTemperature in MAS). Kool Mµ MAX 40 falls off the top-5.
+// Re-baselined 2026-07-27 (ABT #190c, user-approved re-pin) after advancing MAS past
+// 489ddd9. Only the two FERRITE tables move; both POWDER tables reproduce to the last
+// digit, which is the evidence that this is a material-set effect and not a scoring
+// change. What changed, and why it is benign:
+//  * FerriteDefault reshuffles inside a statistical tie — DMR95 2.70371, ML33D 2.70170,
+//    P45 2.70033, 3C95 2.68183, TPW33 2.67987 span 0.9%, with 0.007% between the top
+//    two. DMR95 leading is if anything the more defensible result: it is the classic
+//    3C97 equivalent (mu_i ~3480 vs 3341, same 0.53 T saturation, comparable losses).
+//    Because the head of this list is a coin flip, the smoke-level tests now assert
+//    shortlist MEMBERSHIP rather than an exact winner; this file keeps the full pin on
+//    purpose, as a refactor tripwire.
+//  * FerriteOnlyTdk keeps N95 at slot 0 with the same 25 °C justification as before;
+//    slots 1-4 gain PEM95 and PCL47, TDK materials that entered MAS after the last
+//    baseline, pushing N51/PC44 out of the top five.
+//  * Every score drifts (1e-5 to 0.9%) because scorings are normalised across the whole
+//    candidate set, so any material added to — or corrected in — MAS moves the
+//    denominators for everyone, including the A10/A102 permeability extension (ABT #178)
+//    and the POCO toroid fix (ABT #306) that landed the same day.
 const std::vector<TopEntry> kTopFerriteDefault = {
-    {"TPW33", 2.7280204415116578},
-    {"DMR95", 2.7229069637902059},
-    {"P45",   2.7216369780206886},
-    {"3C95",  2.7144498861636723},
-    {"T",     2.71339927430376},
+    {"DMR95", 2.7037084879826669},
+    {"ML33D", 2.7017020694198082},
+    {"P45",   2.7003297492001197},
+    {"3C95",  2.6818336582442548},
+    {"TPW33", 2.6798723461464768},
 };
 
 const std::vector<TopEntry> kTopFerriteOnlyTdk = {
-    {"N95",  2.556455278905954},
-    {"PC47", 2.4863443793547764},
-    {"N97",  2.4851490946728743},
-    {"N51",  2.458893344562656},
-    {"PC44", 2.4578606280817934},
+    {"N95",   2.5564115434401606},
+    {"PEM95", 2.5440513099289062},
+    {"PCL47", 2.4995245071724215},
+    {"PC47",  2.4862793237936112},
+    {"N97",   2.485118691348208},
 };
 
 const std::vector<TopEntry> kTopPowderDefault = {
