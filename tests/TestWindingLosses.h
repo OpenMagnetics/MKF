@@ -880,16 +880,44 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 1;
         
-        // Expected values with Kelvin-mirrored boundary conditions (Mühlethaler 2026)
-        // TODO: verify these values against FEM simulation for T 40/24/16 toroid
+        // FEM-referenced, 2026-07-27 (ABT #190a, user-approved re-pin). The previous values
+        // carried "TODO: verify these against FEM simulation" and had never been checked; they
+        // are replaced here by OMFEM 2D harmonic-eddy results for this exact magnetic.
+        //
+        // METHOD. omfem_mas (2D Cartesian cut through the toroid plane: the annular core plus
+        // all 20 conductor crossings) was run at each frequency from a MAS file carrying this
+        // magnetic and a 1 A rms sinusoid. Its magnetostatics check out — L = 539.1 uH against
+        // MKF's 530.1 uH and a closed-form mu0*mu_r*N^2*Ae/le = 525.6 uH — so the model is sound
+        // even though the tool prints a bogus "MKF 113.9 uH" reference (an OMFEM-side bug, filed
+        // separately; it is what made an earlier attempt wrongly discard this result). What
+        // transfers is the RATIO R_ac/R_dc, not OMFEM's absolute P_cu, because the 2D cut assigns
+        // its own conductor length; each value below is therefore (OMFEM R_ac/R_dc) x (MKF's DC
+        // loss 0.02119087 W), which leaves the DC anchor untouched.
+        //
+        // R_ac/R_dc — pinned-before / OMFEM / MKF-now:
+        //    25 kHz  1.150 / 1.213 /  1.440       200 kHz  3.568 / 4.439 /  ----
+        //    50 kHz  1.516 / 1.725 /  2.507       250 kHz  4.020 / 5.050 /  9.116
+        //   100 kHz  2.358 / 2.841 /  4.892       500 kHz  5.775 / 7.494 / 13.374
+        // The FEM lies BETWEEN the two at every point: MKF over-predicts by 19% at 25 kHz rising
+        // to ~80% above 200 kHz, the old constants under-predicted by 5-23%. MKF's skin term is
+        // right (F_R = 1.011 at 25 kHz, the analytic value for r/delta = 0.85); the excess is
+        // entirely proximity — the field the Kelvin-mirrored configuration imposes on conductors
+        // that sit 7.5 mm apart on a 24 mm bore. THIS TEST IS EXPECTED TO FAIL ABOVE 25 kHz until
+        // that model is corrected; that is what a FEM-referenced pin is for.
+        //
+        // CAVEAT for whoever revisits: the 2D cut treats each crossing as infinitely long (no end
+        // turns, no return path), and its core-loss/temperature outputs for this case are not
+        // usable (B_peak ~0.6 T drives iGSE far out of range). A 3D real-turn arbitration is
+        // blocked — OMFEM's transport drive hard-wires its electrodes to quarter-symmetry cut
+        // planes, and a closed poloidal turn has no equivalent (ABT #315).
         config.expectedValues = {
             {0.01, 0.02119087},
-            {25000, 0.02436939},
-            {50000, 0.03212591},
-            {100000, 0.04997908},
-            {200000, 0.07561326},
-            {250000, 0.08518898},
-            {500000, 0.12237422}
+            {25000, 0.02570510},
+            {50000, 0.03655488},
+            {100000, 0.06020424},
+            {200000, 0.09406778},
+            {250000, 0.10701607},
+            {500000, 0.15880821}
         };
         
         config.createMagnetic = []() {
