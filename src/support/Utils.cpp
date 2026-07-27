@@ -360,6 +360,66 @@ void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManuf
     });
 }
 
+// ABT #307: structurally impossible geometry is corrupt data, not a modelling gap — it
+// must never reach the catalog. A POCO toroid shipped with an inner diameter larger than
+// its outer diameter (T 32.5/78.6/20.3, ABT #306); CorePieceT then derived negative shape
+// constants and every adviser sweep that touched it died with a message
+// ("IEC 63182 effective parameters cannot be negative or 0") that named nothing useful.
+static void check_core_shape_geometry(const CoreShape& coreShape) {
+    auto name = coreShape.get_name().value_or("<unnamed>");
+    auto dimensions = coreShape.get_dimensions();
+    if (!dimensions) {
+        return;  // dimensional data is optional in the schema; families that need it throw on their own
+    }
+
+    // A dimension that is simply absent is legal (the schema makes dimensions optional and
+    // families read only the keys they need); a dimension that IS specified and is not a
+    // positive length is not. Distinguish the two rather than letting the resolver's
+    // "neither nominal, minimum nor maximum set" throw stand in for both.
+    auto specified = [](const Dimension& dimension) -> std::optional<double> {
+        if (std::holds_alternative<double>(dimension)) {
+            return std::get<double>(dimension);
+        }
+        auto& withTolerance = std::get<DimensionWithTolerance>(dimension);
+        if (!withTolerance.get_nominal() && !withTolerance.get_minimum() && !withTolerance.get_maximum()) {
+            return std::nullopt;
+        }
+        return resolve_dimensional_values(dimension);
+    };
+
+    auto resolve = [&](const std::string& key) -> std::optional<double> {
+        auto found = dimensions->find(key);
+        if (found == dimensions->end()) {
+            return std::nullopt;
+        }
+        return specified(found->second);
+    };
+
+    // Only the primary extents A/B/C are checked for positivity. The auxiliary keys are
+    // NOT all lengths: EFD's K is a signed offset (-0.2 mm on EFD 10/5/3), and H, r1, R2
+    // are legitimately 0 on RM/P/U shapes (no fillet, no recess). Rejecting every
+    // non-positive dimension aborts the load on perfectly good catalog records.
+    for (auto& key : {"A", "B", "C"}) {
+        auto value = resolve(key);
+        if (value && (!std::isfinite(*value) || *value <= 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Core shape '" + name + "' has a non-positive principal dimension " + key + " = " +
+                std::to_string(*value) + ". The catalog record is corrupt and cannot be loaded.");
+        }
+    }
+
+    if (coreShape.get_family() == CoreShapeFamily::T) {
+        auto outerDiameter = resolve("A");
+        auto innerDiameter = resolve("B");
+        if (outerDiameter && innerDiameter && *innerDiameter >= *outerDiameter) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Toroidal core shape '" + name + "' has an inner diameter (B = " + std::to_string(*innerDiameter) +
+                " m) at least as large as its outer diameter (A = " + std::to_string(*outerDiameter) +
+                " m). The catalog record is corrupt and cannot be loaded.");
+        }
+    }
+}
+
 void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     throw_if_databases_frozen("load_core_shapes");
     if (!_addInternalData) {
@@ -369,8 +429,20 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     bool includeConcentricCores = settings.get_use_concentric_cores();
 
     std::string database = load_ndjson_data("MAS/data/core_shapes.ndjson", fileToLoad);
-    parse_ndjson(database, [withAliases, includeToroidalCores, includeConcentricCores](const json& jf) {
+    // ABT #307: one unbuildable record used to abort a whole adviser sweep (a single
+    // malformed POCO toroid killed DMC advising, and the dangling UI/PQI records do the
+    // same). Two different problems, two different answers: a family whose geometry
+    // class does not exist yet is a KNOWN GAP — leave those shapes out of the catalog
+    // and say so once — while geometry that cannot exist is CORRUPT DATA and must never
+    // load at all.
+    std::map<CoreShapeFamily, size_t> skippedPerFamily;
+    parse_ndjson(database, [withAliases, includeToroidalCores, includeConcentricCores, &skippedPerFamily](const json& jf) {
         CoreShape coreShape(jf);
+        check_core_shape_geometry(coreShape);
+        if (!CorePiece::is_family_supported(coreShape.get_family())) {
+            skippedPerFamily[coreShape.get_family()]++;
+            return;
+        }
         if ((includeToroidalCores && coreShape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && coreShape.get_family() != CoreShapeFamily::T)) {
             if (std::find(coreShapeFamiliesInDatabase.begin(), coreShapeFamiliesInDatabase.end(), coreShape.get_family()) == coreShapeFamiliesInDatabase.end()) {
                 coreShapeFamiliesInDatabase.push_back(coreShape.get_family());
@@ -387,6 +459,21 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
             }
         }
     });
+
+    if (!skippedPerFamily.empty()) {
+        std::string summary;
+        size_t total = 0;
+        for (auto& [family, count] : skippedPerFamily) {
+            if (!summary.empty()) {
+                summary += ", ";
+            }
+            summary += std::string(magic_enum::enum_name(family)) + " x" + std::to_string(count);
+            total += count;
+        }
+        OM_WARNING_M("Utils", "Left " + std::to_string(total) + " catalog shape(s) out of the database: no CorePiece "
+                              "geometry for their family (" + summary + "). Cores using them cannot be advised or "
+                              "built until the family is implemented.");
+    }
 }
 
 void load_wires(std::optional<std::string> fileToLoad) {

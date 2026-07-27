@@ -102,6 +102,16 @@ class CorePiece {
 
     static std::shared_ptr<CorePiece> factory(CoreShape shape, bool process=true);
 
+    /**
+     * @brief Whether factory() can build a piece for this shape family.
+     *
+     * ABT #307: MAS ships shape records for families whose geometry class does not
+     * exist yet (UI, PQI, ...). The catalog loader uses this to leave those shapes
+     * out instead of letting one unbuildable record abort an entire adviser sweep.
+     * Single source of truth for factory()'s dispatch — keep the two in step.
+     */
+    static bool is_family_supported(CoreShapeFamily family);
+
     void process();
     
     // Thermal surface area calculations

@@ -1896,6 +1896,44 @@ class CorePieceEpw : public CorePieceEp {};
 class CorePieceEpt : public CorePieceEp {};
 class CorePieceLep : public CorePieceEp {};
 
+bool CorePiece::is_family_supported(CoreShapeFamily family) {
+    // Mirrors factory()'s dispatch below — add a family here when you add its branch.
+    switch (family) {
+        case CoreShapeFamily::E:
+        case CoreShapeFamily::EC:
+        case CoreShapeFamily::EFD:
+        case CoreShapeFamily::EL:
+        case CoreShapeFamily::EP:
+        case CoreShapeFamily::EPX:
+        case CoreShapeFamily::LP:
+        case CoreShapeFamily::EQ:
+        case CoreShapeFamily::ER:
+        case CoreShapeFamily::ETD:
+        case CoreShapeFamily::P:
+        case CoreShapeFamily::PLANAR_E:
+        case CoreShapeFamily::PLANAR_EL:
+        case CoreShapeFamily::PLANAR_ER:
+        case CoreShapeFamily::PM:
+        case CoreShapeFamily::PQ:
+        case CoreShapeFamily::RM:
+        case CoreShapeFamily::U:
+        case CoreShapeFamily::UR:
+        case CoreShapeFamily::UT:
+        case CoreShapeFamily::T:
+        case CoreShapeFamily::C:
+        case CoreShapeFamily::EER:
+        case CoreShapeFamily::EF:
+        case CoreShapeFamily::EPC:
+        case CoreShapeFamily::EPQ:
+        case CoreShapeFamily::EPW:
+        case CoreShapeFamily::EPT:
+        case CoreShapeFamily::LEP:
+            return true;
+        default:
+            return false;
+    }
+}
+
 std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     auto family = shape.get_family();
     if (family == CoreShapeFamily::E) {
