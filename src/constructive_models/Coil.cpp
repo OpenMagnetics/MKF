@@ -2797,7 +2797,7 @@ double Coil::contiguous_filling_factor(Section section) {
     }
 }
 
-std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size_t groupIndex) {
+Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
     auto bobbin = resolve_bobbin();
     auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -2848,20 +2848,32 @@ std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size
 
     for (auto section : sections) {
         if (section.get_margin()) {
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                area += (resolve_margin(section)[0] + resolve_margin(section)[1]) * section.get_dimensions()[0];
+            double marginWidth = resolve_margin(section)[0] + resolve_margin(section)[1];
+            if (bobbinWindingWindowShape != WindingWindowShape::RECTANGULAR) {
+                // ABT #245: on a toroid, section dimensions are [radial height (m),
+                // angular span (DEGREES)]. Margins are tape widths along the winding
+                // path, so the band they occupy is marginWidth x radial height — using
+                // the angular span here multiplied metres by degrees and inflated the
+                // area by ~50x per section (the primary of the #306 fixture alone
+                // contributed 0.0476 "metre-degrees" against a 0.000452 m2 window,
+                // i.e. an area fill of 105). It went unnoticed because the result was
+                // then discarded by max(maximumLayerFillingFactor, ...).
+                area += marginWidth * section.get_dimensions()[0];
+            }
+            else if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                area += marginWidth * section.get_dimensions()[0];
             }
             else {
-                area += (resolve_margin(section)[0] + resolve_margin(section)[1]) * section.get_dimensions()[1];
+                area += marginWidth * section.get_dimensions()[1];
             }
         }
     }
 
     for (auto layer : layers) {
+        // Track the true maximum, not just overflows: this value is reported now, and a
+        // healthy coil should show its real headroom (e.g. 0.49) rather than a placeholder 0.
         if (layer.get_filling_factor()) {
-            if (layer.get_filling_factor().value() > 1) {
-                maximumLayerFillingFactor = std::max(maximumLayerFillingFactor, layer.get_filling_factor().value());
-            }
+            maximumLayerFillingFactor = std::max(maximumLayerFillingFactor, layer.get_filling_factor().value());
         }
         if (layer.get_type() == ElectricalType::CONDUCTION) {
             auto turns = get_turns_by_layer(layer.get_name());
@@ -2880,11 +2892,28 @@ std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size
         }
     }
 
-    double areaFillingFactor = area / availableArea;
-    areaFillingFactor = std::max(maximumLayerFillingFactor, areaFillingFactor);
-    double contiguousFillingFactor = contiguousDimension / availableContiguousDimension;
-    double overlappingFillingFactor = overlappingDimension / availableOverlappingDimension;
-    return {areaFillingFactor, {overlappingFillingFactor, contiguousFillingFactor}};
+    FillingFactorsOutput output;
+    // ABT #245: the area fraction is reported as the area fraction. It used to be
+    // max(maximumLayerFillingFactor, area / availableArea), which smuggled a per-layer
+    // OVERFILL RATIO into this slot — a coil whose real areal fill was 2.35% reported
+    // 43264% because one degenerate 0.0048-degree section could not hold its turns, and
+    // the builder printed that as a percentage. The overfill is still reported, next to
+    // it, and windingFits carries the verdict that consumers actually want.
+    output.areaFillingFactor = area / availableArea;
+    output.maxLayerFillingFactor = maximumLayerFillingFactor;
+    output.contiguousFillingFactor = contiguousDimension / availableContiguousDimension;
+    output.overlappingFillingFactor = overlappingDimension / availableOverlappingDimension;
+
+    // Only the dimension the sections actually stack along can overflow: sections laid
+    // out contiguously grow along the contiguous axis (height, or angle on a toroid),
+    // overlapping ones along the overlapping axis (width, or radial height).
+    double stackingFillingFactor = windingOrientation == WindingOrientation::CONTIGUOUS
+                                       ? output.contiguousFillingFactor
+                                       : output.overlappingFillingFactor;
+    output.windingFits = output.areaFillingFactor <= 1 &&
+                         output.maxLayerFillingFactor <= 1 &&
+                         stackingFillingFactor <= 1;
+    return output;
 }
 
 std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIndex, size_t slots, uint64_t numberTurns, uint64_t numberParallels, 

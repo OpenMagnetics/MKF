@@ -505,7 +505,27 @@ class Coil : public MAS::Coil {
         double overlapping_filling_factor(Section section);
 
         double contiguous_filling_factor(Section section);
-        std::pair<double, std::pair<double, double>> calculate_filling_factor(size_t groupIndex = 0);
+
+        /**
+         * @brief Fill factors of a wound coil, plus whether it actually fits.
+         *
+         * ABT #245: areaFillingFactor used to be max(largest per-layer factor, wound
+         * area / available area), which put an OVERFILL RATIO in the AREA-FRACTION slot
+         * — a corrupt coil reported 6077% (and 43264% on a degenerate section) for a
+         * winding whose real areal fill was 2.35%, and the builder printed it as a
+         * percentage. The two quantities answer different questions and are now
+         * reported separately: areaFillingFactor is always the true fraction, and
+         * windingFits carries the verdict.
+         */
+        struct FillingFactorsOutput {
+            double areaFillingFactor;        ///< wound area / available window area
+            double maxLayerFillingFactor;    ///< largest per-layer factor; > 1 = that layer overflows
+            double overlappingFillingFactor; ///< radial (or width) extent used / available
+            double contiguousFillingFactor;  ///< angular (or height) extent used / available
+            bool windingFits;                ///< false when any of the above overflows its dimension
+        };
+
+        FillingFactorsOutput calculate_filling_factor(size_t groupIndex = 0);
 
         static Bobbin resolve_bobbin(Coil coil);
         Bobbin resolve_bobbin();
