@@ -93,7 +93,13 @@ double MagnetizingInductance::calculate_open_core_magnetizing_inductance(Core co
                 "An open-circuit (drum) core cannot be gapped: its return path is already air");
         }
     }
+    // Asymmetric drums (A2 = second flange OD): the envelope the air return sees is between the
+    // two flange discs; the geometric mean keeps the symmetric case exact and matched the WE-TI
+    // reconstruction (both bounds are envelope-driven, so this is the sensitive choice).
     double flangeDiameter = dimensions["A"];
+    if (dimensions.find("A2") != dimensions.end() && dimensions["A2"] > 0) {
+        flangeDiameter = sqrt(dimensions["A"] * dimensions["A2"]);
+    }
     double height = dimensions["B"];
     double postDiameter = dimensions["C"];
     double bore = (dimensions.find("H") != dimensions.end()) ? dimensions["H"] : 0.0;

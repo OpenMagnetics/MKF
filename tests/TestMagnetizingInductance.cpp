@@ -1200,3 +1200,40 @@ TEST_CASE("Test_Open_Core_Drum_Inductance_Matches_FairRite_AL", "[physical-model
     CHECK_THROWS(MagnetizingInductance::calculate_open_core_magnetizing_inductance(gappedCore, 10, 25));
     settings.reset();
 }
+
+// ABT #331: end-to-end DEMO on a real commercial unshielded drum inductor — WE-TI 7447720470
+// (Wurth, 47 uH +-10%, DCR typ 89 mOhm, envelope flanges 7.8/5.0 mm). The vendor does not publish
+// turns or internal core dims, so the fixture is a RECONSTRUCTION, documented as such: the
+// open-core model's AL is post-diameter-insensitive (envelope-dominated), giving N = 48; the wire
+// that then reproduces the vendor DCR (0.42 mm Cu, 4 layers) also FITS the groove. Three vendor
+// numbers, two assumptions, closed loop. This is a consistency demo on a finished part —
+// the strict model validation is the Fair-Rite AL test above.
+TEST_CASE("Test_Open_Core_WE_TI_Reconstruction_Consistency", "[physical-model][magnetizing-inductance][drum][open-core]") {
+    settings.reset();
+    clear_databases();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "we_ti_7447720470_reconstructed.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto masJson = nlohmann::json::parse(file);
+    OpenMagnetics::Core core(masJson["magnetic"]["core"]);
+    core.process_data();
+    REQUIRE(core.get_functional_description().get_type() == CoreType::OPEN_SHAPE);
+
+    double numberTurns = masJson["magnetic"]["coil"]["functionalDescription"][0]["numberTurns"];
+    double inductance = MagnetizingInductance::calculate_open_core_magnetizing_inductance(core, numberTurns, 25);
+    // Vendor L = 47 uH +-10%; the model must land inside vendor tolerance + its own 12% envelope.
+    UNSCOPED_INFO("model L = " << inductance * 1e6 << " uH vs vendor 47 uH +-10%");
+    CHECK_THAT(inductance, Catch::Matchers::WithinRel(47e-6, 0.20));
+
+    // DCR of the reconstructed winding: N x MLT(post + buildup) x rho/A must reproduce the
+    // vendor's typ 89 mOhm within winding-tolerance slack.
+    double wireDiameter = 0.00042;
+    double wireArea = std::numbers::pi / 4 * pow(wireDiameter, 2);
+    double buildup = 4 * 0.000458;   // 4 layers of 0.458 OD
+    double meanTurnDiameter = 0.0035 + buildup;
+    double length = numberTurns * std::numbers::pi * meanTurnDiameter;
+    double dcr = 1.72e-8 * length / wireArea;
+    UNSCOPED_INFO("reconstructed DCR = " << dcr * 1000 << " mOhm vs vendor typ 89");
+    CHECK_THAT(dcr, Catch::Matchers::WithinRel(0.089, 0.30));
+    settings.reset();
+}

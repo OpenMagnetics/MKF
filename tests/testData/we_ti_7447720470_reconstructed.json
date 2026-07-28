@@ -1,0 +1,48 @@
+{
+  "magnetic": {
+    "manufacturerInfo": {"name": "Wurth Elektronik", "reference": "7447720470"},
+    "core": {
+      "functionalDescription": {
+        "name": "WE-TI 7447720470 drum (reconstructed)",
+        "type": "openShape",
+        "material": "43",
+        "gapping": [],
+        "numberStacks": 1,
+        "shape": {
+          "type": "custom",
+          "family": "drum",
+          "name": "WE-TI 7.8/9.5 drum (reconstructed)",
+          "aliases": [],
+          "magneticCircuit": "open",
+          "dimensions": {
+            "A":  {"nominal": 0.0078},
+            "A2": {"nominal": 0.0050},
+            "B":  {"nominal": 0.0085},
+            "C":  {"nominal": 0.0035},
+            "D":  {"nominal": 0.0010},
+            "E":  {"nominal": 0.0065},
+            "F":  {"nominal": 0.0010}
+          }
+        }
+      }
+    },
+    "coil": {
+      "bobbin": {
+        "processedDescription": {
+          "columnDepth": 0.00175, "columnShape": "round", "columnThickness": 0.0,
+          "columnWidth": 0.00175, "coordinates": [0.0, 0.0, 0.0], "wallThickness": 0.0,
+          "windingWindows": [{"area": 1.3975e-05, "coordinates": [0.002825, 0.0, 0.0],
+            "height": 0.0065, "width": 0.00215, "sectionsOrientation": "overlapping", "shape": "rectangular"}]
+        }
+      },
+      "functionalDescription": [{
+        "isolationSide": "primary", "name": "winding", "numberParallels": 1, "numberTurns": 48,
+        "wire": {"type": "round", "material": "copper", "numberConductors": 1,
+                 "conductingDiameter": {"nominal": 0.00042},
+                 "outerDiameter": {"nominal": 0.000458},
+                 "coating": {"type": "enamelled", "grade": 1},
+                 "name": "Round 0.42 - Reconstructed"}
+      }]
+    }
+  }
+}

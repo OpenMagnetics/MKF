@@ -2003,19 +2003,30 @@ class CorePieceDrum : public CorePiece {
   public:
     void process_extra_data() {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
-        set_width(dimensions["A"]);
+        double largerFlange = dimensions["A"];
+        if (dimensions.find("A2") != dimensions.end() && dimensions["A2"] > 0) {
+            largerFlange = std::max(dimensions["A"], dimensions["A2"]);
+        }
+        set_width(largerFlange);
         set_height(dimensions["B"]);
-        set_depth(dimensions["A"]);
+        set_depth(largerFlange);
     }
 
     void process_winding_window() {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        // A2 = the SECOND flange OD for asymmetric drums (TDG DRC A1/A2 convention; e.g. the
+        // WE-TI radial chokes have a larger base flange). The usable groove is bounded by the
+        // SMALLER flange — wire beyond it is not retained.
+        double smallerFlange = dimensions["A"];
+        if (dimensions.find("A2") != dimensions.end() && dimensions["A2"] > 0) {
+            smallerFlange = std::min(dimensions["A"], dimensions["A2"]);
+        }
         WindingWindowElement windingWindow;
         windingWindow.set_height(dimensions["E"]);
-        windingWindow.set_width((dimensions["A"] - dimensions["C"]) / 2);
+        windingWindow.set_width((smallerFlange - dimensions["C"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
         // ABT #107 convention: coordinates[0] = window CENTRE (post edge + half width).
-        windingWindow.set_coordinates(std::vector<double>({dimensions["C"] / 2 + (dimensions["A"] - dimensions["C"]) / 4, 0}));
+        windingWindow.set_coordinates(std::vector<double>({dimensions["C"] / 2 + (smallerFlange - dimensions["C"]) / 4, 0}));
         set_winding_window(windingWindow);
     }
 
