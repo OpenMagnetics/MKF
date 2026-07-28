@@ -73,8 +73,12 @@ TEST_CASE("Test_CoreAdviser_IsolatedBuck_DefaultWizardInputs_HasResults",
     std::cout << "[REPRO] turnsRatios.size = "
               << inputs.get_design_requirements().get_turns_ratios().size() << std::endl;
     std::cout << "[REPRO] isolationSides = ";
-    if (inputs.get_design_requirements().get_isolation_sides()) {
-        for (auto s : inputs.get_design_requirements().get_isolation_sides().value()) {
+    auto isolationSides = inputs.get_design_requirements().get_isolation_sides();
+    if (isolationSides) {
+        // MAS getters return by value: iterating .value() of the temporary directly binds to
+        // storage destroyed at the end of the full expression (gcc warns -Wdangling-reference).
+        auto isolationSidesValue = isolationSides.value();
+        for (auto s : isolationSidesValue) {
             std::cout << static_cast<int>(s) << " ";
         }
     }

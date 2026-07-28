@@ -564,7 +564,8 @@ TEST_CASE("WoundWith_SurvivesJsonBoundary_AndGroupsSections", "[constructive-mod
     }
     CHECK(sharedSectionFound);
     std::map<std::string, size_t> turnsPerWinding;
-    for (auto& turn : coil.get_turns_description().value()) {
+    auto turnsForCount = coil.get_turns_description().value();
+    for (auto& turn : turnsForCount) {
         turnsPerWinding[turn.get_winding()]++;
     }
     CHECK(turnsPerWinding["Primary"] == 12);
@@ -593,7 +594,8 @@ TEST_CASE("WoundWith_SurvivesJsonBoundary_AndGroupsSections", "[constructive-mod
     REQUIRE(coilLikeWasm.wind(std::vector<double>{0.5, 0.5}, std::vector<size_t>{0, 1}, 1));
     REQUIRE(coilLikeWasm.delimit_and_compact());
     std::map<std::string, size_t> turnsPerWindingPattern;
-    for (auto& turn : coilLikeWasm.get_turns_description().value()) {
+    auto turnsForPatternCount = coilLikeWasm.get_turns_description().value();
+    for (auto& turn : turnsForPatternCount) {
         turnsPerWindingPattern[turn.get_winding()]++;
     }
     CHECK(turnsPerWindingPattern["Primary"] == 12);
@@ -659,7 +661,8 @@ TEST_CASE("WoundWith_WebFixtureMultiWindowBobbin", "[constructive-model][coil][m
     REQUIRE(coil.wind(std::vector<double>{0.5, 0.5}, std::vector<size_t>{0, 1}, 1));
     REQUIRE(coil.delimit_and_compact());
     std::map<std::string, size_t> turnsPerWinding;
-    for (auto& turn : coil.get_turns_description().value()) {
+    auto turnsForCount = coil.get_turns_description().value();
+    for (auto& turn : turnsForCount) {
         turnsPerWinding[turn.get_winding()]++;
     }
     CHECK(turnsPerWinding["Primary"] == 12);
