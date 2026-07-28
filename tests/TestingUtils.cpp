@@ -238,9 +238,17 @@ Core get_quick_core(std::string shapeName,
                                           std::string materialName) {
     auto coreJson = json();
 
+    // NOTE: this picks the core type from the shape NAME, which is a heuristic the production
+    // path does not use — Core/create_quick_core dispatch on CoreShapeFamily. Kept because the
+    // helper builds its core from raw json without resolving the shape first, but it has to be
+    // taught each new type: UI/PQI are piece-and-plate (a shaped half closed by a flat I plate),
+    // not two mirrored halves (ABT #264/#274/#275).
     std::string coreType;
     if (shapeName[0] == 'T' || (shapeName[0] == 'R' && shapeName[1] == ' ')) {
         coreType = "toroidal";
+    }
+    else if (shapeName.rfind("UI ", 0) == 0 || shapeName.rfind("PQI ", 0) == 0) {
+        coreType = "pieceAndPlate";
     }
     else {
         coreType = "twoPieceSet";

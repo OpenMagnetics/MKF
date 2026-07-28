@@ -496,9 +496,37 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                 }
             }
             break;
-        case CoreType::PIECE_AND_PLATE:
-            // TODO add for toroPIECE_AND_PLATE
+        case CoreType::PIECE_AND_PLATE: {
+            // A shaped piece (U, PQ...) closed by a flat plate. MAS has a PLATE element type for
+            // exactly this, so the shaped half stays a HALF_SET and the closing plate is emitted as
+            // PLATE rather than as a second mirrored half.
+            //
+            // Unlike TWO_PIECE_SET there is nothing to SPLIT: a ground gap is machined into the
+            // shaped piece's columns, and the plate is flat and unmachined. So all machining goes
+            // to the piece, and the plate carries none.
+            //
+            // This replaces an empty `break` that emitted NO geometrical description at all, which
+            // left CAD/3D consumers with nothing to draw for a piece-and-plate core (ABT #264).
+            auto platePiece = piece;
+            bottomPiece.set_type(CoreGeometricalDescriptionElementType::HALF_SET);
+            platePiece.set_type(CoreGeometricalDescriptionElementType::PLATE);
+            for (auto i = 0; i < numberStacks; ++i) {
+                bottomPiece.set_coordinates(std::vector<double>({0, roundFloat(-spacerThickness / 2), currentDepth}));
+                bottomPiece.set_rotation(std::vector<double>({0, 0, 0}));
+                if (machining.size() > 0) {
+                    bottomPiece.set_machining(machining);
+                }
+                geometricalDescription.push_back(bottomPiece);
+
+                platePiece.set_coordinates(std::vector<double>({0, roundFloat(spacerThickness / 2), currentDepth}));
+                platePiece.set_rotation(std::vector<double>({0, 0, 0}));
+                platePiece.set_machining(std::nullopt);
+                geometricalDescription.push_back(platePiece);
+
+                currentDepth = roundFloat(currentDepth + corePieceDepth);
+            }
             break;
+        }
         default:
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                 "Unknown type of core, options are {TOROIDAL, TWO_PIECE_SET, PIECE_AND_PLATE, CLOSED_SHAPE}");

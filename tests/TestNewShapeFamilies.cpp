@@ -94,3 +94,33 @@ TEST_CASE("Test_Ui_Effective_Parameters_Match_Vendor_Catalogue", "[core][shape-f
     }
     settings.reset();
 }
+
+// ABT #264: the PIECE_AND_PLATE branch of the geometrical-description switch used to be an empty
+// `break`, so a piece-and-plate core produced NO geometry for CAD/3D consumers to draw. It must
+// emit the shaped half plus the closing plate, using MAS's own PLATE element type rather than a
+// second mirrored HALF_SET.
+TEST_CASE("Test_Piece_And_Plate_Emits_Piece_And_Plate_Geometry", "[core][shape-families][ui]") {
+    settings.reset();
+    clear_databases();
+
+    auto core = OpenMagneticsTesting::get_quick_core("UI 93/76/16", json::array(), 1, "3C97");
+    REQUIRE(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+
+    auto geometricalDescription = core.get_geometrical_description();
+    REQUIRE(geometricalDescription);
+
+    size_t halfSets = 0;
+    size_t plates = 0;
+    for (const auto& element : geometricalDescription.value()) {
+        if (element.get_type() == CoreGeometricalDescriptionElementType::HALF_SET) {
+            halfSets++;
+        }
+        else if (element.get_type() == CoreGeometricalDescriptionElementType::PLATE) {
+            plates++;
+        }
+    }
+    // Exactly one shaped half and one closing plate -- not two mirrored halves.
+    CHECK(halfSets == 1);
+    CHECK(plates == 1);
+    settings.reset();
+}
