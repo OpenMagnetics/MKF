@@ -463,9 +463,20 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    // Updated for Kelvin mirroring of toroidal boundaries (Mühlethaler 2026)
-    // TODO: verify against FEM simulation
-    double expectedLeakageInductance = 0.02514;
+    // Re-pinned 2026-07-28 (ABT #320, user-approved). The previous 0.02514 carried
+    // "TODO: verify against FEM simulation" and had never been checked; it was a snapshot of
+    // the toroidal mesh BEFORE the current-direction fix, which entered both crossings of a
+    // toroidal turn with the same sign. That left ~2*N*I of uncancelled current in the
+    // modelling plane and a spurious field OUTSIDE the core (a toroid has none), inflating the
+    // leakage energy integral.
+    //
+    // Sanity check on the new value: leakage is referred to the SOURCE winding, here winding 1
+    // (200 turns), whose self-inductance is mu0*mu_r*N^2*Ae/le = 222 mH for T 48/28/16
+    // (Ae = 160 mm2, le = 119.4 mm, mu_r = 3300). The old pin is 11.3% of that; the new value is
+    // 0.82%. Contiguous two-sector toroidal windings are the common-mode-choke topology, for
+    // which vendor datasheets quote stray/leakage inductance at 0.5-2% of L_CM — the new value
+    // sits inside that band, the old one well above it.
+    double expectedLeakageInductance = 1.81288e-3;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -515,9 +526,14 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    // Updated for Kelvin mirroring of toroidal boundaries (Mühlethaler 2026)
-    // TODO: verify against FEM simulation
-    double expectedLeakageInductance = 3.652e-5;
+    // Re-pinned 2026-07-28 (ABT #320, user-approved) — same cause as the sibling test above:
+    // the previous 3.652e-5 was an unverified snapshot ("TODO: verify against FEM simulation")
+    // of the toroidal mesh before the current-direction fix.
+    //
+    // Here leakage is referred to winding 0 (10 turns), self-inductance 0.556 mH. The old pin is
+    // 6.6% of that, the new value 1.13% — again inside the 0.5-2% band vendors quote for the
+    // contiguous two-sector (common-mode-choke) toroidal topology.
+    double expectedLeakageInductance = 6.27273e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));

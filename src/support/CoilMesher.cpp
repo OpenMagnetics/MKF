@@ -668,15 +668,21 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
         double R_outer = dimensions["A"] / 2.0;  // Outer boundary (core outer wall)
         double attenuation = (corePermeability - 1.0) / (corePermeability + 1.0);
 
-        // Collect all conductor coordinates (main + outer half for toroidal turns)
-        std::vector<std::vector<double>> coordinatesToProcess;
-        coordinatesToProcess.push_back({turn.get_coordinates()[0], turn.get_coordinates()[1]});
+        // Collect all conductor coordinates (main + outer half for toroidal turns).
+        //
+        // A toroidal turn pierces this plane TWICE and the two crossings carry current in
+        // OPPOSITE directions: the wire runs through the bore, over the top, back down
+        // OUTSIDE the core and under the bottom, so the bore crossing and the outer
+        // crossing are the go and return halves of the same loop. The direction is
+        // therefore part of the geometry, not a free choice (ABT #320).
+        std::vector<std::pair<std::vector<double>, double>> coordinatesToProcess;
+        coordinatesToProcess.push_back({{turn.get_coordinates()[0], turn.get_coordinates()[1]}, 1.0});
 
         if (turn.get_additional_coordinates()) {
             auto additionalCoords = turn.get_additional_coordinates().value();
             for (const auto& coord : additionalCoords) {
                 if (coord.size() >= 2) {
-                    coordinatesToProcess.push_back({coord[0], coord[1]});
+                    coordinatesToProcess.push_back({{coord[0], coord[1]}, -1.0});
                 }
             }
         }
@@ -691,14 +697,14 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
             throw CoilNotProcessedException("CoilMesher: Turn coordinates are not in cartesian");
         }
 
-        for (const auto& coords : coordinatesToProcess) {
+        for (const auto& [coords, direction] : coordinatesToProcess) {
             double x = coords[0];
             double y = coords[1];
             double r_k_sq = x * x + y * y;
 
             // Real conductor
             FieldPoint realPoint;
-            realPoint.set_value(1.0);
+            realPoint.set_value(direction);
             realPoint.set_rotation(turn.get_rotation().value());
             if (turnLength) {
                 realPoint.set_turn_length(turnLength.value());
@@ -715,7 +721,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
                 // In Cartesian: scale = R_inner² / |z_k|²
                 double scale_inner = (R_inner * R_inner) / r_k_sq;
                 FieldPoint innerImage;
-                innerImage.set_value(attenuation);
+                innerImage.set_value(direction * attenuation);
                 innerImage.set_rotation(turn.get_rotation().value());
                 if (turnLength) {
                     innerImage.set_turn_length(turnLength.value());
@@ -729,7 +735,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
                 // Outer boundary image: z_img = R_outer² / conj(z_k)
                 double scale_outer = (R_outer * R_outer) / r_k_sq;
                 FieldPoint outerImage;
-                outerImage.set_value(attenuation);
+                outerImage.set_value(direction * attenuation);
                 outerImage.set_rotation(turn.get_rotation().value());
                 if (turnLength) {
                     outerImage.set_turn_length(turnLength.value());
