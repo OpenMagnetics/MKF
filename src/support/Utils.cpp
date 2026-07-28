@@ -1254,7 +1254,7 @@ CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter, s
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1294,7 +1294,7 @@ CoreShape find_core_shape_by_area_product(double desiredAreaProduct, std::option
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1331,7 +1331,7 @@ CoreShape find_core_shape_by_winding_window_area(double desiredWindingWindowArea
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1378,7 +1378,7 @@ CoreShape find_core_shape_by_winding_window_dimensions(double desiredWidthOrRadi
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1418,7 +1418,7 @@ CoreShape find_core_shape_by_effective_parameters(double desiredEffectiveLength,
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -2498,6 +2498,12 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
         magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::TOROIDAL);
         shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
         magnetic.get_mutable_core().get_mutable_functional_description().get_mutable_gapping().clear();
+    }
+    else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UI) {
+        // Piece-and-plate: the record already describes the whole assembly, so it is "closed" in
+        // the MAS sense of having to be used by itself (ABT #274/#275).
+        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
+        shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
     }
     else {
         magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);

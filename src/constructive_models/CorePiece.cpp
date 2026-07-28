@@ -1891,6 +1891,113 @@ class CorePieceEer : public CorePieceEtd {};
 class CorePieceEf : public CorePieceE {};
 // EP derivatives (EPC low-profile, EPQ EP/PQ hybrid, EPW wide, EPT, LEP large-EP) -> EP geometry.
 class CorePieceEpc : public CorePieceEp {};
+
+// A PIECE-AND-PLATE core: a shaped piece (U, PQ, E...) closed by a flat I plate rather than by a
+// mirrored second half. IEC 60205:2016 has no clause for this combination -- every clause in 5.x is
+// "Pair of X-cores" -- so the section list below applies the standard's GENERAL method instead:
+// C1 = sum(l_i/A_i), C2 = sum(l_i/A_i^2), le = C1^2/C2, Ae = C1/C2 (clause 4.6 and following), with
+// corner sections taken as "the mean circular path joining the centres of area of the two adjacent
+// uniform sections", their area "the average area of the two adjacent uniform sections" (clause 4.6).
+//
+// Two consequences of the plate, versus the pair the parent class models:
+//   * the window is ONE piece tall (D), not two (2D), so each leg contributes D and not 2D;
+//   * one of the two yokes is the plate, of thickness B2 instead of the piece's own B - D.
+// IEC's l4 / l5 each already lump TWO physical corners ("l4 = l4' + l4'' = pi/4 (p + h)"), so a
+// single corner is pi/8 of the same sum; a piece-and-plate has four corners of two different
+// thicknesses, hence four pi/8 terms rather than two pi/4 ones.
+//
+// These constants are the WHOLE assembled core, not a half-piece. CoreType::PIECE_AND_PLATE must
+// therefore NOT double them the way TWO_PIECE_SET doubles a mirrored pair.
+//
+// VALIDATED against the Magnetics 2022 Ferrite Catalog (printed pages 38-39). Note the catalogue
+// lists a U+I combination's parameters on the I-core row -- an I bar has no closed magnetic path of
+// its own, so its published le/Ae are those of the combination:
+//     I 93/28/16   computed le 257.0 mm / Ae 451.5 mm2   vs published 257 / 450
+//     I 25/6/6     computed le  64.1 mm / Ae  40.8 mm2   vs published 64.3 / 40.3
+// The same section list with 2D legs and two piece yokes reproduces the U-pair row exactly
+// (U 93/76/16: computed 353.0 / 452.3 vs published 353 / 452), which is the cross-check that the
+// method and not just the fit is right.
+static std::tuple<double, double, double> piece_and_plate_shape_constants(
+        double legHeight, double yokeLength, double depth,
+        double legWidthOne, double legWidthTwo, double pieceYokeThickness, double plateThickness) {
+    double areaLegOne = depth * legWidthOne;
+    double areaLegTwo = depth * legWidthTwo;
+    double areaPieceYoke = depth * pieceYokeThickness;
+    double areaPlate = depth * plateThickness;
+
+    std::vector<double> lengths;
+    std::vector<double> areas;
+    // Straight sections: two legs, the piece's own yoke, and the plate closing the circuit.
+    lengths.push_back(legHeight);      areas.push_back(areaLegOne);
+    lengths.push_back(legHeight);      areas.push_back(areaLegTwo);
+    lengths.push_back(yokeLength);     areas.push_back(areaPieceYoke);
+    lengths.push_back(yokeLength);     areas.push_back(areaPlate);
+    // Four corners, IEC 60205 clause 4.6.
+    const double quarterCircle = std::numbers::pi / 8;
+    lengths.push_back(quarterCircle * (legWidthOne + pieceYokeThickness));
+    areas.push_back((areaLegOne + areaPieceYoke) / 2);
+    lengths.push_back(quarterCircle * (legWidthTwo + pieceYokeThickness));
+    areas.push_back((areaLegTwo + areaPieceYoke) / 2);
+    lengths.push_back(quarterCircle * (legWidthOne + plateThickness));
+    areas.push_back((areaLegOne + areaPlate) / 2);
+    lengths.push_back(quarterCircle * (legWidthTwo + plateThickness));
+    areas.push_back((areaLegTwo + areaPlate) / 2);
+
+    double c1 = 0, c2 = 0;
+    for (size_t i = 0; i < lengths.size(); ++i) {
+        c1 += lengths[i] / areas[i];
+        c2 += lengths[i] / pow(areas[i], 2);
+    }
+    return {c1, c2, *min_element(areas.begin(), areas.end())};
+}
+
+class CorePieceUi : public CorePieceU {
+  public:
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        // The assembled height is the U plus the plate laid on top of it.
+        set_height(dimensions["B"] + dimensions["B2"]);
+        set_depth(dimensions["C"]);
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double legWidthOne, legWidthTwo;
+        if (dimensions.find("H") == dimensions.end() || (roundFloat(dimensions["H"]) == 0)) {
+            legWidthOne = (dimensions["A"] - dimensions["E"]) / 2;
+            legWidthTwo = (dimensions["A"] - dimensions["E"]) / 2;
+        }
+        else {
+            legWidthOne = dimensions["H"];
+            legWidthTwo = dimensions["A"] - dimensions["E"] - dimensions["H"];
+        }
+        return piece_and_plate_shape_constants(dimensions["D"], dimensions["E"], dimensions["C"],
+                                               legWidthTwo, legWidthOne,
+                                               dimensions["B"] - dimensions["D"], dimensions["B2"]);
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        return {pow(c1, 2) / c2, c1 / c2, minimumArea};
+    }
+};
+
+// PQI (PQ closed by an I plate) is NOT implemented, deliberately. A first attempt reused the
+// piece-and-plate helper above and was measurably wrong against vendor data:
+//   * the helper models a leg as depth x width, but a PQ CENTRE POST IS ROUND. For PQI 16/7.8 that
+//     is 11.2 x 7.0 = 78.4 mm2 against the true pi/4 F^2 = 38.5 mm2 -- a factor of two.
+//   * with the round area substituted, Ae lands at 42.3 mm2 against TDK's published 41.8 (1.1%),
+//     but le comes to 32.9 mm against TDK's implied Ve/Ae = 19.5 mm (69% long). A PQ yoke carries
+//     the flux radially outward through a logarithmic spreading section (see CorePiecePq's a2/l2,
+//     IEC 60205 5.12); a flat plate spreads differently and the helper's straight yoke term does
+//     not represent it.
+// So a correct CorePiecePqi needs PQ's own spreading model re-derived for a plate, validated
+// against published Ae AND le. Data to do it with is now known to exist -- TDK PQI16/7.8Z,
+// PQI20/9Z, PQI26/12Z (planar catalogue) and ACME PQI35F/29, PQI35.2, PQI40B/28/14.6/5, the ACME
+// rows carrying full A-I dimensions plus le/Ae/Ve. Tracked in ABT #275; shipping the approximation
+// would have put silently wrong reluctance and B_peak into every PQI design.
+
 class CorePieceEpq : public CorePieceEp {};
 class CorePieceEpw : public CorePieceEp {};
 class CorePieceEpt : public CorePieceEp {};
@@ -1922,6 +2029,7 @@ bool CorePiece::is_family_supported(CoreShapeFamily family) {
         case CoreShapeFamily::T:
         case CoreShapeFamily::C:
         case CoreShapeFamily::EER:
+        case CoreShapeFamily::UI:
         case CoreShapeFamily::EF:
         case CoreShapeFamily::EPC:
         case CoreShapeFamily::EPQ:
@@ -2109,6 +2217,12 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
         if (process) piece->process();
         return piece;
     }
+    else if (family == CoreShapeFamily::UI) {
+        auto piece = std::make_shared<CorePieceUi>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
     else if (family == CoreShapeFamily::EPQ) {
         auto piece = std::make_shared<CorePieceEpq>();
         piece->set_shape(shape);
@@ -2135,7 +2249,7 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     }
     else
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown shape family: " + to_string(family) + ", available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
-                                 "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT, T, C, EER, EF, EPC, EPQ, EPW, EPT, LEP}");
+                                 "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UI, UR, UT, T, C, EER, EF, EPC, EPQ, EPW, EPT, LEP, PQI}");
 }
 
 // ============================================================================

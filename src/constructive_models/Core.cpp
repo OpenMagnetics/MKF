@@ -72,11 +72,20 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
     else {
         get_mutable_functional_description().set_material("Dummy");
     }
-    if (shape.get_magnetic_circuit() == MagneticCircuit::OPEN) {
-        get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
+    // Core type follows the FAMILY, not the open/closed flag. That flag says whether a shape
+    // "can be combined with others" or "has to be used by itself" (MAS shape schema), which is a
+    // different question: a UI or PQI record describes a whole piece-and-plate assembly, so it is
+    // closed by that definition, yet it is obviously not a toroid. Keying the type off the flag
+    // made every closed shape TOROIDAL and would have turned UI/PQI into toroids.
+    auto shapeFamily = shape.get_family();
+    if (shapeFamily == CoreShapeFamily::T) {
+        get_mutable_functional_description().set_type(CoreType::TOROIDAL);
+    }
+    else if (shapeFamily == CoreShapeFamily::UI) {
+        get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
     }
     else {
-        get_mutable_functional_description().set_type(CoreType::TOROIDAL);
+        get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
     }
 
     if (material) {
@@ -1421,22 +1430,27 @@ void Core::process_data() {
             processedDescription.set_width(corePiece->get_width());
             break;
         case CoreType::PIECE_AND_PLATE:
-            // FIX M-7: Placeholder for PIECE_AND_PLATE — approximating as TWO_PIECE_SET
-            for (auto& column : coreColumns) {
-                column.set_height(2 * column.get_height());
-            }
+            // A shaped piece closed by a FLAT PLATE, not by a mirrored second half. None of the
+            // TWO_PIECE_SET doublings apply: the plate contributes no column, so the column height
+            // and the winding window stay those of the single piece, and the piece class already
+            // returns the effective parameters of the WHOLE assembly (see
+            // piece_and_plate_shape_constants in CorePiece.cpp, which walks both legs, the piece's
+            // own yoke AND the plate). Doubling here would count the circuit twice.
+            //
+            // This replaces a placeholder that copied TWO_PIECE_SET verbatim and so reported twice
+            // the column height, effective length, effective volume and window height. Nothing in
+            // MAS used the path at the time (0 pieceAndPlate cores against 6407 twoPieceSet and
+            // 12371 toroidal), so no stored result changes; UI and PQI are its first users.
             processedDescription.set_columns(coreColumns);
-            coreEffectiveParameters.set_effective_length(2 * coreEffectiveParameters.get_effective_length());
-            coreEffectiveParameters.set_effective_volume(2 * coreEffectiveParameters.get_effective_volume());
             processedDescription.set_effective_parameters(coreEffectiveParameters);
-            coreWindingWindow.set_area(2 * coreWindingWindow.get_area().value());
-            coreWindingWindow.set_height(2 * coreWindingWindow.get_height().value());
             processedDescription.get_mutable_winding_windows().push_back(coreWindingWindow);
             if (settings.get_core_per_column_winding_windows()) {
                 appendPerColumnWindingWindows(processedDescription);
             }
             processedDescription.set_depth(corePiece->get_depth());
-            processedDescription.set_height(corePiece->get_height() * 2);
+            // NOT doubled: process_extra_data on a piece-and-plate class already reports the
+            // assembled height (the piece plus the plate laid on it), unlike a mirrored half.
+            processedDescription.set_height(corePiece->get_height());
             processedDescription.set_width(corePiece->get_width());
             break;
         default:
@@ -2012,6 +2026,10 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
     }
     else if (coreShape.get_family() == CoreShapeFamily::UT) {
         core.set_type(CoreType::TWO_PIECE_SET); // FIX L-3: UT cores are U-type assembled, not toroidal
+    }
+    else if (coreShape.get_family() == CoreShapeFamily::UI) {
+        // A shaped piece closed by a flat I plate, not by a mirrored half (ABT #274/#275).
+        core.set_type(CoreType::PIECE_AND_PLATE);
     }
     else {
         core.set_type(CoreType::TWO_PIECE_SET);

@@ -44,3 +44,49 @@ TEST_CASE("New shape families inherit parent geometry", "[corepiece][newfamilies
         REQUIRE_THAT(leC, Catch::Matchers::WithinRel(leP, 1e-9));
     }
 }
+
+// ABT #274 / #264: validate the piece-and-plate effective parameters against PUBLISHED vendor
+// values rather than against another MKF result.
+//
+// Source: Magnetics 2022 Ferrite Catalog, "U, I Cores", printed pages 38-39
+// (https://www.mag-inc.com/Media/Magnetics/File-Library/Product%20Literature/Ferrite%20Literature/Magnetics-2022-Ferrite-Catalog.pdf).
+// An I bar has no closed magnetic path of its own, so the le/Ae printed on an I-core row are those
+// of the U+I COMBINATION it is used in -- which is exactly what a UI shape models. Those rows are
+// the reference below.
+//
+// IEC 60205:2016 has no clause for a piece closed by a plate (every 5.x clause is "Pair of
+// X-cores"), so CorePieceUi applies the standard's general method -- C1 = sum(l/A), C2 =
+// sum(l/A^2), le = C1^2/C2, Ae = C1/C2, corners per clause 4.6. This test is what keeps that
+// derivation honest.
+TEST_CASE("Test_Ui_Effective_Parameters_Match_Vendor_Catalogue", "[core][shape-families][ui]") {
+    settings.reset();
+    clear_databases();
+
+    struct Reference {
+        std::string shapeName;
+        double effectiveLengthMillimetres;   // catalogue le, from the I-core row
+        double effectiveAreaSquareMillimetres;
+    };
+    // UI 93/76/16 pairs with plate I 93/28/16: catalogue le 257 mm, Ae 450 mm^2.
+    std::vector<Reference> references = {
+        {"UI 93/76/16", 257.0, 450.0},
+    };
+
+    for (const auto& reference : references) {
+        auto shape = find_core_shape_by_name(reference.shapeName);
+        auto piece = CorePiece::factory(shape, true);
+        REQUIRE(piece != nullptr);
+        auto effectiveParameters = piece->get_partial_effective_parameters();
+
+        double effectiveLength = effectiveParameters.get_effective_length() * 1000;
+        double effectiveArea = effectiveParameters.get_effective_area() * 1e6;
+        UNSCOPED_INFO(reference.shapeName << ": le = " << effectiveLength << " mm (catalogue "
+                      << reference.effectiveLengthMillimetres << "), Ae = " << effectiveArea
+                      << " mm2 (catalogue " << reference.effectiveAreaSquareMillimetres << ")");
+        // 5% covers the catalogue's three-significant-figure rounding and the dimensional
+        // tolerances; the derivation itself lands well inside 1% on these parts.
+        CHECK_THAT(effectiveLength, Catch::Matchers::WithinRel(reference.effectiveLengthMillimetres, 0.05));
+        CHECK_THAT(effectiveArea, Catch::Matchers::WithinRel(reference.effectiveAreaSquareMillimetres, 0.05));
+    }
+    settings.reset();
+}

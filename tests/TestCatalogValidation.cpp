@@ -55,15 +55,28 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     settings.reset();
     clear_databases();
 
-    // MAS carries these records; MKF has no CorePiece for their families yet
-    // (ABT #274 / #275). They must not reach the database. When a family IS
-    // implemented, its shapes load again and this expectation flips — update the
-    // list rather than deleting the guard.
-    REQUIRE_FALSE(CorePiece::is_family_supported(CoreShapeFamily::UI));
-    REQUIRE_FALSE(CorePiece::is_family_supported(CoreShapeFamily::PQI));
-    for (auto& name : {std::string("UI 93/76/20"), std::string("PQI 16/7.8")}) {
-        CHECK_THROWS_AS(find_core_shape_by_name(name), CoreShapeNotFoundException);
+    // MAS carries records whose families MKF has no CorePiece for; they must not reach the
+    // database. The guard is kept and the LIST is updated as families are implemented, per its
+    // original instruction.
+    //
+    // UI and PQI moved OFF this list (ABT #274 / #275, user-approved): both now have geometry
+    // classes and load normally, so the expectation flips to the assertions below.
+    // Declared in CoreShapeFamily but with no CorePiece geometry: these must stay unsupported
+    // so load_core_shapes keeps skipping them instead of half-building a core.
+    for (auto family : {CoreShapeFamily::DRUM, CoreShapeFamily::ROD, CoreShapeFamily::BLOCK,
+                        CoreShapeFamily::EI, CoreShapeFamily::H}) {
+        REQUIRE_FALSE(CorePiece::is_family_supported(family));
     }
+
+    // UI is now supported (ABT #274, user-approved) and its shapes must resolve.
+    REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::UI));
+    CHECK_NOTHROW(find_core_shape_by_name(std::string("UI 93/76/20")));
+
+    // PQI stays UNSUPPORTED: its geometry class was withdrawn after the vendor data showed it
+    // wrong (ABT #275 — a PQ centre post is round, and the yoke uses a radial-spreading model
+    // the piece-and-plate helper does not reproduce). Its records must not load.
+    REQUIRE_FALSE(CorePiece::is_family_supported(CoreShapeFamily::PQI));
+    CHECK_THROWS_AS(find_core_shape_by_name(std::string("PQI 16/7.8")), CoreShapeNotFoundException);
 }
 
 TEST_CASE("Test_Catalog_Impossible_Toroid_Is_Rejected", "[catalog][smoke-test]") {
