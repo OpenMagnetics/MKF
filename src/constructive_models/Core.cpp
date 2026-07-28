@@ -84,6 +84,10 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
     else if (shapeFamily == CoreShapeFamily::UI || shapeFamily == CoreShapeFamily::PQI) {
         get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
     }
+    else if (shapeFamily == CoreShapeFamily::DRUM) {
+        // Single piece whose magnetic circuit closes through the surrounding air (ABT #331).
+        get_mutable_functional_description().set_type(CoreType::OPEN_SHAPE);
+    }
     else {
         get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
     }
@@ -496,6 +500,20 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                 }
             }
             break;
+        case CoreType::OPEN_SHAPE:
+            // Single solid piece (drum): same emission as CLOSED_SHAPE — openness is a property
+            // of the magnetic circuit, not of the solid.
+            piece.set_type(CoreGeometricalDescriptionElementType::CLOSED);
+            for (auto i = 0; i < numberStacks; ++i) {
+                std::vector<double> coordinates = {0, 0, currentDepth};
+                piece.set_coordinates(coordinates);
+                piece.set_rotation(std::vector<double>({0, 0, 0}));
+                piece.set_machining(std::nullopt);
+                geometricalDescription.push_back(CoreGeometricalDescriptionElement(piece));
+                currentDepth = roundFloat(currentDepth + corePieceDepth);
+            }
+            break;
+
         case CoreType::PIECE_AND_PLATE: {
             // A shaped piece (U, PQ...) closed by a flat plate. MAS has a PLATE element type for
             // exactly this, so the shaped half stays a HALF_SET and the closing plate is emitted as
@@ -1435,6 +1453,19 @@ void Core::process_data() {
             break;
         }
 
+        case CoreType::OPEN_SHAPE:
+            // One piece, nothing doubled. The winding window is the drum's groove (a rectangular
+            // window around the post), already set by the piece. The partial effective parameters
+            // describe the FERRITE INTERNAL PATH only — magnetizing inductance for open shapes
+            // routes through the open-core model in MagnetizingInductance.cpp (ABT #331).
+            processedDescription.set_columns(coreColumns);
+            processedDescription.set_effective_parameters(coreEffectiveParameters);
+            processedDescription.get_mutable_winding_windows().push_back(corePiece->get_winding_window());
+            processedDescription.set_depth(corePiece->get_depth());
+            processedDescription.set_height(corePiece->get_height());
+            processedDescription.set_width(corePiece->get_width());
+            break;
+
         case CoreType::TWO_PIECE_SET:
             for (auto& column : coreColumns) {
                 column.set_height(2 * column.get_height());
@@ -2058,6 +2089,9 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
     else if (coreShape.get_family() == CoreShapeFamily::UI || coreShape.get_family() == CoreShapeFamily::PQI) {
         // A shaped piece closed by a flat I plate, not by a mirrored half (ABT #274/#275).
         core.set_type(CoreType::PIECE_AND_PLATE);
+    }
+    else if (coreShape.get_family() == CoreShapeFamily::DRUM) {
+        core.set_type(CoreType::OPEN_SHAPE);
     }
     else {
         core.set_type(CoreType::TWO_PIECE_SET);

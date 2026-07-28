@@ -4,6 +4,7 @@
 #include "physical_models/ReluctanceNetwork.h"
 #include "physical_models/MagneticField.h"
 #include "physical_models/Reluctance.h"
+#include "physical_models/InitialPermeability.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 
@@ -43,7 +44,99 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 }
 
 
+
+// ===================== Open-core (drum / rod) magnetizing inductance, ABT #331 =====================
+// An open shape's magnetic circuit closes through the surrounding air, so the closed-circuit
+// reluctance path (le/Ae of a closed core) does not apply — no closed le exists. The literature
+// model is the demagnetising-factor effective permeability (Bozorth, "Ferromagnetism", 1945;
+// cylinder refinements in Chen/Brug/Goldfarb, IEEE Trans. Magn. 27 (1991) 3601):
+//
+//     mu_rod = mu_i / (1 + N_d (mu_i - 1)),   N_d = axial factor of the equivalent spheroid.
+//
+// For a DRUM (post + two flanges) no exact closed form exists, so the estimate is the log-midpoint
+// of two PHYSICAL BOUNDS:
+//   upper: the flange-envelope spheroid (treats the whole drum as solid ferrite of flange
+//          diameter) — measured bias +14% on the validation set;
+//   lower: series reluctance of the envelope air return plus the ferrite post — bias -12%.
+// The midpoint validates at mean 5.4% / max 9.9% against the published AL of the four Fair-Rite
+// bobbins whose dimension mapping is weight-verified (9643001015: 38 nH, 9677282509: 95 nH,
+// 9677182209: 65 nH, 9677282009: 100 nH) — see the pinned test. A key property this reproduces:
+// AL is nearly material-independent (Fair-Rite publishes the SAME AL for 43 (mu_i 800) and 77
+// (mu_i 2000) variants of one geometry) because for mu_i >> 1/N_d the result saturates at the
+// geometry-set limit ~1/N_d.
+static double open_core_axial_demagnetizing_factor(double aspectLengthOverDiameter) {
+    double m = aspectLengthOverDiameter;
+    if (fabs(m - 1) < 1e-4) {
+        return 1.0 / 3;
+    }
+    if (m > 1) {
+        double s = sqrt(m * m - 1);
+        return (1 / (m * m - 1)) * ((m / s) * log(m + s) - 1);
+    }
+    double s = sqrt(1 - m * m);
+    return (1 / (1 - m * m)) * (1 - m * acos(m) / s);
+}
+
+double MagnetizingInductance::calculate_open_core_magnetizing_inductance(Core core, double numberTurns, double temperature) {
+    auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+    for (auto required : {"A", "B", "C", "D", "E", "F"}) {
+        if (dimensions.find(required) == dimensions.end()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                std::string("Open-core (drum) shape is missing dimension ") + required);
+        }
+    }
+    // Only REAL gaps are rejected: process_gap() distributes residual bookkeeping entries onto
+    // the columns of every non-toroidal core, drums included, so emptiness is not the test.
+    for (auto& gap : core.get_functional_description().get_gapping()) {
+        if (gap.get_type() != GapType::RESIDUAL && gap.get_length() > 1e-6) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "An open-circuit (drum) core cannot be gapped: its return path is already air");
+        }
+    }
+    double flangeDiameter = dimensions["A"];
+    double height = dimensions["B"];
+    double postDiameter = dimensions["C"];
+    double bore = (dimensions.find("H") != dimensions.end()) ? dimensions["H"] : 0.0;
+    double grooveHeight = dimensions["E"];
+    double initialPermeability = InitialPermeability::get_initial_permeability(core.resolve_material(), temperature);
+
+    double vacuumPermeability = Constants().vacuumPermeability;
+    double demagnetizingFactor = open_core_axial_demagnetizing_factor(height / flangeDiameter);
+    double envelopeArea = std::numbers::pi / 4 * pow(flangeDiameter, 2);
+    double postArea = std::numbers::pi / 4 * (pow(postDiameter, 2) - pow(bore, 2));
+    double rodPermeability = initialPermeability / (1 + demagnetizingFactor * (initialPermeability - 1));
+
+    double upperBound = vacuumPermeability * rodPermeability * envelopeArea / grooveHeight * pow(numberTurns, 2);
+    double airReluctance = demagnetizingFactor * height / (vacuumPermeability * envelopeArea);
+    double ferriteReluctance = height / (vacuumPermeability * initialPermeability * postArea);
+    double lowerBound = pow(numberTurns, 2) / (airReluctance + ferriteReluctance);
+
+    return sqrt(upperBound * lowerBound);
+}
+
 std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(Core core, Coil coil, OperatingPoint* operatingPoint) {
+
+    // Open shapes (drums, rods): route to the open-core model — the closed-circuit reluctance
+    // machinery below would silently drop the dominant air-return reluctance (ABT #331).
+    if (core.get_shape_family() == CoreShapeFamily::DRUM) {
+        double openCoreTemperature = operatingPoint ? operatingPoint->get_conditions().get_ambient_temperature()
+                                                    : Defaults().ambientTemperature;
+        double numberTurnsOpenCore = coil.get_functional_description()[0].get_number_turns();
+        double openCoreInductance = calculate_open_core_magnetizing_inductance(core, numberTurnsOpenCore, openCoreTemperature);
+        MagnetizingInductanceOutput openCoreOutput;
+        DimensionWithTolerance openCoreWithTolerance;
+        openCoreWithTolerance.set_nominal(openCoreInductance);
+        // Documented model envelope from the Fair-Rite validation set (max 9.9%).
+        openCoreWithTolerance.set_minimum(openCoreInductance * 0.88);
+        openCoreWithTolerance.set_maximum(openCoreInductance * 1.12);
+        openCoreOutput.set_magnetizing_inductance(openCoreWithTolerance);
+        openCoreOutput.set_method_used("OpenCoreDemagnetizingFactor");
+        openCoreOutput.set_origin(ResultOrigin::SIMULATION);
+        std::pair<MagnetizingInductanceOutput, SignalDescriptor> openCoreResult;
+        openCoreResult.first = openCoreOutput;
+        return openCoreResult;
+    }
+
 
     double frequency = Defaults().coreAdviserFrequencyReference;
     double temperature = Defaults().ambientTemperature;

@@ -1148,3 +1148,55 @@ namespace {
     }
 
 }  // namespace
+
+// ABT #331: open-core (drum) magnetizing inductance, validated against PUBLISHED vendor data
+// rather than another MKF result. Fair-Rite sells bare drum cores ("bobbins") with AL printed on
+// every part page; the four parts below are the ones whose dimension-letter mapping was
+// WEIGHT-VERIFIED (computed volume x material density reproduces the listed grams to 3-4%).
+//
+// The model is the demagnetising-factor bracket (see MagnetizingInductance.cpp): upper bound =
+// flange-envelope spheroid, lower bound = envelope air return in series with the ferrite post,
+// estimate = log-midpoint. Measured envelope on this exact set: mean 5.4%, max 9.9%. The 12%
+// tolerance below is that envelope plus margin; if this test starts failing the MODEL drifted,
+// so investigate rather than widen.
+//
+// Note the physics this pins: Fair-Rite publishes the SAME AL for 43-material (mu_i 800) and
+// 77-material (mu_i 2000) variants of one geometry, because an open core's inductance saturates
+// at the geometry-set limit ~1/N_d. The model must reproduce that material-insensitivity.
+TEST_CASE("Test_Open_Core_Drum_Inductance_Matches_FairRite_AL", "[physical-model][magnetizing-inductance][drum][open-core]") {
+    settings.reset();
+    clear_databases();
+
+    struct Reference {
+        std::string shapeName;
+        std::string materialName;
+        double testCoilTurns;
+        double publishedAlNanoHenry;   // Fair-Rite part page, 1 kHz < 10 gauss
+    };
+    std::vector<Reference> references = {
+        {"Bobbin 9643001015", "43", 75, 38.0},
+        {"Bobbin 9677282509", "77", 55, 95.0},
+        {"Bobbin 9677182209", "77", 95, 65.0},
+        {"Bobbin 9677282009", "77", 40, 100.0},
+    };
+
+    for (const auto& reference : references) {
+        auto core = OpenMagneticsTesting::get_quick_core(reference.shapeName, json::array(), 1, reference.materialName);
+        REQUIRE(core.get_functional_description().get_type() == CoreType::OPEN_SHAPE);
+
+        double inductance = MagnetizingInductance::calculate_open_core_magnetizing_inductance(
+            core, reference.testCoilTurns, 25);
+        double publishedInductance = reference.publishedAlNanoHenry * 1e-9 * pow(reference.testCoilTurns, 2);
+        UNSCOPED_INFO(reference.shapeName << ": model " << inductance * 1e6 << " uH vs published "
+                      << publishedInductance * 1e6 << " uH ("
+                      << (inductance - publishedInductance) / publishedInductance * 100 << "%)");
+        CHECK_THAT(inductance, Catch::Matchers::WithinRel(publishedInductance, 0.12));
+    }
+
+    // Gapping an open core is meaningless and must throw, not silently compute.
+    auto gapped = json::array();
+    gapped.push_back(json{{"type", "additive"}, {"length", 0.0005}});
+    auto gappedCore = OpenMagneticsTesting::get_quick_core("Bobbin 9643001015", gapped, 1, "43");
+    CHECK_THROWS(MagnetizingInductance::calculate_open_core_magnetizing_inductance(gappedCore, 10, 25));
+    settings.reset();
+}

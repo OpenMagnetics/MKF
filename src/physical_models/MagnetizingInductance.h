@@ -79,6 +79,11 @@ class MagnetizingInductance {
                                                    double targetMagneticFluxDensity,
                                                    double magnetizingCurrentPeak);
 
+    // Open-core (drum/rod) magnetizing inductance via the demagnetising-factor bracket model
+    // (ABT #331); routed automatically for CoreShapeFamily::DRUM. Throws on gapped cores and on
+    // missing drum dimensions.
+    static double calculate_open_core_magnetizing_inductance(Core core, double numberTurns, double temperature);
+
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
         Core core,
         Coil coil,

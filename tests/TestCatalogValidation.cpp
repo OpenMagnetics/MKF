@@ -63,7 +63,8 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     // classes and load normally, so the expectation flips to the assertions below.
     // Declared in CoreShapeFamily but with no CorePiece geometry: these must stay unsupported
     // so load_core_shapes keeps skipping them instead of half-building a core.
-    for (auto family : {CoreShapeFamily::DRUM, CoreShapeFamily::ROD, CoreShapeFamily::BLOCK,
+    // DRUM moved off this list (ABT #331): it has a geometry class and an open-core model.
+    for (auto family : {CoreShapeFamily::ROD, CoreShapeFamily::BLOCK,
                         CoreShapeFamily::EI, CoreShapeFamily::H}) {
         REQUIRE_FALSE(CorePiece::is_family_supported(family));
     }
@@ -71,6 +72,11 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     // UI is now supported (ABT #274, user-approved) and its shapes must resolve.
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::UI));
     CHECK_NOTHROW(find_core_shape_by_name(std::string("UI 93/76/20")));
+
+    // DRUM is supported as an OPEN shape (ABT #331): its records must load.
+    REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::DRUM));
+    CHECK_NOTHROW(find_core_shape_by_name(std::string("DRH-14X20-4C")));
+    CHECK_NOTHROW(find_core_shape_by_name(std::string("Bobbin 9643001015")));
 
     // PQI is supported too (ABT #275): the PQ clause of IEC 60205 covers the plate case, and the
     // geometry validates against TDK's published planar data to 0.3%.

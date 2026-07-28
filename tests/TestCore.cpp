@@ -2135,3 +2135,29 @@ TEST_CASE("Toroid_Coating_Relative_Permittivity", "[constructive-model][core][co
 }
 
 }  // namespace
+
+namespace TestDrumCore {
+    // ABT #331: drum (open-shape) core geometry. The winding window is the groove between the
+    // flanges, the single column is the post with the bore subtracted, and nothing is doubled.
+    TEST_CASE("Test_Drum_Core_Geometry", "[core][drum][open-core]") {
+        settings.reset();
+        clear_databases();
+        auto core = OpenMagneticsTesting::get_quick_core("DRH-14X20-4C", json::array(), 1, "Dummy");
+        REQUIRE(core.get_functional_description().get_type() == CoreType::OPEN_SHAPE);
+        auto processed = core.get_processed_description().value();
+
+        auto windingWindow = processed.get_winding_windows()[0];
+        // groove: width (A-C)/2 = (14-9)/2 = 2.5 mm, height E = 12.5 mm
+        CHECK_THAT(windingWindow.get_width().value(), Catch::Matchers::WithinRel(0.0025, 1e-6));
+        CHECK_THAT(windingWindow.get_height().value(), Catch::Matchers::WithinRel(0.0125, 1e-6));
+
+        auto columns = processed.get_columns();
+        REQUIRE(columns.size() == 1);
+        // post area pi/4 (C^2 - H^2) = pi/4 (9^2 - 3.2^2) mm^2
+        double expectedArea = std::numbers::pi / 4 * (pow(0.009, 2) - pow(0.0032, 2));
+        CHECK_THAT(columns[0].get_area(), Catch::Matchers::WithinRel(expectedArea, 0.01));
+        // height NOT doubled: single piece
+        CHECK_THAT(processed.get_height(), Catch::Matchers::WithinRel(0.020, 1e-6));
+        settings.reset();
+    }
+}

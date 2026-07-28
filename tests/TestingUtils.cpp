@@ -250,6 +250,10 @@ Core get_quick_core(std::string shapeName,
     else if (shapeName.rfind("UI ", 0) == 0 || shapeName.rfind("PQI ", 0) == 0) {
         coreType = "pieceAndPlate";
     }
+    else if (shapeName.rfind("DRH", 0) == 0 || shapeName.rfind("Bobbin ", 0) == 0) {
+        // Drum cores (ABT #331): open magnetic circuit, single piece.
+        coreType = "openShape";
+    }
     else {
         coreType = "twoPieceSet";
     }

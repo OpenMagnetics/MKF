@@ -1983,6 +1983,94 @@ class CorePieceUi : public CorePieceU {
     }
 };
 
+
+// DRUM (bobbin / dumbbell) core: a round centre post between two flange discs, wound in the
+// groove; the magnetic circuit CLOSES THROUGH THE SURROUNDING AIR (magneticCircuit = open,
+// CoreType::OPEN_SHAPE). Dimension convention (defined with the MAS records, ABT #331):
+//   A flange OD, B total height, C post OD, D top flange thickness, E winding groove height,
+//   F bottom flange thickness, H bore (optional). Every catalogued row satisfies D+E+F == B.
+// Sources: TDG DRH datasheet (letter key printed in TDG's ordering system) and Fair-Rite
+// bobbins whose letter mapping was weight-verified (volume x density == listed grams).
+//
+// IMPORTANT: get_shape_constants below describes the FERRITE INTERNAL PATH ONLY (post +
+// two spreading flanges + corners, IEC 60205 general method). It is honest as the piece's
+// partial parameters — but it is NOT a closed magnetic circuit, and feeding it to the
+// closed-circuit reluctance path would silently drop the dominant air-return reluctance.
+// Open-core magnetizing inductance goes through the dedicated model in
+// MagnetizingInductance.cpp (demagnetising-factor bracket, validated against published
+// Fair-Rite AL), which routes on CoreShapeFamily::DRUM.
+class CorePieceDrum : public CorePiece {
+  public:
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["A"]);
+    }
+
+    void process_winding_window() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        WindingWindowElement windingWindow;
+        windingWindow.set_height(dimensions["E"]);
+        windingWindow.set_width((dimensions["A"] - dimensions["C"]) / 2);
+        windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
+        // ABT #107 convention: coordinates[0] = window CENTRE (post edge + half width).
+        windingWindow.set_coordinates(std::vector<double>({dimensions["C"] / 2 + (dimensions["A"] - dimensions["C"]) / 4, 0}));
+        set_winding_window(windingWindow);
+    }
+
+    void process_columns() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double bore = (dimensions.find("H") != dimensions.end()) ? dimensions["H"] : 0.0;
+        std::vector<ColumnElement> windingWindows;
+        ColumnElement mainColumn;
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
+        mainColumn.set_width(roundFloat(dimensions["C"]));
+        mainColumn.set_depth(roundFloat(dimensions["C"]));
+        mainColumn.set_height(roundFloat(dimensions["E"]));
+        // Bore subtracted: the mounting hole carries no flux.
+        mainColumn.set_area(roundFloat(std::numbers::pi / 4 * (pow(dimensions["C"], 2) - pow(bore, 2))));
+        mainColumn.set_coordinates({0, 0, 0});
+        windingWindows.push_back(mainColumn);
+        set_columns(windingWindows);
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double pi = std::numbers::pi;
+        double flangeRadius = dimensions["A"] / 2;
+        double postRadius = dimensions["C"] / 2;
+        double boreRadius = (dimensions.find("H") != dimensions.end()) ? dimensions["H"] / 2 : 0.0;
+        double grooveHeight = dimensions["E"];
+
+        double postArea = pi * (pow(postRadius, 2) - pow(boreRadius, 2));
+        std::vector<double> areas;
+        areas.push_back(postArea);
+        double c1 = grooveHeight / postArea;
+        double c2 = grooveHeight / pow(postArea, 2);
+        // Two flanges: radial spreading discs from post edge to flange edge, plus the
+        // post-to-flange corners per IEC 60205 clause 4.6.
+        for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
+            c1 += 1.0 / (2 * pi * flangeThickness) * log(flangeRadius / postRadius);
+            c2 += 1.0 / (2 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
+            areas.push_back(2 * pi * postRadius * flangeThickness);
+            double s1 = postRadius - sqrt((pow(boreRadius, 2) + pow(postRadius, 2)) / 2);
+            double cornerLength = pi / 4 * (2 * s1 + flangeThickness);
+            double cornerArea = 0.5 * (postArea + 2 * pi * postRadius * flangeThickness);
+            areas.push_back(cornerArea);
+            c1 += cornerLength / cornerArea;
+            c2 += cornerLength / pow(cornerArea, 2);
+        }
+        return {c1, c2, *min_element(areas.begin(), areas.end())};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        return {pow(c1, 2) / c2, c1 / c2, minimumArea};
+    }
+};
+
 // PQI: a PQ half closed by a flat I plate.
 //
 // IEC 60205:2016 DOES cover this case, contrary to a first reading of its clause titles. Every
@@ -2125,6 +2213,7 @@ bool CorePiece::is_family_supported(CoreShapeFamily family) {
         case CoreShapeFamily::C:
         case CoreShapeFamily::EER:
         case CoreShapeFamily::UI:
+        case CoreShapeFamily::DRUM:
         case CoreShapeFamily::PQI:
         case CoreShapeFamily::EF:
         case CoreShapeFamily::EPC:
@@ -2315,6 +2404,12 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     }
     else if (family == CoreShapeFamily::UI) {
         auto piece = std::make_shared<CorePieceUi>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::DRUM) {
+        auto piece = std::make_shared<CorePieceDrum>();
         piece->set_shape(shape);
         if (process) piece->process();
         return piece;

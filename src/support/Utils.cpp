@@ -1258,7 +1258,7 @@ CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter, s
         // (ABT #274/#275): these feed core SELECTION, and MAS holds 0 cores for either family, so
         // returning one yields a shape no core can be built from. Revisit when cores are added.
         if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
-            && shape.get_family() != CoreShapeFamily::UI) {
+            && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::DRUM) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1303,7 +1303,7 @@ CoreShape find_core_shape_by_area_product(double desiredAreaProduct, std::option
         // returning one yields a shape no core can be built from. Letting UI in re-pointed
         // Test_Find_By_Perimeter away from UR 46/21/11. Revisit when UI cores are added.
         if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
-            && shape.get_family() != CoreShapeFamily::UI) {
+            && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::DRUM) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1345,7 +1345,7 @@ CoreShape find_core_shape_by_winding_window_area(double desiredWindingWindowArea
         // returning one yields a shape no core can be built from. Letting UI in re-pointed
         // Test_Find_By_Perimeter away from UR 46/21/11. Revisit when UI cores are added.
         if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
-            && shape.get_family() != CoreShapeFamily::UI) {
+            && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::DRUM) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1397,7 +1397,7 @@ CoreShape find_core_shape_by_winding_window_dimensions(double desiredWidthOrRadi
         // returning one yields a shape no core can be built from. Letting UI in re-pointed
         // Test_Find_By_Perimeter away from UR 46/21/11. Revisit when UI cores are added.
         if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
-            && shape.get_family() != CoreShapeFamily::UI) {
+            && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::DRUM) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1442,7 +1442,7 @@ CoreShape find_core_shape_by_effective_parameters(double desiredEffectiveLength,
         // returning one yields a shape no core can be built from. Letting UI in re-pointed
         // Test_Find_By_Perimeter away from UR 46/21/11. Revisit when UI cores are added.
         if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
-            && shape.get_family() != CoreShapeFamily::UI) {
+            && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::DRUM) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -2522,6 +2522,11 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
         magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::TOROIDAL);
         shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
         magnetic.get_mutable_core().get_mutable_functional_description().get_mutable_gapping().clear();
+    }
+    else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM) {
+        // Open-circuit single piece (ABT #331): honest type, and gapping is meaningless.
+        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::OPEN_SHAPE);
+        shape.set_magnetic_circuit(MagneticCircuit::OPEN);
     }
     else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UI ||
              magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::PQI) {
