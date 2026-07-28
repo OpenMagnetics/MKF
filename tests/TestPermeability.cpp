@@ -40,6 +40,41 @@ namespace {
         }
     }
 
+    TEST_CASE("Test_Initial_Permeability_Single_Point_Curve", "[physical-model][initial-permeability][smoke-test]") {
+        // ABT #339: a curve with no dependency axis (a single point, or points
+        // all at one temperature with no frequency / DC-bias sweep) must read
+        // back the measured value, not the in-band seed of 1.
+        InitialPermeability initialPermeability;
+        CoreMaterial coreMaterial;
+        coreMaterial.set_name("ABT339 single point");
+        PermeabilityPoint point;
+        point.set_value(2200);
+        point.set_temperature(25);
+        Permeabilities permeability;
+        permeability.set_initial(std::vector<PermeabilityPoint>{point});
+        coreMaterial.set_permeability(permeability);
+        REQUIRE(initialPermeability.get_initial_permeability(coreMaterial) == 2200);
+        REQUIRE(initialPermeability.get_initial_permeability(coreMaterial, 25.0, std::nullopt, std::nullopt) == 2200);
+
+        // Several points at ONE temperature: still no temperature axis; the
+        // reference is the first point closest to ambient.
+        PermeabilityPoint secondPoint;
+        secondPoint.set_value(2400);
+        secondPoint.set_temperature(25);
+        Permeabilities multiPermeability;
+        multiPermeability.set_initial(std::vector<PermeabilityPoint>{point, secondPoint});
+        coreMaterial.set_name("ABT339 single temperature");
+        coreMaterial.set_permeability(multiPermeability);
+        REQUIRE(initialPermeability.get_initial_permeability(coreMaterial) == 2200);
+
+        // An empty list is missing data and must throw, not return 1.
+        Permeabilities emptyPermeability;
+        emptyPermeability.set_initial(std::vector<PermeabilityPoint>{});
+        coreMaterial.set_name("ABT339 empty");
+        coreMaterial.set_permeability(emptyPermeability);
+        REQUIRE_THROWS(initialPermeability.get_initial_permeability(coreMaterial));
+    }
+
     TEST_CASE("Test_Initial_Permeability_51", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "51";

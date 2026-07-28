@@ -890,6 +890,26 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
             double minimumMagneticFieldDcBias = get_minimum_magnetic_field_dc_bias_in_permeability_points(permeabilityPoints);
             initialPermeabilityValueReference = get_initial_permeability_magnetic_field_dc_bias_dependent(coreMaterial, minimumMagneticFieldDcBias);
         }
+        else {
+            // ABT #339: no dependency axis engaged — a single point, or points
+            // all at one temperature with no frequency / DC-bias sweep. The
+            // reference must come from the measured points (closest to ambient
+            // temperature; points without a temperature count as ambient) —
+            // leaving the seed value of 1 shipped mu_i = 1 as silent physics.
+            auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
+            if (permeabilityPoints.empty()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Initial permeability list is empty for material: " + coreMaterial.get_name());
+            }
+            double closestDistance = DBL_MAX;
+            for (const auto& point : permeabilityPoints) {
+                double pointTemperature = point.get_temperature() ? point.get_temperature().value() : Defaults().ambientTemperature;
+                double distance = fabs(pointTemperature - Defaults().ambientTemperature);
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    initialPermeabilityValueReference = point.get_value();
+                }
+            }
+        }
 
         if (hasTemperatureDependency && hasTemperatureRequirement) {
             double initialPermeabilityValueTemperatureDependent = get_initial_permeability_temperature_dependent(coreMaterial, temperature.value());
