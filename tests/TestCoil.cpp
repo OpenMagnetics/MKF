@@ -11827,3 +11827,60 @@ TEST_CASE("Test_Toroidal_Terminal_Lead_Rect_Stays_Inside_Bore",
     REQUIRE(terminalLeadsChecked > 0);
     settings.reset();
 }
+
+
+// ABT #240: a terminal lead crossing a FOREIGN winding's layer used to end up exactly tangent to
+// that winding's extreme turn (measured separation 7.6e-13 um on this fixture) — the reserved band
+// was one wire deep and blocking freed exactly one slot, so the next turn began where the lead
+// ended. Same-winding turns touching is MKF's packing convention and stays legal; two DIFFERENT
+// windings touching is not, and the separation must be the mechanical insulation the coil already
+// builds between them.
+TEST_CASE("Test_Terminal_Lead_Clears_Foreign_Winding_By_Insulation",
+          "[constructive-model][coil][real-geometry]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    namespace fs = std::filesystem;
+    auto path = fs::path{std::source_location::current().file_name()}.parent_path()
+                    .append("..").append("MAS").append("examples")
+                    .append("16_coupled_inductor_e2513_dmr95.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto coil = magnetic.get_coil();
+    REQUIRE(coil.get_turns_description().has_value());
+
+    auto turns = coil.get_turns_description().value();
+    auto wires = coil.get_wires();
+    auto spaces = coil.get_connection_reserved_spaces();
+
+    // The insulation the coil placed between the two windings — the clearance contract.
+    double insulationThickness = 0;
+    for (const auto& insulationSection : coil.get_sections_by_type(ElectricalType::INSULATION)) {
+        insulationThickness = std::max(insulationThickness,
+                                       coil.get_insulation_section_thickness(insulationSection.get_name()));
+    }
+    REQUIRE(insulationThickness > 0);
+
+    size_t pairsChecked = 0;
+    for (const auto& space : spaces) {
+        if (!space.isTerminal || !space.layer.empty()) {
+            continue;  // drawn radial runs only
+        }
+        for (const auto& turn : turns) {
+            if (turn.get_winding() == space.winding) {
+                continue;  // same net: flush packing is legal
+            }
+            size_t windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+            double turnWidth = wires[windingIndex].get_maximum_outer_width();
+            double turnHeight = wires[windingIndex].get_maximum_outer_height();
+            double gapX = std::abs(turn.get_coordinates()[0] - space.coordinates[0])
+                          - (space.dimensions[0] + turnWidth) / 2;
+            double gapY = std::abs(turn.get_coordinates()[1] - space.coordinates[1])
+                          - (space.dimensions[1] + turnHeight) / 2;
+            // Clear on at least one axis, by at least the inter-winding insulation.
+            CHECK(std::max(gapX, gapY) >= insulationThickness - 1e-12);
+            pairsChecked++;
+        }
+    }
+    REQUIRE(pairsChecked > 0);
+    settings.reset();
+}

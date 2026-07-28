@@ -782,7 +782,33 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 space.layer = crossed->get_name();
                 space.coordinates = {crossed->get_coordinates()[0], edgeY};
                 space.dimensions = {wireOuterWidth, wireOuterHeight};
-                space.edgeDepth = runDepth;
+                // ABT #240: a lead crossing a layer of ANOTHER winding must clear that winding's
+                // turns by the mechanical insulation that separates the two windings — the same
+                // insulation the coil already builds between them. Without it the reserved band is
+                // exactly one wire deep, so the crossed layer's extreme turn ends up flush against
+                // the lead (measured separation 7.6e-13 um on 16_coupled_inductor_e2513_dmr95):
+                // legal for same-winding packing, where adjacent turns touch by convention, but two
+                // different windings may not touch.
+                //
+                // The clearance is NOT a margin invented here: it is the summed thickness of the
+                // insulation sections the coil placed radially between the connecting turn and the
+                // crossed layer, read back through get_insulation_section_thickness.
+                double interWindingInsulation = 0;
+                if (!crossed->get_partial_windings().empty() &&
+                    crossed->get_partial_windings()[0].get_winding() != windingName) {
+                    double crossedX = crossed->get_coordinates()[0];
+                    for (const auto& insulationSection : get_sections_by_type(ElectricalType::INSULATION)) {
+                        // Sections come back in the REAL frame; turnX/crossedX live in the virtual
+                        // frame, which is the x<->y transpose of it for contiguous layers.
+                        double insulationX = layersAreContiguous ? insulationSection.get_coordinates()[1]
+                                                                 : insulationSection.get_coordinates()[0];
+                        if (insulationX > turnX && insulationX < crossedX) {
+                            interWindingInsulation +=
+                                get_insulation_section_thickness(insulationSection.get_name());
+                        }
+                    }
+                }
+                space.edgeDepth = runDepth + interWindingInsulation;
                 spaces.push_back(space);
             }
             if (std::abs(edgeY - turnY) > wireOuterHeight / 2) {
