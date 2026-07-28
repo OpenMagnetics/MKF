@@ -9256,25 +9256,58 @@ TEST_CASE("Test_Additiona_Turns_Bug", "[constructive-model][coil][round-winding-
         turnsByLayer[turns[i].get_layer().value()].push_back(i);
     }
     
-    // Collect all additional radii
-    std::vector<double> additionalRadii;
+    // ABT #231, user-approved re-pin. This used to assert uniqueRadii.size() == 1 — every
+    // outer crossing on ONE radius. That is only reachable by SKEWING turns: placing a
+    // turn's outer crossing at a different azimuth from its own inner crossing so it can
+    // drop into a gap. That skew IS the defect #231 reported — it made outer angles run
+    // non-monotonic (26.1, 41.1, 56.0, 48.5, 63.5 against monotonic inner angles), which
+    // crosses consecutive turns' top chords in 3D.
+    //
+    // Asserted instead is the physical contract, which keeps the original bug's intent
+    // (compact where there IS room) without demanding the unphysical single radius:
+    //   (1) every outer crossing shares its own turn's azimuth;
+    //   (2) no two outer crossings are closer than one wire OD;
+    //   (3) compaction still happens — the innermost outer ring is genuinely used.
+    // On this fixture the correct answer is TWO radii: at the first outer ring one wire OD
+    // subtends 2.84 deg, and layer 1's turn at 60 deg lands exactly on a layer-0 turn while
+    // its 6.67 deg turn sits 1.22 deg from one. Those must lie on top; the 20 deg turn is
+    // 3.64 deg clear and does compact.
+    double wireOuterDiameter = coil.get_wires()[0].get_maximum_outer_height();
+
+    std::vector<std::vector<double>> outerCrossings;
     for (size_t i = 0; i < turns.size(); ++i) {
         auto addCoords = turns[i].get_additional_coordinates().value()[0];
-        double radius = sqrt(addCoords[0]*addCoords[0] + addCoords[1]*addCoords[1]);
-        additionalRadii.push_back(radius);
-    }
-    
-    // Find unique radii
-    std::set<double> uniqueRadii;
-    for (auto r : additionalRadii) {
-        // Round to 0.1mm precision
-        uniqueRadii.insert(round(r * 10000) / 10000);
+        // (1) same azimuth as its own inner crossing
+        double innerAngle = atan2(turns[i].get_coordinates()[1], turns[i].get_coordinates()[0]);
+        double outerAngle = atan2(addCoords[1], addCoords[0]);
+        CHECK_THAT(outerAngle, Catch::Matchers::WithinAbs(innerAngle, 1e-9));
+        outerCrossings.push_back({addCoords[0], addCoords[1]});
     }
 
-    // The bug was that additional turns from layer 1 were placed at a different radius
-    // than turns from layer 0, even though there was space in the first additional layer.
-    // After the fix, all additional turns should be at the same radius (compacted).
-    REQUIRE(uniqueRadii.size() == 1);
+    // (2) mutual clearance of at least one wire OD
+    for (size_t i = 0; i < outerCrossings.size(); ++i) {
+        for (size_t j = i + 1; j < outerCrossings.size(); ++j) {
+            double separation = hypot(outerCrossings[i][0] - outerCrossings[j][0],
+                                      outerCrossings[i][1] - outerCrossings[j][1]);
+            CHECK(separation >= wireOuterDiameter - 1e-9);
+        }
+    }
+
+    // (3) the innermost outer ring is actually used by more than one layer's turns — i.e.
+    // crossings compact into the gaps rather than every later ring stacking wholesale.
+    std::set<double> uniqueRadii;
+    for (const auto& crossing : outerCrossings) {
+        uniqueRadii.insert(round(hypot(crossing[0], crossing[1]) * 10000) / 10000);
+    }
+    double innermostOuterRadius = *uniqueRadii.begin();
+    std::set<std::string> layersOnInnermostRing;
+    for (size_t i = 0; i < turns.size(); ++i) {
+        if (round(hypot(outerCrossings[i][0], outerCrossings[i][1]) * 10000) / 10000
+                == innermostOuterRadius) {
+            layersOnInnermostRing.insert(turns[i].get_layer().value());
+        }
+    }
+    CHECK(layersOnInnermostRing.size() > 1);
 
     if (plot) {
         auto outFile = outputFilePath;
@@ -11882,5 +11915,66 @@ TEST_CASE("Test_Terminal_Lead_Clears_Foreign_Winding_By_Insulation",
         }
     }
     REQUIRE(pairsChecked > 0);
+    settings.reset();
+}
+
+
+// ABT #231: the companion to Test_Additiona_Turns_Bug, which only exercises the case where the
+// outer face has SPARE room (T 20/10/7, 60t of 0.509 mm — 62.8 mm of outer circumference for
+// 30.5 mm of wire). This fixture fills it: T 40/24/16 has 125.7 mm of outer circumference and
+// 65 turns of 2.00 mm OD need 130 mm, so the first outer ring physically cannot hold them all
+// and some crossings MUST stack outward. Both branches of the placement rule are then covered.
+TEST_CASE("Test_Toroidal_Outer_Crossings_Stack_When_Outer_Face_Is_Full",
+          "[constructive-model][coil][toroid][round-winding-window]") {
+    clear_databases();
+    settings.reset();
+    settings.set_use_toroidal_cores(true);
+    settings.set_coil_include_additional_coordinates(true);
+
+    std::vector<int64_t> numberTurns = {65};
+    std::vector<int64_t> numberParallels = {1};
+    std::vector<OpenMagnetics::Wire> wires;
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_diameter(0.0018);
+    wire.set_nominal_value_outer_diameter(0.002);
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    wire.set_type(WireType::ROUND);
+    wires.push_back(wire);
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "T 40/24/16", 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::SPREAD, CoilAlignment::SPREAD, wires);
+
+    auto turns = coil.get_turns_description().value();
+    REQUIRE(turns.size() == 65);
+    double wireOuterDiameter = coil.get_wires()[0].get_maximum_outer_height();
+
+    std::vector<std::vector<double>> outerCrossings;
+    for (const auto& turn : turns) {
+        REQUIRE(turn.get_additional_coordinates());
+        auto addCoords = turn.get_additional_coordinates().value()[0];
+        // Same azimuth as its own inner crossing — a turn wraps the core at one angle.
+        double innerAngle = atan2(turn.get_coordinates()[1], turn.get_coordinates()[0]);
+        double outerAngle = atan2(addCoords[1], addCoords[0]);
+        CHECK_THAT(outerAngle, Catch::Matchers::WithinAbs(innerAngle, 1e-9));
+        outerCrossings.push_back({addCoords[0], addCoords[1]});
+    }
+
+    // No two outer crossings closer than one wire OD, even though the face is over-subscribed.
+    for (size_t i = 0; i < outerCrossings.size(); ++i) {
+        for (size_t j = i + 1; j < outerCrossings.size(); ++j) {
+            double separation = hypot(outerCrossings[i][0] - outerCrossings[j][0],
+                                      outerCrossings[i][1] - outerCrossings[j][1]);
+            CHECK(separation >= wireOuterDiameter - 1e-9);
+        }
+    }
+
+    // The face is genuinely over-subscribed, so more than one outer ring must be in use.
+    std::set<double> uniqueRadii;
+    for (const auto& crossing : outerCrossings) {
+        uniqueRadii.insert(round(hypot(crossing[0], crossing[1]) * 10000) / 10000);
+    }
+    CHECK(uniqueRadii.size() > 1);
     settings.reset();
 }
