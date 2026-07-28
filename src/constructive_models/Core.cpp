@@ -81,7 +81,7 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
     if (shapeFamily == CoreShapeFamily::T) {
         get_mutable_functional_description().set_type(CoreType::TOROIDAL);
     }
-    else if (shapeFamily == CoreShapeFamily::UI) {
+    else if (shapeFamily == CoreShapeFamily::UI || shapeFamily == CoreShapeFamily::PQI) {
         get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
     }
     else {
@@ -2027,7 +2027,7 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
     else if (coreShape.get_family() == CoreShapeFamily::UT) {
         core.set_type(CoreType::TWO_PIECE_SET); // FIX L-3: UT cores are U-type assembled, not toroidal
     }
-    else if (coreShape.get_family() == CoreShapeFamily::UI) {
+    else if (coreShape.get_family() == CoreShapeFamily::UI || coreShape.get_family() == CoreShapeFamily::PQI) {
         // A shaped piece closed by a flat I plate, not by a mirrored half (ABT #274/#275).
         core.set_type(CoreType::PIECE_AND_PLATE);
     }

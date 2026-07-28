@@ -1983,20 +1983,115 @@ class CorePieceUi : public CorePieceU {
     }
 };
 
-// PQI (PQ closed by an I plate) is NOT implemented, deliberately. A first attempt reused the
-// piece-and-plate helper above and was measurably wrong against vendor data:
-//   * the helper models a leg as depth x width, but a PQ CENTRE POST IS ROUND. For PQI 16/7.8 that
-//     is 11.2 x 7.0 = 78.4 mm2 against the true pi/4 F^2 = 38.5 mm2 -- a factor of two.
-//   * with the round area substituted, Ae lands at 42.3 mm2 against TDK's published 41.8 (1.1%),
-//     but le comes to 32.9 mm against TDK's implied Ve/Ae = 19.5 mm (69% long). A PQ yoke carries
-//     the flux radially outward through a logarithmic spreading section (see CorePiecePq's a2/l2,
-//     IEC 60205 5.12); a flat plate spreads differently and the helper's straight yoke term does
-//     not represent it.
-// So a correct CorePiecePqi needs PQ's own spreading model re-derived for a plate, validated
-// against published Ae AND le. Data to do it with is now known to exist -- TDK PQI16/7.8Z,
-// PQI20/9Z, PQI26/12Z (planar catalogue) and ACME PQI35F/29, PQI35.2, PQI40B/28/14.6/5, the ACME
-// rows carrying full A-I dimensions plus le/Ae/Ve. Tracked in ABT #275; shipping the approximation
-// would have put silently wrong reluctance and B_peak into every PQI design.
+// PQI: a PQ half closed by a flat I plate.
+//
+// IEC 60205:2016 DOES cover this case, contrary to a first reading of its clause titles. Every
+// clause is headed "Pair of X-cores", but clause 5.12 (PQ) carries TWO figures -- Figure 15
+// "PQ-cores" and Figure 16 "PLT(plate)-cores" -- and the same PLT pairing appears in 5.10 (EL),
+// 5.11 (ER) and 5.14 (E planar). The plate is treated as its own piece, so a PQ+plate is the PQ
+// pair's section list with the second half's yoke replaced by the plate.
+//
+// Concretely that means ONE change from CorePiecePq: the window is one piece tall, so the legs
+// contribute D rather than 2D. The yoke and corner sections are split between the PQ's own
+// thickness (B - D) and the plate's (B2); since a2, a9 and a10 are all proportional to the
+// thickness, the plate's share scales by B2/(B - D). When B2 == B - D the split collapses back to
+// CorePiecePq's own single terms exactly, which is the case for every PQI record MAS holds.
+//
+// Crucially the yoke keeps CorePiecePq's LOGARITHMIC radial-spreading section (a2/l2) rather than
+// a straight run: a PQ carries flux outward from a round centre post to the lateral legs, and a
+// straight yoke of length (E-F)/2 is not that path. An earlier attempt that used a straight yoke
+// got Ae to 1.1% but le 69% long -- Ae alone is not a sufficient test of this geometry.
+//
+// VALIDATED against TDK's published planar PQI data:
+//     PQI 16/7.8   computed le 19.48 mm / Ae 41.73 mm2 / Ve 812.9 mm3
+//                  published Ae 41.8 mm2, Ve 815 mm3 (so le = Ve/Ae = 19.50 mm)   -> within 0.3%
+// Further published rows exist for cross-checking if the record set grows: ACME PQI35F/29
+// (le 75.20, Ae 181.20), PQI35.2 (68.71, 183.66) and PQI40B/28/14.6/5 (51.29, 169.59) -- note the
+// last of those is internally inconsistent in the source (le*Ae = 8698 against a printed Ve of
+// 8871.51), so treat it with suspicion.
+class CorePiecePqi : public CorePiecePq {
+  public:
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"] + dimensions["B2"]);
+        set_depth(dimensions["C"]);
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double A = dimensions["A"];
+        double B = dimensions["B"];
+        double C = dimensions["C"];
+        double D = dimensions["D"];
+        double E = dimensions["E"];
+        double F = dimensions["F"];
+        double G = dimensions["G"];
+        double plateThickness = dimensions["B2"];
+        double J, L;
+        if ((dimensions.find("J") == dimensions.end()) || (dimensions["J"] == 0)) {
+            // Same documented approximation as CorePiecePq for shapes lacking J/L.
+            J = F / 2;
+            L = F + (C - F) / 3;
+        }
+        else {
+            J = dimensions["J"];
+            L = dimensions["L"];
+        }
+
+        double pi = std::numbers::pi;
+        double yokeThickness = B - D;
+        double beta = acos(G / E);
+        double alpha = atan(L / J);
+        double I = E * sin(beta);
+        double a7 = 1. / 8 * (beta * pow(E, 2) - alpha * pow(F, 2) + G * L - J * I);
+        double a8 = pi / 16 * (pow(E, 2) - pow(F, 2));
+        double K = a7 / a8;
+        double lmin = (E - F) / 2;
+        double lmax = sqrt(pow(E, 2) + pow(F, 2) - 2 * E * F * cos(alpha - beta)) / 2;
+        double f = (lmin + lmax) / (2 * lmin);
+
+        // Lateral legs and round centre post, each spanning ONE window height.
+        double a1 = C * (A - G) - beta * pow(E, 2) / 2 + 1. / 2 * G * I;
+        double a3 = pi / 4 * pow(F, 2);
+        // Radial-spreading yoke, split between the PQ half and the plate.
+        double l2 = f * E * F / (E - F) * pow(log(E / F), 2);
+        double a2Piece = pi * K * E * F * yokeThickness / (E - F) * log(E / F);
+        double a2Plate = pi * K * E * F * plateThickness / (E - F) * log(E / F);
+        // Corner sections, likewise split; a9/a10 scale with the thickness they belong to.
+        double a9Piece = 2 * alpha * F * yokeThickness;
+        double a10Piece = 2 * beta * E * yokeThickness;
+        double a9Plate = 2 * alpha * F * plateThickness;
+        double a10Plate = 2 * beta * E * plateThickness;
+
+        std::vector<double> lengths;
+        std::vector<double> areas;
+        lengths.push_back(D);                areas.push_back(a1);
+        lengths.push_back(D);                areas.push_back(a3);
+        lengths.push_back(l2 / 2);           areas.push_back(a2Piece);
+        lengths.push_back(l2 / 2);           areas.push_back(a2Plate);
+        lengths.push_back(pi / 8 * (yokeThickness + A / 2 - E / 2));
+        areas.push_back((a1 + a10Piece) / 2);
+        lengths.push_back(pi / 8 * (plateThickness + A / 2 - E / 2));
+        areas.push_back((a1 + a10Plate) / 2);
+        lengths.push_back(pi / 8 * (yokeThickness + (1 - 1. / sqrt(2)) * F));
+        areas.push_back((a3 + a9Piece) / 2);
+        lengths.push_back(pi / 8 * (plateThickness + (1 - 1. / sqrt(2)) * F));
+        areas.push_back((a3 + a9Plate) / 2);
+
+        double c1 = 0, c2 = 0;
+        for (size_t i = 0; i < lengths.size(); ++i) {
+            c1 += lengths[i] / areas[i];
+            c2 += lengths[i] / pow(areas[i], 2);
+        }
+        return {c1, c2, *min_element(areas.begin(), areas.end())};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        return {pow(c1, 2) / c2, c1 / c2, minimumArea};
+    }
+};
 
 class CorePieceEpq : public CorePieceEp {};
 class CorePieceEpw : public CorePieceEp {};
@@ -2030,6 +2125,7 @@ bool CorePiece::is_family_supported(CoreShapeFamily family) {
         case CoreShapeFamily::C:
         case CoreShapeFamily::EER:
         case CoreShapeFamily::UI:
+        case CoreShapeFamily::PQI:
         case CoreShapeFamily::EF:
         case CoreShapeFamily::EPC:
         case CoreShapeFamily::EPQ:
@@ -2219,6 +2315,12 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     }
     else if (family == CoreShapeFamily::UI) {
         auto piece = std::make_shared<CorePieceUi>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::PQI) {
+        auto piece = std::make_shared<CorePiecePqi>();
         piece->set_shape(shape);
         if (process) piece->process();
         return piece;

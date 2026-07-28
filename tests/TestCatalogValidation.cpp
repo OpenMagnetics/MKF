@@ -72,11 +72,10 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::UI));
     CHECK_NOTHROW(find_core_shape_by_name(std::string("UI 93/76/20")));
 
-    // PQI stays UNSUPPORTED: its geometry class was withdrawn after the vendor data showed it
-    // wrong (ABT #275 — a PQ centre post is round, and the yoke uses a radial-spreading model
-    // the piece-and-plate helper does not reproduce). Its records must not load.
-    REQUIRE_FALSE(CorePiece::is_family_supported(CoreShapeFamily::PQI));
-    CHECK_THROWS_AS(find_core_shape_by_name(std::string("PQI 16/7.8")), CoreShapeNotFoundException);
+    // PQI is supported too (ABT #275): the PQ clause of IEC 60205 covers the plate case, and the
+    // geometry validates against TDK's published planar data to 0.3%.
+    REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::PQI));
+    CHECK_NOTHROW(find_core_shape_by_name(std::string("PQI 16/7.8")));
 }
 
 TEST_CASE("Test_Catalog_Impossible_Toroid_Is_Rejected", "[catalog][smoke-test]") {

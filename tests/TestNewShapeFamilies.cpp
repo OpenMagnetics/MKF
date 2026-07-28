@@ -68,8 +68,12 @@ TEST_CASE("Test_Ui_Effective_Parameters_Match_Vendor_Catalogue", "[core][shape-f
         double effectiveAreaSquareMillimetres;
     };
     // UI 93/76/16 pairs with plate I 93/28/16: catalogue le 257 mm, Ae 450 mm^2.
+    // PQI 16/7.8 from TDK's planar series: published Ae 41.8 mm^2 and Ve 815 mm^3, so the
+    // published le is Ve/Ae = 19.50 mm. (IEC 60205 clause 5.12 covers the PQ + PLT(plate)
+    // combination; the geometry keeps the PQ's logarithmic radial-spreading yoke.)
     std::vector<Reference> references = {
         {"UI 93/76/16", 257.0, 450.0},
+        {"PQI 16/7.8",   19.50,  41.8},
     };
 
     for (const auto& reference : references) {

@@ -1254,7 +1254,11 @@ CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter, s
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
+        // UI and PQI stay out of the shape-SEARCH helpers even though both now have geometry
+        // (ABT #274/#275): these feed core SELECTION, and MAS holds 0 cores for either family, so
+        // returning one yields a shape no core can be built from. Revisit when cores are added.
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
+            && shape.get_family() != CoreShapeFamily::UI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1294,7 +1298,12 @@ CoreShape find_core_shape_by_area_product(double desiredAreaProduct, std::option
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
+        // UI and PQI stay out of the shape-SEARCH helpers even though UI now has geometry
+        // (ABT #274): these feed core selection, and MAS holds 0 cores for either family, so
+        // returning one yields a shape no core can be built from. Letting UI in re-pointed
+        // Test_Find_By_Perimeter away from UR 46/21/11. Revisit when UI cores are added.
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
+            && shape.get_family() != CoreShapeFamily::UI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1331,7 +1340,12 @@ CoreShape find_core_shape_by_winding_window_area(double desiredWindingWindowArea
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
+        // UI and PQI stay out of the shape-SEARCH helpers even though UI now has geometry
+        // (ABT #274): these feed core selection, and MAS holds 0 cores for either family, so
+        // returning one yields a shape no core can be built from. Letting UI in re-pointed
+        // Test_Find_By_Perimeter away from UR 46/21/11. Revisit when UI cores are added.
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
+            && shape.get_family() != CoreShapeFamily::UI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1378,7 +1392,12 @@ CoreShape find_core_shape_by_winding_window_dimensions(double desiredWidthOrRadi
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
+        // UI and PQI stay out of the shape-SEARCH helpers even though UI now has geometry
+        // (ABT #274): these feed core selection, and MAS holds 0 cores for either family, so
+        // returning one yields a shape no core can be built from. Letting UI in re-pointed
+        // Test_Find_By_Perimeter away from UR 46/21/11. Revisit when UI cores are added.
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
+            && shape.get_family() != CoreShapeFamily::UI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -1418,7 +1437,12 @@ CoreShape find_core_shape_by_effective_parameters(double desiredEffectiveLength,
     double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
-        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI) {
+        // UI and PQI stay out of the shape-SEARCH helpers even though UI now has geometry
+        // (ABT #274): these feed core selection, and MAS holds 0 cores for either family, so
+        // returning one yields a shape no core can be built from. Letting UI in re-pointed
+        // Test_Find_By_Perimeter away from UR 46/21/11. Revisit when UI cores are added.
+        if (shape.get_family() != CoreShapeFamily::UT && shape.get_family() != CoreShapeFamily::PQI
+            && shape.get_family() != CoreShapeFamily::UI) {
             if (family) {
                 if (family.value() != shape.get_family()) {
                     continue;
@@ -2499,7 +2523,8 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
         shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
         magnetic.get_mutable_core().get_mutable_functional_description().get_mutable_gapping().clear();
     }
-    else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UI) {
+    else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UI ||
+             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::PQI) {
         // Piece-and-plate: the record already describes the whole assembly, so it is "closed" in
         // the MAS sense of having to be used by itself (ABT #274/#275).
         magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
