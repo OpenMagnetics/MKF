@@ -11776,3 +11776,54 @@ TEST_CASE("Test_Real_Geometry_Wind_Survives_Transient_Unfit", "[constructive-mod
 }
 
 }  // namespace
+
+
+// ABT #230: a toroidal terminal lead's reserved rect ran from the connecting turn's crossing
+// CENTRELINE radially out to maxTurnRadius + 1.5*wireOuterWidth. For a wall-adjacent outer ring
+// that far end lands INSIDE the core annulus (measured 12.96 mm against a 12.0 mm bore on
+// T 40/24/16 with ~0.959 mm OD wire), and MVB++ replays these rects verbatim as 3D lead routes,
+// so the overrun would place copper inside the core. The near edge was also the centreline, not
+// the wire envelope, so it disagreed with the concentric convention which spans
+// [turnX - w/2, borderX + w/2]. Guard both ends.
+TEST_CASE("Test_Toroidal_Terminal_Lead_Rect_Stays_Inside_Bore",
+          "[constructive-model][coil][toroid][real-geometry]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+
+    std::vector<int64_t> numberTurns = {12};
+    std::vector<int64_t> numberParallels = {1};
+    std::vector<OpenMagnetics::Wire> wires;
+    wires.push_back(OpenMagnetics::find_wire_by_name("Round 0.90 - Grade 1"));
+    auto coil = OpenMagnetics::Coil::create_quick_coil("T 40/24/16", numberTurns, numberParallels, wires,
+                                                       WindingOrientation::OVERLAPPING,
+                                                       WindingOrientation::OVERLAPPING,
+                                                       CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+
+    auto windingWindows = coil.resolve_bobbin().get_processed_description().value().get_winding_windows();
+    REQUIRE(!windingWindows.empty());
+    REQUIRE(windingWindows[0].get_radial_height().has_value());
+    double boreRadius = windingWindows[0].get_radial_height().value();
+    double wireOuterWidth = coil.get_wires()[0].get_maximum_outer_width();
+
+    auto spaces = coil.get_connection_reserved_spaces();
+    size_t terminalLeadsChecked = 0;
+    for (const auto& space : spaces) {
+        // The drawn radial lead runs (not the per-ring squeeze markers, which carry a layer).
+        if (!space.isTerminal || !space.layer.empty()) {
+            continue;
+        }
+        REQUIRE(space.coordinates.size() >= 2);
+        REQUIRE(space.dimensions.size() >= 2);
+        double centreRadius = std::hypot(space.coordinates[0], space.coordinates[1]);
+        double farEdge = centreRadius + space.dimensions[0] / 2;
+        // (1) the rect must not reach past the bore wall into the core annulus.
+        CHECK(farEdge <= boreRadius + 1e-9);
+        // (2) the near edge is the wire envelope: it must sit at least half a wire inward of the
+        // outermost turn it can start from, i.e. the rect is never a bare centreline-to-border span.
+        double nearEdge = centreRadius - space.dimensions[0] / 2;
+        CHECK(nearEdge < boreRadius - wireOuterWidth / 2 + 1e-9);
+        terminalLeadsChecked++;
+    }
+    REQUIRE(terminalLeadsChecked > 0);
+    settings.reset();
+}

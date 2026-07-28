@@ -451,7 +451,21 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
         double wireOuterHeight = wires[windingIndex].get_maximum_outer_height();
         int64_t numberParallels = int64_t(coil.get_number_parallels(windingIndex));
         // Terminal leads route radially out past the outermost turn to the window border.
-        double radialBorder = maxTurnRadius + 1.5 * wireOuterWidth;
+        //
+        // ABT #230: the border is CAPPED at the bore wall. maxTurnRadius + 1.5 * wireOuterWidth
+        // overshoots it whenever the outermost ring is wall-adjacent (maxTurnRadius ~ bore - wr),
+        // which put the rect's far edge up to ~2 wire ODs INSIDE the core annulus — e.g. 12.96 mm
+        // against a 12.0 mm bore on T 40/24/16 with 0.959 mm OD. MVB++ replays these rects verbatim
+        // as 3D lead routes, so the overrun would place copper inside the core.
+        double uncappedBorder = maxTurnRadius + 1.5 * wireOuterWidth;
+        double boreRadius = uncappedBorder;  // no cap available -> keep the historical border
+        {
+            auto windingWindows = coil.resolve_bobbin().get_processed_description().value().get_winding_windows();
+            if (!windingWindows.empty() && windingWindows[0].get_radial_height()) {
+                boreRadius = windingWindows[0].get_radial_height().value();
+            }
+        }
+        double radialBorder = std::min(uncappedBorder, boreRadius);
 
         auto addTerminalLead = [&](const Turn& connectingTurn, int64_t parallel) {
             auto c = connectingTurn.get_coordinates();
@@ -460,7 +474,11 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                 return;
             }
             double angle = std::atan2(c[1], c[0]);
-            double radiusMid = (radius + radialBorder) / 2;
+            // ABT #230: the NEAR edge is the wire envelope, not the crossing centreline. The
+            // concentric path already spans [turnX - w/2, borderX + w/2]; taking the centreline here
+            // reserved only half the wire at the connecting turn, so the two conventions disagreed.
+            double radiusNear = radius - wireOuterWidth / 2;
+            double radiusMid = (radiusNear + radialBorder) / 2;
             ConnectionReservedSpace lead;
             lead.isTerminal = true;
             lead.winding = windingName;
@@ -468,7 +486,7 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
             lead.section = connectingTurn.get_section().value_or("");
             lead.layer = "";
             lead.coordinates = {roundFloat(radiusMid * std::cos(angle), 9), roundFloat(radiusMid * std::sin(angle), 9)};
-            lead.dimensions = {roundFloat(radialBorder - radius, 9), wireOuterHeight};
+            lead.dimensions = {roundFloat(radialBorder - radiusNear, 9), wireOuterHeight};
             lead.rotation = roundFloat(angle * 180.0 / std::numbers::pi, 6);
             spaces.push_back(lead);
 
