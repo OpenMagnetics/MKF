@@ -145,14 +145,47 @@ namespace {
         REQUIRE("PQ 35/35" == shape.get_name().value());
     }
 
+    // ABT #334: these used to pin the RESULT NAME ("UR 46/21/11", "T 22/12.4/12.8"). Those pins
+    // captured whatever the catalogue happened to contain at the time and broke the moment MAS
+    // commit 3f8bd6f added 207 shapes, because the search then found genuinely closer matches.
+    // Re-pinning would only defer the same break to the next data batch, so what is asserted now
+    // is the PROPERTY the function actually promises: it returns the CLOSEST eligible shape.
+    // That is stable under catalogue growth and is a stronger statement than any single name.
+    // The search scans coreShapeDatabase, and get_shapes(true) returns exactly that database, so
+    // the two see the same candidate set. clear_databases() plus the toroidal/concentric settings
+    // filter it at load time, which is why no family filtering is needed here beyond the search's
+    // own exclusions.
+    static void require_closest_shape_by_perimeter(double desiredPerimeter) {
+        auto shape = find_core_shape_by_winding_window_perimeter(desiredPerimeter);
+        REQUIRE(shape.get_name());
+        double returnedError = get_error_by_winding_window_perimeter(shape, desiredPerimeter);
+
+        size_t candidatesChecked = 0;
+        for (const auto& candidate : get_shapes(true)) {
+            // Mirror the search's own exclusions: families with no cores to build from.
+            if (candidate.get_family() == CoreShapeFamily::UT
+                || candidate.get_family() == CoreShapeFamily::UI
+                || candidate.get_family() == CoreShapeFamily::PQI) {
+                continue;
+            }
+            double candidateError = get_error_by_winding_window_perimeter(candidate, desiredPerimeter);
+            if (candidateError < returnedError - 1e-12) {
+                UNSCOPED_INFO("returned " << shape.get_name().value() << " (error " << returnedError
+                              << ") but " << candidate.get_name().value_or("?")
+                              << " is closer at " << candidateError);
+            }
+            CHECK(candidateError >= returnedError - 1e-12);
+            candidatesChecked++;
+        }
+        REQUIRE(candidatesChecked > 0);
+    }
+
     TEST_CASE("Test_Find_By_Perimeter", "[support][utils][smoke-test]") {
         clear_databases();
         settings.set_use_toroidal_cores(true);
         settings.set_use_concentric_cores(true);
 
-        auto shape = find_core_shape_by_winding_window_perimeter(0.03487);
-
-        REQUIRE("UR 46/21/11" == shape.get_name().value());
+        require_closest_shape_by_perimeter(0.03487);
     }
 
     TEST_CASE("Test_Find_By_Perimeter_Only_Toroids", "[support][utils][smoke-test]") {
@@ -160,9 +193,11 @@ namespace {
         settings.set_use_toroidal_cores(true);
         settings.set_use_concentric_cores(false);
 
+        // With concentric cores disabled the answer must be a toroid, and still the closest one.
         auto shape = find_core_shape_by_winding_window_perimeter(0.03487);
-
-        REQUIRE("T 22/12.4/12.8" == shape.get_name().value());
+        REQUIRE(shape.get_name());
+        REQUIRE(shape.get_family() == CoreShapeFamily::T);
+        require_closest_shape_by_perimeter(0.03487);
     }
 
     TEST_CASE("Test_Get_Shapes", "[support][utils][smoke-test]") {
