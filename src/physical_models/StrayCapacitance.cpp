@@ -1985,38 +1985,32 @@ double capacitance_turn_to_shield(double turnDiameter, double wireRadius, double
 }
 
 double cab(double n, double ctt, double cts) {
-    // The ladder recursion (n-2 per step, base cases n==2 / n==3) only
-    // terminates for an integer n >= 2. Anything else (0-turn placeholder
-    // coils, fractional turns) used to recurse until the stack died —
-    // in WASM that killed the whole Magnetic Adviser (ABT #346).
+    // Iterative ladder (ABT #346). The former n-2 recursion with exact
+    // n==2 / n==3 base cases never terminated for n < 2 or non-integer n
+    // (0-turn placeholder coils), and legitimately-huge turn counts (open
+    // magnetic circuits needing tens of thousands of turns) exceeded the
+    // WASM call-depth budget and killed the whole Magnetic Adviser.
     if (n < 2 || n != std::floor(n)) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Stray capacitance ladder cab() needs an integer number of turns >= 2, got " + std::to_string(n));
     }
-    if (n == 2) {
-        return ctt + cts / 2;
+    bool even = std::fmod(n, 2) == 0;
+    double value = even ? (ctt + cts / 2) : (ctt / 2 + cts / 2);
+    for (double k = even ? 2 : 3; k < n; k += 2) {
+        value = (value * ctt / 2) / (value + ctt / 2) + cts / 2;
     }
-    else if (n == 3) {
-        return ctt / 2 + cts / 2;
-    }
-    else {
-        double cabValue = cab(n - 2, ctt, cts);
-        return (cabValue * ctt / 2) / (cabValue  + ctt / 2) + cts / 2;
-    }
+    return value;
 }
 
 double cas(double n, double ctt, double cts) {
-    // Same termination condition as cab(): integer n >= 1 or the n-1
-    // recursion never reaches the base case (ABT #346).
+    // Iterative ladder (ABT #346), same reasoning as cab().
     if (n < 1 || n != std::floor(n)) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Stray capacitance ladder cas() needs an integer number of turns >= 1, got " + std::to_string(n));
     }
-    if (n == 1) {
-        return cts;
+    double value = cts;
+    for (double k = 1; k < n; k += 1) {
+        value = (value * ctt) / (value + ctt) + cts;
     }
-    else {
-        double casValue = cas(n - 1, ctt, cts);
-        return (casValue * ctt) / (casValue  + ctt) + cts;
-    }
+    return value;
 }
 
 double StrayCapacitanceOneLayer::calculate_capacitance(Coil coil) {
