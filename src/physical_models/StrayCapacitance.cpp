@@ -1985,6 +1985,13 @@ double capacitance_turn_to_shield(double turnDiameter, double wireRadius, double
 }
 
 double cab(double n, double ctt, double cts) {
+    // The ladder recursion (n-2 per step, base cases n==2 / n==3) only
+    // terminates for an integer n >= 2. Anything else (0-turn placeholder
+    // coils, fractional turns) used to recurse until the stack died —
+    // in WASM that killed the whole Magnetic Adviser (ABT #346).
+    if (n < 2 || n != std::floor(n)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Stray capacitance ladder cab() needs an integer number of turns >= 2, got " + std::to_string(n));
+    }
     if (n == 2) {
         return ctt + cts / 2;
     }
@@ -1998,6 +2005,11 @@ double cab(double n, double ctt, double cts) {
 }
 
 double cas(double n, double ctt, double cts) {
+    // Same termination condition as cab(): integer n >= 1 or the n-1
+    // recursion never reaches the base case (ABT #346).
+    if (n < 1 || n != std::floor(n)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Stray capacitance ladder cas() needs an integer number of turns >= 1, got " + std::to_string(n));
+    }
     if (n == 1) {
         return cts;
     }
