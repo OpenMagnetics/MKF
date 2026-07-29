@@ -676,6 +676,11 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
         if (coreWindingWindow.get_column()) {
             windingWindowElement.set_column(coreWindingWindow.get_column());
         }
+        // Carry a windingOrder set on the core's window (U serpentine vs Z dragback) so
+        // Coil::get_winding_order finds it on the autocompleted bobbin (ABT #352).
+        if (coreWindingWindow.get_winding_order()) {
+            windingWindowElement.set_winding_order(coreWindingWindow.get_winding_order());
+        }
 
         if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
             if ((windingWindowElement.get_width().value() < 0) || (windingWindowElement.get_width().value() > 1)) {

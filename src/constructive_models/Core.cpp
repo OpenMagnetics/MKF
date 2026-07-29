@@ -1407,6 +1407,19 @@ void Core::process_data() {
     auto coreWindingWindow = corePiece->get_winding_window();
     auto coreEffectiveParameters = corePiece->get_partial_effective_parameters();
 
+    // A windingOrder on an incoming winding window is user intent (how the coil is wound in
+    // that window: U serpentine vs Z dragback), not geometry. The switch below rebuilds the
+    // windows from the core piece and would silently drop it (ABT #352) — capture per window
+    // index and re-apply after regeneration.
+    std::vector<std::optional<WindingOrder>> incomingWindingOrders;
+    auto incomingProcessedDescription = get_processed_description();
+    if (incomingProcessedDescription) {
+        auto incomingWindingWindows = incomingProcessedDescription->get_winding_windows();
+        for (const auto& windingWindow : incomingWindingWindows) {
+            incomingWindingOrders.push_back(windingWindow.get_winding_order());
+        }
+    }
+
     // Apply stacking factor for tape-wound cores (nanocrystalline and amorphous)
     // Stacking factor accounts for the space between ribbon layers in tape-wound cores
     if (coreMaterial.get_material() == MAS::MaterialType::NANOCRYSTALLINE ||
@@ -1514,6 +1527,18 @@ void Core::process_data() {
             break;
         default:
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown type of core, available options are {TOROIDAL, TWO_PIECE_SET}");
+    }
+    {
+        // Re-apply the captured winding orders (ABT #352). By index: window 0 is always the
+        // main window on both sides; per-column windows appended behind it keep their slot.
+        auto& regeneratedWindingWindows = processedDescription.get_mutable_winding_windows();
+        for (size_t windowIndex = 0;
+             windowIndex < regeneratedWindingWindows.size() && windowIndex < incomingWindingOrders.size();
+             ++windowIndex) {
+            if (incomingWindingOrders[windowIndex]) {
+                regeneratedWindingWindows[windowIndex].set_winding_order(incomingWindingOrders[windowIndex]);
+            }
+        }
     }
     set_processed_description(processedDescription);
     // Default a missing numberStacks to 1 (single core); dereferencing the optional

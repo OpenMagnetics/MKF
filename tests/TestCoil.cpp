@@ -11978,3 +11978,57 @@ TEST_CASE("Test_Toroidal_Outer_Crossings_Stack_When_Outer_Face_Is_Full",
     CHECK(uniqueRadii.size() > 1);
     settings.reset();
 }
+
+
+// ABT #352 follow-up: a windingOrder set on the CORE's winding window (the MAS core schema
+// carries it) used to be silently dropped twice — Core::process_data rebuilt the windows from
+// the piece geometry, and Bobbin::create_quick_bobbin did not copy it onto the autocompleted
+// bobbin — so the coil always fell back to the Z (dragback) default. Guard the whole chain on
+// the WE-TI drum reconstruction: the order must survive re-processing and reach the wound coil.
+TEST_CASE("Test_Core_Window_Winding_Order_Reaches_Autocompleted_Bobbin",
+          "[constructive-model][coil][drum]") {
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(),
+                                                         "we_ti_7447720470_reconstructed.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto masJson = json::parse(file);
+
+    OpenMagnetics::Core core(masJson["magnetic"]["core"]);
+    core.process_data();
+
+    // Simulate a MAS file whose CORE window carries the order (the fixture keeps its own copy
+    // on the bobbin; here the coil gets a quick bobbin instead, so the core is the only source).
+    auto processedDescription = core.get_processed_description().value();
+    processedDescription.get_mutable_winding_windows()[0].set_winding_order(MAS::WindingOrder::U);
+    core.set_processed_description(processedDescription);
+
+    // (1) The order survives a re-run of process_data, which regenerates the winding windows.
+    core.process_data();
+    auto reprocessedWindows = core.get_processed_description().value().get_winding_windows();
+    REQUIRE(!reprocessedWindows.empty());
+    REQUIRE(reprocessedWindows[0].get_winding_order().has_value());
+    CHECK(reprocessedWindows[0].get_winding_order().value() == MAS::WindingOrder::U);
+
+    // (2) create_quick_bobbin carries it onto the autocompleted bobbin, where
+    //     Coil::get_winding_order picks it up for every section of the wind.
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    auto coilJson = masJson["magnetic"]["coil"];
+    coilJson["bobbin"] = "Dummy";
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+
+    auto bobbin = completed.get_mutable_coil().resolve_bobbin();
+    auto bobbinWindows = bobbin.get_processed_description().value().get_winding_windows();
+    REQUIRE(!bobbinWindows.empty());
+    REQUIRE(bobbinWindows[0].get_winding_order().has_value());
+    CHECK(bobbinWindows[0].get_winding_order().value() == MAS::WindingOrder::U);
+
+    auto sectionsDescription = completed.get_coil().get_sections_description();
+    REQUIRE(sectionsDescription.has_value());
+    auto sections = sectionsDescription.value();
+    REQUIRE(!sections.empty());
+    CHECK(completed.get_coil().get_winding_order(sections[0].get_name()) == MAS::WindingOrder::U);
+    settings.reset();
+}
