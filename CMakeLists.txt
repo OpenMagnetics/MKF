@@ -649,6 +649,13 @@ cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards 
 cmrc_add_resource_library(core_losses_data ALIAS data::core_losses_data NAMESPACE coreLossesData src/data/core_losses/ciGSE_coefficients.json)
 target_link_libraries(MKF PUBLIC ${LIBS})
 
+# ABT #327: a range-for over a MAS getter's .value() (or a by-value get_*()) binds a
+# reference to a destroyed temporary — undefined behaviour that either segfaults or
+# silently reads freed memory. GCC catches it as -Wdangling-reference; promote it to a
+# hard error on MKF's own targets so the next one cannot land silently. GNU-only (this is
+# a GCC diagnostic; the generator expression leaves Clang/MSVC untouched).
+target_compile_options(MKF PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Werror=dangling-reference>)
+
 # Kirchhoff bridge: MKF links libKirchhoffApi.so and includes ONLY KirchhoffApi.hpp (the string facade),
 # so KH's `namespace MAS` types never enter an MKF TU. src/converter_models/KirchhoffBridge.cpp is picked
 # up by the SOURCES glob; here we add the include path + the imported .so + the build-order dependency.
@@ -734,6 +741,9 @@ if(INCLUDE_MKF_TESTS)
     target_link_libraries(MKF_tests PRIVATE Catch2::Catch2WithMain)
     target_link_libraries(MKF_tests PUBLIC MKF)
     target_include_directories(MKF_tests PUBLIC "${PROJECT_SOURCE_DIR}/src/")
+    # ABT #327: the same dangling-reference guard on the test TUs (where three of the four
+    # originally-found sites lived). GNU-only.
+    target_compile_options(MKF_tests PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Werror=dangling-reference>)
 
     # tests/KirchhoffNgspiceRunnerShim.cpp compiles Kirchhoff's in-process libngspice runner
     # (Kirchhoff::run_ngspice_in_process) into the test binary: libKirchhoffApi.so hides it

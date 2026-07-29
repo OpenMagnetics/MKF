@@ -670,8 +670,12 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
     // so different windows must not share a stack) and per edge (top/bottom). The allocator is the
     // single source of truth: the drawn geometry AND the turn blocking both follow its decision.
     std::map<std::string, size_t> windowIndexBySection;
-    if (get_sections_description()) {
-        for (const auto& section : get_sections_description().value()) {
+    // get_sections_description() returns the optional BY VALUE; iterating its .value()
+    // directly binds the range-for to storage inside a temporary destroyed at the end of
+    // the full expression (UB; gcc -Wdangling-reference). Materialize the copy first.
+    auto sectionsDescription = get_sections_description();
+    if (sectionsDescription) {
+        for (const auto& section : sectionsDescription.value()) {
             windowIndexBySection[section.get_name()] = resolve_section_winding_window_index(section);
         }
     }
