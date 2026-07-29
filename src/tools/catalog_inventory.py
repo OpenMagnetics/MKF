@@ -201,6 +201,32 @@ def load_existing_shapes():
             fams[o.get("family")].append((o["name"], [nom("A"), nom("B"), nom("C")]))
     return fams
 
+class ImpossibleCoreGeometry(ValueError):
+    """A vendor row describes a physically impossible core (toroid ID >= OD, or a
+    non-positive dimension). Raised at import so the bad record is rejected loudly
+    instead of reaching the catalog and killing an adviser run for every user."""
+
+
+def validate_toroid_geometry(od, idd, ht, part=None):
+    """Reject a physically impossible toroid at import time (ABT #306).
+
+    A toroid needs 0 < ID < OD and a positive height. Anything else yields negative
+    CorePieceT shape constants downstream ('IEC 63182 effective parameters cannot be
+    negative or 0'), which throws mid-adviser-run for every user — as one dropped
+    leading digit in the POCO NPU500075 row (OD 32.5 < ID 78.6) did. Surface it here,
+    at the source, rather than letting one bad record reach the catalog.
+    """
+    who = f" ({part})" if part else ""
+    for label, v in (("OD", od), ("ID", idd), ("height", ht)):
+        if not v > 0:
+            raise ImpossibleCoreGeometry(
+                f"toroid{who} has non-positive {label}={v} mm — rejected at import")
+    if idd >= od:
+        raise ImpossibleCoreGeometry(
+            f"toroid{who} has inner diameter ID={idd} mm >= outer diameter OD={od} mm "
+            "— physically impossible, rejected at import")
+
+
 def toroid_shape_record(od, idd, ht):
     return {"magneticCircuit": "closed", "type": "standard", "family": "t",
             "name": f"T {_fmt(od)}/{_fmt(idd)}/{_fmt(ht)}",
@@ -249,8 +275,9 @@ def build_inventory(mfr_key, limit=None):
         stats["new_shapes"] += 1
         return canonical
 
-    def toroid_shape(od, idd, ht):
+    def toroid_shape(od, idd, ht, part=None):
         """Return an existing toroid shape name matched by numeric dims (0.06 mm tol), else emit one."""
+        validate_toroid_geometry(od, idd, ht, part)
         for name, (a, b, c) in ((n, (d[0], d[1], d[2])) for n, d in existing_shapes.get("t", [])):
             if None in (a, b, c):
                 continue
@@ -278,7 +305,7 @@ def build_inventory(mfr_key, limit=None):
         family = r["family"]
         # --- shape ---
         if family in ("T", "R"):
-            shape = toroid_shape(float(r["od"]), float(r["id"]), float(r["ht"]))
+            shape = toroid_shape(float(r["od"]), float(r["id"]), float(r["ht"]), r.get("part"))
         elif r.get("shape_name"):        # source gives the shape designation directly (e.g. TDK IEC size)
             shape = ensure_concentric_shape(r["shape_name"])
         else:
