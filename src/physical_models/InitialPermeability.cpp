@@ -898,6 +898,14 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
             // leaving the seed value of 1 shipped mu_i = 1 as silent physics.
             auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
             if (permeabilityPoints.empty()) {
+                if (coreMaterial.get_name() == DUMMY_SENTINEL_NAME) {
+                    // The adviser's synthetic placeholder (Core::resolve_material)
+                    // carries no permeability BY CONTRACT — material-aware filters
+                    // skip the sentinel, and the exploration pipeline has always
+                    // seen mu = 1 for it. Keep that documented behavior; every
+                    // real material with an empty list still throws below.
+                    return 1;
+                }
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "Initial permeability list is empty for material: " + coreMaterial.get_name());
             }
             double closestDistance = DBL_MAX;

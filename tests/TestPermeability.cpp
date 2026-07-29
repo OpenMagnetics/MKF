@@ -73,6 +73,11 @@ namespace {
         coreMaterial.set_name("ABT339 empty");
         coreMaterial.set_permeability(emptyPermeability);
         REQUIRE_THROWS(initialPermeability.get_initial_permeability(coreMaterial));
+
+        // …except the adviser's synthetic Dummy placeholder, which carries no
+        // permeability by contract and has always behaved as mu = 1.
+        coreMaterial.set_name(DUMMY_SENTINEL_NAME);
+        REQUIRE(initialPermeability.get_initial_permeability(coreMaterial) == 1);
     }
 
     TEST_CASE("Test_Initial_Permeability_51", "[physical-model][initial-permeability][smoke-test]") {
