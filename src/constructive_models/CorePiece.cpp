@@ -2166,9 +2166,9 @@ class CorePieceDrumRing : public CorePieceDrum {
 // a coil compression-molded inside a homogeneous low-permeability SMC block. The distributed
 // gap lives in the MATERIAL (mu_eff ~15-40), so the piece is a single solid CLOSED circuit
 // (CoreType::CLOSED_SHAPE) with NO discrete gaps: magnetically a pot core with a rectangular
-// outer boundary. Letters (defined with the MAS records): A body width, B body height (coil
-// axis), C body depth, D coil-cavity inner diameter (the composite post under the coil bore),
-// E coil-cavity outer diameter, F coil-cavity height.
+// outer boundary. Letters follow the pot-core (P/PM) convention: A body width, B body height
+// (coil axis), C body depth, D coil-cavity height (internal height), E coil-cavity outer
+// diameter, F coil-cavity inner diameter (the composite post under the coil bore).
 //
 // Sections, IEC 60205 general method: post (pi/4 D^2 over F), two plates ((B - F)/2 thick,
 // radial spreading D/2 -> E/2), outer shell (block cross-section minus the cavity circle,
@@ -2181,14 +2181,14 @@ class CorePieceMolded : public CorePiece {
   public:
     void process_extra_data() {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
-        if (dimensions["E"] <= dimensions["D"]) {
+        if (dimensions["E"] <= dimensions["F"]) {
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                 "molded: cavity outer diameter E (" + std::to_string(dimensions["E"]) +
-                ") must exceed the cavity inner diameter D (" + std::to_string(dimensions["D"]) + ")");
+                ") must exceed the cavity inner diameter F (" + std::to_string(dimensions["F"]) + ")");
         }
-        if (dimensions["F"] >= dimensions["B"]) {
+        if (dimensions["D"] >= dimensions["B"]) {
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-                "molded: cavity height F (" + std::to_string(dimensions["F"]) +
+                "molded: cavity height D (" + std::to_string(dimensions["D"]) +
                 ") must be smaller than the body height B (" + std::to_string(dimensions["B"]) + ")");
         }
         if (dimensions["E"] >= std::min(dimensions["A"], dimensions["C"])) {
@@ -2204,11 +2204,11 @@ class CorePieceMolded : public CorePiece {
     void process_winding_window() {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
-        windingWindow.set_height(dimensions["F"]);
-        windingWindow.set_width((dimensions["E"] - dimensions["D"]) / 2);
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
         // ABT #107 convention: coordinates[0] = window CENTRE (post edge + half width).
-        windingWindow.set_coordinates(std::vector<double>({dimensions["D"] / 2 + (dimensions["E"] - dimensions["D"]) / 4, 0}));
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2 + (dimensions["E"] - dimensions["F"]) / 4, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -2218,10 +2218,10 @@ class CorePieceMolded : public CorePiece {
         ColumnElement mainColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat(dimensions["D"]));
-        mainColumn.set_depth(roundFloat(dimensions["D"]));
-        mainColumn.set_height(roundFloat(dimensions["F"]));
-        mainColumn.set_area(roundFloat(std::numbers::pi / 4 * pow(dimensions["D"], 2)));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi / 4 * pow(dimensions["F"], 2)));
         mainColumn.set_coordinates({0, 0, 0});
         columns.push_back(mainColumn);
         // The return shell: one annular-equivalent lateral column wrapping the cavity.
@@ -2234,7 +2234,7 @@ class CorePieceMolded : public CorePiece {
         shellColumn.set_width(roundFloat(shellWall));
         shellColumn.set_area(roundFloat(shellArea));
         shellColumn.set_depth(roundFloat(shellArea / shellWall));
-        shellColumn.set_height(roundFloat(dimensions["F"]));
+        shellColumn.set_height(roundFloat(dimensions["D"]));
         shellColumn.set_coordinates({roundFloat(dimensions["E"] / 2 + shellWall / 2), 0, 0});
         columns.push_back(shellColumn);
         set_columns(columns);
@@ -2243,10 +2243,10 @@ class CorePieceMolded : public CorePiece {
     std::tuple<double, double, double> get_shape_constants() {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         double pi = std::numbers::pi;
-        double postRadius = dimensions["D"] / 2;
+        double postRadius = dimensions["F"] / 2;
         double cavityRadius = dimensions["E"] / 2;
-        double cavityHeight = dimensions["F"];
-        double plateThickness = (dimensions["B"] - dimensions["F"]) / 2;
+        double cavityHeight = dimensions["D"];
+        double plateThickness = (dimensions["B"] - dimensions["D"]) / 2;
         double shellArea = dimensions["A"] * dimensions["C"] - pi * pow(cavityRadius, 2);
         double equivalentOuterRadius = sqrt(dimensions["A"] * dimensions["C"] / pi);
         double shellWall = equivalentOuterRadius - cavityRadius;

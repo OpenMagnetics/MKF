@@ -2214,6 +2214,7 @@ namespace TestDrumCore {
     // distributed gap lives in the material. Magnetically a pot core with a rectangular outer
     // boundary: post + two plates + return shell. MAPI-4020-like custom dimensions (vendors
     // publish no internals; the cavity here is a plausible reconstruction for geometry tests).
+    // Letters per the pot-core convention: D cavity height, E cavity OD, F post diameter.
     TEST_CASE("Test_Molded_Core_Geometry", "[core][molded]") {
         settings.reset();
         clear_databases();
@@ -2222,7 +2223,7 @@ namespace TestDrumCore {
             {"aliases", json::array()}, {"name", "MAPI-like 4020"},
             {"dimensions", {
                 {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
-                {"D", {{"nominal", 0.0012}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+                {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
         };
         json coreJson;
         coreJson["functionalDescription"] = {
@@ -2234,10 +2235,11 @@ namespace TestDrumCore {
         REQUIRE(core.get_functional_description().get_type() == CoreType::CLOSED_SHAPE);
         auto processed = core.get_processed_description().value();
 
-        // Winding window = the coil cavity annulus: width (E - D)/2, height F.
+        // Winding window = the coil cavity annulus (pot-core letter convention):
+        // width (E - F)/2, height D.
         auto windingWindow = processed.get_winding_windows()[0];
         CHECK_THAT(windingWindow.get_width().value(), Catch::Matchers::WithinRel((0.0030 - 0.0012) / 2, 1e-6));
-        CHECK_THAT(windingWindow.get_height().value(), Catch::Matchers::WithinRel(0.0012, 1e-6));
+        CHECK_THAT(windingWindow.get_height().value(), Catch::Matchers::WithinRel(0.0014, 1e-6));
 
         // Central post + return-shell columns.
         auto columns = processed.get_columns();

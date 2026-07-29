@@ -1335,7 +1335,7 @@ TEST_CASE("Test_Molded_Inductance_Permeability_Scaling", "[physical-model][magne
             {"aliases", json::array()}, {"name", "MAPI-like 4020"},
             {"dimensions", {
                 {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
-                {"D", {{"nominal", 0.0012}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+                {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
         };
         json coreJson;
         coreJson["functionalDescription"] = {
