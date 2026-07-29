@@ -78,6 +78,12 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     CHECK_NOTHROW(find_core_shape_by_name(std::string("DRH-14X20-4C")));
     CHECK_NOTHROW(find_core_shape_by_name(std::string("Bobbin 9643001015")));
 
+    // DRUM_RING (shielded drum, ABT #366) is supported as a piece-and-plate closed circuit:
+    // the ACME DR + SRI pair records must load.
+    REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::DRUM_RING));
+    CHECK_NOTHROW(find_core_shape_by_name(std::string("DR 2.3 + SRI 3.0")));
+    CHECK_NOTHROW(find_core_shape_by_name(std::string("DR 2.0 + SRI 2.95")));
+
     // PQI is supported too (ABT #275): the PQ clause of IEC 60205 covers the plate case, and the
     // geometry validates against TDK's published planar data to 0.3%.
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::PQI));

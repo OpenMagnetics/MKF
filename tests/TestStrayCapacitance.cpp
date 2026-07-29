@@ -1765,3 +1765,38 @@ TEST_CASE("Static turn capacitances are non-negative on a separated-winding toro
     CHECK(amongWindings[w0][w1] > 0.0);
     CHECK(amongWindings[w0][w1] < 1e-9);
 }
+
+// ABT #366: shielded drum (drumRing). The stray-capacitance pipeline must handle a coil wound
+// in the drum groove of the new family end-to-end: real wire, autocompleted quick bobbin,
+// finite positive Maxwell self-capacitance in a physically sane range for a millimetre part.
+TEST_CASE("Test_Stray_Capacitance_Drum_Ring_Smoke", "[physical-model][stray-capacitance][drum-ring]") {
+    settings.reset();
+    clear_databases();
+    auto core = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90");
+    json coilJson;
+    coilJson["bobbin"] = "Dummy";
+    coilJson["functionalDescription"] = json::array();
+    json winding;
+    winding["name"] = "winding 0";
+    winding["numberTurns"] = 8;
+    winding["numberParallels"] = 1;
+    winding["isolationSide"] = "primary";
+    winding["wire"] = "Round 0.1 - Grade 1";
+    coilJson["functionalDescription"].push_back(winding);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+    auto coil = completed.get_coil();
+    REQUIRE(coil.get_turns_description().has_value());
+
+    auto output = StrayCapacitance().calculate_capacitance(coil);
+    REQUIRE(output.get_capacitance_among_windings().has_value());
+    auto amongWindings = output.get_capacitance_among_windings().value();
+    auto windingName = coil.get_functional_description()[0].get_name();
+    double selfCapacitance = amongWindings.at(windingName).at(windingName);
+    CHECK(std::isfinite(selfCapacitance));
+    CHECK(selfCapacitance > 0);
+    CHECK(selfCapacitance < 1e-10);  // a 2.3 mm part cannot carry >100 pF of self-capacitance
+    settings.reset();
+}

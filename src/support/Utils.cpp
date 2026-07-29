@@ -2528,10 +2528,18 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
         magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::OPEN_SHAPE);
         shape.set_magnetic_circuit(MagneticCircuit::OPEN);
     }
+    else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::MOLDED) {
+        // Molded composite body (ABT #357): single pressed solid, closed in-material —
+        // the distributed gap lives in the material law, so discrete gapping is meaningless.
+        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::CLOSED_SHAPE);
+        shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
+    }
     else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UI ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::PQI) {
+             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::PQI ||
+             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_RING) {
         // Piece-and-plate: the record already describes the whole assembly, so it is "closed" in
-        // the MAS sense of having to be used by itself (ABT #274/#275).
+        // the MAS sense of having to be used by itself (ABT #274/#275; drumRing per ABT #366 —
+        // its two structural annular gaps are synthesized by Core::process_gap, not listed here).
         magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
         shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
     }

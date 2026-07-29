@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <map>
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
 #include "constructive_models/Core.h"
@@ -907,5 +908,45 @@ TEST_CASE("MagneticSimulator leakage output is winding-indexed with a zero prima
     auto pairwise = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
     REQUIRE(simulatorPerWinding[1].get_nominal());
     CHECK_THAT(simulatorPerWinding[1].get_nominal().value(), WithinRel(pairwise, 1e-9));
+    settings.reset();
+}
+
+// ABT #366: shielded drum (drumRing). A bifilar two-winding coil in the drum groove must run
+// the leakage pipeline end-to-end: finite, positive, and far below the magnetizing inductance
+// (same window, tightly coupled).
+TEST_CASE("Test_Leakage_Inductance_Drum_Ring_Smoke", "[physical-model][leakage-inductance][drum-ring]") {
+    settings.reset();
+    clear_databases();
+    auto core = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90");
+    json coilJson;
+    coilJson["bobbin"] = "Dummy";
+    coilJson["functionalDescription"] = json::array();
+    for (size_t windingIndex = 0; windingIndex < 2; ++windingIndex) {
+        json winding;
+        winding["name"] = "winding " + std::to_string(windingIndex);
+        winding["numberTurns"] = 4;
+        winding["numberParallels"] = 1;
+        winding["isolationSide"] = windingIndex == 0 ? "primary" : "secondary";
+        winding["wire"] = "Round 0.1 - Grade 1";
+        coilJson["functionalDescription"].push_back(winding);
+    }
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+    REQUIRE(completed.get_coil().get_turns_description().has_value());
+
+    double frequency = 100000;
+    auto leakageInductance = LeakageInductance()
+        .calculate_leakage_inductance(completed, frequency)
+        .get_leakage_inductance_per_winding()[0].get_nominal().value();
+    CHECK(std::isfinite(leakageInductance));
+    CHECK(leakageInductance > 0);
+
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    double magnetizingInductance = magnetizingInductanceModel
+        .calculate_inductance_from_number_turns_and_gapping(completed.get_core(), completed.get_coil())
+        .get_magnetizing_inductance().get_nominal().value();
+    CHECK(leakageInductance < magnetizingInductance);
     settings.reset();
 }

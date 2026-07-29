@@ -2160,4 +2160,119 @@ namespace TestDrumCore {
         CHECK_THAT(processed.get_height(), Catch::Matchers::WithinRel(0.020, 1e-6));
         settings.reset();
     }
+
+    // ABT #366: shielded drum (drumRing) — a drum closed by a concentric shield ring,
+    // CoreType::PIECE_AND_PLATE. The winding window stays the drum groove, the envelope
+    // includes the ring, and process_gap synthesizes the two STRUCTURAL annular clearance
+    // gaps ((K - A)/2 each, unrolled-annulus section) instead of the column-based machinery.
+    TEST_CASE("Test_Drum_Ring_Core_Geometry", "[core][drum-ring]") {
+        settings.reset();
+        clear_databases();
+        auto core = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "Dummy");
+        REQUIRE(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+        auto processed = core.get_processed_description().value();
+
+        // Winding window = drum groove: width (A - C)/2 = (2.3 - 1.1)/2 mm, height E = 0.58 mm.
+        auto windingWindow = processed.get_winding_windows()[0];
+        CHECK_THAT(windingWindow.get_width().value(), Catch::Matchers::WithinRel((0.0023 - 0.0011) / 2, 1e-6));
+        CHECK_THAT(windingWindow.get_height().value(), Catch::Matchers::WithinRel(0.00058, 1e-6));
+
+        // Envelope includes the ring: width/depth = ring OD J, height = max(B, L).
+        CHECK_THAT(processed.get_width(), Catch::Matchers::WithinRel(0.003, 1e-6));
+        CHECK_THAT(processed.get_height(), Catch::Matchers::WithinRel(0.00105, 1e-6));
+
+        // Two structural annular gaps: residual, length (K - A)/2 = 50 um, area = mean
+        // cylindrical surface over each flange thickness, mirrored about the equator.
+        auto gapping = core.get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 2);
+        double meanRadius = (0.0023 + 0.0024) / 4;
+        for (auto& gap : gapping) {
+            CHECK(gap.get_type() == GapType::RESIDUAL);
+            CHECK_THAT(gap.get_length(), Catch::Matchers::WithinRel((0.0024 - 0.0023) / 2, 1e-4));
+            CHECK_THAT(gap.get_area().value(),
+                       Catch::Matchers::WithinRel(2 * std::numbers::pi * meanRadius * 0.00021, 0.01));
+        }
+        CHECK_THAT(gapping[0].get_coordinates().value()[1],
+                   Catch::Matchers::WithinAbs((0.001 - 0.00021) / 2, 1e-6));
+        CHECK_THAT(gapping[1].get_coordinates().value()[1],
+                   Catch::Matchers::WithinAbs(-(0.001 - 0.00021) / 2, 1e-6));
+
+        // The geometrical description is drum solid (CLOSED) + ring closer (PLATE).
+        auto geometricalDescription = core.create_geometrical_description().value();
+        REQUIRE(geometricalDescription.size() == 2);
+        CHECK(geometricalDescription[0].get_type() == CoreGeometricalDescriptionElementType::CLOSED);
+        CHECK(geometricalDescription[1].get_type() == CoreGeometricalDescriptionElementType::PLATE);
+
+        // User gapping on a drumRing is rejected: nothing can be ground on the assembly.
+        auto userGapping = json::array();
+        userGapping.push_back(json{{"type", "subtractive"}, {"length", 0.0001}});
+        CHECK_THROWS(OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", userGapping, 1, "Dummy"));
+        settings.reset();
+    }
+
+    // ABT #357: molded composite body (WE-MAPI class) — a single pressed CLOSED solid whose
+    // distributed gap lives in the material. Magnetically a pot core with a rectangular outer
+    // boundary: post + two plates + return shell. MAPI-4020-like custom dimensions (vendors
+    // publish no internals; the cavity here is a plausible reconstruction for geometry tests).
+    TEST_CASE("Test_Molded_Core_Geometry", "[core][molded]") {
+        settings.reset();
+        clear_databases();
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+            {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+                {"D", {{"nominal", 0.0012}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", "Kool Mµ 26"}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        REQUIRE(core.get_functional_description().get_type() == CoreType::CLOSED_SHAPE);
+        auto processed = core.get_processed_description().value();
+
+        // Winding window = the coil cavity annulus: width (E - D)/2, height F.
+        auto windingWindow = processed.get_winding_windows()[0];
+        CHECK_THAT(windingWindow.get_width().value(), Catch::Matchers::WithinRel((0.0030 - 0.0012) / 2, 1e-6));
+        CHECK_THAT(windingWindow.get_height().value(), Catch::Matchers::WithinRel(0.0012, 1e-6));
+
+        // Central post + return-shell columns.
+        auto columns = processed.get_columns();
+        REQUIRE(columns.size() == 2);
+        CHECK_THAT(columns[0].get_area(),
+                   Catch::Matchers::WithinRel(std::numbers::pi / 4 * pow(0.0012, 2), 0.01));
+        double expectedShellArea = 0.0041 * 0.0041 - std::numbers::pi / 4 * pow(0.0030, 2);
+        CHECK_THAT(columns[1].get_area(), Catch::Matchers::WithinRel(expectedShellArea, 0.01));
+
+        // Body envelope, nothing doubled.
+        CHECK_THAT(processed.get_width(), Catch::Matchers::WithinRel(0.0041, 1e-6));
+        CHECK_THAT(processed.get_height(), Catch::Matchers::WithinRel(0.0021, 1e-6));
+
+        // No gaps, ever: neither synthesized residual gaps nor user gapping.
+        CHECK(core.get_functional_description().get_gapping().empty());
+        auto effectiveParameters = processed.get_effective_parameters();
+        double bodyVolume = 0.0041 * 0.0041 * 0.0021;
+        CHECK(effectiveParameters.get_effective_volume() > 0);
+        CHECK(effectiveParameters.get_effective_volume() < bodyVolume);
+        // The path length must exceed one cavity-height-plus-radial loop and stay below a few
+        // body perimeters — a gross sectioning error would leave this band.
+        CHECK(effectiveParameters.get_effective_length() > 0.0021);
+        CHECK(effectiveParameters.get_effective_length() < 4 * (0.0041 + 0.0021));
+
+        // Single CLOSED solid in the geometrical description.
+        auto geometricalDescription = core.create_geometrical_description().value();
+        REQUIRE(geometricalDescription.size() == 1);
+        CHECK(geometricalDescription[0].get_type() == CoreGeometricalDescriptionElementType::CLOSED);
+
+        // Discrete gapping is physically meaningless on a molded body. The Core(json)
+        // constructor already processes, so the throw fires during construction.
+        json gappedCoreJson = coreJson;
+        gappedCoreJson["functionalDescription"]["gapping"].push_back(
+            json{{"type", "subtractive"}, {"length", 0.0001}});
+        CHECK_THROWS(Core(gappedCoreJson).process_gap());
+        settings.reset();
+    }
 }

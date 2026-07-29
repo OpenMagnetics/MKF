@@ -81,12 +81,19 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
     if (shapeFamily == CoreShapeFamily::T) {
         get_mutable_functional_description().set_type(CoreType::TOROIDAL);
     }
-    else if (shapeFamily == CoreShapeFamily::UI || shapeFamily == CoreShapeFamily::PQI) {
+    else if (shapeFamily == CoreShapeFamily::UI || shapeFamily == CoreShapeFamily::PQI ||
+             shapeFamily == CoreShapeFamily::DRUM_RING) {
+        // DRUM_RING (ABT #366): a drum closed by its shield ring — same piece-plus-closer
+        // semantics as UI/PQI (nothing doubled, the piece class reports the whole assembly).
         get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
     }
     else if (shapeFamily == CoreShapeFamily::DRUM) {
         // Single piece whose magnetic circuit closes through the surrounding air (ABT #331).
         get_mutable_functional_description().set_type(CoreType::OPEN_SHAPE);
+    }
+    else if (shapeFamily == CoreShapeFamily::MOLDED) {
+        // Single pressed solid, circuit closed IN-MATERIAL (distributed gap, ABT #357).
+        get_mutable_functional_description().set_type(CoreType::CLOSED_SHAPE);
     }
     else {
         get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
@@ -525,6 +532,32 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
             //
             // This replaces an empty `break` that emitted NO geometrical description at all, which
             // left CAD/3D consumers with nothing to draw for a piece-and-plate core (ABT #264).
+            if (resolve_shape().get_family() == CoreShapeFamily::DRUM_RING) {
+                // Shielded drum (ABT #366): the drum body is a complete single solid (CLOSED,
+                // same emission as the bare drum) and the shield ring is the closer (PLATE),
+                // both concentric at the origin — no spacer, no machining (the annular
+                // clearance gaps are structural, synthesized by process_gap). The 3D consumer
+                // derives the drum from letters A..H and the ring from J/K/L on the shared
+                // shape record.
+                auto ringPiece = piece;
+                piece.set_type(CoreGeometricalDescriptionElementType::CLOSED);
+                ringPiece.set_type(CoreGeometricalDescriptionElementType::PLATE);
+                for (auto i = 0; i < numberStacks; ++i) {
+                    std::vector<double> coordinates = {0, 0, currentDepth};
+                    piece.set_coordinates(coordinates);
+                    piece.set_rotation(std::vector<double>({0, 0, 0}));
+                    piece.set_machining(std::nullopt);
+                    geometricalDescription.push_back(CoreGeometricalDescriptionElement(piece));
+
+                    ringPiece.set_coordinates(coordinates);
+                    ringPiece.set_rotation(std::vector<double>({0, 0, 0}));
+                    ringPiece.set_machining(std::nullopt);
+                    geometricalDescription.push_back(CoreGeometricalDescriptionElement(ringPiece));
+
+                    currentDepth = roundFloat(currentDepth + corePieceDepth);
+                }
+                break;
+            }
             auto platePiece = piece;
             bottomPiece.set_type(CoreGeometricalDescriptionElementType::HALF_SET);
             platePiece.set_type(CoreGeometricalDescriptionElementType::PLATE);
@@ -1056,6 +1089,66 @@ bool Core::process_gap() {
 
     if (family == CoreShapeFamily::T && gapping.size() > 0 ) {
         throw GapException("Toroids cannot be gapped: " + std::to_string(gapping[0].get_length()));
+    }
+
+    if (family == CoreShapeFamily::MOLDED) {
+        // Molded composite body (ABT #357): the gap is DISTRIBUTED in the material — a single
+        // pressed solid has no mating surfaces, so neither user gaps nor synthesized residual
+        // gaps exist. (Falling through would let distribute_and_process_gap add a fake
+        // residual column gap.)
+        if (gapping.size() > 0) {
+            throw GapException("Molded cores cannot be gapped: the distributed gap lives in "
+                               "the composite material, not in the geometry");
+        }
+        get_mutable_functional_description().set_gapping(std::vector<CoreGap>{});
+        return true;
+    }
+
+    if (family == CoreShapeFamily::DRUM_RING) {
+        // Shielded drum (ABT #366): the only gaps are the two STRUCTURAL annular radial
+        // clearances between flange rim and ring bore. They are derived from the geometry —
+        // nothing can be ground on an assembled drum+ring — so user gapping is rejected, and
+        // RESIDUAL entries (ours, from a previous pass) are simply re-derived, which keeps
+        // process_gap idempotent.
+        for (auto& gap : gapping) {
+            if (gap.get_type() != GapType::RESIDUAL) {
+                throw GapException("drumRing cores cannot carry user gapping: their two annular "
+                                   "clearance gaps are structural, derived from A/K/D/F");
+            }
+        }
+        auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
+        if (dimensions.find("A2") != dimensions.end() && dimensions["A2"] > 0 &&
+            roundFloat(dimensions["A2"]) != roundFloat(dimensions["A"])) {
+            throw NotImplementedException("drumRing with asymmetric flanges (A2 != A) is not "
+                                          "supported yet: the per-side clearance would differ");
+        }
+        double flangeOuterDiameter = dimensions["A"];
+        double ringInnerDiameter = dimensions["K"];
+        double gapLength = (ringInnerDiameter - flangeOuterDiameter) / 2;
+        double meanRadius = (flangeOuterDiameter + ringInnerDiameter) / 4;
+        double windingWindowWidth = processedDescription.get_winding_windows()[0].get_width().value();
+        std::vector<CoreGap> annularGaps;
+        // {flange thickness, gap centre height}: top flange (D) and bottom flange (F). The
+        // flux crosses the clearance radially over each flange's axial extent, so the gap is
+        // the annulus UNROLLED to a rectangular section {mean circumference, flange thickness}
+        // — the long thin gap the reluctance/fringing models expect.
+        for (auto& [flangeThickness, gapCenterHeight] :
+             std::vector<std::pair<double, double>>{
+                 {dimensions["D"], (dimensions["B"] - dimensions["D"]) / 2},
+                 {dimensions["F"], -(dimensions["B"] - dimensions["F"]) / 2}}) {
+            CoreGap gap;
+            gap.set_type(GapType::RESIDUAL);
+            gap.set_length(roundFloat(gapLength));
+            gap.set_coordinates(std::vector<double>({roundFloat(meanRadius), roundFloat(gapCenterHeight), 0}));
+            gap.set_shape(ColumnShape::RECTANGULAR);
+            gap.set_distance_closest_normal_surface(roundFloat(flangeThickness / 2));
+            gap.set_distance_closest_parallel_surface(windingWindowWidth);
+            gap.set_area(roundFloat(2 * std::numbers::pi * meanRadius * flangeThickness));
+            gap.set_section_dimensions(std::vector<double>({roundFloat(2 * std::numbers::pi * meanRadius), roundFloat(flangeThickness)}));
+            annularGaps.push_back(gap);
+        }
+        get_mutable_functional_description().set_gapping(annularGaps);
+        return true;
     }
 
     if (family != CoreShapeFamily::T) {
@@ -2111,12 +2204,16 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
     else if (coreShape.get_family() == CoreShapeFamily::UT) {
         core.set_type(CoreType::TWO_PIECE_SET); // FIX L-3: UT cores are U-type assembled, not toroidal
     }
-    else if (coreShape.get_family() == CoreShapeFamily::UI || coreShape.get_family() == CoreShapeFamily::PQI) {
-        // A shaped piece closed by a flat I plate, not by a mirrored half (ABT #274/#275).
+    else if (coreShape.get_family() == CoreShapeFamily::UI || coreShape.get_family() == CoreShapeFamily::PQI ||
+             coreShape.get_family() == CoreShapeFamily::DRUM_RING) {
+        // A shaped piece closed by a plate/ring, not by a mirrored half (ABT #274/#275, #366).
         core.set_type(CoreType::PIECE_AND_PLATE);
     }
     else if (coreShape.get_family() == CoreShapeFamily::DRUM) {
         core.set_type(CoreType::OPEN_SHAPE);
+    }
+    else if (coreShape.get_family() == CoreShapeFamily::MOLDED) {
+        core.set_type(CoreType::CLOSED_SHAPE);
     }
     else {
         core.set_type(CoreType::TWO_PIECE_SET);

@@ -254,6 +254,10 @@ Core get_quick_core(std::string shapeName,
         // Drum cores (ABT #331): open magnetic circuit, single piece.
         coreType = "openShape";
     }
+    else if (shapeName.rfind("DR ", 0) == 0) {
+        // drumRing records ("DR 2.3 + SRI 3.0", ABT #366): drum closed by its shield ring.
+        coreType = "pieceAndPlate";
+    }
     else {
         coreType = "twoPieceSet";
     }

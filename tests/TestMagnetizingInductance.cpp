@@ -1,6 +1,7 @@
 #include <source_location>
 #include "processors/CircuitSimulatorInterface.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/Reluctance.h"
 #include "constructive_models/Bobbin.h"
 #include "TestingUtils.h"
 #include "support/Settings.h"
@@ -1235,5 +1236,140 @@ TEST_CASE("Test_Open_Core_WE_TI_Reconstruction_Consistency", "[physical-model][m
     double dcr = 1.72e-8 * length / wireArea;
     UNSCOPED_INFO("reconstructed DCR = " << dcr * 1000 << " mOhm vs vendor typ 89");
     CHECK_THAT(dcr, Catch::Matchers::WithinRel(0.089, 0.30));
+    settings.reset();
+}
+
+// ABT #366: shielded drum (drumRing). No vendor publishes AL for an assembled drum+ring pair
+// (verified industry-wide 2026-07-29: Ferroxcube/Fair-Rite publish bare-drum AL only, with a
+// defined winding; ACME publishes matched DR+SRI geometry but no electricals), so this pins the
+// PHYSICS BRACKETS instead: the closed-through-clearance-gaps circuit must yield strictly MORE
+// inductance than the bare drum (the ferrite ring replaces most of the air return) and strictly
+// LESS than the same ferrite circuit with the clearance gaps shorted (core-only reluctance).
+// The analytic two-annular-gap estimate anchors the magnitude: for a mu_i ~2000 ferrite the two
+// clearance gaps dominate the closed circuit, and fringing can only lower their reluctance.
+// FEM validation of the absolute value is the follow-up recorded in ABT #366.
+TEST_CASE("Test_Drum_Ring_Inductance_Brackets", "[physical-model][magnetizing-inductance][drum-ring]") {
+    settings.reset();
+    clear_databases();
+    double numberTurns = 20;
+
+    // Bare drum with the SAME drum dimensions (custom shape: no bare-drum MAS record exists
+    // for the ACME DR2.3 drum, only the paired drumRing record).
+    json bareShapeJson = {
+        {"magneticCircuit", "open"}, {"type", "custom"}, {"family", "drum"},
+        {"aliases", json::array()}, {"name", "DR 2.3 bare"},
+        {"dimensions", {
+            {"A", {{"nominal", 0.0023}}}, {"B", {{"nominal", 0.001}}}, {"C", {{"nominal", 0.0011}}},
+            {"D", {{"nominal", 0.00021}}}, {"E", {{"nominal", 0.00058}}}, {"F", {{"nominal", 0.00021}}}}}
+    };
+    json bareCoreJson;
+    bareCoreJson["functionalDescription"] = {
+        {"type", "openShape"}, {"material", "3C90"}, {"shape", bareShapeJson},
+        {"gapping", json::array()}, {"numberStacks", 1}};
+    Core bareCore(bareCoreJson);
+    bareCore.process_data();
+    double bareInductance = MagnetizingInductance::calculate_open_core_magnetizing_inductance(bareCore, numberTurns, 25);
+
+    // The shielded assembly, from the MAS drumRing record (same drum + SRI 3x2.4x1.05 ring).
+    auto core = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90");
+    json windingData = json::parse(
+        R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+            "numberParallels": 1, "numberTurns": 20, "wire": "Dummy"}]})");
+    OpenMagnetics::Coil winding(windingData);
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    double ringInductance = magnetizingInductanceModel
+        .calculate_inductance_from_number_turns_and_gapping(core, winding, nullptr)
+        .get_magnetizing_inductance().get_nominal().value();
+
+    // Upper limit: the same ferrite circuit with the clearance gaps shorted
+    // (get_core_reluctance() is core PLUS gaps; the ungapped field is the core alone).
+    auto reluctanceModel = ReluctanceModel::factory(ReluctanceModels::ZHANG);
+    auto reluctanceOutput = reluctanceModel->get_core_reluctance(core);
+    double coreOnlyReluctance = reluctanceOutput.get_ungapped_core_reluctance().value();
+    double shortedGapsInductance = pow(numberTurns, 2) / coreOnlyReluctance;
+
+    UNSCOPED_INFO("bare " << bareInductance * 1e6 << " uH < ring " << ringInductance * 1e6
+                          << " uH < shorted-gaps " << shortedGapsInductance * 1e6 << " uH");
+    CHECK(std::isfinite(ringInductance));
+    CHECK(bareInductance < ringInductance);
+    CHECK(ringInductance < shortedGapsInductance);
+
+    // The two annular gaps must be evaluated INDIVIDUALLY, combine in SERIES (single column:
+    // both land on the wound post, never in the parallel lateral term), and ENGAGE the fringing
+    // machinery (factor > 1 lowers their reluctance, raising L over the sharp-gap value).
+    REQUIRE(reluctanceOutput.get_reluctance_per_gap().has_value());
+    auto reluctancePerGap = reluctanceOutput.get_reluctance_per_gap().value();
+    REQUIRE(reluctancePerGap.size() == 2);
+    double gappingReluctance = reluctanceOutput.get_gapping_reluctance().value();
+    CHECK_THAT(gappingReluctance,
+               Catch::Matchers::WithinRel(reluctancePerGap[0].get_reluctance() + reluctancePerGap[1].get_reluctance(), 1e-9));
+    CHECK(reluctanceOutput.get_maximum_fringing_factor().value() > 1.0);
+
+    // Analytic anchor: two annular clearance gaps in series, no fringing.
+    double gapLength = (0.0024 - 0.0023) / 2;
+    double gapArea = 2 * std::numbers::pi * ((0.0023 + 0.0024) / 4) * 0.00021;
+    double basicTwoGapReluctance = 2 * gapLength / (4e-7 * std::numbers::pi * gapArea);
+    double basicEstimate = pow(numberTurns, 2) / basicTwoGapReluctance;
+    UNSCOPED_INFO("analytic two-gap estimate " << basicEstimate * 1e6 << " uH");
+    CHECK(ringInductance > 0.5 * basicEstimate);
+    CHECK(ringInductance < 3.0 * basicEstimate);
+    settings.reset();
+}
+
+// ABT #357: molded composite body (WE-MAPI class). The whole circuit is IN the low-mu
+// material — no discrete gap dilutes it — so L must scale essentially linearly with the
+// composite permeability (Kool Mu 60 vs 26 => ratio ~2.31), and the magnitude must agree
+// with mu0 * mu * N^2 * Ae / le computed from the piece's own effective parameters. This is
+// the property the ABT #357 phase-2 material extraction inverts (mu from measured L0).
+TEST_CASE("Test_Molded_Inductance_Permeability_Scaling", "[physical-model][magnetizing-inductance][molded]") {
+    settings.reset();
+    clear_databases();
+    double numberTurns = 10;
+    json windingData = json::parse(
+        R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+            "numberParallels": 1, "numberTurns": 10, "wire": "Dummy"}]})");
+
+    auto buildCore = [](const std::string& materialName) {
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+            {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+                {"D", {{"nominal", 0.0012}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", materialName}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        return core;
+    };
+
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    auto core26 = buildCore("Kool Mµ 26");
+    auto core60 = buildCore("Kool Mµ 60");
+    double inductance26 = magnetizingInductanceModel
+        .calculate_inductance_from_number_turns_and_gapping(core26, OpenMagnetics::Coil(windingData))
+        .get_magnetizing_inductance().get_nominal().value();
+    double inductance60 = magnetizingInductanceModel
+        .calculate_inductance_from_number_turns_and_gapping(core60, OpenMagnetics::Coil(windingData))
+        .get_magnetizing_inductance().get_nominal().value();
+
+    UNSCOPED_INFO("L(mu26) = " << inductance26 * 1e9 << " nH, L(mu60) = " << inductance60 * 1e9 << " nH");
+    CHECK(std::isfinite(inductance26));
+    CHECK(inductance26 > 0);
+    // Linear-in-mu within the tolerance the vendor DC-bias fits leave at H=0.
+    CHECK(inductance60 / inductance26 > 1.9);
+    CHECK(inductance60 / inductance26 < 2.5);
+
+    // Magnitude agrees with the closed-circuit formula on the piece's own effective
+    // parameters (same le/Ae source, so the band only absorbs the permeability fit at H=0).
+    auto effectiveParameters = core26.get_processed_description().value().get_effective_parameters();
+    double handEstimate = 4e-7 * std::numbers::pi * 26 * pow(numberTurns, 2) *
+                          effectiveParameters.get_effective_area() / effectiveParameters.get_effective_length();
+    CHECK(inductance26 > 0.7 * handEstimate);
+    CHECK(inductance26 < 1.4 * handEstimate);
     settings.reset();
 }

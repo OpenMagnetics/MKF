@@ -2082,6 +2082,220 @@ class CorePieceDrum : public CorePiece {
     }
 };
 
+// DRUM + RING ("shielded drum", ABT #366): a drum closed by a concentric shield ring,
+// CoreType::PIECE_AND_PLATE. Letters: the drum convention above (A, A2, B, C, D, E, F, H)
+// plus J ring OD, K ring ID, L ring height (defined with the MAS drumRing records, sourced
+// from the ACME DR + SRI catalogue families).
+//
+// The magnetic circuit is CLOSED, but through two annular RADIAL clearance gaps between
+// flange rim and ring bore — (K - A)/2 each — which dominate the reluctance and give these
+// parts their soft saturation. Core::process_gap synthesizes them as GapType::RESIDUAL;
+// they are deliberately NOT part of the ferrite constants here. get_shape_constants
+// returns the WHOLE ferrite assembly (post + flanges + corners + ring + ring corners),
+// following the piece-and-plate convention that the piece class reports the full circuit
+// and Core::process_data doubles nothing.
+class CorePieceDrumRing : public CorePieceDrum {
+  public:
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        if (dimensions["K"] <= dimensions["A"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumRing: ring inner diameter K (" + std::to_string(dimensions["K"]) +
+                ") must exceed the flange OD A (" + std::to_string(dimensions["A"]) + ")");
+        }
+        // The envelope includes the ring: J >= A always (the ring wraps the flanges).
+        set_width(dimensions["J"]);
+        set_depth(dimensions["J"]);
+        set_height(std::max(dimensions["B"], dimensions["L"]));
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double pi = std::numbers::pi;
+        double flangeRadius = dimensions["A"] / 2;
+        double postRadius = dimensions["C"] / 2;
+        double boreRadius = (dimensions.find("H") != dimensions.end()) ? dimensions["H"] / 2 : 0.0;
+        double grooveHeight = dimensions["E"];
+        double ringOuterRadius = dimensions["J"] / 2;
+        double ringInnerRadius = dimensions["K"] / 2;
+
+        // Post + two spreading flanges + post corners: identical to the bare drum.
+        double postArea = pi * (pow(postRadius, 2) - pow(boreRadius, 2));
+        std::vector<double> areas;
+        areas.push_back(postArea);
+        double c1 = grooveHeight / postArea;
+        double c2 = grooveHeight / pow(postArea, 2);
+        for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
+            c1 += 1.0 / (2 * pi * flangeThickness) * log(flangeRadius / postRadius);
+            c2 += 1.0 / (2 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
+            areas.push_back(2 * pi * postRadius * flangeThickness);
+            double s1 = postRadius - sqrt((pow(boreRadius, 2) + pow(postRadius, 2)) / 2);
+            double cornerLength = pi / 4 * (2 * s1 + flangeThickness);
+            double cornerArea = 0.5 * (postArea + 2 * pi * postRadius * flangeThickness);
+            areas.push_back(cornerArea);
+            c1 += cornerLength / cornerArea;
+            c2 += cornerLength / pow(cornerArea, 2);
+        }
+
+        // Ring: axial annulus running between the two flange mid-planes (bounded by the
+        // ring's own height when the ring is shorter than the drum).
+        double ringArea = pi * (pow(ringOuterRadius, 2) - pow(ringInnerRadius, 2));
+        double ringLength = std::min(dimensions["L"],
+                                     dimensions["B"] - (dimensions["D"] + dimensions["F"]) / 2);
+        c1 += ringLength / ringArea;
+        c2 += ringLength / pow(ringArea, 2);
+        areas.push_back(ringArea);
+
+        // Two radial->axial turns inside the ring wall, IEC 60205 clause 4.6 idiom: mean of
+        // the entry band (ring bore over one flange thickness, where the gap flux lands) and
+        // the axial annulus.
+        for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
+            double entryArea = 2 * pi * ringInnerRadius * flangeThickness;
+            double ringWall = ringOuterRadius - ringInnerRadius;
+            double cornerLength = pi / 4 * (ringWall / 2 + flangeThickness / 2);
+            double cornerArea = 0.5 * (entryArea + ringArea);
+            areas.push_back(cornerArea);
+            c1 += cornerLength / cornerArea;
+            c2 += cornerLength / pow(cornerArea, 2);
+        }
+        return {c1, c2, *min_element(areas.begin(), areas.end())};
+    }
+};
+
+// MOLDED (ABT #357): a metal-composite molded inductor body (WE-MAPI / IHLP / XAL class) —
+// a coil compression-molded inside a homogeneous low-permeability SMC block. The distributed
+// gap lives in the MATERIAL (mu_eff ~15-40), so the piece is a single solid CLOSED circuit
+// (CoreType::CLOSED_SHAPE) with NO discrete gaps: magnetically a pot core with a rectangular
+// outer boundary. Letters (defined with the MAS records): A body width, B body height (coil
+// axis), C body depth, D coil-cavity inner diameter (the composite post under the coil bore),
+// E coil-cavity outer diameter, F coil-cavity height.
+//
+// Sections, IEC 60205 general method: post (pi/4 D^2 over F), two plates ((B - F)/2 thick,
+// radial spreading D/2 -> E/2), outer shell (block cross-section minus the cavity circle,
+// axial mid-plate to mid-plate), plus clause-4.6 corner terms at both transitions. The
+// rectangular outer is handled through the exact shell AREA and an area-equivalent outer
+// radius for the corner lengths — the same first-order treatment RM/PQ pieces use for their
+// non-round outlines. Validated forward against the REDEXPERT measured L(I) data in the
+// ABT #357 phase-2 fit; this class only owns the geometry.
+class CorePieceMolded : public CorePiece {
+  public:
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        if (dimensions["E"] <= dimensions["D"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "molded: cavity outer diameter E (" + std::to_string(dimensions["E"]) +
+                ") must exceed the cavity inner diameter D (" + std::to_string(dimensions["D"]) + ")");
+        }
+        if (dimensions["F"] >= dimensions["B"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "molded: cavity height F (" + std::to_string(dimensions["F"]) +
+                ") must be smaller than the body height B (" + std::to_string(dimensions["B"]) + ")");
+        }
+        if (dimensions["E"] >= std::min(dimensions["A"], dimensions["C"])) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "molded: cavity outer diameter E (" + std::to_string(dimensions["E"]) +
+                ") must fit inside the body footprint A x C");
+        }
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["C"]);
+    }
+
+    void process_winding_window() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        WindingWindowElement windingWindow;
+        windingWindow.set_height(dimensions["F"]);
+        windingWindow.set_width((dimensions["E"] - dimensions["D"]) / 2);
+        windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
+        // ABT #107 convention: coordinates[0] = window CENTRE (post edge + half width).
+        windingWindow.set_coordinates(std::vector<double>({dimensions["D"] / 2 + (dimensions["E"] - dimensions["D"]) / 4, 0}));
+        set_winding_window(windingWindow);
+    }
+
+    void process_columns() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        std::vector<ColumnElement> columns;
+        ColumnElement mainColumn;
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
+        mainColumn.set_width(roundFloat(dimensions["D"]));
+        mainColumn.set_depth(roundFloat(dimensions["D"]));
+        mainColumn.set_height(roundFloat(dimensions["F"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi / 4 * pow(dimensions["D"], 2)));
+        mainColumn.set_coordinates({0, 0, 0});
+        columns.push_back(mainColumn);
+        // The return shell: one annular-equivalent lateral column wrapping the cavity.
+        ColumnElement shellColumn;
+        shellColumn.set_type(ColumnType::LATERAL);
+        shellColumn.set_shape(ColumnShape::IRREGULAR);
+        double shellArea = dimensions["A"] * dimensions["C"] - std::numbers::pi / 4 * pow(dimensions["E"], 2);
+        double equivalentOuterRadius = sqrt(dimensions["A"] * dimensions["C"] / std::numbers::pi);
+        double shellWall = equivalentOuterRadius - dimensions["E"] / 2;
+        shellColumn.set_width(roundFloat(shellWall));
+        shellColumn.set_area(roundFloat(shellArea));
+        shellColumn.set_depth(roundFloat(shellArea / shellWall));
+        shellColumn.set_height(roundFloat(dimensions["F"]));
+        shellColumn.set_coordinates({roundFloat(dimensions["E"] / 2 + shellWall / 2), 0, 0});
+        columns.push_back(shellColumn);
+        set_columns(columns);
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double pi = std::numbers::pi;
+        double postRadius = dimensions["D"] / 2;
+        double cavityRadius = dimensions["E"] / 2;
+        double cavityHeight = dimensions["F"];
+        double plateThickness = (dimensions["B"] - dimensions["F"]) / 2;
+        double shellArea = dimensions["A"] * dimensions["C"] - pi * pow(cavityRadius, 2);
+        double equivalentOuterRadius = sqrt(dimensions["A"] * dimensions["C"] / pi);
+        double shellWall = equivalentOuterRadius - cavityRadius;
+
+        double postArea = pi * pow(postRadius, 2);
+        std::vector<double> areas;
+        areas.push_back(postArea);
+        double c1 = cavityHeight / postArea;
+        double c2 = cavityHeight / pow(postArea, 2);
+
+        // Two plates: radial spreading discs post edge -> cavity edge, plus post corners
+        // (clause 4.6, same idiom as the drum flanges).
+        for (size_t plateIndex = 0; plateIndex < 2; ++plateIndex) {
+            c1 += 1.0 / (2 * pi * plateThickness) * log(cavityRadius / postRadius);
+            c2 += 1.0 / (2 * pow(pi * plateThickness, 2)) * (cavityRadius - postRadius) / (cavityRadius * postRadius);
+            areas.push_back(2 * pi * postRadius * plateThickness);
+            double s1 = postRadius - sqrt(pow(postRadius, 2) / 2);
+            double cornerLength = pi / 4 * (2 * s1 + plateThickness);
+            double cornerArea = 0.5 * (postArea + 2 * pi * postRadius * plateThickness);
+            areas.push_back(cornerArea);
+            c1 += cornerLength / cornerArea;
+            c2 += cornerLength / pow(cornerArea, 2);
+        }
+
+        // Outer shell: axial run between the two plate mid-planes.
+        double shellLength = dimensions["B"] - plateThickness;
+        c1 += shellLength / shellArea;
+        c2 += shellLength / pow(shellArea, 2);
+        areas.push_back(shellArea);
+
+        // Two radial->axial turns into the shell at the cavity edge (clause-4.6 idiom, same
+        // as the drumRing ring corners): mean of the entry band and the shell cross-section.
+        for (size_t cornerIndex = 0; cornerIndex < 2; ++cornerIndex) {
+            double entryArea = 2 * pi * cavityRadius * plateThickness;
+            double cornerLength = pi / 4 * (shellWall / 2 + plateThickness / 2);
+            double cornerArea = 0.5 * (entryArea + shellArea);
+            areas.push_back(cornerArea);
+            c1 += cornerLength / cornerArea;
+            c2 += cornerLength / pow(cornerArea, 2);
+        }
+        return {c1, c2, *min_element(areas.begin(), areas.end())};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        return {pow(c1, 2) / c2, c1 / c2, minimumArea};
+    }
+};
+
 // PQI: a PQ half closed by a flat I plate.
 //
 // IEC 60205:2016 DOES cover this case, contrary to a first reading of its clause titles. Every
@@ -2225,6 +2439,8 @@ bool CorePiece::is_family_supported(CoreShapeFamily family) {
         case CoreShapeFamily::EER:
         case CoreShapeFamily::UI:
         case CoreShapeFamily::DRUM:
+        case CoreShapeFamily::DRUM_RING:
+        case CoreShapeFamily::MOLDED:
         case CoreShapeFamily::PQI:
         case CoreShapeFamily::EF:
         case CoreShapeFamily::EPC:
@@ -2421,6 +2637,18 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     }
     else if (family == CoreShapeFamily::DRUM) {
         auto piece = std::make_shared<CorePieceDrum>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::DRUM_RING) {
+        auto piece = std::make_shared<CorePieceDrumRing>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::MOLDED) {
+        auto piece = std::make_shared<CorePieceMolded>();
         piece->set_shape(shape);
         if (process) piece->process();
         return piece;

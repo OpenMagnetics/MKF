@@ -3661,10 +3661,49 @@ TEST_CASE("Test_Core_Losses_All_Models_Comparison_Table",
             bestModel = name;
         }
     }
-    std::cout << "Best model: " << bestModel << " with " 
+    std::cout << "Best model: " << bestModel << " with "
               << (bestAvg * 100) << "% average error" << std::endl;
-    
+
     REQUIRE(bestAvg < 0.5); // At least one model under 50% avg error
+    settings.reset();
+}
+
+// ABT #366: shielded drum (drumRing). The loss models consume the assembly's effective
+// parameters (post + flanges + ring, IEC 60205 general method) — this pins that the whole
+// pipeline yields finite, positive, sane volumetric losses for the new family. The effective
+// volume must also sit between the drum alone and the full envelope cylinder, or the sectioned
+// circuit produced nonsense.
+TEST_CASE("Test_Core_Losses_Drum_Ring_Smoke", "[physical-model][core-losses][drum-ring]") {
+    settings.reset();
+    clear_databases();
+    Core core = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90");
+
+    auto effectiveParameters = core.get_processed_description().value().get_effective_parameters();
+    double effectiveVolume = effectiveParameters.get_effective_volume();
+    // Envelope cylinder: pi/4 J^2 * max(B, L); the ferrite path volume must be below it and
+    // above zero (le and Ae both from the sectioned assembly).
+    double envelopeVolume = std::numbers::pi / 4 * pow(0.003, 2) * 0.00105;
+    CHECK(effectiveVolume > 0);
+    CHECK(effectiveVolume < envelopeVolume);
+
+    auto coreLossesModel = CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+    json excitationJson = json();
+    excitationJson["frequency"] = 100000;
+    excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+    excitationJson["magneticFluxDensity"]["processed"]["peak"] = 0.1;
+    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 0.2;
+    excitationJson["magneticFieldStrength"]["processed"]["offset"] = 0;
+    excitationJson["magneticFieldStrength"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFieldStrength"]["processed"]["peakToPeak"] = 0;
+    OperatingPointExcitation excitation(excitationJson);
+
+    auto coreLosses = coreLossesModel->get_core_losses(core, excitation, 25);
+    CHECK(std::isfinite(coreLosses.get_core_losses()));
+    CHECK(coreLosses.get_core_losses() > 0);
+    CHECK(std::isfinite(coreLosses.get_volumetric_losses().value()));
+    CHECK(coreLosses.get_volumetric_losses().value() > 0);
     settings.reset();
 }
 
