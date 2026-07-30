@@ -138,8 +138,11 @@ std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory(MagneticField
     else if (modelName == MagneticFieldStrengthModels::ALBACH) {
         return std::make_shared<MagneticFieldStrengthAlbach2DModel>();
     }
+    else if (modelName == MagneticFieldStrengthModels::DOWELL) {
+        return std::make_shared<MagneticFieldStrengthDowellModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown Magnetic Field Strength model, available options are: {BINNS_LAWRENSON, LAMMERANER, WANG, ALBACH}");
+        throw ModelNotAvailableException("Unknown Magnetic Field Strength model, available options are: {BINNS_LAWRENSON, LAMMERANER, WANG, ALBACH, DOWELL}");
 }
 
 std::shared_ptr<MagneticFieldStrengthFringingEffectModel> MagneticField::factory(MagneticFieldStrengthFringingEffectModels modelName) {
@@ -355,6 +358,19 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     }
     _model->_wireMaxOuterWidth = _wireMaxOuterWidth;
     _model->_wireMaxOuterHeight = _wireMaxOuterHeight;
+
+    // ABT #376: Dowell needs the winding breadth b — the window dimension the layers run along,
+    // which for MKF's concentric windows is the window HEIGHT (layers stack radially, the field
+    // runs axially). Supplied to every model; only Dowell reads it.
+    {
+        auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+        if (bobbin.get_processed_description()) {
+            auto bobbinWindingWindows = bobbin.get_processed_description()->get_winding_windows();
+            if (!bobbinWindingWindows.empty() && bobbinWindingWindows[0].get_height()) {
+                _model->_windingWindowBreadth = bobbinWindingWindows[0].get_height().value();
+            }
+        }
+    }
     
     auto turns = magnetic.get_coil().get_turns_description().value();
 
@@ -1088,6 +1104,53 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         complexFieldPoint.set_turn_length(inducedFieldPoint.get_turn_length().value());
     }
     return complexFieldPoint;   
+}
+
+// ABT #376: Dowell's one-dimensional field (see the class comment in the header). The layers are
+// assumed to span the winding breadth b, so the field is PARALLEL to them and depends only on the
+// ampere-turns enclosed between the induced point and the zero-field boundary. Per inducing
+// conductor that is a step: the conductor's own I/b is felt on one side of it and nothing on the
+// other, so summing over the conductors of a layered winding rebuilds Dowell's MMF staircase.
+//
+// Orientation: MKF's concentric windows stack layers along x (radial) with the field running
+// along y (axial), which is Dowell's own arrangement, so the step is taken on the x coordinate
+// and the field is returned on y. Toroidal/other layouts are not Dowell's geometry and the
+// caller should choose a two-dimensional model there.
+ComplexFieldPoint MagneticFieldStrengthDowellModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
+    ComplexFieldPoint magneticFieldStrengthPoint;
+    magneticFieldStrengthPoint.set_point(inducedFieldPoint.get_point());
+    if (inducedFieldPoint.get_label()) {
+        magneticFieldStrengthPoint.set_label(inducedFieldPoint.get_label().value());
+    }
+
+    // Without a breadth there is no Dowell field to speak of; refusing beats inventing one.
+    if (_windingWindowBreadth <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Dowell's field model needs the winding breadth (the window dimension parallel to the "
+            "layers); none was supplied, so H = MMF / b is undefined");
+    }
+
+    double inducingRadialPosition = inducingFieldPoint.get_point()[0];
+    double inducedRadialPosition = inducedFieldPoint.get_point()[0];
+    double fieldStep = inducingFieldPoint.get_value() / _windingWindowBreadth;
+
+    // The conductor contributes to points OUTSIDE it (further from the zero-field boundary) and
+    // not to points inside. On the conductor itself the enclosed fraction is taken as half, which
+    // is Dowell's own treatment of the layer carrying the current.
+    double contribution;
+    if (inducedRadialPosition > inducingRadialPosition) {
+        contribution = fieldStep;
+    }
+    else if (inducedRadialPosition < inducingRadialPosition) {
+        contribution = 0;
+    }
+    else {
+        contribution = fieldStep / 2;
+    }
+
+    magneticFieldStrengthPoint.set_real(0);
+    magneticFieldStrengthPoint.set_imaginary(contribution);
+    return magneticFieldStrengthPoint;
 }
 
 ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex) {

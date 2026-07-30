@@ -27,6 +27,10 @@ class MagneticFieldStrengthModel {
         std::vector<Wire> _wirePerWinding;
         std::vector<double> _wireMaxOuterWidth;  // Precomputed for performance
         std::vector<double> _wireMaxOuterHeight; // Precomputed for performance
+        // ABT #376: winding breadth b — the window dimension PARALLEL to the layers, over which
+        // Dowell's one-dimensional field is assumed uniform (H = enclosed MMF / b). Only the
+        // Dowell model reads it; the point-to-point models derive everything from the two points.
+        double _windingWindowBreadth = 0;
         virtual ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt) = 0;
 };
 
@@ -73,13 +77,27 @@ class MagneticField {
 
 
 
-// // Based on Effects of eddy currents in transformer windings by P. L. Dowell.
-// // https://sci-hub.st/10.1049/piee.1966.0236
-// class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
-//     public:
-//         std::string methodName = "Dowell";
-//         ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
-// };
+// Based on Effects of eddy currents in transformer windings by P. L. Dowell.
+// https://sci-hub.st/10.1049/piee.1966.0236
+//
+// ABT #376: Dowell is a ONE-DIMENSIONAL model and does not fit the point-to-point interface the
+// way Lammeraner or Binns-Lawrenson do — there is no "field of one conductor at a point" in his
+// formulation. He assumes the layers span the whole winding breadth b, so the field is parallel
+// to the layers, uniform along them, and set purely by the MMF enclosed between the point and
+// the zero-field boundary: H = (enclosed ampere-turns) / b. Expressed per inducing conductor
+// that is exactly the MMF staircase — each conductor adds its own I/b to every point on ONE
+// side of it and nothing on the other — which is what this implementation returns, so summing
+// over conductors reproduces Dowell's staircase exactly.
+//
+// The consequence is worth stating: unlike the 2-D models this one has NO distance dependence,
+// so it does not resolve fringing near a gap, and its accuracy relies on the layers being long
+// against the window (Dowell's own assumption). It is the right model for a classic layered
+// transformer window and the wrong one for a gapped inductor.
+class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
+    public:
+        std::string methodName = "Dowell";
+        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
+};
 
 
 

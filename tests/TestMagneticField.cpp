@@ -514,4 +514,71 @@ namespace {
         }
     }
 
+
+    // ABT #376: DOWELL's field model. It was declared in MagneticFieldStrengthModels but the
+    // factory had no branch for it, so selecting it threw MODEL_NOT_AVAILABLE — and the
+    // model-comparison sweeps that named it failed by the thousand.
+    //
+    // What defines Dowell is the MMF STAIRCASE: layers are assumed to span the winding breadth b,
+    // so the field is parallel to them and set only by the ampere-turns enclosed — H = MMF / b,
+    // with no distance dependence at all. These assertions pin exactly that, because it is what
+    // separates his model from the 2D ones next to it.
+    TEST_CASE("Test_Magnetic_Field_Dowell_Staircase", "[physical-model][magnetic-field][dowell]") {
+        settings.reset();
+        auto model = MagneticField::factory(MagneticFieldStrengthModels::DOWELL);
+        REQUIRE(model != nullptr);
+
+        double windingBreadth = 0.02;
+        model->_windingWindowBreadth = windingBreadth;
+
+        double current = 3.0;
+        FieldPoint inducingFieldPoint;
+        inducingFieldPoint.set_point({0.010, 0.0});
+        inducingFieldPoint.set_value(current);
+
+        auto fieldAt = [&](double radialPosition, double axialPosition) {
+            FieldPoint inducedFieldPoint;
+            inducedFieldPoint.set_point({radialPosition, axialPosition});
+            return model->get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
+        };
+
+        // One conductor is one step of height I/b, felt only OUTSIDE it.
+        double expectedStep = current / windingBreadth;
+        CHECK_THAT(fieldAt(0.012, 0.0).get_imaginary(), Catch::Matchers::WithinRel(expectedStep, 1e-9));
+        CHECK(fieldAt(0.008, 0.0).get_imaginary() == 0);
+        // On the conductor itself, half the step — Dowell's treatment of the layer carrying it.
+        CHECK_THAT(fieldAt(0.010, 0.0).get_imaginary(), Catch::Matchers::WithinRel(expectedStep / 2, 1e-9));
+
+        // The field is PARALLEL to the layers: no radial component anywhere.
+        CHECK(fieldAt(0.012, 0.0).get_real() == 0);
+        CHECK(fieldAt(0.030, 0.005).get_real() == 0);
+
+        // NO distance dependence — the property that makes this a 1D model. Doubling the
+        // separation, or moving along the layer, leaves the step untouched (a 2D model would
+        // fall off with distance; that difference is the point of offering both).
+        CHECK_THAT(fieldAt(0.014, 0.0).get_imaginary(), Catch::Matchers::WithinRel(expectedStep, 1e-9));
+        CHECK_THAT(fieldAt(0.012, 0.009).get_imaginary(), Catch::Matchers::WithinRel(expectedStep, 1e-9));
+
+        // Staircase: N conductors enclosed give N steps, i.e. the enclosed ampere-turns over b.
+        double accumulatedField = 0;
+        size_t numberEnclosedTurns = 5;
+        for (size_t turnIndex = 0; turnIndex < numberEnclosedTurns; ++turnIndex) {
+            FieldPoint turnFieldPoint;
+            turnFieldPoint.set_point({0.006 + 0.001 * double(turnIndex), 0.0});
+            turnFieldPoint.set_value(current);
+            FieldPoint inducedFieldPoint;
+            inducedFieldPoint.set_point({0.015, 0.0});
+            accumulatedField += model->get_magnetic_field_strength_between_two_points(turnFieldPoint, inducedFieldPoint).get_imaginary();
+        }
+        CHECK_THAT(accumulatedField,
+                   Catch::Matchers::WithinRel(double(numberEnclosedTurns) * current / windingBreadth, 1e-9));
+
+        // Without a breadth there is no Dowell field, and the model says so rather than guessing.
+        auto modelWithoutBreadth = MagneticField::factory(MagneticFieldStrengthModels::DOWELL);
+        FieldPoint anyInducedPoint;
+        anyInducedPoint.set_point({0.012, 0.0});
+        CHECK_THROWS(modelWithoutBreadth->get_magnetic_field_strength_between_two_points(inducingFieldPoint, anyInducedPoint));
+        settings.reset();
+    }
+
 }  // namespace
