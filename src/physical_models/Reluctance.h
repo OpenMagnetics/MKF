@@ -27,6 +27,18 @@ class ReluctanceModel {
   public:
     virtual AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo) = 0;
 
+    // ABT #368: reluctance of a drumRing STRUCTURAL annular clearance ((K-A)/2 at a flange
+    // rim). Not user-selectable and shared by every model: the generic gap models mis-apply
+    // here — the gap is an UNROLLED CLOSED annulus, so there is no circumferential fringing
+    // (Muehlethaler's second gamma is spurious), and the axial escape distances are set by the
+    // RING geometry (bore overhang on the groove side, ring radial thickness on the flush
+    // side), not by the winding window. Composition: Muehlethaler/Balakrishnan basic
+    // Schwarz-Christoffel block (ECCE Asia 2011, eq. 8) in an asymmetric type-1 network.
+    // Validated against 54 measured parts across the three drum families with
+    // vendor-confirmed geometry: predicted fringing factor within 4% of measurement with no
+    // fitted parameters (ABT #368 2026-07-30).
+    AirGapReluctanceOutput get_annular_clearance_gap_reluctance(Core& core, CoreGap gapInfo);
+
     double get_ungapped_core_reluctance(const Core& core, double initialPermeability);
 
     double get_ungapped_core_reluctance(Core core, std::optional<OperatingPoint> = std::nullopt);

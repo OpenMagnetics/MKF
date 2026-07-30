@@ -110,6 +110,66 @@ MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, doub
     return magnetizingInductanceOutput;
 }
 
+
+// ABT #368: see the header comment. The clearance is unrolled to a strip of width tf (the
+// flange thickness on this gap's side), length = mean circumference, gap length a = (K-A)/2.
+// Only the two AXIAL edges fringe; their escape walls are the ring bore itself:
+//   groove side: the bore continues past the flange by (B+L)/2 - tf
+//   outer side:  any bore overhang plus the escape over the ring's radial thickness (J-K)/2
+AirGapReluctanceOutput ReluctanceModel::get_annular_clearance_gap_reluctance(Core& core, CoreGap gapInfo) {
+    auto constants = Constants();
+    auto shape = core.resolve_shape();
+    auto dimensions = flatten_dimensions(shape.get_dimensions().value());
+    double A = dimensions["A"];
+    double B = dimensions["B"];
+    double J = dimensions["J"];
+    double K = dimensions["K"];
+    double L = dimensions["L"];
+    double gapLength = gapInfo.get_length();  // (K - A) / 2, synthesized by process_gap
+    if (!gapInfo.get_area() || !gapInfo.get_coordinates()) {
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS,
+                           "Annular clearance gap is missing area or coordinates");
+    }
+    // The top clearance faces the D flange, the bottom one the F flange.
+    bool topGap = (*gapInfo.get_coordinates())[1] >= 0;
+    double flangeThickness = topGap ? dimensions["D"] : dimensions["F"];
+
+    double halfGap = gapLength / 2;
+    double escapeGroove = (B + L) / 2 - flangeThickness;
+    double escapeOuter = std::max((L - B) / 2, 0.0) + (J - K) / 2;
+
+    // Muehlethaler basic block (ECCE Asia 2011, eq. 8), per unit length. The bracket is
+    // clamped at the direct term alone (no negative fringing permeance) for degenerate
+    // escape walls shorter than the gap itself.
+    auto basicReluctance = [&](double h) {
+        double fringeTerm = 2 / std::numbers::pi * (1 + log(std::numbers::pi * h / (4 * halfGap)));
+        if (fringeTerm < 0) {
+            fringeTerm = 0;
+        }
+        return 1 / constants.vacuumPermeability / (flangeThickness / (2 * halfGap) + fringeTerm);
+    };
+    // Asymmetric type-1 network: the two half-length blocks of each edge in series, the two
+    // edges in parallel. Symmetric case reduces to the plain basic block.
+    double branchGroove = 2 * basicReluctance(escapeGroove);
+    double branchOuter = 2 * basicReluctance(escapeOuter);
+    double perUnitLength = 1 / (1 / branchGroove + 1 / branchOuter);
+    double sigma = perUnitLength / (gapLength / (constants.vacuumPermeability * flangeThickness));
+
+    double meanCircumference = std::numbers::pi * (A + K) / 2;
+    double reluctance = sigma * gapLength /
+                        (constants.vacuumPermeability * meanCircumference * flangeThickness);
+    double fringingFactor = 1 / sigma;
+
+    AirGapReluctanceOutput airGapReluctanceOutput;
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(
+        get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_reluctance(reluctance);
+    airGapReluctanceOutput.set_method_used("AnnularClearance");
+    airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
+    airGapReluctanceOutput.set_fringing_factor(fringingFactor);
+    return airGapReluctanceOutput;
+}
+
 MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
     double calculatedReluctance = 0;
     double calculatedCentralReluctance = 0;
@@ -135,8 +195,13 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
         // columns lateral) previously landed every gap — including the wound leg's —
         // in the parallel term.
         auto mainColumnIndex = core.get_main_column_index();
+        bool isDrumRing = core.get_shape_family() == CoreShapeFamily::DRUM_RING;
         for (const auto& gap : gapping) {
-            auto gapReluctance = get_gap_reluctance(gap);
+            // ABT #368: drumRing structural clearances get the dedicated annular model — the
+            // generic ones assume winding-window escape walls and (rectangular branch) fringe
+            // the circumferential ends of a section that is actually a closed loop.
+            auto gapReluctance = isDrumRing ? get_annular_clearance_gap_reluctance(core, gap)
+                                            : get_gap_reluctance(gap);
             auto gapColumnIndex = core.find_closest_column_index_by_coordinates(gap.get_coordinates().value());
             reluctancePerGap.push_back(gapReluctance);
             if (static_cast<size_t>(gapColumnIndex) != mainColumnIndex) {

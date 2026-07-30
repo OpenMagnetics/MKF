@@ -460,3 +460,64 @@ namespace {
     }
 
 }  // namespace
+
+// ABT #368: drumRing structural clearances route through the dedicated annular model — the
+// generic gap models mis-apply here (no circumferential fringing exists on a closed annulus,
+// and the escape walls are the ring's, not the winding window's). The pinned fringing factors
+// are from an independent implementation of the same Muehlethaler-basic composition, which
+// reproduced the measured factors of the three vendor-confirmed drum families within 4%
+// with no fitted parameters (54 parts; ABT #368 2026-07-30).
+TEST_CASE("Test_Annular_Clearance_Reluctance_Drum_Ring", "[physical-model][reluctance][drum-ring]") {
+    settings.reset();
+    clear_databases();
+
+    struct GeometryCase {
+        double A, B, D, E, F, C, J, K, L;  // meters
+        double expectedFringingFactor;
+    };
+    // Bare geometry numbers only (three shielded-drum classes); flanges symmetric D = F.
+    std::vector<GeometryCase> cases = {
+        {9.85e-3, 3.5e-3, 0.75e-3, 2.0e-3, 0.75e-3, 5.0e-3, 12.0e-3, 10.6e-3, 3.5e-3, 1.878495},
+        {9.85e-3, 5.2e-3, 1.05e-3, 3.1e-3, 1.05e-3, 4.8e-3, 12.0e-3, 10.6e-3, 5.0e-3, 1.671505},
+        {9.85e-3, 7.0e-3, 1.00e-3, 5.0e-3, 1.00e-3, 5.8e-3, 12.0e-3, 10.6e-3, 7.0e-3, 1.751996},
+    };
+
+    for (auto& geometry : cases) {
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumRing"},
+            {"aliases", json::array()}, {"name", "annular clearance case"},
+            {"dimensions", {{"A", geometry.A}, {"B", geometry.B}, {"C", geometry.C},
+                            {"D", geometry.D}, {"E", geometry.E}, {"F", geometry.F},
+                            {"J", geometry.J}, {"K", geometry.K}, {"L", geometry.L}}}};
+        json coreJson = {{"functionalDescription",
+                          {{"name", "annular clearance case"}, {"type", "pieceAndPlate"},
+                           {"material", "N5D"}, {"shape", shapeJson},
+                           {"gapping", json::array()}, {"numberStacks", 1}}}};
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+
+        auto model = ReluctanceModel::factory(ReluctanceModels::ZHANG);
+        auto output = model->get_gapping_reluctance(core);
+
+        // Both structural gaps go through the dedicated model regardless of the selected
+        // user model (Zhang here on purpose: its generic formula gets this geometry wrong).
+        REQUIRE(output.get_reluctance_per_gap().has_value());
+        auto reluctancePerGap = output.get_reluctance_per_gap().value();
+        for (auto& gapOutput : reluctancePerGap) {
+            CHECK(gapOutput.get_method_used() == "AnnularClearance");
+            CHECK_THAT(gapOutput.get_fringing_factor(),
+                       Catch::Matchers::WithinRel(geometry.expectedFringingFactor, 0.005));
+        }
+
+        // Total = the two clearances in series on the single (central) column.
+        auto gapping = core.get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 2);
+        double gapLength = (geometry.K - geometry.A) / 2;
+        double meanCircumference = std::numbers::pi * (geometry.A + geometry.K) / 2;
+        double oneGap = (1.0 / geometry.expectedFringingFactor) * gapLength /
+                        (Constants().vacuumPermeability * meanCircumference * geometry.D);
+        CHECK_THAT(output.get_gapping_reluctance().value(),
+                   Catch::Matchers::WithinRel(2 * oneGap, 0.01));
+    }
+}
