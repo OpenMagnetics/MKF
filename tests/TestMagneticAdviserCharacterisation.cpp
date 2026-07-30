@@ -180,9 +180,21 @@ const std::vector<MagneticEntry> kTopThreeWinding = {
     // 0.04 mm gap needing 21 turns (conservative sizing for L at +tolerance) and
     // re-ranks slot 3 to the 95-material 9-turn stack. Regenerated on main
     // 17e1f850, user-approved.
+    // Slot 0 re-pinned 2026-07-30 (ABT #377), user-approved. The value moved +0.061%
+    // (2.30960636439206812 -> 2.31102462762095229) while EVERYTHING ELSE held: same winning
+    // reference, same wire triple, and slots 1 and 2 unchanged (1.88518538772831645 exactly,
+    // 0.70004398 vs 0.70004337 — inside kRelTol). A global normalisation shift would have moved
+    // all three, so this is one candidate's score, not a re-ranking.
+    // NOT caused by the drum/molded family work: reverting the TAK/SDE/B45 material additions
+    // reproduces the identical new value, so does reverting the ABT #358 per-shape-family DC-bias
+    // fix, and the windingOrder propagation cannot reach it (no catalogue record carries
+    // windingOrder). ~50 physics/constructive commits landed between the previous pin and this
+    // one — among them the ABT #339 permeability-curve fixes and the #358 DC-bias work — and the
+    // exact one responsible was not isolated; bisect recipe if it ever matters: check out each
+    // candidate, rebuild, run this test, watch for 2.30960636439206812.
     {"79 E 10/3 gapped 0.04 mm, Turns: 21, Order: 012, Non-Interleaved, Margin Taped 00",
      "Round 33.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
-     2.3096063643920681},
+     2.31102462762095229},
     {"79 E 10/3 gapped 0.04 mm, Turns: 21, Order: 012, Non-Interleaved, Margin Taped 01",
      "Round 33.0 - Heavy Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
      1.8851853877283165},
