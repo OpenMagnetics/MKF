@@ -9,9 +9,12 @@
 #include <iostream>
 #include "spline.h"
 #include <numbers>
+#include <sstream>
 #include <streambuf>
+#include <algorithm>
 #include <vector>
 #include <cfloat>
+#include <magic_enum.hpp>
 #include "support/Exceptions.h"
 
 
@@ -22,13 +25,79 @@ double InitialPermeability::get_initial_permeability(std::string coreMaterialNam
                                                      std::optional<double> temperature,
                                                      std::optional<double> magneticFieldDcBias,
                                                      std::optional<double> frequency,
-                                                     std::optional<double> magneticFluxDensity) {
+                                                     std::optional<double> magneticFluxDensity,
+                                                     std::optional<CoreShapeFamily> shapeFamily) {
     CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
-    return get_initial_permeability(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity);
+    return get_initial_permeability(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity, shapeFamily);
 }
 
 
-double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial, OperatingPoint operatingPoint) {
+// ABT #358: resolve the modifier to use for a given shape family. See the header for the
+// key grammar; family entries are partial, so this returns "default" with the family's
+// factors overlaid.
+InitialPermeabilitModifier InitialPermeability::resolve_modifier(const PermeabilityPoint& permeabilityPoint,
+                                                                std::optional<CoreShapeFamily> shapeFamily) {
+    if (!permeabilityPoint.get_modifiers()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Permeability point has no modifiers to resolve");
+    }
+    auto modifiers = permeabilityPoint.get_modifiers().value();
+    if (!modifiers.contains("default")) {
+        // Every catalogued material carries "default"; without it there is no base fit to
+        // overlay onto, and silently default-constructing one would ship mu = 1 physics.
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+                                   "Permeability modifiers carry no \"default\" entry for material fit");
+    }
+    InitialPermeabilitModifier resolved = modifiers["default"];
+    if (!shapeFamily) {
+        return resolved;
+    }
+
+    std::string familyName = std::string(magic_enum::enum_name(shapeFamily.value()));
+    std::transform(familyName.begin(), familyName.end(), familyName.begin(), ::toupper);
+
+    for (auto const& [key, familyModifier] : modifiers) {
+        if (key == "default") {
+            continue;
+        }
+        bool matches = false;
+        std::stringstream keyStream(key);
+        std::string token;
+        while (std::getline(keyStream, token, '/')) {
+            token.erase(0, token.find_first_not_of(" \t"));
+            token.erase(token.find_last_not_of(" \t") + 1);
+            std::transform(token.begin(), token.end(), token.begin(), ::toupper);
+            if (token == familyName) {
+                matches = true;
+                break;
+            }
+        }
+        if (!matches) {
+            continue;
+        }
+        // Overlay only what the family entry actually provides.
+        if (familyModifier.get_method()) {
+            resolved.set_method(familyModifier.get_method());
+        }
+        if (familyModifier.get_temperature_factor()) {
+            resolved.set_temperature_factor(familyModifier.get_temperature_factor());
+        }
+        if (familyModifier.get_frequency_factor()) {
+            resolved.set_frequency_factor(familyModifier.get_frequency_factor());
+        }
+        if (familyModifier.get_magnetic_field_dc_bias_factor()) {
+            resolved.set_magnetic_field_dc_bias_factor(familyModifier.get_magnetic_field_dc_bias_factor());
+        }
+        if (familyModifier.get_magnetic_flux_density_factor()) {
+            resolved.set_magnetic_flux_density_factor(familyModifier.get_magnetic_flux_density_factor());
+        }
+        break;
+    }
+    return resolved;
+}
+
+
+double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial, OperatingPoint operatingPoint,
+                                                     std::optional<CoreShapeFamily> shapeFamily) {
     if (operatingPoint.get_excitations_per_winding().size() == 0) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Operating point is missing excitations");
     }
@@ -47,12 +116,13 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial, 
             magneticFluxDensity = operatingPoint.get_excitations_per_winding()[0].get_magnetic_flux_density()->get_processed()->get_peak();
         }
     }
-    return get_initial_permeability(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity);
+    return get_initial_permeability(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity, shapeFamily);
 }
 
-double InitialPermeability::get_initial_permeability(std::string coreMaterialName, OperatingPoint operatingPoint) {
+double InitialPermeability::get_initial_permeability(std::string coreMaterialName, OperatingPoint operatingPoint,
+                                                     std::optional<CoreShapeFamily> shapeFamily) {
     CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
-    return get_initial_permeability(coreMaterial, operatingPoint);
+    return get_initial_permeability(coreMaterial, operatingPoint, shapeFamily);
 }
 
 double InitialPermeability::has_frequency_dependency(CoreMaterial coreMaterial) {
@@ -204,13 +274,14 @@ double InitialPermeability::get_initial_permeability_formula(CoreMaterial coreMa
                                                              std::optional<double> temperature,
                                                              std::optional<double> magneticFieldDcBias,
                                                              std::optional<double> frequency,
-                                                             std::optional<double> magneticFluxDensity) {
+                                                             std::optional<double> magneticFluxDensity,
+                                                             std::optional<CoreShapeFamily> shapeFamily) {
     auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
     auto permeabilityPoint = std::get<PermeabilityPoint>(initialPermeabilityData);
     double initialPermeabilityValue = permeabilityPoint.get_value();
 
     if (permeabilityPoint.get_modifiers()) {
-        InitialPermeabilitModifier modifiers = (*permeabilityPoint.get_modifiers())["default"];
+        InitialPermeabilitModifier modifiers = resolve_modifier(permeabilityPoint, shapeFamily);
         if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::MAGNETICS) {
             auto temperatureFactor = modifiers.get_temperature_factor();
             if (temperature && temperatureFactor) {
@@ -853,13 +924,16 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
                                                      std::optional<double> temperature,
                                                      std::optional<double> magneticFieldDcBias,
                                                      std::optional<double> frequency,
-                                                     std::optional<double> magneticFluxDensity) {
+                                                     std::optional<double> magneticFluxDensity,
+                                                     std::optional<CoreShapeFamily> shapeFamily) {
     auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
 
     double initialPermeabilityValue = 1;
 
     if (std::holds_alternative<PermeabilityPoint>(initialPermeabilityData)) {
-        initialPermeabilityValue = get_initial_permeability_formula(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity);
+        // Only the formula path carries vendor modifiers; the measured-points path below has
+        // no per-family variants in MAS data, so shapeFamily is not consulted there.
+        initialPermeabilityValue = get_initial_permeability_formula(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity, shapeFamily);
     }
     else {
         double initialPermeabilityValueReference = 1;

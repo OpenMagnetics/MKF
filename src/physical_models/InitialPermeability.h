@@ -31,15 +31,28 @@ class InitialPermeability {
                                         std::optional<double> temperature = std::nullopt,
                                         std::optional<double> magneticFieldDcBias = std::nullopt,
                                         std::optional<double> frequency = std::nullopt,
-                                        std::optional<double> magneticFluxDensity = std::nullopt);
+                                        std::optional<double> magneticFluxDensity = std::nullopt,
+                                        std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
 
         static double get_initial_permeability(CoreMaterial coreMaterial,
                                         std::optional<double> temperature = std::nullopt,
                                         std::optional<double> magneticFieldDcBias = std::nullopt,
                                         std::optional<double> frequency = std::nullopt,
-                                        std::optional<double> magneticFluxDensity = std::nullopt);
-        static double get_initial_permeability(CoreMaterial coreMaterial, OperatingPoint operatingPoint);
-        static double get_initial_permeability(std::string coreMaterialName, OperatingPoint operatingPoint);
+                                        std::optional<double> magneticFluxDensity = std::nullopt,
+                                        std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
+        static double get_initial_permeability(CoreMaterial coreMaterial, OperatingPoint operatingPoint,
+                                        std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
+        static double get_initial_permeability(std::string coreMaterialName, OperatingPoint operatingPoint,
+                                        std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
+
+        // ABT #358: vendors publish per-shape-family DC-bias fits under modifier keys like
+        // "E", "EQ", "PQ", "E/ER/U", "EQ/LP" (a slash lists the families sharing one fit).
+        // Those entries are PARTIAL — typically only the DC-bias factor — so the resolved
+        // modifier is "default" with every factor the family entry provides overlaid on top.
+        // Matching is exact per slash-separated token, never substring (a substring test would
+        // make "E" hit "EQ/LP", the ABT #359 class of bug).
+        static InitialPermeabilitModifier resolve_modifier(const PermeabilityPoint& permeabilityPoint,
+                                        std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
 
         static double has_temperature_dependency(CoreMaterial coreMaterial);
         static double has_frequency_dependency(CoreMaterial coreMaterial);
@@ -63,7 +76,8 @@ class InitialPermeability {
                                                        std::optional<double> temperature,
                                                        std::optional<double> magneticFieldDcBias,
                                                        std::optional<double> frequency,
-                                                       std::optional<double> magneticFluxDensity);
+                                                       std::optional<double> magneticFluxDensity,
+                                        std::optional<CoreShapeFamily> shapeFamily);
 };
 
 } // namespace OpenMagnetics

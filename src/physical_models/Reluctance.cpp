@@ -63,11 +63,14 @@ double ReluctanceModel::get_ungapped_core_reluctance(Core core, std::optional<Op
     if (operatingPoint) {
         double temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
         _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, operatingPoint.value());
+        // ABT #358: the shape family selects the vendor's per-family DC-bias fit when the
+        // material carries one (powder E/ER/U, EQ/LP, PQ, ... keys); without it every shape
+        // silently used the default fit.
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, operatingPoint.value(), core.get_shape_family());
     }
     else {
         _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(true);
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial);
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, std::nullopt, std::nullopt, core.get_shape_family());
     }
 
     return get_ungapped_core_reluctance(core, initialPermeabilityValue);

@@ -548,6 +548,46 @@ namespace {
         }
     }
 
+    // ABT #358: per-shape-family DC-bias modifiers must be reachable. Kool Mu 26 publishes
+    // three fits: "default", "E/ER/U" and "EQ/LP" — all with the same 'a' but different b/c,
+    // so at a real DC bias the three give measurably different permeability.
+    TEST_CASE("Test_Initial_Permeability_Per_Shape_Family_Modifier", "[physical-model][initial-permeability]") {
+        auto coreMaterial = OpenMagnetics::find_core_material_by_name("Kool Mµ 26");
+        double temperature = 25;
+        double magneticFieldDcBias = 4000;  // A/m — well into the rolloff
+
+        double muDefault = OpenMagnetics::InitialPermeability::get_initial_permeability(
+            coreMaterial, temperature, magneticFieldDcBias, std::nullopt, std::nullopt, std::nullopt);
+        double muE = OpenMagnetics::InitialPermeability::get_initial_permeability(
+            coreMaterial, temperature, magneticFieldDcBias, std::nullopt, std::nullopt, CoreShapeFamily::E);
+        double muEr = OpenMagnetics::InitialPermeability::get_initial_permeability(
+            coreMaterial, temperature, magneticFieldDcBias, std::nullopt, std::nullopt, CoreShapeFamily::ER);
+        double muEq = OpenMagnetics::InitialPermeability::get_initial_permeability(
+            coreMaterial, temperature, magneticFieldDcBias, std::nullopt, std::nullopt, CoreShapeFamily::EQ);
+        double muLp = OpenMagnetics::InitialPermeability::get_initial_permeability(
+            coreMaterial, temperature, magneticFieldDcBias, std::nullopt, std::nullopt, CoreShapeFamily::LP);
+
+        // The family fits are actually consulted (this is what regressed silently before).
+        REQUIRE(fabs(muE - muDefault) > 0.001 * muDefault);
+        REQUIRE(fabs(muEq - muDefault) > 0.001 * muDefault);
+        // Families sharing a key resolve to the same fit...
+        REQUIRE_THAT(muE, Catch::Matchers::WithinRel(muEr, 1e-9));
+        REQUIRE_THAT(muEq, Catch::Matchers::WithinRel(muLp, 1e-9));
+        // ...and the two groups are distinct from each other.
+        REQUIRE(fabs(muE - muEq) > 0.001 * muEq);
+        // Every result stays physical: a DC bias can only reduce permeability.
+        double muNoBias = OpenMagnetics::InitialPermeability::get_initial_permeability(
+            coreMaterial, temperature, std::nullopt, std::nullopt, std::nullopt, CoreShapeFamily::E);
+        REQUIRE(muE < muNoBias);
+        REQUIRE(muE > 1);
+
+        // A family with no published fit falls back to "default" (exact-token matching: "P"
+        // must NOT be taken as a match for "EQ/LP" — the substring class of bug, ABT #359).
+        double muP = OpenMagnetics::InitialPermeability::get_initial_permeability(
+            coreMaterial, temperature, magneticFieldDcBias, std::nullopt, std::nullopt, CoreShapeFamily::P);
+        REQUIRE_THAT(muP, Catch::Matchers::WithinRel(muDefault, 1e-9));
+    }
+
     TEST_CASE("Test_BH_Loop_3C97", "[physical-model][amplitude-permeability][smoke-test]") {
         std::string materialName = "3C97";
         auto curves = OpenMagnetics::BHLoopRoshenModel().get_hysteresis_loop(materialName, 25, 0.2, std::nullopt);
