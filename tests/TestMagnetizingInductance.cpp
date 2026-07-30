@@ -1374,6 +1374,125 @@ TEST_CASE("Test_Molded_Inductance_Permeability_Scaling", "[physical-model][magne
     settings.reset();
 }
 
+// ABT #357 phase 2: MKF's molded model against the REAL WE-MAPI catalogue. The reconstruction
+// (scripts/fit_we_mapi_internals.py) fitted each part's cavity geometry, turn count, wire gauge
+// and composite mu_eff0 from PUBLIC data only — datasheet L0 + DCR + body dimensions + the
+// measured L(I) curves — using a PYTHON MIRROR of CorePieceMolded's c1/c2. That mirror is the
+// risk this test exists to kill: if the C++ and the fit ever disagree, every reconstruction
+// silently rots. So here MKF itself rebuilds each part from its reconstructed letters and must
+// reproduce the part's DATASHEET inductance.
+//
+// Honest scope (see the fit's own degeneracy analysis, carried in we_mapi_fitted_materials.json):
+// the public data pins N, wire gauge and the mu(H) rolloff shape well, but mu_eff0 only to about
+// +-25% (L0/DCR/packing leave a broad valley; a B-at-drop physical band selects the branch). So
+// the assertion is on MKF-vs-DATASHEET agreement at the fit's own residual level, NOT on mu being
+// the true composite permeability.
+TEST_CASE("Test_Molded_WE_MAPI_Reconstructions_Reproduce_Datasheet_Inductance",
+          "[physical-model][magnetizing-inductance][molded][we-mapi]") {
+    settings.reset();
+    clear_databases();
+    namespace fs = std::filesystem;
+    auto reconstructionsPath = fs::path{std::source_location::current().file_name()}
+                                   .parent_path().append("testData").append("we_mapi_reconstructions.json");
+    auto stubsPath = fs::path{std::source_location::current().file_name()}
+                         .parent_path().append("testData").append("we_mapi_datasheet_stubs.ndjson");
+    std::ifstream reconstructionsFile(reconstructionsPath);
+    std::ifstream stubsFile(stubsPath);
+    REQUIRE(reconstructionsFile.good());
+    REQUIRE(stubsFile.good());
+    json reconstructions = json::parse(reconstructionsFile);
+    REQUIRE(reconstructions.size() == 183);
+
+    // Datasheet inductance per order code, straight from the RedExpert-derived stubs.
+    std::map<std::string, double> datasheetInductance;
+    std::string stubLine;
+    while (std::getline(stubsFile, stubLine)) {
+        if (stubLine.empty()) continue;
+        json stub = json::parse(stubLine);
+        auto& manufacturerInfo = stub.at("manufacturerInfo");
+        datasheetInductance[manufacturerInfo.at("reference").get<std::string>()] =
+            manufacturerInfo.at("datasheetInfo").at("electrical").at(0)
+                            .at("inductance").at("nominal").get<double>();
+    }
+    REQUIRE(datasheetInductance.size() == 183);
+
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    std::vector<double> relativeErrors;
+    size_t evaluated = 0;
+    size_t withinTwentyPercent = 0;
+    for (auto& reconstruction : reconstructions) {
+        auto orderCode = reconstruction.at("orderCode").get<std::string>();
+        // The 4012 family is a 1-2 turn (almost certainly stamped/flat-wire) construction the
+        // round-wire reconstruction cannot represent — the fit flags it, so it is excluded here
+        // rather than silently widening the band for everyone else.
+        if (reconstruction.at("caseCode").get<std::string>() == "4012") continue;
+        double numberTurns = reconstruction.at("numberTurns").get<double>();
+        double permeability = reconstruction.at("mu_eff0").get<double>();
+
+        // Inline material carrying the FITTED composite permeability (labelled as such; this is
+        // a fixture, not a catalogue material record).
+        json materialJson = {
+            {"name", "WE metal alloy (fitted mu_eff0)"}, {"type", "custom"},
+            {"material", "powder"}, {"materialComposition", "proprietary"},
+            {"manufacturerInfo", {{"name", "FITTED — not vendor material data"}}},
+            {"permeability", {{"initial", {{"value", permeability}}}}},
+            {"resistivity", json::array({{{"value", 1.0}}})},
+            {"density", 5500},
+            {"curieTemperature", 500},
+            {"saturation", json::array({{{"magneticFluxDensity", 1.2}, {"magneticField", 40000}, {"temperature", 25}}})},
+            {"volumetricLosses", {{"default", json::array({{{"method", "lossFactor"},
+                {"factors", json::array({{{"value", 1e-5}, {"frequency", 100000}}})}}})}}}
+        };
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+            {"aliases", json::array()}, {"name", "WE-MAPI " + orderCode},
+            {"dimensions", {
+                {"A", {{"nominal", reconstruction.at("A").get<double>()}}},
+                {"B", {{"nominal", reconstruction.at("B").get<double>()}}},
+                {"C", {{"nominal", reconstruction.at("C").get<double>()}}},
+                {"D", {{"nominal", reconstruction.at("D").get<double>()}}},
+                {"E", {{"nominal", reconstruction.at("E").get<double>()}}},
+                {"F", {{"nominal", reconstruction.at("F").get<double>()}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", materialJson}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+
+        json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = json::array({{
+            {"name", "winding 0"}, {"numberTurns", int(numberTurns)}, {"numberParallels", 1},
+            {"isolationSide", "primary"}, {"wire", "Dummy"}}});
+        OpenMagnetics::Coil coil(coilJson);
+
+        double modelInductance = magnetizingInductanceModel
+            .calculate_inductance_from_number_turns_and_gapping(core, coil)
+            .get_magnetizing_inductance().get_nominal().value();
+        double relativeError = modelInductance / datasheetInductance.at(orderCode) - 1;
+        relativeErrors.push_back(std::abs(relativeError));
+        if (std::abs(relativeError) < 0.20) withinTwentyPercent++;
+        evaluated++;
+    }
+    REQUIRE(evaluated >= 175);
+
+    std::sort(relativeErrors.begin(), relativeErrors.end());
+    double medianRelativeError = relativeErrors[relativeErrors.size() / 2];
+    double worstRelativeError = relativeErrors.back();
+    UNSCOPED_INFO("MKF vs datasheet over " << evaluated << " WE-MAPI parts: median |err| "
+                  << medianRelativeError * 100 << "%, worst " << worstRelativeError * 100
+                  << "%, within 20%: " << withinTwentyPercent);
+    // The fit's own median |L residual| is 3.9%; MKF must land in the same neighbourhood, which
+    // is what proves the C++ and the python mirror agree. A drift here means CorePieceMolded's
+    // sectioning changed and the reconstructions need refitting — do NOT widen this band.
+    CHECK(medianRelativeError < 0.10);
+    CHECK(withinTwentyPercent > evaluated * 8 / 10);
+    settings.reset();
+}
+
 // ABT #362: semi-shielded drum — mixed-material sectioned reluctance (ferrite drum + magnetic-
 // epoxy shell). No public vendor data pairs a drum+glue geometry with L (the 290-part
 // validation set is confidential and runs on heimdall's side), so this pins the PHYSICS:

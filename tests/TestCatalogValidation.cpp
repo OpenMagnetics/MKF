@@ -84,6 +84,12 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     CHECK_NOTHROW(find_core_shape_by_name(std::string("DR 2.3 + SRI 3.0")));
     CHECK_NOTHROW(find_core_shape_by_name(std::string("DR 2.0 + SRI 2.95")));
 
+    // DRUM_SEMISHIELDED (ABT #362) and MOLDED (ABT #357) have piece classes too; they carry no
+    // catalogue shapes yet (constructions are reconstructed per part, not sold as bare cores),
+    // so support is asserted at the piece level only.
+    REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::DRUM_SEMISHIELDED));
+    REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::MOLDED));
+
     // PQI is supported too (ABT #275): the PQ clause of IEC 60205 covers the plate case, and the
     // geometry validates against TDK's published planar data to 0.3%.
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::PQI));
@@ -113,4 +119,46 @@ TEST_CASE("Test_Catalog_Impossible_Toroid_Is_Rejected", "[catalog][smoke-test]")
                       "K":{"nominal":-0.0002}}})");
     CHECK_NOTHROW(load_core_shapes(true, signedOffset.dump()));
     clear_databases();
+}
+
+// ABT #370: shielded-drum CORES must reach the database, or the advisers can only ever evaluate
+// a user-built drumRing and never PROPOSE one. Both pairs are ACME B45 (same NiZn grade on drum
+// and ring, so MKF's single-material sectioned circuit is exact for them).
+//
+// NOTE the stock gate: load_cores() honours Settings::use_only_cores_in_stock, which DEFAULTS TO
+// TRUE and then reads cores_stock.ndjson — a distributor-stock claim these bare ACME drum+ring
+// pairs are not part of. A catalogue adviser aimed at this family must opt out of the stock
+// filter; fabricating stock rows to paper over that would be a lie about purchasability. Both
+// paths are pinned below.
+TEST_CASE("Test_Catalog_Shielded_Drum_Cores_Are_Available", "[catalog][drum-ring][smoke-test]") {
+    settings.reset();
+    clear_databases();
+
+    CHECK_NOTHROW(find_core_material_by_name(std::string("B45")));
+
+    settings.set_use_only_cores_in_stock(false);
+    clear_loaded_cores();
+    load_cores();
+    size_t drumRingCoresInDatabase = 0;
+    for (auto& core : coreDatabase) {
+        if (core.get_shape_family() == CoreShapeFamily::DRUM_RING) {
+            drumRingCoresInDatabase++;
+        }
+    }
+    CHECK(drumRingCoresInDatabase >= 2);
+    auto shieldedCore = find_core_by_name(std::string("DR 2.3 + SRI 3.0 - B45 - Shielded"));
+    CHECK(shieldedCore.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+
+    // Stock-only (the default): the pairs are absent, and that is the honest answer.
+    settings.set_use_only_cores_in_stock(true);
+    clear_loaded_cores();
+    load_cores();
+    size_t drumRingCoresInStock = 0;
+    for (auto& core : coreDatabase) {
+        if (core.get_shape_family() == CoreShapeFamily::DRUM_RING) {
+            drumRingCoresInStock++;
+        }
+    }
+    CHECK(drumRingCoresInStock == 0);
+    settings.reset();
 }

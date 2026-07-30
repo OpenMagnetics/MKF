@@ -1,0 +1,1396 @@
+{
+ "meta": {
+  "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data",
+  "date": "2026-07-30",
+  "method": "joint per-caseCode family fit of (mu_eff0, cavity ratios D/B, E/min(A,C), F/E) + per-part (N, IEC 60317 wire) against L0/DCR/packing, geometry constants c1/c2 mirrored from MKF CorePieceMolded; see we_mapi_fit.py",
+  "regularizer": "soft physical band on B at the measured 20%/30% inductance-drop point, B = int L dI/(N*Ae) in [0.28,0.90]/[0.35,1.10] T, anchored on the TC-molded grade fitted with known geometry in wuerth/lop_fitted_materials (mu~18.5, B30~0.55 T); breaks the mu<->geometry degeneracy (unregularized objective is flat for shared mu ~27..50)",
+  "mu_form": "mu(H,20C) = mu_eff0 * 0.01/(0.01 + b*H^c), H in A/m"
+ },
+ "families": {
+  "1610": {
+   "n_parts": 9,
+   "mu_eff0": 17.84,
+   "cavity_ratios": {
+    "D_over_B": 0.575,
+    "E_over_min_AC": 0.9202,
+    "F_over_E": 0.5499
+   },
+   "geometry": {
+    "A": 0.0016,
+    "B": 0.0009,
+    "C": 0.0016,
+    "D": 0.00051751,
+    "E": 0.00147236,
+    "F": 0.00080971,
+    "le": 0.0022311,
+    "Ae": 4.96518e-07
+   },
+   "residuals": {
+    "objective": 0.01383,
+    "median_abs_L": 0.0389,
+    "median_abs_DCR": 0.0651
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 1.0052097142260353e-11,
+    "c": 1.952756381260021,
+    "rms_mu_rel": 0.029798768979110105,
+    "r2": 0.9551411180510234,
+    "n_points": 37
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.071,
+    0.112
+   ],
+   "N_range": [
+    8,
+    21
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.4262957462174245,
+   "B_at_30pct_drop_median_T": 0.5108233723265883,
+   "H_at_20pct_drop_median_Apm": 20545.012692656364,
+   "H_at_30pct_drop_median_Apm": 26201.92007689918,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "2010": {
+   "n_parts": 9,
+   "mu_eff0": 24.99,
+   "cavity_ratios": {
+    "D_over_B": 0.6468,
+    "E_over_min_AC": 0.8849,
+    "F_over_E": 0.4618
+   },
+   "geometry": {
+    "A": 0.002,
+    "B": 0.0009,
+    "C": 0.0016,
+    "D": 0.00058215,
+    "E": 0.00141583,
+    "F": 0.00065377,
+    "le": 0.0018805,
+    "Ae": 3.29318e-07
+   },
+   "residuals": {
+    "objective": 0.01082,
+    "median_abs_L": 0.0341,
+    "median_abs_DCR": 0.0385
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 7.259190774158211e-12,
+    "c": 1.9332195183202359,
+    "rms_mu_rel": 0.024099859899428946,
+    "r2": 0.9712709497784653,
+    "n_points": 39
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.08,
+    0.125
+   ],
+   "N_range": [
+    8,
+    20
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.7757690099725254,
+   "B_at_30pct_drop_median_T": 0.9597855265490793,
+   "H_at_20pct_drop_median_Apm": 26947.267567728322,
+   "H_at_30pct_drop_median_Apm": 34125.42824088671,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "2506": {
+   "n_parts": 2,
+   "mu_eff0": 26.08,
+   "cavity_ratios": {
+    "D_over_B": 0.4237,
+    "E_over_min_AC": 0.9155,
+    "F_over_E": 0.304
+   },
+   "geometry": {
+    "A": 0.0025,
+    "B": 0.0006,
+    "C": 0.002,
+    "D": 0.00025422,
+    "E": 0.00183107,
+    "F": 0.00055673,
+    "le": 0.0015585,
+    "Ae": 2.78662e-07
+   },
+   "residuals": {
+    "objective": 0.00075,
+    "median_abs_L": 0.0098,
+    "median_abs_DCR": 0.0255
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 7.03950105537736e-12,
+    "c": 1.9825666563175623,
+    "rms_mu_rel": 0.01761726737309239,
+    "r2": 0.9826234456391826,
+    "n_points": 8
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.08,
+    0.1
+   ],
+   "N_range": [
+    9,
+    13
+   ],
+   "packing_usage_range": [
+    0.9,
+    0.929
+   ],
+   "B_at_20pct_drop_median_T": 0.6436758711816609,
+   "B_at_30pct_drop_median_T": 0.7757987039900616,
+   "H_at_20pct_drop_median_Apm": 21389.50744723915,
+   "H_at_30pct_drop_median_Apm": 26836.365274923483,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "2508": {
+   "n_parts": 3,
+   "mu_eff0": 23.91,
+   "cavity_ratios": {
+    "D_over_B": 0.7224,
+    "E_over_min_AC": 0.6554,
+    "F_over_E": 0.5538
+   },
+   "geometry": {
+    "A": 0.0025,
+    "B": 0.0008,
+    "C": 0.002,
+    "D": 0.00057795,
+    "E": 0.00131071,
+    "F": 0.00072587,
+    "le": 0.0014141,
+    "Ae": 2.78465e-07
+   },
+   "residuals": {
+    "objective": 0.0056,
+    "median_abs_L": 0.0198,
+    "median_abs_DCR": 0.0533
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 2.268582196589476e-11,
+    "c": 1.807524427668831,
+    "rms_mu_rel": 0.02108960567780102,
+    "r2": 0.9774856439030976,
+    "n_points": 12
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.071,
+    0.1
+   ],
+   "N_range": [
+    9,
+    19
+   ],
+   "packing_usage_range": [
+    0.867,
+    0.905
+   ],
+   "B_at_20pct_drop_median_T": 0.8211426641259907,
+   "B_at_30pct_drop_median_T": 1.0175105440758574,
+   "H_at_20pct_drop_median_Apm": 29047.67273527364,
+   "H_at_30pct_drop_median_Apm": 37561.70628981545,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "2510": {
+   "n_parts": 13,
+   "mu_eff0": 25.47,
+   "cavity_ratios": {
+    "D_over_B": 0.6601,
+    "E_over_min_AC": 0.7898,
+    "F_over_E": 0.488
+   },
+   "geometry": {
+    "A": 0.0025,
+    "B": 0.001,
+    "C": 0.002,
+    "D": 0.00066007,
+    "E": 0.00157958,
+    "F": 0.00077084,
+    "le": 0.0019887,
+    "Ae": 4.22569e-07
+   },
+   "residuals": {
+    "objective": 0.00711,
+    "median_abs_L": 0.02,
+    "median_abs_DCR": 0.0534
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 5.972552842831074e-12,
+    "c": 1.971483361865187,
+    "rms_mu_rel": 0.02485894475712792,
+    "r2": 0.9695942115533527,
+    "n_points": 52
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.063,
+    0.14
+   ],
+   "N_range": [
+    7,
+    38
+   ],
+   "packing_usage_range": [
+    0.825,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.6979060321761693,
+   "B_at_30pct_drop_median_T": 0.856654355654956,
+   "H_at_20pct_drop_median_Apm": 24274.673126085137,
+   "H_at_30pct_drop_median_Apm": 31388.82575366844,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "2512": {
+   "n_parts": 13,
+   "mu_eff0": 26.26,
+   "cavity_ratios": {
+    "D_over_B": 0.4037,
+    "E_over_min_AC": 0.8474,
+    "F_over_E": 0.3652
+   },
+   "geometry": {
+    "A": 0.0025,
+    "B": 0.0012,
+    "C": 0.002,
+    "D": 0.00048448,
+    "E": 0.00169485,
+    "F": 0.00061894,
+    "le": 0.0021477,
+    "Ae": 4.49909e-07
+   },
+   "residuals": {
+    "objective": 0.02046,
+    "median_abs_L": 0.0516,
+    "median_abs_DCR": 0.0859
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 9.095658800340778e-13,
+    "c": 2.14892491737854,
+    "rms_mu_rel": 0.020360419164224382,
+    "r2": 0.9807214309975036,
+    "n_points": 45
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.071,
+    0.14
+   ],
+   "N_range": [
+    8,
+    39
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.7735758511981368,
+   "B_at_30pct_drop_median_T": 0.9333499604970218,
+   "H_at_20pct_drop_median_Apm": 25273.210632475995,
+   "H_at_30pct_drop_median_Apm": 31843.489065613358,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "2512HT": {
+   "n_parts": 9,
+   "mu_eff0": 22.46,
+   "cavity_ratios": {
+    "D_over_B": 0.7217,
+    "E_over_min_AC": 0.8747,
+    "F_over_E": 0.4698
+   },
+   "geometry": {
+    "A": 0.0025,
+    "B": 0.0012,
+    "C": 0.002,
+    "D": 0.00086604,
+    "E": 0.00174948,
+    "F": 0.00082186,
+    "le": 0.0023548,
+    "Ae": 4.66286e-07
+   },
+   "residuals": {
+    "objective": 0.00938,
+    "median_abs_L": 0.0462,
+    "median_abs_DCR": 0.0356
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 3.496246731647748e-11,
+    "c": 1.8089449058550688,
+    "rms_mu_rel": 0.018835361997413026,
+    "r2": 0.9799816163067995,
+    "n_points": 28
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.09,
+    0.18
+   ],
+   "N_range": [
+    8,
+    29
+   ],
+   "packing_usage_range": [
+    0.812,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.5259931655565129,
+   "B_at_30pct_drop_median_T": 0.6957519158906715,
+   "H_at_20pct_drop_median_Apm": 21454.239109873728,
+   "H_at_30pct_drop_median_Apm": 29084.05825825318,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "3010": {
+   "n_parts": 3,
+   "mu_eff0": 22.6,
+   "cavity_ratios": {
+    "D_over_B": 0.4841,
+    "E_over_min_AC": 0.5965,
+    "F_over_E": 0.399
+   },
+   "geometry": {
+    "A": 0.003,
+    "B": 0.001,
+    "C": 0.003,
+    "D": 0.00048414,
+    "E": 0.00178961,
+    "F": 0.00071411,
+    "le": 0.0019906,
+    "Ae": 4.77985e-07
+   },
+   "residuals": {
+    "objective": 0.00082,
+    "median_abs_L": 0.0041,
+    "median_abs_DCR": 0.0148
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 8.08275743881281e-13,
+    "c": 2.101958662624799,
+    "rms_mu_rel": 0.023614173972617336,
+    "r2": 0.9705111492673393,
+    "n_points": 15
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.08,
+    0.1
+   ],
+   "N_range": [
+    18,
+    26
+   ],
+   "packing_usage_range": [
+    0.867,
+    0.9
+   ],
+   "B_at_20pct_drop_median_T": 0.866069908776068,
+   "B_at_30pct_drop_median_T": 1.0256369834463128,
+   "H_at_20pct_drop_median_Apm": 32960.19564820876,
+   "H_at_30pct_drop_median_Apm": 40629.02447555851,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "3012": {
+   "n_parts": 12,
+   "mu_eff0": 18.4,
+   "cavity_ratios": {
+    "D_over_B": 0.717,
+    "E_over_min_AC": 0.8502,
+    "F_over_E": 0.392
+   },
+   "geometry": {
+    "A": 0.003,
+    "B": 0.0012,
+    "C": 0.003,
+    "D": 0.00086035,
+    "E": 0.00255064,
+    "F": 0.00099987,
+    "le": 0.0025826,
+    "Ae": 5.87808e-07
+   },
+   "residuals": {
+    "objective": 0.01111,
+    "median_abs_L": 0.0262,
+    "median_abs_DCR": 0.037
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 6.819848761274385e-13,
+    "c": 2.1003023359141166,
+    "rms_mu_rel": 0.031139067272489662,
+    "r2": 0.9532230231663925,
+    "n_points": 52
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.112,
+    0.224
+   ],
+   "N_range": [
+    8,
+    36
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.7563598042169395,
+   "B_at_30pct_drop_median_T": 0.9273788995232857,
+   "H_at_20pct_drop_median_Apm": 36269.07430960611,
+   "H_at_30pct_drop_median_Apm": 45657.95919478111,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "3015": {
+   "n_parts": 13,
+   "mu_eff0": 24.75,
+   "cavity_ratios": {
+    "D_over_B": 0.5766,
+    "E_over_min_AC": 0.6201,
+    "F_over_E": 0.5487
+   },
+   "geometry": {
+    "A": 0.003,
+    "B": 0.0015,
+    "C": 0.003,
+    "D": 0.00086486,
+    "E": 0.00186033,
+    "F": 0.00102079,
+    "le": 0.0028364,
+    "Ae": 9.12164e-07
+   },
+   "residuals": {
+    "objective": 0.01333,
+    "median_abs_L": 0.0426,
+    "median_abs_DCR": 0.061
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 5.082679071596805e-12,
+    "c": 2.008580246035997,
+    "rms_mu_rel": 0.056414685945930326,
+    "r2": 0.8450819802072229,
+    "n_points": 59
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.056,
+    0.18
+   ],
+   "N_range": [
+    7,
+    70
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.6516618266214216,
+   "B_at_30pct_drop_median_T": 0.7924213903863894,
+   "H_at_20pct_drop_median_Apm": 22176.760498253527,
+   "H_at_30pct_drop_median_Apm": 27143.845448574408,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "3015HT": {
+   "n_parts": 8,
+   "mu_eff0": 21.96,
+   "cavity_ratios": {
+    "D_over_B": 0.4992,
+    "E_over_min_AC": 0.8551,
+    "F_over_E": 0.3945
+   },
+   "geometry": {
+    "A": 0.003,
+    "B": 0.0015,
+    "C": 0.003,
+    "D": 0.00074879,
+    "E": 0.00256531,
+    "F": 0.00101195,
+    "le": 0.0032955,
+    "Ae": 1.014269e-06
+   },
+   "residuals": {
+    "objective": 0.00987,
+    "median_abs_L": 0.0366,
+    "median_abs_DCR": 0.0731
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 4.326518153747465e-11,
+    "c": 1.8312410594456108,
+    "rms_mu_rel": 0.03222890748832608,
+    "r2": 0.9213823945068894,
+    "n_points": 32
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.1,
+    0.224
+   ],
+   "N_range": [
+    8,
+    36
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.4397793952350527,
+   "B_at_30pct_drop_median_T": null,
+   "H_at_20pct_drop_median_Apm": 17364.381446373576,
+   "H_at_30pct_drop_median_Apm": null,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "3020": {
+   "n_parts": 11,
+   "mu_eff0": 23.28,
+   "cavity_ratios": {
+    "D_over_B": 0.7996,
+    "E_over_min_AC": 0.8493,
+    "F_over_E": 0.3575
+   },
+   "geometry": {
+    "A": 0.003,
+    "B": 0.002,
+    "C": 0.003,
+    "D": 0.00159913,
+    "E": 0.00254799,
+    "F": 0.00091091,
+    "le": 0.0037084,
+    "Ae": 6.26068e-07
+   },
+   "residuals": {
+    "objective": 0.01684,
+    "median_abs_L": 0.0486,
+    "median_abs_DCR": 0.0409
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 1.335070443421424e-11,
+    "c": 1.894818119234423,
+    "rms_mu_rel": 0.061522255989951466,
+    "r2": 0.8135938955786843,
+    "n_points": 45
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.14,
+    0.28
+   ],
+   "N_range": [
+    9,
+    45
+   ],
+   "packing_usage_range": [
+    0.8,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.582785816855703,
+   "B_at_30pct_drop_median_T": 0.7187682468732896,
+   "H_at_20pct_drop_median_Apm": 21075.24852350354,
+   "H_at_30pct_drop_median_Apm": 26696.1617032102,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "3020HT": {
+   "n_parts": 8,
+   "mu_eff0": 23.18,
+   "cavity_ratios": {
+    "D_over_B": 0.6583,
+    "E_over_min_AC": 0.8597,
+    "F_over_E": 0.3516
+   },
+   "geometry": {
+    "A": 0.003,
+    "B": 0.002,
+    "C": 0.003,
+    "D": 0.00131664,
+    "E": 0.00257895,
+    "F": 0.00090681,
+    "le": 0.0038383,
+    "Ae": 7.98231e-07
+   },
+   "residuals": {
+    "objective": 0.00818,
+    "median_abs_L": 0.0294,
+    "median_abs_DCR": 0.0391
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 5.687620884008103e-10,
+    "c": 1.557322924456238,
+    "rms_mu_rel": 0.04592286874400065,
+    "r2": 0.8931406092181043,
+    "n_points": 24
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.14,
+    0.25
+   ],
+   "N_range": [
+    11,
+    34
+   ],
+   "packing_usage_range": [
+    0.85,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.46057952481218134,
+   "B_at_30pct_drop_median_T": 0.6284521123880287,
+   "H_at_20pct_drop_median_Apm": 16644.0193211656,
+   "H_at_30pct_drop_median_Apm": 22961.63322045668,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "4012": {
+   "n_parts": 2,
+   "mu_eff0": 34.92,
+   "cavity_ratios": {
+    "D_over_B": 0.4316,
+    "E_over_min_AC": 0.9434,
+    "F_over_E": 0.4751
+   },
+   "geometry": {
+    "A": 0.0041,
+    "B": 0.0013,
+    "C": 0.0041,
+    "D": 0.00056105,
+    "E": 0.00386783,
+    "F": 0.00183777,
+    "le": 0.0037822,
+    "Ae": 2.154455e-06
+   },
+   "residuals": {
+    "objective": 0.13085,
+    "median_abs_L": 0.3565,
+    "median_abs_DCR": 0.1343
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 1.8648759983782305e-10,
+    "c": 1.748677734507479,
+    "rms_mu_rel": 0.07536351155873672,
+    "r2": 0.7840411596826983,
+    "n_points": 5
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.45,
+    0.5
+   ],
+   "N_range": [
+    1,
+    2
+   ],
+   "packing_usage_range": [
+    1.0,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.39666076510559234,
+   "B_at_30pct_drop_median_T": 0.5317328385780069,
+   "H_at_20pct_drop_median_Apm": 11483.541795707688,
+   "H_at_30pct_drop_median_Apm": 15793.094282485215,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "4020": {
+   "n_parts": 13,
+   "mu_eff0": 34.98,
+   "cavity_ratios": {
+    "D_over_B": 0.6647,
+    "E_over_min_AC": 0.936,
+    "F_over_E": 0.3892
+   },
+   "geometry": {
+    "A": 0.0041,
+    "B": 0.002,
+    "C": 0.0041,
+    "D": 0.00132945,
+    "E": 0.00383746,
+    "F": 0.00149358,
+    "le": 0.0047062,
+    "Ae": 1.665537e-06
+   },
+   "residuals": {
+    "objective": 0.01218,
+    "median_abs_L": 0.0457,
+    "median_abs_DCR": 0.0421
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 1.2167625259286481e-11,
+    "c": 1.993175744745877,
+    "rms_mu_rel": 0.02468457932044753,
+    "r2": 0.9713924212993285,
+    "n_points": 46
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.16,
+    0.4
+   ],
+   "N_range": [
+    5,
+    37
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.6004201927320133,
+   "B_at_30pct_drop_median_T": 0.7472894119244742,
+   "H_at_20pct_drop_median_Apm": 14650.86283479272,
+   "H_at_30pct_drop_median_Apm": 19489.255531745555,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "4020HT": {
+   "n_parts": 12,
+   "mu_eff0": 32.35,
+   "cavity_ratios": {
+    "D_over_B": 0.6515,
+    "E_over_min_AC": 0.9163,
+    "F_over_E": 0.4017
+   },
+   "geometry": {
+    "A": 0.0041,
+    "B": 0.002,
+    "C": 0.0041,
+    "D": 0.00130304,
+    "E": 0.00375666,
+    "F": 0.00150918,
+    "le": 0.0046496,
+    "Ae": 1.724227e-06
+   },
+   "residuals": {
+    "objective": 0.01548,
+    "median_abs_L": 0.0329,
+    "median_abs_DCR": 0.0305
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 1.1692207740506574e-11,
+    "c": 2.014936254796023,
+    "rms_mu_rel": 0.03104923157995557,
+    "r2": 0.9605933083020111,
+    "n_points": 33
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.224,
+    0.4
+   ],
+   "N_range": [
+    5,
+    19
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.5200246267473374,
+   "B_at_30pct_drop_median_T": 0.6589002491381724,
+   "H_at_20pct_drop_median_Apm": 13157.703334208467,
+   "H_at_30pct_drop_median_Apm": 17676.624839853288,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "4030": {
+   "n_parts": 13,
+   "mu_eff0": 32.93,
+   "cavity_ratios": {
+    "D_over_B": 0.5146,
+    "E_over_min_AC": 0.8779,
+    "F_over_E": 0.3897
+   },
+   "geometry": {
+    "A": 0.0041,
+    "B": 0.0031,
+    "C": 0.0041,
+    "D": 0.00159514,
+    "E": 0.00359925,
+    "F": 0.0014028,
+    "le": 0.0059131,
+    "Ae": 2.216664e-06
+   },
+   "residuals": {
+    "objective": 0.01859,
+    "median_abs_L": 0.0342,
+    "median_abs_DCR": 0.0621
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 8.17043258271802e-11,
+    "c": 1.7893502599728432,
+    "rms_mu_rel": 0.06352815601440111,
+    "r2": 0.8141402390646617,
+    "n_points": 49
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.224,
+    0.45
+   ],
+   "N_range": [
+    5,
+    24
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.5360428697946729,
+   "B_at_30pct_drop_median_T": 0.6619133158930137,
+   "H_at_20pct_drop_median_Apm": 14343.571076722073,
+   "H_at_30pct_drop_median_Apm": 18491.397370698076,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "5020": {
+   "n_parts": 9,
+   "mu_eff0": 34.92,
+   "cavity_ratios": {
+    "D_over_B": 0.6454,
+    "E_over_min_AC": 0.6443,
+    "F_over_E": 0.4436
+   },
+   "geometry": {
+    "A": 0.0054,
+    "B": 0.0021,
+    "C": 0.0054,
+    "D": 0.00135542,
+    "E": 0.00347895,
+    "F": 0.00154341,
+    "le": 0.0041148,
+    "Ae": 1.771363e-06
+   },
+   "residuals": {
+    "objective": 0.02405,
+    "median_abs_L": 0.0744,
+    "median_abs_DCR": 0.0707
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 1.3141092899923759e-11,
+    "c": 1.9206505472532762,
+    "rms_mu_rel": 0.04364498617180634,
+    "r2": 0.9138538328341298,
+    "n_points": 32
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.224,
+    0.45
+   ],
+   "N_range": [
+    4,
+    17
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.758006937613863,
+   "B_at_30pct_drop_median_T": 0.9717219669686886,
+   "H_at_20pct_drop_median_Apm": 17508.439886485485,
+   "H_at_30pct_drop_median_Apm": 23725.706126348632,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "5030": {
+   "n_parts": 10,
+   "mu_eff0": 32.57,
+   "cavity_ratios": {
+    "D_over_B": 0.7829,
+    "E_over_min_AC": 0.8266,
+    "F_over_E": 0.3618
+   },
+   "geometry": {
+    "A": 0.0054,
+    "B": 0.0031,
+    "C": 0.0054,
+    "D": 0.00242698,
+    "E": 0.00446375,
+    "F": 0.00161496,
+    "le": 0.0058489,
+    "Ae": 1.870207e-06
+   },
+   "residuals": {
+    "objective": 0.01508,
+    "median_abs_L": 0.0221,
+    "median_abs_DCR": 0.0627
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 7.597790728934683e-12,
+    "c": 1.9938537744803553,
+    "rms_mu_rel": 0.05546045486592095,
+    "r2": 0.8636547066707443,
+    "n_points": 34
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.315,
+    0.71
+   ],
+   "N_range": [
+    3,
+    28
+   ],
+   "packing_usage_range": [
+    0.821,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.6347759225409528,
+   "B_at_30pct_drop_median_T": 0.801166422023318,
+   "H_at_20pct_drop_median_Apm": 16632.50922457491,
+   "H_at_30pct_drop_median_Apm": 22607.947555009298,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "6030": {
+   "n_parts": 6,
+   "mu_eff0": 42.13,
+   "cavity_ratios": {
+    "D_over_B": 0.5736,
+    "E_over_min_AC": 0.866,
+    "F_over_E": 0.3116
+   },
+   "geometry": {
+    "A": 0.0066,
+    "B": 0.0031,
+    "C": 0.0066,
+    "D": 0.00177826,
+    "E": 0.00571582,
+    "F": 0.00178078,
+    "le": 0.0065071,
+    "Ae": 3.109249e-06
+   },
+   "residuals": {
+    "objective": 0.01804,
+    "median_abs_L": 0.0843,
+    "median_abs_DCR": 0.0401
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 1.3663560658808641e-11,
+    "c": 1.9917283738528493,
+    "rms_mu_rel": 0.013386725518018117,
+    "r2": 0.9886817597208483,
+    "n_points": 21
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.45,
+    0.63
+   ],
+   "N_range": [
+    4,
+    12
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.6670896981225427,
+   "B_at_30pct_drop_median_T": 0.8266736259974403,
+   "H_at_20pct_drop_median_Apm": 13958.238835420761,
+   "H_at_30pct_drop_median_Apm": 19478.101114549958,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  },
+  "6030HT": {
+   "n_parts": 5,
+   "mu_eff0": 34.43,
+   "cavity_ratios": {
+    "D_over_B": 0.7998,
+    "E_over_min_AC": 0.7846,
+    "F_over_E": 0.3406
+   },
+   "geometry": {
+    "A": 0.0066,
+    "B": 0.0031,
+    "C": 0.0066,
+    "D": 0.00247945,
+    "E": 0.00517841,
+    "F": 0.00176393,
+    "le": 0.0057501,
+    "Ae": 1.949276e-06
+   },
+   "residuals": {
+    "objective": 0.00911,
+    "median_abs_L": 0.0569,
+    "median_abs_DCR": 0.0344
+   },
+   "magnetics_dc_bias_factor": {
+    "a": 0.01,
+    "b": 1.754151287291157e-12,
+    "c": 2.130052769557385,
+    "rms_mu_rel": 0.02004708342256074,
+    "r2": 0.9736880473871126,
+    "n_points": 19
+   },
+   "magnetics_form_units": "percent-of-initial-permeability factor = 0.01/(a + b*H^c), H in A/m (MKF InitialPermeability MAGNETICS convention; a=0.01 fixed so factor(0)=1)",
+   "wire_range_mm": [
+    0.45,
+    0.71
+   ],
+   "N_range": [
+    5,
+    15
+   ],
+   "packing_usage_range": [
+    0.833,
+    1.0
+   ],
+   "B_at_20pct_drop_median_T": 0.7898489050982882,
+   "B_at_30pct_drop_median_T": 1.0734066658762726,
+   "H_at_20pct_drop_median_Apm": 20014.723100183,
+   "H_at_30pct_drop_median_Apm": 28717.037570723594,
+   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data"
+  }
+ },
+ "clusters": [
+  {
+   "families": [
+    "1610"
+   ],
+   "mu_eff0_mean": 17.838261037473696,
+   "mu_eff0_range": [
+    17.838261037473696,
+    17.838261037473696
+   ],
+   "joint_magnetics_fit": {
+    "a": 0.01,
+    "b": 1.0052097142260353e-11,
+    "c": 1.952756381260021,
+    "rms_mu_rel": 0.029798768979110105,
+    "r2": 0.9551411180510234,
+    "n_points": 37
+   }
+  },
+  {
+   "families": [
+    "3012"
+   ],
+   "mu_eff0_mean": 18.403036012436893,
+   "mu_eff0_range": [
+    18.403036012436893,
+    18.403036012436893
+   ],
+   "joint_magnetics_fit": {
+    "a": 0.01,
+    "b": 6.819848761274385e-13,
+    "c": 2.1003023359141166,
+    "rms_mu_rel": 0.031139067272489662,
+    "r2": 0.9532230231663925,
+    "n_points": 52
+   }
+  },
+  {
+   "families": [
+    "3015HT",
+    "2512HT",
+    "3020HT",
+    "3020",
+    "3015",
+    "2010",
+    "2510",
+    "2506",
+    "2512"
+   ],
+   "mu_eff0_mean": 24.269929134414106,
+   "mu_eff0_range": [
+    21.96283445049308,
+    26.262602811124896
+   ],
+   "joint_magnetics_fit": {
+    "a": 0.01,
+    "b": 3.2346747479146166e-11,
+    "c": 1.8122686906979761,
+    "rms_mu_rel": 0.048243460829749715,
+    "r2": 0.8827811134920622,
+    "n_points": 332
+   }
+  },
+  {
+   "families": [
+    "3010",
+    "2508"
+   ],
+   "mu_eff0_mean": 23.25400284712562,
+   "mu_eff0_range": [
+    22.596284576082258,
+    23.911721118168977
+   ],
+   "joint_magnetics_fit": {
+    "a": 0.01,
+    "b": 7.803729533198016e-12,
+    "c": 1.8946650850850462,
+    "rms_mu_rel": 0.03079356308830147,
+    "r2": 0.9513967682368051,
+    "n_points": 27
+   }
+  },
+  {
+   "families": [
+    "4020HT",
+    "4030",
+    "4012",
+    "4020"
+   ],
+   "mu_eff0_mean": 33.796394742164665,
+   "mu_eff0_range": [
+    32.35368267981225,
+    34.97758922642456
+   ],
+   "joint_magnetics_fit": {
+    "a": 0.01,
+    "b": 4.088716582455421e-11,
+    "c": 1.8708675890579332,
+    "rms_mu_rel": 0.048750839164331435,
+    "r2": 0.8951532266668907,
+    "n_points": 133
+   }
+  },
+  {
+   "families": [
+    "5030",
+    "6030HT",
+    "5020"
+   ],
+   "mu_eff0_mean": 33.972572402732,
+   "mu_eff0_range": [
+    32.57170155716654,
+    34.91720233994991
+   ],
+   "joint_magnetics_fit": {
+    "a": 0.01,
+    "b": 7.095496029929032e-12,
+    "c": 1.9909001543062064,
+    "rms_mu_rel": 0.04750194650534254,
+    "r2": 0.8923748576029525,
+    "n_points": 85
+   }
+  },
+  {
+   "families": [
+    "6030"
+   ],
+   "mu_eff0_mean": 42.133229106268246,
+   "mu_eff0_range": [
+    42.133229106268246,
+    42.133229106268246
+   ],
+   "joint_magnetics_fit": {
+    "a": 0.01,
+    "b": 1.3663560658808641e-11,
+    "c": 1.9917283738528493,
+    "rms_mu_rel": 0.013386725518018117,
+    "r2": 0.9886817597208483,
+    "n_points": 21
+   }
+  }
+ ],
+ "degeneracy_probe": {
+  "2510": {
+   "best": {
+    "x": [
+     0.6600655035468601,
+     0.7897888828946901,
+     0.4880012021273126
+    ],
+    "obj": 0.007106390813511705,
+    "mu": 25.466054293856455
+   },
+   "rF-10%": {
+    "x": [
+     0.7227410125732425,
+     0.8164061686197919,
+     0.43920108191458135
+    ],
+    "obj": 0.015544173461758471,
+    "mu": 25.2008107340583
+   },
+   "rF+10%": {
+    "x": [
+     0.5684975935920376,
+     0.8705245110671963,
+     0.536801322340044
+    ],
+    "obj": 0.01950694221900055,
+    "mu": 26.75481377140549
+   }
+  },
+  "2512": {
+   "best": {
+    "x": [
+     0.4037337909255388,
+     0.8474257772812183,
+     0.36519083920447126
+    ],
+    "obj": 0.02045548283386476,
+    "mu": 26.262602811124896
+   },
+   "rF-10%": {
+    "x": [
+     0.49608917578589173,
+     0.941274325016886,
+     0.32867175528402415
+    ],
+    "obj": 0.021252508568985272,
+    "mu": 24.64380490005237
+   },
+   "rF+10%": {
+    "x": [
+     0.40160171687602986,
+     0.7645480365753176,
+     0.40170992312491843
+    ],
+    "obj": 0.02248063173312728,
+    "mu": 28.653860735090557
+   }
+  },
+  "3015": {
+   "best": {
+    "x": [
+     0.5765766547110569,
+     0.6201098361173027,
+     0.5487164837826027
+    ],
+    "obj": 0.013329213259751773,
+    "mu": 24.745080339587833
+   },
+   "rF-10%": {
+    "x": [
+     0.5748166275024416,
+     0.6344407653808594,
+     0.4938448354043425
+    ],
+    "obj": 0.01673690117534448,
+    "mu": 27.09499029387077
+   },
+   "rF+10%": {
+    "x": [
+     0.6458475232124328,
+     0.7595060539245606,
+     0.603588132160863
+    ],
+    "obj": 0.013682407840217918,
+    "mu": 19.84621029678596
+   }
+  }
+ },
+ "shared_mu_scan": {
+  "all": {
+   "mu_values": [
+    15,
+    17.5,
+    20,
+    22.5,
+    25,
+    27.5,
+    30,
+    32.5,
+    35,
+    40,
+    45,
+    50,
+    60
+   ],
+   "weighted_objective": [
+    0.11119,
+    0.06582,
+    0.04381,
+    0.02947,
+    0.02119,
+    0.01862,
+    0.0175,
+    0.01844,
+    0.01994,
+    0.02244,
+    0.02759,
+    0.03889,
+    0.05949
+   ],
+   "best_mu": 30,
+   "best_objective": 0.0175
+  },
+  "HT": {
+   "mu_values": [
+    15,
+    17.5,
+    20,
+    22.5,
+    25,
+    27.5,
+    30,
+    32.5,
+    35,
+    40,
+    45,
+    50,
+    60
+   ],
+   "weighted_objective": [
+    0.11224,
+    0.06487,
+    0.03931,
+    0.02523,
+    0.0159,
+    0.01422,
+    0.01068,
+    0.01342,
+    0.01446,
+    0.01551,
+    0.01829,
+    0.02653,
+    0.05308
+   ],
+   "best_mu": 30,
+   "best_objective": 0.01068
+  },
+  "nonHT": {
+   "mu_values": [
+    15,
+    17.5,
+    20,
+    22.5,
+    25,
+    27.5,
+    30,
+    32.5,
+    35,
+    40,
+    45,
+    50,
+    60
+   ],
+   "weighted_objective": [
+    0.11088,
+    0.0661,
+    0.04515,
+    0.03073,
+    0.02276,
+    0.01994,
+    0.01954,
+    0.01993,
+    0.02158,
+    0.02451,
+    0.03037,
+    0.04257,
+    0.0614
+   ],
+   "best_mu": 30,
+   "best_objective": 0.01954
+  }
+ }
+}

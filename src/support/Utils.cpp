@@ -629,12 +629,26 @@ Core find_core_by_name(std::string name) {
     if (coreDatabase.empty()) {
         load_cores();
     }
+    // The name is optional in MAS, so a catalogue record can carry none (four Fair-Rite drum
+    // rows did, with their name nested inside functionalDescription instead — fixed in MAS
+    // data). This loop used to dereference it unconditionally, so ONE such row turned every
+    // core lookup in the process into an opaque "bad optional access" with nothing naming the
+    // culprit. A nameless record simply cannot match a name query: skip it, and if the query
+    // finds nothing, say how many rows were unnameable so corrupt data is visible.
+    size_t namelessRecords = 0;
     for (auto core : coreDatabase) {
+        if (!core.get_name()) {
+            namelessRecords++;
+            continue;
+        }
         if (core.get_name().value() == name) {
             return core;
         }
     }
-    throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core not found: " + name);
+    std::string namelessNote = namelessRecords > 0
+        ? " (" + std::to_string(namelessRecords) + " loaded core(s) carry no name and were skipped)"
+        : "";
+    throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core not found: " + name + namelessNote);
 }
 
 CoreMaterial find_core_material_by_name(std::string name) {
