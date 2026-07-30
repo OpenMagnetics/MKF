@@ -164,6 +164,29 @@ double MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance
     return pow(numberTurns, 2) / reluctance;
 }
 
+// ABT #362/#331: the drum-family paths below return early with their own inductance model, so
+// they must ALSO produce the magnetic flux density this function is contracted to return —
+// MagneticSimulator feeds result.second straight into the core-loss stage, and a default-
+// constructed SignalDescriptor makes IGSE throw bad_optional_access deep inside
+// Inputs::get_magnetic_flux_density_peak_to_peak, naming nothing. Same construction as the
+// main path: flux from the magnetizing current through the driving-point reluctance, then
+// divided by the flux-carrying area.
+static SignalDescriptor calculate_flux_density_for_family_model(double magnetizingInductance,
+                                                                double numberTurns,
+                                                                double fluxCarryingArea,
+                                                                OperatingPoint* operatingPoint) {
+    SignalDescriptor magneticFluxDensity;
+    if (!operatingPoint || operatingPoint->get_mutable_excitations_per_winding().empty() ||
+        !operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
+        return magneticFluxDensity;
+    }
+    double drivingPointReluctance = pow(numberTurns, 2) / magnetizingInductance;
+    auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(
+        operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
+        drivingPointReluctance, numberTurns);
+    return OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, fluxCarryingArea);
+}
+
 std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(Core core, Coil coil, OperatingPoint* operatingPoint) {
 
     // Semi-shielded drums (ABT #362): mixed-material sectioned reluctance, drum mu + glue mu.
@@ -184,6 +207,10 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         semishieldedOutput.set_origin(ResultOrigin::SIMULATION);
         std::pair<MagnetizingInductanceOutput, SignalDescriptor> semishieldedResult;
         semishieldedResult.first = semishieldedOutput;
+        // Flux crosses the post: the drum's own central column carries it.
+        semishieldedResult.second = calculate_flux_density_for_family_model(
+            semishieldedInductance, numberTurnsSemishielded,
+            core.get_columns()[0].get_area(), operatingPoint);
         return semishieldedResult;
     }
 
@@ -205,6 +232,10 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         openCoreOutput.set_origin(ResultOrigin::SIMULATION);
         std::pair<MagnetizingInductanceOutput, SignalDescriptor> openCoreResult;
         openCoreResult.first = openCoreOutput;
+        // Flux crosses the drum post (the bore is already subtracted from its column area).
+        openCoreResult.second = calculate_flux_density_for_family_model(
+            openCoreInductance, numberTurnsOpenCore,
+            core.get_columns()[0].get_area(), operatingPoint);
         return openCoreResult;
     }
 
