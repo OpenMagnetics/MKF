@@ -481,7 +481,18 @@ namespace {
         OpenMagnetics::Inputs inputs;
         MagnetizingInductance magnetizing_inductance("ZHANG");
 
-        double expectedValue = 0.0004;
+        // Re-pinned 2026-07-30 (ABT #378, user-approved): 0.0004 -> 0.00039 after Zhang's h was
+        // read as the paper defines it (Fig. 7: "2h is the height of a segment of core limb"),
+        // dropping the old clamp of h up to the column WIDTH. Less modelled fringing means more
+        // reluctance per unit of gap, so a slightly SHORTER gap now reaches the same 23.3 mH —
+        // the shift is in the physically expected direction, and at 1e-5 m it is ten times the
+        // solver's 1e-6 rounding quantum, so it is a real change rather than noise. This is a
+        // solved SOLVER OUTPUT, not measured data.
+        // NOTE: this fixture is DISTRIBUTED gapping, which is exactly the case where MKF's h is
+        // still over-estimated — it measures to the limb end, while the paper's h is half the
+        // core segment SHARED with the neighbouring gap. Expect this value to move once that
+        // refinement lands (tracked on ABT #378).
+        double expectedValue = 0.00039;
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, desiredMagnetizingInductance, {},
                                 coreShape, coreMaterial, core, winding, inputs);

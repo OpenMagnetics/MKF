@@ -381,19 +381,48 @@ namespace {
         run_test_energy(modelName, "PQ 40/40", OpenMagneticsTesting::get_distributed_gap(0.002, 3), expectedEnergy, 1);
     }
 
+    // ABT #378: the contract here is FRINGING-FACTOR REPRODUCTION, not gap identity, because the
+    // map gap -> fringing factor is not injective. With Zhang's h read as the paper defines it
+    // (Fig. 7: "2h is the height of a segment of core limb"), the factor rises with gap length,
+    // peaks, and falls back towards 1 as the gap fills the limb and the core segments — hence h —
+    // vanish. Two gap lengths therefore share a factor, and no inverse can tell them apart.
+    // get_gapping_by_fringing_factor returns the SMALLEST root, which is the one inside Zhang's
+    // validity domain (his derivation assumes gaps short against the limb).
+    //
+    // This test previously asserted exact gap recovery over gaps up to HALF the column height.
+    // That only held because the old code clamped h up to the column width, which made the curve
+    // artificially monotonic across the whole range — the very substitution that has no basis in
+    // the paper. Asserting round-trip identity outside the model's domain pins an artefact, so
+    // the assertion states what the model can actually promise, and additionally keeps exact
+    // recovery on the small-gap branch where the map IS injective.
     TEST_CASE("Test_Gap_By_Fringing_Factor", "[physical-model][reluctance][gap][smoke-test]") {
+        auto reluctanceModel = ReluctanceModel::factory(ReluctanceModels::ZHANG);
         for (size_t i = 0; i < 100; ++i)
         {
             double randomPercentage = double(OpenMagnetics::TestUtils::randomInt64(1, 50 + 1 - 1)) * 1e-2;
             auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
             auto centralColumns = core.find_columns_by_type(ColumnType::CENTRAL);
-            double expectedGap = centralColumns[0].get_height() * randomPercentage;
+            double columnHeight = centralColumns[0].get_height();
+            double expectedGap = columnHeight * randomPercentage;
             core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(expectedGap));
-            auto reluctanceModel = ReluctanceModel::factory(ReluctanceModels::ZHANG);
             auto fringingFactor = reluctanceModel->get_core_reluctance(core).get_maximum_fringing_factor().value();
 
             double gap = reluctanceModel->get_gapping_by_fringing_factor(core, fringingFactor);
-            REQUIRE_THAT(expectedGap, Catch::Matchers::WithinAbs(gap, expectedGap * maxError));
+            REQUIRE(gap > 0);
+
+            // The returned gap must reproduce the requested factor — the actual inverse contract.
+            core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(gap));
+            double achievedFringingFactor = reluctanceModel->get_core_reluctance(core).get_maximum_fringing_factor().value();
+            INFO("requested gap " << expectedGap << " m (" << randomPercentage * 100
+                 << "% of the column), returned " << gap << " m; factor " << fringingFactor
+                 << " -> " << achievedFringingFactor);
+            REQUIRE_THAT(achievedFringingFactor, Catch::Matchers::WithinRel(fringingFactor, 0.02));
+
+            // On the injective branch (gaps short against the limb, i.e. Zhang's own domain) the
+            // smallest root IS the original gap, so identity still holds there.
+            if (randomPercentage <= 0.10) {
+                REQUIRE_THAT(gap, Catch::Matchers::WithinRel(expectedGap, 0.05));
+            }
         }
     }
 

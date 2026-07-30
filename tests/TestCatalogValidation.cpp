@@ -279,6 +279,14 @@ TEST_CASE("Test_Adviser_Proposes_Molded_Reconstructions", "[catalog][molded][adv
                 {"F", {{"nominal", reconstruction.at("F").get<double>()}}}}}
         };
         materialJson["name"] = fittedMaterialName;
+        // Load the built-in materials FIRST, then add the fitted one on top: passing content to
+        // load_core_materials seeds the database from that content alone, so registering the
+        // fitted grade into an empty database would leave the process without the catalogue
+        // materials and break every later test that looks one up (it did — "Kool Mu 26 not
+        // found" in the next test case). The database is cleared again at the end of this test.
+        if (coreMaterialDatabase.empty()) {
+            load_core_materials();
+        }
         load_core_materials(materialJson.dump());
         json coreJson;
         coreJson["functionalDescription"] = {
@@ -351,6 +359,10 @@ TEST_CASE("Test_Adviser_Proposes_Molded_Reconstructions", "[catalog][molded][adv
     // materials carry complex permeability this test fails and gets updated deliberately.
     auto resultsWithImpedance = adviser.get_advised_magnetic(inputs, catalogueMagnetics, 3, false);
     CHECK(resultsWithImpedance.empty());
+
+    // The fitted grade must not outlive this test: it was injected into the process-global
+    // material database, and leaving it there changes what every later test resolves.
+    clear_databases();
 
     settings.reset();
 }
