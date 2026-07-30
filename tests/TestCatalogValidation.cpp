@@ -9,13 +9,20 @@
 //     CORRUPT DATA — it is rejected outright, because a record like that used to
 //     kill entire adviser runs with a message that named nothing useful
 //     ("IEC 63182 effective parameters cannot be negative or 0", ABT #306).
+#include <source_location>
+#include <filesystem>
+#include <fstream>
+#include <magic_enum.hpp>
 #include "constructive_models/Core.h"
 #include "constructive_models/CorePiece.h"
 #include "constructive_models/Coil.h"
 #include "constructive_models/Magnetic.h"
 #include "advisers/MagneticAdviser.h"
 #include "processors/Inputs.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "processors/MagneticSimulator.h"
 #include "support/Utils.h"
+#include "TestingUtils.h"
 #include "json.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -220,5 +227,130 @@ TEST_CASE("Test_Adviser_Runs_Over_Shielded_Drum_Catalogue", "[catalog][drum-ring
         }
         CHECK(std::isfinite(score));
     }
+    settings.reset();
+}
+
+// ABT #357: advisers must be able to PROPOSE molded parts, not merely evaluate one handed to
+// them. The 183 WE-MAPI reconstructions are FITTED (public L/DCR/dims + measured curves through
+// scripts/fit_we_mapi_internals.py), NOT vendor internals, so they are deliberately kept OUT of
+// the canonical MAS catalogue — shipping a reconstruction as a catalogue part would dress a fit
+// up as manufacturer data. They are instead usable as a caller-supplied catalogue, which is what
+// this pins: build magnetics from the reconstructions and let MagneticAdviser rank them.
+TEST_CASE("Test_Adviser_Proposes_Molded_Reconstructions", "[catalog][molded][adviser]") {
+    settings.reset();
+    clear_databases();
+    auto path = std::filesystem::path{std::source_location::current().file_name()}
+                    .parent_path().append("testData").append("we_mapi_reconstructions.json");
+    std::ifstream reconstructionsFile(path);
+    REQUIRE(reconstructionsFile.good());
+    json reconstructions = json::parse(reconstructionsFile);
+    REQUIRE(reconstructions.size() == 183);
+
+    // The fitted material must be REGISTERED, not inlined: MKF's simulate stage resolves the
+    // core material by NAME from the database (CORE_MATERIAL_NOT_FOUND otherwise), even though
+    // the material object is already inside the core. Registering it is also what a real
+    // consumer does with a fitted grade, so this is the honest setup rather than a workaround.
+    // The inline-material limitation is filed separately.
+    std::string fittedMaterialName = "WE metal alloy (fitted mu_eff0)";
+    std::vector<OpenMagnetics::Magnetic> catalogueMagnetics;
+    for (auto& reconstruction : reconstructions) {
+        if (reconstruction.at("caseCode").get<std::string>() != "4020") continue;  // one family
+        json materialJson = {
+            {"name", "WE metal alloy (fitted mu_eff0)"}, {"type", "custom"},
+            {"material", "powder"}, {"materialComposition", "proprietary"},
+            {"manufacturerInfo", {{"name", "FITTED — not vendor material data"}}},
+            {"permeability", {{"initial", {{"value", reconstruction.at("mu_eff0").get<double>()}}}}},
+            {"resistivity", json::array({{{"value", 1.0}}})},
+            {"density", 5500}, {"curieTemperature", 500},
+            {"saturation", json::array({{{"magneticFluxDensity", 1.2}, {"magneticField", 40000}, {"temperature", 25}}})},
+            {"volumetricLosses", {{"default", json::array({{{"method", "lossFactor"},
+                {"factors", json::array({{{"value", 1e-5}, {"frequency", 100000}}})}}})}}}
+        };
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+            {"aliases", json::array()},
+            {"name", "WE-MAPI " + reconstruction.at("orderCode").get<std::string>()},
+            {"dimensions", {
+                {"A", {{"nominal", reconstruction.at("A").get<double>()}}},
+                {"B", {{"nominal", reconstruction.at("B").get<double>()}}},
+                {"C", {{"nominal", reconstruction.at("C").get<double>()}}},
+                {"D", {{"nominal", reconstruction.at("D").get<double>()}}},
+                {"E", {{"nominal", reconstruction.at("E").get<double>()}}},
+                {"F", {{"nominal", reconstruction.at("F").get<double>()}}}}}
+        };
+        materialJson["name"] = fittedMaterialName;
+        load_core_materials(materialJson.dump());
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", fittedMaterialName}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        OpenMagnetics::Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+
+        json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = json::array({{
+            {"name", "winding 0"},
+            {"numberTurns", reconstruction.at("numberTurns").get<int>()},
+            {"numberParallels", 1}, {"isolationSide", "primary"},
+            {"wire", reconstruction.at("wire").get<std::string>()}}});
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+        try {
+            catalogueMagnetics.push_back(OpenMagnetics::magnetic_autocomplete(magnetic));
+        }
+        catch (const std::exception&) {
+            // A reconstruction whose fitted cavity cannot hold its own fitted winding is a
+            // known limitation of fitting from public data (the fit reports packing usage per
+            // part); skip it rather than failing the adviser contract.
+        }
+    }
+    REQUIRE(catalogueMagnetics.size() >= 5);
+
+    // Ask for something these parts can actually serve: take the target inductance from a real
+    // candidate and a current its fine reconstructed wire can carry. (With 1 A DC and a flat
+    // 1 uH request, DC_CURRENT_DENSITY and MAGNETIZING_INDUCTANCE both reject every candidate —
+    // correct behaviour, but it tests the requirements rather than the family.)
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    double targetInductance = magnetizingInductanceModel
+        .calculate_inductance_from_number_turns_and_gapping(catalogueMagnetics[0].get_core(),
+                                                            catalogueMagnetics[0].get_coil())
+        .get_magnetizing_inductance().get_nominal().value();
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        1000000, targetInductance, 25, WaveformLabel::TRIANGULAR, 0.05, 0.5, 0.1);
+
+    // WHY THE FLOW IS TRIMMED HERE — a real limitation, not a workaround. Run the default
+    // catalogue flow and every molded candidate is rejected, because the IMPEDANCE filter throws
+    // [MATERIAL_DATA_MISSING] for a fitted material: reconstructing mu_eff0 from public L/DCR
+    // data gives a permeability, not the complex-permeability curves that impedance needs. A
+    // control candidate (E 25/13/7, catalogue material) passes the same flow, so this is specific
+    // to fitted materials, not to the molded family or the flow itself. Consequence for ABT #357
+    // phase 2: to be adviser-ready against impedance requirements, a fitted molded material would
+    // need complex permeability measured or fitted too — inventing it here would be fabrication.
+    // This design has no impedance requirement, so the flow is trimmed to the filters its
+    // requirements actually imply.
+    OpenMagnetics::MagneticAdviser adviser;
+    std::vector<MagneticFilterOperation> filterFlow;
+    for (auto& operation : adviser._defaultCatalogueMagneticFilterFlow) {
+        if (operation.get_filter() == MagneticFilters::IMPEDANCE) continue;
+        filterFlow.push_back(operation);
+    }
+
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inputs, catalogueMagnetics, filterFlow, 3, false));
+    UNSCOPED_INFO("candidates " << catalogueMagnetics.size() << " -> results " << results.size());
+    CHECK(results.size() > 0);
+    for (auto& [mas, score] : results) {
+        CHECK(mas.get_magnetic().get_core().get_shape_family() == CoreShapeFamily::MOLDED);
+        CHECK(std::isfinite(score));
+    }
+
+    // The default flow (with IMPEDANCE) is pinned as the known limitation, so the day fitted
+    // materials carry complex permeability this test fails and gets updated deliberately.
+    auto resultsWithImpedance = adviser.get_advised_magnetic(inputs, catalogueMagnetics, 3, false);
+    CHECK(resultsWithImpedance.empty());
+
     settings.reset();
 }

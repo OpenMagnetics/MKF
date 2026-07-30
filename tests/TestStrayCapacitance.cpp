@@ -1800,3 +1800,76 @@ TEST_CASE("Test_Stray_Capacitance_Drum_Ring_Smoke", "[physical-model][stray-capa
     CHECK(selfCapacitance < 1e-10);  // a 2.3 mm part cannot carry >100 pF of self-capacitance
     settings.reset();
 }
+
+// ABT #366/#362/#357: stray capacitance across ALL FOUR new families. The pipeline has to wind
+// a real coil in each family's window (drum groove or molded cavity), then build the Maxwell
+// matrix from those turn positions — so this exercises geometry, winding and capacitance
+// together. Physical bound rather than a pinned value: a millimetre-scale part cannot carry
+// more than ~100 pF of self-capacitance, and it must be strictly positive.
+TEST_CASE("Test_Stray_Capacitance_New_Core_Families",
+          "[physical-model][stray-capacitance][drum][drum-ring][drum-semishielded][molded]") {
+    settings.reset();
+    clear_databases();
+
+    auto buildCustomCore = [](json shapeJson, const std::string& coreType, json coating,
+                              const std::string& materialName) {
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", coreType}, {"material", materialName}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        if (!coating.is_null()) {
+            coreJson["functionalDescription"]["coating"] = coating;
+        }
+        OpenMagnetics::Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        return core;
+    };
+    json drumDimensions = {
+        {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+        {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}}};
+    json semishieldedDimensions = drumDimensions;
+    semishieldedDimensions["J"] = {{"nominal", 0.0040}};
+    semishieldedDimensions["K"] = {{"nominal", 0.0040}};
+    semishieldedDimensions["L"] = {{"nominal", 0.0018}};
+
+    std::vector<std::pair<std::string, OpenMagnetics::Core>> cores;
+    cores.emplace_back("drum", OpenMagneticsTesting::get_quick_core("DRH-14X20-4C", json::array(), 1, "3C90"));
+    cores.emplace_back("drumRing", OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90"));
+    cores.emplace_back("drumSemishielded", buildCustomCore(
+        {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+         {"aliases", json::array()}, {"name", "LQS-like 4018"}, {"dimensions", semishieldedDimensions}},
+        "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool M\u00b5 26"}}, "3C90"));
+    cores.emplace_back("molded", buildCustomCore(
+        {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+         {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+         {"dimensions", {
+             {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+             {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}},
+        "closedShape", json(), "Kool M\u00b5 26"));
+
+    for (auto& [label, core] : cores) {
+        json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = json::array({{
+            {"name", "winding 0"}, {"numberTurns", 8}, {"numberParallels", 1},
+            {"isolationSide", "primary"}, {"wire", "Round 0.1 - Grade 1"}}});
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+        auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+        auto coil = completed.get_coil();
+        REQUIRE(coil.get_turns_description().has_value());
+
+        auto output = StrayCapacitance().calculate_capacitance(coil);
+        REQUIRE(output.get_capacitance_among_windings().has_value());
+        auto amongWindings = output.get_capacitance_among_windings().value();
+        auto windingName = coil.get_functional_description()[0].get_name();
+        double selfCapacitance = amongWindings.at(windingName).at(windingName);
+        UNSCOPED_INFO(label << ": self-capacitance " << selfCapacitance * 1e12 << " pF");
+        CHECK(std::isfinite(selfCapacitance));
+        CHECK(selfCapacitance > 0);
+        CHECK(selfCapacitance < 1e-10);
+    }
+    settings.reset();
+}
