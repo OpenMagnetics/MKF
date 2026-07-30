@@ -2479,3 +2479,76 @@ TEST_CASE("Test_Core_Get_Columns_Throws_When_Unprocessed", "[physical-model][cor
     core.set_processed_description(std::nullopt);
     REQUIRE_THROWS_AS(core.get_columns(), CoreNotProcessedException);
 }
+
+// ABT #368: what does the drumRing's gap-fringing omission actually cost?
+//
+// MKF's width-resolved fringing kernel (the widthsamples path in MagneticField.cpp) is gated on
+// a FUNCTIONAL gap — MagneticField.cpp:390-396 only counts SUBTRACTIVE or ADDITIVE. A shielded
+// drum's two annular flange-to-ring clearances are synthesized as RESIDUAL (nothing is ground
+// on an assembled drum+ring), so the kernel skips them even though they are ~50 um wide, sit at
+// the flange rims facing the outer turns, and DOMINATE the reluctance. That typing is also what
+// heimdall's validated 477-file inductance sweep used, so it is not a free choice.
+//
+// This test does not "fix" that — the kernel is FEM-validated for a functional gap facing a FLAT
+// conductor, and a radial annular gap at a flange rim facing round wire is a different geometry
+// (the PQI lesson: do not ship an unvalidated gap model). It MEASURES the omission by pricing the
+// same geometry both ways, so the decision is quantitative rather than assumed, and it fails if
+// the gate silently changes behaviour.
+TEST_CASE("Test_Drum_Ring_Fringing_Loss_Omission_Is_Quantified",
+          "[physical-model][winding-losses][drum-ring]") {
+    auto buildMagnetic = [](GapType clearanceGapType) {
+        auto core = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "N87");
+        // Re-type the synthesized annular clearances to ask the counterfactual.
+        auto gapping = core.get_functional_description().get_gapping();
+        for (auto& gap : gapping) {
+            gap.set_type(clearanceGapType);
+        }
+        core.get_mutable_functional_description().set_gapping(gapping);
+
+        json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = json::array({{
+            {"name", "winding 0"}, {"numberTurns", 8}, {"numberParallels", 1},
+            {"isolationSide", "primary"}, {"wire", "Round 0.1 - Grade 1"}}});
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+        return OpenMagnetics::magnetic_autocomplete(magnetic);
+    };
+
+    settings.reset();
+    clear_databases();
+    settings.set_magnetic_field_include_fringing(true);
+
+    double frequency = 1e6;
+    double temperature = 25;
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        frequency, 14e-6, temperature, WaveformLabel::TRIANGULAR, 0.4, 0.5, 1.0);
+
+    auto residualMagnetic = buildMagnetic(GapType::RESIDUAL);
+    auto functionalMagnetic = buildMagnetic(GapType::ADDITIVE);
+    double residualLosses = WindingLosses()
+        .calculate_losses(residualMagnetic, inputs.get_operating_point(0), temperature)
+        .get_winding_losses();
+    double functionalLosses = WindingLosses()
+        .calculate_losses(functionalMagnetic, inputs.get_operating_point(0), temperature)
+        .get_winding_losses();
+
+    REQUIRE(residualLosses > 0);
+    REQUIRE(functionalLosses > 0);
+    double omissionRatio = functionalLosses / residualLosses;
+    UNSCOPED_INFO("drumRing winding losses @1MHz, 0.4A pk-pk + 1A DC: residual-typed "
+                  << residualLosses * 1e3 << " mW vs functional-typed " << functionalLosses * 1e3
+                  << " mW (ratio " << omissionRatio << ")");
+    // MEASURED TODAY: exactly 1.0 — re-typing changes nothing, because the omission is deeper
+    // than the gap-type gate. Width-resolved samples are consumed ONLY by the Wang flat-conductor
+    // model (WindingProximityEffectLosses.cpp:160-170 strips them for every other model), and a
+    // drum is wound with ROUND wire, whose proximity path is a lumped Bessel factor over the
+    // averaged field. So flange-rim fringing detail cannot reach these turns by construction.
+    //
+    // This equality is therefore a TRIPWIRE, not a target: when ABT #368's FEM-validated annular
+    // -gap kernel lands, the functional-typed number must exceed the residual-typed one and this
+    // assertion must be updated DELIBERATELY (with the new band justified by the FEM data).
+    CHECK_THAT(omissionRatio, Catch::Matchers::WithinRel(1.0, 1e-9));
+    settings.reset();
+}
