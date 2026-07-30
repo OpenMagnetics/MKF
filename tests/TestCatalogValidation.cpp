@@ -11,6 +11,10 @@
 //     ("IEC 63182 effective parameters cannot be negative or 0", ABT #306).
 #include "constructive_models/Core.h"
 #include "constructive_models/CorePiece.h"
+#include "constructive_models/Coil.h"
+#include "constructive_models/Magnetic.h"
+#include "advisers/MagneticAdviser.h"
+#include "processors/Inputs.h"
 #include "support/Utils.h"
 #include "json.hpp"
 
@@ -160,5 +164,61 @@ TEST_CASE("Test_Catalog_Shielded_Drum_Cores_Are_Available", "[catalog][drum-ring
         }
     }
     CHECK(drumRingCoresInStock == 0);
+    settings.reset();
+}
+
+// ABT #366/#370: the adviser must actually RUN with a shielded-drum catalogue. This is the
+// integration nobody had exercised, and there was a concrete reason to worry: CoreAdviser tries
+// to solve a GROUND gap for every candidate and then calls process_gap() (CoreAdviserDataset.cpp
+// :653-691), while a drumRing REJECTS all user gapping — nothing can be ground on an assembled
+// drum+ring. Those call sites happen to be inside catch(std::exception), so the throw degrades
+// to "candidate keeps its structural gaps" instead of killing the run; this test pins that
+// contract end-to-end rather than trusting the reading. A catalogue advise over these parts must
+// return without throwing, and every returned magnetic must still carry its two structural
+// annular clearances (the adviser must not have re-gapped or un-gapped them).
+TEST_CASE("Test_Adviser_Runs_Over_Shielded_Drum_Catalogue", "[catalog][drum-ring][adviser]") {
+    settings.reset();
+    clear_databases();
+    settings.set_use_only_cores_in_stock(false);
+    load_cores();
+
+    std::vector<OpenMagnetics::Magnetic> catalogueMagnetics;
+    for (auto& core : coreDatabase) {
+        if (core.get_shape_family() != CoreShapeFamily::DRUM_RING) continue;
+        json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = json::array({{
+            {"name", "winding 0"}, {"numberTurns", 12}, {"numberParallels", 1},
+            {"isolationSide", "primary"}, {"wire", "Round 0.1 - Grade 1"}}});
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+        catalogueMagnetics.push_back(OpenMagnetics::magnetic_autocomplete(magnetic));
+    }
+    REQUIRE(catalogueMagnetics.size() >= 2);
+
+    // Every candidate entered the adviser with its structural clearances intact.
+    for (auto& magnetic : catalogueMagnetics) {
+        REQUIRE(magnetic.get_core().get_functional_description().get_gapping().size() == 2);
+    }
+
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        1000000, 14e-6, 25, WaveformLabel::TRIANGULAR, 0.2, 0.5, 0.3);
+
+    OpenMagnetics::MagneticAdviser adviser;
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    // strict=false: these tiny parts need not satisfy every requirement — the point is that the
+    // flow completes over a family whose gapping cannot be solved for.
+    REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inputs, catalogueMagnetics, 2, false));
+
+    for (auto& [mas, score] : results) {
+        auto gapping = mas.get_magnetic().get_core().get_functional_description().get_gapping();
+        CHECK(gapping.size() == 2);
+        for (auto& gap : gapping) {
+            CHECK(gap.get_type() == GapType::RESIDUAL);
+            CHECK(gap.get_length() > 0);
+        }
+        CHECK(std::isfinite(score));
+    }
     settings.reset();
 }

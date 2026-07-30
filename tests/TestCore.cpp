@@ -2402,3 +2402,107 @@ namespace TestDrumCore {
         settings.reset();
     }
 }
+
+// ABT #366/#362/#357: SATURATION CURRENT for the new families. Isat is a headline datasheet
+// spec for every one of them (drum, shielded drum, semi-shielded, molded), and it runs through
+// a different chain than inductance — Bsat(T) x N x Ae / L — where L itself comes from the
+// family's own model (open-core demagnetising for a bare drum, mixed-material sectioning for a
+// semi-shielded, closed-circuit for drumRing/molded). None of that was exercised, so this pins
+// that the chain runs and orders physically: for one turn count, MORE inductance means LESS
+// saturation current, so the shielded assembly must saturate EARLIER than the bare drum it is
+// built from.
+namespace TestNewFamilySaturation {
+    TEST_CASE("Test_Drum_Family_Saturation_Current", "[core][drum][drum-ring][molded][saturation]") {
+        settings.reset();
+        clear_databases();
+        int64_t numberTurns = 20;
+
+        json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = json::array({{
+            {"name", "winding 0"}, {"numberTurns", numberTurns}, {"numberParallels", 1},
+            {"isolationSide", "primary"}, {"wire", "Dummy"}}});
+
+        auto magneticFromCore = [&](const Core& core) {
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(OpenMagnetics::Coil(coilJson));
+            return magnetic;
+        };
+
+        // Bare drum with the same drum dimensions as the shielded pair below.
+        json bareShape = {
+            {"magneticCircuit", "open"}, {"type", "custom"}, {"family", "drum"},
+            {"aliases", json::array()}, {"name", "DR 2.3 bare"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0023}}}, {"B", {{"nominal", 0.001}}}, {"C", {{"nominal", 0.0011}}},
+                {"D", {{"nominal", 0.00021}}}, {"E", {{"nominal", 0.00058}}}, {"F", {{"nominal", 0.00021}}}}}
+        };
+        json bareCoreJson;
+        bareCoreJson["functionalDescription"] = {
+            {"type", "openShape"}, {"material", "3C90"}, {"shape", bareShape},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        Core bareDrum(bareCoreJson);
+        bareDrum.process_data();
+        auto bareMagnetic = magneticFromCore(bareDrum);
+        double bareSaturationCurrent = bareMagnetic.calculate_saturation_current(25);
+
+        // Shielded drum: same drum, closed by its ring.
+        auto shieldedCore = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90");
+        auto shieldedMagnetic = magneticFromCore(shieldedCore);
+        double shieldedSaturationCurrent = shieldedMagnetic.calculate_saturation_current(25);
+
+        // Molded composite body.
+        json moldedShape = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+            {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+                {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+        };
+        json moldedCoreJson;
+        moldedCoreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", "Kool Mµ 26"}, {"shape", moldedShape},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        Core moldedCore(moldedCoreJson);
+        moldedCore.process_data();
+        moldedCore.process_gap();
+        auto moldedMagnetic = magneticFromCore(moldedCore);
+        double moldedSaturationCurrent = moldedMagnetic.calculate_saturation_current(25);
+
+        // Semi-shielded: same drum, closed by a magnetic-epoxy shell (its permeability comes
+        // from the magneticEpoxy coating, so this also proves the mixed-material inductance path
+        // feeds the saturation chain).
+        json semishieldedShape = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+            {"aliases", json::array()}, {"name", "LQS-like 4018"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+                {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}},
+                {"J", {{"nominal", 0.0040}}}, {"K", {{"nominal", 0.0040}}}, {"L", {{"nominal", 0.0018}}}}}
+        };
+        json semishieldedCoreJson;
+        semishieldedCoreJson["functionalDescription"] = {
+            {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", semishieldedShape},
+            {"gapping", json::array()}, {"numberStacks", 1},
+            {"coating", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}}}};
+        Core semishieldedCore(semishieldedCoreJson);
+        semishieldedCore.process_data();
+        semishieldedCore.process_gap();
+        auto semishieldedMagnetic = magneticFromCore(semishieldedCore);
+        double semishieldedSaturationCurrent = semishieldedMagnetic.calculate_saturation_current(25);
+
+        UNSCOPED_INFO("Isat @20T: bare drum " << bareSaturationCurrent << " A, shielded "
+                      << shieldedSaturationCurrent << " A, semi-shielded "
+                      << semishieldedSaturationCurrent << " A, molded " << moldedSaturationCurrent << " A");
+        for (double saturationCurrent : {bareSaturationCurrent, shieldedSaturationCurrent,
+                                         semishieldedSaturationCurrent, moldedSaturationCurrent}) {
+            CHECK(std::isfinite(saturationCurrent));
+            CHECK(saturationCurrent > 0);
+        }
+        // The ferrite ring multiplies inductance (~2.9x on this pair), so with the same turns the
+        // shielded assembly reaches Bsat at a proportionally lower current than the bare drum.
+        CHECK(shieldedSaturationCurrent < bareSaturationCurrent);
+        settings.reset();
+    }
+}

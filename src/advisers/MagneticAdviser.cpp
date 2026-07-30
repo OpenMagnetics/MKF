@@ -1160,7 +1160,19 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
 
     }
     else {
-        if (catalogueMasWithStriclyRequirementsPassed.size() > 0) {
+        // Nothing satisfied every requirement: retry once with the strict gates relaxed, so the
+        // caller gets the closest parts instead of an empty list.
+        //
+        // The `strict` guard is what makes that a RETRY and not an infinite loop: in a
+        // strict=false pass the strict-filter loop stops rejecting (it only ANDs `valid` when
+        // strict), so catalogueMasWithStriclyRequirementsPassed comes back just as non-empty as
+        // before, and recursing again would re-run the identical evaluation forever. That
+        // recursion was unbounded — every caller passing strict=false whose candidates all fail
+        // the non-strict stage (e.g. a small-part catalogue that cannot meet the requested
+        // inductance) blew the stack instead of returning empty. Found with a shielded-drum
+        // catalogue (ABT #366/#370): SIGSEGV ~20 frames deep in the saturation filter, which was
+        // merely where the exhausted stack happened to land.
+        if (strict && catalogueMasWithStriclyRequirementsPassed.size() > 0) {
             return get_advised_magnetic(catalogueMasWithStriclyRequirementsPassed, filterFlow, maximumNumberResults, false);
         }
         return {};
