@@ -1,4 +1,8 @@
 #include <source_location>
+#include <algorithm>
+#include "constructive_models/Magnetic.h"
+#include "constructive_models/Coil.h"
+#include "support/Utils.h"
 #include "processors/Sweeper.h"
 #include "support/Painter.h"
 #include "support/Settings.h"
@@ -1003,6 +1007,90 @@ namespace {
 
         REQUIRE(std::filesystem::exists(outFile));
 
+        settings.reset();
+    }
+
+
+    // ABT #366/#362/#357: impedance sweeps over the new families. The impedance chain pulls
+    // magnetizing inductance, stray capacitance, winding and core losses together, so it is the
+    // broadest end-to-end path a magnetic goes through — and none of the drum-family or molded
+    // cores had ever been down it. Each family must sweep to a finite, positive, inductive-then
+    // -capacitive |Z| curve with a self-resonance inside the swept band. No pinned values: these
+    // are new geometries with no published impedance data to validate against.
+    TEST_CASE("Test_Sweeper_Impedance_New_Core_Families",
+              "[processor][sweeper][drum][drum-ring][drum-semishielded][molded]") {
+        settings.reset();
+        clear_databases();
+
+        auto buildMagnetic = [](const Core& core, int64_t numberTurns) {
+            json coilJson;
+            coilJson["bobbin"] = "Dummy";
+            coilJson["functionalDescription"] = json::array({{
+                {"name", "winding 0"}, {"numberTurns", numberTurns}, {"numberParallels", 1},
+                {"isolationSide", "primary"}, {"wire", "Round 0.1 - Grade 1"}}});
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+            return OpenMagnetics::magnetic_autocomplete(magnetic);
+        };
+        auto buildCustomCore = [](json shapeJson, const std::string& coreType, json coating = json()) {
+            json coreJson;
+            coreJson["functionalDescription"] = {
+                {"type", coreType}, {"material", "3C90"}, {"shape", shapeJson},
+                {"gapping", json::array()}, {"numberStacks", 1}};
+            if (!coating.is_null()) {
+                coreJson["functionalDescription"]["coating"] = coating;
+            }
+            Core core(coreJson);
+            core.process_data();
+            core.process_gap();
+            return core;
+        };
+
+        json drumDimensions = {
+            {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+            {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}}};
+        json semishieldedDimensions = drumDimensions;
+        semishieldedDimensions["J"] = {{"nominal", 0.0040}};
+        semishieldedDimensions["K"] = {{"nominal", 0.0040}};
+        semishieldedDimensions["L"] = {{"nominal", 0.0018}};
+
+        std::vector<std::pair<std::string, OpenMagnetics::Magnetic>> magnetics;
+        magnetics.emplace_back("drum", buildMagnetic(
+            OpenMagneticsTesting::get_quick_core("DRH-14X20-4C", json::array(), 1, "3C90"), 20));
+        magnetics.emplace_back("drumRing", buildMagnetic(
+            OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90"), 8));
+        magnetics.emplace_back("drumSemishielded", buildMagnetic(buildCustomCore(
+            {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+             {"aliases", json::array()}, {"name", "LQS-like 4018"}, {"dimensions", semishieldedDimensions}},
+            "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}}), 8));
+        magnetics.emplace_back("molded", buildMagnetic(buildCustomCore(
+            {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+             {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+             {"dimensions", {
+                 {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+                 {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}},
+            "closedShape"), 8));
+
+        for (auto& [label, magnetic] : magnetics) {
+            auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 100000000, 200);
+            auto impedanceMagnitudes = impedanceSweep.get_y_points();
+            REQUIRE(impedanceMagnitudes.size() > 100);
+            for (auto impedanceMagnitude : impedanceMagnitudes) {
+                REQUIRE(std::isfinite(impedanceMagnitude));
+                REQUIRE(impedanceMagnitude > 0);
+            }
+            // Inductive below resonance, capacitive above: the curve must rise then fall, so its
+            // maximum is interior to the band (a monotonic curve would mean no resonance found).
+            auto peak = std::max_element(impedanceMagnitudes.begin(), impedanceMagnitudes.end());
+            size_t peakIndex = size_t(std::distance(impedanceMagnitudes.begin(), peak));
+            UNSCOPED_INFO(label << ": |Z| peak " << *peak << " ohm at point " << peakIndex
+                          << "/" << impedanceMagnitudes.size() << ", |Z| at 1 kHz "
+                          << impedanceMagnitudes.front());
+            CHECK(peakIndex > 0);
+            CHECK(peakIndex < impedanceMagnitudes.size() - 1);
+            CHECK(impedanceMagnitudes.front() < *peak);
+        }
         settings.reset();
     }
 

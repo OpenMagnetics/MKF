@@ -276,3 +276,67 @@ TEST_CASE("Test_Miserable_43",
 }
 
 }  // namespace
+
+// ABT #366/#362/#357: core-temperature models over the new families. These models read the
+// core's effective volume / dimensions, which every new family now supplies through its own
+// piece class — but nothing exercised that, and a thermal model quietly reading a zero or
+// absent dimension would return a plausible-looking number. Smoke only: each family must
+// produce a finite temperature above ambient that grows with dissipation. No pinned values —
+// these are geometry classes MKF has no published thermal validation for.
+TEST_CASE("Test_Core_Temperature_New_Families", "[physical-model][core-temperature][drum][drum-ring][drum-semishielded][molded]") {
+    settings.reset();
+    clear_databases();
+    double ambientTemperature = 25;
+
+    auto buildCustomCore = [](json shapeJson, const std::string& coreType, json coating = json()) {
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", coreType}, {"material", "3C90"}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        if (!coating.is_null()) {
+            coreJson["functionalDescription"]["coating"] = coating;
+        }
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        return core;
+    };
+
+    json drumDimensions = {
+        {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+        {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}}};
+    json semishieldedDimensions = drumDimensions;
+    semishieldedDimensions["J"] = {{"nominal", 0.0040}};
+    semishieldedDimensions["K"] = {{"nominal", 0.0040}};
+    semishieldedDimensions["L"] = {{"nominal", 0.0018}};
+
+    std::vector<std::pair<std::string, Core>> cores;
+    cores.emplace_back("drum", OpenMagneticsTesting::get_quick_core("DRH-14X20-4C", json::array(), 1, "3C90"));
+    cores.emplace_back("drumRing", OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90"));
+    cores.emplace_back("drumSemishielded", buildCustomCore(
+        {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+         {"aliases", json::array()}, {"name", "LQS-like 4018"}, {"dimensions", semishieldedDimensions}},
+        "pieceAndPlate",
+        {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}}));
+    cores.emplace_back("molded", buildCustomCore(
+        {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+         {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+         {"dimensions", {
+             {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+             {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}},
+        "closedShape"));
+
+    auto coreTemperatureModel = CoreTemperatureModel::factory(CoreTemperatureModels::MANIKTALA);
+    for (auto& [label, core] : cores) {
+        double lowLossTemperature = coreTemperatureModel
+            ->get_core_temperature(core, 0.01, ambientTemperature).get_maximum_temperature();
+        double highLossTemperature = coreTemperatureModel
+            ->get_core_temperature(core, 0.10, ambientTemperature).get_maximum_temperature();
+        UNSCOPED_INFO(label << ": 10 mW -> " << lowLossTemperature << " C, 100 mW -> "
+                      << highLossTemperature << " C");
+        CHECK(std::isfinite(lowLossTemperature));
+        CHECK(lowLossTemperature > ambientTemperature);
+        CHECK(highLossTemperature > lowLossTemperature);
+    }
+    settings.reset();
+}
