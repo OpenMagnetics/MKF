@@ -309,21 +309,33 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(Magnetic magnetic, double 
     auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, coil).get_magnetizing_inductance());
 
     std::vector<double> coreResistances;
-    auto coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
-    auto coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
+    // ABT #388: the model was chosen as "Steinmetz if the material has Steinmetz, else
+    // Proprietary" — a two-way choice that silently assumed every non-Steinmetz material is a
+    // vendor-proprietary one. A LOSS-FACTOR material (tan_delta/mu_i vs frequency, which is how
+    // NiZn makers publish loss and often the ONLY thing they publish) therefore landed in the
+    // proprietary branch and was rejected with "No proprietary volumetric losses method",
+    // blocking the whole subcircuit export for it — 101 of 118 shielded-drum models on just two
+    // datasheet-sourced grades. MKF already has a LossFactor model; the selection simply never
+    // offered it. Ask for the model that fits the material instead of guessing between two.
     auto coreLossesMethods = Core::get_available_core_losses_methods(core.resolve_material());
-
-    if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-        for (auto frequency : frequencies) {
-            auto coreResistance =  coreLossesModelSteinmetz->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
-            coreResistances.push_back(coreResistance);
-        }
+    auto hasMethod = [&](VolumetricCoreLossesMethodType method) {
+        return std::find(coreLossesMethods.begin(), coreLossesMethods.end(), method) != coreLossesMethods.end();
+    };
+    std::string coreLossesModelName;
+    if (hasMethod(VolumetricCoreLossesMethodType::STEINMETZ)) {
+        coreLossesModelName = "Steinmetz";
+    }
+    else if (hasMethod(VolumetricCoreLossesMethodType::LOSS_FACTOR)) {
+        coreLossesModelName = "LossFactor";
     }
     else {
-        for (auto frequency : frequencies) {
-            auto coreResistance =  coreLossesModelProprietary->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
-            coreResistances.push_back(coreResistance);
-        }
+        coreLossesModelName = "Proprietary";
+    }
+    auto coreLossesModel = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", coreLossesModelName}}));
+
+    for (auto frequency : frequencies) {
+        auto coreResistance = coreLossesModel->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
+        coreResistances.push_back(coreResistance);
     }
 
 

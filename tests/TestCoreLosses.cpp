@@ -3801,3 +3801,35 @@ TEST_CASE("Test_Core_Losses_Drum_Ring_Smoke", "[physical-model][core-losses][dru
     settings.reset();
 }
 
+
+// ABT #388: export_magnetic_as_subcircuit refused every lossFactor material with
+// "[MATERIAL_DATA_MISSING] No proprietary volumetric losses method", blocking 101 of 118
+// shielded-drum models built on the two datasheet-sourced NiZn grades (TAK DL5, SDE N5D).
+// Loss factor (tan_delta/mu_i vs frequency) is how NiZn makers publish loss — Steinmetz curves
+// are usually not published for these grades — so refusing it rejects vendor data, not bad data.
+TEST_CASE("Test_Subcircuit_Export_Accepts_LossFactor_Materials", "[processor][circuit-simulator][loss-factor]") {
+    settings.reset();
+    clear_databases();
+    auto core = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "DL5");
+    json coilJson;
+    coilJson["bobbin"] = "Dummy";
+    coilJson["functionalDescription"] = json::array({{
+        {"name", "winding 0"}, {"numberTurns", 8}, {"numberParallels", 1},
+        {"isolationSide", "primary"}, {"wire", "Round 0.1 - Grade 1"}}});
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+
+    // Both exporter flavours: the ngspice one is what the Kirchhoff/Heaviside path consumes.
+    OpenMagnetics::CircuitSimulatorExporter ngspiceExporter(OpenMagnetics::CircuitSimulatorExporterModels::NGSPICE);
+    std::string ngspiceSubcircuit;
+    REQUIRE_NOTHROW(ngspiceSubcircuit = ngspiceExporter.export_magnetic_as_subcircuit(completed, 100000, 25, std::nullopt, std::nullopt));
+    CHECK(ngspiceSubcircuit.find(".subckt") != std::string::npos);
+
+    OpenMagnetics::CircuitSimulatorExporter simbaExporter;
+    std::string simbaSubcircuit;
+    REQUIRE_NOTHROW(simbaSubcircuit = simbaExporter.export_magnetic_as_subcircuit(completed, 100000, 25, std::nullopt, std::nullopt));
+    CHECK(simbaSubcircuit.size() > 50);
+    settings.reset();
+}
