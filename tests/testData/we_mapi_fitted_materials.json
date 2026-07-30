@@ -3,7 +3,7 @@
   "provenance": "FITTED from public RedExpert data + geometric reconstruction, NOT vendor material data",
   "date": "2026-07-30",
   "method": "joint per-caseCode family fit of (mu_eff0, cavity ratios D/B, E/min(A,C), F/E) + per-part (N, IEC 60317 wire) against L0/DCR/packing, geometry constants c1/c2 mirrored from MKF CorePieceMolded; see we_mapi_fit.py",
-  "regularizer": "soft physical band on B at the measured 20%/30% inductance-drop point, B = int L dI/(N*Ae) in [0.28,0.90]/[0.35,1.10] T, anchored on the TC-molded grade fitted with known geometry in wuerth/lop_fitted_materials (mu~18.5, B30~0.55 T); breaks the mu<->geometry degeneracy (unregularized objective is flat for shared mu ~27..50)",
+  "regularizer": "soft physical band on B at the measured 20%/30% inductance-drop point, B = int L dI/(N*Ae) in [0.28,0.90]/[0.35,1.10] T, anchored on a reference molded grade with independently known geometry; breaks the mu<->geometry degeneracy (unregularized objective is flat for shared mu ~27..50)",
   "mu_form": "mu(H,20C) = mu_eff0 * 0.01/(0.01 + b*H^c), H in A/m"
  },
  "families": {
