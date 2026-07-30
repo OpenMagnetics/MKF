@@ -3,7 +3,11 @@
 #include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <source_location>
+#include <sstream>
 
 using namespace OpenMagnetics;
 using Catch::Matchers::ContainsSubstring;
@@ -168,6 +172,123 @@ TEST_CASE("Reader: LTspice differential probe V(a,b) stays a single column (comm
     REQUIRE(names[1] == "V(N009,d)");  // comma preserved inside the parentheses
     REQUIRE(names[2] == "V(n016)");
     REQUIRE(names[6] == "I(L4)");
+}
+
+// Build a CSV carrying two independent acquisitions side by side, the way lab
+// exports merge several measurements into one file: each sweep has its own
+// time column with its own sample instants. Sweep 1 samples every 5e-7 s
+// (a 10 kHz triangle 100..200 A), sweep 2 every 4e-7 s (100..300 A).
+// `sweep2Rows` allows truncating the second acquisition early (empty cells),
+// which is how ragged multi-acquisition exports look.
+static std::string build_two_acquisition_csv(size_t rows, size_t sweep2Rows) {
+    auto triangle = [](double t, double lo, double hi) {
+        double phase = t * 10e3 - std::floor(t * 10e3);
+        return lo + (hi - lo) * (phase < 0.5? 2 * phase : 2 * (1 - phase));
+    };
+    std::ostringstream csv;
+    csv << "Time / s_1,V_1,I_1,Time / s_2,V_2,I_2\n";
+    csv.precision(10);
+    for (size_t i = 0; i < rows; ++i) {
+        double t1 = i * 5e-7;
+        csv << t1 << ",10," << triangle(t1, 100, 200) << ",";
+        if (i < sweep2Rows) {
+            double t2 = i * 4e-7;
+            csv << t2 << ",20," << triangle(t2, 100, 300) << "\n";
+        }
+        else {
+            csv << ",,\n";
+        }
+    }
+    return csv.str();
+}
+
+TEST_CASE("Reader: signals pair with the time column selected for their winding, not the file's first",
+          "[processor][circuit-simulation-reader][robustness][smoke-test]") {
+    // Regression: every signal used to be paired with the FIRST time-like
+    // column, so acquisition 2's current was plotted against acquisition 1's
+    // axis. Amplitude statistics survive that warp (both axes are linear), but
+    // periodicity does not: the extracted window then spans 0.8 of the true
+    // cycle and the waveform ends 80 A away from where it starts.
+    auto csv = build_two_acquisition_csv(500, 500);
+    CircuitSimulationReader reader(csv, true);
+    std::vector<std::map<std::string, std::string>> mapColumnNames = {
+        {{"time", "Time / s_2"}, {"current", "I_2"}, {"voltage", "V_2"}}};
+    auto operatingPoint = reader.extract_operating_point(1, 10e3, mapColumnNames);
+    auto current = operatingPoint.get_excitations_per_winding()[0].get_current().value();
+    auto processed = current.get_processed().value();
+    CHECK(processed.get_peak().value() > 290);
+    CHECK(processed.get_peak_to_peak().value() > 190);
+    CHECK(processed.get_peak_to_peak().value() < 210);
+    CHECK(std::fabs(processed.get_offset() - 200) < 10);
+    auto data = current.get_waveform().value().get_data();
+    CHECK(std::fabs(data.front() - data.back()) < 10);
+}
+
+TEST_CASE("Reader: ragged multi-acquisition file extracts the shorter sweep correctly",
+          "[processor][circuit-simulation-reader][robustness][smoke-test]") {
+    // Regression for the user-reported import bug: the shorter acquisition's
+    // columns (trailing empty cells) used to be sliced with window indexes
+    // computed on the longer first time column — an out-of-bounds read that
+    // surfaced as a zero tail (peak == peak-to-peak, offset == peak / 2).
+    auto csv = build_two_acquisition_csv(500, 400);
+    CircuitSimulationReader reader(csv, true);
+    std::vector<std::map<std::string, std::string>> mapColumnNames = {
+        {{"time", "Time / s_2"}, {"current", "I_2"}, {"voltage", "V_2"}}};
+    auto operatingPoint = reader.extract_operating_point(1, 10e3, mapColumnNames);
+    auto current = operatingPoint.get_excitations_per_winding()[0].get_current().value();
+    auto processed = current.get_processed().value();
+    CHECK(processed.get_peak_to_peak().value() > 190);
+    CHECK(processed.get_peak_to_peak().value() < 210);
+    auto data = current.get_waveform().value().get_data();
+    CHECK(*std::min_element(data.begin(), data.end()) > 90);
+}
+
+TEST_CASE("Reader: pairing a signal with a time column of a different length throws loudly",
+          "[processor][circuit-simulation-reader][robustness][smoke-test]") {
+    // Picking acquisition 1's time axis for acquisition 2's (shorter) signal
+    // cannot be reconciled — reject it with both column names in the message
+    // instead of reading past the end of the data.
+    auto csv = build_two_acquisition_csv(500, 400);
+    CircuitSimulationReader reader(csv, true);
+    std::vector<std::map<std::string, std::string>> mapColumnNames = {
+        {{"time", "Time / s_1"}, {"current", "I_2"}, {"voltage", "V_1"}}};
+    try {
+        reader.extract_operating_point(1, 10e3, mapColumnNames);
+        FAIL("expected an exception");
+    }
+    catch (const std::exception& e) {
+        std::string msg = e.what();
+        REQUIRE_THAT(msg, ContainsSubstring("I_2"));
+        REQUIRE_THAT(msg, ContainsSubstring("Time / s_1"));
+    }
+}
+
+TEST_CASE("Reader: repeated truncated timestamps are collapsed per time axis (keep-last)",
+          "[processor][circuit-simulation-reader][robustness][smoke-test]") {
+    // Exports rounded to few significant figures repeat each timestamp for
+    // many consecutive rows. The dedup now runs per (time, signal) pair; the
+    // extraction must still succeed and keep sane amplitudes.
+    auto triangle = [](double t, double lo, double hi) {
+        double phase = t * 10e3 - std::floor(t * 10e3);
+        return lo + (hi - lo) * (phase < 0.5? 2 * phase : 2 * (1 - phase));
+    };
+    std::ostringstream csv;
+    csv << "Time / s,V,I\n";
+    for (size_t i = 0; i < 500; ++i) {
+        double t = 0.28996 + i * 5e-7;
+        char timeToken[32];
+        std::snprintf(timeToken, sizeof(timeToken), "%.5f", t);
+        csv << timeToken << ",10," << triangle(t, 100, 200) << "\n";
+    }
+    CircuitSimulationReader reader(csv.str(), true);
+    std::vector<std::map<std::string, std::string>> mapColumnNames = {
+        {{"time", "Time / s"}, {"current", "I"}, {"voltage", "V"}}};
+    auto operatingPoint = reader.extract_operating_point(1, 10e3, mapColumnNames);
+    auto current = operatingPoint.get_excitations_per_winding()[0].get_current().value();
+    auto processed = current.get_processed().value();
+    CHECK(processed.get_peak().value() <= 200.5);
+    CHECK(processed.get_peak().value() > 150);
+    CHECK(std::fabs(processed.get_offset() - 150) < 25);
 }
 
 TEST_CASE("Reader: parses the real LTspice flyback export with a differential probe",

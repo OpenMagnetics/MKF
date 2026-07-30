@@ -675,8 +675,12 @@ class CircuitSimulationReader {
     std::vector<Waveform> _waveforms;
     CircuitSimulationSignal _time;
 
-    std::optional<size_t> _periodStartIndex = std::nullopt;
-    std::optional<size_t> _periodStopIndex = std::nullopt;
+    // One extraction window per time axis, keyed by the time column's name. All
+    // signals sharing an axis reuse the window (voltage and current of one
+    // winding stay aligned), while signals paired with a different time column
+    // (multi-acquisition files) get their own — indexes into one axis are
+    // meaningless on another.
+    std::map<std::string, std::pair<size_t, size_t>> _periodWindowPerTimeAxis;
 
     std::vector<std::string> _timeAliases = {"TIME", "Time", "time", "[s]"};
     std::vector<std::string> _magnetizingCurrentAliases = {"Imag", "MAG", "mag", "Im", "magnetizing"};
@@ -702,8 +706,12 @@ class CircuitSimulationReader {
     std::vector<std::string> extract_column_names();
     const std::vector<CircuitSimulationSignal>& get_columns() const { return _columns; }
     Waveform extract_waveform(CircuitSimulationSignal signal, double frequency, bool sample=true);
+    // Pair the signal with an explicit time axis (the time column selected for
+    // the signal's winding). The single-argument overload above keeps pairing
+    // with the file's first time-like column for auto-detected imports.
+    Waveform extract_waveform(CircuitSimulationSignal signal, const CircuitSimulationSignal& timeSignal, double frequency, bool sample=true);
     static CircuitSimulationSignal find_time(std::vector<CircuitSimulationSignal> columns);
-    Waveform get_one_period(Waveform waveform, double frequency, bool sample=true, bool alignToZeroCrossing=true);
+    Waveform get_one_period(Waveform waveform, double frequency, bool sample=true, bool alignToZeroCrossing=true, const std::string& timeAxisName="");
     static char guess_separator(std::string line);
     // Split a line on `separator`, ignoring any separator that falls inside a
     // double-quoted field OR inside balanced parentheses. The latter keeps

@@ -1942,36 +1942,12 @@ CircuitSimulationReader::CircuitSimulationReader(std::string filePathOrFile, boo
 
     _time = find_time(_columns);
 
-    // Collapse repeated consecutive timestamps, keeping the LAST sample at each
-    // timestamp. Simulator exports that round the time column to a few
-    // significant figures emit several rows sharing one timestamp; without this
-    // the time axis is not strictly increasing and period extraction would fail
-    // ("no time column found"). Keeping the last value matches the most recent
-    // state at that instant.
-    {
-        const std::vector<double>& times = _time.data;
-        std::vector<size_t> keepIndexes;
-        keepIndexes.reserve(times.size());
-        for (size_t index = 0; index < times.size(); ++index) {
-            if (index + 1 == times.size() || times[index] != times[index + 1]) {
-                keepIndexes.push_back(index);
-            }
-        }
-        if (keepIndexes.size() != times.size()) {
-            for (auto& column : _columns) {
-                if (column.data.size() != times.size()) {
-                    continue;
-                }
-                std::vector<double> deduped;
-                deduped.reserve(keepIndexes.size());
-                for (size_t idx : keepIndexes) {
-                    deduped.push_back(column.data[idx]);
-                }
-                column.data = std::move(deduped);
-            }
-            _time = find_time(_columns);
-        }
-    }
+    // NOTE: repeated consecutive timestamps (exports rounded to a few
+    // significant figures) are NOT collapsed here. A file can carry several
+    // acquisitions side by side, each with its own time column and its own
+    // duplicate pattern — a global dedup keyed on the first time column
+    // decimated every other acquisition's signals by the wrong pattern. The
+    // dedup now happens in extract_waveform, per (time, signal) pair.
 }
 
 std::vector<std::string> CircuitSimulationReader::extract_column_names() {
@@ -2120,7 +2096,7 @@ char CircuitSimulationReader::guess_separator(std::string line){
         "No column separator found (expected one of comma, semicolon, tab, or pipe)");
 }
 
-Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample, bool alignToZeroCrossing) {
+Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample, bool alignToZeroCrossing, const std::string& timeAxisName) {
     double period = 1.0 / frequency;
     if (!waveform.get_time()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing time data");
@@ -2129,14 +2105,22 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
     auto time = waveform.get_time().value();
     auto data = waveform.get_data();
 
+    if (data.size() != time.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "CircuitSimulationReader::get_one_period: waveform has " +
+            std::to_string(data.size()) + " samples but its time axis has " +
+            std::to_string(time.size()) + " — the columns are misaligned");
+    }
+
     double periodEnd = time.back();
     double periodStart = periodEnd - period;
     size_t periodStartIndex = 0;
     size_t periodStopIndex = -1;
 
-    if (_periodStartIndex && _periodStopIndex) {
-        periodStartIndex = _periodStartIndex.value();
-        periodStopIndex = _periodStopIndex.value();
+    auto cachedWindow = _periodWindowPerTimeAxis.find(timeAxisName);
+    if (cachedWindow != _periodWindowPerTimeAxis.end()) {
+        periodStartIndex = cachedWindow->second.first;
+        periodStopIndex = cachedWindow->second.second;
     }
     else {
         for (int i = time.size() - 1; i >= 0; --i)
@@ -2187,8 +2171,15 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
                 "numPeriodsToExtract so the SPICE output covers at least one "
                 "more switching period than the requested extraction window.");
         }
-        _periodStartIndex = periodStartIndex;
-        _periodStopIndex = periodStopIndex;
+        _periodWindowPerTimeAxis[timeAxisName] = {periodStartIndex, periodStopIndex};
+    }
+
+    if (periodStopIndex > data.size() || periodStartIndex >= periodStopIndex) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "CircuitSimulationReader::get_one_period: extraction window [" +
+            std::to_string(periodStartIndex) + ", " + std::to_string(periodStopIndex) +
+            ") does not fit the waveform (" + std::to_string(data.size()) +
+            " samples on time axis \"" + timeAxisName + "\")");
     }
 
     auto periodData = std::vector<double>(data.begin() + periodStartIndex, data.begin() + periodStopIndex);
@@ -2226,10 +2217,40 @@ CircuitSimulationReader::CircuitSimulationSignal CircuitSimulationReader::find_t
 }
 
 Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::CircuitSimulationSignal signal, double frequency, bool sample) {
+    return extract_waveform(signal, _time, frequency, sample);
+}
+
+Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::CircuitSimulationSignal signal, const CircuitSimulationReader::CircuitSimulationSignal& timeSignal, double frequency, bool sample) {
+    if (signal.data.size() != timeSignal.data.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Column \"" + signal.name + "\" has " + std::to_string(signal.data.size()) +
+            " samples but its time column \"" + timeSignal.name + "\" has " +
+            std::to_string(timeSignal.data.size()) +
+            ". The columns belong to different acquisitions or the file has missing "
+            "cells — pick the time column that was exported together with this signal.");
+    }
+
+    // Collapse repeated consecutive timestamps, keeping the LAST sample at each
+    // timestamp. Exports that round the time column to a few significant
+    // figures emit several rows sharing one timestamp; without this the axis
+    // is not strictly increasing and the sampled-waveform interpolation
+    // divides by zero. Done per (time, signal) pair: in multi-acquisition
+    // files each time column has its own duplicate pattern.
+    std::vector<double> time;
+    std::vector<double> data;
+    time.reserve(timeSignal.data.size());
+    data.reserve(signal.data.size());
+    for (size_t index = 0; index < timeSignal.data.size(); ++index) {
+        if (index + 1 == timeSignal.data.size() || timeSignal.data[index] != timeSignal.data[index + 1]) {
+            time.push_back(timeSignal.data[index]);
+            data.push_back(signal.data[index]);
+        }
+    }
+
     Waveform waveform;
-    waveform.set_data(signal.data);
-    waveform.set_time(_time.data);
-    return get_one_period(waveform, frequency, sample);
+    waveform.set_data(data);
+    waveform.set_time(time);
+    return get_one_period(waveform, frequency, sample, true, timeSignal.name);
 }
 
 std::vector<int> get_numbers_in_string(std::string s) {
@@ -2527,20 +2548,35 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
     OperatingPoint operatingPoint;
 
     std::vector<OperatingPointExcitation> excitationsPerWinding;
+    std::map<size_t, CircuitSimulationSignal> timeColumnPerWinding;
     if (!mapColumnNames) {
         extract_winding_indexes(numberWindings);
         extract_column_types(frequency);
     }
     else {
         assign_column_names(mapColumnNames.value());
+        // Honor the time column the user selected for each winding. Signals
+        // were previously always paired with the file's FIRST time-like
+        // column, so in a file carrying several acquisitions side by side
+        // (Time/s_1, Time/s_2, …) every acquisition after the first was
+        // plotted against the wrong axis.
+        for (auto& column : _columns) {
+            if (column.type == DataType::TIME) {
+                timeColumnPerWinding[column.windingIndex] = column;
+            }
+        }
     }
+    auto timeForWinding = [&](size_t windingIndex) -> const CircuitSimulationSignal& {
+        auto found = timeColumnPerWinding.find(windingIndex);
+        return found != timeColumnPerWinding.end()? found->second : _time;
+    };
 
     for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
         OperatingPointExcitation excitation;
         for (auto column : _columns) {
             excitation.set_frequency(frequency);
             if (column.windingIndex == windingIndex && column.type == DataType::CURRENT) {
-                auto waveform = extract_waveform(column, frequency);
+                auto waveform = extract_waveform(column, timeForWinding(windingIndex), frequency);
                 SignalDescriptor current;
                 current.set_waveform(waveform);
                 // Calculate processed data for current
@@ -2554,7 +2590,7 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
                 excitation.set_current(current);
             }
             if (column.windingIndex == windingIndex && column.type == DataType::MAGNETIZING_CURRENT) {
-                auto waveform = extract_waveform(column, frequency);
+                auto waveform = extract_waveform(column, timeForWinding(windingIndex), frequency);
                 SignalDescriptor current;
                 current.set_waveform(waveform);
                 // Calculate processed data for magnetizing current
@@ -2564,7 +2600,7 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
                 excitation.set_magnetizing_current(current);
             }
             if (column.windingIndex == windingIndex && column.type == DataType::VOLTAGE) {
-                auto waveform = extract_waveform(column, frequency);
+                auto waveform = extract_waveform(column, timeForWinding(windingIndex), frequency);
                 SignalDescriptor voltage;
                 voltage.set_waveform(waveform);
                 // Calculate processed data for voltage
