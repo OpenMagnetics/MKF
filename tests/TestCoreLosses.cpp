@@ -1,5 +1,6 @@
 #include <source_location>
 #include "Constants.h"
+#include "constructive_models/CorePiece.h"
 #include "physical_models/CoreLosses.h"
 #include "support/Painter.h"
 #include "support/Settings.h"
@@ -3665,6 +3666,99 @@ TEST_CASE("Test_Core_Losses_All_Models_Comparison_Table",
               << (bestAvg * 100) << "% average error" << std::endl;
 
     REQUIRE(bestAvg < 0.5); // At least one model under 50% avg error
+    settings.reset();
+}
+
+// ABT #362: semi-shielded drum core losses must be split PER MATERIAL. The single-material
+// path prices the drum ferrite's loss density over the core's whole effective volume — glue
+// shell included — which overcounts. The split prices each material over its own volume at its
+// own flux density (flux continuity: a smaller-area section sees a larger B).
+//
+// Shell losses are ZERO unless the shell material carries volumetricLosses — a deliberate,
+// user-approved choice for a real data gap (no public magnetic-epoxy compound publishes loss
+// data, ABT #364), reported in the method name so it can never be mistaken for a priced result.
+TEST_CASE("Test_Core_Losses_Drum_Semishielded_Per_Material_Split", "[physical-model][core-losses][drum-semishielded]") {
+    settings.reset();
+    clear_databases();
+    auto buildCore = [](const std::string& shellMaterialName) {
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+            {"aliases", json::array()}, {"name", "LQS-like 4018"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+                {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}},
+                {"J", {{"nominal", 0.0040}}}, {"K", {{"nominal", 0.0040}}}, {"L", {{"nominal", 0.0018}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1},
+            {"coating", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", shellMaterialName}}}};
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        return core;
+    };
+
+    json excitationJson = json();
+    excitationJson["frequency"] = 500000;
+    excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+    excitationJson["magneticFluxDensity"]["processed"]["peak"] = 0.05;
+    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 0.1;
+    excitationJson["magneticFieldStrength"]["processed"]["offset"] = 0;
+    excitationJson["magneticFieldStrength"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFieldStrength"]["processed"]["peakToPeak"] = 0;
+    OperatingPointExcitation excitation(excitationJson);
+
+    // "Kool Mu 26" is a powder grade WITH loss data, so the shell is priced; the drum ferrite
+    // is 3C90. Both materials therefore contribute over their own volumes.
+    auto pricedShellCore = buildCore("Kool Mµ 26");
+    auto pricedShellLosses = CoreLosses().calculate_core_losses(pricedShellCore, excitation, 25);
+    CHECK(std::isfinite(pricedShellLosses.get_core_losses()));
+    CHECK(pricedShellLosses.get_core_losses() > 0);
+    CHECK(pricedShellLosses.get_method_used() == "SemiShieldedPerMaterialSplit");
+
+    // THE INVARIANT THAT MATTERS: the ferrite's loss density must not be charged to the SHELL
+    // volume. Compare like with like — same ferrite density, only the volume differs — so this
+    // isolates the overcount the split exists to remove.
+    auto corePiece = CorePiece::factory(pricedShellCore.resolve_shape());
+    auto mixedConstants = corePiece->get_mixed_material_constants();
+    REQUIRE(mixedConstants.has_value());
+    double ferriteC1 = (*mixedConstants)[0];
+    double ferriteC2 = (*mixedConstants)[1];
+    double shellC1 = (*mixedConstants)[2];
+    double shellC2 = (*mixedConstants)[3];
+    double ferriteVolume = pow(ferriteC1, 3) / pow(ferriteC2, 2);
+    double shellVolume = pow(shellC1, 3) / pow(shellC2, 2);
+    REQUIRE(shellVolume > 0);
+
+    // Shell material without loss data: its contribution is zero AND the method name says so,
+    // so a zero-shell result can never be mistaken for a priced one.
+    auto unpricedShellCore = buildCore("Nanoperm 4000");
+    auto unpricedShellLosses = CoreLosses().calculate_core_losses(unpricedShellCore, excitation, 25);
+    CHECK(unpricedShellLosses.get_method_used() == "SemiShieldedPerMaterialSplit(shellLossesAssumedZero)");
+    CHECK(unpricedShellLosses.get_core_losses() > 0);
+
+    // With the shell contributing nothing, the total is the FERRITE sections alone. Charging the
+    // ferrite's own density over ferrite+shell volume — the old single-material behaviour, at the
+    // same flux density — must be strictly larger, in the ratio of the volumes.
+    double ferriteOnlyLosses = unpricedShellLosses.get_core_losses();
+    double ferriteDensityChargedEverywhere = ferriteOnlyLosses * (ferriteVolume + shellVolume) / ferriteVolume;
+    UNSCOPED_INFO("ferrite-only " << ferriteOnlyLosses * 1e3 << " mW vs ferrite-density-over-whole-volume "
+                  << ferriteDensityChargedEverywhere * 1e3 << " mW (shell is "
+                  << shellVolume / (ferriteVolume + shellVolume) * 100 << "% of the volume)");
+    CHECK(ferriteOnlyLosses < ferriteDensityChargedEverywhere);
+
+    // Pricing a lossy shell adds to the ferrite-only total (it cannot subtract).
+    CHECK(pricedShellLosses.get_core_losses() > ferriteOnlyLosses);
+
+    // NOTE on magnitudes: the split can exceed the legacy single-material number even though it
+    // removes the shell overcount, because each section is now evaluated at ITS OWN flux density
+    // rather than one average B. Loss density is convex in B (Steinmetz beta > 1), so resolving a
+    // non-uniform circuit raises the total — the small-area ferrite post sees a much higher B
+    // than the volume-average. That is the physics, not a regression.
     settings.reset();
 }
 

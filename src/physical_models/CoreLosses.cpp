@@ -1,4 +1,5 @@
 #include "constructive_models/MasMigration.h"
+#include "constructive_models/CorePiece.h"
 #include "physical_models/CoreLosses.h"
 #include "physical_models/Resistivity.h"
 #include "physical_models/InitialPermeability.h"
@@ -160,7 +161,116 @@ static double calculate_dple_factor(const CoreMaterial& material, const Operatin
     return dple_factor;
 }
 
+// ABT #362: a semi-shielded drum's magnetic circuit runs through a ferrite drum AND a
+// magnetic-epoxy shell. The single-material path prices the DRUM's loss density over the
+// core's whole effective volume — shell volume included — which overcounts, badly when the
+// shell is a large fraction of the body. Here each material is priced over its own volume at
+// its own flux density, from the piece's per-material IEC constants:
+//     le_i = c1_i^2/c2_i,  Ae_i = c1_i/c2_i,  Ve_i = c1_i^3/c2_i^2
+// Flux is continuous, so a section carrying a smaller area sees a proportionally larger B:
+//     B_i = B_effective * Ae_effective / Ae_i
+//
+// SHELL LOSSES: used when the shell's core-material record carries volumetricLosses, and
+// treated as ZERO otherwise. That zero is a deliberate, user-approved modelling choice
+// (Alf, 2026-07-30) for a specific data gap, NOT a silent fallback: it is reported in the
+// output's method name, so a consumer can tell a zero-shell-loss result from a priced one,
+// and supplying a shell material WITH loss data switches it on with no code change.
+//
+// The gap is real and was probed hard before accepting it (ABT #362/#364): no public
+// magnetic-epoxy compound publishes loss data (Daejoo's GIN-COAT line is confirmed to exist
+// and publishes none), and an attempt to FIT the shell loss from RedExpert's 351-part
+// WE-LQS/LQ/LQFS loss data failed for four independent reasons — the published lossesac is
+// itself a 3-parameter surrogate k*f^a*dI^b (0.25% residual, invariant under DC bias, i.e.
+// pre-fitted), the winding AC loss cannot be bounded (skin-only 0.08% vs Dowell 75% of the
+// total, and Dowell exceeds the whole published loss for 46/129 parts), the LQS family is
+// geometrically self-similar so the ferrite/shell regressors are 0.90-correlated (every shell
+// share from 0 to 100% fits within 10% of best RMS), and neither material has a public loss
+// model. Same data admits Pv_shell(500 kHz, 25 mT) anywhere in 24 ... 6352 kW/m^3.
+//
+// What DOES bound the error: with this sectioned split the shell sits at roughly half the
+// ferrite's flux density, so even if the epoxy were AS LOSSY as the ferrite it would add only
+// 17-29% (median 20%) of the core loss. Zero is therefore a bounded understatement while the
+// epoxy is no lossier than the ferrite — a condition nothing public establishes.
+CoreLossesOutput CoreLosses::calculate_semishielded_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
+    auto corePiece = CorePiece::factory(core.resolve_shape());
+    auto mixedConstants = corePiece->get_mixed_material_constants();
+    if (!mixedConstants) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Semi-shielded drum piece did not expose its mixed-material shape constants");
+    }
+    double coreMaterialC1 = (*mixedConstants)[0];
+    double coreMaterialC2 = (*mixedConstants)[1];
+    double shellMaterialC1 = (*mixedConstants)[2];
+    double shellMaterialC2 = (*mixedConstants)[3];
+
+    double coreMaterialEffectiveArea = coreMaterialC1 / coreMaterialC2;
+    double coreMaterialVolume = pow(coreMaterialC1, 3) / pow(coreMaterialC2, 2);
+    double shellMaterialEffectiveArea = shellMaterialC1 / shellMaterialC2;
+    double shellMaterialVolume = pow(shellMaterialC1, 3) / pow(shellMaterialC2, 2);
+    double wholeC1 = coreMaterialC1 + shellMaterialC1;
+    double wholeC2 = coreMaterialC2 + shellMaterialC2;
+    double wholeEffectiveArea = wholeC1 / wholeC2;
+
+    // Rescale the excitation's flux density to a section's own area (flux continuity).
+    auto excitationForArea = [&](double sectionEffectiveArea) {
+        auto sectionExcitation = excitation;
+        auto magneticFluxDensity = sectionExcitation.get_magnetic_flux_density().value();
+        auto processed = magneticFluxDensity.get_processed().value();
+        double areaRatio = wholeEffectiveArea / sectionEffectiveArea;
+        if (processed.get_peak()) {
+            processed.set_peak(processed.get_peak().value() * areaRatio);
+        }
+        if (processed.get_peak_to_peak()) {
+            processed.set_peak_to_peak(processed.get_peak_to_peak().value() * areaRatio);
+        }
+        if (processed.get_offset() != 0) {
+            processed.set_offset(processed.get_offset() * areaRatio);
+        }
+        if (processed.get_rms()) {
+            processed.set_rms(processed.get_rms().value() * areaRatio);
+        }
+        magneticFluxDensity.set_processed(processed);
+        sectionExcitation.set_magnetic_flux_density(magneticFluxDensity);
+        return sectionExcitation;
+    };
+
+    double drumVolumetricLosses = get_core_volumetric_losses(
+        core.resolve_material(), excitationForArea(coreMaterialEffectiveArea), temperature);
+    double totalLosses = drumVolumetricLosses * coreMaterialVolume;
+
+    bool shellLossesPriced = false;
+    auto coatingUnion = core.get_functional_description().get_coating();
+    if (coatingUnion && std::holds_alternative<CoreCoating>(coatingUnion.value())) {
+        auto coating = std::get<CoreCoating>(coatingUnion.value());
+        if (coating.get_type() && coating.get_type().value() == CoatingType::MAGNETIC_EPOXY &&
+            coating.get_material() && std::holds_alternative<std::string>(coating.get_material().value())) {
+            auto shellMaterial = find_core_material_by_name(std::get<std::string>(coating.get_material().value()));
+            if (shellMaterial.get_volumetric_losses().size() > 0) {
+                double shellVolumetricLosses = get_core_volumetric_losses(
+                    shellMaterial, excitationForArea(shellMaterialEffectiveArea), temperature);
+                totalLosses += shellVolumetricLosses * shellMaterialVolume;
+                shellLossesPriced = true;
+            }
+        }
+    }
+
+    CoreLossesOutput coreLossesOutput;
+    coreLossesOutput.set_core_losses(totalLosses);
+    coreLossesOutput.set_volumetric_losses(totalLosses / (coreMaterialVolume + shellMaterialVolume));
+    coreLossesOutput.set_temperature(temperature);
+    coreLossesOutput.set_origin(ResultOrigin::SIMULATION);
+    coreLossesOutput.set_method_used(shellLossesPriced
+        ? "SemiShieldedPerMaterialSplit"
+        : "SemiShieldedPerMaterialSplit(shellLossesAssumedZero)");
+    return coreLossesOutput;
+}
+
 CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
+    // Mixed-material circuit: price each material over its own volume (ABT #362).
+    if (core.get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
+        return calculate_semishielded_core_losses(core, excitation, temperature);
+    }
+
     auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
 
     CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->get_core_losses(core, excitation, temperature);

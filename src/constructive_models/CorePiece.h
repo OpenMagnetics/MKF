@@ -59,10 +59,13 @@ class CorePiece {
     virtual void process_extra_data() = 0;
 
     // ABT #362: pieces whose magnetic circuit crosses TWO materials (e.g. a ferrite drum
-    // closed by a magnetic-epoxy shell) expose their c1 split {c1 through the CORE material,
-    // c1 through the SHELL material} so a material-aware reluctance path can apply a
-    // per-section permeability. Single-material pieces return nullopt (default).
-    virtual std::optional<std::array<double, 2>> get_mixed_material_c1() { return std::nullopt; }
+    // closed by a magnetic-epoxy shell) expose their IEC shape constants split per material:
+    // {c1_core, c2_core, c1_shell, c2_shell}. c1 alone drives the per-section reluctance
+    // (mu applied section by section); c1 and c2 together give each material's own effective
+    // parameters — le = c1^2/c2, Ae = c1/c2, Ve = c1^3/c2^2 — which the core-loss split needs
+    // to price each material over ITS volume at ITS flux density. Single-material pieces
+    // return nullopt (default).
+    virtual std::optional<std::array<double, 4>> get_mixed_material_constants() { return std::nullopt; }
 
     virtual ~CorePiece() = default;
 

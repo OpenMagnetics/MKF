@@ -128,11 +128,13 @@ double MagnetizingInductance::calculate_open_core_magnetizing_inductance(Core co
 // no-fallbacks rule every missing link throws — the model never assumes air or guesses a mu.
 double MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(Core core, double numberTurns, double temperature) {
     auto corePiece = CorePiece::factory(core.resolve_shape());
-    auto mixedC1 = corePiece->get_mixed_material_c1();
-    if (!mixedC1) {
+    auto mixedConstants = corePiece->get_mixed_material_constants();
+    if (!mixedConstants) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-            "Semi-shielded drum piece did not expose its mixed-material c1 split");
+            "Semi-shielded drum piece did not expose its mixed-material shape constants");
     }
+    double coreMaterialC1 = (*mixedConstants)[0];
+    double shellMaterialC1 = (*mixedConstants)[2];
     double drumPermeability = InitialPermeability::get_initial_permeability(core.resolve_material(), temperature);
 
     auto coatingUnion = core.get_functional_description().get_coating();
@@ -158,7 +160,7 @@ double MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance
     double shellPermeability = InitialPermeability::get_initial_permeability(shellMaterial, temperature);
 
     double vacuumPermeability = Constants().vacuumPermeability;
-    double reluctance = ((*mixedC1)[0] / drumPermeability + (*mixedC1)[1] / shellPermeability) / vacuumPermeability;
+    double reluctance = (coreMaterialC1 / drumPermeability + shellMaterialC1 / shellPermeability) / vacuumPermeability;
     return pow(numberTurns, 2) / reluctance;
 }
 

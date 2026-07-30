@@ -585,6 +585,12 @@ class CoreLosses {
     }
 
     CoreLossesOutput calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature);
+
+    // ABT #362: semi-shielded drums cross TWO materials (ferrite drum + magnetic-epoxy shell),
+    // so pricing the drum's loss density over the whole effective volume — shell included —
+    // overcounts. This splits the circuit per material, each priced over ITS OWN volume at ITS
+    // OWN flux density. Routed automatically from calculate_core_losses for DRUM_SEMISHIELDED.
+    CoreLossesOutput calculate_semishielded_core_losses(Core core, OperatingPointExcitation excitation, double temperature);
     std::shared_ptr<CoreLossesModel> get_core_losses_model(std::string materialName);
     double get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature);
     double get_core_losses_series_resistance(Core core, double frequency, double temperature, double magnetizingInductance);

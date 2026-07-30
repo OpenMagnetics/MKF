@@ -2258,9 +2258,9 @@ class CorePieceDrumSemishielded : public CorePieceDrum {
         return {ferriteC1 + shellC1, ferriteC2 + shellC2, minimumArea};
     }
 
-    std::optional<std::array<double, 2>> get_mixed_material_c1() override {
+    std::optional<std::array<double, 4>> get_mixed_material_constants() override {
         auto [ferriteC1, ferriteC2, shellC1, shellC2, minimumArea] = get_split_constants();
-        return std::array<double, 2>{ferriteC1, shellC1};
+        return std::array<double, 4>{ferriteC1, ferriteC2, shellC1, shellC2};
     }
 };
 
