@@ -143,7 +143,13 @@ class MagneticAdviser{
 
         /// @brief Default filter flow for catalogue magnetic selection.
         /// These filters are strictly required to ensure compatibility with design requirements.
+        /// DATASHEET_LIMITS goes first: it gates a catalogue part against its OWN published
+        /// electrical limits (rated/saturation currents, etc.) from manufacturerInfo.datasheetInfo
+        /// — the cheapest reject available, and a pure pass-through for parts without a datasheet
+        /// block (every designed/custom magnetic). It existed since ABT #19 but was never wired
+        /// into this flow, so catalogue parts were only ever gated by MKF-simulated quantities.
         std::vector<MagneticFilterOperation> _defaultCatalogueMagneticFilterFlow{
+            MagneticFilterOperation(MagneticFilters::DATASHEET_LIMITS, true, false, 1.0),
             MagneticFilterOperation(MagneticFilters::TURNS_RATIOS, true, false, true, 1.0),
             MagneticFilterOperation(MagneticFilters::MAXIMUM_DIMENSIONS, true, false, 1.0),
             MagneticFilterOperation(MagneticFilters::SATURATION, true, false, 1.0),

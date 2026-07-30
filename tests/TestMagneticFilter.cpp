@@ -40,15 +40,18 @@
 
 #include <source_location>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <vector>
 #include <utility>
+#include "json.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "advisers/MagneticFilter.h"
+#include "advisers/MagneticAdviser.h"
 #include "constructive_models/Magnetic.h"
 #include "constructive_models/Core.h"
 #include "constructive_models/Coil.h"
@@ -701,6 +704,52 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS gates each winding against its own ra
 // =============================================================================
 // Filters that require Inputs at construction must throw if none is provided.
 
+// ABT #357 phase 1: the WE-MAPI catalogue corpus — 183 parts pulled from RedExpert's public
+// JSON API (scripts/pull_we_mapi.py, schema-validated at generation, provenance carried per
+// record). Pins: (a) the corpus stays complete and parseable; (b) DATASHEET_LIMITS gates on
+// REAL vendor records end-to-end — 20% over the part's own rated current rejects, 50% under
+// passes with headroom.
+TEST_CASE("MagneticFilter DATASHEET_LIMITS gates the WE-MAPI corpus (ABT #357 phase 1)",
+          "[magnetic-filter][datasheet-limits][we-mapi]") {
+    settings.reset();
+    auto path = std::filesystem::path{std::source_location::current().file_name()}
+                    .parent_path().append("testData").append("we_mapi_datasheet_stubs.ndjson");
+    std::ifstream in(path);
+    REQUIRE(in.good());
+    std::string line;
+    size_t partCount = 0;
+    std::optional<nlohmann::json> firstStub;
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        nlohmann::json stub = nlohmann::json::parse(line);
+        auto& electricalJson = stub.at("manufacturerInfo").at("datasheetInfo").at("electrical").at(0);
+        REQUIRE(electricalJson.contains("inductance"));
+        REQUIRE(electricalJson.contains("saturationCurrents"));
+        REQUIRE(electricalJson.contains("ratedCurrents"));
+        if (!firstStub) firstStub = stub;
+        ++partCount;
+    }
+    CHECK(partCount == 183);
+
+    DatasheetInfo datasheetInfo;
+    from_json((*firstStub)["manufacturerInfo"]["datasheetInfo"], datasheetInfo);
+    REQUIRE(datasheetInfo.get_electrical());
+    auto electrical = datasheetInfo.get_electrical().value()[0];
+    REQUIRE(electrical.get_rated_currents());
+    double ratedCurrent = electrical.get_rated_currents().value()[0];
+    auto magnetic = make_datasheet_magnetic(electrical);
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+
+    auto overInputs = make_datasheet_inputs({{ratedCurrent * 1.2, std::nullopt, std::nullopt, std::nullopt}});
+    auto [overValid, overScore] = filter->evaluate_magnetic(&magnetic, &overInputs);
+    CHECK(overValid == false);
+
+    auto underInputs = make_datasheet_inputs({{ratedCurrent * 0.5, std::nullopt, std::nullopt, std::nullopt}});
+    auto [underValid, underScore] = filter->evaluate_magnetic(&magnetic, &underInputs);
+    CHECK(underValid == true);
+    CHECK(underScore > 0);
+}
+
 TEST_CASE("MagneticFilter factory requires Inputs for AREA_PRODUCT",
           "[magnetic-filter][characterisation][factory-contract][smoke-test]") {
     REQUIRE_THROWS_AS(MagneticFilter::factory(MagneticFilters::AREA_PRODUCT, std::nullopt),
@@ -825,3 +874,19 @@ TEST_CASE("Benchmark MagneticFilter AREA_PRODUCT (full DB)",
 // optimising the filter, also extract a cached-coil benchmark to isolate the
 // hot path. See "Performance" section of the Phase 6 plan.
 // =============================================================================
+
+// ABT #19 wiring: the DATASHEET_LIMITS filter existed and was factory-registered but was
+// never part of the DEFAULT catalogue flow — so catalogue parts were only gated by
+// MKF-simulated quantities and their own published limits were silently ignored. Pin the
+// flow membership so it cannot fall out again.
+TEST_CASE("Catalogue filter flow includes DATASHEET_LIMITS (ABT #19 wiring)",
+          "[adviser][magnetic-filter][datasheet]") {
+    OpenMagnetics::MagneticAdviser adviser;
+    bool datasheetLimitsPresent = false;
+    for (auto& operation : adviser._defaultCatalogueMagneticFilterFlow) {
+        if (operation.get_filter() == MagneticFilters::DATASHEET_LIMITS) {
+            datasheetLimitsPresent = true;
+        }
+    }
+    CHECK(datasheetLimitsPresent);
+}
