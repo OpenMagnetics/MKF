@@ -1,7 +1,10 @@
 #include <source_location>
 #include "constructive_models/Core.h"
+#include "constructive_models/Coil.h"
+#include "constructive_models/Magnetic.h"
 #include "TestingUtils.h"
 #include "support/Utils.h"
+#include "support/Painter.h"
 #include "support/Settings.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "json.hpp"
@@ -2334,6 +2337,68 @@ namespace TestDrumCore {
         json badShapeCoreJson = coreJson;
         badShapeCoreJson["functionalDescription"]["shape"]["dimensions"]["J"] = {{"nominal", 0.0030}};
         CHECK_THROWS(Core(badShapeCoreJson).process_data());
+        settings.reset();
+    }
+
+    // ABT #366/#362/#357: the 2D painter used to reconstruct a mirrored half-set for EVERY
+    // non-toroidal family, drawing drums/drumRings/semi-shielded/molded as nonsense; they now
+    // route to paint_drum_family_core. Smoke: each family paints a valid, non-empty SVG.
+    TEST_CASE("Test_Drum_Family_Core_Painter_Smoke", "[core][drum][drum-ring][drum-semishielded][molded][painter]") {
+        settings.reset();
+        clear_databases();
+        auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}
+                                  .parent_path().append("..").append("output");
+        std::filesystem::create_directories(outputFilePath);
+
+        json semishieldedShape = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+            {"aliases", json::array()}, {"name", "LQS-like 4018"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+                {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}},
+                {"J", {{"nominal", 0.0040}}}, {"K", {{"nominal", 0.0040}}}, {"L", {{"nominal", 0.0018}}}}}
+        };
+        json moldedShape = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+            {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+                {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+        };
+
+        std::vector<std::pair<std::string, Core>> cores;
+        cores.emplace_back("drum", OpenMagneticsTesting::get_quick_core("DRH-14X20-4C", json::array(), 1, "Dummy"));
+        cores.emplace_back("drum_ring", OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "Dummy"));
+        for (auto& [label, shapeJson] : std::vector<std::pair<std::string, json>>{
+                 {"drum_semishielded", semishieldedShape}, {"molded", moldedShape}}) {
+            json coreJson;
+            coreJson["functionalDescription"] = {
+                {"type", label == "molded" ? "closedShape" : "pieceAndPlate"}, {"material", "Dummy"},
+                {"shape", shapeJson}, {"gapping", json::array()}, {"numberStacks", 1}};
+            Core core(coreJson);
+            core.process_data();
+            cores.emplace_back(label, core);
+        }
+
+        json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back(json{
+            {"name", "winding 0"}, {"numberTurns", 1}, {"numberParallels", 1},
+            {"isolationSide", "primary"}, {"wire", "Dummy"}});
+
+        for (auto& [label, core] : cores) {
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_" + label + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_core(magnetic);
+            painter.export_svg();
+            OpenMagneticsTesting::check_svg(outFile);
+        }
         settings.reset();
     }
 }

@@ -12032,3 +12032,59 @@ TEST_CASE("Test_Core_Window_Winding_Order_Reaches_Autocompleted_Bobbin",
     CHECK(completed.get_coil().get_winding_order(sections[0].get_name()) == MAS::WindingOrder::U);
     settings.reset();
 }
+
+
+// ABT #357: molded body — REAL-WIRE turn placement inside the coil cavity. The cavity is the
+// winding window (pot-core letters: F post OD, E cavity OD, D cavity height), so the standard
+// concentric winder must land every turn's centre inside the annulus with at least a wire
+// radius of clearance to the post, the cavity wall, and both plates. Guards the reconstruction
+// contract: cavity dims + N x wire must be mutually consistent for a faithful molded record.
+TEST_CASE("Test_Molded_Cavity_Turn_Placement", "[constructive-model][coil][molded]") {
+    settings.reset();
+    json shapeJson = {
+        {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+        {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+        {"dimensions", {
+            {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+            {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+    };
+    json coreJson;
+    coreJson["functionalDescription"] = {
+        {"type", "closedShape"}, {"material", "Kool Mµ 26"}, {"shape", shapeJson},
+        {"gapping", json::array()}, {"numberStacks", 1}};
+    OpenMagnetics::Core core(coreJson);
+    core.process_data();
+    core.process_gap();
+
+    json coilJson;
+    coilJson["bobbin"] = "Dummy";
+    coilJson["functionalDescription"] = json::array();
+    json winding;
+    winding["name"] = "winding 0";
+    winding["numberTurns"] = 8;
+    winding["numberParallels"] = 1;
+    winding["isolationSide"] = "primary";
+    winding["wire"] = "Round 0.1 - Grade 1";
+    coilJson["functionalDescription"].push_back(winding);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+    auto coil = completed.get_coil();
+    REQUIRE(coil.get_turns_description().has_value());
+    auto turns = coil.get_turns_description().value();
+    REQUIRE(turns.size() == 8);
+
+    double wireOuterRadius = coil.get_wires()[0].get_maximum_outer_width() / 2;
+    double postRadius = 0.0012 / 2;
+    double cavityRadius = 0.0030 / 2;
+    double cavityHalfHeight = 0.0014 / 2;
+    for (auto& turn : turns) {
+        double radialPosition = turn.get_coordinates()[0];
+        double heightPosition = turn.get_coordinates()[1];
+        CHECK(radialPosition >= postRadius + wireOuterRadius * 0.99);
+        CHECK(radialPosition <= cavityRadius - wireOuterRadius * 0.99);
+        CHECK(std::abs(heightPosition) <= cavityHalfHeight - wireOuterRadius * 0.99);
+    }
+    settings.reset();
+}

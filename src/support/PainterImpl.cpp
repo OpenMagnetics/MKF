@@ -1415,10 +1415,70 @@ void Painter::paint_core(Magnetic magnetic) {
         case CoreShapeFamily::T:
             return paint_toroidal_core(core);
             break;
+        case CoreShapeFamily::DRUM:
+        case CoreShapeFamily::DRUM_RING:
+        case CoreShapeFamily::DRUM_SEMISHIELDED:
+        case CoreShapeFamily::MOLDED:
+            // Single-solid / piece-and-closer families: no mirrored halves to reconstruct.
+            return paint_drum_family_core(core);
+            break;
         default:
             return paint_two_piece_set_core(core);
             break;
     }
+}
+
+// ABT #366/#362/#357: 2D cross-section for the drum family and molded bodies, drawn directly
+// from the shape letters as axis-symmetric rectangles in the winding painter's frame
+// (x = radial distance from the axis, y = height; historical right-half view). The two-piece
+// reconstruction in paint_two_piece_set_core assumes a mirrored half-set and drew these
+// families as nonsense.
+void Painter::paint_drum_family_core(Core core) {
+    CoreShape shape = core.resolve_shape();
+    auto dimensions = flatten_dimensions(shape.get_dimensions().value());
+    auto family = shape.get_family();
+
+    auto shapes = _root.add_child<SVG::Group>();
+    auto addRectangle = [&](double innerRadius, double outerRadius, double bottom, double top) {
+        std::vector<SVG::Point> points = {
+            {innerRadius, bottom}, {outerRadius, bottom}, {outerRadius, top}, {innerRadius, top}};
+        *shapes << SVG::Polygon(scale_points(points, 0, _scale));
+        auto polygon = _root.get_children<SVG::Polygon>().back();
+        polygon->set_attr("class", "ferrite");
+    };
+
+    if (family == CoreShapeFamily::MOLDED) {
+        // Post + two plates + return shell around the (empty-drawn) coil cavity.
+        // Pot-core letters: D cavity height, E cavity OD, F post diameter.
+        double bodyHalfWidth = dimensions["A"] / 2;
+        double bodyHalfHeight = dimensions["B"] / 2;
+        double cavityHalfHeight = dimensions["D"] / 2;
+        double cavityRadius = dimensions["E"] / 2;
+        double postRadius = dimensions["F"] / 2;
+        addRectangle(0, postRadius, -cavityHalfHeight, cavityHalfHeight);
+        addRectangle(0, bodyHalfWidth, cavityHalfHeight, bodyHalfHeight);
+        addRectangle(0, bodyHalfWidth, -bodyHalfHeight, -cavityHalfHeight);
+        addRectangle(cavityRadius, bodyHalfWidth, -cavityHalfHeight, cavityHalfHeight);
+    }
+    else {
+        // Drum body: post between two flanges (drum letters; A2 asymmetric flanges are drawn
+        // with the primary A — a refinement once the top/bottom assignment is standardised).
+        double flangeRadius = dimensions["A"] / 2;
+        double halfHeight = dimensions["B"] / 2;
+        double postRadius = dimensions["C"] / 2;
+        double topFlangeThickness = dimensions["D"];
+        double bottomFlangeThickness = dimensions["F"];
+        addRectangle(0, postRadius, -halfHeight + bottomFlangeThickness, halfHeight - topFlangeThickness);
+        addRectangle(0, flangeRadius, halfHeight - topFlangeThickness, halfHeight);
+        addRectangle(0, flangeRadius, -halfHeight, -halfHeight + bottomFlangeThickness);
+        if (family == CoreShapeFamily::DRUM_RING) {
+            addRectangle(dimensions["K"] / 2, dimensions["J"] / 2, -dimensions["L"] / 2, dimensions["L"] / 2);
+        }
+        else if (family == CoreShapeFamily::DRUM_SEMISHIELDED) {
+            addRectangle(flangeRadius, dimensions["J"] / 2, -dimensions["L"] / 2, dimensions["L"] / 2);
+        }
+    }
+    _root.autoscale();
 }
 
 void Painter::paint_bobbin(Magnetic magnetic) {

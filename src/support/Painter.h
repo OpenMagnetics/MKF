@@ -391,6 +391,9 @@ class Painter : public PainterInterface {
     }
     void paint_two_piece_set_core(Core core);
     void paint_toroidal_core(Core core);
+    // Drum-family + molded single-solid cross-sections (ABT #366/#362/#357): these have no
+    // mirrored halves, so the two-piece-set reconstruction draws them wrong.
+    void paint_drum_family_core(Core core);
     void paint_two_piece_set_bobbin(Magnetic magnetic);
     void paint_two_piece_set_coil_sections(Magnetic magnetic);
     void paint_toroidal_coil_sections(Magnetic magnetic);
