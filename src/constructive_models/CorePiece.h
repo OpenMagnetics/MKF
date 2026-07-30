@@ -4,11 +4,13 @@
 
 #include <MAS.hpp>
 
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <numbers>
+#include <optional>
 #include <streambuf>
 #include <vector>
 
@@ -55,6 +57,12 @@ class CorePiece {
     virtual void process_columns() = 0;
     virtual void process_winding_window() = 0;
     virtual void process_extra_data() = 0;
+
+    // ABT #362: pieces whose magnetic circuit crosses TWO materials (e.g. a ferrite drum
+    // closed by a magnetic-epoxy shell) expose their c1 split {c1 through the CORE material,
+    // c1 through the SHELL material} so a material-aware reluctance path can apply a
+    // per-section permeability. Single-material pieces return nullopt (default).
+    virtual std::optional<std::array<double, 2>> get_mixed_material_c1() { return std::nullopt; }
 
     virtual ~CorePiece() = default;
 

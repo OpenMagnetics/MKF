@@ -1373,3 +1373,93 @@ TEST_CASE("Test_Molded_Inductance_Permeability_Scaling", "[physical-model][magne
     CHECK(inductance26 < 1.4 * handEstimate);
     settings.reset();
 }
+
+// ABT #362: semi-shielded drum — mixed-material sectioned reluctance (ferrite drum + magnetic-
+// epoxy shell). No public vendor data pairs a drum+glue geometry with L (the 290-part
+// validation set is confidential and runs on heimdall's side), so this pins the PHYSICS:
+// the glue return must beat the bare drum's air return; a higher glue mu must give more L
+// (monotonicity, saturating towards the all-ferrite limit); and every missing material link
+// must THROW (no-fallbacks: the model never assumes air or guesses a mu). Glue stand-ins are
+// existing catalogue powder/ferrite materials — real glue records are ABT #364.
+TEST_CASE("Test_Drum_Semishielded_Inductance", "[physical-model][magnetizing-inductance][drum-semishielded]") {
+    settings.reset();
+    clear_databases();
+    double numberTurns = 20;
+
+    auto buildCore = [](json coatingJson) {
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+            {"aliases", json::array()}, {"name", "LQS-like 4018"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+                {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}},
+                {"J", {{"nominal", 0.0040}}}, {"K", {{"nominal", 0.0040}}}, {"L", {{"nominal", 0.0018}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        if (!coatingJson.is_null()) {
+            coreJson["functionalDescription"]["coating"] = coatingJson;
+        }
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        return core;
+    };
+    auto glueCoating = [](const std::string& materialName) {
+        return json{{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", materialName}};
+    };
+
+    // Bare drum with the SAME drum dimensions: the air return the glue replaces.
+    json bareShapeJson = {
+        {"magneticCircuit", "open"}, {"type", "custom"}, {"family", "drum"},
+        {"aliases", json::array()}, {"name", "LQS drum bare"},
+        {"dimensions", {
+            {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+            {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}}}}
+    };
+    json bareCoreJson;
+    bareCoreJson["functionalDescription"] = {
+        {"type", "openShape"}, {"material", "3C90"}, {"shape", bareShapeJson},
+        {"gapping", json::array()}, {"numberStacks", 1}};
+    Core bareCore(bareCoreJson);
+    bareCore.process_data();
+    double bareInductance = MagnetizingInductance::calculate_open_core_magnetizing_inductance(bareCore, numberTurns, 25);
+
+    double glue26Inductance = MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
+        buildCore(glueCoating("Kool Mµ 26")), numberTurns, 25);
+    double glue60Inductance = MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
+        buildCore(glueCoating("Kool Mµ 60")), numberTurns, 25);
+    // All-ferrite shell = the drumRing-like upper limit of the same circuit.
+    double ferriteShellInductance = MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
+        buildCore(glueCoating("3C90")), numberTurns, 25);
+
+    UNSCOPED_INFO("bare " << bareInductance * 1e6 << " uH < glue26 " << glue26Inductance * 1e6
+                          << " uH < glue60 " << glue60Inductance * 1e6 << " uH < ferrite shell "
+                          << ferriteShellInductance * 1e6 << " uH");
+    CHECK(std::isfinite(glue26Inductance));
+    CHECK(bareInductance < glue26Inductance);
+    CHECK(glue26Inductance < glue60Inductance);
+    CHECK(glue60Inductance < ferriteShellInductance);
+
+    // The routed path (family gate) must agree with the direct call.
+    json windingData = json::parse(
+        R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+            "numberParallels": 1, "numberTurns": 20, "wire": "Dummy"}]})");
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    double routedInductance = magnetizingInductanceModel
+        .calculate_inductance_from_number_turns_and_gapping(buildCore(glueCoating("Kool Mµ 26")),
+                                                            OpenMagnetics::Coil(windingData))
+        .get_magnetizing_inductance().get_nominal().value();
+    CHECK_THAT(routedInductance, Catch::Matchers::WithinRel(glue26Inductance, 1e-9));
+
+    // No-fallbacks: every missing link throws.
+    CHECK_THROWS(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
+        buildCore(json()), numberTurns, 25));  // no coating at all
+    CHECK_THROWS(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
+        buildCore(json{{"type", "epoxy"}, {"thickness", 0.0001}}), numberTurns, 25));  // non-magnetic coating
+    CHECK_THROWS(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
+        buildCore(glueCoating("No Such Glue")), numberTurns, 25));  // unknown shell material
+    settings.reset();
+}

@@ -5,6 +5,7 @@
 #include "physical_models/MagneticField.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/InitialPermeability.h"
+#include "constructive_models/CorePiece.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 
@@ -120,7 +121,69 @@ double MagnetizingInductance::calculate_open_core_magnetizing_inductance(Core co
     return sqrt(upperBound * lowerBound);
 }
 
+// ABT #362: semi-shielded drum — a ferrite drum closed by a MAGNETIC-EPOXY shell. The circuit
+// crosses TWO materials, so neither the closed-circuit path (one mu over le/Ae) nor a gap
+// model fits: reluctance is applied PER SECTION using the piece's c1 split. The shell material
+// rides the core coating {type: magneticEpoxy, material: <core material NAME>}; per the
+// no-fallbacks rule every missing link throws — the model never assumes air or guesses a mu.
+double MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(Core core, double numberTurns, double temperature) {
+    auto corePiece = CorePiece::factory(core.resolve_shape());
+    auto mixedC1 = corePiece->get_mixed_material_c1();
+    if (!mixedC1) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Semi-shielded drum piece did not expose its mixed-material c1 split");
+    }
+    double drumPermeability = InitialPermeability::get_initial_permeability(core.resolve_material(), temperature);
+
+    auto coatingUnion = core.get_functional_description().get_coating();
+    if (!coatingUnion) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Semi-shielded drum requires a magneticEpoxy coating carrying the shell material — none present");
+    }
+    if (!std::holds_alternative<CoreCoating>(coatingUnion.value())) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Semi-shielded drum coating must be an explicit CoreCoating object (type magneticEpoxy + "
+            "shell material name), not a name-only coating");
+    }
+    auto coating = std::get<CoreCoating>(coatingUnion.value());
+    if (!coating.get_type() || coating.get_type().value() != CoatingType::MAGNETIC_EPOXY) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Semi-shielded drum requires coating type 'magneticEpoxy' (the glue shell IS the return path)");
+    }
+    if (!coating.get_material() || !std::holds_alternative<std::string>(coating.get_material().value())) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Semi-shielded drum magneticEpoxy coating must reference the shell CORE material by name");
+    }
+    auto shellMaterial = find_core_material_by_name(std::get<std::string>(coating.get_material().value()));
+    double shellPermeability = InitialPermeability::get_initial_permeability(shellMaterial, temperature);
+
+    double vacuumPermeability = Constants().vacuumPermeability;
+    double reluctance = ((*mixedC1)[0] / drumPermeability + (*mixedC1)[1] / shellPermeability) / vacuumPermeability;
+    return pow(numberTurns, 2) / reluctance;
+}
+
 std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(Core core, Coil coil, OperatingPoint* operatingPoint) {
+
+    // Semi-shielded drums (ABT #362): mixed-material sectioned reluctance, drum mu + glue mu.
+    if (core.get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
+        double semishieldedTemperature = operatingPoint ? operatingPoint->get_conditions().get_ambient_temperature()
+                                                        : Defaults().ambientTemperature;
+        double numberTurnsSemishielded = coil.get_functional_description()[0].get_number_turns();
+        double semishieldedInductance = calculate_semishielded_drum_magnetizing_inductance(core, numberTurnsSemishielded, semishieldedTemperature);
+        MagnetizingInductanceOutput semishieldedOutput;
+        DimensionWithTolerance semishieldedWithTolerance;
+        semishieldedWithTolerance.set_nominal(semishieldedInductance);
+        // Provisional envelope: unvalidated against the vendor set yet — the heimdall 290-part
+        // sweep (ABT #362 acceptance) pins this; tighten when it lands.
+        semishieldedWithTolerance.set_minimum(semishieldedInductance * 0.8);
+        semishieldedWithTolerance.set_maximum(semishieldedInductance * 1.2);
+        semishieldedOutput.set_magnetizing_inductance(semishieldedWithTolerance);
+        semishieldedOutput.set_method_used("SemiShieldedMixedSectionReluctance");
+        semishieldedOutput.set_origin(ResultOrigin::SIMULATION);
+        std::pair<MagnetizingInductanceOutput, SignalDescriptor> semishieldedResult;
+        semishieldedResult.first = semishieldedOutput;
+        return semishieldedResult;
+    }
 
     // Open shapes (drums, rods): route to the open-core model — the closed-circuit reluctance
     // machinery below would silently drop the dominant air-return reluctance (ABT #331).

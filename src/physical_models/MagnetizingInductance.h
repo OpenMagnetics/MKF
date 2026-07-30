@@ -84,6 +84,13 @@ class MagnetizingInductance {
     // missing drum dimensions.
     static double calculate_open_core_magnetizing_inductance(Core core, double numberTurns, double temperature);
 
+    // Semi-shielded drum (ABT #362): ferrite drum closed by a magnetic-epoxy shell — mixed-
+    // material sectioned reluctance (drum mu + glue mu applied per section via the piece's c1
+    // split); routed automatically for CoreShapeFamily::DRUM_SEMISHIELDED. The shell material
+    // comes from the core coating {type: magneticEpoxy, material: <core material name>};
+    // throws when the coating, its type, its material, or the material record is missing.
+    static double calculate_semishielded_drum_magnetizing_inductance(Core core, double numberTurns, double temperature);
+
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
         Core core,
         Coil coil,

@@ -2536,7 +2536,8 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
     }
     else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UI ||
              magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::PQI ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_RING) {
+             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_RING ||
+             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
         // Piece-and-plate: the record already describes the whole assembly, so it is "closed" in
         // the MAS sense of having to be used by itself (ABT #274/#275; drumRing per ABT #366 —
         // its two structural annular gaps are synthesized by Core::process_gap, not listed here).

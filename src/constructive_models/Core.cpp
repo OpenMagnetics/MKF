@@ -82,9 +82,10 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
         get_mutable_functional_description().set_type(CoreType::TOROIDAL);
     }
     else if (shapeFamily == CoreShapeFamily::UI || shapeFamily == CoreShapeFamily::PQI ||
-             shapeFamily == CoreShapeFamily::DRUM_RING) {
-        // DRUM_RING (ABT #366): a drum closed by its shield ring — same piece-plus-closer
-        // semantics as UI/PQI (nothing doubled, the piece class reports the whole assembly).
+             shapeFamily == CoreShapeFamily::DRUM_RING || shapeFamily == CoreShapeFamily::DRUM_SEMISHIELDED) {
+        // DRUM_RING (ABT #366) / DRUM_SEMISHIELDED (ABT #362): a drum closed by its shield
+        // ring / magnetic-epoxy shell — same piece-plus-closer semantics as UI/PQI (nothing
+        // doubled, the piece class reports the whole assembly).
         get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
     }
     else if (shapeFamily == CoreShapeFamily::DRUM) {
@@ -532,13 +533,13 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
             //
             // This replaces an empty `break` that emitted NO geometrical description at all, which
             // left CAD/3D consumers with nothing to draw for a piece-and-plate core (ABT #264).
-            if (resolve_shape().get_family() == CoreShapeFamily::DRUM_RING) {
-                // Shielded drum (ABT #366): the drum body is a complete single solid (CLOSED,
-                // same emission as the bare drum) and the shield ring is the closer (PLATE),
-                // both concentric at the origin — no spacer, no machining (the annular
-                // clearance gaps are structural, synthesized by process_gap). The 3D consumer
-                // derives the drum from letters A..H and the ring from J/K/L on the shared
-                // shape record.
+            if (resolve_shape().get_family() == CoreShapeFamily::DRUM_RING ||
+                resolve_shape().get_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
+                // Shielded drum (ABT #366) / semi-shielded drum (ABT #362): the drum body is a
+                // complete single solid (CLOSED, same emission as the bare drum) and the
+                // closer — shield ring or cast glue shell — is the PLATE, both concentric at
+                // the origin: no spacer, no machining. The 3D consumer derives the drum from
+                // letters A..H and the closer from J/K/L on the shared shape record.
                 auto ringPiece = piece;
                 piece.set_type(CoreGeometricalDescriptionElementType::CLOSED);
                 ringPiece.set_type(CoreGeometricalDescriptionElementType::PLATE);
@@ -1099,6 +1100,18 @@ bool Core::process_gap() {
         if (gapping.size() > 0) {
             throw GapException("Molded cores cannot be gapped: the distributed gap lives in "
                                "the composite material, not in the geometry");
+        }
+        get_mutable_functional_description().set_gapping(std::vector<CoreGap>{});
+        return true;
+    }
+
+    if (family == CoreShapeFamily::DRUM_SEMISHIELDED) {
+        // Semi-shielded drum (ABT #362): the magnetic-epoxy shell is CAST in contact with the
+        // flange rims — no mating surfaces, no clearance. The low-permeability return is a
+        // MATERIAL section handled by the mixed-material reluctance path, not a gap.
+        if (gapping.size() > 0) {
+            throw GapException("Semi-shielded drums cannot be gapped: the glue shell is cast "
+                               "in contact; its low permeability is a material section, not a gap");
         }
         get_mutable_functional_description().set_gapping(std::vector<CoreGap>{});
         return true;
@@ -2205,8 +2218,9 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
         core.set_type(CoreType::TWO_PIECE_SET); // FIX L-3: UT cores are U-type assembled, not toroidal
     }
     else if (coreShape.get_family() == CoreShapeFamily::UI || coreShape.get_family() == CoreShapeFamily::PQI ||
-             coreShape.get_family() == CoreShapeFamily::DRUM_RING) {
-        // A shaped piece closed by a plate/ring, not by a mirrored half (ABT #274/#275, #366).
+             coreShape.get_family() == CoreShapeFamily::DRUM_RING ||
+             coreShape.get_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
+        // A shaped piece closed by a plate/ring/shell, not by a mirrored half (ABT #274/#275, #366, #362).
         core.set_type(CoreType::PIECE_AND_PLATE);
     }
     else if (coreShape.get_family() == CoreShapeFamily::DRUM) {

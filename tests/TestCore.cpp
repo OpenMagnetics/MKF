@@ -2277,4 +2277,63 @@ namespace TestDrumCore {
         CHECK_THROWS(Core(gappedCoreJson).process_gap());
         settings.reset();
     }
+
+    // ABT #362: semi-shielded drum — a wound drum overcoated with magnetic epoxy acting as a
+    // low-mu return shell (WE-LQS class). Letters: drum A..H + shell envelope J/K/L. The shell
+    // is cast in contact (no gaps); its material rides the magneticEpoxy coating.
+    TEST_CASE("Test_Drum_Semishielded_Core_Geometry", "[core][drum-semishielded]") {
+        settings.reset();
+        clear_databases();
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+            {"aliases", json::array()}, {"name", "LQS-like 4018"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+                {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}},
+                {"J", {{"nominal", 0.0040}}}, {"K", {{"nominal", 0.0040}}}, {"L", {{"nominal", 0.0018}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1},
+            {"coating", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}}}};
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        REQUIRE(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+        auto processed = core.get_processed_description().value();
+
+        // Winding window stays the drum groove: width (A - C)/2, height E.
+        auto windingWindow = processed.get_winding_windows()[0];
+        CHECK_THAT(windingWindow.get_width().value(), Catch::Matchers::WithinRel((0.0038 - 0.0015) / 2, 1e-6));
+        CHECK_THAT(windingWindow.get_height().value(), Catch::Matchers::WithinRel(0.0010, 1e-6));
+
+        // Envelope = the finished body J x K x L.
+        CHECK_THAT(processed.get_width(), Catch::Matchers::WithinRel(0.0040, 1e-6));
+        CHECK_THAT(processed.get_height(), Catch::Matchers::WithinRel(0.0018, 1e-6));
+
+        // No gaps ever: the glue is cast in contact.
+        CHECK(core.get_functional_description().get_gapping().empty());
+        auto effectiveParameters = processed.get_effective_parameters();
+        CHECK(effectiveParameters.get_effective_length() > 0.0018);
+        CHECK(effectiveParameters.get_effective_length() < 4 * (0.0040 + 0.0018));
+
+        // Drum solid (CLOSED) + glue shell closer (PLATE).
+        auto geometricalDescription = core.create_geometrical_description().value();
+        REQUIRE(geometricalDescription.size() == 2);
+        CHECK(geometricalDescription[0].get_type() == CoreGeometricalDescriptionElementType::CLOSED);
+        CHECK(geometricalDescription[1].get_type() == CoreGeometricalDescriptionElementType::PLATE);
+
+        // User gapping rejected.
+        json gappedCoreJson = coreJson;
+        gappedCoreJson["functionalDescription"]["gapping"].push_back(
+            json{{"type", "subtractive"}, {"length", 0.0001}});
+        CHECK_THROWS(Core(gappedCoreJson).process_gap());
+
+        // A shell envelope smaller than the drum is impossible (letters describe the FINISHED body).
+        json badShapeCoreJson = coreJson;
+        badShapeCoreJson["functionalDescription"]["shape"]["dimensions"]["J"] = {{"nominal", 0.0030}};
+        CHECK_THROWS(Core(badShapeCoreJson).process_data());
+        settings.reset();
+    }
 }

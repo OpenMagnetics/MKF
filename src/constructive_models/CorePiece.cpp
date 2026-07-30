@@ -2162,6 +2162,108 @@ class CorePieceDrumRing : public CorePieceDrum {
     }
 };
 
+// SEMI-SHIELDED DRUM (ABT #362): a wound drum whose winding is overcoated with MAGNETIC
+// EPOXY (polymer binder + magnetic powder, mu ~3-15) acting as a low-permeability return
+// shell — the third drum variant after bare (open circuit) and drumRing (ferrite ring).
+// CoreType::PIECE_AND_PLATE. Letters: drum convention (A, A2, B, C, D, E, F, H) plus the
+// shell OUTER ENVELOPE J width, K depth, L height (square LQS-class bodies have J = K).
+// The glue is cast in contact with the flange rims — NO clearance gaps.
+//
+// get_shape_constants returns the GEOMETRIC single-material constants (vendor Ae/le/Ve
+// convention: geometry alone). Because the circuit crosses two materials, the piece also
+// exposes get_mixed_material_c1() — {c1 through the FERRITE drum, c1 through the SHELL} —
+// which MagnetizingInductance uses with the drum material's mu and the magneticEpoxy
+// coating material's mu (per-section reluctance). The shell material rides
+// functionalDescription.coating {type: magneticEpoxy, material: <core material name>}.
+class CorePieceDrumSemishielded : public CorePieceDrum {
+  public:
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        if (dimensions["J"] < dimensions["A"] || dimensions["K"] < dimensions["A"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumSemishielded: shell envelope J x K (" + std::to_string(dimensions["J"]) + " x " +
+                std::to_string(dimensions["K"]) + ") cannot be smaller than the flange OD A (" +
+                std::to_string(dimensions["A"]) + ")");
+        }
+        if (dimensions["L"] < dimensions["B"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumSemishielded: shell envelope height L (" + std::to_string(dimensions["L"]) +
+                ") cannot be smaller than the drum height B (" + std::to_string(dimensions["B"]) +
+                ") — the letters describe the FINISHED body");
+        }
+        set_width(dimensions["J"]);
+        set_depth(dimensions["K"]);
+        set_height(dimensions["L"]);
+    }
+
+    // The two halves of the circuit, computed once: {c1_ferrite, c2_ferrite, c1_shell,
+    // c2_shell, minimumArea}. Ferrite = post + spreading flanges + post corners (the bare
+    // drum's internal path). Shell = axial glue annulus outside the flange discs between the
+    // flange mid-planes, plus the two rim (radial->axial) corners, clause-4.6 idiom.
+    std::tuple<double, double, double, double, double> get_split_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double pi = std::numbers::pi;
+        double flangeRadius = dimensions["A"] / 2;
+        double postRadius = dimensions["C"] / 2;
+        double boreRadius = (dimensions.find("H") != dimensions.end()) ? dimensions["H"] / 2 : 0.0;
+        double grooveHeight = dimensions["E"];
+
+        double postArea = pi * (pow(postRadius, 2) - pow(boreRadius, 2));
+        std::vector<double> areas;
+        areas.push_back(postArea);
+        double ferriteC1 = grooveHeight / postArea;
+        double ferriteC2 = grooveHeight / pow(postArea, 2);
+        for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
+            ferriteC1 += 1.0 / (2 * pi * flangeThickness) * log(flangeRadius / postRadius);
+            ferriteC2 += 1.0 / (2 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
+            areas.push_back(2 * pi * postRadius * flangeThickness);
+            double s1 = postRadius - sqrt((pow(boreRadius, 2) + pow(postRadius, 2)) / 2);
+            double cornerLength = pi / 4 * (2 * s1 + flangeThickness);
+            double cornerArea = 0.5 * (postArea + 2 * pi * postRadius * flangeThickness);
+            areas.push_back(cornerArea);
+            ferriteC1 += cornerLength / cornerArea;
+            ferriteC2 += cornerLength / pow(cornerArea, 2);
+        }
+
+        // Shell: the glue outside the flange discs. Axial cross-section = envelope minus the
+        // flange circle (conservative: only the glue radially beyond the flange OD conducts
+        // the axial return; corner regions of a square envelope are included by construction).
+        double shellArea = dimensions["J"] * dimensions["K"] - pi * pow(flangeRadius, 2);
+        if (shellArea <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumSemishielded: shell envelope leaves no return cross-section outside the flanges");
+        }
+        double shellLength = dimensions["B"] - (dimensions["D"] + dimensions["F"]) / 2;
+        double shellC1 = shellLength / shellArea;
+        double shellC2 = shellLength / pow(shellArea, 2);
+        areas.push_back(shellArea);
+        double equivalentOuterRadius = sqrt(dimensions["J"] * dimensions["K"] / pi);
+        double shellWall = equivalentOuterRadius - flangeRadius;
+        for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
+            // Rim corner: flux leaves the flange rim (contact, no gap) and turns axial in
+            // the glue. Assigned to the SHELL side: the turning region is glue.
+            double entryArea = 2 * pi * flangeRadius * flangeThickness;
+            double cornerLength = pi / 4 * (shellWall / 2 + flangeThickness / 2);
+            double cornerArea = 0.5 * (entryArea + shellArea);
+            areas.push_back(cornerArea);
+            shellC1 += cornerLength / cornerArea;
+            shellC2 += cornerLength / pow(cornerArea, 2);
+        }
+        double minimumArea = *min_element(areas.begin(), areas.end());
+        return {ferriteC1, ferriteC2, shellC1, shellC2, minimumArea};
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto [ferriteC1, ferriteC2, shellC1, shellC2, minimumArea] = get_split_constants();
+        return {ferriteC1 + shellC1, ferriteC2 + shellC2, minimumArea};
+    }
+
+    std::optional<std::array<double, 2>> get_mixed_material_c1() override {
+        auto [ferriteC1, ferriteC2, shellC1, shellC2, minimumArea] = get_split_constants();
+        return std::array<double, 2>{ferriteC1, shellC1};
+    }
+};
+
 // MOLDED (ABT #357): a metal-composite molded inductor body (WE-MAPI / IHLP / XAL class) —
 // a coil compression-molded inside a homogeneous low-permeability SMC block. The distributed
 // gap lives in the MATERIAL (mu_eff ~15-40), so the piece is a single solid CLOSED circuit
@@ -2440,6 +2542,7 @@ bool CorePiece::is_family_supported(CoreShapeFamily family) {
         case CoreShapeFamily::UI:
         case CoreShapeFamily::DRUM:
         case CoreShapeFamily::DRUM_RING:
+        case CoreShapeFamily::DRUM_SEMISHIELDED:
         case CoreShapeFamily::MOLDED:
         case CoreShapeFamily::PQI:
         case CoreShapeFamily::EF:
@@ -2643,6 +2746,12 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     }
     else if (family == CoreShapeFamily::DRUM_RING) {
         auto piece = std::make_shared<CorePieceDrumRing>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::DRUM_SEMISHIELDED) {
+        auto piece = std::make_shared<CorePieceDrumSemishielded>();
         piece->set_shape(shape);
         if (process) piece->process();
         return piece;
