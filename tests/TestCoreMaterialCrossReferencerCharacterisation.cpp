@@ -127,12 +127,23 @@ void check_top_n(const std::string& label,
 //    candidate set, so any material added to — or corrected in — MAS moves the
 //    denominators for everyone, including the A10/A102 permeability extension (ABT #178)
 //    and the POCO toroid fix (ABT #306) that landed the same day.
+// Re-pinned 2026-07-31 (ABT #398, user-approved). The JFE (MAS 0d65a56) and TDG
+// (MAS 56d8c84) material batches dropped six more MnZn power ferrites into a tie
+// band that is only 0.95% wide, so the head of this list reshuffled: MBT2 and
+// TPW30 enter at slots 3-4, pushing 3C95 and TPW33 out of the top five (they now
+// sit 11th and 12th, at 2.68183 and 2.67987). DMR95 and P45 keep their scores to
+// the last digit; ML33D's rose 2.70170 -> 2.70557 without its own data changing,
+// because these scores are MIN-MAX NORMALIZED over the whole candidate population
+// (CrossReferencerCommon.h::compute_normalized_scorings) — every material added to
+// the catalogue moves the normalization, and therefore everyone else's score. That
+// is why an absolute-score snapshot cannot hold still while the catalogue grows;
+// #398 tracks making the score discriminate (or reporting an explicit tie band).
 const std::vector<TopEntry> kTopFerriteDefault = {
+    {"ML33D", 2.7055728521462501},
     {"DMR95", 2.7037084879826669},
-    {"ML33D", 2.7017020694198082},
+    {"MBT2",  2.7024195000134421},
+    {"TPW30", 2.7020000843721395},
     {"P45",   2.7003297492001197},
-    {"3C95",  2.6818336582442548},
-    {"TPW33", 2.6798723461464768},
 };
 
 const std::vector<TopEntry> kTopFerriteOnlyTdk = {
