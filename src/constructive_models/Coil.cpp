@@ -1598,40 +1598,58 @@ void Coil::apply_connection_reserved_space() {
 
     auto layers = get_layers_description().value();
 
-    // Axial height occupied by connection leads on each conduction layer. Every reserved space that
-    // names a layer (an inter-layer transition, or a terminal lead passing over that layer) occupies
-    // one wire diameter of that layer's available height. Free-space terminal segments (no layer)
-    // are drawn but reserve no layer space.
-    std::map<std::string, double> heightReservedPerLayer;
+    // Space occupied by connection leads on each conduction layer, measured along that layer's TURN
+    // axis — the direction its turns stack, and so the axis a lead takes a slot out of. Every reserved
+    // space that names a layer (an inter-layer transition, or a terminal lead passing over that layer)
+    // occupies one wire diameter of it. Free-space terminal segments (no layer) are drawn but reserve
+    // no layer space. dimensions[1] is that extent for BOTH orientations: the rectangles are produced
+    // by get_connection_reserved_spaces in a virtual frame whose layer axis is x and turn axis is y,
+    // and the contiguous case is transposed back by swapping the COORDINATES and reflecting the
+    // rotation — which leaves the dimension entries in their virtual-frame roles (dimensions[0] = the
+    // run across the layer, consumed as a lead length by WindingOhmicLosses; dimensions[1] = the slot
+    // it takes, consumed as a blocking depth by compute_connection_blocked_slots_per_layer).
+    std::map<std::string, double> turnAxisReservedPerLayer;
     for (const auto& space : spaces) {
         if (space.layer.empty()) {
             continue;
         }
-        heightReservedPerLayer[space.layer] += space.dimensions[1];
+        turnAxisReservedPerLayer[space.layer] += space.dimensions[1];
     }
 
-    // Reduce each affected layer's available height: the filling factor scales inversely with the
-    // remaining height. A value above 1 means the leads no longer fit alongside the turns (the layer
-    // is over-subscribed and the build needs more space).
+    // Reduce each affected layer's available extent ALONG ITS TURN AXIS: the filling factor scales
+    // inversely with what is left. A value above 1 means the leads no longer fit alongside the turns
+    // (the layer is over-subscribed and the build needs more space).
+    //
+    // ABT #424: which of the layer's two dimensions that is depends on the layer's orientation, and
+    // the two cases are mirror images (see wind_by_layers):
+    //     OVERLAPPING: turns stack along the layer's HEIGHT (its width is one wire) -> charge height
+    //     CONTIGUOUS:  turns run   along the layer's WIDTH  (its height is one wire) -> charge width
+    // Charging the height unconditionally made a CONTIGUOUS layer — which is exactly one wire tall by
+    // construction — surrender its whole thickness for a single lead: the available extent collapsed
+    // onto the 1% clamp below and the filling factor was multiplied by ~100, and the section picked up
+    // a whole layer's worth of reserved area instead of one turn slot.
     std::map<std::string, double> reservedAreaPerSection;
     for (auto& layer : layers) {
-        auto it = heightReservedPerLayer.find(layer.get_name());
-        if (it == heightReservedPerLayer.end()) {
+        auto it = turnAxisReservedPerLayer.find(layer.get_name());
+        if (it == turnAxisReservedPerLayer.end()) {
             continue;
         }
-        double layerWidth = layer.get_dimensions()[0];
-        double layerHeight = layer.get_dimensions()[1];
-        if (layerHeight <= 0) {
-            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Non-positive layer height while applying connection reserved space to layer " + layer.get_name());
+        bool turnsStackAlongHeight = (layer.get_orientation() == WindingOrientation::OVERLAPPING);
+        double turnAxisExtent = turnsStackAlongHeight ? layer.get_dimensions()[1] : layer.get_dimensions()[0];
+        double layerAxisExtent = turnsStackAlongHeight ? layer.get_dimensions()[0] : layer.get_dimensions()[1];
+        if (turnAxisExtent <= 0) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Non-positive layer extent along its turn axis while applying connection reserved space to layer " + layer.get_name());
         }
         if (!layer.get_filling_factor()) {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Layer filling factor not set before applying connection reserved space to layer " + layer.get_name());
         }
-        double reservedHeight = it->second;
-        double availableHeight = std::max(layerHeight - reservedHeight, layerHeight * 0.01);
-        layer.set_filling_factor(layer.get_filling_factor().value() * layerHeight / availableHeight);
+        double reserved = it->second;
+        double available = std::max(turnAxisExtent - reserved, turnAxisExtent * 0.01);
+        layer.set_filling_factor(layer.get_filling_factor().value() * turnAxisExtent / available);
         if (layer.get_section()) {
-            reservedAreaPerSection[layer.get_section().value()] += reservedHeight * layerWidth;
+            // The lead's own footprint on this layer: the slot it takes along the turn axis times the
+            // layer's extent along the other axis (one wire either way, whichever axis that is).
+            reservedAreaPerSection[layer.get_section().value()] += reserved * layerAxisExtent;
         }
     }
     set_layers_description(layers);
