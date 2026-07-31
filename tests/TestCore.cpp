@@ -2690,3 +2690,67 @@ TEST_CASE("Test_All_Catalogue_Cores_Have_Feasible_Gapping", "[core][gapping][cat
     CHECK(coresWithoutGapArea.empty());
     settings.reset();
 }
+
+// ABT #267/#407: a json -> Core conversion (json::parse(s).get<std::vector<Core>>(), or any
+// nlohmann conversion) used to resolve through the base class to MAS's GENERATED
+// from_json(json, MagneticCore&), skipping the legacy-form migration that the Core(json)
+// constructor applies. The same document therefore produced different objects depending on which
+// entry point you happened to use.
+//
+// It bit on a shape whose family was written "planar e", the pre-1.0 spelling of "planarE".
+// Unmigrated, that string matches no enum value, and the generated converter leaves the enum
+// DEFAULT-CONSTRUCTED — which is CoreShapeFamily::BLOCK, because block sorts first. So a planar E
+// core silently became a "block" core, and the failure surfaced far away as "Unknown shape family:
+// block" out of a factory that had never been asked for a block. (block is a declared-but-unused
+// future family; nothing in the catalogue has one.)
+TEST_CASE("Test_Core_Json_Conversion_Migrates_Legacy_Shape_Family", "[core][migration]") {
+    settings.reset();
+    clear_databases();
+
+    json coreJson;
+    coreJson["name"] = "legacy spelling core";
+    coreJson["functionalDescription"] = json();
+    coreJson["functionalDescription"]["type"] = "twoPieceSet";
+    coreJson["functionalDescription"]["material"] = "3C97";
+    coreJson["functionalDescription"]["numberStacks"] = 1;
+    coreJson["functionalDescription"]["gapping"] = json::array();
+    // The pre-1.0 spelling, exactly as it appears in older inventories.
+    coreJson["functionalDescription"]["shape"] = json{
+        {"name", "E 18/4/10"},
+        {"family", "planar e"},
+        {"type", "standard"},
+        {"magneticCircuit", "open"},
+        {"dimensions", json{
+            {"A", {{"minimum", 0.01765}, {"maximum", 0.01835}}},
+            {"B", {{"minimum", 0.0039},  {"maximum", 0.0041}}},
+            {"C", {{"minimum", 0.0098},  {"maximum", 0.0102}}},
+            {"D", {{"minimum", 0.0019},  {"maximum", 0.0021}}},
+            {"E", {{"minimum", 0.0137},  {"maximum", 0.0143}}},
+            {"F", {{"minimum", 0.0039},  {"maximum", 0.0041}}},
+        }},
+    };
+
+    // Both entry points must agree, and both must say planar E rather than block.
+    OpenMagnetics::Core constructedCore(coreJson);
+    CHECK(constructedCore.get_shape_family() == CoreShapeFamily::PLANAR_E);
+
+    auto convertedCore = coreJson.get<OpenMagnetics::Core>();
+    CHECK(convertedCore.get_shape_family() == CoreShapeFamily::PLANAR_E);
+
+    // And a family string that is not in the enum at all must be refused by name, rather than
+    // quietly becoming value 0 the way "planar e" used to.
+    json unknownFamilyJson = coreJson;
+    unknownFamilyJson["functionalDescription"]["shape"]["family"] = "not a real family";
+    std::string message;
+    try {
+        auto rejected = unknownFamilyJson.get<OpenMagnetics::Core>();
+        message = "no exception";
+    }
+    catch (const std::exception& exception) {
+        message = exception.what();
+    }
+    UNSCOPED_INFO(message);
+    CHECK(message.find("not a real family") != std::string::npos);
+    CHECK(message.find("E 18/4/10") != std::string::npos);
+    settings.reset();
+}

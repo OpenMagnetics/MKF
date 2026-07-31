@@ -157,6 +157,21 @@ class Core : public MAS::MagneticCore {
 };
 
 
+// ABT #267/#407: parsing a Core straight out of json — `json::parse(s).get<std::vector<Core>>()`,
+// or any nlohmann conversion — used to resolve, through the base class, to MAS's GENERATED
+// from_json(json, MagneticCore&). That path skips the legacy-form migration that the Core(json)
+// constructor applies, so the same document produced different objects depending on which entry
+// point you happened to use. It bit on a shape whose family was written "planar e", the pre-1.0
+// spelling of "planarE": unmigrated, that string matches no enum value, and the generated
+// converter leaves the enum default-constructed — which is CoreShapeFamily::BLOCK, because block
+// sorts first. A planar E core silently became a "block" core, and the failure surfaced as
+// "Unknown shape family: block" from a factory that had never been asked for a block.
+//
+// Declaring the conversion for OpenMagnetics::Core here makes it win overload resolution over the
+// base-class one, so every json -> Core path migrates first. It also rejects a family string that
+// survives migration without matching the enum, rather than letting it become value 0.
+void from_json(const json& j, Core& x);
+
 void from_json(const json& j, std::vector<BhCycleElement>& v);
 void to_json(json& j, const std::vector<BhCycleElement>& v);
 void from_json(const json& j, std::vector<VolumetricLossesPoint>& v);

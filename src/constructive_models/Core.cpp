@@ -2293,4 +2293,42 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
 }
 
 
+// See the note on the declaration in Core.h (ABT #267/#407). Two jobs: run the legacy-form
+// migration that the Core(json) constructor runs, so a json -> Core conversion cannot disagree
+// with construction; and refuse a shape family string the enum does not know, instead of letting
+// the generated converter leave it default-constructed at CoreShapeFamily::BLOCK.
+void from_json(const json& j, Core& x) {
+    json migrated = j;
+    OpenMagnetics::compat::migrate_pre_1_0(migrated);
+
+    // An inline shape carries its family as a string. The generated enum converter has no way to
+    // report "I did not recognise this", so check it here by round-tripping: serialise the value
+    // the converter produced and compare it with what we were given. A mismatch means the string
+    // was not in the enum and we are holding value 0 by accident.
+    if (migrated.contains("functionalDescription") &&
+        migrated["functionalDescription"].contains("shape") &&
+        migrated["functionalDescription"]["shape"].is_object() &&
+        migrated["functionalDescription"]["shape"].contains("family") &&
+        migrated["functionalDescription"]["shape"]["family"].is_string()) {
+        auto declaredFamily = migrated["functionalDescription"]["shape"]["family"].get<std::string>();
+        MAS::CoreShapeFamily parsedFamily;
+        MAS::from_json(migrated["functionalDescription"]["shape"]["family"], parsedFamily);
+        json roundTripped;
+        MAS::to_json(roundTripped, parsedFamily);
+        if (roundTripped.get<std::string>() != declaredFamily) {
+            std::string shapeName = "<unnamed>";
+            if (migrated["functionalDescription"]["shape"].contains("name") &&
+                migrated["functionalDescription"]["shape"]["name"].is_string()) {
+                shapeName = migrated["functionalDescription"]["shape"]["name"].get<std::string>();
+            }
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Unrecognised core shape family '" + declaredFamily + "' on shape '" + shapeName +
+                "'; it is not a value of the MAS CoreShapeFamily enum and would otherwise be read as '" +
+                roundTripped.get<std::string>() + "'");
+        }
+    }
+
+    MAS::from_json(migrated, static_cast<MAS::MagneticCore&>(x));
+}
+
 } // namespace OpenMagnetics

@@ -2793,7 +2793,7 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
         return piece;
     }
     else
-        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown shape family: " + to_string(family) + ", available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown shape family: " + to_string(family) + " for shape '" + shape.get_name().value_or("<unnamed>") + "', available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
                                  "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UI, UR, UT, T, C, EER, EF, EPC, EPQ, EPW, EPT, LEP, PQI}");
 }
 
