@@ -11283,6 +11283,43 @@ static bool layers_balanced_across_parallels(OpenMagnetics::Coil& coil, const st
     return true;
 }
 
+// ABT #430: on the OVERLAPPING path the blocking fixpoint already shrinks a crossed layer by exactly
+// the room its leads need ("shrink the layer height by the blocked slots ... leaving room for the
+// leads", wind_by_rectangular_layers), so the layer's extent — and the filling factor measured against
+// it — ALREADY excludes them. Charging the full lead extent again in apply_connection_reserved_space
+// counted the same room twice, which stayed invisible while the leads were thin relative to the layer
+// and exploded with fine wire and deep lead stacks (13_current_sense_er95_n87: a correctly-packed
+// 0.95-full layer reported at 2.97, so the coil read as not-fitting when it fits).
+//
+// The invariant asserted here is exact rather than a threshold: an OVERLAPPING layer is one wire WIDE,
+// so its filling factor is numberTurns * wire / layerHeight, and blocking guarantees the turns fit in
+// the height that remains — hence it cannot exceed 1 unless the leads genuinely could not be given
+// room (the shrink is capped at one turn slot minimum, and that residual is charged on purpose). Any
+// value above 1 on a coil whose blocking converged is the double charge coming back.
+static void check_overlapping_layers_not_double_charged(OpenMagnetics::Coil& coil) {
+    std::map<std::string, double> reservedPerLayer;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (!space.layer.empty()) {
+            reservedPerLayer[space.layer] += space.dimensions[1];
+        }
+    }
+    auto layers = coil.get_layers_description().value();
+    int crossed = 0;
+    for (const auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION
+            || layer.get_orientation() != WindingOrientation::OVERLAPPING
+            || !reservedPerLayer.count(layer.get_name())) {
+            continue;
+        }
+        INFO("layer " << layer.get_name() << " leads " << reservedPerLayer.at(layer.get_name())
+             << " height " << layer.get_dimensions()[1]
+             << " turns " << coil.get_turns_by_layer(layer.get_name()).size());
+        CHECK(layer.get_filling_factor().value() <= 1.0);
+        crossed++;
+    }
+    CHECK(crossed > 0);  // the fixture must actually have leads crossing an overlapping layer
+}
+
 TEST_CASE("Test_Real_Geometry_Multifilar_N_Filar", "[constructive-model][coil][real-geometry]") {
     // N-filar (bifilar/trifilar/4-filar): each parallel is its own physical conductor with its own
     // entrance/exit terminal leads and its own inter-layer continuation, wound side by side. For
@@ -11304,6 +11341,7 @@ TEST_CASE("Test_Real_Geometry_Multifilar_N_Filar", "[constructive-model][coil][r
         // ABT #229: the K parallels' leads must not be drawn on the same line.
         CHECK(coincident_connection_runs(coil) == 0);
         paint_connection_demo(coil, "PQ 28/20", "Test_Real_Multifilar_K" + std::to_string(K) + "_Z.svg", true);
+        check_overlapping_layers_not_double_charged(coil);
 
         // Same coil wound U.
         auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
@@ -11321,6 +11359,7 @@ TEST_CASE("Test_Real_Geometry_Multifilar_N_Filar", "[constructive-model][coil][r
         CHECK(real_geometry_collisions(coil) == 0);
         CHECK(coincident_connection_runs(coil) == 0);
         paint_connection_demo(coil, "PQ 28/20", "Test_Real_Multifilar_K" + std::to_string(K) + "_U.svg", true);
+        check_overlapping_layers_not_double_charged(coil);
 
         settings.reset();
     }
@@ -11345,6 +11384,7 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
     CHECK(real_geometry_collisions(coil) == 0);
     CHECK(coincident_connection_runs(coil) == 0);
     paint_connection_demo(coil, "PQ 40/40", "Test_Real_Bifilar_Interleaved_Z.svg", true);
+    check_overlapping_layers_not_double_charged(coil);
 
     settings.reset();
 }

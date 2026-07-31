@@ -1643,6 +1643,26 @@ void Coil::apply_connection_reserved_space() {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Layer filling factor not set before applying connection reserved space to layer " + layer.get_name());
         }
         double reserved = it->second;
+        // ABT #430: charge only the room the layer did NOT already surrender to these leads. When real
+        // winding geometry blocks turn slots, wind_by_rectangular_layers shrinks the layer by exactly
+        // the leads' room and computes its filling factor against what remains ("shrink the layer
+        // height by the blocked slots ... leaving room for the leads") — so the extent below ALREADY
+        // excludes them, and charging the full lead extent again counted the same room twice. It stayed
+        // invisible while the leads were thin relative to the layer and exploded with fine wire and deep
+        // lead stacks: on 13_current_sense_er95_n87 a correctly-packed 0.95-full layer was reported at
+        // 2.97, and the coil read as not-fitting when it fits.
+        //
+        // The remainder is real: the shrink is capped at one turn slot minimum, so a layer asked for
+        // more room than it can give keeps the difference as a genuine "the leads do not fit here"
+        // signal. Layers with no blocking applied — CONTIGUOUS ones, which have no turn blocking at all
+        // (ABT #427) — surrender nothing, so they are charged in full, as they must be.
+        double reservedNotYetMadeRoomFor = reserved;
+        auto surrendered = _connectionBlockedRoomPerLayer.find(layer.get_name());
+        if (surrendered != _connectionBlockedRoomPerLayer.end()) {
+            // Never below zero: blocking rounds up to whole turn slots, so the room given up can
+            // slightly exceed what the leads need, and negative leftover space is meaningless.
+            reservedNotYetMadeRoomFor = std::max(reserved - surrendered->second, 0.0);
+        }
         // Add the leads' own share of the layer to the turns' share — the same shape as the section's
         // factor below (filling factor + reserved area / section area). Since the filling factor is an
         // area ratio, the leads' share is (reserved * layerAxisExtent) / (turnAxisExtent *
@@ -1662,10 +1682,13 @@ void Coil::apply_connection_reserved_space() {
         // This form is linear and increasing in the reserved space, always positive, never singular,
         // and crosses 1 at the IDENTICAL point as the old one — A/(W(E-r)) >= 1 <=> A + rW >= WE —
         // so no fitting verdict anywhere changes, only the magnitude reported past the crossing.
-        layer.set_filling_factor(layer.get_filling_factor().value() + reserved / turnAxisExtent);
+        layer.set_filling_factor(layer.get_filling_factor().value() + reservedNotYetMadeRoomFor / turnAxisExtent);
         if (layer.get_section()) {
             // The lead's own footprint on this layer: the slot it takes along the turn axis times the
-            // layer's extent along the other axis (one wire either way, whichever axis that is).
+            // layer's extent along the other axis (one wire either way, whichever axis that is). The
+            // SECTION is charged the FULL lead extent even when the layer surrendered room for it —
+            // the section's own dimensions never shrank, so that room is still area the leads occupy
+            // inside it. Only the layer, whose extent was reduced, must not be charged twice.
             reservedAreaPerSection[layer.get_section().value()] += reserved * layerAxisExtent;
         }
     }
@@ -1899,6 +1922,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             // re-derived and re-applied below only when the real-geometry setting is on.
             _applyConnectionBlocking = false;
             _connectionBlockedSlotsPerLayer.clear();
+            _connectionBlockedRoomPerLayer.clear();
 
             // Special case: toroid with one physical turn whose wire OD
             // exceeds the inner-hole radius. The wire cannot be wound on
@@ -6364,6 +6388,12 @@ bool Coil::wind_by_rectangular_layers() {
                     thisLayerHeight = roundFloat(layerHeight - blockedSlots * wireAxialSize, 9);
                     thisLayerCenterHeight = roundFloat(currentLayerCenterHeight
                         + (double(blocked.second) - double(blocked.first)) * wireAxialSize / 2, 9);
+                    // ABT #430: record the room actually surrendered here — AFTER the one-slot-minimum
+                    // cap above, so it is what the layer really gave up and not what was asked of it.
+                    // apply_connection_reserved_space subtracts this from the leads it charges, because
+                    // thisLayerHeight (and the filling factor computed from it just below) already
+                    // excludes it; charging the full lead extent again counted the same room twice.
+                    _connectionBlockedRoomPerLayer[layer.get_name()] = blockedSlots * wireAxialSize;
                 }
                 layer.set_dimensions(std::vector<double>{layerWidth, thisLayerHeight});
                 layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, thisLayerCenterHeight, 0});

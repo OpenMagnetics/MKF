@@ -152,6 +152,12 @@ class Coil : public MAS::Coil {
         // blocked at its {top, bottom}. Consumed by wind_by_rectangular_layers when
         // _applyConnectionBlocking is set. Both stay empty/false unless real winding geometry is on.
         std::map<std::string, std::pair<uint64_t, uint64_t>> _connectionBlockedSlotsPerLayer;
+        // ABT #430: the room each layer ACTUALLY surrendered to those leads, in metres along its turn
+        // axis, as applied by wind_by_rectangular_layers (blocked slots * the layer's own wire, after
+        // the one-slot-minimum cap). The layer's extent — and so its filling factor — already excludes
+        // this, so apply_connection_reserved_space charges only what is left over. Recorded by the
+        // producer rather than recomputed by the consumer, so the two can never drift.
+        std::map<std::string, double> _connectionBlockedRoomPerLayer;
         bool _applyConnectionBlocking = false;
         std::string coilLog;
         InsulationCoordinator _standardCoordinator = InsulationCoordinator();
