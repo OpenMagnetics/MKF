@@ -11351,11 +11351,10 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
 
 // ABT #424: a connection lead is charged against the axis the crossed layer's turns actually run
 // along. For a CONTIGUOUS layer that is its WIDTH — its height is one wire by construction (see
-// wind_by_layers) — so a crossed layer's filling factor must be its uncrossed sibling's scaled by
-// width / (width - reserved), the turn slots the leads take away. Charging the HEIGHT instead (the
-// mirrored, OVERLAPPING rule) made the layer surrender its whole thickness for a single lead: the
-// available extent collapsed onto the 1% clamp in apply_connection_reserved_space and the filling
-// factor came out ~100x too big (92.5 instead of 1.23 on this fixture), which also inflated the
+// wind_by_layers) — so a crossed layer's filling factor must be its uncrossed sibling's plus the share
+// of the width the leads take, reserved / width. Charging the HEIGHT instead (the mirrored,
+// OVERLAPPING rule) made the layer surrender its whole thickness for a single lead and the filling
+// factor came out ~100x too big (92.5 instead of 1.03 on this fixture), which also inflated the
 // section's. Checks the crossed layers against an uncrossed sibling of the same width, so it pins the
 // AXIS rather than a magic number.
 static void check_contiguous_lead_reservation(OpenMagnetics::Coil& coil) {
@@ -11389,9 +11388,11 @@ static void check_contiguous_lead_reservation(OpenMagnetics::Coil& coil) {
             continue;  // no same-geometry sibling to compare against in this build
         }
         INFO("layer " << layer.get_name() << " width " << layerWidth << " reserved " << reserved->second);
-        REQUIRE(layerWidth > reserved->second);  // the 1% clamp must not be what saves this
+        // The expected value is the SAME double expression production evaluates, so this is a
+        // floating-point identity check and the tolerance is round-off, not a physical allowance.
+        constexpr double roundOff = 1e-12;
         CHECK_THAT(layer.get_filling_factor().value(),
-                   Catch::Matchers::WithinRel(uncrossed->second * layerWidth / (layerWidth - reserved->second), 0.001));
+                   Catch::Matchers::WithinRel(uncrossed->second + reserved->second / layerWidth, roundOff));
         checked++;
     }
     CHECK(checked > 0);  // the fixture must actually exercise a crossed contiguous layer

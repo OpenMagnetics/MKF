@@ -1616,18 +1616,17 @@ void Coil::apply_connection_reserved_space() {
         turnAxisReservedPerLayer[space.layer] += space.dimensions[1];
     }
 
-    // Reduce each affected layer's available extent ALONG ITS TURN AXIS: the filling factor scales
-    // inversely with what is left. A value above 1 means the leads no longer fit alongside the turns
-    // (the layer is over-subscribed and the build needs more space).
+    // Charge each affected layer for the space its leads take ALONG ITS TURN AXIS. A resulting value
+    // above 1 means the leads no longer fit alongside the turns (the layer is over-subscribed and the
+    // build needs more space).
     //
-    // ABT #424: which of the layer's two dimensions that is depends on the layer's orientation, and
-    // the two cases are mirror images (see wind_by_layers):
+    // ABT #424: which of the layer's two dimensions that axis is depends on the layer's orientation,
+    // and the two cases are mirror images (see wind_by_layers):
     //     OVERLAPPING: turns stack along the layer's HEIGHT (its width is one wire) -> charge height
     //     CONTIGUOUS:  turns run   along the layer's WIDTH  (its height is one wire) -> charge width
     // Charging the height unconditionally made a CONTIGUOUS layer — which is exactly one wire tall by
-    // construction — surrender its whole thickness for a single lead: the available extent collapsed
-    // onto the 1% clamp below and the filling factor was multiplied by ~100, and the section picked up
-    // a whole layer's worth of reserved area instead of one turn slot.
+    // construction — surrender its whole thickness for a single lead, and the section picked up a whole
+    // layer's worth of reserved area instead of one turn slot.
     std::map<std::string, double> reservedAreaPerSection;
     for (auto& layer : layers) {
         auto it = turnAxisReservedPerLayer.find(layer.get_name());
@@ -1644,8 +1643,26 @@ void Coil::apply_connection_reserved_space() {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Layer filling factor not set before applying connection reserved space to layer " + layer.get_name());
         }
         double reserved = it->second;
-        double available = std::max(turnAxisExtent - reserved, turnAxisExtent * 0.01);
-        layer.set_filling_factor(layer.get_filling_factor().value() * turnAxisExtent / available);
+        // Add the leads' own share of the layer to the turns' share — the same shape as the section's
+        // factor below (filling factor + reserved area / section area). Since the filling factor is an
+        // area ratio, the leads' share is (reserved * layerAxisExtent) / (turnAxisExtent *
+        // layerAxisExtent), i.e. reserved / turnAxisExtent: the layer-axis extent is one wire on both
+        // sides and cancels.
+        //
+        // NOT the leftover space in the denominator. `fill * extent / (extent - reserved)` is singular
+        // when the leads take the whole layer and NEGATIVE beyond it, and a negative filling factor
+        // reads as FITTING at are_sections_and_layers_fitting's `> 1` test — so the layers whose leads
+        // need MORE room than the layer has, the worst ones, would have reported as fitting. That sign
+        // flip is what the old `std::max(extent - reserved, extent * 0.01)` clamp was holding shut, and
+        // it paid for it by saturating every overflow at exactly 100x the pre-lead factor: a layer 1%
+        // short and one 5x over-subscribed reported the same number. It also masked ABT #424 for two
+        // months — on a contiguous layer reserved == extent exactly, so without the clamp that bug
+        // would have produced an inf on day one instead of a plausible-looking finite number.
+        //
+        // This form is linear and increasing in the reserved space, always positive, never singular,
+        // and crosses 1 at the IDENTICAL point as the old one — A/(W(E-r)) >= 1 <=> A + rW >= WE —
+        // so no fitting verdict anywhere changes, only the magnitude reported past the crossing.
+        layer.set_filling_factor(layer.get_filling_factor().value() + reserved / turnAxisExtent);
         if (layer.get_section()) {
             // The lead's own footprint on this layer: the slot it takes along the turn axis times the
             // layer's extent along the other axis (one wire either way, whichever axis that is).
