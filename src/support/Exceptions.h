@@ -38,6 +38,7 @@ enum class ErrorCode : int {
     COIL_WINDING_ERROR = 201,
     COIL_INVALID_TURNS = 202,
     COIL_WIRE_NOT_FOUND = 203,
+    COIL_SHORTED_TURNS = 204,
     
     // Material related errors (300-399)
     MATERIAL_NOT_FOUND = 300,
@@ -107,6 +108,7 @@ inline std::string to_string(ErrorCode code) {
         case ErrorCode::COIL_WINDING_ERROR: return "COIL_WINDING_ERROR";
         case ErrorCode::COIL_INVALID_TURNS: return "COIL_INVALID_TURNS";
         case ErrorCode::COIL_WIRE_NOT_FOUND: return "COIL_WIRE_NOT_FOUND";
+        case ErrorCode::COIL_SHORTED_TURNS: return "COIL_SHORTED_TURNS";
         case ErrorCode::MATERIAL_NOT_FOUND: return "MATERIAL_NOT_FOUND";
         case ErrorCode::MATERIAL_DATA_MISSING: return "MATERIAL_DATA_MISSING";
         case ErrorCode::MATERIAL_INVALID_PROPERTY: return "MATERIAL_INVALID_PROPERTY";
@@ -226,8 +228,20 @@ public:
 class WireNotFoundException : public CoilException {
 public:
     explicit WireNotFoundException(const std::string& wireName)
-        : CoilException(ErrorCode::COIL_WIRE_NOT_FOUND, 
+        : CoilException(ErrorCode::COIL_WIRE_NOT_FOUND,
                        "Wire not found: " + wireName, wireName) {}
+};
+
+// ABT #406: two conductors whose COPPER surfaces touch are shorted turns — an electrical fault in
+// the described part, not a numerical problem. It surfaced as a divergent turn-to-turn capacitance
+// (ABT #395), but the infinity is merely the arithmetic that the fault happens to produce, so name
+// the fault instead: a reader told "capacitance is inf" goes looking at the capacitance model,
+// while a reader told "these turns are in contact" goes and fixes the wire spec, which is the
+// actual defect.
+class ShortedTurnsException : public CoilException {
+public:
+    explicit ShortedTurnsException(const std::string& message)
+        : CoilException(ErrorCode::COIL_SHORTED_TURNS, message) {}
 };
 
 // ============================================================================

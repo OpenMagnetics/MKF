@@ -1945,8 +1945,65 @@ TEST_CASE("Touching bare conductors report the missing insulation, not a NaN ene
         // Both parallel counts must report the same root cause. Note that 1 parallel used to
         // "succeed" here: the infinity was carried into the exported netlist rather than raising
         // anything, so this also pins that a non-finite capacitance can no longer ship silently.
-        CHECK(message.find("Turn-to-turn capacitance") != std::string::npos);
-        CHECK(message.find("zero coating thickness") != std::string::npos);
+        //
+        // ABT #406 changed WHICH error this is, deliberately: the message used to lead with the
+        // divergent capacitance ("Turn-to-turn capacitance is inf ... zero coating thickness"),
+        // which describes the arithmetic rather than the fault. Touching bare conductors are
+        // shorted turns, so that is what gets reported now. The assertions below are the same
+        // two facts -- contact, and the absent insulation -- named physically.
+        CHECK(message.find("in electrical contact") != std::string::npos);
+        CHECK(message.find("no insulation between the conductors") != std::string::npos);
+    }
+}
+
+// ABT #406: the fault must be raised as a SHORT CIRCUIT, from the geometry, before any capacitance
+// model runs -- and it must carry the typed error, not just prose. Two conductors whose copper
+// surfaces touch are shorted turns; the divergent capacitance is only the arithmetic that fault
+// happens to produce, and depends on which formula is in use.
+TEST_CASE("Touching bare conductors raise a typed short-circuit error", "[physical-model][stray-capacitance][short-circuit]") {
+    settings.reset();
+    auto coreJsonStr = R"({"name": "abt406", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
+    std::string bareWireJsonStr = R"({"type": "round", "material": "copper", "conductingDiameter": {"nominal": 0.001}, "outerDiameter": {"nominal": 0.001}, "numberConductors": 1})";
+
+    // Includes numberParallels = 1, the case that never produced a NaN and therefore used to ship
+    // an infinite capacitance into the netlist without raising anything at all.
+    for (int64_t numberParallels : {1, 2, 4}) {
+        auto coilJsonStr = std::string(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 4, "numberParallels": )")
+            + std::to_string(numberParallels) + R"(, "isolationSide": "primary", "wire": )" + bareWireJsonStr + R"( } ] })";
+        auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+
+        OpenMagnetics::ErrorCode reportedCode = OpenMagnetics::ErrorCode::UNKNOWN_ERROR;
+        bool threwShortedTurns = false;
+        try {
+            StrayCapacitance().calculate_capacitance(coil);
+        }
+        catch (const OpenMagnetics::ShortedTurnsException& exception) {
+            threwShortedTurns = true;
+            reportedCode = exception.code();
+        }
+        catch (const std::exception& exception) {
+            UNSCOPED_INFO("wrong exception type for " << numberParallels << " parallels: " << exception.what());
+        }
+        UNSCOPED_INFO("parallels " << numberParallels);
+        CHECK(threwShortedTurns);
+        CHECK(reportedCode == OpenMagnetics::ErrorCode::COIL_SHORTED_TURNS);
+    }
+}
+
+// The other side of that check, and the one that keeps it honest: insulated wire wound tight has
+// its OUTER surfaces in contact by design, and must NOT be called a short -- the copper is still
+// held apart by the two coatings. If this ever fails, the check is rejecting valid close-wound
+// coils, which is far worse than the bug it was added for.
+TEST_CASE("Close-wound insulated conductors are not a short circuit", "[physical-model][stray-capacitance][short-circuit]") {
+    settings.reset();
+    auto coreJsonStr = R"({"name": "abt406", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
+
+    for (int64_t numberParallels : {1, 2, 4}) {
+        auto coilJsonStr = std::string(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 4, "numberParallels": )")
+            + std::to_string(numberParallels) + R"(, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })";
+        auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+        UNSCOPED_INFO("parallels " << numberParallels);
+        CHECK_NOTHROW(StrayCapacitance().calculate_capacitance(coil));
     }
 }
 

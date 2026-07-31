@@ -1315,7 +1315,75 @@ static void throw_if_capacitance_is_not_finite(double capacitance, Turn firstTur
                              " m apart." + reason);
 }
 
+// ABT #406: report the ELECTRICAL fault, from the geometry, before any capacitance model runs.
+//
+// The condition is that the two CONDUCTORS touch. Coating thickness is what normally keeps them
+// apart: in a close-wound coil the OUTER surfaces are in contact by design, and the copper is
+// still separated by t1 + t2, which is perfectly valid. Take the coating away and the outer
+// surface IS the copper, so the same close-wound geometry puts bare metal against bare metal —
+// shorted turns.
+//
+// Testing the geometry rather than the resulting number matters for one case in particular: with
+// a single parallel the divergent capacitance never becomes a NaN (it takes two turns at
+// identical potential to form 0.5*inf*0), so it used to travel all the way into the exported
+// netlist without raising anything — a silently wrong answer rather than a crash. A geometric
+// test fires there too, and does not depend on which capacitance formula happens to diverge.
+//
+// Deliberately conservative: it also requires a missing coating. Turns whose coated conductors
+// merely overlap slightly through layout approximation are left to the existing non-finite guard,
+// so this cannot start rejecting coils that model fine today.
+static void throw_if_turns_are_shorted(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire) {
+    double firstCoatingThickness = firstWire.get_coating_thickness();
+    double secondCoatingThickness = secondWire.get_coating_thickness();
+    if (firstCoatingThickness > 0 && secondCoatingThickness > 0) {
+        return;
+    }
+
+    auto isRoundLike = [](WireType type) {
+        return type == WireType::ROUND || type == WireType::LITZ;
+    };
+    double deltaX = firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0];
+    double deltaY = firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1];
+
+    // Gap between the CONDUCTING surfaces. Round-like pairs get the true centre-to-centre test;
+    // anything involving a flat wire gets the bounding-box test, whose axes are the ones its
+    // width and height are defined along (a circle test would be wrong for a strip).
+    double conductingSurfaceGap;
+    if (isRoundLike(firstWire.get_type()) && isRoundLike(secondWire.get_type())) {
+        conductingSurfaceGap = hypot(deltaX, deltaY) - firstWire.get_maximum_conducting_width() / 2 -
+                               secondWire.get_maximum_conducting_width() / 2;
+    }
+    else {
+        double gapAlongWidth = fabs(deltaX) - firstWire.get_maximum_conducting_width() / 2 -
+                               secondWire.get_maximum_conducting_width() / 2;
+        double gapAlongHeight = fabs(deltaY) - firstWire.get_maximum_conducting_height() / 2 -
+                                secondWire.get_maximum_conducting_height() / 2;
+        // Separated along EITHER axis is enough to keep them apart.
+        conductingSurfaceGap = std::max(gapAlongWidth, gapAlongHeight);
+    }
+
+    if (conductingSurfaceGap > 0) {
+        return;
+    }
+
+    auto describeTurn = [](Turn turn) {
+        auto coordinates = turn.get_coordinates();
+        return turn.get_name() + " at (" + std::to_string(coordinates[0]) + ", " +
+               std::to_string(coordinates[1]) + ")";
+    };
+    throw ShortedTurnsException(
+        "Turns " + describeTurn(firstTurn) + " and " + describeTurn(secondTurn) +
+        " are in electrical contact: their conducting surfaces are " +
+        std::to_string(conductingSurfaceGap) + " m apart and the wires report coating thicknesses of " +
+        std::to_string(firstCoatingThickness) + " m and " + std::to_string(secondCoatingThickness) +
+        " m, so there is no insulation between the conductors. This describes shorted turns, not a"
+        " capacitance to compute; give the wire its insulation (a coating thickness, or an outer"
+        " diameter larger than the conducting diameter).");
+}
+
 double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
+    throw_if_turns_are_shorted(firstTurn, firstWire, secondTurn, secondWire);
+
     auto isFlatWire = [](WireType type) {
         return type == WireType::PLANAR || type == WireType::FOIL || type == WireType::RECTANGULAR;
     };
