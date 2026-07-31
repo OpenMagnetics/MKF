@@ -3,7 +3,6 @@
 #include "support/Utils.h"
 
 #include <cmath>
-#include <limits>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -282,30 +281,7 @@ AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo)
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto gapSectionWidth = gapSectionDimensions[0];
     auto gapSectionDepth = gapSectionDimensions[1];
-    // ABT #378. Zhang's fringing reluctance (eq. 10) is
-    //     Rfr = pi / (mu0 * C * ln((2h + di) / di))
-    // and Fig. 7's caption defines the symbols exactly: "2h is the height of a segment of core
-    // limb; di is the height of an air gap". So h is HALF AN ADJACENT CORE-LIMB SEGMENT — a
-    // distance along the limb axis. It is never the column WIDTH, so the previous
-    // std::max(distanceClosestNormalSurface, gapSectionWidth) had no basis in the paper; it
-    // arrived incidentally in e4102ca5 with no comment, and where it fired it substituted a
-    // larger h, inflating the fringing permeance and over-predicting inductance (worst on
-    // short-window/planar cores, catastrophic on unrolled sections where sectionDimensions[0]
-    // is a mean circumference).
-    //
-    // distanceClosestNormalSurface — the core left between this gap and the nearest normal
-    // surface — IS the paper's h for the single-gap case that dominates MKF's usage: the whole
-    // segment belongs to this gap, there being no neighbouring gap to share it with. For
-    // DISTRIBUTED gaps the segment is shared between adjacent gaps, so the paper's h is half the
-    // inter-gap core, while MKF still measures to the limb end and thus over-estimates h; that
-    // refinement needs the neighbouring gap's position, which this per-gap signature does not
-    // receive, and is tracked on ABT #378 rather than guessed at here.
-    auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
-    if (distanceClosestNormalSurface < 0) {
-        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS,
-            "Gap Distance Closest Normal Surface cannot be negative; got " +
-            std::to_string(distanceClosestNormalSurface));
-    }
+    auto distanceClosestNormalSurface = std::max(*(gapInfo.get_distance_closest_normal_surface()), gapSectionWidth);
     auto reluctanceInternal = gapLength / (constants.vacuumPermeability * gapArea);
     double reluctanceFringing = 0;
     double fringingFactor = 1;
@@ -923,82 +899,33 @@ double ReluctanceModel::get_gapping_by_fringing_factor(Core core, double fringin
     if (centralColumns.size() == 0) {
         throw CoreNotProcessedException("No columns found in core");
     }
-    // ABT #378: this used to seed at gapLength = the FULL column height and step outward,
-    // assuming the fringing factor rises monotonically with gap length. With Zhang's h read as
-    // the paper defines it (half an adjacent core-limb SEGMENT, Fig. 7), it does not: as the gap
-    // grows to fill the limb the segments shrink, h -> 0, ln((2h + di)/di) -> 0, the fringing
-    // reluctance diverges and the factor falls back towards 1. The map is therefore NOT
-    // injective, and the old seed sat exactly on its degenerate end — it overshot immediately and
-    // returned the hard-coded columnHeight/2 for every request.
-    //
-    // Two consequences, both handled here: scan the physical range instead of assuming a
-    // direction, and when several gap lengths reproduce the requested factor return the SMALLEST.
-    // The small root is the physically intended one — Zhang's derivation assumes gaps short
-    // against the limb (the fringing field spans a core segment), so the large root lives outside
-    // the model's validity domain and no caller wants a gap that fills the limb.
-    double columnHeight = centralColumns[0].get_height();
-    double minimumGapLength = constants.residualGap;
-    if (columnHeight <= minimumGapLength) {
-        return minimumGapLength;
-    }
-
-    auto factorAt = [&](double candidateGapLength) {
-        core.set_gap_length(candidateGapLength);
-        return get_core_reluctance(core).get_maximum_fringing_factor().value();
-    };
-
-    // Log-spaced scan: gap lengths of interest span microns to millimetres.
-    const size_t numberScanPoints = 64;
-    std::vector<std::pair<double, double>> scanned;
-    scanned.reserve(numberScanPoints + 1);
-    for (size_t scanIndex = 0; scanIndex <= numberScanPoints; ++scanIndex) {
-        double fraction = double(scanIndex) / numberScanPoints;
-        double scannedGapLength = minimumGapLength * pow(columnHeight / minimumGapLength, fraction);
-        scanned.emplace_back(scannedGapLength, factorAt(scannedGapLength));
-    }
-
-    // First bracket in which the requested factor is crossed — walking from the smallest gap up
-    // gives the smallest root without needing to know where the curve turns over.
-    for (size_t scanIndex = 0; scanIndex + 1 < scanned.size(); ++scanIndex) {
-        double lowerGapLength = scanned[scanIndex].first;
-        double upperGapLength = scanned[scanIndex + 1].first;
-        double lowerFactor = scanned[scanIndex].second;
-        double upperFactor = scanned[scanIndex + 1].second;
-        if ((lowerFactor - fringingFactor) * (upperFactor - fringingFactor) > 0) {
-            continue;
+    double gapLength = centralColumns[0].get_height();
+    double gapIncrease = gapLength / 2;
+    size_t timeout = 100;
+    while (true) {
+        core.set_gap_length(gapLength);
+        auto calculatedFringingFactor = get_core_reluctance(core).get_maximum_fringing_factor().value();
+        if ((fabs(calculatedFringingFactor - fringingFactor) / fringingFactor) < 0.001) {
+            break;
         }
-        size_t timeout = 100;
-        while (timeout-- > 0 && (upperGapLength - lowerGapLength) > minimumGapLength / 10) {
-            double midGapLength = (lowerGapLength + upperGapLength) / 2;
-            double midFactor = factorAt(midGapLength);
-            if (fabs(midFactor - fringingFactor) / fringingFactor < 0.001) {
-                return midGapLength;
-            }
-            if ((lowerFactor - fringingFactor) * (midFactor - fringingFactor) <= 0) {
-                upperGapLength = midGapLength;
-                upperFactor = midFactor;
-            }
-            else {
-                lowerGapLength = midGapLength;
-                lowerFactor = midFactor;
+        if (calculatedFringingFactor < fringingFactor) {
+            gapLength += gapIncrease;
+            if (gapLength > centralColumns[0].get_height()) {
+                return centralColumns[0].get_height() / 2;
             }
         }
-        return (lowerGapLength + upperGapLength) / 2;
-    }
-
-    // No crossing: the requested factor is unreachable for this core (e.g. below the factor of a
-    // residual gap). Return the closest scanned point rather than a hard-coded fraction of the
-    // column, so the caller gets the best available answer instead of an invented one.
-    double bestGapLength = scanned.front().first;
-    double bestFactorError = std::numeric_limits<double>::max();
-    for (auto& [scannedGapLength, scannedFactor] : scanned) {
-        double factorError = fabs(scannedFactor - fringingFactor);
-        if (factorError < bestFactorError) {
-            bestFactorError = factorError;
-            bestGapLength = scannedGapLength;
+        else {
+            gapLength -= gapIncrease;
+        }
+        gapLength = roundFloat(gapLength, 6);
+        gapIncrease = std::max(gapIncrease / 2, constants.residualGap);
+        timeout--;
+        if (timeout <= 0) {
+            break;
         }
     }
-    return bestGapLength;
+
+    return gapLength;
 }
 
 } // namespace OpenMagnetics

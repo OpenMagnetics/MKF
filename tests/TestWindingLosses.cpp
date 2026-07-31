@@ -782,6 +782,26 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close", "[physical-model][winding-losses][planar]") {
+        // Re-pinned 2026-07-31 (ABT #378, user-approved after FEM validation). Dropping the
+        // column-width clamp from Zhang's h — Fig. 7's caption defines 2h as the height of a
+        // core-limb SEGMENT, along the limb axis, never the column WIDTH — lowered these by a
+        // fairly uniform 1.36-1.49x. The clamp had substituted a larger h, inflating the
+        // fringing permeance, and the #378 note predicted the error would be worst on
+        // short-window/planar cores. This is where it landed.
+        //
+        // Validated against 2D FEA (OMFEM omfem_mas, conductor volume integral) rather than
+        // re-pinned to another MKF snapshot. The new values are closer at EVERY point measured:
+        //
+        //                     FEA_cu     old pin   old/FEA        new     new/FEA
+        //   Close  10 kHz     118.93      2683.8     22.57     1796.9      15.11
+        //         100 kHz     424.19       22084     52.06      14815      34.93
+        //           1 MHz    1348.30       78230     58.02      53916      39.99
+        //   Far    10 kHz      79.57      1190.6     14.96     799.01      10.04
+        //         100 kHz     266.62      6210.0     23.29     4208.5      15.78
+        //
+        // Still 10-40x above FEA, which is the KNOWN LIMIT below, not this change: 1 turn x 16
+        // PARALLEL traces screen each other (inner traces shielded within a skin depth) and
+        // per-trace field superposition cannot see it. Screening follow-up: ABT #139.
         // MKF snapshot (July 2026, width-resolved gap-fringing kernel, C=8). Close-to-gap
         // winding: ~2.9x the Far variant at 100 kHz (26.4 kW vs 9.1 kW) — the model now
         // discriminates winding position, which the previous ~f^2 pinned values (up to
@@ -799,11 +819,11 @@ namespace TestWindingLossesPlanar {
         // isolated-trace One_Turn pins were unchanged by #182 (byte-identical).
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json", 100,
-            {{10000, 2683.8}, {20000, 6321.5}, {30000, 9391.5}, {40000, 11936},
-             {50000, 14107}, {60000, 16012}, {70000, 17722}, {80000, 19284},
-             {90000, 20731}, {100000, 22084}, {200000, 32772}, {300000, 40989},
-             {400000, 48006}, {500000, 54225}, {600000, 59839}, {700000, 64968},
-             {800000, 69700}, {900000, 74103}, {1000000, 78230}},
+            {{10000, 1796.9}, {20000, 4229.8}, {30000, 6284.5}, {40000, 7989.3},
+             {50000, 9444.9}, {60000, 10724}, {70000, 11874}, {80000, 12926},
+             {90000, 13901}, {100000, 14815}, {200000, 22103}, {300000, 27798},
+             {400000, 32714}, {500000, 37091}, {600000, 41046}, {700000, 44653},
+             {800000, 47969}, {900000, 51044}, {1000000, 53916}},
             maximumError, true);  // includeFringing = true
     }
 
@@ -815,11 +835,11 @@ namespace TestWindingLossesPlanar {
         // (3.6x at 100 kHz).
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json", 100,
-            {{10000, 1190.6}, {20000, 2248.3}, {30000, 3015.6}, {40000, 3633.0},
-             {50000, 4162.7}, {60000, 4635.2}, {70000, 5067.4}, {80000, 5469.8},
-             {90000, 5849.1}, {100000, 6210.0}, {200000, 9281.0}, {300000, 11901},
-             {400000, 14273}, {500000, 16432}, {600000, 18391}, {700000, 20166},
-             {800000, 21779}, {900000, 23255}, {1000000, 24614}},
+            {{10000, 799.01}, {20000, 1507.6}, {30000, 2023.3}, {40000, 2439.9},
+             {50000, 2799.0}, {60000, 3120.9}, {70000, 3417.0}, {80000, 3694.2},
+             {90000, 3956.9}, {100000, 4208.5}, {200000, 6412.1}, {300000, 8375.2},
+             {400000, 10197}, {500000, 11872}, {600000, 13393}, {700000, 14766},
+             {800000, 16006}, {900000, 17130}, {1000000, 18158}},
             maximumError, true);  // includeFringing = true
     }
 
