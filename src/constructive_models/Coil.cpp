@@ -1070,19 +1070,28 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     }
     auto layers = get_layers_description().value();
     auto wires = get_wires();
-    std::map<std::string, double> layerCenterHeight;
-    std::map<std::string, double> layerWireHeight;  // crossed layer's own wire height (turn pitch)
+    // ABT #427: blocking is modelled along each layer's TURN axis — the direction its turns stack, and
+    // so the one a crossing lead takes a slot out of. That is the axial y for an OVERLAPPING layer and
+    // the lateral x for a CONTIGUOUS one, which is one wire tall by construction with its turns running
+    // along its width (see wind_by_layers). The returned pair is {high side, low side} of that axis:
+    // top/bottom for overlapping, right/left for contiguous. The markers need no transposition here —
+    // get_connection_reserved_spaces builds them in a virtual frame whose turn axis is y and transposes
+    // the contiguous case back by SWAPPING THE COORDINATES, so a contiguous layer's markers already
+    // carry their turn-axis position in coordinates[0]. Indexing by axis rather than mirroring the loop
+    // keeps the two orientations from drifting apart.
+    std::map<std::string, size_t> layerTurnAxis;
+    std::map<std::string, double> layerCenterOnTurnAxis;
+    std::map<std::string, double> layerWirePitch;  // crossed layer's own wire, along its turn axis
     for (const auto& layer : layers) {
-        // Turn blocking is modelled along the axial (y) direction, i.e. for OVERLAPPING layers only;
-        // contiguous-layer leads are drawn but do not (yet) displace turns, so skip those layers here.
-        if (layer.get_orientation() != WindingOrientation::OVERLAPPING) {
-            continue;
-        }
-        layerCenterHeight[layer.get_name()] = layer.get_coordinates()[1];
+        size_t turnAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+        layerTurnAxis[layer.get_name()] = turnAxis;
+        layerCenterOnTurnAxis[layer.get_name()] = layer.get_coordinates()[turnAxis];
         // Insulation layers have no partial windings; only conduction layers have a wire/turn pitch.
         if (layer.get_type() == ElectricalType::CONDUCTION && !layer.get_partial_windings().empty()) {
             size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
-            layerWireHeight[layer.get_name()] = wires[windingIndex].get_maximum_outer_height();
+            layerWirePitch[layer.get_name()] = (turnAxis == 1)
+                ? wires[windingIndex].get_maximum_outer_height()
+                : wires[windingIndex].get_maximum_outer_width();
         }
     }
     // ABT #229: every edge-routed run (terminal lead or U interleaved continuation) now carries the
@@ -1104,14 +1113,14 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
         if (!space.isTerminal && get_winding_order(space.section) != WindingOrder::U) {
             continue;
         }
-        auto found = layerCenterHeight.find(space.layer);
-        if (found == layerCenterHeight.end()) {
+        auto found = layerCenterOnTurnAxis.find(space.layer);
+        if (found == layerCenterOnTurnAxis.end()) {
             continue;
         }
         // Defensive: a marker without an allocated depth still costs its own height (one row).
         double depth = std::max(space.edgeDepth, space.dimensions[1]);
         auto& edges = maxRunDepth[space.layer];
-        if (space.coordinates[1] >= found->second) {
+        if (space.coordinates[layerTurnAxis.at(space.layer)] >= found->second) {
             edges.first = std::max(edges.first, depth);
         }
         else {
@@ -1119,12 +1128,12 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
         }
     }
     for (const auto& [layerName, edges] : maxRunDepth) {
-        double crossedWireHeight = layerWireHeight.count(layerName) ? layerWireHeight.at(layerName) : 0.0;
-        if (crossedWireHeight <= 0) {
+        double crossedWirePitch = layerWirePitch.count(layerName) ? layerWirePitch.at(layerName) : 0.0;
+        if (crossedWirePitch <= 0) {
             continue;
         }
-        auto slots = [&](double connectionHeight) -> uint64_t {
-            return connectionHeight > 1e-12 ? uint64_t(std::ceil(connectionHeight / crossedWireHeight - 1e-9)) : 0u;
+        auto slots = [&](double connectionDepth) -> uint64_t {
+            return connectionDepth > 1e-12 ? uint64_t(std::ceil(connectionDepth / crossedWirePitch - 1e-9)) : 0u;
         };
         blockedSlotsPerLayer[layerName] = {slots(edges.first), slots(edges.second)};
     }
@@ -1148,10 +1157,6 @@ void Coil::redistribute_section_turns_for_blocking() {
     };
 
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-        double wireHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
-        if (wireHeight <= 0) {
-            continue;
-        }
         // Each parallel of a bifilar/N-filar group is wound side by side, so a layer holds an equal
         // number of turns of every parallel: its capacity in PER-PARALLEL turns ("rows") is the
         // physical capacity divided by the parallel count. We redistribute in per-parallel turns
@@ -1159,11 +1164,12 @@ void Coil::redistribute_section_turns_for_blocking() {
         // layers and the remainder is pushed to the outermost section. (K=1 keeps the previous result.)
         int64_t numberParallels = int64_t(get_number_parallels(windingIndex));
 
-        // This winding's conduction sections, in wound (radial) order.
+        // This winding's conduction sections, in wound (radial) order. ABT #427: both layer
+        // orientations block, so both redistribute; the per-layer capacity below reads the section
+        // extent and wire dimension along whichever axis that section's turns run.
         std::vector<size_t> windingSections;
         for (size_t s = 0; s < sections.size(); ++s) {
             if (sections[s].get_type() == ElectricalType::CONDUCTION
-                && sections[s].get_layers_orientation() == WindingOrientation::OVERLAPPING
                 && get_winding_index_by_name(sections[s].get_partial_windings()[0].get_winding()) == windingIndex) {
                 windingSections.push_back(s);
             }
@@ -1184,8 +1190,16 @@ void Coil::redistribute_section_turns_for_blocking() {
 
         for (size_t k = 0; k < windingSections.size(); ++k) {
             auto& section = sections[windingSections[k]];
-            // Physical turns per layer; at least one row of every parallel.
-            uint64_t maximumTurnsPerLayer = std::max<uint64_t>(numberParallels, uint64_t(std::floor(section.get_dimensions()[1] / wireHeight)));
+            // Physical turns per layer; at least one row of every parallel. The turns run along the
+            // section's HEIGHT when its layers overlap and along its WIDTH when they are contiguous, so
+            // both the section extent and the wire dimension are read on that same axis.
+            size_t turnAxis = (section.get_layers_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+            double wirePitch = (turnAxis == 1) ? wirePerWinding[windingIndex].get_maximum_outer_height()
+                                               : wirePerWinding[windingIndex].get_maximum_outer_width();
+            if (wirePitch <= 0) {
+                continue;
+            }
+            uint64_t maximumTurnsPerLayer = std::max<uint64_t>(numberParallels, uint64_t(std::floor(section.get_dimensions()[turnAxis] / wirePitch)));
             size_t sectionsRemaining = windingSections.size() - k;
 
             uint64_t sectionTurns;  // per parallel
@@ -1245,18 +1259,24 @@ void Coil::align_blocked_layer_turns() {
         return;
     }
     auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
-    double windowCenterY = windingWindow.get_coordinates().value()[1];
-    double windowHalfHeight = windingWindow.get_height().value() / 2;
-    double windowTopY = windowCenterY + windowHalfHeight;
-    double windowBottomY = windowCenterY - windowHalfHeight;
+    // ABT #427: the band the turns are spread along is the layer's TURN axis — the window's HEIGHT for
+    // an OVERLAPPING layer (turns stack axially) and its WIDTH for a CONTIGUOUS one (turns run
+    // laterally). Indexed by axis rather than mirrored, so the two orientations cannot drift apart.
+    std::array<double, 2> windowCenterPerAxis = {windingWindow.get_coordinates().value()[0],
+                                                 windingWindow.get_coordinates().value()[1]};
+    std::array<double, 2> windowHalfSizePerAxis = {windingWindow.get_width().value() / 2,
+                                                   windingWindow.get_height().value() / 2};
     auto wires = get_wires();
     auto layers = get_layers_description().value();
     auto turns = get_turns_description().value();
 
     for (auto& layer : layers) {
-        if (layer.get_type() != ElectricalType::CONDUCTION || layer.get_orientation() != WindingOrientation::OVERLAPPING) {
+        if (layer.get_type() != ElectricalType::CONDUCTION) {
             continue;
         }
+        size_t turnAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+        double windowHighSide = windowCenterPerAxis[turnAxis] + windowHalfSizePerAxis[turnAxis];
+        double windowLowSide = windowCenterPerAxis[turnAxis] - windowHalfSizePerAxis[turnAxis];
         // Reposition this layer's turns to leave exactly the blocked slots free at each edge: spread the
         // turns evenly across the UNBLOCKED band [windowBottom + blockedBottom slots, windowTop −
         // blockedTop slots]. Even spacing packs a full layer (step == wire height) and spreads a partial
@@ -1267,15 +1287,16 @@ void Coil::align_blocked_layer_turns() {
         if (found == _connectionBlockedSlotsPerLayer.end()) {
             continue;  // unblocked layer: leave delimit's centring (fills the full height)
         }
-        uint64_t blockedTop = found->second.first;
-        uint64_t blockedBottom = found->second.second;
-        if (blockedTop == 0 && blockedBottom == 0) {
+        uint64_t blockedHighSide = found->second.first;
+        uint64_t blockedLowSide = found->second.second;
+        if (blockedHighSide == 0 && blockedLowSide == 0) {
             continue;
         }
         size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
-        double wireHeight = wires[windingIndex].get_maximum_outer_height();
+        double wirePitch = (turnAxis == 1) ? wires[windingIndex].get_maximum_outer_height()
+                                           : wires[windingIndex].get_maximum_outer_width();
 
-        // This layer's turns, in current (wound) vertical order.
+        // This layer's turns, in current (wound) order along the turn axis.
         std::vector<size_t> layerTurns;
         for (size_t t = 0; t < turns.size(); ++t) {
             if (turns[t].get_layer() && turns[t].get_layer().value() == layer.get_name()) {
@@ -1286,26 +1307,28 @@ void Coil::align_blocked_layer_turns() {
             continue;
         }
         std::sort(layerTurns.begin(), layerTurns.end(), [&](size_t a, size_t b) {
-            return turns[a].get_coordinates()[1] < turns[b].get_coordinates()[1];
+            return turns[a].get_coordinates()[turnAxis] < turns[b].get_coordinates()[turnAxis];
         });
 
         // Centres of the first and last usable slots once the blocked slots are reserved at each edge.
-        double bandBottom = roundFloat(windowBottomY + double(blockedBottom) * wireHeight + wireHeight / 2, 9);
-        double bandTop = roundFloat(windowTopY - double(blockedTop) * wireHeight - wireHeight / 2, 9);
+        double bandLow = roundFloat(windowLowSide + double(blockedLowSide) * wirePitch + wirePitch / 2, 9);
+        double bandHigh = roundFloat(windowHighSide - double(blockedHighSide) * wirePitch - wirePitch / 2, 9);
         size_t numberTurnsInLayer = layerTurns.size();
-        double step = (numberTurnsInLayer > 1) ? (bandTop - bandBottom) / double(numberTurnsInLayer - 1) : 0.0;
-        if (numberTurnsInLayer > 1 && step < wireHeight) {
-            step = wireHeight;  // capacity should make this unreachable; never overlap turns
+        double step = (numberTurnsInLayer > 1) ? (bandHigh - bandLow) / double(numberTurnsInLayer - 1) : 0.0;
+        if (numberTurnsInLayer > 1 && step < wirePitch) {
+            step = wirePitch;  // capacity should make this unreachable; never overlap turns
         }
         for (size_t k = 0; k < numberTurnsInLayer; ++k) {
-            double newY = (numberTurnsInLayer == 1)
-                ? roundFloat((bandBottom + bandTop) / 2, 9)
-                : roundFloat(bandBottom + double(k) * step, 9);
+            double newPosition = (numberTurnsInLayer == 1)
+                ? roundFloat((bandLow + bandHigh) / 2, 9)
+                : roundFloat(bandLow + double(k) * step, 9);
             auto coords = turns[layerTurns[k]].get_coordinates();
-            coords[1] = newY;
+            coords[turnAxis] = newPosition;
             turns[layerTurns[k]].set_coordinates(coords);
         }
-        layer.set_coordinates(std::vector<double>{layer.get_coordinates()[0], roundFloat((bandBottom + bandTop) / 2, 9), 0});
+        auto layerCoordinates = layer.get_coordinates();
+        layerCoordinates[turnAxis] = roundFloat((bandLow + bandHigh) / 2, 9);
+        layer.set_coordinates(std::vector<double>{layerCoordinates[0], layerCoordinates[1], 0});
     }
     set_layers_description(layers);
     set_turns_description(turns);
@@ -6210,18 +6233,24 @@ bool Coil::wind_by_rectangular_layers() {
             // iterating layer by layer with the reduced capacity of each — so the turns are known to
             // fit before placement and the section simply grows by extra layers. Works for any
             // winding (single or interleaved); a lead blocks whatever layer it crosses regardless of
-            // section. Overlapping, unconstrained-layer-count only. Works for any parallel count: a
+            // section. Unconstrained-layer-count only. Works for any parallel count: a
             // bifilar/N-filar winding lays its parallels side by side, so each layer holds an equal
             // number of turns of every parallel (its physical capacity is rounded down to a multiple of
             // the parallel count) and the per-layer split is carried by CONSECUTIVE_PARALLELS below.
+            // ABT #427: both layer orientations block. The turn axis — the direction a lead takes a slot
+            // out of — is the layer's HEIGHT when layers overlap (turns stack axially) and its WIDTH
+            // when they are contiguous (the layer is one wire tall, turns run along it), so the slot
+            // pitch is the wire's outer height or outer width to match.
             int64_t numberParallels = int64_t(get_number_parallels(windingIndex));
+            bool layersStackAlongWidth = (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING);
             bool realWindingBlocking = settings.get_coil_use_real_winding_geometry()
                 && _applyConnectionBlocking
-                && sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING
                 && !sections[sectionIndex].get_number_layers()
                 && maximumNumberPhysicalTurnsPerLayer > 1
                 && maximumNumberPhysicalTurnsPerLayer >= uint64_t(numberParallels);
-            double wireAxialSize = wirePerWinding[windingIndex].get_maximum_outer_height();
+            double wireTurnAxisSize = layersStackAlongWidth
+                ? wirePerWinding[windingIndex].get_maximum_outer_height()
+                : wirePerWinding[windingIndex].get_maximum_outer_width();
             auto blockedSlotsForLayer = [&](size_t layerIndexInSection) -> std::pair<uint64_t, uint64_t> {
                 auto found = _connectionBlockedSlotsPerLayer.find(
                     sections[sectionIndex].get_name() + " layer " + std::to_string(layerIndexInSection));
@@ -6377,29 +6406,44 @@ bool Coil::wind_by_rectangular_layers() {
                 }
                 layer.set_turns_alignment(layerTurnsAlignment);
                 // In real winding geometry, each layer loses the turn slots blocked by connection
-                // leads crossing it: shrink the layer height by the blocked slots and shift it away
-                // from those slots (top slots push it down, bottom slots push it up) so the turns
-                // stop before the connection area, leaving room for the leads.
+                // leads crossing it: shrink the layer along its TURN axis by the blocked slots and
+                // shift it away from those slots (high-side slots push it toward the low side and
+                // vice versa) so the turns stop before the connection area, leaving room for the
+                // leads. ABT #427: that axis is the layer's HEIGHT when layers overlap and its WIDTH
+                // when they are contiguous, so this is one shrink driven by an axis flag rather than
+                // two mirrored branches that can drift apart. The layer PITCH is untouched either way
+                // — only the layer's own extent shrinks, so the stepping below is unaffected.
                 double thisLayerHeight = layerHeight;
+                double thisLayerWidth = layerWidth;
                 double thisLayerCenterHeight = currentLayerCenterHeight;
+                double thisLayerCenterWidth = currentLayerCenterWidth;
                 if (realWindingBlocking) {
                     auto blocked = blockedSlotsForLayer(layerIndex);
                     uint64_t blockedSlots = std::min<uint64_t>(blocked.first + blocked.second, maximumNumberPhysicalTurnsPerLayer - 1);
-                    thisLayerHeight = roundFloat(layerHeight - blockedSlots * wireAxialSize, 9);
-                    thisLayerCenterHeight = roundFloat(currentLayerCenterHeight
-                        + (double(blocked.second) - double(blocked.first)) * wireAxialSize / 2, 9);
+                    double surrenderedRoom = blockedSlots * wireTurnAxisSize;
+                    // blocked is {high side, low side} of the turn axis, so a high-side block moves the
+                    // layer toward the low side (negative) and vice versa.
+                    double shiftTowardLowSide = (double(blocked.second) - double(blocked.first)) * wireTurnAxisSize / 2;
+                    if (layersStackAlongWidth) {
+                        thisLayerHeight = roundFloat(layerHeight - surrenderedRoom, 9);
+                        thisLayerCenterHeight = roundFloat(currentLayerCenterHeight + shiftTowardLowSide, 9);
+                    }
+                    else {
+                        thisLayerWidth = roundFloat(layerWidth - surrenderedRoom, 9);
+                        thisLayerCenterWidth = roundFloat(currentLayerCenterWidth + shiftTowardLowSide, 9);
+                    }
                     // ABT #430: record the room actually surrendered here — AFTER the one-slot-minimum
                     // cap above, so it is what the layer really gave up and not what was asked of it.
                     // apply_connection_reserved_space subtracts this from the leads it charges, because
-                    // thisLayerHeight (and the filling factor computed from it just below) already
+                    // the shrunken extent (and the filling factor computed from it just below) already
                     // excludes it; charging the full lead extent again counted the same room twice.
-                    _connectionBlockedRoomPerLayer[layer.get_name()] = blockedSlots * wireAxialSize;
+                    _connectionBlockedRoomPerLayer[layer.get_name()] = surrenderedRoom;
                 }
-                layer.set_dimensions(std::vector<double>{layerWidth, thisLayerHeight});
-                layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, thisLayerCenterHeight, 0});
+                layer.set_dimensions(std::vector<double>{thisLayerWidth, thisLayerHeight});
+                layer.set_coordinates(std::vector<double>{thisLayerCenterWidth, thisLayerCenterHeight, 0});
                 layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
-                layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerWidth * thisLayerHeight));
+                layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (thisLayerWidth * thisLayerHeight));
                 layer.set_winding_style(windByConsecutiveTurns);
                 layers.push_back(layer);
 

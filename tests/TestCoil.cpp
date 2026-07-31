@@ -10851,8 +10851,14 @@ static int real_geometry_collisions(OpenMagnetics::Coil& coil) {
             }
             auto tc = turn.get_coordinates();
             auto td = turn.get_dimensions().value();
-            double overlapX = (td[0] + space.dimensions[0]) / 2 - std::abs(tc[0] - space.coordinates[0]);
-            double overlapY = (td[1] + space.dimensions[1]) / 2 - std::abs(tc[1] - space.coordinates[1]);
+            // ABT #427: a CONTIGUOUS coil's markers come back rotated 90 degrees — the connection model
+            // runs in a transposed frame and reflects the rotation on the way out — so their
+            // width/height lie along Y/X rather than X/Y. No-op for the axis-aligned overlapping case.
+            bool transposed = std::abs(std::fmod(std::abs(space.rotation), 180.0) - 90.0) < 1e-6;
+            double spaceWidth = transposed ? space.dimensions[1] : space.dimensions[0];
+            double spaceHeight = transposed ? space.dimensions[0] : space.dimensions[1];
+            double overlapX = (td[0] + spaceWidth) / 2 - std::abs(tc[0] - space.coordinates[0]);
+            double overlapY = (td[1] + spaceHeight) / 2 - std::abs(tc[1] - space.coordinates[1]);
             if (overlapX > 1e-6 && overlapY > 1e-6) {
                 collisions++;
                 std::cout << "[RGCOLL] turn " << turn.get_name() << " (w=" << turn.get_winding()
@@ -11389,14 +11395,15 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
     settings.reset();
 }
 
-// ABT #424: a connection lead is charged against the axis the crossed layer's turns actually run
-// along. For a CONTIGUOUS layer that is its WIDTH — its height is one wire by construction (see
-// wind_by_layers) — so a crossed layer's filling factor must be its uncrossed sibling's plus the share
-// of the width the leads take, reserved / width. Charging the HEIGHT instead (the mirrored,
-// OVERLAPPING rule) made the layer surrender its whole thickness for a single lead and the filling
-// factor came out ~100x too big (92.5 instead of 1.03 on this fixture), which also inflated the
-// section's. Checks the crossed layers against an uncrossed sibling of the same width, so it pins the
-// AXIS rather than a magic number.
+// ABT #424 + #427: a connection lead is charged against, and given room out of, the axis the crossed
+// layer's turns actually run along. For a CONTIGUOUS layer that is its WIDTH — its height is one wire
+// by construction (see wind_by_layers). This pins the AXIS geometrically rather than through the
+// filling factor, because once #427 gave contiguous layers turn blocking the crossed layer surrenders
+// the room and #430's subtraction cancels the charge, so a wrong axis no longer shows up in the fill
+// alone: a crossed layer must be NARROWER than an uncrossed sibling (it gave up width for the leads)
+// while being exactly as TALL (its height, the axis that must not be touched, is untouched), and must
+// hold correspondingly FEWER turns. Charging the height instead — the mirrored, OVERLAPPING rule —
+// made the layer surrender its whole thickness for a single lead and reported ~100x fills (92.5).
 static void check_contiguous_lead_reservation(OpenMagnetics::Coil& coil) {
     std::map<std::string, double> reservedPerLayer;
     for (const auto& space : coil.get_connection_reserved_spaces()) {
@@ -11405,37 +11412,31 @@ static void check_contiguous_lead_reservation(OpenMagnetics::Coil& coil) {
         }
     }
     auto layers = coil.get_layers_description().value();
-    std::map<double, double> uncrossedFillByWidth;
+    std::vector<MAS::Layer> crossed;
+    std::vector<MAS::Layer> uncrossed;
     for (const auto& layer : layers) {
         if (layer.get_type() != ElectricalType::CONDUCTION
-            || layer.get_orientation() != WindingOrientation::CONTIGUOUS
-            || reservedPerLayer.count(layer.get_name())) {
+            || layer.get_orientation() != WindingOrientation::CONTIGUOUS) {
             continue;
         }
-        uncrossedFillByWidth[roundFloat(layer.get_dimensions()[0], 9)] = layer.get_filling_factor().value();
+        (reservedPerLayer.count(layer.get_name()) ? crossed : uncrossed).push_back(layer);
     }
-    int checked = 0;
-    for (const auto& layer : layers) {
-        auto reserved = reservedPerLayer.find(layer.get_name());
-        if (layer.get_type() != ElectricalType::CONDUCTION
-            || layer.get_orientation() != WindingOrientation::CONTIGUOUS
-            || reserved == reservedPerLayer.end()) {
-            continue;
-        }
-        double layerWidth = layer.get_dimensions()[0];
-        auto uncrossed = uncrossedFillByWidth.find(roundFloat(layerWidth, 9));
-        if (uncrossed == uncrossedFillByWidth.end()) {
-            continue;  // no same-geometry sibling to compare against in this build
-        }
-        INFO("layer " << layer.get_name() << " width " << layerWidth << " reserved " << reserved->second);
-        // The expected value is the SAME double expression production evaluates, so this is a
-        // floating-point identity check and the tolerance is round-off, not a physical allowance.
-        constexpr double roundOff = 1e-12;
-        CHECK_THAT(layer.get_filling_factor().value(),
-                   Catch::Matchers::WithinRel(uncrossed->second + reserved->second / layerWidth, roundOff));
-        checked++;
+    REQUIRE(!crossed.empty());    // the fixture must exercise a crossed contiguous layer
+    REQUIRE(!uncrossed.empty());  // ... and keep an untouched one to compare it against
+    for (const auto& layer : crossed) {
+        INFO("crossed layer " << layer.get_name() << " " << layer.get_dimensions()[0] << "x"
+             << layer.get_dimensions()[1] << " leads " << reservedPerLayer.at(layer.get_name()));
+        // The leads' room came out of the WIDTH, so the layer is narrower and holds fewer turns...
+        CHECK(layer.get_dimensions()[0] < uncrossed[0].get_dimensions()[0]);
+        CHECK(coil.get_turns_by_layer(layer.get_name()).size()
+              < coil.get_turns_by_layer(uncrossed[0].get_name()).size());
+        // ... and NOT out of the height, which stays exactly one wire as it was built.
+        CHECK_THAT(layer.get_dimensions()[1],
+                   Catch::Matchers::WithinRel(uncrossed[0].get_dimensions()[1], 1e-12));
+        // Same invariant the overlapping path now satisfies: the layer made room for its leads, so it
+        // is not reported as over-full.
+        CHECK(layer.get_filling_factor().value() <= 1.0);
     }
-    CHECK(checked > 0);  // the fixture must actually exercise a crossed contiguous layer
 }
 
 TEST_CASE("Test_Real_Geometry_Rectangular_Contiguous", "[constructive-model][coil][real-geometry]") {
@@ -11457,6 +11458,9 @@ TEST_CASE("Test_Real_Geometry_Rectangular_Contiguous", "[constructive-model][coi
     CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
     paint_connection_demo(coil, "PQ 28/20", "Test_Real_Rect_Contiguous_Z.svg", true);
     check_contiguous_lead_reservation(coil);
+    // ABT #427: contiguous layers now shed turn slots for the leads crossing them, so no turn may be
+    // left sitting under one — the same guarantee the overlapping path has had since ABT #229.
+    CHECK(real_geometry_collisions(coil) == 0);
 
     auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
     auto processed = bobbin.get_processed_description().value();
@@ -11468,6 +11472,7 @@ TEST_CASE("Test_Real_Geometry_Rectangular_Contiguous", "[constructive-model][coi
     coil.wind();
     paint_connection_demo(coil, "PQ 28/20", "Test_Real_Rect_Contiguous_U.svg", true);
     check_contiguous_lead_reservation(coil);
+    CHECK(real_geometry_collisions(coil) == 0);
 
     settings.reset();
 }
