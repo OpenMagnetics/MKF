@@ -1001,3 +1001,72 @@ TEST_CASE("Benchmark coupling coefficient calculation", "[physical-model][induct
 }
 
 } // anonymous namespace
+
+// ABT #396: calculate_mutual_inductance returned sqrt(Lm_source * Lm_dest) unconditionally — ideal
+// coupling by construction, k = 1 — and never consulted the reluctance network that
+// calculate_inductance_matrix has used for leg-separated windings since the multi-column work. So
+// the same magnetic reported two different couplings depending on which entry point you asked:
+// 0.999 from calculate_coupling_coefficient against 0.624 from the matrix, on a 3-column E 42 with
+// the primary on the centre leg and the secondary on an outer leg. The matrix was right — the
+// secondary only links the share of primary flux that returns through ITS leg — so the two paths
+// now share one source of truth. This pins that they agree.
+TEST_CASE("Test_Coupling_Coefficient_Agrees_With_Inductance_Matrix", "[physical-model][inductance][multi-column]") {
+    settings.reset();
+    auto path = std::filesystem::path{std::source_location::current().file_name()}
+                    .parent_path().append("testData").append("multicolumn_e42_transformer.json");
+    std::ifstream masFile(path);
+    REQUIRE(masFile.good());
+    json masJson = json::parse(masFile);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    double frequency = 100000;
+
+    Inductance inductance;
+    auto matrix = inductance.calculate_inductance_matrix(magnetic, frequency).get_magnitude();
+    double selfPrimary = matrix["Primary"]["Primary"].get_nominal().value();
+    double selfSecondary = matrix["Secondary"]["Secondary"].get_nominal().value();
+    double mutualFromMatrix = matrix["Primary"]["Secondary"].get_nominal().value();
+    double couplingFromMatrix = std::abs(mutualFromMatrix) / std::sqrt(selfPrimary * selfSecondary);
+
+    double couplingFromCoefficient = inductance.calculate_coupling_coefficient(magnetic, 0, 1, frequency);
+    UNSCOPED_INFO("matrix says " << couplingFromMatrix << ", calculate_coupling_coefficient says "
+                  << couplingFromCoefficient);
+    // Same physical quantity, so the same number — this is what used to differ (0.624 vs 0.999).
+    CHECK_THAT(std::abs(couplingFromCoefficient), WithinRel(couplingFromMatrix, 1e-9));
+    // ...and it must be the real flux divider, not ideal coupling.
+    CHECK(std::abs(couplingFromCoefficient) < 0.9);
+    CHECK(std::abs(couplingFromCoefficient) > 0.1);
+
+    // The sign the network reports is meaningful and must survive: the old clamp to [0, 1] turned a
+    // legitimately negative coupling into a flat zero, i.e. "these windings do not couple".
+    double mutualFromPair = inductance.calculate_mutual_inductance(magnetic, 0, 1);
+    UNSCOPED_INFO("mutual inductance " << mutualFromPair);
+    CHECK(std::isfinite(mutualFromPair));
+    CHECK(std::abs(mutualFromPair) > 0);
+
+    settings.reset();
+}
+
+// The same coupling on a single-window magnetic, where every winding shares the main column: there
+// the network reproduces the rank-1 closed form exactly, so routing through it must not move the
+// answer, and a well-coupled transformer must still report a coupling near 1.
+TEST_CASE("Test_Coupling_Coefficient_Unchanged_For_Main_Column_Windings", "[physical-model][inductance][smoke-test]") {
+    settings.reset();
+    clear_databases();
+    std::vector<int64_t> numberTurns({40, 20});
+    std::vector<int64_t> numberParallels({1, 1});
+    auto magnetic = create_two_winding_magnetic("ETD 39", "3C97", numberTurns, numberParallels);
+
+    Inductance inductance;
+    double mutualInductance = inductance.calculate_mutual_inductance(magnetic, 0, 1);
+    MagnetizingInductance magnetizingModel("ZHANG");
+    double magnetizingPrimary = magnetizingModel.calculate_inductance_from_number_turns_and_gapping(magnetic)
+                                    .get_magnetizing_inductance().get_nominal().value();
+    double turnsRatio = double(numberTurns[1]) / double(numberTurns[0]);
+    CHECK_THAT(mutualInductance, WithinRel(magnetizingPrimary * turnsRatio, maximumError));
+
+    double coupling = inductance.calculate_coupling_coefficient(magnetic, 0, 1, 100000);
+    UNSCOPED_INFO("single-window coupling " << coupling);
+    CHECK(coupling > 0.9);
+    CHECK(coupling <= 1.0);
+    settings.reset();
+}
