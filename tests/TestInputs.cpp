@@ -1839,3 +1839,51 @@ TEST_CASE("Test_Standardize_Signal_Descriptor_Non_Multiple_Harmonics", "[process
     REQUIRE(processed.get_rms().value() > 0);
 }
 }  // namespace
+
+// ABT #375/#190: check_integrity resolved designRequirements.magnetizingInductance eagerly, at the
+// top of the function, although exactly one branch needs it — deriving a magnetizing current for an
+// excitation that carries a voltage but no current. Inputs that never reach that branch were
+// rejected for a requirement nothing had asked for, with a message naming neither the field nor the
+// caller: "resolve_dimensional_values: DimensionWithTolerance has neither nominal, minimum nor
+// maximum set". The visible casualties were a MAS file carrying only a magnetic — from_file
+// explicitly supports that, computing the inductance from the geometry and handing it to this
+// constructor, but the eager resolve rejected the file before that value was ever applied — and
+// Test_Flyback_Simulation.
+//
+// The distinction being pinned: an inputs object with NO operating points needs no inductance,
+// because there is no waveform to derive anything for. One WITH an operating point does need it
+// (the induced voltage of a current-driven excitation, and the magnetizing current of a
+// voltage-driven one, are both proportional to L), and a missing value must still be refused there
+// rather than defaulted. So this is not a relaxation — it moves the requirement to where it is real.
+TEST_CASE("Test_Inputs_Magnetizing_Inductance_Resolved_Only_Where_Needed", "[processor][inputs][smoke-test]") {
+    json inputsJson;
+    inputsJson["operatingPoints"] = json::array();
+    inputsJson["designRequirements"] = json();
+    inputsJson["designRequirements"]["magnetizingInductance"] = json::object();
+    inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+    // Nothing to process, so the absent inductance is nobody's problem.
+    REQUIRE_NOTHROW(OpenMagnetics::Inputs(inputsJson));
+
+    // Add an operating point and the inductance becomes genuinely required: it sets the induced
+    // voltage across the magnetizing branch. Still absent, so this must be refused, loudly.
+    json inputsWithOperatingPointJson = inputsJson;
+    json operatingPoint = json();
+    operatingPoint["name"] = "Nominal";
+    operatingPoint["conditions"]["ambientTemperature"] = 42;
+    json excitation = json();
+    excitation["frequency"] = 100000;
+    excitation["current"]["waveform"]["data"] = {-5, 5, -5};
+    excitation["current"]["waveform"]["time"] = {0, 0.0000025, 0.00001};
+    operatingPoint["excitationsPerWinding"] = json::array({excitation});
+    inputsWithOperatingPointJson["operatingPoints"].push_back(operatingPoint);
+    REQUIRE_THROWS(OpenMagnetics::Inputs(inputsWithOperatingPointJson));
+
+    // Supply it and the same input processes.
+    json satisfiedInputsJson = inputsWithOperatingPointJson;
+    satisfiedInputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+    OpenMagnetics::Inputs satisfiedInputs(satisfiedInputsJson);
+    REQUIRE(satisfiedInputs.get_operating_points().size() == 1);
+    auto processedExcitation = satisfiedInputs.get_operating_points()[0].get_excitations_per_winding()[0];
+    CHECK(processedExcitation.get_voltage());  // derived from the current and the inductance
+}

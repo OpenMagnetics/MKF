@@ -1307,7 +1307,24 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
 std::pair<bool, std::string> Inputs::check_integrity() {
     auto operatingPoints = get_mutable_operating_points();
     auto turnsRatios = get_design_requirements().get_turns_ratios();
-    auto magnetizingInductance = resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance());
+    // The required magnetizing inductance is needed by ONE branch below: deriving a
+    // magnetizing current for an excitation that carries a voltage but no current.
+    // Resolving it eagerly here threw for every input that never reaches that branch --
+    // in particular a MAS file carrying only a magnetic, whose operatingPoints array is
+    // empty, so the loop body never runs. from_file computes the inductance from the
+    // geometry and hands it to this constructor precisely so such a file loads, but that
+    // value is only applied later in process(), leaving this line to reject the file
+    // first with "DimensionWithTolerance has neither nominal, minimum nor maximum set" --
+    // a complaint about a requirement nothing had asked for. Resolve where it is used, so
+    // a genuinely missing inductance still throws, but only when it is genuinely needed.
+    std::optional<double> resolvedMagnetizingInductance;
+    auto magnetizing_inductance = [&]() {
+        if (!resolvedMagnetizingInductance) {
+            resolvedMagnetizingInductance =
+                resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance());
+        }
+        return resolvedMagnetizingInductance.value();
+    };
     std::pair<bool, std::string> result;
     result.first = true;
     result.second = "";
@@ -1348,7 +1365,7 @@ std::pair<bool, std::string> Inputs::check_integrity() {
                 bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoints[i], turnsRatiosValues);
                 // bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current_rosano(sampledWaveform);
                 excitation.set_current(
-                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance, true, includeDcOffsetIntoMagnetizingCurrent));
+                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizing_inductance(), true, includeDcOffsetIntoMagnetizingCurrent));
             }
             processedExcitationsPerWinding.push_back(excitation);
         }
