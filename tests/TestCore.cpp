@@ -2612,3 +2612,81 @@ namespace TestMulticolumnWindows {
         settings.reset();
     }
 }
+
+// A core whose gapping cannot fit its columns must be refused at construction, naming itself.
+// process_gap() reports that by returning false — which the CoreAdviser legitimately uses to
+// try the next candidate gap — but the Core(json) constructor used to DROP that answer, so an
+// impossible core was built anyway with its gaps left without an area and entered the catalogue
+// looking usable. The failure then surfaced far away as a bare "[GAP_INVALID_DIMENSIONS] Gap Area
+// is not set" naming neither the core nor the reason, and it took a full-catalogue scan to find
+// the culprits: seven Magnetics parts whose gap lengths were exact mil values stored 1000x too
+// large, e.g. a 127 mm gap on a 19.3 mm core (5 mil, i.e. 0.127 mm). Data fixed in MAS; this
+// keeps the next such record from getting in quietly.
+TEST_CASE("Test_Core_Impossible_Gapping_Is_Refused_By_Name", "[core][gapping]") {
+    settings.reset();
+    json coreJson;
+    coreJson["name"] = "Impossible gap on E 19.3/4.8";
+    coreJson["functionalDescription"] = json();
+    coreJson["functionalDescription"]["type"] = "twoPieceSet";
+    coreJson["functionalDescription"]["material"] = "3C97";
+    coreJson["functionalDescription"]["shape"] = "E 19.3/4.8";
+    coreJson["functionalDescription"]["numberStacks"] = 1;
+    // 127 mm of gap in a core 19.3 mm across: the exact shape of the catalogue bug.
+    coreJson["functionalDescription"]["gapping"] = json::array({
+        {{"type", "subtractive"}, {"length", 0.127}},
+        {{"type", "residual"}, {"length", 0.000005}},
+        {{"type", "residual"}, {"length", 0.000005}},
+    });
+
+    std::string message;
+    try {
+        OpenMagnetics::Core impossibleCore(coreJson);
+        message = "no exception";
+    }
+    catch (const std::exception& exception) {
+        message = exception.what();
+    }
+    UNSCOPED_INFO(message);
+    CHECK(message.find("Impossible gap on E 19.3/4.8") != std::string::npos);  // names itself
+    CHECK(message.find("does not fit its columns") != std::string::npos);
+
+    // The same shape with a sane gap builds, and every gap carries an area.
+    coreJson["name"] = "Sane gap on E 19.3/4.8";
+    coreJson["functionalDescription"]["gapping"][0]["length"] = 0.000127;
+    OpenMagnetics::Core saneCore(coreJson);
+    REQUIRE(saneCore.get_processed_description());
+    for (auto& gap : saneCore.get_functional_description().get_gapping()) {
+        CHECK(gap.get_area().has_value());
+    }
+    settings.reset();
+}
+
+// Every core in the shipped catalogue must be constructible. This is what would have caught the
+// seven bad records at the source instead of leaving them to break whichever consumer swept the
+// full catalogue first (the core cross-referencer, which sets use_only_cores_in_stock(false)).
+TEST_CASE("Test_All_Catalogue_Cores_Have_Feasible_Gapping", "[core][gapping][catalog]") {
+    settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+    clear_databases();
+    load_cores();
+    auto& cores = OpenMagnetics::coreDatabase;
+    REQUIRE(cores.size() > 1000);
+    std::vector<std::string> coresWithoutGapArea;
+    for (auto& core : cores) {
+        for (auto& gap : core.get_functional_description().get_gapping()) {
+            if (!gap.get_area()) {
+                coresWithoutGapArea.push_back(core.get_name().value_or("<unnamed>"));
+                break;
+            }
+        }
+    }
+    if (!coresWithoutGapArea.empty()) {
+        std::string joined;
+        for (size_t i = 0; i < coresWithoutGapArea.size() && i < 10; ++i) {
+            joined += "\n    " + coresWithoutGapArea[i];
+        }
+        UNSCOPED_INFO(coresWithoutGapArea.size() << " catalogue cores have a gap with no area:" << joined);
+    }
+    CHECK(coresWithoutGapArea.empty());
+    settings.reset();
+}

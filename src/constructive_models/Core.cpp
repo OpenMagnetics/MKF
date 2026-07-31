@@ -32,7 +32,33 @@ Core::Core(json j, bool includeMaterialData, bool includeProcessedDescription, b
     
     if (includeProcessedDescription) {
         process_data();
-        process_gap();
+        // process_gap() reports "this gapping does not fit its columns" by returning false.
+        // That is a legitimate answer for the CoreAdviser, which tries candidate gap lengths
+        // and moves on (CoreAdviserDataset checks the bool), but here it was DROPPED — so a
+        // core whose gap is geometrically impossible was constructed anyway, with gaps left
+        // without an area, and landed in the catalogue looking usable. The failure then
+        // surfaced far away, at reluctance time, as a bare "Gap Area is not set" naming
+        // neither the core nor the reason; it took a full-catalogue scan to find out which
+        // records were responsible (seven Magnetics parts whose gap lengths were exact mil
+        // values stored 1000x too large -- a 127 mm gap on a 19.3 mm core). Refuse the core
+        // here instead, and say which one and by how much.
+        if (!process_gap()) {
+            std::string description = get_name().value_or("<unnamed>");
+            double longestGap = 0;
+            for (const auto& gap : get_functional_description().get_gapping()) {
+                longestGap = std::max(longestGap, gap.get_length());
+            }
+            double shortestColumn = std::numeric_limits<double>::max();
+            if (get_processed_description()) {
+                for (const auto& column : get_processed_description()->get_columns()) {
+                    shortestColumn = std::min(shortestColumn, column.get_height());
+                }
+            }
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Core '" + description + "' has a gapping that does not fit its columns: the "
+                "longest gap is " + std::to_string(longestGap * 1000) + " mm against a shortest "
+                "column height of " + std::to_string(shortestColumn * 1000) + " mm");
+        }
     }
 
     if (!get_geometrical_description() && includeGeometricalDescription) {
