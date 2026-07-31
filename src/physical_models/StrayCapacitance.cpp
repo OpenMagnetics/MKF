@@ -1274,6 +1274,47 @@ double StrayCapacitanceParallelPlateModel::calculate_static_capacitance_between_
     return vacuumPermittivity * relativePermittivityInsulationLayers * overlappingDimension * averageTurnLength / distanceThroughLayers;
 }
 
+// ABT #395: a non-finite turn-to-turn capacitance used to escape this function silently and only
+// surface much later as "Energy cannot be nan", naming neither the turns nor the cause. The
+// arithmetic that converted it: the energy of a pair is 0.5*C*dV^2, and dV is EXACTLY zero between
+// corresponding turns of two parallels (they are the same electrical node, so the per-turn voltage
+// divider gives them identical potentials) -- so an infinite C became 0.5*inf*0 = NaN. That is why
+// the failure separated perfectly on numberParallels: with a single parallel no turn pair is ever
+// at identical potential, so the infinity stayed an infinity and never turned into a NaN.
+//
+// The infinity itself is real, not a rounding artefact: two BARE conductors whose surfaces are in
+// contact have no dielectric and no separation between them, and every model here diverges. That
+// is inconsistent input rather than something to approximate around, so report it where the
+// geometry is still in hand instead of fabricating a minimum gap.
+static void throw_if_capacitance_is_not_finite(double capacitance, Turn firstTurn, Wire firstWire,
+                                               Turn secondTurn, Wire secondWire) {
+    if (std::isfinite(capacitance)) {
+        return;
+    }
+    auto describeTurn = [](Turn turn) {
+        std::string description = turn.get_name();
+        auto coordinates = turn.get_coordinates();
+        return description + " at (" + std::to_string(coordinates[0]) + ", " + std::to_string(coordinates[1]) + ")";
+    };
+    double firstCoatingThickness = firstWire.get_coating_thickness();
+    double secondCoatingThickness = secondWire.get_coating_thickness();
+    double centerToCenterDistance = hypot(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0],
+                                          firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1]);
+    double surfaceSeparation = centerToCenterDistance - firstWire.get_maximum_outer_width() / 2 -
+                               secondWire.get_maximum_outer_width() / 2;
+    std::string reason;
+    if (firstCoatingThickness <= 0 || secondCoatingThickness <= 0) {
+        reason = " The wires report zero coating thickness (" + std::to_string(firstCoatingThickness) + " m and " +
+                 std::to_string(secondCoatingThickness) +
+                 " m), so there is no dielectric between the conductors; give the wire its insulation"
+                 " (a coating thickness, or an outer diameter larger than the conducting diameter).";
+    }
+    throw NaNResultException("Turn-to-turn capacitance is " + std::to_string(capacitance) + " between " +
+                             describeTurn(firstTurn) + " and " + describeTurn(secondTurn) +
+                             ", whose conducting surfaces are " + std::to_string(surfaceSeparation) +
+                             " m apart." + reason);
+}
+
 double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
     auto isFlatWire = [](WireType type) {
         return type == WireType::PLANAR || type == WireType::FOIL || type == WireType::RECTANGULAR;
@@ -1291,6 +1332,7 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
         double distanceThroughLayers = aux[2];
         double relativePermittivityInsulationLayers = aux[3];
         double capacitance = model.calculate_static_capacitance_between_two_turns(overlappingDimension, averageTurnLength, distanceThroughLayers, relativePermittivityInsulationLayers);
+        throw_if_capacitance_is_not_finite(capacitance, firstTurn, firstWire, secondTurn, secondWire);
         return capacitance;
     }
     else if (isRoundLike(firstWire.get_type()) && isRoundLike(secondWire.get_type())) {
@@ -1304,6 +1346,7 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
         double relativePermittivityWireCoating = aux[5];
         double relativePermittivityInsulationLayers = aux[6];
         double capacitance = _model->calculate_static_capacitance_between_two_turns(wireCoatingThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, relativePermittivityWireCoating, relativePermittivityInsulationLayers);
+        throw_if_capacitance_is_not_finite(capacitance, firstTurn, firstWire, secondTurn, secondWire);
         return capacitance;
     }
     else {
@@ -1316,6 +1359,7 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
         double distanceThroughLayers = aux[2];
         double relativePermittivityInsulationLayers = aux[3];
         double capacitance = model.calculate_static_capacitance_between_two_turns(overlappingDimension, averageTurnLength, distanceThroughLayers, relativePermittivityInsulationLayers);
+        throw_if_capacitance_is_not_finite(capacitance, firstTurn, firstWire, secondTurn, secondWire);
         return capacitance;
     }
 }
@@ -1778,7 +1822,16 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
                             voltageDropBetweenTurnsMap[turnsKey] = voltageDropAmongTurns;
 
                             if (std::isnan(energyInBetweenTheseWindings)) {
-                                throw NaNResultException("Energy cannot be nan");
+                                // ABT #395: say WHICH pair and WHICH factor, so a NaN arriving by a
+                                // route the capacitance guard does not cover is still localisable
+                                // instead of being an anonymous failure of the whole export.
+                                throw NaNResultException(
+                                    "Energy cannot be nan: turns " + std::to_string(turnInFirstWinding) + " (" +
+                                    firstWindingName + ", " + std::to_string(firstTurnVoltage) + " V) and " +
+                                    std::to_string(turnInSecondWinding) + " (" + secondWindingName + ", " +
+                                    std::to_string(secondTurnVoltage) + " V) have capacitance " +
+                                    std::to_string(capacitanceAmongTurns[turnsKey]) + " F across a voltage drop of " +
+                                    std::to_string(voltageDropAmongTurns) + " V");
                             }
                         }
                     }

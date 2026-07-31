@@ -6,6 +6,7 @@
 #include "support/Settings.h"
 #include "support/Painter.h"
 #include "processors/Sweeper.h"
+#include "processors/CircuitSimulatorInterface.h"
 #include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
@@ -1872,4 +1873,108 @@ TEST_CASE("Test_Stray_Capacitance_New_Core_Families",
         CHECK(selfCapacitance < 1e-10);
     }
     settings.reset();
+}
+
+// ABT #395: stray capacitance went NaN for ANY winding with numberParallels > 1, which threw out
+// of export_magnetic_as_subcircuit and blocked the SPICE path for every parallel-wound part (119 of
+// 504 magnetics in the reporter's corpus; the whole LHMI family). The reported symptom was a
+// perfect separation on numberParallels with turn count irrelevant, and this pins the mechanism
+// behind that separation.
+//
+// The energy of a turn pair is 0.5*C*dV^2. dV is EXACTLY zero between corresponding turns of two
+// parallels, because the per-turn voltage divider indexes within each parallel and therefore hands
+// them identical potentials -- they are the same electrical node. So an infinite C, which a single
+// parallel would merely propagate as an infinity, became 0.5*inf*0 = NaN as soon as a second
+// parallel existed. Hence parallels, not turns, was the discriminator.
+TEST_CASE("Corresponding turns of different parallels sit at identical potential", "[physical-model][stray-capacitance][parallels]") {
+    settings.reset();
+    auto coreJsonStr = R"({"name": "abt395", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
+
+    std::map<int64_t, size_t> pairsAtIdenticalPotentialPerParallels;
+    for (int64_t numberParallels : {1, 2, 4}) {
+        auto coilJsonStr = std::string(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 4, "numberParallels": )")
+            + std::to_string(numberParallels) + R"(, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })";
+        auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+        auto voltagesPerTurn = StrayCapacitance::calculate_voltages_per_turn(coil, {{"Primary", 100.0}})
+                                   .get_voltage_per_turn().value();
+        REQUIRE(voltagesPerTurn.size() == static_cast<size_t>(4 * numberParallels));
+        size_t pairsAtIdenticalPotential = 0;
+        for (size_t firstTurn = 0; firstTurn < voltagesPerTurn.size(); ++firstTurn) {
+            for (size_t secondTurn = firstTurn + 1; secondTurn < voltagesPerTurn.size(); ++secondTurn) {
+                if (voltagesPerTurn[firstTurn] == voltagesPerTurn[secondTurn]) {
+                    pairsAtIdenticalPotential++;
+                }
+            }
+        }
+        pairsAtIdenticalPotentialPerParallels[numberParallels] = pairsAtIdenticalPotential;
+    }
+    UNSCOPED_INFO("pairs at identical potential: 1 parallel -> " << pairsAtIdenticalPotentialPerParallels[1]
+                  << ", 2 -> " << pairsAtIdenticalPotentialPerParallels[2]
+                  << ", 4 -> " << pairsAtIdenticalPotentialPerParallels[4]);
+    // A single parallel never puts two turns at the same potential, which is exactly why the bug
+    // could not reach it. Each extra parallel replicates the whole divider.
+    CHECK(pairsAtIdenticalPotentialPerParallels[1] == 0);
+    CHECK(pairsAtIdenticalPotentialPerParallels[2] == 4);
+    CHECK(pairsAtIdenticalPotentialPerParallels[4] == 24);
+}
+
+// The other half: an infinite turn-to-turn capacitance must be reported where the geometry is still
+// known, naming the turns and the missing insulation, instead of escaping to become an anonymous
+// "Energy cannot be nan" for the whole magnetic. Bare wire (outer diameter == conducting diameter,
+// so zero coating) wound tight puts two conductors in surface contact: no dielectric, no gap, and
+// every model in the file diverges. That is inconsistent input, not something to approximate.
+TEST_CASE("Touching bare conductors report the missing insulation, not a NaN energy", "[physical-model][stray-capacitance][parallels]") {
+    settings.reset();
+    auto coreJsonStr = R"({"name": "abt395", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
+    std::string bareWireJsonStr = R"({"type": "round", "material": "copper", "conductingDiameter": {"nominal": 0.001}, "outerDiameter": {"nominal": 0.001}, "numberConductors": 1})";
+
+    for (int64_t numberParallels : {1, 2}) {
+        auto coilJsonStr = std::string(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 4, "numberParallels": )")
+            + std::to_string(numberParallels) + R"(, "isolationSide": "primary", "wire": )" + bareWireJsonStr + R"( } ] })";
+        auto magnetic = prepare_magnetic_from_json(coreJsonStr, coilJsonStr);
+        OpenMagnetics::CircuitSimulatorExporter exporter(CircuitSimulatorExporterModels::NGSPICE);
+        std::string message;
+        try {
+            exporter.export_magnetic_as_subcircuit(magnetic, 100000, 25);
+            message = "no exception";
+        }
+        catch (const std::exception& exception) {
+            message = exception.what();
+        }
+        UNSCOPED_INFO("parallels " << numberParallels << ": " << message);
+        // Both parallel counts must report the same root cause. Note that 1 parallel used to
+        // "succeed" here: the infinity was carried into the exported netlist rather than raising
+        // anything, so this also pins that a non-finite capacitance can no longer ship silently.
+        CHECK(message.find("Turn-to-turn capacitance") != std::string::npos);
+        CHECK(message.find("zero coating thickness") != std::string::npos);
+    }
+}
+
+// Insulated wire is the normal case and must keep working with parallels: same core, same turns,
+// only numberParallels varying, all exporting a finite self-capacitance.
+TEST_CASE("Calculate capacitance of a winding with 4 turns and several parallels", "[physical-model][stray-capacitance][parallels]") {
+    settings.reset();
+    auto coreJsonStr = R"({"name": "abt395", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
+
+    for (int64_t numberParallels : {1, 2, 4}) {
+        auto coilJsonStr = std::string(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 4, "numberParallels": )")
+            + std::to_string(numberParallels) + R"(, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })";
+        auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+        auto maxwellCapacitanceMatrix = StrayCapacitance().calculate_capacitance(coil).get_maxwell_capacitance_matrix().value();
+        REQUIRE(maxwellCapacitanceMatrix[0].get_magnitude().size() == 1);
+        for (auto [firstWindingName, capacitancesToOtherWindings] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+            for (auto [secondWindingName, capacitanceWithTolerance] : capacitancesToOtherWindings) {
+                auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+                UNSCOPED_INFO(numberParallels << " parallels: " << firstWindingName << "/" << secondWindingName
+                              << " capacitance " << capacitance);
+                CHECK(std::isfinite(capacitance));
+            }
+        }
+
+        auto magnetic = prepare_magnetic_from_json(coreJsonStr, coilJsonStr);
+        OpenMagnetics::CircuitSimulatorExporter exporter(CircuitSimulatorExporterModels::NGSPICE);
+        std::string subcircuit;
+        REQUIRE_NOTHROW(subcircuit = exporter.export_magnetic_as_subcircuit(magnetic, 100000, 25));
+        CHECK(subcircuit.size() > 0);
+    }
 }
