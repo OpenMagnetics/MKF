@@ -12088,3 +12088,53 @@ TEST_CASE("Test_Molded_Cavity_Turn_Placement", "[constructive-model][coil][molde
     }
     settings.reset();
 }
+
+// ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
+// toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
+// at the inner surface, and it is not what MKF winds: the toroidal winder fills concentric rings
+// inward, so a winding "1.59x over" on one ring is comfortable on three. This pins what MKF
+// actually produces for the densest of those fixtures, so the distinction stays visible: every
+// ring must be non-overlapping AND leave azimuthal slack for a lead to pass.
+TEST_CASE("Test_Toroidal_Dense_Winding_Fills_Concentric_Rings_With_Slack", "[coil][toroidal]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    // T 40/24/16, 60 turns of 2 mm wire: 124 mm of wire against a 75.4 mm bore circumference.
+    auto coil = OpenMagneticsTesting::get_quick_coil({60}, {1}, "T 40/24/16", 1,
+                                                     MAS::WindingOrientation::OVERLAPPING,
+                                                     MAS::WindingOrientation::OVERLAPPING,
+                                                     MAS::CoilAlignment::CENTERED,
+                                                     MAS::CoilAlignment::CENTERED,
+                                                     {OpenMagnetics::find_wire_by_name("Round 2.00 - Grade 1")});
+    REQUIRE(coil.get_turns_description());
+    auto turns = coil.get_turns_description().value();
+    double wireOuterDiameter = OpenMagnetics::find_wire_by_name("Round 2.00 - Grade 1").get_maximum_outer_width();
+
+    std::map<int, std::vector<std::vector<double>>> turnsPerRing;
+    for (auto turn : turns) {
+        auto coordinates = turn.get_coordinates();
+        turnsPerRing[static_cast<int>(std::round(hypot(coordinates[0], coordinates[1]) * 1e4))].push_back(coordinates);
+    }
+    UNSCOPED_INFO(turns.size() << " crossings spread over " << turnsPerRing.size() << " rings");
+    CHECK(turnsPerRing.size() > 1);  // a single ring is exactly the geometry that cannot fit
+
+    for (auto& [ringKey, ringTurns] : turnsPerRing) {
+        double ringRadius = ringKey / 1e4;
+        double closestApproach = std::numeric_limits<double>::max();
+        for (size_t i = 0; i < ringTurns.size(); ++i) {
+            for (size_t j = i + 1; j < ringTurns.size(); ++j) {
+                closestApproach = std::min(closestApproach,
+                    hypot(ringTurns[i][0] - ringTurns[j][0], ringTurns[i][1] - ringTurns[j][1]));
+            }
+        }
+        double ringCircumference = 2 * std::numbers::pi * ringRadius;
+        double occupied = ringTurns.size() * wireOuterDiameter;
+        UNSCOPED_INFO("ring r=" << ringRadius * 1000 << " mm holds " << ringTurns.size() << " turns, "
+                      << occupied * 1000 << " of " << ringCircumference * 1000 << " mm, closest approach "
+                      << closestApproach * 1000 << " mm vs OD " << wireOuterDiameter * 1000 << " mm");
+        // No turn may sit closer to its neighbour than one wire diameter...
+        CHECK(closestApproach >= wireOuterDiameter - 1e-9);
+        // ...and no ring may be packed solid, or a lead would have no azimuth to pass through.
+        CHECK(occupied < ringCircumference);
+    }
+    settings.reset();
+}
