@@ -1517,12 +1517,14 @@ void Core::process_data() {
     // that window: U serpentine vs Z dragback), not geometry. The switch below rebuilds the
     // windows from the core piece and would silently drop it (ABT #352) — capture per window
     // index and re-apply after regeneration.
+    size_t incomingNumberWindingWindows = 0;
     std::vector<std::optional<WindingOrder>> incomingWindingOrders;
     auto incomingProcessedDescription = get_processed_description();
     if (incomingProcessedDescription) {
         auto incomingWindingWindows = incomingProcessedDescription->get_winding_windows();
         for (const auto& windingWindow : incomingWindingWindows) {
             incomingWindingOrders.push_back(windingWindow.get_winding_order());
+            incomingNumberWindingWindows++;
         }
     }
 
@@ -1635,6 +1637,32 @@ void Core::process_data() {
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown type of core, available options are {TOROIDAL, TWO_PIECE_SET}");
     }
     {
+        // ABT #379: a caller that DECLARED a multicolumn core (several winding windows, one per
+        // column) must not have that silently reduced to the single window this switch rebuilds
+        // from the family geometry. The symptom was remote from the cause: the coil's own
+        // section-derived placement then resolved "window 2", ReluctanceNetwork found one window
+        // and blamed the WINDING ("Winding Secondary references winding window 2 but the core has
+        // 1"), naming the coil for something the core processing dropped. MKF already knows how
+        // to build per-column windows (the machinery below, normally behind a setting), so honour
+        // the declaration instead of discarding it.
+        {
+            auto& regeneratedWindingWindows = processedDescription.get_mutable_winding_windows();
+            if (incomingNumberWindingWindows > regeneratedWindingWindows.size() &&
+                processedDescription.get_columns().size() > 1) {
+                appendPerColumnWindingWindows(processedDescription);
+            }
+            if (incomingNumberWindingWindows > processedDescription.get_winding_windows().size()) {
+                // Still short: say so plainly rather than letting a downstream index error blame
+                // the coil for a core that lost its windows here.
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "Core processing produced " +
+                    std::to_string(processedDescription.get_winding_windows().size()) +
+                    " winding window(s) but the supplied core described " +
+                    std::to_string(incomingNumberWindingWindows) +
+                    "; this shape family cannot be represented with that many windows");
+            }
+        }
+
         // Re-apply the captured winding orders (ABT #352). By index: window 0 is always the
         // main window on both sides; per-column windows appended behind it keep their slot.
         auto& regeneratedWindingWindows = processedDescription.get_mutable_winding_windows();

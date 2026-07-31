@@ -7,6 +7,10 @@
 #include "support/Painter.h"
 #include "support/Settings.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "processors/MagneticSimulator.h"
+#include "physical_models/ReluctanceNetwork.h"
+#include "physical_models/Inductance.h"
+#include "processors/Inputs.h"
 #include "json.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -2503,6 +2507,108 @@ namespace TestNewFamilySaturation {
         // The ferrite ring multiplies inductance (~2.9x on this pair), so with the same turns the
         // shielded assembly reaches Bsat at a proportionally lower current than the bare drum.
         CHECK(shieldedSaturationCurrent < bareSaturationCurrent);
+        settings.reset();
+    }
+}
+
+// ABT #379: a caller that DECLARES a multicolumn core (one winding window per column) must keep
+// that topology through processing. It used to be silently reduced to the single window the E
+// family rebuilds from its functionalDescription, and the failure then surfaced far away and
+// blamed the wrong object: the coil's section-derived placement resolved "window 2",
+// ReluctanceNetwork found one window, and the error named the WINDING
+// ("Winding Secondary references winding window 2 but the core has 1 winding windows") for
+// something the CORE processing had dropped. Fixture mirrors OMFEM's multicolumn E42.
+namespace TestMulticolumnWindows {
+    TEST_CASE("Test_Core_Declared_Multicolumn_Windows_Survive_Processing", "[core][multicolumn]") {
+        settings.reset();
+        clear_databases();
+
+        auto declaredCore = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::array(), 1, "3C97");
+        settings.set_core_per_column_winding_windows(true);
+        auto multicolumnCore = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::array(), 1, "3C97");
+        auto declaredWindows = multicolumnCore.get_processed_description().value().get_winding_windows();
+        settings.reset();
+        REQUIRE(declaredWindows.size() > 1);  // the per-column machinery produced the topology
+
+        // Hand that multi-window description to a core built the ordinary (single-window) way,
+        // exactly as a caller supplying a multicolumn MAS file does, then re-process.
+        auto processedDescription = declaredCore.get_processed_description().value();
+        processedDescription.set_winding_windows(declaredWindows);
+        declaredCore.set_processed_description(processedDescription);
+        REQUIRE(declaredCore.get_processed_description().value().get_winding_windows().size() == declaredWindows.size());
+
+        declaredCore.process_data();
+
+        auto survivingWindows = declaredCore.get_processed_description().value().get_winding_windows();
+        UNSCOPED_INFO("declared " << declaredWindows.size() << " winding windows, kept "
+                      << survivingWindows.size() << " after processing");
+        CHECK(survivingWindows.size() == declaredWindows.size());
+        // Each window still names the column it wraps, which is what winding placement resolves.
+        for (auto& windingWindow : survivingWindows) {
+            CHECK(windingWindow.get_column().has_value());
+        }
+        settings.reset();
+    }
+
+    // The end-to-end shape of ABT #379, with the MAS file that reported it: a hand-authored
+    // 3-column E 42 transformer whose windings carry no explicit windingWindow (placement lives
+    // on the sections). Before the fix, re-processing collapsed 3 windows to 1, the coil's
+    // section-derived window 2 then fell outside the core, and the thrown message blamed the
+    // winding. Now the declared topology survives and the magnetic simulates.
+    TEST_CASE("Test_Core_Multicolumn_Mas_File_Simulates", "[core][multicolumn]") {
+        settings.reset();
+        auto path = std::filesystem::path{std::source_location::current().file_name()}
+                        .parent_path().append("testData").append("multicolumn_e42_transformer.json");
+        std::ifstream masFile(path);
+        REQUIRE(masFile.good());
+        json masJson = json::parse(masFile);
+
+        OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+        auto processedWindows = magnetic.get_core().get_processed_description().value().get_winding_windows();
+        UNSCOPED_INFO("core kept " << processedWindows.size() << " winding windows after construction");
+        CHECK(processedWindows.size() == 3);
+
+        // The path that used to throw with the misleading message.
+        OpenMagnetics::Inputs inputs(masJson["inputs"]);
+        OpenMagnetics::MagneticSimulator simulator;
+        OpenMagnetics::Mas simulated;
+        REQUIRE_NOTHROW(simulated = simulator.simulate(inputs, magnetic));
+        REQUIRE(simulated.get_outputs().size() > 0);
+        auto& output = simulated.get_outputs()[0];
+        REQUIRE(output.get_inductance());
+        double inductance = OpenMagnetics::resolve_dimensional_values(
+            output.get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance());
+        UNSCOPED_INFO("magnetizing inductance " << inductance * 1e6 << " uH");
+        CHECK(std::isfinite(inductance));
+        CHECK(inductance > 0);
+
+        // Preserving the windows is only half the point: the network must actually USE them.
+        // The primary sits on a LATERAL column, so its driving-point reluctance is
+        // R_lateral + (R_central || R_other_lateral) -- strictly worse than the central-column
+        // path the lumped N^2/R model assumes. Pin that the placed answer is the lower one, so a
+        // future regression that silently reverts to the ideal single-window circuit is caught
+        // even though nothing throws.
+        // Preserving the windows is only half the point: the placement must actually REACH the
+        // physics. The two windings sit on DIFFERENT legs of the E core, so they must resolve to
+        // different columns -- with the collapsed single window this resolution is exactly what
+        // threw. Their coupling is then the real flux divider (secondary flux splits between the
+        // centre leg and the far leg), not the ideal rank-1 coupling a one-window core implies.
+        REQUIRE(OpenMagnetics::ReluctanceNetwork::has_non_main_placement(magnetic));
+        auto columnIndexPerWinding = OpenMagnetics::ReluctanceNetwork::resolve_winding_column_indexes(magnetic);
+        REQUIRE(columnIndexPerWinding.size() == 2);
+        UNSCOPED_INFO("Primary on column " << columnIndexPerWinding[0] << ", Secondary on column "
+                      << columnIndexPerWinding[1]);
+        CHECK(columnIndexPerWinding[0] != columnIndexPerWinding[1]);
+
+        OpenMagnetics::Inductance inductanceModel;
+        auto inductanceMatrix = inductanceModel.calculate_inductance_matrix(magnetic, 100000).get_magnitude();
+        double selfPrimary = inductanceMatrix["Primary"]["Primary"].get_nominal().value();
+        double selfSecondary = inductanceMatrix["Secondary"]["Secondary"].get_nominal().value();
+        double mutual = inductanceMatrix["Primary"]["Secondary"].get_nominal().value();
+        double couplingCoefficient = std::abs(mutual) / std::sqrt(selfPrimary * selfSecondary);
+        UNSCOPED_INFO("coupling coefficient " << couplingCoefficient);
+        CHECK(couplingCoefficient > 0.1);
+        CHECK(couplingCoefficient < 0.999);
         settings.reset();
     }
 }
