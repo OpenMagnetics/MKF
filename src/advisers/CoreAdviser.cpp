@@ -281,7 +281,47 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
     return get_advised_core(inputs, weights, cores, maximumNumberResults, maximumNumberCores);
 }
 
+// The adviser pipeline needs each excitation's DERIVED current data — effectiveFrequency drives
+// the wire adviser's skin-depth work, rms its current density. Those are computed by
+// Inputs::process(), which the json constructor runs by default; an Inputs assembled field by
+// field carries only what the caller filled in, and nothing derives the rest until process() is
+// called. Without this check the omission surfaced several layers down, as
+// "[INVALID_WIRE_DATA] Current is missing effective frequency" out of Wire — naming neither the
+// winding, nor the operating point, nor the thing the caller actually needed to do.
+static void throw_if_inputs_are_not_processed(Inputs& inputs) {
+    auto operatingPoints = inputs.get_operating_points();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+        auto excitations = operatingPoints[operatingPointIndex].get_excitations_per_winding();
+        for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
+            auto& excitation = excitations[windingIndex];
+            if (!excitation.get_current()) {
+                continue;  // a voltage-only excitation is completed later, from the inductance
+            }
+            std::string where = "operating point " + std::to_string(operatingPointIndex) +
+                                ", winding " + std::to_string(windingIndex) +
+                                " ('" + excitation.get_name().value_or("<unnamed>") + "')";
+            auto missing = [&](const std::string& field) {
+                return InvalidInputException(ErrorCode::MISSING_DATA,
+                    "CoreAdviser needs the processed current data for " + where + ", but " + field +
+                    " is missing. These values are derived, not supplied: call Inputs::process() "
+                    "before advising (the json Inputs constructor does this for you).");
+            };
+            if (!excitation.get_current()->get_processed()) {
+                throw missing("the whole processed block");
+            }
+            if (!excitation.get_current()->get_processed()->get_effective_frequency()) {
+                throw missing("effectiveFrequency");
+            }
+            if (!excitation.get_current()->get_processed()->get_rms()) {
+                throw missing("rms");
+            }
+        }
+    }
+}
+
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores) {
+
+    throw_if_inputs_are_not_processed(inputs);
 
     std::vector<std::pair<Mas, double>> results;
 
@@ -349,6 +389,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults) {
+    throw_if_inputs_are_not_processed(inputs);
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
     auto magnetics = create_magnetic_dataset(inputs, shapes, globalIncludeStacks);
 

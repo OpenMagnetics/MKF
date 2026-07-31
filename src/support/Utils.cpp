@@ -253,6 +253,35 @@ void load_cores(std::optional<std::string> fileToLoad) {
         } else {
             coreDatabase.emplace_back(jf);  // defaults: include geometricalDescription
         }
+
+        // ABT #407: a CATALOGUE record whose gapping cannot fit its columns is corrupt, and must
+        // not enter the database looking usable. process_gap() reports that by returning false —
+        // a normal answer for the CoreAdviser, which sweeps candidate gap lengths and skips the
+        // ones that do not fit, but never legitimate for a shipped part. Left unchecked, such a
+        // record carries gaps with no area and kills the first consumer that sweeps the whole
+        // catalogue, with a bare "Gap Area is not set" naming neither the core nor the reason.
+        // That is exactly how the seven Magnetics parts with mil-as-metre gap lengths surfaced.
+        auto& loadedCore = coreDatabase.back();
+        for (const auto& gap : loadedCore.get_functional_description().get_gapping()) {
+            if (!gap.get_area()) {
+                std::string coreName = loadedCore.get_name().value_or("<unnamed>");
+                double longestGap = 0;
+                for (const auto& anyGap : loadedCore.get_functional_description().get_gapping()) {
+                    longestGap = std::max(longestGap, anyGap.get_length());
+                }
+                double shortestColumn = std::numeric_limits<double>::max();
+                if (loadedCore.get_processed_description()) {
+                    for (const auto& column : loadedCore.get_processed_description()->get_columns()) {
+                        shortestColumn = std::min(shortestColumn, column.get_height());
+                    }
+                }
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "Catalogue core '" + coreName + "' has a gapping that does not fit its columns: "
+                    "the longest gap is " + std::to_string(longestGap * 1000) +
+                    " mm against a shortest column height of " + std::to_string(shortestColumn * 1000) +
+                    " mm. The record is corrupt and cannot be loaded.");
+            }
+        }
     });
 }
 

@@ -2613,26 +2613,28 @@ namespace TestMulticolumnWindows {
     }
 }
 
-// A core whose gapping cannot fit its columns must be refused at construction, naming itself.
-// process_gap() reports that by returning false — which the CoreAdviser legitimately uses to
-// try the next candidate gap — but the Core(json) constructor used to DROP that answer, so an
-// impossible core was built anyway with its gaps left without an area and entered the catalogue
-// looking usable. The failure then surfaced far away as a bare "[GAP_INVALID_DIMENSIONS] Gap Area
-// is not set" naming neither the core nor the reason, and it took a full-catalogue scan to find
-// the culprits: seven Magnetics parts whose gap lengths were exact mil values stored 1000x too
-// large, e.g. a 127 mm gap on a 19.3 mm core (5 mil, i.e. 0.127 mm). Data fixed in MAS; this
-// keeps the next such record from getting in quietly.
-TEST_CASE("Test_Core_Impossible_Gapping_Is_Refused_By_Name", "[core][gapping]") {
+// A CATALOGUE record whose gapping cannot fit its columns must be refused at load, naming itself.
+// process_gap() reports that by returning false, which is a NORMAL answer during core advising —
+// the CoreAdviser sweeps candidate gap lengths and necessarily generates some that do not fit,
+// then skips them — but never legitimate for a shipped part. Left unchecked such a record carried
+// gaps with no area and killed the first consumer that swept the whole catalogue, with a bare
+// "[GAP_INVALID_DIMENSIONS] Gap Area is not set" naming neither the core nor the reason. Finding
+// the culprits took a full-catalogue scan: seven Magnetics parts whose gap lengths were exact mil
+// values stored 1000x too large, e.g. a 127 mm gap on a 19.3 mm core (5 mil, i.e. 0.127 mm). Data
+// fixed in MAS; this keeps the next such record from getting in quietly.
+TEST_CASE("Test_Catalogue_Core_With_Impossible_Gapping_Is_Refused_By_Name", "[core][gapping]") {
     settings.reset();
-    json coreJson;
-    coreJson["name"] = "Impossible gap on E 19.3/4.8";
-    coreJson["functionalDescription"] = json();
-    coreJson["functionalDescription"]["type"] = "twoPieceSet";
-    coreJson["functionalDescription"]["material"] = "3C97";
-    coreJson["functionalDescription"]["shape"] = "E 19.3/4.8";
-    coreJson["functionalDescription"]["numberStacks"] = 1;
-    // 127 mm of gap in a core 19.3 mm across: the exact shape of the catalogue bug.
-    coreJson["functionalDescription"]["gapping"] = json::array({
+    clear_databases();
+
+    // One record, shaped exactly like the catalogue bug: 127 mm of gap in a 19.3 mm core.
+    json impossibleRecord;
+    impossibleRecord["name"] = "E 19.3/4.8 - 3C97 - Gapped 127.000 mm";
+    impossibleRecord["functionalDescription"] = json();
+    impossibleRecord["functionalDescription"]["type"] = "twoPieceSet";
+    impossibleRecord["functionalDescription"]["material"] = "3C97";
+    impossibleRecord["functionalDescription"]["shape"] = "E 19.3/4.8";
+    impossibleRecord["functionalDescription"]["numberStacks"] = 1;
+    impossibleRecord["functionalDescription"]["gapping"] = json::array({
         {{"type", "subtractive"}, {"length", 0.127}},
         {{"type", "residual"}, {"length", 0.000005}},
         {{"type", "residual"}, {"length", 0.000005}},
@@ -2640,24 +2642,26 @@ TEST_CASE("Test_Core_Impossible_Gapping_Is_Refused_By_Name", "[core][gapping]") 
 
     std::string message;
     try {
-        OpenMagnetics::Core impossibleCore(coreJson);
+        load_cores(impossibleRecord.dump());
         message = "no exception";
     }
     catch (const std::exception& exception) {
         message = exception.what();
     }
     UNSCOPED_INFO(message);
-    CHECK(message.find("Impossible gap on E 19.3/4.8") != std::string::npos);  // names itself
+    CHECK(message.find("E 19.3/4.8 - 3C97 - Gapped 127.000 mm") != std::string::npos);  // names itself
     CHECK(message.find("does not fit its columns") != std::string::npos);
 
-    // The same shape with a sane gap builds, and every gap carries an area.
-    coreJson["name"] = "Sane gap on E 19.3/4.8";
-    coreJson["functionalDescription"]["gapping"][0]["length"] = 0.000127;
-    OpenMagnetics::Core saneCore(coreJson);
-    REQUIRE(saneCore.get_processed_description());
-    for (auto& gap : saneCore.get_functional_description().get_gapping()) {
+    // The same record with the gap it was meant to have loads, and its gaps carry an area.
+    clear_databases();
+    impossibleRecord["name"] = "E 19.3/4.8 - 3C97 - Gapped 0.127 mm";
+    impossibleRecord["functionalDescription"]["gapping"][0]["length"] = 0.000127;
+    REQUIRE_NOTHROW(load_cores(impossibleRecord.dump()));
+    REQUIRE(OpenMagnetics::coreDatabase.size() == 1);
+    for (auto& gap : OpenMagnetics::coreDatabase[0].get_functional_description().get_gapping()) {
         CHECK(gap.get_area().has_value());
     }
+    clear_databases();
     settings.reset();
 }
 

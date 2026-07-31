@@ -2477,6 +2477,12 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
         shapes.push_back(shape);
     }
 
+    // Inputs built field-by-field carry only the processed values the caller filled in;
+    // effectiveFrequency and the harmonics are DERIVED, and nothing derives them until
+    // process() runs. The json constructor processes by default, which is why the
+    // frontend path never hit this — but a hand-built Inputs must ask.
+    inputs.process();
+
     auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 5);
 
 
@@ -2613,6 +2619,10 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
     secCurrentProcessed.set_average(0.0);
     secCurrentProcessed.set_rms(10.0);  // Higher current on secondary
     secCurrentProcessed.set_peak(14.0);
+    // This excitation carries no waveform, only a processed block, so nothing can derive the
+    // peak-to-peak the way it can for the primary — it has to be stated. 28 A for a 14 A
+    // sinusoidal peak, matching how the primary above states 6.21 for its 3.105 peak.
+    secCurrentProcessed.set_peak_to_peak(28.0);
     secCurrentProcessed.set_duty_cycle(0.5);
     secondaryCurrent.set_processed(secCurrentProcessed);
     secondaryExcitation.set_current(secondaryCurrent);
@@ -2639,6 +2649,12 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
     for (auto [name, shape] : coreShapeDatabase) {
         shapes.push_back(shape);
     }
+
+    // Inputs built field-by-field carry only the processed values the caller filled in;
+    // effectiveFrequency and the harmonics are DERIVED, and nothing derives them until
+    // process() runs. The json constructor processes by default, which is why the
+    // frontend path never hit this — but a hand-built Inputs must ask.
+    inputs.process();
 
     auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 5);
 
