@@ -86,6 +86,20 @@ std::complex<double> Impedance::calculate_differential_mode_impedance(Core core,
 }
 
 ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
+    // ABT #383: a core carrying only its functionalDescription is a normal thing to hand
+    // around — it is how MAS files are written when the constructive description is the
+    // source of truth and the processed values are meant to be derived — but the reluctance
+    // below reads the PROCESSED effective area and length. Without them it returned garbage
+    // that looked like an answer: NaN for drumRing, exactly 0 for drumSemishielded, ~1e-10
+    // ohm for molded. The NaN then surfaced far away, as "Waveform data contains NaN" out of
+    // the waveform processor, which points at the wrong component entirely — the reporter
+    // filed a model bug against impedance because of it. Refuse the input here, at the one
+    // choke point all four sweep entry points share.
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException(
+            "Impedance needs the core's processed description (effective area and length) to "
+            "build the magnetizing tank; the core carries only its functional description");
+    }
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     double numberTurns = coil.get_functional_description()[0].get_number_turns();
     double reluctanceCoreUnityPermeability = reluctanceModel->get_core_reluctance(core, 1).get_core_reluctance();

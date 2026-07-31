@@ -1,8 +1,10 @@
 #include <source_location>
 #include <algorithm>
 #include <fstream>
+#include <sstream>
 #include "support/Painter.h"
 #include "processors/Sweeper.h"
+#include "constructive_models/Bobbin.h"
 #include "physical_models/Impedance.h"
 #include "physical_models/ComplexPermeability.h"
 #include "physical_models/StrayCapacitance.h"
@@ -502,6 +504,104 @@ TEST_CASE("PROBE_CMC622_CM_Curve_Dump", "[probe622]") {
     for (size_t i = 0; i < fs.size(); ++i) out << fs[i] << " " << zs[i] << "\n";
     out.close();
     CHECK(fs.size() == 120);
+}
+
+// ABT #383: a core carrying only its functionalDescription is a normal thing to hand around —
+// it is how MAS files are written when the constructive description is the source of truth and
+// the processed values are meant to be derived. Impedance reads the PROCESSED effective area and
+// length, and without them it returned garbage that looked like an answer: NaN for drumRing,
+// exactly 0 for drumSemishielded, ~1e-10 ohm for molded. The NaN then surfaced far away as
+// "Waveform data contains NaN" out of the waveform processor, which points at the wrong
+// component entirely — the reporter filed a model bug against impedance because of it.
+TEST_CASE("Test_Impedance_Refuses_Unprocessed_Core", "[physical-model][impedance]") {
+    settings.reset();
+    clear_databases();
+
+    auto processedCore = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::array(), 1, "3C97");
+    auto coil = OpenMagneticsTesting::get_quick_coil({10}, {1}, "E 42/21/20");
+    OpenMagnetics::Magnetic processedMagnetic;
+    processedMagnetic.set_core(processedCore);
+    processedMagnetic.set_coil(coil);
+
+    // With the processed description present it answers, and the answer is finite and positive.
+    OpenMagnetics::Impedance impedanceModel;
+    auto processedImpedance = impedanceModel.calculate_impedance(processedMagnetic, 100000);
+    UNSCOPED_INFO("processed core impedance " << std::abs(processedImpedance));
+    CHECK(std::isfinite(std::abs(processedImpedance)));
+    CHECK(std::abs(processedImpedance) > 0);
+
+    // Strip the processed description and it must refuse rather than answer with NaN/0/1e-10.
+    auto unprocessedCore = processedCore;
+    unprocessedCore.set_processed_description(std::nullopt);
+    OpenMagnetics::Magnetic unprocessedMagnetic;
+    unprocessedMagnetic.set_core(unprocessedCore);
+    unprocessedMagnetic.set_coil(coil);
+    std::string message;
+    try {
+        impedanceModel.calculate_impedance(unprocessedMagnetic, 100000);
+        message = "no exception";
+    }
+    catch (const std::exception& exception) {
+        message = exception.what();
+    }
+    UNSCOPED_INFO("unprocessed core -> " << message);
+    CHECK(message.find("processed description") != std::string::npos);
+    settings.reset();
+}
+
+// Data-driven competitor cable-core impedance export. Reads /tmp/fr_parts.json
+// [{mpn, material, od, id, h}] (toroid dims in mm), computes |Z|(f) 1 MHz..1 GHz
+// for a 1-turn core in MKF, writes /tmp/fr_curves.json [{mpn, f[], z[]}]. Lets the
+// ingest compute vendor-agnostic curves from material + geometry (the OM way).
+TEST_CASE("Competitor_Cable_Core_Impedance_Export", "[cable-core-export]") {
+    std::ifstream in("/tmp/fr_parts.json");
+    if (!in.good()) { WARN("no /tmp/fr_parts.json — skipping"); return; }
+    json parts = json::parse(in);
+    json out = json::array();
+    for (auto& p : parts) {
+        json c;
+        c["mpn"] = p.value("mpn", std::string(""));
+        try {
+            double od = p.at("od").get<double>() / 1000.0;  // mm -> m
+            double id = p.at("id").get<double>() / 1000.0;
+            double h  = p.at("h").get<double>() / 1000.0;
+            std::string material = p.at("material").get<std::string>();
+            int turns = p.value("turns", 1);
+            json shapeJson = {
+                {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "t"},
+                {"aliases", json::array()}, {"name", "cable core"},
+                {"dimensions", {{"A", {{"nominal", od}}}, {"B", {{"nominal", id}}}, {"C", {{"nominal", h}}}}}
+            };
+            json coreJson;
+            coreJson["functionalDescription"] = {
+                {"type", "toroidal"}, {"material", material}, {"shape", shapeJson},
+                {"gapping", json::array()}, {"numberStacks", 1}
+            };
+            Core core(coreJson);
+            auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+            json coilJson;
+            to_json(coilJson["bobbin"], bobbin);
+            coilJson["functionalDescription"] = json::array();
+            json wj;
+            wj["name"] = "cable"; wj["numberTurns"] = turns; wj["numberParallels"] = 1;
+            wj["isolationSide"] = "primary"; wj["wire"] = "Round 0.475 - Grade 1";
+            coilJson["functionalDescription"].push_back(wj);
+            OpenMagnetics::Coil coil(coilJson);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            auto curve = Sweeper().sweep_impedance_over_frequency(magnetic, 1e6, 1e9, 150);
+            c["f"] = curve.get_x_points();
+            c["z"] = curve.get_y_points();
+        } catch (const std::exception& e) {
+            c["error"] = e.what();
+        }
+        out.push_back(c);
+    }
+    std::ofstream of("/tmp/fr_curves.json");
+    of << out.dump();
+    of.close();
+    CHECK(out.size() == parts.size());
 }
 
 }  // namespace
