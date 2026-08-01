@@ -99,7 +99,13 @@ struct ConnectionReservedSpace {
     int64_t parallel = -1;            // the parallel whose lead reserves the space (each parallel of a
                                       // bifilar/N-filar group is its own conductor with its own leads)
     std::vector<double> coordinates;  // centre of the reserved rectangle (same system as turns)
-    std::vector<double> dimensions;   // {width, height}
+    // {X extent, Y extent}, the same convention sections, layers and turns use in a rectangular
+    // winding window — NOT "along/across the layer". It does not depend on the layer orientation: a
+    // consumer that wants the extent along a layer's TURN axis indexes [1] for OVERLAPPING layers
+    // (turns stack axially) and [0] for CONTIGUOUS ones (turns run laterally), and the reverse for the
+    // extent along the layer axis. Toroidal markers are polar and documented at
+    // toroidal_connection_reserved_spaces instead.
+    std::vector<double> dimensions;
     double rotation = 0;              // degrees, for diagonal links (Z continuations); 0 = axis-aligned
     // A terminal lead routes a winding end out to the bobbin window border (entrance/exit). It is
     // drawn and its length feeds the connection loss, but it does not squeeze a conduction layer.

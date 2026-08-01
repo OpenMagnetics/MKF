@@ -1042,15 +1042,39 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             }
         }
     }
-    // Transpose the produced rectangles back to real coordinates for the contiguous case. A reflection
-    // across y=x swaps the centre's x↔y and maps a rectangle drawn at angle θ (width×height) to one at
-    // angle (90°−θ) with the same width×height — so swap the coordinates and set rotation = 90 − θ.
+    // Back to the coil's own frame for the contiguous case. Everything else in a rectangular winding
+    // window follows ONE convention — dimensions[0] is the X extent and dimensions[1] the Y extent,
+    // for sections, layers and turns alike — and these rectangles obey it too. The contiguous pass
+    // above ran with the layer axis mapped onto x, so coming back is a reflection across y = x: the
+    // centre's x and y trade places, and a rectangle whose long axis sits at angle θ maps to one at
+    // 90 − θ.
+    //
+    // For an axis-aligned rectangle — which is every marker that names a layer, plus the edge runs —
+    // that reflection is simply "the X and Y extents trade places", so it is stored that way: swapped
+    // extents and NO rotation. Keeping it as an unswapped rectangle rotated 90° would describe the
+    // same geometry while quietly introducing a second convention, where dimensions[0] means Y and
+    // consumers must know to undo a rotation. Only the Z diagonals are genuinely not axis-aligned, and
+    // only they carry an angle.
     if (layersAreContiguous) {
         for (auto& space : spaces) {
             if (space.coordinates.size() >= 2) {
                 std::swap(space.coordinates[0], space.coordinates[1]);
             }
-            space.rotation = roundFloat(90.0 - space.rotation, 6);
+            double reflectedRotation = roundFloat(90.0 - space.rotation, 6);
+            double angleFromXAxis = std::fmod(std::fmod(reflectedRotation, 180.0) + 180.0, 180.0);
+            if (std::abs(angleFromXAxis - 90.0) < 1e-9) {
+                // Long axis now lies along Y: express it as an axis-aligned rectangle in (X, Y) order.
+                if (space.dimensions.size() >= 2) {
+                    std::swap(space.dimensions[0], space.dimensions[1]);
+                }
+                space.rotation = 0;
+            }
+            else if (angleFromXAxis < 1e-9) {
+                space.rotation = 0;  // already along X, extents already in (X, Y) order
+            }
+            else {
+                space.rotation = reflectedRotation;
+            }
         }
     }
     return spaces;
@@ -1071,14 +1095,13 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     auto layers = get_layers_description().value();
     auto wires = get_wires();
     // ABT #427: blocking is modelled along each layer's TURN axis — the direction its turns stack, and
-    // so the one a crossing lead takes a slot out of. That is the axial y for an OVERLAPPING layer and
-    // the lateral x for a CONTIGUOUS one, which is one wire tall by construction with its turns running
-    // along its width (see wind_by_layers). The returned pair is {high side, low side} of that axis:
-    // top/bottom for overlapping, right/left for contiguous. The markers need no transposition here —
-    // get_connection_reserved_spaces builds them in a virtual frame whose turn axis is y and transposes
-    // the contiguous case back by SWAPPING THE COORDINATES, so a contiguous layer's markers already
-    // carry their turn-axis position in coordinates[0]. Indexing by axis rather than mirroring the loop
-    // keeps the two orientations from drifting apart.
+    // so the one a crossing lead takes a slot out of. That is Y for an OVERLAPPING layer (turns stack
+    // axially) and X for a CONTIGUOUS one, which is one wire tall by construction with its turns
+    // running along its width (see wind_by_layers). Coordinates and dimensions are plain X/Y
+    // throughout — layers, turns and the connection markers all share the one convention — so the
+    // orientation only picks WHICH INDEX to read, never a different frame. The returned pair is
+    // {high side, low side} of that axis: top/bottom for overlapping, right/left for contiguous.
+    // Indexing by axis rather than mirroring the loop keeps the two orientations from drifting apart.
     std::map<std::string, size_t> layerTurnAxis;
     std::map<std::string, double> layerCenterOnTurnAxis;
     std::map<std::string, double> layerWirePitch;  // crossed layer's own wire, along its turn axis
@@ -1117,8 +1140,9 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
         if (found == layerCenterOnTurnAxis.end()) {
             continue;
         }
-        // Defensive: a marker without an allocated depth still costs its own height (one row).
-        double depth = std::max(space.edgeDepth, space.dimensions[1]);
+        // Defensive: a marker without an allocated depth still costs its own thickness (one row),
+        // measured along the crossed layer's turn axis — the axis this lead takes a slot out of.
+        double depth = std::max(space.edgeDepth, space.dimensions[layerTurnAxis.at(space.layer)]);
         auto& edges = maxRunDepth[space.layer];
         if (space.coordinates[layerTurnAxis.at(space.layer)] >= found->second) {
             edges.first = std::max(edges.first, depth);
@@ -1625,18 +1649,19 @@ void Coil::apply_connection_reserved_space() {
     // axis — the direction its turns stack, and so the axis a lead takes a slot out of. Every reserved
     // space that names a layer (an inter-layer transition, or a terminal lead passing over that layer)
     // occupies one wire diameter of it. Free-space terminal segments (no layer) are drawn but reserve
-    // no layer space. dimensions[1] is that extent for BOTH orientations: the rectangles are produced
-    // by get_connection_reserved_spaces in a virtual frame whose layer axis is x and turn axis is y,
-    // and the contiguous case is transposed back by swapping the COORDINATES and reflecting the
-    // rotation — which leaves the dimension entries in their virtual-frame roles (dimensions[0] = the
-    // run across the layer, consumed as a lead length by WindingOhmicLosses; dimensions[1] = the slot
-    // it takes, consumed as a blocking depth by compute_connection_blocked_slots_per_layer).
+    // no layer space. Marker dimensions are plain {X, Y} like every other rectangle in the coil, so
+    // the turn axis is index 1 for an OVERLAPPING layer and index 0 for a CONTIGUOUS one.
+    std::map<std::string, size_t> layerTurnAxis;
+    for (const auto& layer : layers) {
+        layerTurnAxis[layer.get_name()] = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+    }
     std::map<std::string, double> turnAxisReservedPerLayer;
     for (const auto& space : spaces) {
-        if (space.layer.empty()) {
+        auto turnAxis = layerTurnAxis.find(space.layer);
+        if (space.layer.empty() || turnAxis == layerTurnAxis.end()) {
             continue;
         }
-        turnAxisReservedPerLayer[space.layer] += space.dimensions[1];
+        turnAxisReservedPerLayer[space.layer] += space.dimensions[turnAxis->second];
     }
 
     // Charge each affected layer for the space its leads take ALONG ITS TURN AXIS. A resulting value

@@ -10851,14 +10851,10 @@ static int real_geometry_collisions(OpenMagnetics::Coil& coil) {
             }
             auto tc = turn.get_coordinates();
             auto td = turn.get_dimensions().value();
-            // ABT #427: a CONTIGUOUS coil's markers come back rotated 90 degrees — the connection model
-            // runs in a transposed frame and reflects the rotation on the way out — so their
-            // width/height lie along Y/X rather than X/Y. No-op for the axis-aligned overlapping case.
-            bool transposed = std::abs(std::fmod(std::abs(space.rotation), 180.0) - 90.0) < 1e-6;
-            double spaceWidth = transposed ? space.dimensions[1] : space.dimensions[0];
-            double spaceHeight = transposed ? space.dimensions[0] : space.dimensions[1];
-            double overlapX = (td[0] + spaceWidth) / 2 - std::abs(tc[0] - space.coordinates[0]);
-            double overlapY = (td[1] + spaceHeight) / 2 - std::abs(tc[1] - space.coordinates[1]);
+            // Marker dimensions are {X extent, Y extent} for both layer orientations, the same
+            // convention the turns use, so this AABB needs no per-orientation handling.
+            double overlapX = (td[0] + space.dimensions[0]) / 2 - std::abs(tc[0] - space.coordinates[0]);
+            double overlapY = (td[1] + space.dimensions[1]) / 2 - std::abs(tc[1] - space.coordinates[1]);
             if (overlapX > 1e-6 && overlapY > 1e-6) {
                 collisions++;
                 std::cout << "[RGCOLL] turn " << turn.get_name() << " (w=" << turn.get_winding()
@@ -11303,6 +11299,8 @@ static bool layers_balanced_across_parallels(OpenMagnetics::Coil& coil, const st
 // room (the shrink is capped at one turn slot minimum, and that residual is charged on purpose). Any
 // value above 1 on a coil whose blocking converged is the double charge coming back.
 static void check_overlapping_layers_not_double_charged(OpenMagnetics::Coil& coil) {
+    // Marker dimensions are {X, Y}; an OVERLAPPING layer's turns stack along Y, so its leads are
+    // measured on index 1.
     std::map<std::string, double> reservedPerLayer;
     for (const auto& space : coil.get_connection_reserved_spaces()) {
         if (!space.layer.empty()) {
@@ -11405,10 +11403,12 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
 // hold correspondingly FEWER turns. Charging the height instead — the mirrored, OVERLAPPING rule —
 // made the layer surrender its whole thickness for a single lead and reported ~100x fills (92.5).
 static void check_contiguous_lead_reservation(OpenMagnetics::Coil& coil) {
+    // Marker dimensions are {X, Y}; a CONTIGUOUS layer's turns run along X, so its leads are measured
+    // on index 0 — the mirror of the overlapping helper above, one index apart rather than one frame.
     std::map<std::string, double> reservedPerLayer;
     for (const auto& space : coil.get_connection_reserved_spaces()) {
         if (!space.layer.empty()) {
-            reservedPerLayer[space.layer] += space.dimensions[1];
+            reservedPerLayer[space.layer] += space.dimensions[0];
         }
     }
     auto layers = coil.get_layers_description().value();
@@ -11423,6 +11423,18 @@ static void check_contiguous_lead_reservation(OpenMagnetics::Coil& coil) {
     }
     REQUIRE(!crossed.empty());    // the fixture must exercise a crossed contiguous layer
     REQUIRE(!uncrossed.empty());  // ... and keep an untouched one to compare it against
+    // The coil-wide convention holds for contiguous windings too: a marker that names a layer is an
+    // AXIS-ALIGNED rectangle whose dimensions are {X extent, Y extent}, exactly as for overlapping
+    // layers and exactly as sections, layers and turns are. The contiguous case is one index apart,
+    // not one frame apart — nothing is emitted rotated 90 degrees for a consumer to undo. Only Z
+    // diagonals, which are genuinely not axis-aligned, carry an angle, and they name no layer.
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (space.layer.empty()) {
+            continue;
+        }
+        INFO("marker on " << space.layer << " rotation " << space.rotation);
+        CHECK(space.rotation == 0.0);
+    }
     for (const auto& layer : crossed) {
         INFO("crossed layer " << layer.get_name() << " " << layer.get_dimensions()[0] << "x"
              << layer.get_dimensions()[1] << " leads " << reservedPerLayer.at(layer.get_name()));

@@ -52,6 +52,16 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resist
         crossingLength.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0.0));
         geometricTerminalLength.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0.0));
     }
+    // A lead's length is its extent along the LAYER axis — the direction it runs as it climbs from one
+    // layer to the next. Marker dimensions are plain {X, Y}, the coil-wide convention, so that is index
+    // 0 when layers stack laterally (OVERLAPPING, turns stacking axially) and index 1 when they stack
+    // axially (CONTIGUOUS). The orientation only chooses which index to read.
+    //
+    // A ROUND window is excluded: toroidal markers are polar, not cartesian — dimensions[0] is the
+    // radial run and rotation the azimuth (see toroidal_connection_reserved_spaces) — so the run
+    // length is index 0 there whatever the layers orientation is.
+    bool roundWindow = coil.resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
+    size_t leadRunAxis = (roundWindow || coil.get_layers_orientation() == WindingOrientation::OVERLAPPING) ? 0 : 1;
     for (const auto& space : coil.get_connection_reserved_spaces()) {
         auto windingIndex = coil.get_winding_index_by_name(space.winding);
         int64_t parallelIndex = space.parallel;
@@ -59,10 +69,10 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resist
             continue;  // a winding-level lead with no parallel; cannot attribute to a branch
         }
         if (space.isTerminal) {
-            geometricTerminalLength[windingIndex][parallelIndex] += space.dimensions[0];
+            geometricTerminalLength[windingIndex][parallelIndex] += space.dimensions[leadRunAxis];
         }
         else {
-            crossingLength[windingIndex][parallelIndex] += space.dimensions[0];
+            crossingLength[windingIndex][parallelIndex] += space.dimensions[leadRunAxis];
         }
     }
 
