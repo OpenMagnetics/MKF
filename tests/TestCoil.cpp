@@ -11561,6 +11561,133 @@ TEST_CASE("Test_Real_Geometry_Rectangular_Contiguous_Rectangular_Wire", "[constr
     settings.reset();
 }
 
+// Builds a contiguous, real-geometry coil wound with the given rectangular wire.
+static OpenMagnetics::Coil contiguous_rectangular_wire_coil(int64_t turns, int64_t parallels,
+                                                            double outerWidth, double outerHeight) {
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_width(outerWidth * 0.95);
+    wire.set_nominal_value_conducting_height(outerHeight * 0.95);
+    wire.set_nominal_value_outer_width(outerWidth);
+    wire.set_nominal_value_outer_height(outerHeight);
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    wire.set_type(WireType::RECTANGULAR);
+    settings.set_coil_use_real_winding_geometry(true);
+    return OpenMagneticsTesting::get_quick_coil({turns}, {parallels}, "PQ 40/40", 1,
+        WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire});
+}
+
+static std::map<std::string, int> markers_per_layer(OpenMagnetics::Coil& coil) {
+    std::map<std::string, int> markers;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (!space.layer.empty()) {
+            markers[space.layer]++;
+        }
+    }
+    return markers;
+}
+
+TEST_CASE("Test_Real_Geometry_Contiguous_Blocked_Room_Is_Measured_In_Turn_Axis_Wire", "[constructive-model][coil][real-geometry]") {
+    // ABT #449, gap 2: the slot pitch wind_by_rectangular_layers surrenders room in. For a CONTIGUOUS
+    // layer a turn slot is one wire OUTER WIDTH (turns run along the width); using the outer height
+    // would be the overlapping rule. That choice was invisible to every earlier fixture — round wire
+    // makes the two equal, and with more than one parallel the capacity rounds down to a multiple of
+    // the parallel count, which absorbs a one-slot error. A SINGLE parallel and a 2:1 wire leave it
+    // nowhere to hide.
+    //
+    // Both layers here are saturated, so their compacted widths are their allotted widths, and the
+    // crossed one is narrower by exactly the room it gave up.
+    auto coil = contiguous_rectangular_wire_coil(20, 1, 0.0008, 0.0004);
+    REQUIRE(coil.get_turns_description());
+    auto wire = coil.get_wires()[0];
+    double wireWidth = wire.get_maximum_outer_width();
+    double wireHeight = wire.get_maximum_outer_height();
+    REQUIRE(std::abs(wireWidth - wireHeight) > 1e-6);  // a square wire could not tell the two apart
+
+    auto markers = markers_per_layer(coil);
+    auto layers = coil.get_layers_description().value();
+    std::optional<MAS::Layer> crossed;
+    std::optional<MAS::Layer> uncrossed;
+    for (const auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        REQUIRE(layer.get_orientation() == WindingOrientation::CONTIGUOUS);
+        if (markers.count(layer.get_name())) {
+            if (!crossed) crossed = layer;
+        }
+        else if (!uncrossed) {
+            uncrossed = layer;
+        }
+    }
+    REQUIRE(crossed);
+    REQUIRE(uncrossed);
+
+    int crossings = markers.at(crossed->get_name());
+    double roomGivenUp = uncrossed->get_dimensions()[0] - crossed->get_dimensions()[0];
+    INFO("crossed " << crossed->get_dimensions()[0] << " uncrossed " << uncrossed->get_dimensions()[0]
+         << " gave up " << roomGivenUp << " for " << crossings << " lead(s); wire " << wireWidth
+         << " x " << wireHeight);
+    CHECK(roomGivenUp > 0);
+    // The room given up is a whole number of TURN-AXIS slots. Rather than pin a tolerance on
+    // compacted geometry, assert it lands nearer the width-based figure than the height-based one:
+    // exact enough to fail the moment the wrong wire dimension is used, with nothing to tune.
+    CHECK(std::abs(roomGivenUp - crossings * wireWidth) < std::abs(roomGivenUp - crossings * wireHeight));
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Contiguous_Oversubscribed_Charge_Is_Measured_In_Turn_Axis_Wire", "[constructive-model][coil][real-geometry]") {
+    // ABT #449, gap 1: the turn axis apply_connection_reserved_space charges leads against. While the
+    // blocking can give the leads all the room they need, ABT #430's subtraction cancels the charge
+    // and the axis makes no difference to any reported number. It only becomes visible once the
+    // one-slot-minimum cap binds and a residual survives — a wide wire and enough parallels that the
+    // lead stack is deeper than a layer can surrender.
+    //
+    // Here every layer is the same size and they differ only in how many leads cross them, so the
+    // filling factor rises by exactly one turn slot per crossing: d(fill)/d(crossings) must be
+    // wireWidth / layerWidth. Using the height would make it wireHeight / layerWidth.
+    auto coil = contiguous_rectangular_wire_coil(8, 4, 0.0035, 0.0008);
+    REQUIRE(coil.get_turns_description());
+    auto wire = coil.get_wires()[0];
+    double wireWidth = wire.get_maximum_outer_width();
+    REQUIRE(std::abs(wireWidth - wire.get_maximum_outer_height()) > 1e-6);
+
+    auto markers = markers_per_layer(coil);
+    auto layers = coil.get_layers_description().value();
+    // Crossed layers of identical geometry, keyed by how many leads cross them.
+    std::map<int, MAS::Layer> byCrossings;
+    double layerWidth = 0;
+    for (const auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION || !markers.count(layer.get_name())) {
+            continue;
+        }
+        if (layerWidth == 0) {
+            layerWidth = layer.get_dimensions()[0];
+        }
+        if (std::abs(layer.get_dimensions()[0] - layerWidth) < 1e-12) {
+            byCrossings.emplace(markers.at(layer.get_name()), layer);
+        }
+    }
+    REQUIRE(byCrossings.size() >= 2);  // need two crossing counts to measure a slope
+    auto fewest = byCrossings.begin();
+    auto most = std::prev(byCrossings.end());
+    // The cap really binds here: the leads could not all be given room, so the layer is honestly
+    // reported as over-subscribed rather than made to fit.
+    CHECK(most->second.get_filling_factor().value() > 1.0);
+
+    double fillPerCrossing = (most->second.get_filling_factor().value() - fewest->second.get_filling_factor().value())
+                           / double(most->first - fewest->first);
+    INFO("layers of width " << layerWidth << ": " << fewest->first << " crossings -> "
+         << fewest->second.get_filling_factor().value() << ", " << most->first << " crossings -> "
+         << most->second.get_filling_factor().value() << "; per crossing " << fillPerCrossing
+         << ", one turn slot is " << wireWidth / layerWidth);
+    CHECK_THAT(fillPerCrossing, Catch::Matchers::WithinRel(wireWidth / layerWidth, 1e-9));
+
+    settings.reset();
+}
+
 // Count pairs of turns whose centres are closer than ~one wire — i.e. physically overlapping. Toroidal
 // turns are cartesian, so this is a plain centre-distance check.
 static int toroidal_turn_overlaps(OpenMagnetics::Coil& coil) {
