@@ -11436,17 +11436,34 @@ static void check_contiguous_lead_reservation(OpenMagnetics::Coil& coil) {
         CHECK(space.rotation == 0.0);
     }
     for (const auto& layer : crossed) {
-        INFO("crossed layer " << layer.get_name() << " " << layer.get_dimensions()[0] << "x"
-             << layer.get_dimensions()[1] << " leads " << reservedPerLayer.at(layer.get_name()));
-        // The leads' room came out of the WIDTH, so the layer is narrower and holds fewer turns...
-        CHECK(layer.get_dimensions()[0] < uncrossed[0].get_dimensions()[0]);
-        CHECK(coil.get_turns_by_layer(layer.get_name()).size()
-              < coil.get_turns_by_layer(uncrossed[0].get_name()).size());
+        size_t windingIndex = coil.get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
+        double wireWidth = coil.get_wires()[windingIndex].get_maximum_outer_width();
+        size_t markersOnLayer = 0;
+        for (const auto& space : coil.get_connection_reserved_spaces()) {
+            if (space.layer == layer.get_name()) {
+                markersOnLayer++;
+            }
+        }
+        double layerWidth = layer.get_dimensions()[0];
+        size_t turnsOnLayer = coil.get_turns_by_layer(layer.get_name()).size();
+        INFO("crossed layer " << layer.get_name() << " " << layerWidth << "x" << layer.get_dimensions()[1]
+             << " leads " << reservedPerLayer.at(layer.get_name()) << " from " << markersOnLayer
+             << " markers, wire width " << wireWidth << ", " << turnsOnLayer << " turns");
+        // The leads' room came out of the WIDTH, so the layer is narrower than one nothing crosses...
+        CHECK(layerWidth < uncrossed[0].get_dimensions()[0]);
         // ... and NOT out of the height, which stays exactly one wire as it was built.
         CHECK_THAT(layer.get_dimensions()[1],
                    Catch::Matchers::WithinRel(uncrossed[0].get_dimensions()[1], 1e-12));
-        // Same invariant the overlapping path now satisfies: the layer made room for its leads, so it
-        // is not reported as over-full.
+        // Each lead crossing this layer costs one turn slot measured on the TURN axis, which for a
+        // contiguous layer is the wire's OUTER WIDTH. This is the assertion round wire cannot make:
+        // with a square marker the width and the height are the same number, so reading the wrong
+        // index is invisible. With a non-square wire it is not.
+        CHECK_THAT(reservedPerLayer.at(layer.get_name()),
+                   Catch::Matchers::WithinRel(double(markersOnLayer) * wireWidth, 1e-9));
+        // The turns the layer kept actually fit the width it kept — what the blocking is for.
+        CHECK(double(turnsOnLayer) * wireWidth <= layerWidth * (1 + 1e-9));
+        // Same invariant the overlapping path satisfies: the layer made room for its leads, so it is
+        // not reported as over-full.
         CHECK(layer.get_filling_factor().value() <= 1.0);
     }
 }
@@ -11485,6 +11502,61 @@ TEST_CASE("Test_Real_Geometry_Rectangular_Contiguous", "[constructive-model][coi
     paint_connection_demo(coil, "PQ 28/20", "Test_Real_Rect_Contiguous_U.svg", true);
     check_contiguous_lead_reservation(coil);
     CHECK(real_geometry_collisions(coil) == 0);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Rectangular_Contiguous_Rectangular_Wire", "[constructive-model][coil][real-geometry]") {
+    // ABT #427, the case round wire CANNOT test. Every axis decision in the connection model — the
+    // turn axis in the blocking and in apply_connection_reserved_space, the layer axis for the lead
+    // length in WindingOhmicLosses — reads index 0 or index 1 of a marker's dimensions depending on
+    // the layer orientation. Round wire has equal outer width and height, so a crossing marker is
+    // SQUARE and both indices hold the same number: swap any of those choices and every round-wire
+    // fixture still passes. Rectangular wire makes the two extents differ, so a wrong index changes
+    // the result and the assertions below actually bite.
+    //
+    // It is also the only contiguous coil that reaches wind_by_layers' rectangular branch under
+    // blocking, where coil_only_one_turn_per_layer_in_contiguous_rectangular caps a layer at a single
+    // turn.
+    std::vector<int64_t> numberTurns = {10};
+    std::vector<int64_t> numberParallels = {2};
+
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_width(0.00076);
+    wire.set_nominal_value_conducting_height(0.00038);
+    wire.set_nominal_value_outer_width(0.0008);
+    wire.set_nominal_value_outer_height(0.0004);
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    wire.set_type(WireType::RECTANGULAR);
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", 1,
+        WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire});
+
+    REQUIRE(coil.get_turns_description());
+    // The whole point of this fixture: the wire must NOT be square, or the index choices go untested.
+    auto wound = coil.get_wires()[0];
+    REQUIRE(std::abs(wound.get_maximum_outer_width() - wound.get_maximum_outer_height()) > 1e-6);
+
+    check_contiguous_lead_reservation(coil);
+    CHECK(real_geometry_collisions(coil) == 0);
+    paint_connection_demo(coil, "PQ 40/40", "Test_Real_Rect_Contiguous_RectWire_Z.svg", true);
+
+    // Same coil wound U, where the interleaved continuations route along the window edge too.
+    auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+    auto processed = bobbin.get_processed_description().value();
+    auto windingWindows = processed.get_winding_windows();
+    windingWindows[0].set_winding_order(WindingOrder::U);
+    processed.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processed);
+    coil.set_bobbin(bobbin);
+    coil.wind();
+    REQUIRE(coil.get_turns_description());
+    check_contiguous_lead_reservation(coil);
+    CHECK(real_geometry_collisions(coil) == 0);
+    paint_connection_demo(coil, "PQ 40/40", "Test_Real_Rect_Contiguous_RectWire_U.svg", true);
 
     settings.reset();
 }
