@@ -98,13 +98,18 @@ struct ConnectionReservedSpace {
     std::string winding;              // the winding whose lead reserves the space
     int64_t parallel = -1;            // the parallel whose lead reserves the space (each parallel of a
                                       // bifilar/N-filar group is its own conductor with its own leads)
-    std::vector<double> coordinates;  // centre of the reserved rectangle (same system as turns)
-    // {X extent, Y extent}, the same convention sections, layers and turns use in a rectangular
-    // winding window — NOT "along/across the layer". It does not depend on the layer orientation: a
-    // consumer that wants the extent along a layer's TURN axis indexes [1] for OVERLAPPING layers
-    // (turns stack axially) and [0] for CONTIGUOUS ones (turns run laterally), and the reverse for the
-    // extent along the layer axis. Toroidal markers are polar and documented at
-    // toroidal_connection_reserved_spaces instead.
+    std::vector<double> coordinates;  // centre of the reserved rectangle, cartesian as turns are
+    // Which system `dimensions` (and `rotation`) are expressed in — the same declaration layers,
+    // sections and turns carry, so a consumer reads it instead of inferring the window shape:
+    //   CARTESIAN: {X extent, Y extent}, the convention every rectangle in a rectangular winding
+    //       window uses. It does NOT depend on the layer orientation — a consumer wanting the extent
+    //       along a layer's TURN axis indexes [1] for OVERLAPPING layers (turns stack axially) and [0]
+    //       for CONTIGUOUS ones (turns run laterally), and the reverse for the layer axis.
+    //   POLAR: {radial extent, azimuthal extent} with `rotation` the azimuth of the radial axis, as
+    //       built by toroidal_connection_reserved_spaces. A toroidal lead runs RADIALLY, so its length
+    //       is [0] whatever the layers orientation says. The centre stays cartesian either way,
+    //       matching toroidal turns.
+    CoordinateSystem coordinateSystem = CoordinateSystem::CARTESIAN;
     std::vector<double> dimensions;
     double rotation = 0;              // degrees, for diagonal links (Z continuations); 0 = axis-aligned
     // A terminal lead routes a winding end out to the bobbin window border (entrance/exit). It is

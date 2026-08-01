@@ -480,6 +480,7 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
             double radiusNear = radius - wireOuterWidth / 2;
             double radiusMid = (radiusNear + radialBorder) / 2;
             ConnectionReservedSpace lead;
+            lead.coordinateSystem = CoordinateSystem::POLAR;
             lead.isTerminal = true;
             lead.winding = windingName;
             lead.parallel = parallel;
@@ -508,6 +509,7 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                 }
 
                 ConnectionReservedSpace crossing;
+                crossing.coordinateSystem = CoordinateSystem::POLAR;
                 crossing.isTerminal = true;
                 crossing.winding = windingName;
                 crossing.parallel = parallel;
@@ -560,6 +562,7 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                     continue;
                 }
                 ConnectionReservedSpace link;
+                link.coordinateSystem = CoordinateSystem::POLAR;
                 link.winding = windingName;
                 link.parallel = parallel;
                 link.section = windingLayers[i].get_section().value_or("");
