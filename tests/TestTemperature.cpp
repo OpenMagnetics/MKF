@@ -3675,14 +3675,19 @@ TEST_CASE("Temperature: concentric_flyback_rectangular_column", "[temperature][s
     // 7717b002 (skip zero-thickness toroidal insulation layers), 8df6b8b7
     // (SimpleMatrix refactor + degenerate-toroidal-pair guard), d0a5d6b7
     // (litz bundle diameter from strand), a259ee27 (compute B before core
-    // losses), 4c1ebeab (drop silent fallbacks). The accumulated drift now
-    // pushes the core temperature ~12% past the upper cap (676.79°C vs cap
-    // 605.73°C).
+    // losses), 4c1ebeab (drop silent fallbacks). When this test was skipped the
+    // core temperature was ~12% past the upper cap (676.79°C vs cap 605.73°C).
     // A targeted revert of 7717b002's source moves the model output *further*
     // from the calibrated band (verified by experiment), so the drift is
     // cumulative across multiple fixes, not attributable to one commit. Need
     // a fresh Icepak run on this geometry to re-baseline the reference ranges
     // before re-enabling the test.
+    //
+    // RE-MEASURED 2026-08-01 (ABT #461): the drift has kept growing since this
+    // was written. Lifting the skip now gives 766.03°C against the same cap of
+    // 605.73°C — ~26% over, not the ~12% recorded above. Verified identical on
+    // the pre-session commit f269bdc7, so it is not from the connection-lead
+    // work of ABT #424/#427/#429/#430.
     SKIP("Thermal model drifted post-2026-03-03 (cumulative legitimate fixes); needs Icepak re-baseline");
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_flyback_rectangular_column.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
@@ -3793,10 +3798,19 @@ TEST_CASE("Temperature: concentric_flyback_rectangular_column", "[temperature][s
 
 TEST_CASE("Temperature: concentric_transformer_contiguous_rectangular_wire", "[temperature][smoke-test]") {
     // Same situation as Temperature: concentric_flyback_rectangular_column —
-    // Icepak reference ranges (cap 473.04, floor 283.82) frozen on 2026-03-03,
-    // current model output 270.93°C undershoots the floor by ~5%. Cumulative
-    // drift from the same series of post-March thermal fixes. Re-baseline
-    // needed against fresh Icepak run.
+    // Icepak reference ranges (cap 473.04, floor 283.82) frozen on 2026-03-03.
+    // When this test was skipped the model output was 270.93°C, undershooting
+    // the floor by ~5%. Cumulative drift from the same series of post-March
+    // thermal fixes. Re-baseline needed against fresh Icepak run.
+    //
+    // RE-MEASURED 2026-08-01 (ABT #461): this one did not drift further in the
+    // same direction, it INVERTED. Lifting the skip now gives 1056.23°C — no
+    // longer 5% below the floor of 283.82 but 123% ABOVE the cap of 473.04, a
+    // ~3.9x move from the 270.93 recorded above. Anyone reading the paragraph
+    // above alone would go looking for a small undershoot and find a factor-of-
+    // four overshoot. Verified identical on the pre-session commit f269bdc7, so
+    // it is NOT from the contiguous-layer work of ABT #427 despite this fixture
+    // being a contiguous rectangular-wire geometry.
     SKIP("Thermal model drifted post-2026-03-03 (cumulative legitimate fixes); needs Icepak re-baseline");
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_transformer_contiguous_rectangular_wire.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
