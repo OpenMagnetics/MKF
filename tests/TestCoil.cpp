@@ -10867,6 +10867,82 @@ static int real_geometry_collisions(OpenMagnetics::Coil& coil) {
     return collisions;
 }
 
+// ABT #492: number of conduction turns intruding into the corridor a Z interleaved continuation's
+// DIAGONAL needs through the layers it crosses. Computed from the drawn diagonal itself — endpoints
+// reconstructed from the marker's centre/length/rotation — rather than from the per-layer squeeze
+// markers, so it fails whenever a crossed layer's turns sit on the diagonal's crossing, whether or
+// not the blocking machinery emitted (or honoured) a corridor for it. The crossing with a layer is
+// where the diagonal's centreline intersects the layer's stacking position (linear interpolation
+// between the endpoints); the corridor is one run-wire square around it. countedCrossings reports
+// how many layer crossings were checked, so a fixture can prove it is not vacuous. 0 intrusions
+// means every crossed layer's turns are clear of every Z return.
+static int z_return_corridor_intrusions(OpenMagnetics::Coil& coil, int* countedCrossings = nullptr) {
+    if (countedCrossings) {
+        *countedCrossings = 0;
+    }
+    if (!coil.get_turns_description() || !coil.get_layers_description()) {
+        return -1;
+    }
+    auto turns = coil.get_turns_description().value();
+    auto layers = coil.get_layers_description().value();
+    int intrusions = 0;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        // Drawn Z diagonals only: link entries (no layer), cartesian, genuinely rotated. (Toroidal
+        // links are POLAR; U links and stubs are axis-aligned with rotation 0.)
+        if (!space.layer.empty() || space.coordinateSystem != CoordinateSystem::CARTESIAN
+            || std::abs(space.rotation) < 1e-6) {
+            continue;
+        }
+        double theta = space.rotation * std::numbers::pi / 180.0;
+        double halfLength = space.dimensions[0] / 2;
+        double thickness = space.dimensions[1];
+        double endpointA[2] = {space.coordinates[0] - halfLength * std::cos(theta),
+                               space.coordinates[1] - halfLength * std::sin(theta)};
+        double endpointB[2] = {space.coordinates[0] + halfLength * std::cos(theta),
+                               space.coordinates[1] + halfLength * std::sin(theta)};
+        for (const auto& layer : layers) {
+            if (layer.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            // Layers stack along X when OVERLAPPING and along Y when CONTIGUOUS; the corridor is
+            // taken out of the other axis, the one the layer's turns run along.
+            size_t layerAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 0 : 1;
+            size_t turnAxis = 1 - layerAxis;
+            double layerPosition = layer.get_coordinates()[layerAxis];
+            double lo = std::min(endpointA[layerAxis], endpointB[layerAxis]);
+            double hi = std::max(endpointA[layerAxis], endpointB[layerAxis]);
+            if (layerPosition <= lo + 1e-9 || layerPosition >= hi - 1e-9) {
+                continue;  // the diagonal does not cross this layer (endpoint layers excluded)
+            }
+            double t = (layerPosition - endpointA[layerAxis]) / (endpointB[layerAxis] - endpointA[layerAxis]);
+            double crossing[2];
+            crossing[layerAxis] = layerPosition;
+            crossing[turnAxis] = endpointA[turnAxis] + t * (endpointB[turnAxis] - endpointA[turnAxis]);
+            if (countedCrossings) {
+                (*countedCrossings)++;
+            }
+            for (const auto& turn : turns) {
+                if (!turn.get_layer() || turn.get_layer().value() != layer.get_name()) {
+                    continue;
+                }
+                auto tc = turn.get_coordinates();
+                auto td = turn.get_dimensions().value();
+                double overlapX = (td[0] + thickness) / 2 - std::abs(tc[0] - crossing[0]);
+                double overlapY = (td[1] + thickness) / 2 - std::abs(tc[1] - crossing[1]);
+                if (overlapX > 1e-6 && overlapY > 1e-6) {
+                    intrusions++;
+                    std::cout << "[ZCORR] turn " << turn.get_name() << " (c=" << tc[0] * 1e3 << ","
+                              << tc[1] * 1e3 << " mm) intrudes the Z-return corridor at ("
+                              << crossing[0] * 1e3 << "," << crossing[1] * 1e3 << ") mm on "
+                              << layer.get_name() << " (link w=" << space.winding
+                              << " p=" << space.parallel << ")\n";
+                }
+            }
+        }
+    }
+    return intrusions;
+}
+
 // ABT #229: number of pairs of drawn HORIZONTAL lead runs belonging to DIFFERENT conductors
 // (winding, parallel) that geometrically overlap — the ticket's exact defect was the K parallels'
 // terminal leads all drawn on the SAME edge line (coincident centrelines, which 3D consumers' gates
@@ -11389,6 +11465,65 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
     CHECK(coincident_connection_runs(coil) == 0);
     paint_connection_demo(coil, "PQ 40/40", "Test_Real_Bifilar_Interleaved_Z.svg", true);
     check_overlapping_layers_not_double_charged(coil);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Corridor", "[constructive-model][coil][real-geometry]") {
+    // ABT #492: radially-interleaved sections wound Z. The inter-section continuation runs
+    // diagonally from the last turn of section i's outermost layer to the first turn of section
+    // i+1's innermost layer, CROSSING the intervening winding's layers — whose turns are full
+    // rings, present at every azimuth, so the return has no conflict-free route unless the layout
+    // reserves a corridor where the diagonal crosses each of them. The blocking machinery must
+    // push every crossed layer's turns clear of its crossing.
+    std::vector<int64_t> numberTurns = {40, 40};
+    std::vector<int64_t> numberParallels = {1, 1};
+    uint8_t interleavingLevel = 2;
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel);
+
+    REQUIRE(coil.get_turns_description());
+    // The fixture must genuinely exercise the class: default Z winding order, both windings
+    // interleaved among the layers.
+    REQUIRE(coil.get_winding_order(coil.get_sections_description_conduction()[0].get_name()) == WindingOrder::Z);
+    std::set<std::string> windingsPresent;
+    for (const auto& layer : coil.get_layers_description_conduction()) {
+        windingsPresent.insert(layer.get_partial_windings()[0].get_winding());
+    }
+    REQUIRE(windingsPresent.size() == 2);
+
+    int crossings = 0;
+    CHECK(z_return_corridor_intrusions(coil, &crossings) == 0);
+    CHECK(crossings > 0);  // vacuity guard: some Z return must actually cross an intervening layer
+    CHECK(real_geometry_collisions(coil) == 0);
+    CHECK(coincident_connection_runs(coil) == 0);
+    paint_connection_demo(coil, "PQ 40/40", "Test_Real_Z_Interleaved_Return_Corridor.svg", true);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Corridor_Bifilar", "[constructive-model][coil][real-geometry]") {
+    // ABT #492, same class with a BIFILAR primary: each parallel is its own conductor with its own
+    // Z return diagonal, and each of those crossings needs its corridor freed (the blocking takes
+    // the deepest corridor per crossed layer edge, which must cover every parallel's diagonal).
+    std::vector<int64_t> numberTurns = {20, 20};
+    std::vector<int64_t> numberParallels = {2, 1};
+    uint8_t interleavingLevel = 2;
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel);
+
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_winding_order(coil.get_sections_description_conduction()[0].get_name()) == WindingOrder::Z);
+
+    int crossings = 0;
+    CHECK(z_return_corridor_intrusions(coil, &crossings) == 0);
+    // Both primary parallels' returns and the secondary's return cross intervening layers.
+    CHECK(crossings >= 2);
+    CHECK(real_geometry_collisions(coil) == 0);
+    CHECK(coincident_connection_runs(coil) == 0);
+    paint_connection_demo(coil, "PQ 40/40", "Test_Real_Z_Interleaved_Return_Corridor_Bifilar.svg", true);
 
     settings.reset();
 }

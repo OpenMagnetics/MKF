@@ -907,27 +907,86 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
 
                 // ABT #229: a U interleaved continuation routes along the edge, so each parallel's run
                 // is its own conductor and takes its own allocated row (stacking with the terminal
-                // leads already on that edge). Z dragbacks route diagonally and reserve no edge row;
-                // their squeeze markers (filling-factor only, skipped by blocking) stay at the nominal
-                // edge row.
+                // leads already on that edge). ABT #492: a Z interleaved continuation instead runs
+                // DIAGONALLY, straight from the last turn of this layer to the first turn of the next,
+                // so it takes no edge row — its corridor through each crossed layer sits where the
+                // diagonal actually crosses it, computed per crossed layer below.
                 double routeEdgeY = roundFloat(windowTopY - wireOuterHeight / 2, 9);
                 double runDepth = 0;
                 if (routesAlongEdge) {
                     std::tie(routeEdgeY, runDepth) = allocateEdgeRow(routeWindowIndex, true, wireOuterHeight);
                 }
 
+                // Endpoints of this parallel's link: the last-wound turn of this layer and the
+                // first-wound turn of the next, in electrical order (used by the squeeze markers below
+                // and by the drawn link further down).
+                double x1 = exitTurn.get_coordinates()[0];
+                double y1 = exitTurn.get_coordinates()[1];
+                double x2 = entryTurn.get_coordinates()[0];
+                double y2 = entryTurn.get_coordinates()[1];
+
                 // Per-layer squeeze: this parallel's interleaved continuation crosses (and squeezes)
-                // each intervening layer. These entries (layer set) drive the filling factor and are
-                // NOT drawn — the link itself is drawn below.
+                // each intervening layer. These entries (layer set) drive the filling factor and the
+                // turn blocking and are NOT drawn — the link itself is drawn below. A U continuation's
+                // squeeze sits in the edge row its run was allocated (ABT #229). ABT #492: a Z
+                // continuation's squeeze sits at the point its diagonal crosses the layer — the
+                // turn-axis position interpolated linearly between the link's endpoints at the crossed
+                // layer's radial position — one run-wire in extent plus the inter-winding clearance on
+                // both sides. It is NOT edge-routed (edgeDepth 0): the crossing sits mid-window, so it
+                // is consumed by the CORRIDOR machinery (compute_connection_blocked_corridor_slots_
+                // per_layer) which frees a one-corridor gap INSIDE the crossed layer's band instead of
+                // an edge-anchored band — an edge band reaching a mid-window crossing would cost half
+                // the layer per corridor and runs away in the fixpoint (measured on the {40,40}
+                // PQ 28/20 interleave: layers crushed to one-turn capacity, section pushed out of the
+                // window).
                 for (const Layer* crossed : interveningLayers) {
                     ConnectionReservedSpace squeeze;
                     squeeze.section = crossed->get_section().value();
                     squeeze.layer = crossed->get_name();
                     squeeze.winding = windingName;
                     squeeze.parallel = parallel;
-                    squeeze.coordinates = {crossed->get_coordinates()[0], routeEdgeY};
-                    squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
-                    squeeze.edgeDepth = runDepth;
+                    if (windingOrder == WindingOrder::Z) {
+                        double crossedX = crossed->get_coordinates()[0];
+                        if (std::abs(x2 - x1) < 1e-12) {
+                            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Z continuation of winding " + windingName + " between layers '"
+                                + windingLayers[i].get_name() + "' and '" + windingLayers[i + 1].get_name()
+                                + "' has radially coincident endpoints yet crosses layer '"
+                                + crossed->get_name() + "'; cannot interpolate its crossing");
+                        }
+                        double crossingY = roundFloat(y1 + (y2 - y1) * (crossedX - x1) / (x2 - x1), 9);
+                        // ABT #240 contract, as for terminal leads: a corridor through ANOTHER winding's
+                        // layer must clear that winding's turns by the mechanical insulation the coil
+                        // itself placed between the two windings — read back from the insulation
+                        // sections between the link's source turn and the crossed layer, not invented.
+                        // The crossed layer's turns can end up on either side of the corridor, so the
+                        // clearance widens it on both.
+                        double interWindingInsulation = 0;
+                        if (!crossed->get_partial_windings().empty()
+                            && crossed->get_partial_windings()[0].get_winding() != windingName) {
+                            double radialNear = std::min(x1, crossedX);
+                            double radialFar = std::max(x1, crossedX);
+                            for (const auto& insulationSection : get_sections_by_type(ElectricalType::INSULATION)) {
+                                // Sections come back in the REAL frame; the virtual frame is its x<->y
+                                // transpose for contiguous layers.
+                                double insulationX = layersAreContiguous ? insulationSection.get_coordinates()[1]
+                                                                         : insulationSection.get_coordinates()[0];
+                                if (insulationX > radialNear && insulationX < radialFar) {
+                                    interWindingInsulation +=
+                                        get_insulation_section_thickness(insulationSection.get_name());
+                                }
+                            }
+                        }
+                        squeeze.coordinates = {crossedX, crossingY};
+                        squeeze.dimensions = {wireOuterWidth,
+                                              roundFloat(wireOuterHeight + 2 * interWindingInsulation, 9)};
+                        squeeze.edgeDepth = 0;
+                    }
+                    else {
+                        squeeze.coordinates = {crossed->get_coordinates()[0], routeEdgeY};
+                        squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
+                        squeeze.edgeDepth = runDepth;
+                    }
                     spaces.push_back(squeeze);
                 }
 
@@ -957,12 +1016,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 // Draw this parallel's connection from the last turn of this layer to the first turn of
                 // the next: a U winding turns around (orthogonal L), a Z winding runs straight back to
                 // the next layer's start (single diagonal — adjacent = dragback, interleaved =
-                // continuation). Every consecutive layer pair of every parallel is drawn.
-                double x1 = exitTurn.get_coordinates()[0];
-                double y1 = exitTurn.get_coordinates()[1];
-                double x2 = entryTurn.get_coordinates()[0];
-                double y2 = entryTurn.get_coordinates()[1];
-
+                // continuation). Every consecutive layer pair of every parallel is drawn, between the
+                // endpoints (x1, y1) -> (x2, y2) hoisted above the squeeze markers.
                 if (windingOrder == WindingOrder::Z) {
                     // Z: the wire runs straight from one turn to the next, so draw a single diagonal
                     // link (a rotated rectangle from centre to centre).
@@ -1129,8 +1184,11 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     // shallow stack over a thick layer still costs at least one thick turn). Since parallels'
     // (and different windings') runs stack in distinct rows, this replaces the old per-parallel
     // max-then-SUM rule — which coincided all runs on one line and merged different windings that
-    // shared a parallel index. Z dragbacks route diagonally and do not displace turns; only
-    // terminals block in Z.
+    // shared a parallel index. ABT #492: Z interleaved continuations route diagonally and are
+    // handled by the CORRIDOR machinery (compute_connection_blocked_corridor_slots_per_layer) —
+    // their crossings sit mid-window, so hanging them off a window edge here would cost half the
+    // crossed layer per corridor (and ran away in the fixpoint when tried). Z ADJACENT dragbacks
+    // emit no layer-naming marker at all (nothing intervenes).
     std::map<std::string, std::pair<double, double>> maxRunDepth;  // layer -> {top, bottom}
     for (const auto& space : get_connection_reserved_spaces()) {
         if (space.layer.empty()) {
@@ -1167,6 +1225,82 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     return blockedSlotsPerLayer;
 }
 
+std::map<std::string, std::set<uint64_t>> Coil::compute_connection_blocked_corridor_slots_per_layer() {
+    // ABT #492: mid-layer corridors for Z interleaved continuations. A Z continuation runs
+    // DIAGONALLY from the last turn of one section straight to the first turn of the next, crossing
+    // every intervening layer at a point interpolated between its endpoints — mid-window in general,
+    // where the edge-anchored band model above cannot reach without sacrificing everything between
+    // the crossing and a window edge (half the layer per corridor; measured to run away in the
+    // fixpoint). So a Z crossing instead blocks a GAP inside the crossed layer's band: the turn
+    // slots its marker interval covers, indexed on the crossed layer's own slot grid — pitch = its
+    // wire, origin = the window's low edge on its turn axis, the same grid align_blocked_layer_turns
+    // spreads bands on. Quantizing to whole slots makes the accumulation integer and monotone (the
+    // rectangular fixpoint's convergence argument) and immune to sub-slot jitter of the crossing as
+    // banding nudges the diagonal's endpoint turns between iterations.
+    std::map<std::string, std::set<uint64_t>> corridorSlotsPerLayer;
+    if (!get_layers_description()) {
+        return corridorSlotsPerLayer;
+    }
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
+        return corridorSlotsPerLayer;  // toroidal blocking is angular (ABT #187), not slot-banded
+    }
+    // Like the marker producer, the model runs in the +x frame where every section shares winding
+    // window 0; the corridor grid must use the same window edges align_blocked_layer_turns bands on.
+    auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
+    std::array<double, 2> windowLowPerAxis = {
+        windingWindow.get_coordinates().value()[0] - windingWindow.get_width().value() / 2,
+        windingWindow.get_coordinates().value()[1] - windingWindow.get_height().value() / 2};
+    std::array<double, 2> windowSizePerAxis = {windingWindow.get_width().value(),
+                                               windingWindow.get_height().value()};
+    auto layers = get_layers_description().value();
+    auto wires = get_wires();
+    std::map<std::string, size_t> layerTurnAxis;
+    std::map<std::string, double> layerWirePitch;
+    for (const auto& layer : layers) {
+        size_t turnAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+        layerTurnAxis[layer.get_name()] = turnAxis;
+        if (layer.get_type() == ElectricalType::CONDUCTION && !layer.get_partial_windings().empty()) {
+            size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
+            layerWirePitch[layer.get_name()] = (turnAxis == 1)
+                ? wires[windingIndex].get_maximum_outer_height()
+                : wires[windingIndex].get_maximum_outer_width();
+        }
+    }
+    for (const auto& space : get_connection_reserved_spaces()) {
+        // Z continuation squeezes only: they name the crossed layer, are not terminal, and belong to
+        // a non-U section (U continuations are edge-routed and consumed by the edge model above).
+        if (space.layer.empty() || space.isTerminal
+            || get_winding_order(space.section) == WindingOrder::U) {
+            continue;
+        }
+        auto axisFound = layerTurnAxis.find(space.layer);
+        auto pitchFound = layerWirePitch.find(space.layer);
+        if (axisFound == layerTurnAxis.end() || pitchFound == layerWirePitch.end()
+            || pitchFound->second <= 0) {
+            continue;
+        }
+        size_t turnAxis = axisFound->second;
+        double pitch = pitchFound->second;
+        double windowLow = windowLowPerAxis[turnAxis];
+        int64_t totalSlots = int64_t(std::floor(windowSizePerAxis[turnAxis] / pitch + 1e-9));
+        if (totalSlots <= 0) {
+            continue;
+        }
+        // The marker's turn-axis interval (run wire + inter-winding clearance, built by the
+        // producer), mapped to the slots it touches. The interval can poke past a window edge by its
+        // clearance when the crossing sits near one; the grid only exists inside the window.
+        double intervalLow = space.coordinates[turnAxis] - space.dimensions[turnAxis] / 2;
+        double intervalHigh = space.coordinates[turnAxis] + space.dimensions[turnAxis] / 2;
+        int64_t firstSlot = std::max<int64_t>(int64_t(std::floor((intervalLow - windowLow) / pitch + 1e-9)), 0);
+        int64_t lastSlot = std::min<int64_t>(int64_t(std::floor((intervalHigh - windowLow) / pitch - 1e-9)), totalSlots - 1);
+        for (int64_t slot = firstSlot; slot <= lastSlot; ++slot) {
+            corridorSlotsPerLayer[space.layer].insert(uint64_t(slot));
+        }
+    }
+    return corridorSlotsPerLayer;
+}
+
 void Coil::redistribute_section_turns_for_blocking() {
     if (!get_sections_description()) {
         return;
@@ -1176,11 +1310,18 @@ void Coil::redistribute_section_turns_for_blocking() {
     size_t numberWindings = get_functional_description().size();
 
     auto blockedFor = [&](const std::string& sectionName, size_t layer) -> uint64_t {
-        auto it = _connectionBlockedSlotsPerLayer.find(sectionName + " layer " + std::to_string(layer));
-        if (it == _connectionBlockedSlotsPerLayer.end()) {
-            return 0u;
+        std::string layerName = sectionName + " layer " + std::to_string(layer);
+        uint64_t blocked = 0;
+        auto it = _connectionBlockedSlotsPerLayer.find(layerName);
+        if (it != _connectionBlockedSlotsPerLayer.end()) {
+            blocked += it->second.first + it->second.second;
         }
-        return it->second.first + it->second.second;
+        // ABT #492: mid-layer Z-return corridor slots cost capacity too.
+        auto corridors = _connectionBlockedCorridorSlotsPerLayer.find(layerName);
+        if (corridors != _connectionBlockedCorridorSlotsPerLayer.end()) {
+            blocked += uint64_t(corridors->second.size());
+        }
+        return blocked;
     };
 
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -1278,7 +1419,8 @@ void Coil::redistribute_section_turns_for_blocking() {
 }
 
 void Coil::align_blocked_layer_turns() {
-    if (_connectionBlockedSlotsPerLayer.empty() || !get_layers_description() || !get_turns_description()) {
+    if ((_connectionBlockedSlotsPerLayer.empty() && _connectionBlockedCorridorSlotsPerLayer.empty())
+        || !get_layers_description() || !get_turns_description()) {
         return;
     }
     auto bobbin = resolve_bobbin();
@@ -1311,13 +1453,13 @@ void Coil::align_blocked_layer_turns() {
         // delimit re-centres each layer over the full window height, which would otherwise drop the edge
         // turns back under the leads, so this runs after delimit and overrides its vertical placement.
         auto found = _connectionBlockedSlotsPerLayer.find(layer.get_name());
-        if (found == _connectionBlockedSlotsPerLayer.end()) {
+        uint64_t blockedHighSide = (found != _connectionBlockedSlotsPerLayer.end()) ? found->second.first : 0;
+        uint64_t blockedLowSide = (found != _connectionBlockedSlotsPerLayer.end()) ? found->second.second : 0;
+        auto corridorsFound = _connectionBlockedCorridorSlotsPerLayer.find(layer.get_name());
+        bool hasCorridors = (corridorsFound != _connectionBlockedCorridorSlotsPerLayer.end())
+            && !corridorsFound->second.empty();
+        if (blockedHighSide == 0 && blockedLowSide == 0 && !hasCorridors) {
             continue;  // unblocked layer: leave delimit's centring (fills the full height)
-        }
-        uint64_t blockedHighSide = found->second.first;
-        uint64_t blockedLowSide = found->second.second;
-        if (blockedHighSide == 0 && blockedLowSide == 0) {
-            continue;
         }
         size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
         double wirePitch = (turnAxis == 1) ? wires[windingIndex].get_maximum_outer_height()
@@ -1341,17 +1483,86 @@ void Coil::align_blocked_layer_turns() {
         double bandLow = roundFloat(windowLowSide + double(blockedLowSide) * wirePitch + wirePitch / 2, 9);
         double bandHigh = roundFloat(windowHighSide - double(blockedHighSide) * wirePitch - wirePitch / 2, 9);
         size_t numberTurnsInLayer = layerTurns.size();
-        double step = (numberTurnsInLayer > 1) ? (bandHigh - bandLow) / double(numberTurnsInLayer - 1) : 0.0;
-        if (numberTurnsInLayer > 1 && step < wirePitch) {
-            step = wirePitch;  // capacity should make this unreachable; never overlap turns
+        if (!hasCorridors) {
+            double step = (numberTurnsInLayer > 1) ? (bandHigh - bandLow) / double(numberTurnsInLayer - 1) : 0.0;
+            if (numberTurnsInLayer > 1 && step < wirePitch) {
+                step = wirePitch;  // capacity should make this unreachable; never overlap turns
+            }
+            for (size_t k = 0; k < numberTurnsInLayer; ++k) {
+                double newPosition = (numberTurnsInLayer == 1)
+                    ? roundFloat((bandLow + bandHigh) / 2, 9)
+                    : roundFloat(bandLow + double(k) * step, 9);
+                auto coords = turns[layerTurns[k]].get_coordinates();
+                coords[turnAxis] = newPosition;
+                turns[layerTurns[k]].set_coordinates(coords);
+            }
         }
-        for (size_t k = 0; k < numberTurnsInLayer; ++k) {
-            double newPosition = (numberTurnsInLayer == 1)
-                ? roundFloat((bandLow + bandHigh) / 2, 9)
-                : roundFloat(bandLow + double(k) * step, 9);
-            auto coords = turns[layerTurns[k]].get_coordinates();
-            coords[turnAxis] = newPosition;
-            turns[layerTurns[k]].set_coordinates(coords);
+        else {
+            // ABT #492: this layer is crossed by a Z continuation's diagonal, whose corridor slots
+            // must stay free as a GAP inside the band — an edge-anchored band reaching a mid-window
+            // crossing would sacrifice everything between the crossing and a window edge. Split the
+            // band into the free sub-bands around the corridor slots (slot grid: pitch = this
+            // layer's wire, origin = the window's low edge, the same grid the corridor slots were
+            // computed on) and distribute the turns across them low-to-high, order preserved:
+            // fill each sub-band to its slot capacity, spreading the LAST, partially-filled
+            // sub-band's turns evenly across it like the plain-band path does.
+            std::vector<std::pair<double, double>> freeSubBands;  // {low edge, high edge}
+            double cursor = roundFloat(windowLowSide + double(blockedLowSide) * wirePitch, 9);
+            double bandHighEdge = roundFloat(windowHighSide - double(blockedHighSide) * wirePitch, 9);
+            for (uint64_t slot : corridorsFound->second) {  // std::set: ascending
+                double slotLow = roundFloat(windowLowSide + double(slot) * wirePitch, 9);
+                double slotHigh = roundFloat(windowLowSide + double(slot + 1) * wirePitch, 9);
+                if (slotHigh <= cursor + 1e-12 || slotLow >= bandHighEdge - 1e-12) {
+                    continue;  // corridor slot already inside an edge-blocked band
+                }
+                if (slotLow > cursor + 1e-12) {
+                    freeSubBands.push_back({cursor, slotLow});
+                }
+                cursor = std::max(cursor, slotHigh);
+            }
+            if (cursor < bandHighEdge - 1e-12) {
+                freeSubBands.push_back({cursor, bandHighEdge});
+            }
+            size_t placed = 0;
+            double lastPosition = bandLow;
+            for (size_t b = 0; b < freeSubBands.size() && placed < numberTurnsInLayer; ++b) {
+                auto [subLow, subHigh] = freeSubBands[b];
+                size_t subCapacity = size_t(std::floor((subHigh - subLow) / wirePitch + 1e-9));
+                if (subCapacity == 0) {
+                    continue;
+                }
+                size_t remaining = numberTurnsInLayer - placed;
+                size_t countHere = std::min(subCapacity, remaining);
+                // First and last slot centres of this sub-band; a sub-band holding its final,
+                // partial share spreads over the whole sub-band, mirroring the plain-band spread.
+                double firstCenter = roundFloat(subLow + wirePitch / 2, 9);
+                double lastCenter = roundFloat(subHigh - wirePitch / 2, 9);
+                double step = (countHere > 1) ? (lastCenter - firstCenter) / double(countHere - 1) : 0.0;
+                if (countHere > 1 && step < wirePitch) {
+                    step = wirePitch;  // capacity computation should make this unreachable
+                }
+                for (size_t k = 0; k < countHere; ++k) {
+                    double newPosition = (countHere == 1)
+                        ? roundFloat((firstCenter + lastCenter) / 2, 9)
+                        : roundFloat(firstCenter + double(k) * step, 9);
+                    auto coords = turns[layerTurns[placed]].get_coordinates();
+                    coords[turnAxis] = newPosition;
+                    turns[layerTurns[placed]].set_coordinates(coords);
+                    lastPosition = newPosition;
+                    placed++;
+                }
+            }
+            // Defensive: capacity accounting (wind_by_rectangular_layers) sizes each layer to fit
+            // its free slots, so this only runs on a transient mid-fixpoint state (cf. ABT #278 —
+            // the measurement geometry must stay alive). Continue past the last placed turn at
+            // pitch steps rather than stacking turns on one another.
+            while (placed < numberTurnsInLayer) {
+                lastPosition = roundFloat(lastPosition + wirePitch, 9);
+                auto coords = turns[layerTurns[placed]].get_coordinates();
+                coords[turnAxis] = lastPosition;
+                turns[layerTurns[placed]].set_coordinates(coords);
+                placed++;
+            }
         }
         auto layerCoordinates = layer.get_coordinates();
         layerCoordinates[turnAxis] = roundFloat((bandLow + bandHigh) / 2, 9);
@@ -1973,6 +2184,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             // re-derived and re-applied below only when the real-geometry setting is on.
             _applyConnectionBlocking = false;
             _connectionBlockedSlotsPerLayer.clear();
+            _connectionBlockedCorridorSlotsPerLayer.clear();
             _connectionBlockedRoomPerLayer.clear();
 
             // Special case: toroid with one physical turn whose wire OD
@@ -2067,6 +2279,20 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                     changed = true;
                 }
             }
+            // ABT #492: accumulate the Z corridor slots with the same monotonic (set-union) rule and
+            // for the same reason — slots are integers on a fixed grid, so the union is bounded and
+            // the fixpoint terminates; a corridor slot that ends unused is one conservative gap, not
+            // a collision. Sub-slot jitter of a crossing between iterations lands in the same slot
+            // and converges immediately.
+            auto freshCorridors = compute_connection_blocked_corridor_slots_per_layer();
+            for (const auto& [layerName, slots] : freshCorridors) {
+                auto& accumulated = _connectionBlockedCorridorSlotsPerLayer[layerName];
+                for (uint64_t slot : slots) {
+                    if (accumulated.insert(slot).second) {
+                        changed = true;
+                    }
+                }
+            }
             if (!changed) {
                 break;
             }
@@ -2115,6 +2341,21 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                         std::to_string(edges.second) + "} blocked slots, applied {" +
                         std::to_string(accumulated.first) + "," +
                         std::to_string(accumulated.second) + "})");
+                }
+            }
+            // ABT #492: same contract for the Z corridors — every slot the FINAL geometry's diagonal
+            // crossings need must have been reserved, or turns silently sit on a Z return.
+            auto residualCorridors = compute_connection_blocked_corridor_slots_per_layer();
+            for (const auto& [layerName, slots] : residualCorridors) {
+                const auto& accumulated = _connectionBlockedCorridorSlotsPerLayer[layerName];
+                for (uint64_t slot : slots) {
+                    if (!accumulated.count(slot)) {
+                        throw CoilException(
+                            ErrorCode::COIL_WINDING_ERROR,
+                            "Real winding Z-return corridor blocking did not converge for layer '" +
+                            layerName + "' (slot " + std::to_string(slot) +
+                            " needed by a diagonal crossing was never reserved)");
+                    }
                 }
             }
         }
@@ -6287,13 +6528,25 @@ bool Coil::wind_by_rectangular_layers() {
                 }
                 return found->second;
             };
+            // ABT #492: mid-layer Z-return corridor slots also cost capacity — the gap
+            // align_blocked_layer_turns keeps inside the band holds no turns.
+            auto corridorSlotsForLayer = [&](size_t layerIndexInSection) -> uint64_t {
+                auto found = _connectionBlockedCorridorSlotsPerLayer.find(
+                    sections[sectionIndex].get_name() + " layer " + std::to_string(layerIndexInSection));
+                if (found == _connectionBlockedCorridorSlotsPerLayer.end()) {
+                    return 0u;
+                }
+                return uint64_t(found->second.size());
+            };
             std::vector<uint64_t> realPerLayerTurns;
             if (realWindingBlocking) {
                 uint64_t remainingTurns = physicalTurnsInSection;
                 size_t builtLayers = 0;
                 while (remainingTurns > 0) {
                     auto blocked = blockedSlotsForLayer(builtLayers);
-                    uint64_t blockedSlots = std::min<uint64_t>(blocked.first + blocked.second, maximumNumberPhysicalTurnsPerLayer - 1);
+                    uint64_t blockedSlots = std::min<uint64_t>(
+                        blocked.first + blocked.second + corridorSlotsForLayer(builtLayers),
+                        maximumNumberPhysicalTurnsPerLayer - 1);
                     uint64_t capacity = maximumNumberPhysicalTurnsPerLayer - blockedSlots;
                     // Side-by-side parallels: hold an equal number of turns of every parallel, so the
                     // layer capacity is a whole number of parallel rows (a multiple of the parallel

@@ -10,6 +10,7 @@
 
 #include <MAS.hpp>
 #include <vector>
+#include <set>
 #include "support/Exceptions.h"
 
 using namespace MAS;
@@ -121,7 +122,10 @@ struct ConnectionReservedSpace {
     // Each edge-routed run (terminal lead or U interleaved continuation) is allocated its own row by
     // the per-edge row allocator so the K parallels of an N-filar group no longer coincide; blocking
     // (compute_connection_blocked_slots_per_layer) derives each crossed layer's freed slots from the
-    // DEEPEST run crossing it. 0 = not an edge-routed run (radial exits, stubs, Z diagonals).
+    // DEEPEST run crossing it. 0 = not an edge-routed run (radial exits, stubs, Z diagonals — a Z
+    // continuation's per-layer squeeze sits mid-window at its diagonal's crossing and is consumed by
+    // the corridor machinery instead, see compute_connection_blocked_corridor_slots_per_layer,
+    // ABT #492).
     double edgeDepth = 0;
 };
 
@@ -163,6 +167,12 @@ class Coil : public MAS::Coil {
         // blocked at its {top, bottom}. Consumed by wind_by_rectangular_layers when
         // _applyConnectionBlocking is set. Both stay empty/false unless real winding geometry is on.
         std::map<std::string, std::pair<uint64_t, uint64_t>> _connectionBlockedSlotsPerLayer;
+        // ABT #492: mid-layer corridor slots per conduction layer (layer name -> slot indices on that
+        // layer's own grid, origin = window low edge on its turn axis), blocked for Z interleaved
+        // continuations' diagonal crossings. Accumulated monotonically by wind()'s fixpoint like the
+        // edge slots above; consumed by wind_by_rectangular_layers (capacity) and
+        // align_blocked_layer_turns (kept as a gap inside the band).
+        std::map<std::string, std::set<uint64_t>> _connectionBlockedCorridorSlotsPerLayer;
         // ABT #430: the room each layer ACTUALLY surrendered to those leads, in metres along its turn
         // axis, as applied by wind_by_rectangular_layers (blocked slots * the layer's own wire, after
         // the one-slot-minimum cap). The layer's extent — and so its filling factor — already excludes
@@ -424,6 +434,14 @@ class Coil : public MAS::Coil {
         // (window-wide) turn-blocking incidence wind() iterates on; a lead blocks any layer it
         // crosses regardless of section/winding.
         std::map<std::string, std::pair<uint64_t, uint64_t>> compute_connection_blocked_slots_per_layer();
+        // ABT #492: mid-layer corridors for Z interleaved continuations. Returns, per conduction
+        // layer crossed by a Z continuation's diagonal, the turn SLOTS (on the layer's own slot
+        // grid: pitch = its wire, origin = the window's low edge on its turn axis) covered by the
+        // crossing's marker interval. Consumed by wind()'s rectangular blocking fixpoint alongside
+        // the edge model: the slots reduce the layer's capacity and align_blocked_layer_turns keeps
+        // them as a GAP inside the band, so the crossed layer's turns clear the diagonal without
+        // sacrificing everything between the crossing and a window edge.
+        std::map<std::string, std::set<uint64_t>> compute_connection_blocked_corridor_slots_per_layer();
         // Real-winding blocking makes a section's interior layers lose top/bottom slots, so an even
         // interleaving turn split leaves orphan turns in a near-empty spillover layer. Re-split each
         // winding's turns across its conduction sections (radial order) so interior sections fill
