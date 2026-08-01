@@ -11688,6 +11688,74 @@ TEST_CASE("Test_Real_Geometry_Contiguous_Oversubscribed_Charge_Is_Measured_In_Tu
     settings.reset();
 }
 
+TEST_CASE("Test_Real_Geometry_Lead_Length_Follows_The_Section_Not_The_Coil_Orientation", "[constructive-model][coil][real-geometry]") {
+    // A lead's length is read on the axis it RUNS along, which follows the LAYERS ORIENTATION OF ITS
+    // OWN SECTION. Reading Coil::get_layers_orientation() instead is wrong twice over: that member
+    // defaults to OVERLAPPING and is not written by every path, and per-section orientations are
+    // supported. 09_planar_xfmr_er2510_3c94 is exactly that trap in the wild — every conduction
+    // section is CONTIGUOUS while the coil-level member sits at its untouched OVERLAPPING default —
+    // so the coil-level reading took each lead's X extent instead of its Y extent and inflated the
+    // connection resistance (primary +0.94%, secondary +2.4%). The example battery did not catch it:
+    // it asserts that Rdc is finite and positive, never what it equals.
+    settings.set_coil_use_real_winding_geometry(true);
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/09_planar_xfmr_er2510_3c94.json");
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+
+    // The fixture only means anything while the two disagree, so hold it to that.
+    auto sections = coil.get_sections_description().value();
+    REQUIRE(coil.get_layers_orientation() == WindingOrientation::OVERLAPPING);
+    std::map<std::string, WindingOrientation> orientationPerSection;
+    bool anyContiguousSection = false;
+    for (const auto& section : sections) {
+        orientationPerSection[section.get_name()] = section.get_layers_orientation();
+        if (section.get_type() == ElectricalType::CONDUCTION
+            && section.get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+            anyContiguousSection = true;
+        }
+    }
+    REQUIRE(anyContiguousSection);
+
+    // Lead length per (winding, parallel), summed on each section's own run axis, and — to prove the
+    // assertion can tell them apart — on the axis the coil-level member would have chosen.
+    auto wires = coil.get_wires();
+    size_t numberWindings = coil.get_functional_description().size();
+    std::vector<std::vector<double>> lengthBySection(numberWindings);
+    std::vector<std::vector<double>> lengthByCoilLevel(numberWindings);
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        lengthBySection[windingIndex].resize(coil.get_number_parallels(windingIndex), 0.0);
+        lengthByCoilLevel[windingIndex].resize(coil.get_number_parallels(windingIndex), 0.0);
+    }
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        auto windingIndex = coil.get_winding_index_by_name(space.winding);
+        int64_t parallel = space.parallel;
+        if (parallel < 0 || parallel >= int64_t(coil.get_number_parallels(windingIndex))) {
+            continue;
+        }
+        auto found = orientationPerSection.find(space.section);
+        bool sectionOverlapping = (found == orientationPerSection.end())
+            || found->second == WindingOrientation::OVERLAPPING;
+        lengthBySection[windingIndex][parallel] += space.dimensions[sectionOverlapping ? 0 : 1];
+        lengthByCoilLevel[windingIndex][parallel] += space.dimensions[0];  // the coil-level answer
+    }
+
+    auto connectionResistance = OpenMagnetics::WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(coil, 25.0);
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        double perMeter = OpenMagnetics::WindingOhmicLosses::calculate_dc_resistance_per_meter(wires[windingIndex], 25.0);
+        for (size_t parallel = 0; parallel < connectionResistance[windingIndex].size(); ++parallel) {
+            INFO("winding " << windingIndex << " parallel " << parallel);
+            CHECK_THAT(connectionResistance[windingIndex][parallel],
+                       Catch::Matchers::WithinRel(perMeter * lengthBySection[windingIndex][parallel], 1e-9));
+            // And the two axes must actually differ here, or the check above proves nothing.
+            CHECK(std::abs(lengthBySection[windingIndex][parallel] - lengthByCoilLevel[windingIndex][parallel]) > 1e-9);
+        }
+    }
+
+    settings.reset();
+}
+
 // Count pairs of turns whose centres are closer than ~one wire — i.e. physically overlapping. Toroidal
 // turns are cartesian, so this is a plain centre-distance check.
 static int toroidal_turn_overlaps(OpenMagnetics::Coil& coil) {

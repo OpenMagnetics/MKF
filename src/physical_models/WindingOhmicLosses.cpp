@@ -61,13 +61,29 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resist
     //   POLAR markers hold {radial extent, azimuthal extent}: a toroidal lead runs RADIALLY, so its
     //       length is index 0 regardless of what the layers orientation says. Reading index 1 there
     //       would collapse every toroidal lead to a wire thickness.
-    size_t cartesianLeadRunAxis = (coil.get_layers_orientation() == WindingOrientation::OVERLAPPING) ? 0 : 1;
+    // Taken from the SECTION each marker belongs to, not from Coil::get_layers_orientation(): that
+    // returns a coil-level member which defaults to OVERLAPPING and is not written by every path (a
+    // deserialized coil can carry contiguous sections with the member still at its default), and
+    // per-section orientations are supported besides. The sections description is what the marker
+    // producer itself reads, so the two cannot disagree.
+    std::map<std::string, WindingOrientation> layersOrientationPerSection;
+    if (coil.get_sections_description()) {
+        auto sectionsDescription = coil.get_sections_description().value();
+        for (const auto& section : sectionsDescription) {
+            layersOrientationPerSection[section.get_name()] = section.get_layers_orientation();
+        }
+    }
     for (const auto& space : coil.get_connection_reserved_spaces()) {
         auto windingIndex = coil.get_winding_index_by_name(space.winding);
         int64_t parallelIndex = space.parallel;
         if (parallelIndex < 0 || parallelIndex >= int64_t(coil.get_number_parallels(windingIndex))) {
             continue;  // a winding-level lead with no parallel; cannot attribute to a branch
         }
+        auto sectionOrientation = layersOrientationPerSection.find(space.section);
+        WindingOrientation layersOrientation = (sectionOrientation == layersOrientationPerSection.end())
+            ? coil.get_layers_orientation()
+            : sectionOrientation->second;
+        size_t cartesianLeadRunAxis = (layersOrientation == WindingOrientation::OVERLAPPING) ? 0 : 1;
         size_t leadRunAxis = (space.coordinateSystem == CoordinateSystem::POLAR) ? 0 : cartesianLeadRunAxis;
         if (space.isTerminal) {
             geometricTerminalLength[windingIndex][parallelIndex] += space.dimensions[leadRunAxis];
