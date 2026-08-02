@@ -9307,9 +9307,24 @@ TEST_CASE("Test_Additiona_Turns_Bug", "[constructive-model][coil][round-winding-
             CHECK(step > 0);
         }
     }
-    // (3, second half) nothing stacked a full OD out on this spare-roomed fixture
+    // (3, second half) on this spare-roomed fixture nothing may sit BEYOND one full OD of the
+    // base ring, and the gap-fill must genuinely nest the MAJORITY of the later rings'
+    // crossings below the full stack. Crossings azimuthally adjacent to a terminal connection
+    // legitimately sit at the full stack: their nested candidates are vetoed so the wire never
+    // rests on the connection's radial crossing line.
+    size_t beyondBase = 0, fullyStacked = 0;
     for (const auto& crossing : outerCrossings) {
-        CHECK(hypot(crossing[0], crossing[1]) < minOuterRadius + wireOuterDiameter - 1e-9);
+        double crossingRadius = hypot(crossing[0], crossing[1]);
+        CHECK(crossingRadius <= minOuterRadius + wireOuterDiameter + 1e-9);
+        if (crossingRadius > minOuterRadius + 1e-6) {
+            ++beyondBase;
+            if (crossingRadius > minOuterRadius + wireOuterDiameter - 1e-6) {
+                ++fullyStacked;
+            }
+        }
+    }
+    if (beyondBase > 0) {
+        CHECK(fullyStacked * 2 < beyondBase + 1);   // majority of raised crossings are NESTED
     }
 
     // (2) mutual clearance of at least one wire OD

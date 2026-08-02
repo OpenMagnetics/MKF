@@ -8059,6 +8059,39 @@ bool Coil::wind_toroidal_additional_turns() {
             double currentSectionMaximumAdditionalRadialHeight = 0;
             double currentBaseRadialHeightForLayers = currentBaseRadialHeight + turnsInSection[0].get_dimensions().value()[0] / 2;
 
+            // Terminal-connection crossing lines of this section (real winding): each
+            // winding-parallel's wire enters at its FIRST station's azimuth and leaves at its
+            // LAST station's azimuth, and the connection runs RADIALLY across the faces there.
+            // Outer-crossing candidates must keep a lateral wire clearance to these lines --
+            // a rested crossing sitting on the connection line is copper through the lead.
+            // The lead's own station is exempt (it IS that wire's continuation).
+            struct TerminalLine {
+                double angleDegrees;
+                double wireOuterDiameter;
+                std::string ownTurnName;
+            };
+            std::vector<TerminalLine> terminalLines;
+            if (settings.get_coil_use_real_winding_geometry()) {
+                std::map<std::pair<std::string, int64_t>, std::pair<const Turn*, const Turn*>> firstLastPerParallel;
+                for (const auto& turn : turnsInSection) {
+                    auto key = std::make_pair(turn.get_winding(), turn.get_parallel());
+                    auto found = firstLastPerParallel.find(key);
+                    if (found == firstLastPerParallel.end()) {
+                        firstLastPerParallel[key] = {&turn, &turn};
+                    }
+                    else {
+                        found->second.second = &turn;
+                    }
+                }
+                for (const auto& [key, firstLast] : firstLastPerParallel) {
+                    double odTerminal = wirePerWinding[get_winding_index_by_name(key.first)].get_maximum_outer_height();
+                    terminalLines.push_back({firstLast.first->get_coordinates()[1], odTerminal,
+                                             firstLast.first->get_name()});
+                    terminalLines.push_back({firstLast.second->get_coordinates()[1], odTerminal,
+                                             firstLast.second->get_name()});
+                }
+            }
+
             auto layersThisSection = get_layers_by_section(section.get_name());
             // Check if there are at least 2 conduction layers with NO real insulation between them
             // Real insulation = thickness > MIN_INSULATION_THICKNESS
@@ -8159,14 +8192,20 @@ bool Coil::wind_toroidal_additional_turns() {
                             // without the crossings.
                             const double windowRadialHeight = windingWindows[0].get_radial_height().value();
                             const double baseRadius = windowRadialHeight - currentBaseRadialHeight;
-                            const double leanDegrees = (wireHeight / baseRadius) * 180 / std::numbers::pi;
+                            // Lean + connection-veto are REAL-WINDING behaviour: the classic method
+                            // keeps the plain fixed-azimuth tangency rest (leanSteps == 1), so a
+                            // problem in the new placement can be sidestepped by the flag alone.
+                            const bool realWindingPlacement = settings.get_coil_use_real_winding_geometry();
+                            const double leanDegrees = realWindingPlacement
+                                ? (wireHeight / baseRadius) * 180 / std::numbers::pi : 0.0;
                             const double thetaDeg = additionalCoordinates[1];
                             double bestRadius = std::numeric_limits<double>::max();
                             double bestAzimuth = thetaDeg;
-                            const int leanSteps = 81;
+                            const int leanSteps = realWindingPlacement ? 81 : 1;
                             for (int leanIndex = 0; leanIndex < leanSteps; ++leanIndex) {
-                                double az = thetaDeg + leanDegrees * (2.0 * leanIndex / (leanSteps - 1) - 1.0);
-                                if (previousOuterCrossingAzimuth.has_value() && layerWindingDirection != 0.0) {
+                                double az = leanSteps == 1 ? thetaDeg
+                                    : thetaDeg + leanDegrees * (2.0 * leanIndex / (leanSteps - 1) - 1.0);
+                                if (realWindingPlacement && previousOuterCrossingAzimuth.has_value() && layerWindingDirection != 0.0) {
                                     double progress = std::remainder(az - previousOuterCrossingAzimuth.value(), 360.0) * layerWindingDirection;
                                     if (progress <= 1e-9) {
                                         continue;   // would step backwards past the previous crossing: chords would cross
@@ -8184,6 +8223,31 @@ bool Coil::wind_toroidal_additional_turns() {
                                     double tangentRadius = placedRadius * cos(dAng) + sqrt(discriminant);
                                     restRadius = std::max(restRadius, tangentRadius);
                                 }
+                                // CONNECTION VETO (real winding): discard a candidate whose rested
+                                // crossing sits laterally within a wire clearance of a terminal
+                                // connection's radial crossing line -- the scan then suggests the
+                                // next-best rest position instead. Inner coordinates are never
+                                // touched; only this outer crossing moves.
+                                if (realWindingPlacement) {
+                                    bool collidesWithConnection = false;
+                                    for (const auto& terminalLine : terminalLines) {
+                                        if (terminalLine.ownTurnName == turn.get_name()) {
+                                            continue;
+                                        }
+                                        double deltaDegrees = std::remainder(az - terminalLine.angleDegrees, 360.0);
+                                        if (std::abs(deltaDegrees) >= 90.0) {
+                                            continue;
+                                        }
+                                        double lateral = restRadius * std::abs(std::sin(deltaDegrees / 180 * std::numbers::pi));
+                                        if (lateral < (wireHeight + terminalLine.wireOuterDiameter) / 2 - 1e-9) {
+                                            collidesWithConnection = true;
+                                            break;
+                                        }
+                                    }
+                                    if (collidesWithConnection) {
+                                        continue;
+                                    }
+                                }
                                 bool deeper = restRadius < bestRadius - 1e-9;
                                 bool tieCloser = std::abs(restRadius - bestRadius) <= 1e-9 &&
                                                  std::abs(az - thetaDeg) < std::abs(bestAzimuth - thetaDeg);
@@ -8194,7 +8258,8 @@ bool Coil::wind_toroidal_additional_turns() {
                             }
                             if (bestRadius == std::numeric_limits<double>::max()) {
                                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
-                                    "wind_toroidal_additional_turns: no monotonic outer-crossing position in the lean window for turn " + turn.get_name());
+                                    "wind_toroidal_additional_turns: every outer-crossing position in the lean window for turn " + turn.get_name() +
+                                    " is either non-monotonic or collides with a terminal connection crossing");
                             }
                             additionalCoordinates[0] = windowRadialHeight - bestRadius;
                             additionalCoordinates[1] = bestAzimuth;
