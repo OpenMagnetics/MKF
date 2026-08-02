@@ -265,6 +265,73 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     }
     windingLossesOutput.set_winding_losses_per_turn(windingLossesPerTurn);
 
+    // ABT #492: connection copper (terminal leads, layer-to-layer links, YZ-face dragbacks)
+    // suffers skin effect too — same per-meter machinery and above-DC-per-harmonic convention as
+    // the turns, applied to the SAME routed lengths the DC stage charges, with each parallel's DC
+    // current divider. Proximity stays zero for connections BY DESIGN: those runs are
+    // perpendicular to the winding and outside the window field region. Reported on the
+    // per-WINDING element (connections are not turns, and per-turn consumers map elements by turn
+    // name); zero-length windings (ideal mode, or no connection routing) are left untouched.
+    auto connectionLengthPerWindingPerParallel =
+        WindingOhmicLosses::calculate_connection_length_per_winding_per_parallel(coil);
+    std::map<std::pair<size_t, int64_t>, double> dividerPerParallel;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        size_t turnWindingIndex = coil.get_winding_index_by_name(turns[turnIndex].get_winding());
+        dividerPerParallel[{turnWindingIndex, turns[turnIndex].get_parallel()}] = currentDividerPerTurn[turnIndex];
+    }
+    auto windingLossesPerWinding = windingLossesOutput.get_winding_losses_per_winding().value();
+    bool anyConnectionSkin = false;
+    for (size_t windingIndex = 0; windingIndex < connectionLengthPerWindingPerParallel.size(); ++windingIndex) {
+        std::vector<double> connectionLossPerHarmonic;
+        std::vector<double> connectionHarmonicFrequency;
+        bool anyConnectionThisWinding = false;
+        for (size_t parallelIndex = 0; parallelIndex < connectionLengthPerWindingPerParallel[windingIndex].size(); ++parallelIndex) {
+            double connectionLength = connectionLengthPerWindingPerParallel[windingIndex][parallelIndex];
+            if (connectionLength <= 0) {
+                continue;
+            }
+            if (windingIndex >= operatingPoint.get_excitations_per_winding().size() ||
+                !operatingPoint.get_excitations_per_winding()[windingIndex].get_current()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current excitation for winding " + std::to_string(windingIndex) + " in connection skin effect losses");
+            }
+            auto dividerFound = dividerPerParallel.find({windingIndex, int64_t(parallelIndex)});
+            if (dividerFound == dividerPerParallel.end()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Winding " + std::to_string(windingIndex) + " parallel " + std::to_string(parallelIndex) + " has connection copper but no turns to take its current divider from");
+            }
+            SignalDescriptor current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+            auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(coil.resolve_wire(windingIndex), current, temperature, dividerFound->second, modelOverride).second;
+            if (!anyConnectionThisWinding) {
+                connectionLossPerHarmonic.assign(lossesPerMeterPerHarmonic.size(), 0.0);
+                connectionHarmonicFrequency.resize(lossesPerMeterPerHarmonic.size());
+                for (size_t harmonicIndex = 0; harmonicIndex < lossesPerMeterPerHarmonic.size(); ++harmonicIndex) {
+                    connectionHarmonicFrequency[harmonicIndex] = lossesPerMeterPerHarmonic[harmonicIndex].second;
+                }
+                anyConnectionThisWinding = true;
+            }
+            for (size_t harmonicIndex = 0; harmonicIndex < lossesPerMeterPerHarmonic.size(); ++harmonicIndex) {
+                connectionLossPerHarmonic[harmonicIndex] += lossesPerMeterPerHarmonic[harmonicIndex].first * connectionLength;
+            }
+        }
+        if (!anyConnectionThisWinding) {
+            continue;
+        }
+        LossElementPerHarmonic connectionSkinLosses;
+        connectionSkinLosses.set_method_used("ConnectionSkin");
+        connectionSkinLosses.set_origin(ResultOrigin::SIMULATION);
+        connectionSkinLosses.get_mutable_harmonic_frequencies().push_back(0);
+        connectionSkinLosses.get_mutable_losses_per_harmonic().push_back(0);
+        for (size_t harmonicIndex = 0; harmonicIndex < connectionLossPerHarmonic.size(); ++harmonicIndex) {
+            connectionSkinLosses.get_mutable_harmonic_frequencies().push_back(connectionHarmonicFrequency[harmonicIndex]);
+            connectionSkinLosses.get_mutable_losses_per_harmonic().push_back(connectionLossPerHarmonic[harmonicIndex]);
+            totalSkinEffectLosses += connectionLossPerHarmonic[harmonicIndex];
+        }
+        windingLossesPerWinding[windingIndex].set_skin_effect_losses(connectionSkinLosses);
+        anyConnectionSkin = true;
+    }
+    if (anyConnectionSkin) {
+        windingLossesOutput.set_winding_losses_per_winding(windingLossesPerWinding);
+    }
+
     windingLossesOutput.set_method_used("AnalyticalModels");
     if (std::isnan(totalSkinEffectLosses)) {
         throw NaNResultException("NaN found in total skin effect losses");

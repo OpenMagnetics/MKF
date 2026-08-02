@@ -463,6 +463,12 @@ void Painter::paint_coil_connections(Magnetic magnetic) {
         if (!space.layer.empty()) {
             continue;
         }
+        // ABT #492: a Z interleaved return's dragback routes on the core's front/back (YZ) face —
+        // out of this XY drawing plane — so it must not be painted here (a dedicated YZ view is a
+        // separate future feature).
+        if (space.plane == RoutePlane::FRONT_YZ) {
+            continue;
+        }
         std::string cssClassName = space.isTerminal ? "connection_terminal" : "connection_transition";
         // paint_rectangle rotates around center*_scale while scale_points flips y (y -> -y*_scale), so
         // the rotation pivot's y must be negated to match the drawn polygon's centre.

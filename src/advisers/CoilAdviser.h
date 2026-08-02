@@ -5,6 +5,8 @@
 #include "constructive_models/Mas.h"
 #include "support/Utils.h"
 #include <MAS.hpp>
+#include <limits>
+#include <optional>
 
 using namespace MAS;
 
@@ -113,7 +115,31 @@ class CoilAdviser : public WireAdviser {
             MagneticFilterOperation(MagneticFilters::MAGNETOMOTIVE_FORCE, true, true, 1.0),
         };
 
+        // ABT #415: zero-result diagnosis, accumulated across every pattern/insulation attempt of
+        // one get_advised_coil call and composed into _lastNoResultsReason when the call returns an
+        // empty vector. Every count is honest bookkeeping of what actually ran — no fabricated
+        // results, only the explanation the caller could never reach before (each diagnosis in the
+        // ticket needed the winder instrumented by hand).
+        size_t _diagnosisWireCandidates = 0;   // wires that survived electrical filtering, all windings
+        size_t _diagnosisWindAttempts = 0;     // wire combinations handed to wind()
+        size_t _diagnosisGuardSkips = 0;       // combinations rejected by the packability guard pre-wind
+        bool _diagnosisNoWiresSurvived = false;
+        std::string _diagnosisNoWiresDetail;
+        double _diagnosisBestOverfill = std::numeric_limits<double>::max();
+        std::string _diagnosisBestFailure;     // failing constraint of the closest losing candidate
+        std::optional<std::string> _lastNoResultsReason;
+
     public:
+
+        // ABT #415: when get_advised_coil returns an EMPTY vector, this explains why — at minimum
+        // distinguishing "no wire survived electrical filtering" from "wires survived but none
+        // could be wound", with the counts and the failing constraint of the best (closest-to-
+        // winding) candidate. std::nullopt whenever the last call returned results. Empty results
+        // stay an empty vector (MagneticAdviser iterates cores and legitimately sees empties), but
+        // never a silent one: the same text is logged at WARNING level.
+        std::optional<std::string> get_last_no_results_reason() const {
+            return _lastNoResultsReason;
+        }
 
         std::vector<Mas> get_advised_coil(Mas mas, size_t maximumNumberResults=1);
         std::vector<Mas> get_advised_coil(std::vector<Wire>* wires, Mas mas, size_t maximumNumberResults=1);

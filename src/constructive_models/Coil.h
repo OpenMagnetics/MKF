@@ -10,6 +10,7 @@
 
 #include <MAS.hpp>
 #include <vector>
+#include <optional>
 #include "support/Exceptions.h"
 
 using namespace MAS;
@@ -89,6 +90,27 @@ class Winding : public MAS::CoilFunctionalDescription {
         Wire resolve_wire();
 };
 
+// ABT #492: which plane a connection marker's rectangle routes in.
+enum class RoutePlane {
+    // The winding-window XY cross-section every other rectangle in the coil lives in (default —
+    // every marker that existed before ABT #492 is WINDOW_XY and completely unchanged).
+    WINDOW_XY,
+    // The core's front/back (YZ) face — where there are no lateral legs — used by the DRAGBACK of a
+    // Z interleaved inter-section return: manufacturing routes that return as vertically as
+    // possible on this face, riding as a local radial bump over the intervening sections' build, so
+    // it consumes NO winding-window space. Coordinates/dimensions keep the coil's usual meaning
+    // (index 0 = radial, index 1 = axial for overlapping layers), the rectangle just lives at an
+    // azimuth outside the XY cut. Consequences for consumers:
+    //   - The XY Painter must SKIP these markers (out of plane; a dedicated YZ view is a future
+    //     feature).
+    //   - They never block window turn slots and never charge a layer/section filling factor
+    //     (they always carry an empty `layer`).
+    //   - Their copper length is carried EXPLICITLY in `routedLength`, like every marker's: no
+    //     consumer may infer it from the rectangle (a radial climb of a tall RECTANGULAR/FOIL wire
+    //     can be SHORTER than the wire's own height, so even "the longer dimension" misreads it).
+    FRONT_YZ,
+};
+
 // One rectangle of radial space reserved by a terminal/connection lead crossing a layer boundary,
 // used when real winding geometry is enabled (Settings::get_coil_use_real_winding_geometry). It
 // both feeds the section filling factor and is drawn by the Painter for debugging.
@@ -110,7 +132,22 @@ struct ConnectionReservedSpace {
     //       is [0] whatever the layers orientation says. The centre stays cartesian either way,
     //       matching toroidal turns.
     CoordinateSystem coordinateSystem = CoordinateSystem::CARTESIAN;
+    // ABT #492: the plane this rectangle routes in. WINDOW_XY (default) for everything in the
+    // winding-window cross-section; FRONT_YZ for the out-of-plane dragback segments of a Z
+    // interleaved inter-section return (see RoutePlane above for the consumer contract).
+    RoutePlane plane = RoutePlane::WINDOW_XY;
     std::vector<double> dimensions;
+    // ABT #492 loss-reader audit: the centerline COPPER LENGTH this marker charges to the
+    // connection resistance, set by EVERY emitter from its own geometry. Authoritative for
+    // resistance ONLY — `coordinates`/`dimensions` stay the geometric truth for painters and
+    // blocking. It exists because inferring the run from the rectangle was structurally wrong in
+    // two ways: an orientation-derived index misread every segment running along the OTHER axis (a
+    // U stub counted as one wire width), and "the longer dimension" misread a radial climb of a
+    // tall RECTANGULAR/FOIL wire (wire height > climb run). Space-only book-keeping markers (the
+    // per-layer squeezes; the copper they represent is carried by the DRAWN segments of the same
+    // route) set it to 0. A marker with it UNSET is an emitter bug: markers are always freshly
+    // emitted at runtime, and WindingOhmicLosses throws on it (no-fallback rule).
+    std::optional<double> routedLength;
     double rotation = 0;              // degrees, for diagonal links (Z continuations); 0 = axis-aligned
     // A terminal lead routes a winding end out to the bobbin window border (entrance/exit). It is
     // drawn and its length feeds the connection loss, but it does not squeeze a conduction layer.

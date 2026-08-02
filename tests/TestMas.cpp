@@ -1,6 +1,7 @@
 #include <source_location>
 #include "constructive_models/Mas.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/StrayCapacitance.h"
 #include "processors/MagneticSimulator.h"
@@ -12,6 +13,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -114,6 +116,34 @@ TEST_CASE("Test_All_Examples_Real_Geometry_Physics", "[constructive-model][mas][
             // the coil) with REAL winding geometry ON, so the wind inside builds the lead rows /
             // toroidal corridors (ABT #229/#187).
             settings.set_coil_use_real_winding_geometry(true);
+
+            // ABT #492 owner ruling: planar wires are PCBs — the real-winding connection model
+            // (leads, markers, dragbacks) is for WOUND magnetics only, and real winding for planar
+            // has not been started, so this combination must THROW (no via model, no fallback, no
+            // silent skip). The planar example (09_planar_xfmr_er2510_3c94) therefore asserts the
+            // loud gate here; the physics battery below applies to the wound examples.
+            bool anyPlanarWire = false;
+            for (const auto& winding : mas.get_magnetic().get_coil().get_functional_description()) {
+                if (std::holds_alternative<OpenMagnetics::Wire>(winding.get_wire())
+                    && std::get<OpenMagnetics::Wire>(winding.get_wire()).get_type() == WireType::PLANAR) {
+                    anyPlanarWire = true;
+                }
+            }
+            if (anyPlanarWire) {
+                // The planar example ships fully wound, so autocomplete does not re-wind it; the
+                // gate fires at the first real-winding machinery a planar coil can reach: a
+                // re-wind, and the connection-resistance path the loss chain uses.
+                OpenMagnetics::Magnetic planarMagnetic;
+                REQUIRE_NOTHROW(planarMagnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic()));
+                REQUIRE_THROWS_WITH(planarMagnetic.get_mutable_coil().wind(),
+                                    Catch::Matchers::ContainsSubstring("not implemented for planar"));
+                REQUIRE_THROWS_WITH(WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(
+                                        planarMagnetic.get_coil(), 25.0),
+                                    Catch::Matchers::ContainsSubstring("not implemented for planar"));
+                settings.reset();
+                continue;
+            }
+
             OpenMagnetics::Magnetic magnetic;
             REQUIRE_NOTHROW(magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic()));
             auto& core = magnetic.get_mutable_core();
