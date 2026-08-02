@@ -10,6 +10,7 @@
 
 #include <MAS.hpp>
 #include <vector>
+#include <optional>
 #include "support/Exceptions.h"
 
 using namespace MAS;
@@ -104,11 +105,9 @@ enum class RoutePlane {
     //     feature).
     //   - They never block window turn slots and never charge a layer/section filling factor
     //     (they always carry an empty `layer`).
-    //   - A FRONT_YZ segment is an axis-aligned THIN rectangle (thickness = one wire), so its run
-    //     LENGTH is its LONGER dimension: consumers wanting the routed length take
-    //     max(dimensions[0], dimensions[1]) instead of picking an index from the section's layers
-    //     orientation (the dragback mixes radial climbs and an axial run in one group, so no single
-    //     index fits all its segments). WindingOhmicLosses applies exactly this rule.
+    //   - Their copper length is carried EXPLICITLY in `routedLength`, like every marker's: no
+    //     consumer may infer it from the rectangle (a radial climb of a tall RECTANGULAR/FOIL wire
+    //     can be SHORTER than the wire's own height, so even "the longer dimension" misreads it).
     FRONT_YZ,
 };
 
@@ -138,6 +137,17 @@ struct ConnectionReservedSpace {
     // interleaved inter-section return (see RoutePlane above for the consumer contract).
     RoutePlane plane = RoutePlane::WINDOW_XY;
     std::vector<double> dimensions;
+    // ABT #492 loss-reader audit: the centerline COPPER LENGTH this marker charges to the
+    // connection resistance, set by EVERY emitter from its own geometry. Authoritative for
+    // resistance ONLY — `coordinates`/`dimensions` stay the geometric truth for painters and
+    // blocking. It exists because inferring the run from the rectangle was structurally wrong in
+    // two ways: an orientation-derived index misread every segment running along the OTHER axis (a
+    // U stub counted as one wire width), and "the longer dimension" misread a radial climb of a
+    // tall RECTANGULAR/FOIL wire (wire height > climb run). Space-only book-keeping markers (the
+    // per-layer squeezes; the copper they represent is carried by the DRAWN segments of the same
+    // route) set it to 0. A marker with it UNSET is an emitter bug: markers are always freshly
+    // emitted at runtime, and WindingOhmicLosses throws on it (no-fallback rule).
+    std::optional<double> routedLength;
     double rotation = 0;              // degrees, for diagonal links (Z continuations); 0 = axis-aligned
     // A terminal lead routes a winding end out to the bobbin window border (entrance/exit). It is
     // drawn and its length feeds the connection loss, but it does not squeeze a conduction layer.

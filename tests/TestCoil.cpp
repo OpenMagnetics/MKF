@@ -11929,110 +11929,384 @@ TEST_CASE("Test_Real_Geometry_Contiguous_Oversubscribed_Charge_Is_Measured_In_Tu
     settings.reset();
 }
 
-TEST_CASE("Test_Real_Geometry_Lead_Length_Follows_The_Section_Not_The_Coil_Orientation", "[constructive-model][coil][real-geometry]") {
-    // A lead's length is read on the axis it RUNS along, which follows the LAYERS ORIENTATION OF ITS
-    // OWN SECTION. Reading Coil::get_layers_orientation() instead is wrong twice over: that member
-    // defaults to OVERLAPPING and is not written by every path (a coil deserialized from JSON keeps
-    // the default while its sections say otherwise), and per-section orientations are supported.
-    //
-    // ABT #492 owner ruling re-fixture: the original fixture (09_planar_xfmr_er2510_3c94) is a
-    // planar PCB construction, which real winding geometry now REJECTS by design (see
-    // Test_Real_Geometry_Planar_Throws) — its 0.537 mOhm pin died with it. The trap is recreated on
-    // the wound CONTIGUOUS RECTANGULAR-wire construction (the ABT #449 fixture class round wire
-    // cannot test: rectangular wire makes the two marker extents differ so a wrong axis changes the
-    // number), interleaved so a Z inter-section return exists and the mirror must apply BOTH rules
-    // of the documented contract: WINDOW_XY markers by the section-orientation index, FRONT_YZ
-    // dragback segments by the long-axis rule.
-    std::vector<int64_t> numberTurns = {10, 10};
-    std::vector<int64_t> numberParallels = {1, 1};
-    uint8_t interleavingLevel = 2;
-
-    OpenMagnetics::Wire wire;
-    wire.set_nominal_value_conducting_width(0.00076);
-    wire.set_nominal_value_conducting_height(0.00038);
-    wire.set_nominal_value_outer_width(0.0008);
-    wire.set_nominal_value_outer_height(0.0004);
-    wire.set_number_conductors(1);
-    wire.set_material("copper");
-    wire.set_type(WireType::RECTANGULAR);
-
-    settings.set_coil_use_real_winding_geometry(true);
-    auto wound = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel,
-        WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS,
-        CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire, wire});
-    REQUIRE(wound.get_turns_description());
-
-    // Recreate the deserialized-coil trap: the JSON round-trip drops the transient coil-level
-    // orientation member back to its OVERLAPPING default while the sections stay CONTIGUOUS.
-    json coilJson;
-    to_json(coilJson, wound);
-    OpenMagnetics::Coil coil(coilJson, false);
-    REQUIRE(coil.get_turns_description());
-    REQUIRE(coil.get_layers_orientation() == WindingOrientation::OVERLAPPING);
-    auto sections = coil.get_sections_description().value();
-    std::map<std::string, WindingOrientation> orientationPerSection;
-    bool anyContiguousSection = false;
-    for (const auto& section : sections) {
-        orientationPerSection[section.get_name()] = section.get_layers_orientation();
-        if (section.get_type() == ElectricalType::CONDUCTION
-            && section.get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-            anyContiguousSection = true;
-        }
-    }
-    REQUIRE(anyContiguousSection);
-    // The wire must NOT be square, or the index choices go untested.
-    REQUIRE(std::abs(coil.get_wires()[0].get_maximum_outer_width()
-                     - coil.get_wires()[0].get_maximum_outer_height()) > 1e-6);
-    // The interleave must actually produce Z inter-section returns, so the FRONT_YZ rule is
-    // exercised too.
-    REQUIRE(!front_yz_dragback_groups(coil).empty());
-
-    // Lead length per (winding, parallel), summed by the documented contract — WINDOW_XY markers on
-    // each section's own run axis, FRONT_YZ segments by their long axis — and, to prove the
-    // assertion can tell the axes apart, the same sum on the axis the coil-level member would have
-    // chosen for the WINDOW_XY markers.
+// ABT #492 loss-reader audit: expected centerline connection-copper length per (winding,
+// parallel), derived INDEPENDENTLY of the markers from turn positions, layer extents, insulation
+// sections, the window box and the documented route model — so the reader can no longer be "right"
+// by construction (its old index/shape inference misread U stubs as one wire width and tall-wire
+// dragback climbs as the wire height). Rectangular windows only; single winding window (the edge
+// row allocator is replayed with window index 0). Mirrors the emitter's spec, not its code.
+static std::map<std::pair<std::string, int64_t>, double> expected_connection_length_rectangular(OpenMagnetics::Coil& coil) {
+    std::map<std::pair<std::string, int64_t>, double> expected;
+    auto turns = coil.get_turns_description().value();
+    auto allLayers = coil.get_layers_description().value();
     auto wires = coil.get_wires();
-    size_t numberWindings = coil.get_functional_description().size();
-    std::vector<std::vector<double>> lengthBySection(numberWindings);
-    std::vector<std::vector<double>> lengthByCoilLevel(numberWindings);
-    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-        lengthBySection[windingIndex].resize(coil.get_number_parallels(windingIndex), 0.0);
-        lengthByCoilLevel[windingIndex].resize(coil.get_number_parallels(windingIndex), 0.0);
+
+    std::vector<Layer> conductionLayers;
+    for (const auto& layer : allLayers) {
+        if (layer.get_type() == ElectricalType::CONDUCTION) {
+            conductionLayers.push_back(layer);
+        }
     }
-    for (const auto& space : coil.get_connection_reserved_spaces()) {
-        auto windingIndex = coil.get_winding_index_by_name(space.winding);
-        int64_t parallel = space.parallel;
-        if (parallel < 0 || parallel >= int64_t(coil.get_number_parallels(windingIndex))) {
-            continue;
+    REQUIRE(!conductionLayers.empty());
+    bool contiguous = (conductionLayers[0].get_orientation() == WindingOrientation::CONTIGUOUS);
+    // Virtual frame: the layer axis is x. For contiguous coils transpose turn/layer positions.
+    auto vx = [&](const std::vector<double>& c) { return contiguous ? c[1] : c[0]; };
+    auto vy = [&](const std::vector<double>& c) { return contiguous ? c[0] : c[1]; };
+
+    auto windingWindow = coil.resolve_bobbin().get_processed_description().value().get_winding_windows()[0];
+    double windowCenterLayerAxis = vx(windingWindow.get_coordinates().value());
+    double windowCenterTurnAxis = vy(windingWindow.get_coordinates().value());
+    double windowSizeLayerAxis = contiguous ? windingWindow.get_height().value() : windingWindow.get_width().value();
+    double windowSizeTurnAxis = contiguous ? windingWindow.get_width().value() : windingWindow.get_height().value();
+    double windowOuterX = windowCenterLayerAxis + windowSizeLayerAxis / 2;
+    double windowTopY = windowCenterTurnAxis + windowSizeTurnAxis / 2;
+    double windowBottomY = windowCenterTurnAxis - windowSizeTurnAxis / 2;
+
+    // Per-edge row allocator replay (single window): {edge 0 = top, 1 = bottom} -> used depth.
+    std::map<int, double> usedEdgeDepth;
+    auto allocateEdgeRow = [&](bool atTop, double wireHeight) {
+        double& used = usedEdgeDepth[atTop ? 0 : 1];
+        double edgeY = atTop ? windowTopY - used - wireHeight / 2 : windowBottomY + used + wireHeight / 2;
+        used += wireHeight;
+        return edgeY;
+    };
+
+    // Electrical order of layers, and endpoint turns per (winding|layer, parallel).
+    std::map<std::string, size_t> layerElectricalOrder;
+    size_t order = 0;
+    std::map<std::pair<std::string, int64_t>, Turn> entranceTurn, exitTurn, firstTurnInLayer, lastTurnInLayer;
+    for (const auto& turn : turns) {
+        if (turn.get_layer() && !layerElectricalOrder.count(turn.get_layer().value())) {
+            layerElectricalOrder[turn.get_layer().value()] = order++;
         }
-        if (space.plane == RoutePlane::FRONT_YZ) {
-            // The YZ-face dragback mixes radial climbs and an axial run, so its segments carry
-            // their length on the LONG axis — orientation-independent by contract.
-            double longAxis = std::max(space.dimensions[0], space.dimensions[1]);
-            lengthBySection[windingIndex][parallel] += longAxis;
-            lengthByCoilLevel[windingIndex][parallel] += longAxis;
-            continue;
+        auto windingKey = std::make_pair(turn.get_winding(), turn.get_parallel());
+        if (!entranceTurn.count(windingKey)) {
+            entranceTurn[windingKey] = turn;
         }
-        auto found = orientationPerSection.find(space.section);
-        bool sectionOverlapping = (found == orientationPerSection.end())
-            || found->second == WindingOrientation::OVERLAPPING;
-        lengthBySection[windingIndex][parallel] += space.dimensions[sectionOverlapping ? 0 : 1];
-        lengthByCoilLevel[windingIndex][parallel] += space.dimensions[0];  // the coil-level answer
+        exitTurn[windingKey] = turn;
+        if (turn.get_layer()) {
+            auto layerKey = std::make_pair(turn.get_layer().value(), turn.get_parallel());
+            if (!firstTurnInLayer.count(layerKey)) {
+                firstTurnInLayer[layerKey] = turn;
+            }
+            lastTurnInLayer[layerKey] = turn;
+        }
     }
 
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto windingName = coil.get_functional_description()[windingIndex].get_name();
+        double wireW = contiguous ? wires[windingIndex].get_maximum_outer_height() : wires[windingIndex].get_maximum_outer_width();
+        double wireH = contiguous ? wires[windingIndex].get_maximum_outer_width() : wires[windingIndex].get_maximum_outer_height();
+        int64_t numberParallels = int64_t(coil.get_number_parallels(windingIndex));
+
+        // Terminal leads: radial exit at own level when nothing lies outward, else stub + edge run.
+        auto terminalLength = [&](const Turn& connectingTurn) {
+            double turnX = vx(connectingTurn.get_coordinates());
+            double turnY = vy(connectingTurn.get_coordinates());
+            if (windowOuterX <= turnX) {
+                return 0.0;
+            }
+            bool crossesOutward = false;
+            for (const auto& layer : conductionLayers) {
+                double layerX = vx(layer.get_coordinates());
+                if (layerX > turnX + 1e-9 && layerX < windowOuterX) {
+                    crossesOutward = true;
+                }
+            }
+            double run = windowOuterX - turnX + wireW;
+            if (!crossesOutward) {
+                return run;
+            }
+            double edgeY = allocateEdgeRow(turnY >= windowCenterTurnAxis, wireH);
+            double stub = (std::abs(edgeY - turnY) > wireH / 2) ? std::abs(edgeY - turnY) + wireH / 2 : 0.0;
+            return stub + run;
+        };
+        for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
+            auto key = std::make_pair(windingName, parallel);
+            if (entranceTurn.count(key)) {
+                expected[key] += terminalLength(entranceTurn.at(key));
+            }
+            if (exitTurn.count(key)) {
+                expected[key] += terminalLength(exitTurn.at(key));
+            }
+        }
+
+        // Inter-layer links, in electrical order.
+        std::vector<Layer> windingLayers;
+        for (const auto& layer : conductionLayers) {
+            if (layer.get_partial_windings()[0].get_winding() == windingName) {
+                windingLayers.push_back(layer);
+            }
+        }
+        std::sort(windingLayers.begin(), windingLayers.end(), [&](const Layer& a, const Layer& b) {
+            return layerElectricalOrder[a.get_name()] < layerElectricalOrder[b.get_name()];
+        });
+        for (size_t i = 0; i + 1 < windingLayers.size(); ++i) {
+            double radialA = vx(windingLayers[i].get_coordinates());
+            double radialB = vx(windingLayers[i + 1].get_coordinates());
+            std::vector<const Layer*> intervening;
+            double interveningOuter = std::numeric_limits<double>::lowest();
+            const Layer* outermostIntervening = nullptr;
+            for (const auto& crossed : conductionLayers) {
+                double radial = vx(crossed.get_coordinates());
+                if (radial > std::min(radialA, radialB) + 1e-12 && radial < std::max(radialA, radialB) - 1e-12) {
+                    intervening.push_back(&crossed);
+                    double radialExtent = contiguous ? crossed.get_dimensions()[1] : crossed.get_dimensions()[0];
+                    if (radial + radialExtent / 2 > interveningOuter) {
+                        interveningOuter = radial + radialExtent / 2;
+                        outermostIntervening = &crossed;
+                    }
+                }
+            }
+            WindingOrder windingOrder = coil.get_winding_order(windingLayers[i].get_section().value());
+            for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
+                auto exitKey = std::make_pair(windingLayers[i].get_name(), parallel);
+                auto entryKey = std::make_pair(windingLayers[i + 1].get_name(), parallel);
+                if (!lastTurnInLayer.count(exitKey) || !firstTurnInLayer.count(entryKey)) {
+                    continue;
+                }
+                double x1 = vx(lastTurnInLayer.at(exitKey).get_coordinates());
+                double y1 = vy(lastTurnInLayer.at(exitKey).get_coordinates());
+                double x2 = vx(firstTurnInLayer.at(entryKey).get_coordinates());
+                double y2 = vy(firstTurnInLayer.at(entryKey).get_coordinates());
+                if (windingOrder == WindingOrder::Z && !intervening.empty()) {
+                    // YZ-face dragback: climb over the intervening build, near-axial run, climb down.
+                    double insulation = 0;
+                    if (!outermostIntervening->get_partial_windings().empty()
+                        && outermostIntervening->get_partial_windings()[0].get_winding() != windingName) {
+                        for (const auto& insulationSection : coil.get_sections_by_type(ElectricalType::INSULATION)) {
+                            double insulationX = vx(insulationSection.get_coordinates());
+                            if (insulationX > interveningOuter && insulationX < std::max(x1, x2)) {
+                                insulation += coil.get_insulation_section_thickness(insulationSection.get_name());
+                            }
+                        }
+                    }
+                    double bump = interveningOuter + insulation + wireW / 2;
+                    if (std::abs(bump - x1) > wireW / 2) {
+                        expected[{windingName, parallel}] += std::abs(bump - x1) + wireW / 2;
+                    }
+                    if (std::abs(y2 - y1) > wireH / 2) {
+                        expected[{windingName, parallel}] += std::abs(y2 - y1) + wireH;
+                    }
+                    if (std::abs(bump - x2) > wireW / 2) {
+                        expected[{windingName, parallel}] += std::abs(bump - x2) + wireW / 2;
+                    }
+                }
+                else if (windingOrder == WindingOrder::Z) {
+                    expected[{windingName, parallel}] += std::hypot(x2 - x1, y2 - y1);
+                }
+                else if (!intervening.empty()) {
+                    // U interleaved: stubs to the allocated top edge row + run across.
+                    double edgeY = allocateEdgeRow(true, wireH);
+                    if (std::abs(edgeY - y1) > wireH / 2) {
+                        expected[{windingName, parallel}] += std::abs(edgeY - y1) + wireH / 2;
+                    }
+                    expected[{windingName, parallel}] += std::abs(x2 - x1) + wireW;
+                    if (std::abs(edgeY - y2) > wireH / 2) {
+                        expected[{windingName, parallel}] += std::abs(edgeY - y2) + wireH / 2;
+                    }
+                }
+                else {
+                    // U adjacent: orthogonal L (horizontal past the corner, vertical pulled back).
+                    bool needVertical = std::abs(y2 - y1) > wireH / 2;
+                    expected[{windingName, parallel}] += needVertical
+                        ? std::abs(x2 - x1) + wireW / 2 : std::abs(x2 - x1);
+                    if (needVertical) {
+                        expected[{windingName, parallel}] += std::abs(y2 - y1) - wireH / 2;
+                    }
+                }
+            }
+        }
+    }
+    return expected;
+}
+
+// Toroidal counterpart: radial terminal runs capped at the bore wall + inter-ring hops.
+static std::map<std::pair<std::string, int64_t>, double> expected_connection_length_toroidal(OpenMagnetics::Coil& coil) {
+    std::map<std::pair<std::string, int64_t>, double> expected;
+    auto turns = coil.get_turns_description().value();
+    auto wires = coil.get_wires();
+    double maxTurnRadius = 0;
+    std::map<std::string, size_t> ringElectricalOrder;
+    size_t order = 0;
+    std::map<std::string, std::string> ringWinding;
+    std::map<std::pair<std::string, int64_t>, Turn> entranceTurn, exitTurn, firstTurnInRing, lastTurnInRing;
+    for (const auto& turn : turns) {
+        auto c = turn.get_coordinates();
+        maxTurnRadius = std::max(maxTurnRadius, std::hypot(c[0], c[1]));
+        if (turn.get_layer() && !ringElectricalOrder.count(turn.get_layer().value())) {
+            ringElectricalOrder[turn.get_layer().value()] = order++;
+            ringWinding[turn.get_layer().value()] = turn.get_winding();
+        }
+        auto windingKey = std::make_pair(turn.get_winding(), turn.get_parallel());
+        if (!entranceTurn.count(windingKey)) {
+            entranceTurn[windingKey] = turn;
+        }
+        exitTurn[windingKey] = turn;
+        if (turn.get_layer()) {
+            auto ringKey = std::make_pair(turn.get_layer().value(), turn.get_parallel());
+            if (!firstTurnInRing.count(ringKey)) {
+                firstTurnInRing[ringKey] = turn;
+            }
+            lastTurnInRing[ringKey] = turn;
+        }
+    }
+    auto windingWindows = coil.resolve_bobbin().get_processed_description().value().get_winding_windows();
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto windingName = coil.get_functional_description()[windingIndex].get_name();
+        double wireW = wires[windingIndex].get_maximum_outer_width();
+        double border = maxTurnRadius + 1.5 * wireW;
+        if (!windingWindows.empty() && windingWindows[0].get_radial_height()) {
+            border = std::min(border, windingWindows[0].get_radial_height().value());
+        }
+        int64_t numberParallels = int64_t(coil.get_number_parallels(windingIndex));
+        for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
+            auto key = std::make_pair(windingName, parallel);
+            if (entranceTurn.count(key)) {
+                auto c = entranceTurn.at(key).get_coordinates();
+                double radius = std::hypot(c[0], c[1]);
+                if (radius > 1e-9 && border > radius) {
+                    expected[key] += border - (radius - wireW / 2);
+                }
+            }
+            if (exitTurn.count(key)) {
+                auto c = exitTurn.at(key).get_coordinates();
+                double radius = std::hypot(c[0], c[1]);
+                if (radius > 1e-9 && border > radius) {
+                    expected[key] += border - (radius - wireW / 2);
+                }
+            }
+        }
+        // Inter-ring hops in electrical order, per parallel.
+        std::vector<std::string> rings;
+        for (const auto& [ringName, owner] : ringWinding) {
+            if (owner == windingName) {
+                rings.push_back(ringName);
+            }
+        }
+        std::sort(rings.begin(), rings.end(), [&](const std::string& a, const std::string& b) {
+            return ringElectricalOrder[a] < ringElectricalOrder[b];
+        });
+        for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
+            for (size_t i = 0; i + 1 < rings.size(); ++i) {
+                auto exitKey = std::make_pair(rings[i], parallel);
+                auto entryKey = std::make_pair(rings[i + 1], parallel);
+                if (!lastTurnInRing.count(exitKey) || !firstTurnInRing.count(entryKey)) {
+                    continue;
+                }
+                auto a = lastTurnInRing.at(exitKey).get_coordinates();
+                auto b = firstTurnInRing.at(entryKey).get_coordinates();
+                double length = std::hypot(b[0] - a[0], b[1] - a[1]);
+                if (length > 1e-9) {
+                    expected[{windingName, parallel}] += length;
+                }
+            }
+        }
+    }
+    return expected;
+}
+
+// Checks the connection resistance of every (winding, parallel) against perMeter x the
+// geometry-derived expected length.
+static void check_connection_resistance_matches(OpenMagnetics::Coil& coil,
+                                                const std::map<std::pair<std::string, int64_t>, double>& expected) {
+    auto wires = coil.get_wires();
     auto connectionResistance = OpenMagnetics::WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(coil, 25.0);
-    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto windingName = coil.get_functional_description()[windingIndex].get_name();
         double perMeter = OpenMagnetics::WindingOhmicLosses::calculate_dc_resistance_per_meter(wires[windingIndex], 25.0);
         for (size_t parallel = 0; parallel < connectionResistance[windingIndex].size(); ++parallel) {
-            INFO("winding " << windingIndex << " parallel " << parallel);
+            auto found = expected.find({windingName, int64_t(parallel)});
+            REQUIRE(found != expected.end());
+            INFO("winding " << windingName << " parallel " << parallel
+                 << " expectedLength=" << found->second * 1e3 << " mm");
+            CHECK(found->second > 0);  // vacuity: every conductor must route some connection copper
             CHECK_THAT(connectionResistance[windingIndex][parallel],
-                       Catch::Matchers::WithinRel(perMeter * lengthBySection[windingIndex][parallel], 1e-9));
-            // And the two axes must actually differ here, or the check above proves nothing.
-            CHECK(std::abs(lengthBySection[windingIndex][parallel] - lengthByCoilLevel[windingIndex][parallel]) > 1e-9);
+                       Catch::Matchers::WithinRel(perMeter * found->second, 1e-6));
         }
     }
+}
 
-    settings.reset();
+TEST_CASE("Test_Real_Geometry_Connection_Resistance_Is_Centerline_Geometry", "[constructive-model][coil][real-geometry]") {
+    // ABT #492 loss-reader audit: connection resistance must equal resistance-per-metre times the
+    // TRUE centerline copper length of every routed segment — derived here independently from turn
+    // positions, layer builds, bump radii and edge routes — for every marker class and both layer
+    // orientations plus toroidal, so any regression back to index/shape inference (which misread U
+    // stubs as one wire width and tall-wire dragback climbs as the wire height) is caught.
+    // (Supersedes the section-orientation lead-length test: with routedLength carried explicitly
+    // by every emitter, there is no orientation-derived axis left to follow.)
+
+    SECTION("overlapping round wire, interleaved Z (terminals + adjacent dragbacks + YZ dragbacks)") {
+        settings.set_coil_use_real_winding_geometry(true);
+        auto coil = OpenMagneticsTesting::get_quick_coil({40, 40}, {1, 1}, "PQ 28/20", 2);
+        REQUIRE(coil.get_turns_description());
+        check_connection_resistance_matches(coil, expected_connection_length_rectangular(coil));
+        settings.reset();
+    }
+
+    SECTION("overlapping TALL rectangular wire (climb run shorter than the wire height)") {
+        // The case any shape-based inference misreads: the dragback's radial climbs span the
+        // intervening build (~2 wire widths) while the wire's own HEIGHT is much larger, so
+        // "the longer dimension" reads the wire height instead of the climb and overcounts.
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.00045);
+        wire.set_nominal_value_conducting_height(0.0019);
+        wire.set_nominal_value_outer_width(0.0005);
+        wire.set_nominal_value_outer_height(0.002);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+        settings.set_coil_use_real_winding_geometry(true);
+        auto coil = OpenMagneticsTesting::get_quick_coil({4, 4}, {1, 1}, "PQ 28/20", 2,
+            WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+            CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire, wire});
+        REQUIRE(coil.get_turns_description());
+        // The defect only bites while some segment's true copper is SHORTER than its rectangle's
+        // longer side — the exact condition under which the old max() shape rule overcounts. (The
+        // rectangle alone cannot even classify such a segment as a climb: a 1.3 mm climb of a
+        // 2.0 mm-tall wire is a 1.3 x 2.0 rect whose long side is the wire.)
+        bool anyShortClimb = false;
+        for (const auto& space : coil.get_connection_reserved_spaces()) {
+            if (space.plane == RoutePlane::FRONT_YZ
+                && space.routedLength.value() < std::max(space.dimensions[0], space.dimensions[1]) - 1e-9) {
+                anyShortClimb = true;
+            }
+        }
+        REQUIRE(anyShortClimb);
+        check_connection_resistance_matches(coil, expected_connection_length_rectangular(coil));
+        settings.reset();
+    }
+
+    SECTION("contiguous rectangular wire, interleaved Z (the transposed frame)") {
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.00076);
+        wire.set_nominal_value_conducting_height(0.00038);
+        wire.set_nominal_value_outer_width(0.0008);
+        wire.set_nominal_value_outer_height(0.0004);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+        settings.set_coil_use_real_winding_geometry(true);
+        auto coil = OpenMagneticsTesting::get_quick_coil({10, 10}, {1, 1}, "PQ 40/40", 2,
+            WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS,
+            CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire, wire});
+        REQUIRE(coil.get_turns_description());
+        check_connection_resistance_matches(coil, expected_connection_length_rectangular(coil));
+        settings.reset();
+    }
+
+    SECTION("toroidal (radial leads capped at the bore + inter-ring hops)") {
+        settings.reset();
+        clear_databases();
+        settings.set_use_toroidal_cores(true);
+        settings.set_coil_use_real_winding_geometry(true);
+        auto coil = OpenMagneticsTesting::get_quick_coil({30, 30}, {1, 1}, "T 40/24/16", 1,
+            WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+            CoilAlignment::INNER_OR_TOP, CoilAlignment::INNER_OR_TOP);
+        REQUIRE(coil.get_turns_description());
+        check_connection_resistance_matches(coil, expected_connection_length_toroidal(coil));
+        settings.reset();
+    }
 }
 
 TEST_CASE("Test_Real_Geometry_Planar_Throws", "[constructive-model][coil][real-geometry]") {

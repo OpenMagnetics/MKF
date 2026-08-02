@@ -488,6 +488,7 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
             lead.layer = "";
             lead.coordinates = {roundFloat(radiusMid * std::cos(angle), 9), roundFloat(radiusMid * std::sin(angle), 9)};
             lead.dimensions = {roundFloat(radialBorder - radiusNear, 9), wireOuterHeight};
+            lead.routedLength = roundFloat(radialBorder - radiusNear, 9);  // the radial run itself
             lead.rotation = roundFloat(angle * 180.0 / std::numbers::pi, 6);
             spaces.push_back(lead);
 
@@ -517,6 +518,7 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                 crossing.layer = ringName;
                 crossing.coordinates = {roundFloat(ringRadius * std::cos(angle), 9), roundFloat(ringRadius * std::sin(angle), 9)};
                 crossing.dimensions = {roundFloat(wireOuterWidth, 9), roundFloat(wireOuterHeight, 9)};
+                crossing.routedLength = 0;  // space-only squeeze: the lead's copper is the drawn radial run
                 crossing.rotation = roundFloat(angle * 180.0 / std::numbers::pi, 6);
                 spaces.push_back(crossing);
             }
@@ -569,6 +571,7 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                 link.layer = "";
                 link.coordinates = {roundFloat((a[0] + b[0]) / 2, 9), roundFloat((a[1] + b[1]) / 2, 9)};
                 link.dimensions = {roundFloat(length, 9), wireOuterHeight};
+                link.routedLength = roundFloat(length, 9);  // centre-to-centre inter-ring hop
                 link.rotation = roundFloat(std::atan2(deltaY, deltaX) * 180.0 / std::numbers::pi, 6);
                 spaces.push_back(link);
             }
@@ -767,6 +770,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 lead.layer = "";
                 lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), roundFloat(turnY, 9)};
                 lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
+                lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the radial run
                 spaces.push_back(lead);
                 return;
             }
@@ -816,6 +820,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     }
                 }
                 space.edgeDepth = runDepth + interWindingInsulation;
+                space.routedLength = 0;  // space-only squeeze: the lead's copper is the drawn stub + edge run
                 spaces.push_back(space);
             }
             if (std::abs(edgeY - turnY) > wireOuterHeight / 2) {
@@ -829,6 +834,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 stub.layer = "";
                 stub.coordinates = {turnX, roundFloat((turnY + stubFarEnd) / 2, 9)};
                 stub.dimensions = {wireOuterWidth, roundFloat(std::abs(stubFarEnd - turnY), 9)};
+                stub.routedLength = roundFloat(std::abs(stubFarEnd - turnY), 9);  // the vertical climb to the edge row
                 spaces.push_back(stub);
             }
             ConnectionReservedSpace lead;
@@ -839,6 +845,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             lead.layer = "";
             lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), edgeY};
             lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
+            lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the edge run to the border
             lead.edgeDepth = runDepth;
             spaces.push_back(lead);
         };
@@ -934,6 +941,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         squeeze.parallel = parallel;
                         squeeze.coordinates = {crossed->get_coordinates()[0], routeEdgeY};
                         squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
+                        squeeze.routedLength = 0;  // space-only: the copper is the drawn stubs + edge run below
                         squeeze.edgeDepth = runDepth;
                         spaces.push_back(squeeze);
                     }
@@ -953,6 +961,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         squeeze.parallel = parallel;
                         squeeze.coordinates = {endpoint->get_coordinates()[0], routeEdgeY};
                         squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
+                        squeeze.routedLength = 0;  // space-only: the copper is the drawn stubs + edge run below
                         squeeze.edgeDepth = runDepth;
                         spaces.push_back(squeeze);
                     }
@@ -1021,7 +1030,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     double bumpRadius = roundFloat(interveningOuterBuild + interWindingInsulation
                                                    + wireOuterWidth / 2, 9);
 
-                    auto pushDragback = [&](double cx, double cy, double w, double h) {
+                    // Each segment's copper length is passed EXPLICITLY: a radial climb's run is its
+                    // radial extent even when the wire's own height is larger (tall RECTANGULAR/FOIL
+                    // wire), so no consumer may infer it from the rectangle's shape.
+                    auto pushDragback = [&](double cx, double cy, double w, double h, double copperLength) {
                         ConnectionReservedSpace seg;
                         seg.plane = RoutePlane::FRONT_YZ;
                         seg.winding = windingName;
@@ -1030,6 +1042,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         seg.layer = "";  // out-of-window: reserves no layer/section space
                         seg.coordinates = {roundFloat(cx, 9), roundFloat(cy, 9)};
                         seg.dimensions = {roundFloat(w, 9), roundFloat(h, 9)};
+                        seg.routedLength = roundFloat(copperLength, 9);
                         spaces.push_back(seg);
                     };
                     // Radial climb out at the source turn's axial level, from the source turn's
@@ -1037,17 +1050,20 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     // (the same corner convention the U edge route uses).
                     if (std::abs(bumpRadius - x1) > 0.5 * wireOuterWidth) {
                         double far1 = bumpRadius + ((bumpRadius >= x1) ? 1.0 : -1.0) * wireOuterWidth / 2;
-                        pushDragback((x1 + far1) / 2, y1, std::abs(far1 - x1), wireOuterHeight);
+                        pushDragback((x1 + far1) / 2, y1, std::abs(far1 - x1), wireOuterHeight,
+                                     std::abs(far1 - x1));
                     }
                     // Near-axial run riding the bump between the two endpoints' axial levels.
                     if (std::abs(y2 - y1) > 0.5 * wireOuterHeight) {
                         pushDragback(bumpRadius, (y1 + y2) / 2, wireOuterWidth,
+                                     std::abs(y2 - y1) + wireOuterHeight,
                                      std::abs(y2 - y1) + wireOuterHeight);
                     }
                     // Radial climb back down to the destination layer's radius at its axial level.
                     if (std::abs(bumpRadius - x2) > 0.5 * wireOuterWidth) {
                         double far2 = bumpRadius + ((bumpRadius >= x2) ? 1.0 : -1.0) * wireOuterWidth / 2;
-                        pushDragback((x2 + far2) / 2, y2, std::abs(far2 - x2), wireOuterHeight);
+                        pushDragback((x2 + far2) / 2, y2, std::abs(far2 - x2), wireOuterHeight,
+                                     std::abs(far2 - x2));
                     }
                 }
                 else if (windingOrder == WindingOrder::Z) {
@@ -1064,6 +1080,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     diagonal.layer = "";
                     diagonal.coordinates = {roundFloat((x1 + x2) / 2, 9), roundFloat((y1 + y2) / 2, 9)};
                     diagonal.dimensions = {roundFloat(length, 9), wireOuterHeight};
+                    diagonal.routedLength = roundFloat(length, 9);  // centre-to-centre dragback hop
                     diagonal.rotation = roundFloat(std::atan2(deltaY, deltaX) * 180.0 / std::numbers::pi, 6);
                     spaces.push_back(diagonal);
                 }
@@ -1072,7 +1089,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     // stub from each turn up/down to the edge, and a horizontal run along the edge
                     // across the intervening layer(s) — so the wire never cuts through the crossed
                     // layer's turns (centre-to-centre would clip them).
-                    auto pushLink = [&](double cx, double cy, double w, double h, double depth = 0) {
+                    // Each segment's copper length is passed EXPLICITLY (the verticals run along the
+                    // TURN axis; inferring their length from an orientation-derived index counted
+                    // each stub as one wire width).
+                    auto pushLink = [&](double cx, double cy, double w, double h, double copperLength,
+                                        double depth = 0) {
                         ConnectionReservedSpace seg;
                         seg.winding = windingName;
                         seg.parallel = parallel;
@@ -1080,6 +1101,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         seg.layer = "";
                         seg.coordinates = {roundFloat(cx, 9), roundFloat(cy, 9)};
                         seg.dimensions = {roundFloat(w, 9), roundFloat(h, 9)};
+                        seg.routedLength = roundFloat(copperLength, 9);
                         seg.edgeDepth = depth;
                         spaces.push_back(seg);
                     };
@@ -1087,12 +1109,13 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     // overlap the horizontal by half a wire at the corner.
                     if (std::abs(routeEdgeY - y1) > 0.5 * wireOuterHeight) {
                         double far1 = routeEdgeY + ((routeEdgeY >= y1) ? 1.0 : -1.0) * wireOuterHeight / 2;
-                        pushLink(x1, (y1 + far1) / 2, wireOuterWidth, std::abs(far1 - y1));
+                        pushLink(x1, (y1 + far1) / 2, wireOuterWidth, std::abs(far1 - y1), std::abs(far1 - y1));
                     }
-                    pushLink((x1 + x2) / 2, routeEdgeY, std::abs(x2 - x1) + wireOuterWidth, wireOuterHeight, runDepth);
+                    pushLink((x1 + x2) / 2, routeEdgeY, std::abs(x2 - x1) + wireOuterWidth, wireOuterHeight,
+                             std::abs(x2 - x1) + wireOuterWidth, runDepth);
                     if (std::abs(y2 - routeEdgeY) > 0.5 * wireOuterHeight) {
                         double far2 = routeEdgeY + ((routeEdgeY >= y2) ? 1.0 : -1.0) * wireOuterHeight / 2;
-                        pushLink(x2, (y2 + far2) / 2, wireOuterWidth, std::abs(far2 - y2));
+                        pushLink(x2, (y2 + far2) / 2, wireOuterWidth, std::abs(far2 - y2), std::abs(far2 - y2));
                     }
                 }
                 else {
@@ -1111,10 +1134,12 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         double horizontalDirection = (x2 >= x1) ? 1.0 : -1.0;
                         horizontal.coordinates = {roundFloat((x1 + x2) / 2 + horizontalDirection * wireOuterWidth / 4, 9), roundFloat(y1, 9)};
                         horizontal.dimensions = {roundFloat(std::abs(x2 - x1) + wireOuterWidth / 2, 9), wireOuterHeight};
+                        horizontal.routedLength = roundFloat(std::abs(x2 - x1) + wireOuterWidth / 2, 9);
                     }
                     else {
                         horizontal.coordinates = {roundFloat((x1 + x2) / 2, 9), roundFloat(y1, 9)};
                         horizontal.dimensions = {roundFloat(std::abs(x2 - x1), 9), wireOuterHeight};
+                        horizontal.routedLength = roundFloat(std::abs(x2 - x1), 9);
                     }
                     spaces.push_back(horizontal);
 
@@ -1127,6 +1152,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         vertical.layer = "";
                         vertical.coordinates = {roundFloat(x2, 9), roundFloat((y1 + y2) / 2 + verticalDirection * wireOuterHeight / 4, 9)};
                         vertical.dimensions = {wireOuterWidth, roundFloat(std::abs(y2 - y1) - wireOuterHeight / 2, 9)};
+                        // The vertical stretch runs along the TURN axis: its copper is its own
+                        // extent, not a wire width.
+                        vertical.routedLength = roundFloat(std::abs(y2 - y1) - wireOuterHeight / 2, 9);
                         spaces.push_back(vertical);
                     }
                 }

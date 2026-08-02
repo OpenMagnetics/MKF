@@ -63,53 +63,28 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resist
         crossingLength.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0.0));
         geometricTerminalLength.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0.0));
     }
-    // A lead's length is its extent along the direction it RUNS as it climbs from one layer to the
-    // next, and which index that is comes from the marker's own declared coordinate system rather than
-    // from any property of the bobbin:
-    //   CARTESIAN markers hold {X extent, Y extent}, so the run is X when layers stack laterally
-    //       (OVERLAPPING, turns stacking axially) and Y when they stack axially (CONTIGUOUS). The
-    //       layer orientation only chooses which index to read — nothing is transposed or rotated.
-    //   POLAR markers hold {radial extent, azimuthal extent}: a toroidal lead runs RADIALLY, so its
-    //       length is index 0 regardless of what the layers orientation says. Reading index 1 there
-    //       would collapse every toroidal lead to a wire thickness.
-    // Taken from the SECTION each marker belongs to, not from Coil::get_layers_orientation(): that
-    // returns a coil-level member which defaults to OVERLAPPING and is not written by every path (a
-    // deserialized coil can carry contiguous sections with the member still at its default), and
-    // per-section orientations are supported besides. The sections description is what the marker
-    // producer itself reads, so the two cannot disagree.
-    std::map<std::string, WindingOrientation> layersOrientationPerSection;
-    if (coil.get_sections_description()) {
-        auto sectionsDescription = coil.get_sections_description().value();
-        for (const auto& section : sectionsDescription) {
-            layersOrientationPerSection[section.get_name()] = section.get_layers_orientation();
-        }
-    }
+    // ABT #492 loss-reader audit: every marker carries its centerline copper length EXPLICITLY in
+    // routedLength, set by its emitter from its own geometry — nothing is inferred from the
+    // rectangle here any more. The old inference was structurally wrong in two ways: an
+    // orientation-derived index misread every segment running along the OTHER axis (a U-route
+    // vertical stub counted as one wire width instead of its climb), and any shape-based rule
+    // (long-axis, per-plane index) misreads a radial climb of a tall RECTANGULAR/FOIL wire whose
+    // height exceeds the climb's run. Space-only squeeze markers carry 0 — their copper is the
+    // DRAWN segments of the same route. An unset routedLength is an emitter bug (markers are
+    // always freshly emitted at runtime) and throws per the no-fallback rule.
     for (const auto& space : coil.get_connection_reserved_spaces()) {
         auto windingIndex = coil.get_winding_index_by_name(space.winding);
         int64_t parallelIndex = space.parallel;
         if (parallelIndex < 0 || parallelIndex >= int64_t(coil.get_number_parallels(windingIndex))) {
             continue;  // a winding-level lead with no parallel; cannot attribute to a branch
         }
-        auto sectionOrientation = layersOrientationPerSection.find(space.section);
-        WindingOrientation layersOrientation = (sectionOrientation == layersOrientationPerSection.end())
-            ? coil.get_layers_orientation()
-            : sectionOrientation->second;
-        size_t cartesianLeadRunAxis = (layersOrientation == WindingOrientation::OVERLAPPING) ? 0 : 1;
-        size_t leadRunAxis = (space.coordinateSystem == CoordinateSystem::POLAR) ? 0 : cartesianLeadRunAxis;
-        double runLength;
-        if (space.plane == RoutePlane::FRONT_YZ) {
-            // ABT #492: a Z interleaved return's dragback on the core's front/back face mixes radial
-            // climbs and a near-axial run in one group of segments, so no single orientation-derived
-            // index fits them all. Each segment is an axis-aligned THIN rectangle (thickness = one
-            // wire), so its routed length is its LONGER dimension — the contract documented on
-            // RoutePlane::FRONT_YZ. The dragback is deliberately LONGER than the straight diagonal
-            // it replaces (it detours over the intervening sections' build); that extra copper is
-            // physical and must be paid for here.
-            runLength = std::max(space.dimensions[0], space.dimensions[1]);
+        if (!space.routedLength) {
+            throw std::runtime_error(
+                "Connection marker without routedLength (winding '" + space.winding + "', section '" +
+                space.section + "'): every emitter in Coil::get_connection_reserved_spaces must set "
+                "the centerline copper length it charges — this is an emitter bug");
         }
-        else {
-            runLength = space.dimensions[leadRunAxis];
-        }
+        double runLength = space.routedLength.value();
         if (space.isTerminal) {
             geometricTerminalLength[windingIndex][parallelIndex] += runLength;
         }
