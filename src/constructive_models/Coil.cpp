@@ -3573,6 +3573,24 @@ bool Coil::calculate_insulation(bool simpleMode) {
     auto layersOrientation = _layersOrientation;
     auto windingOrientation = get_winding_orientation();
 
+    // ABT #415: an inter-SECTION insulation strip separates STACKED SECTIONS, so its geometry
+    // follows the winding orientation — same normalization its two mechanical siblings
+    // (calculate_mechanical_insulation, calculate_custom_thickness_insulation) already apply.
+    // This function forgot it, so a coil mixing winding OVERLAPPING with layers CONTIGUOUS built
+    // TRANSPOSED insulation layers (a full-window-width horizontal tape inside a thin vertical
+    // strip section): overlapping_filling_factor reported 244x and are_sections_and_layers_fitting
+    // rejected EVERY isolated multi-winding candidate the CoilAdviser proposed.
+    if (windingOrientation == WindingOrientation::CONTIGUOUS && _layersOrientation == WindingOrientation::OVERLAPPING) {
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            layersOrientation = WindingOrientation::CONTIGUOUS;
+        }
+    }
+    if (windingOrientation == WindingOrientation::OVERLAPPING && _layersOrientation == WindingOrientation::CONTIGUOUS) {
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            layersOrientation = WindingOrientation::OVERLAPPING;
+        }
+    }
+
     for (size_t leftTopWindingIndex = 0; leftTopWindingIndex < get_functional_description().size(); ++leftTopWindingIndex) {
         for (size_t rightBottomWindingIndex = 0; rightBottomWindingIndex < get_functional_description().size(); ++rightBottomWindingIndex) {
             if (leftTopWindingIndex == rightBottomWindingIndex) {
@@ -3631,7 +3649,7 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 // layer.set_section(section.get_name());
                 layer.set_type(ElectricalType::INSULATION);
                 layer.set_name("temp");
-                layer.set_orientation(_layersOrientation);
+                layer.set_orientation(layersOrientation);  // ABT #415: the NORMALIZED orientation, like the mechanical siblings
                 layer.set_turns_alignment(CoilAlignment::SPREAD); // HARDCODED, maybe in the future configure for shields made of turns?
 
                 if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
@@ -3672,7 +3690,7 @@ bool Coil::calculate_insulation(bool simpleMode) {
             Section section;
             section.set_name("temp");
             section.set_partial_windings(std::vector<PartialWinding>{});
-            section.set_layers_orientation(_layersOrientation);
+            section.set_layers_orientation(layersOrientation);  // ABT #415: normalized, like the mechanical siblings
             section.set_type(ElectricalType::INSULATION);
 
             if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
