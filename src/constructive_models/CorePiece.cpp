@@ -3033,26 +3033,32 @@ CoreLossFractions CorePiece::calculate_core_loss_fractions() {
     }
 
     // =========================================================================
-    // Half-model loss fractions.
+    // FULL-core loss fractions (ABT #461).
     //
-    // The thermal model meshes the RIGHT HALF of the core (one symmetry
-    // plane at Z = 0 for depth).  The modeled right half contains:
+    // The thermal model builds its core nodes at HALF depth (symmetry), but at the
+    // end of the convection build it DOUBLES every core surface back to the full
+    // component (Temperature.cpp, "Half-core symmetry correction"), so each node
+    // stands for BOTH symmetric halves of its part. The losses must follow the same
+    // convention or energy is not conserved: with the old right-half fractions
+    // (sum = 0.5) every concentric component shed only Pcore/2 + Pcu — a core with
+    // full-size cooling surfaces but half its heat, running ~2x too cold in the
+    // core-loss-driven part of its temperature rise. Measured on
+    // concentric_transformer (Pcore 1.26 W dominant): network input was 0.83 W of
+    // a real 1.46 W, and that missing ~43% of the heat had been silently
+    // compensating the missing radiation-to-ambient path this ticket fixed.
     //
-    //   Central column:  half of the full column         -> V_central / 2
-    //   Right lateral:   one full lateral (of two total) -> V_one_lateral
-    //   Top yoke:        right half of full yoke         -> V_top_yoke / 2
-    //   Bottom yoke:     right half of full yoke         -> V_bot_yoke / 2
+    //   Central column:  the one full column                    -> V_central
+    //   Lateral node:    BOTH lateral legs (node represents 2)  -> 2 * V_one_lateral
+    //   Top yoke:        full yoke                              -> V_top_yoke
+    //   Bottom yoke:     full yoke                              -> V_bot_yoke
     //
-    // Fraction of TOTAL losses for each modeled node:
-    //   f_part = V_modeled_part / V_full_core
-    //
-    // Sum of all fractions = V_modeled_total / V_full = 0.5  (half-model)
+    // Sum of all fractions = 1.0 (full component, matching the doubled surfaces).
     // =========================================================================
 
-    f.centralColumn = (v.centralColumn / 2.0) / fullCoreVolume;
-    f.lateralColumn =  v.lateralColumn        / fullCoreVolume;
-    f.topYoke       = (v.topYoke       / 2.0) / fullCoreVolume;
-    f.bottomYoke    = (v.bottomYoke    / 2.0) / fullCoreVolume;
+    f.centralColumn =        v.centralColumn / fullCoreVolume;
+    f.lateralColumn = (2.0 * v.lateralColumn) / fullCoreVolume;
+    f.topYoke       =        v.topYoke       / fullCoreVolume;
+    f.bottomYoke    =        v.bottomYoke    / fullCoreVolume;
 
     return f;
 }

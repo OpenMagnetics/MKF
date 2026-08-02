@@ -84,17 +84,16 @@ double ThermalResistance::calculateNaturalConvectionCoefficient(
         }
     }
     
-    // Ensure minimum Nusselt number
-    Nu = std::max(Nu, 0.5);
-    
+    // Conduction limit: as Ra -> 0 convection dies but heat still leaves the surface by pure
+    // conduction into the surrounding air, whose plate limit is Nu -> O(1) (Nu = 1 recovers
+    // h = k_air/L, the stagnant-air conduction film). This is a physical floor, not a tuned one.
+    Nu = std::max(Nu, 1.0);
+
     // Heat transfer coefficient: h = Nu * k / L
-    double h = Nu * air.thermalConductivity / characteristicLength;
-    
-    // IMP-NEW-03: Lowered minimum from 5.0 to 2.0 W/(m2 K)
-    // WHY: For small dT or small components, real h can be < 5.
-    //      Clamping at 5.0 overestimates cooling -> under-predicts temperatures.
-    // PREVIOUS: return std::max(h, 5.0);
-    return std::max(h, 2.0); // Lowered minimum practical value
+    // ABT #527: the historical practical floors (h >= 5, later h >= 2 W/m2K) are removed — they
+    // were engineering guards with no derivation, and with the component-scale characteristic
+    // length (ABT #461) the correlation plus the conduction limit above needs no patching.
+    return Nu * air.thermalConductivity / characteristicLength;
 }
 
 double ThermalResistance::calculateForcedConvectionCoefficient(
@@ -126,7 +125,10 @@ double ThermalResistance::calculateForcedConvectionCoefficient(
     double h = Nu * air.thermalConductivity / characteristicLength;
     
     // Typical range for forced convection: 25-250 W/(m²·K)
-    return std::max(h, kConvection_MinForcedH); // IMP-7
+    // ABT #527: no practical floor — the correlation governs. At zero/low velocity the caller
+    // uses the natural-convection path instead (see calculateForcedConvectionCoefficient's
+    // velocity guard above), so this result is never asked to stand in for natural convection.
+    return h;
 }
 
 double ThermalResistance::calculateRadiationCoefficient(

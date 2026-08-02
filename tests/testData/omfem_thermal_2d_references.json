@@ -1,0 +1,307 @@
+{
+ "_meta": {
+  "generator": "gen_omfem_refs.py (ABT #461 / #454)",
+  "source": "omfem_mas: 2D mesh -> FEM losses -> solve_thermal_fem (h=12 W/m2K, eps=0.9, radiating)",
+  "losses": "OMFEM's own FEM losses, stored here and fed IDENTICALLY to both models by the test",
+  "date": "2026-08-02"
+ },
+ "examples": {
+  "000_debug.json": {
+   "status": "ok",
+   "shape_family": "pq",
+   "ambient": 25,
+   "p_core": 2.88920553143816e-14,
+   "p_cu": 0.00588486037288,
+   "omfem_t_core": 26.0541633587,
+   "omfem_t_winding": 26.4570266514,
+   "omfem_t_max": 26.4570959878,
+   "seconds": 62.8
+  },
+  "00_debug.json": {
+   "status": "ok",
+   "shape_family": "pq",
+   "ambient": 25,
+   "p_core": 6.181398175061779e-08,
+   "p_cu": 0.000734367344455,
+   "omfem_t_core": 25.131831213,
+   "omfem_t_winding": 25.1821044334,
+   "omfem_t_max": 25.1821130858,
+   "seconds": 62.3
+  },
+  "01_simple_inductor_etd34_n87.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 25,
+   "p_core": 0.030296196819457003,
+   "p_cu": 1.16728172572,
+   "omfem_t_core": 37.9766157184,
+   "omfem_t_winding": 47.8271833694,
+   "omfem_t_max": 54.3337410933,
+   "seconds": 23.2
+  },
+  "01_simple_inductor_etd34_n87_1Hz.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 25,
+   "p_core": 7.317944961847414e-10,
+   "p_cu": 0.981638302045,
+   "omfem_t_core": 35.635790929,
+   "omfem_t_winding": 43.0258143077,
+   "omfem_t_max": 44.3688600493,
+   "seconds": 18.7
+  },
+  "02_flyback_efd25_3c95.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 40,
+   "p_core": 0.22197645153487805,
+   "p_cu": 0.219232100989,
+   "omfem_t_core": 96.8998754866,
+   "omfem_t_winding": 103.687134456,
+   "omfem_t_max": 105.184356491,
+   "seconds": 31.0
+  },
+  "03_buck_inductor_pq3230_n95.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 60,
+   "p_core": 0.027597714009688,
+   "p_cu": 2.63090909465,
+   "omfem_t_core": 90.4154605653,
+   "omfem_t_winding": 100.933860552,
+   "omfem_t_max": 114.381964589,
+   "seconds": 37.7
+  },
+  "04_forward_xfmr_e3216_n87.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 42,
+   "p_core": 0.10386146793187,
+   "p_cu": 0.455131851448,
+   "omfem_t_core": 92.6855840543,
+   "omfem_t_winding": 106.552208364,
+   "omfem_t_max": 114.386238658,
+   "seconds": 331.6
+  },
+  "05_pfc_inductor_t4020_hf60.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 80,
+   "p_core": 0.000115924378173,
+   "p_cu": 0.572791455941,
+   "omfem_t_core": 91.9431321237,
+   "omfem_t_winding": 92.5467995079,
+   "omfem_t_max": 92.936903321,
+   "seconds": 20.7
+  },
+  "06_llc_xfmr_eq4128_3c97.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 50,
+   "p_core": 0.0522683251187157,
+   "p_cu": 0.560920843101,
+   "omfem_t_core": 56.3193855918,
+   "omfem_t_winding": 58.9804446794,
+   "omfem_t_max": 59.7312966031,
+   "seconds": 83.4
+  },
+  "07_cmc_t2515_w800.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 25,
+   "p_core": 4.337051555050003,
+   "p_cu": 3.00304021049,
+   "omfem_t_core": 312.940001766,
+   "omfem_t_winding": 313.762758018,
+   "omfem_t_max": 319.192390873,
+   "seconds": 4.5
+  },
+  "08_pq_inductor_pq5050_n27.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 45,
+   "p_core": 0.059955621107480005,
+   "p_cu": 1.56837085929,
+   "omfem_t_core": 53.763777868,
+   "omfem_t_winding": 60.2250962574,
+   "omfem_t_max": 63.7569356939,
+   "seconds": 57.3
+  },
+  "09_planar_xfmr_er2510_3c94.json": {
+   "status": "ok",
+   "shape_family": "planarER",
+   "ambient": 25,
+   "p_core": 0.6398191854761731,
+   "p_cu": 0.900132035262,
+   "omfem_t_core": 70.0090804521,
+   "omfem_t_winding": 74.4067365908,
+   "omfem_t_max": 74.8223783767,
+   "seconds": 15.5
+  },
+  "10_emi_filter_ep13_3f46.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 25,
+   "p_core": 0.0029391545551930003,
+   "p_cu": 0.109604426225,
+   "omfem_t_core": 33.698704895,
+   "omfem_t_winding": 35.9584300591,
+   "omfem_t_max": 37.6405428044,
+   "seconds": 83.9
+  },
+  "11_pushpull_etd49_tp4a.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 55,
+   "p_core": 30.7321900207712,
+   "p_cu": 0.311677739956,
+   "omfem_t_core": 317.54114896,
+   "omfem_t_winding": 348.729102152,
+   "omfem_t_max": 422.011248261,
+   "seconds": 673.5
+  },
+  "12_boost_inductor_t5026_26.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 70,
+   "p_core": 0.10795908848149999,
+   "p_cu": 0.013257345802,
+   "omfem_t_core": 71.8673442832,
+   "omfem_t_winding": 71.8650156484,
+   "omfem_t_max": 71.9225596705,
+   "seconds": 77.0
+  },
+  "13_current_sense_er95_n87.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 25,
+   "p_core": 0.1287508708521445,
+   "p_cu": 2.42446120136e-05,
+   "omfem_t_core": 148.366019946,
+   "omfem_t_winding": 147.163379049,
+   "omfem_t_max": 150.341520331,
+   "seconds": 301.7
+  },
+  "14_dab_xfmr_pm8770_n97.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 60,
+   "p_core": 1.0446279368341502,
+   "p_cu": 1.36979143769,
+   "omfem_t_core": 64.1840212635,
+   "omfem_t_winding": 67.9232218563,
+   "omfem_t_max": 68.644688177,
+   "seconds": 272.8
+  },
+  "15_gan_inductor_e138_3f4.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 40,
+   "p_core": 0.00010614077185934,
+   "p_cu": 0.155412075881,
+   "omfem_t_core": 96.945429042,
+   "omfem_t_winding": 113.429324884,
+   "omfem_t_max": 124.750683051,
+   "seconds": 2.7
+  },
+  "16_coupled_inductor_e2513_dmr95.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 50,
+   "p_core": 0.00334625385403706,
+   "p_cu": 0.249967413778,
+   "omfem_t_core": 73.9898468177,
+   "omfem_t_winding": 82.1700995951,
+   "omfem_t_max": 84.0417247248,
+   "seconds": 20.2
+  },
+  "17_cllc_xfmr_e5528_3c92a.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 55,
+   "p_core": 0.9636930571380434,
+   "p_cu": 0.568759409989,
+   "omfem_t_core": 77.96701342,
+   "omfem_t_winding": 81.345143002,
+   "omfem_t_max": 82.2759980297,
+   "seconds": 86.0
+  },
+  "18_stacked_inductor_e7033_n27.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 70,
+   "p_core": 0.04094730618426,
+   "p_cu": 4.26933106051,
+   "omfem_t_core": 86.9056701388,
+   "omfem_t_winding": 95.2092296224,
+   "omfem_t_max": 110.647738722,
+   "seconds": 48.6
+  },
+  "19_multi_op_xfmr_etd3920_pc95.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 25,
+   "p_core": 0.00035251120974,
+   "p_cu": 0.00668810452588,
+   "omfem_t_core": 25.4376407091,
+   "omfem_t_winding": 25.5747259978,
+   "omfem_t_max": 25.629639256,
+   "seconds": 170.5
+  },
+  "20_iso_buckboost_epc25_3c91.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 35,
+   "p_core": 0.0010451197628122176,
+   "p_cu": 0.295435014621,
+   "omfem_t_core": 41.7078778225,
+   "omfem_t_winding": 44.2850562944,
+   "omfem_t_max": 45.8480364683,
+   "seconds": 44.6
+  },
+  "21_interleaved_flyback_etd39_n87.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 50,
+   "p_core": 0.3649439785892374,
+   "p_cu": 2.13218582548,
+   "omfem_t_core": 69.0405692077,
+   "omfem_t_winding": 82.5635534481,
+   "omfem_t_max": 85.065233015,
+   "seconds": 81.1
+  },
+  "22_margin_tape_forward_e4218_3c95.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 40,
+   "p_core": 0.01075261575056,
+   "p_cu": 0.155342257154,
+   "omfem_t_core": 47.7845109915,
+   "omfem_t_winding": 50.7222824358,
+   "omfem_t_max": 51.4996188654,
+   "seconds": 184.7
+  },
+  "23_interleaved_llc_pq3530_n97.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 45,
+   "p_core": 0.11821941283944998,
+   "p_cu": 1.01915309327,
+   "omfem_t_core": 59.6440738415,
+   "omfem_t_winding": 65.7457054202,
+   "omfem_t_max": 67.2745590822,
+   "seconds": 68.5
+  },
+  "24_margin_interleaved_flyback_pq3230_3c94.json": {
+   "status": "ok",
+   "shape_family": "unknown",
+   "ambient": 55,
+   "p_core": 0.046398960145868834,
+   "p_cu": 2.91021950551,
+   "omfem_t_core": 88.8355088771,
+   "omfem_t_winding": 104.801508745,
+   "omfem_t_max": 108.37802371,
+   "seconds": 128.1
+  }
+ }
+}

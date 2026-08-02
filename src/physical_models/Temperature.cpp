@@ -183,12 +183,32 @@ TemperatureConfig TemperatureConfig::fromMasOperatingConditions(
 // ============================================================================
 
 double Temperature::getCoreThermalConductivity() const {
-    // Only fall back to the config default when the material genuinely lacks the
-    // data; any other failure (bad core data, lookup bugs) must propagate.
     auto coreMaterial = Core(_magnetic.get_core()).resolve_material();
     try {
         return ThermalResistance::getCoreMaterialThermalConductivity(coreMaterial);
     } catch (const MaterialException&) {
+        // No material in the MAS database currently carries thermalConductivity (audited
+        // 2026-08-02: 0 of 662), so this path is the effective source for every core. A single
+        // number for all chemistries is wrong — powder-core composites conduct 2-3x better than
+        // ferrites — so the estimate is per material COMPOSITION, which the database does carry,
+        // with values from vendor data (Ferroxcube/TDK ferrite datasheets ~3.5-5 W/mK; Magnetics
+        // Inc. powder cores ~8-13 W/mK for the distributed-gap composite, not the pure metal):
+        auto composition = coreMaterial.get_material_composition();
+        if (composition) {
+            switch (composition.value()) {
+                case MaterialComposition::MN_ZN:
+                case MaterialComposition::NI_ZN:
+                case MaterialComposition::MG_ZN:         return 4.0;   // ferrites
+                case MaterialComposition::FE_SI_AL:      return 8.0;   // Sendust
+                case MaterialComposition::FE_SI:         return 10.0;  // XFlux-class
+                case MaterialComposition::FE_NI:         return 9.0;   // High Flux
+                case MaterialComposition::FE_NI_MO:      return 9.0;   // MPP
+                case MaterialComposition::CARBONYL_IRON: return 6.0;
+                case MaterialComposition::IRON:          return 8.0;
+                case MaterialComposition::PROPRIETARY:   break;        // unknown chemistry: fall through
+            }
+        }
+        // Unknown composition: the conservative-hot choice (low k over-predicts the hot spot).
         return _config.coreThermalConductivity;
     }
 }
@@ -1079,39 +1099,31 @@ void Temperature::createInsulationLayerNodes() {
         double layerHeight = layer.get_dimensions()[1];  // Y dimension (span)
         double layerDepth = coreDepth / 2.0;  // Half depth for single side modeling
         
-        // For concentric cores, if insulation layer has zero thickness, use a default
-        // based on typical inter-layer insulation or coil's insulation specification
+        // A zero-thickness concentric layer with no specified thickness is the coil winder's
+        // geometric boundary marker between touching layers, not physical insulation — the same
+        // convention the toroidal branch above already honours by skipping. Fabricating a 0.1 mm
+        // wall here (the old behaviour, firing 71x across the suite) invented insulation that
+        // does not exist and, worse, phantom convecting/radiating surfaces INSIDE the winding.
+        // Real specified thickness is honoured; true zero is skipped, and the turns connect
+        // directly across the boundary exactly as they physically touch.
         if (!_isToroidal && layerWidth < 1e-9) {
-            // Try to get thickness from coil's insulation layer specification
-            try {
-                double specifiedThickness = coil.get_insulation_layer_thickness(layer);
-                if (specifiedThickness > 1e-9) {
-                    layerWidth = specifiedThickness;
-                } else {
-                    layerWidth = kInsulation_DefaultThickness;
-                }
-            } catch (const std::exception& e) { // IMP-8
-                layerWidth = kInsulation_DefaultThickness;
-                if (THERMAL_DEBUG) {
-                    std::cout << "Temperature: insulation-layer thickness query failed, using default: "
-                              << e.what() << std::endl;
-                }
+            double specifiedThickness = coil.get_insulation_layer_thickness(layer);
+            if (specifiedThickness > 1e-9) {
+                layerWidth = specifiedThickness;
+            } else {
+                layerIdx++;
+                continue;
             }
         }
         
         // Get layer thermal conductivity from material
+        // Resolution failures propagate (the no-fallbacks rule; audited 2026-08-02: this path
+        // never fires on the suites). Only a material that resolves but genuinely lacks the
+        // property uses the documented polyimide-class default.
         double layerK = kInsulation_DefaultConductivity;
-        try {
-            auto insulationMaterial = coil.resolve_insulation_layer_insulation_material(layer);
-            if (insulationMaterial.get_thermal_conductivity()) {
-                layerK = insulationMaterial.get_thermal_conductivity().value();
-            }
-        } catch (const std::exception& e) { // IMP-8
-            // Use default if material cannot be resolved
-            if (THERMAL_DEBUG) {
-                std::cout << "Temperature: insulation material resolution failed, using default k: "
-                          << e.what() << std::endl;
-            }
+        auto insulationMaterial = coil.resolve_insulation_layer_insulation_material(layer);
+        if (insulationMaterial.get_thermal_conductivity()) {
+            layerK = insulationMaterial.get_thermal_conductivity().value();
         }
         
         // Check coordinate system
@@ -1137,6 +1149,22 @@ void Temperature::createInsulationLayerNodes() {
             if (radialThickness < 1e-9) {
                 // Zero-thickness = geometric boundary marker from coil winder, not physical insulation.
                 // Skip node creation; turns will connect directly across this boundary.
+                layerIdx++;
+                continue;
+            }
+
+            // ABT #526: the inner/outer RING model below represents a WRAP — insulation wound
+            // around the full toroid, whose segments form closed conduction rings hugging the
+            // turns. A PARTIAL-ARC toroidal layer is not a wrap: it is a sector SEPARATOR (the
+            // spacer between a CMC's winding sectors), a radial wall in the bore. Forcing it
+            // through the ring model places its "inner ring" node at B/2 - radialHeight — the
+            // middle of the bore, millimetres from every turn (measured 3.5 mm from the nearest
+            // turn on 07_cmc_t2515) — where no proximity check can legitimately connect it, and
+            // the solver then rightly refuses the orphan. Until sector separators get their own
+            // radial-wall topology (tracked in #526), they are not represented: their only
+            // thermal role is sector-to-sector conduction through thin tape, a minor path next
+            // to the shared core both sectors sit on.
+            if (!isFullCircle) {
                 layerIdx++;
                 continue;
             }
@@ -1315,7 +1343,45 @@ void Temperature::createInsulationLayerNodes() {
             insulationNode.physicalCoordinates = {layerX, layerY, 0};
             
             insulationNode.initializeInsulationLayerQuadrants(layerWidth, layerHeight, layerDepth, layerK);
-            
+
+            // ABT #461 (winding bottleneck): a concentric insulation layer WRAPS the winding — its
+            // radial faces are wrap surfaces of length computeTurnLengthAtRadius(r), exactly like
+            // the turns it encloses, NOT section-plane rectangles of depth coreDepth/2. The
+            // initializer above set section-plane areas (axial span x half core depth), which
+            // under-counted the outermost layer's exposed skin ~8x on the studied flyback
+            // (1.17 cm2 vs the ~9 cm2 wrap) and forced the solver to shed the winding's heat
+            // through a postage stamp. Override the four quadrant areas with wrap-length areas;
+            // limit coordinates and node dimensions stay as initialized (conduction contact logic
+            // is unchanged — only the exposed-surface accounting was wrong). These are FULL-wrap
+            // areas like the turns', so the half-core symmetry doubling in the convection builder
+            // must skip INSULATION_LAYER sources (it does, alongside TURN).
+            if (!_isToroidal) {
+                ColumnShape wrapColumnShape = ColumnShape::ROUND;
+                double wrapColumnWidth = 0.0;
+                double wrapColumnDepth = 0.0;
+                auto bobbinVariant = coil.get_bobbin();
+                if (std::holds_alternative<Bobbin>(bobbinVariant)) {
+                    auto bobbinDesc = std::get<Bobbin>(bobbinVariant).get_processed_description();
+                    if (bobbinDesc) {
+                        wrapColumnShape = bobbinDesc->get_column_shape();
+                        wrapColumnWidth = bobbinDesc->get_column_width().value_or(0.0);
+                        wrapColumnDepth = bobbinDesc->get_column_depth();
+                    }
+                }
+                double innerRadius = std::max(layerX - layerWidth / 2.0, 1e-6);
+                double outerRadius = layerX + layerWidth / 2.0;
+                double wrapInner = ThermalNetworkNode::computeTurnLengthAtRadius(
+                    innerRadius, wrapColumnShape, wrapColumnWidth, wrapColumnDepth);
+                double wrapOuter = ThermalNetworkNode::computeTurnLengthAtRadius(
+                    outerRadius, wrapColumnShape, wrapColumnWidth, wrapColumnDepth);
+                double wrapCenter = ThermalNetworkNode::computeTurnLengthAtRadius(
+                    layerX, wrapColumnShape, wrapColumnWidth, wrapColumnDepth);
+                insulationNode.quadrants[0].surfaceArea = layerHeight * wrapOuter;   // RADIAL_OUTER
+                insulationNode.quadrants[1].surfaceArea = layerHeight * wrapInner;   // RADIAL_INNER
+                insulationNode.quadrants[2].surfaceArea = layerWidth * wrapCenter;   // TOP
+                insulationNode.quadrants[3].surfaceArea = layerWidth * wrapCenter;   // BOTTOM
+            }
+
             _nodes.push_back(insulationNode);
             layerIdx++;
             createdCount++;
@@ -3514,13 +3580,29 @@ void Temperature::createConvectionConnections() {
         createConcentricConvectionConnections(ambientIdx, h_conv);
     }
 
-    // Radiation as a SEPARATE parallel path from each exposed winding surface to the
-    // ferrite CORE part it faces (NOT to ambient). The dominant radiative exchange inside
-    // a magnetic component is between the exposed turns and the core surfaces opposite them
-    // across the winding window; both bodies are hot, so the NET exchange is modest.
-    // Radiating winding surfaces straight to ambient (a previous approach) grossly
-    // over-counted cooling. Each exposed turn surface therefore gets a RADIATION-typed
-    // resistor to its nearest core node; the iterative solver
+    // Radiation as SEPARATE parallel paths, split by what each surface actually faces:
+    //
+    //   1. Exposed TURN surfaces -> the ferrite CORE part they face (NOT ambient). Inside the
+    //      winding window a turn sees hot core across the window, so the NET exchange is modest.
+    //      Radiating winding surfaces straight to ambient (a previous approach) grossly
+    //      over-counted cooling — it applied view-factor-1 room radiation to surfaces that see
+    //      ferrite, not the room.
+    //
+    //   2. Exposed CORE surfaces -> AMBIENT (ABT #461). The core's yokes, lateral legs and a
+    //      toroid's outer surface are the component's outer envelope: they see the room, and at
+    //      the temperatures a loss-loaded component reaches, radiation to the room is not a
+    //      correction but the DOMINANT term — h_rad = eps*sigma*(Ts^2+Ta^2)(Ts+Ta) is ~27 W/m2K
+    //      at 400 C and ~80 W/m2K at 766 C against ~10 W/m2K of natural convection. Before this
+    //      path existed the model was convection-only to ambient, which is why it reported 766 C
+    //      core / 1775 C hot turn on a 21 W E 25/13/7 whose Icepak reference is 388-485 C core /
+    //      524 C turn (an energy balance with radiation lands at 316-371 C surface; see #461).
+    //      The set of radiating faces is exactly the faces the model itself already treats as
+    //      exposed — those with a convection resistor to ambient — so coverage/adiabatic-symmetry
+    //      decisions are made once, by the convection builder. The CENTRAL column is excluded:
+    //      it faces the winding across the window, not the room (its radiative exchange with the
+    //      winding is path 1's other endpoint).
+    //
+    // Both paths are RADIATION-typed resistors; the iterative solver
     // (recalculateConvectionResistances) updates h_rad from BOTH endpoint temperatures.
     if (_config.includeRadiation) {
         std::vector<size_t> coreNodeIndices;
@@ -3535,18 +3617,59 @@ void Temperature::createConvectionConnections() {
             }
         }
 
+        // What a CONCENTRIC turn's exposed surface actually faces is set by where its wrap runs:
+        // the two segments along the column DEPTH pass through the core windows and see ferrite,
+        // the two segments along the column WIDTH run across the core's front/back and see the
+        // room. So a turn's radiating area is split by the in-window fraction depth/(width+depth)
+        // between the two paths — the window-facing share exchanges with the nearest core part,
+        // the rest radiates straight to ambient (ABT #461: sending ALL of it to the core pumped
+        // the front/back share into the ferrite and denied the winding its direct escape to the
+        // room). The 2D section cannot see this out-of-plane split, so it comes from the wound
+        // column's own aspect ratio. Toroidal and planar keep the whole area on the core path:
+        // planar turns sit almost entirely inside the window, and the toroidal exposure model is
+        // its own question (tracked in #461), not silently flipped here.
+        double windowFacingFraction = 1.0;
+        if (_isToroidal) {
+            // A wound toroid's convection-exposed winding surfaces are its outer periphery and
+            // top/bottom faces — they see the ROOM. The bore is a near-isothermal cavity (turns
+            // facing turns at winding temperature), so its net radiative exchange is ~zero, and
+            // the core is covered by the winding precisely where a turn could otherwise face it.
+            // Radiating exposed toroidal surfaces at the core (the pre-#527 behaviour) pumped
+            // winding heat into a body those surfaces do not see.
+            windowFacingFraction = 0.0;
+        }
+        if (!_isToroidal && !_isPlanar) {
+            auto core = _magnetic.get_core();
+            if (!core.get_columns().empty()) {
+                auto mainColumn = core.find_closest_column_by_coordinates(std::vector<double>({0, 0, 0}));
+                double columnWidth = mainColumn.get_width();
+                double columnDepth = mainColumn.get_depth();
+                if (columnWidth + columnDepth > 0) {
+                    windowFacingFraction = columnDepth / (columnWidth + columnDepth);
+                }
+            }
+        }
+
         if (!coreNodeIndices.empty()) {
             const size_t existingResistorCount = _resistances.size();
             for (size_t k = 0; k < existingResistorCount; ++k) {
                 // Copy (not reference): push_back below may reallocate _resistances.
                 const ThermalResistanceElement convectionResistor = _resistances[k];
-                const bool isExposedTurnSurface =
+                // The winding's exposed skin: bare turn surfaces AND the insulation wrap that
+                // covers a wound-and-wrapped winding (ABT #461: on wrapped designs the insulation
+                // IS the outer surface — without it the winding had no radiative path at all).
+                // Both follow the same window/room split below: the wrap sees ferrite through the
+                // windows exactly where the turns beneath it would.
+                const auto sourcePart = convectionResistor.nodeFromId < _nodes.size()
+                    ? _nodes[convectionResistor.nodeFromId].part
+                    : ThermalNodePartType::AMBIENT;
+                const bool isExposedWindingSurface =
                     convectionResistor.nodeToId == ambientIdx && convectionResistor.area > 0 &&
-                    convectionResistor.nodeFromId < _nodes.size() &&
-                    _nodes[convectionResistor.nodeFromId].part == ThermalNodePartType::TURN &&
+                    (sourcePart == ThermalNodePartType::TURN ||
+                     sourcePart == ThermalNodePartType::INSULATION_LAYER) &&
                     (convectionResistor.type == HeatTransferType::NATURAL_CONVECTION ||
                      convectionResistor.type == HeatTransferType::FORCED_CONVECTION);
-                if (!isExposedTurnSurface) continue;
+                if (!isExposedWindingSurface) continue;
 
                 // Find the nearest core node ("opposite ferrite core part").
                 const auto& sourceNode = _nodes[convectionResistor.nodeFromId];
@@ -3572,10 +3695,70 @@ void Temperature::createConvectionConnections() {
                     surfaceTemp, _config.ambientTemperature, _config.surfaceEmissivity);
                 if (h_rad <= 0) continue;
 
+                // Split the turn's radiating area by what each share of the wrap faces.
+                double coreFacingArea = convectionResistor.area * windowFacingFraction;
+                double roomFacingArea = convectionResistor.area - coreFacingArea;
+
+                if (coreFacingArea > 0) {
+                    ThermalResistanceElement radiationResistor;
+                    radiationResistor.nodeFromId = convectionResistor.nodeFromId;
+                    radiationResistor.quadrantFrom = convectionResistor.quadrantFrom;
+                    radiationResistor.nodeToId = nearestCoreIdx;
+                    radiationResistor.quadrantTo = ThermalNodeFace::NONE;
+                    radiationResistor.type = HeatTransferType::RADIATION;
+                    radiationResistor.area = coreFacingArea;
+                    radiationResistor.orientation = convectionResistor.orientation;
+                    radiationResistor.resistance = 1.0 / (h_rad * coreFacingArea);
+                    _resistances.push_back(radiationResistor);
+                }
+                if (roomFacingArea > 0) {
+                    ThermalResistanceElement radiationResistor;
+                    radiationResistor.nodeFromId = convectionResistor.nodeFromId;
+                    radiationResistor.quadrantFrom = convectionResistor.quadrantFrom;
+                    radiationResistor.nodeToId = ambientIdx;
+                    radiationResistor.quadrantTo = ThermalNodeFace::NONE;
+                    radiationResistor.type = HeatTransferType::RADIATION;
+                    radiationResistor.area = roomFacingArea;
+                    radiationResistor.orientation = convectionResistor.orientation;
+                    radiationResistor.resistance = 1.0 / (h_rad * roomFacingArea);
+                    _resistances.push_back(radiationResistor);
+                }
+            }
+        }
+
+        // Path 2 (ABT #461): exposed CORE surfaces radiate to AMBIENT, in parallel with their
+        // convection. Same surfaces, same areas — one exposure decision, made by the convection
+        // builder. Initial coefficient from the same initial-guess surface temperature; the
+        // solve loop replaces it with the converged endpoint temperatures each iteration.
+        {
+            const size_t existingResistorCount = _resistances.size();
+            for (size_t k = 0; k < existingResistorCount; ++k) {
+                // Copy (not reference): push_back below may reallocate _resistances.
+                const ThermalResistanceElement convectionResistor = _resistances[k];
+                if (convectionResistor.nodeToId != ambientIdx || convectionResistor.area <= 0 ||
+                    convectionResistor.nodeFromId >= _nodes.size()) {
+                    continue;
+                }
+                if (convectionResistor.type != HeatTransferType::NATURAL_CONVECTION &&
+                    convectionResistor.type != HeatTransferType::FORCED_CONVECTION) {
+                    continue;
+                }
+                const auto part = _nodes[convectionResistor.nodeFromId].part;
+                const bool isOuterCoreSurface =
+                    part == ThermalNodePartType::CORE_LATERAL_COLUMN ||
+                    part == ThermalNodePartType::CORE_TOP_YOKE ||
+                    part == ThermalNodePartType::CORE_BOTTOM_YOKE ||
+                    part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT;
+                if (!isOuterCoreSurface) continue;
+
+                double h_rad = ThermalResistance::calculateRadiationCoefficient(
+                    surfaceTemp, _config.ambientTemperature, _config.surfaceEmissivity);
+                if (h_rad <= 0) continue;
+
                 ThermalResistanceElement radiationResistor;
                 radiationResistor.nodeFromId = convectionResistor.nodeFromId;
                 radiationResistor.quadrantFrom = convectionResistor.quadrantFrom;
-                radiationResistor.nodeToId = nearestCoreIdx;
+                radiationResistor.nodeToId = ambientIdx;
                 radiationResistor.quadrantTo = ThermalNodeFace::NONE;
                 radiationResistor.type = HeatTransferType::RADIATION;
                 radiationResistor.area = convectionResistor.area;
@@ -4505,14 +4688,16 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
     // convection surfaces represent only one half — double their area (halve R) to
     // account for the symmetric other half. Turns are NOT halved: they come from the
     // real winding at full geometry (a round turn is a full 2*pi*r loop independent of
-    // core depth), so doubling their convection would over-cool the winding. Skip
-    // turn-sourced convection resistors.
+    // core depth), so doubling their convection would over-cool the winding. The same
+    // holds for INSULATION_LAYER since ABT #461: their quadrant areas are full-wrap
+    // (axial span x computeTurnLengthAtRadius), exactly like turns. Skip both.
     for (size_t i = initialResistanceCount; i < _resistances.size(); ++i) {
         if (_resistances[i].type == HeatTransferType::NATURAL_CONVECTION ||
             _resistances[i].type == HeatTransferType::FORCED_CONVECTION) {
             size_t fromId = _resistances[i].nodeFromId;
-            if (fromId < _nodes.size() && _nodes[fromId].part == ThermalNodePartType::TURN) {
-                continue;  // turns are full-geometry, not half-depth
+            if (fromId < _nodes.size() && (_nodes[fromId].part == ThermalNodePartType::TURN ||
+                                           _nodes[fromId].part == ThermalNodePartType::INSULATION_LAYER)) {
+                continue;  // full-geometry wrap surfaces, not half-depth sections
             }
             _resistances[i].resistance /= 2.0;
             _resistances[i].area *= 2.0;
@@ -4760,27 +4945,40 @@ void Temperature::plotSchematic() {
 
 // IMP-5: Recalculate temperature-dependent convection/radiation resistances
 void Temperature::recalculateConvectionResistances(const std::vector<double>& temperatures) {
-    // NOTE (radiation): build (createConvectionConnections) lumps a radiation coefficient
-    // into h_conv for every exposed convection surface, but this recalc deliberately does
-    // NOT re-add it — re-adding indiscriminate, view-factor-1, full-emissivity radiation to
-    // every surface over-cools the model badly (concentric_transformer core fell to ~45C vs
-    // the Icepak reference of 67.88C). Correctly modelling radiation requires per-surface
-    // view factors / exposed-outer-surface-only treatment and an Icepak re-baseline; that is
-    // a pending design decision, tracked separately. Until then convection-only here keeps
-    // the converged model in agreement with the calibrated Icepak references.
+    // Convection and radiation are SEPARATE resistor types here (h_conv is pure convection;
+    // see createConvectionConnections). RADIATION resistors — turn->core and core->ambient
+    // (ABT #461) — are re-evaluated from BOTH endpoint temperatures each iteration, which is
+    // what makes the T^3-dependent coefficient converge with the solution. A historical note:
+    // radiation was once lumped into h_conv at build and silently overwritten here; and a later
+    // attempt radiated EVERY surface to ambient at view factor 1, over-cooling badly (interior
+    // winding surfaces see ferrite, not the room). The split model above replaces both.
+    // Characteristic length for the convection correlations: the COMPONENT's height, the
+    // scale of the boundary layer that actually develops along a compact magnetic part
+    // (ABT #461). The previous per-resistor sqrt(area) fed millimetre lengths into the
+    // Rayleigh correlation — a laminar thin-boundary-layer regime that returned h of
+    // 25-53 W/m2K on small facets against the 5-15 physical for these sizes, silently
+    // compensating the under-counted wrap areas fixed alongside this.
+    double characteristicLength = 0.0;
+    {
+        auto processedCore = _magnetic.get_core().get_processed_description();
+        if (!processedCore || processedCore->get_height() <= 0) {
+            throw std::runtime_error("Temperature::recalculateConvectionResistances: core processed "
+                                     "description with a positive height is required for the "
+                                     "convection characteristic length.");
+        }
+        characteristicLength = processedCore->get_height();
+    }
     for (auto& res : _resistances) {
         if (res.nodeFromId >= temperatures.size()) continue;
         double surfaceTemp = temperatures[res.nodeFromId];
         double ambientTemp = _config.ambientTemperature;
         if (res.type == HeatTransferType::NATURAL_CONVECTION && res.area > 0) {
-            double charLength = std::sqrt(std::max(res.area, 1e-9));
             double h_new = ThermalResistance::calculateNaturalConvectionCoefficient(
-                surfaceTemp, ambientTemp, charLength, res.orientation);
+                surfaceTemp, ambientTemp, characteristicLength, res.orientation);
             if (h_new > 0) res.resistance = 1.0 / (h_new * res.area);
         } else if (res.type == HeatTransferType::FORCED_CONVECTION && res.area > 0) {
-            double charLength = std::sqrt(std::max(res.area, 1e-9));
             double h_new = ThermalResistance::calculateForcedConvectionCoefficient(
-                _config.airVelocity, charLength, surfaceTemp);
+                _config.airVelocity, characteristicLength, surfaceTemp);
             if (h_new > 0) res.resistance = 1.0 / (h_new * res.area);
         } else if (res.type == HeatTransferType::RADIATION && res.area > 0) {
             // Radiation connects a winding surface to the facing core node (not ambient),
@@ -4886,10 +5084,31 @@ ThermalResult Temperature::solveThermalCircuit() {
                         case ThermalNodePartType::CORE_TOP_YOKE:         msg += "CORE_TOP_YOKE"; break;
                         case ThermalNodePartType::CORE_BOTTOM_YOKE:      msg += "CORE_BOTTOM_YOKE"; break;
                         case ThermalNodePartType::CORE_TOROIDAL_SEGMENT: msg += "CORE_TOROIDAL_SEGMENT"; break;
+                        case ThermalNodePartType::INSULATION_LAYER:      msg += "INSULATION_LAYER"; break;
                         case ThermalNodePartType::AMBIENT:               msg += "AMBIENT"; break;
                         default:                                          msg += "OTHER"; break;
                     }
-                    msg += " power=" + std::to_string(_nodes[idx].powerDissipation) + "W\n";
+                    msg += " power=" + std::to_string(_nodes[idx].powerDissipation) + "W";
+                    if (_nodes[idx].physicalCoordinates.size() >= 2) {
+                        msg += " at (" + std::to_string(_nodes[idx].physicalCoordinates[0] * 1000) + ", "
+                             + std::to_string(_nodes[idx].physicalCoordinates[1] * 1000) + ") mm";
+                    }
+                    // Nearest neighbours: makes the missed-connection geometry visible in the error.
+                    std::vector<std::pair<double, size_t>> byDistance;
+                    for (size_t j = 0; j < n; ++j) {
+                        if (j == idx || _nodes[j].physicalCoordinates.size() < 2 ||
+                            _nodes[idx].physicalCoordinates.size() < 2) continue;
+                        double dx = _nodes[j].physicalCoordinates[0] - _nodes[idx].physicalCoordinates[0];
+                        double dy = _nodes[j].physicalCoordinates[1] - _nodes[idx].physicalCoordinates[1];
+                        byDistance.push_back({std::sqrt(dx * dx + dy * dy), j});
+                    }
+                    std::sort(byDistance.begin(), byDistance.end());
+                    msg += "; nearest:";
+                    for (size_t k = 0; k < std::min<size_t>(3, byDistance.size()); ++k) {
+                        msg += " " + _nodes[byDistance[k].second].name + " ("
+                             + std::to_string(byDistance[k].first * 1000) + " mm)";
+                    }
+                    msg += "\n";
                 }
                 throw std::runtime_error(msg);
             }
@@ -4920,6 +5139,22 @@ ThermalResult Temperature::solveThermalCircuit() {
                                      std::to_string(iteration) + ". This indicates a numerical instability in the thermal network.");
         }
 
+        // Under-relax the update (ABT #461). The radiation resistors' coefficients go as T^3,
+        // and with radiation now carrying most of the heat at high temperature, the plain
+        // fixed-point iteration (solve at last iteration's coefficients, swap in the new
+        // temperatures wholesale) overshoots and oscillates between a hot and a cold state
+        // instead of settling. Blending each new solution half-way with the previous one is
+        // the standard damping for temperature-dependent-coefficient loops; the convergence
+        // test below then measures the APPLIED step, so the criterion keeps its meaning.
+        // Fixed nodes are exempt so a Dirichlet boundary (ambient, cold plate) is never
+        // relaxed away from its imposed value.
+        if (iteration > 0) {
+            for (size_t i = 0; i < n; ++i) {
+                if (i == ambientIdx || _nodes[i].isFixedTemperature) continue;
+                temperatures[i] = 0.5 * temperatures[i] + 0.5 * oldTemperatures[i];
+            }
+        }
+
         converged = true;
         for (size_t i = 0; i < n; ++i) {
             if (std::abs(temperatures[i] - oldTemperatures[i]) > _config.convergenceTolerance) {
@@ -4935,7 +5170,56 @@ ThermalResult Temperature::solveThermalCircuit() {
     for (size_t i = 0; i < n; ++i) {
         _nodes[i].temperature = temperatures[i];
     }
-    
+
+    // Diagnostic (ABT #461): converged heat budget — where each watt exits, grouped by
+    // (source part, transfer type), with per-path effective h. Enabled with OM_THERMAL_BUDGET=1.
+    // This is what exposed the halved core loss (input printed 0.83 W of a real 1.46 W) and the
+    // winding bottleneck (watts leaving through under-counted areas at inflated effective h).
+    if (std::getenv("OM_THERMAL_BUDGET")) {
+        auto partName = [&](size_t idx) -> std::string {
+            return std::string(magic_enum::enum_name(_nodes[idx].part));
+        };
+        std::map<std::string, double> flowToAmbient;
+        std::map<std::string, double> areaToAmbient;
+        double totalToAmbient = 0;
+        for (const auto& res : _resistances) {
+            if (res.nodeToId != ambientIdx || res.nodeFromId >= n) continue;
+            double q = (temperatures[res.nodeFromId] - temperatures[ambientIdx]) / std::max(res.resistance, 1e-12);
+            std::string key = partName(res.nodeFromId) + "/" + std::string(magic_enum::enum_name(res.type));
+            flowToAmbient[key] += q;
+            areaToAmbient[key] += res.area;
+            totalToAmbient += q;
+        }
+        double totalInput = 0;
+        for (size_t i = 0; i < n; ++i) {
+            if (i != ambientIdx && !_nodes[i].isFixedTemperature) totalInput += _nodes[i].powerDissipation;
+        }
+        double maxTemp = _config.ambientTemperature;
+        for (size_t i = 0; i < n; ++i) maxTemp = std::max(maxTemp, temperatures[i]);
+        std::cout << "[BUDGET] input = " << totalInput << " W, to ambient = " << totalToAmbient
+                  << " W, converged = " << converged << " in " << iteration
+                  << " iters, maxT = " << maxTemp << "\n";
+        for (auto& kv : flowToAmbient) {
+            std::cout << "[BUDGET]   " << kv.first << " : " << kv.second << " W  (area " << areaToAmbient[kv.first] * 1e4 << " cm2)\n";
+        }
+        // Effective h per ambient-facing path: q / (A * dT) tells whether a coefficient is inflated.
+        std::map<std::string, double> dTn, dTd;
+        for (const auto& res : _resistances) {
+            if (res.nodeToId != ambientIdx || res.nodeFromId >= n || res.area <= 0) continue;
+            std::string key = partName(res.nodeFromId) + "/" + std::string(magic_enum::enum_name(res.type));
+            double dT = temperatures[res.nodeFromId] - temperatures[ambientIdx];
+            dTn[key] += dT * res.area;
+            dTd[key] += res.area;
+        }
+        for (auto& kv : flowToAmbient) {
+            double meanDT = dTd[kv.first] > 0 ? dTn[kv.first] / dTd[kv.first] : 0;
+            if (meanDT > 0 && areaToAmbient[kv.first] > 0) {
+                std::cout << "[BUDGET]   " << kv.first << " : h_eff = "
+                          << kv.second / (areaToAmbient[kv.first] * meanDT) << " W/m2K at mean dT " << meanDT << "\n";
+            }
+        }
+    }
+
     ThermalResult result;
     result.converged = converged;
     result.iterationsToConverge = iteration;
