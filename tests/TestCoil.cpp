@@ -11,6 +11,7 @@
 #include <cmath>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -11931,22 +11932,44 @@ TEST_CASE("Test_Real_Geometry_Contiguous_Oversubscribed_Charge_Is_Measured_In_Tu
 TEST_CASE("Test_Real_Geometry_Lead_Length_Follows_The_Section_Not_The_Coil_Orientation", "[constructive-model][coil][real-geometry]") {
     // A lead's length is read on the axis it RUNS along, which follows the LAYERS ORIENTATION OF ITS
     // OWN SECTION. Reading Coil::get_layers_orientation() instead is wrong twice over: that member
-    // defaults to OVERLAPPING and is not written by every path, and per-section orientations are
-    // supported. 09_planar_xfmr_er2510_3c94 is exactly that trap in the wild — every conduction
-    // section is CONTIGUOUS while the coil-level member sits at its untouched OVERLAPPING default —
-    // so the coil-level reading took each lead's X extent instead of its Y extent and inflated the
-    // connection resistance (primary +0.94%, secondary +2.4%). The example battery did not catch it:
-    // it asserts that Rdc is finite and positive, never what it equals.
-    settings.set_coil_use_real_winding_geometry(true);
-    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
-                                                + "/../MAS/examples/09_planar_xfmr_er2510_3c94.json");
-    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
-    auto& coil = magnetic.get_mutable_coil();
-    REQUIRE(coil.get_turns_description());
+    // defaults to OVERLAPPING and is not written by every path (a coil deserialized from JSON keeps
+    // the default while its sections say otherwise), and per-section orientations are supported.
+    //
+    // ABT #492 owner ruling re-fixture: the original fixture (09_planar_xfmr_er2510_3c94) is a
+    // planar PCB construction, which real winding geometry now REJECTS by design (see
+    // Test_Real_Geometry_Planar_Throws) — its 0.537 mOhm pin died with it. The trap is recreated on
+    // the wound CONTIGUOUS RECTANGULAR-wire construction (the ABT #449 fixture class round wire
+    // cannot test: rectangular wire makes the two marker extents differ so a wrong axis changes the
+    // number), interleaved so a Z inter-section return exists and the mirror must apply BOTH rules
+    // of the documented contract: WINDOW_XY markers by the section-orientation index, FRONT_YZ
+    // dragback segments by the long-axis rule.
+    std::vector<int64_t> numberTurns = {10, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    uint8_t interleavingLevel = 2;
 
-    // The fixture only means anything while the two disagree, so hold it to that.
-    auto sections = coil.get_sections_description().value();
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_width(0.00076);
+    wire.set_nominal_value_conducting_height(0.00038);
+    wire.set_nominal_value_outer_width(0.0008);
+    wire.set_nominal_value_outer_height(0.0004);
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    wire.set_type(WireType::RECTANGULAR);
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wound = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel,
+        WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire, wire});
+    REQUIRE(wound.get_turns_description());
+
+    // Recreate the deserialized-coil trap: the JSON round-trip drops the transient coil-level
+    // orientation member back to its OVERLAPPING default while the sections stay CONTIGUOUS.
+    json coilJson;
+    to_json(coilJson, wound);
+    OpenMagnetics::Coil coil(coilJson, false);
+    REQUIRE(coil.get_turns_description());
     REQUIRE(coil.get_layers_orientation() == WindingOrientation::OVERLAPPING);
+    auto sections = coil.get_sections_description().value();
     std::map<std::string, WindingOrientation> orientationPerSection;
     bool anyContiguousSection = false;
     for (const auto& section : sections) {
@@ -11957,9 +11980,17 @@ TEST_CASE("Test_Real_Geometry_Lead_Length_Follows_The_Section_Not_The_Coil_Orien
         }
     }
     REQUIRE(anyContiguousSection);
+    // The wire must NOT be square, or the index choices go untested.
+    REQUIRE(std::abs(coil.get_wires()[0].get_maximum_outer_width()
+                     - coil.get_wires()[0].get_maximum_outer_height()) > 1e-6);
+    // The interleave must actually produce Z inter-section returns, so the FRONT_YZ rule is
+    // exercised too.
+    REQUIRE(!front_yz_dragback_groups(coil).empty());
 
-    // Lead length per (winding, parallel), summed on each section's own run axis, and — to prove the
-    // assertion can tell them apart — on the axis the coil-level member would have chosen.
+    // Lead length per (winding, parallel), summed by the documented contract — WINDOW_XY markers on
+    // each section's own run axis, FRONT_YZ segments by their long axis — and, to prove the
+    // assertion can tell the axes apart, the same sum on the axis the coil-level member would have
+    // chosen for the WINDOW_XY markers.
     auto wires = coil.get_wires();
     size_t numberWindings = coil.get_functional_description().size();
     std::vector<std::vector<double>> lengthBySection(numberWindings);
@@ -11972,6 +12003,14 @@ TEST_CASE("Test_Real_Geometry_Lead_Length_Follows_The_Section_Not_The_Coil_Orien
         auto windingIndex = coil.get_winding_index_by_name(space.winding);
         int64_t parallel = space.parallel;
         if (parallel < 0 || parallel >= int64_t(coil.get_number_parallels(windingIndex))) {
+            continue;
+        }
+        if (space.plane == RoutePlane::FRONT_YZ) {
+            // The YZ-face dragback mixes radial climbs and an axial run, so its segments carry
+            // their length on the LONG axis — orientation-independent by contract.
+            double longAxis = std::max(space.dimensions[0], space.dimensions[1]);
+            lengthBySection[windingIndex][parallel] += longAxis;
+            lengthByCoilLevel[windingIndex][parallel] += longAxis;
             continue;
         }
         auto found = orientationPerSection.find(space.section);
@@ -11993,6 +12032,29 @@ TEST_CASE("Test_Real_Geometry_Lead_Length_Follows_The_Section_Not_The_Coil_Orien
         }
     }
 
+    settings.reset();
+}
+
+TEST_CASE("Test_Real_Geometry_Planar_Throws", "[constructive-model][coil][real-geometry]") {
+    // ABT #492 owner ruling: planar wires are PCBs — the real-winding connection model (leads,
+    // markers, blocking, YZ-face dragbacks, connection losses) is for WOUND magnetics only, and
+    // real winding for planar has not been started. Enabling the setting on a planar construction
+    // must THROW, loudly, at the first point the machinery would engage — no via model, no
+    // fallback, no silent skip. (Production planar flows are unaffected: the setting defaults
+    // false.)
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/09_planar_xfmr_er2510_3c94.json");
+    // The planar example ships fully wound, so autocomplete does not re-wind it; the gate must fire
+    // at the first real-winding machinery a planar coil can reach from there: a re-wind, and the
+    // connection-resistance path the loss chain uses (the two entries that consult the setting).
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    REQUIRE_THROWS_WITH(magnetic.get_mutable_coil().wind(),
+                        Catch::Matchers::ContainsSubstring("not implemented for planar"));
+    REQUIRE_THROWS_WITH(OpenMagnetics::WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(
+                            magnetic.get_coil(), 25.0),
+                        Catch::Matchers::ContainsSubstring("not implemented for planar"));
     settings.reset();
 }
 

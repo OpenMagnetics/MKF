@@ -2057,6 +2057,23 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         }
 
         if (wind) {
+            // ABT #492 owner ruling: planar wires are PCBs — the real-winding connection model
+            // (leads, markers, blocking, YZ-face dragbacks, connection losses) is for WOUND
+            // magnetics only, and real winding for planar has not been started. Throw before ANY
+            // of that machinery engages (the N+1 crossing bump armed just below is already part of
+            // it), so every downstream path — marker emission, blocking, dragbacks, ohmic lead
+            // lengths, apply_connection_reserved_space — is covered by one unavoidable gate.
+            // Production planar flows are unaffected: the setting defaults to false.
+            if (settings.get_coil_use_real_winding_geometry()) {
+                for (const auto& wire : get_wires()) {
+                    if (wire.get_type() == WireType::PLANAR) {
+                        throw std::runtime_error(
+                            "Real winding geometry (connection/lead routing) is not implemented for "
+                            "planar (PCB) constructions; disable coilUseRealWindingGeometry for "
+                            "planar magnetics");
+                    }
+                }
+            }
             set_sections_description(std::nullopt);
             set_layers_description(std::nullopt);
             set_turns_description(std::nullopt);

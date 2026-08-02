@@ -29,6 +29,17 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resist
 
     auto wirePerWinding = coil.get_wires();
 
+    // ABT #492 owner ruling: planar wires are PCBs — the real-winding connection model is for WOUND
+    // magnetics only. wind() already throws on this combination, but a coil deserialized from JSON
+    // reaches this entry without ever winding, so the gate must live here too.
+    for (const auto& wire : wirePerWinding) {
+        if (wire.get_type() == WireType::PLANAR) {
+            throw std::runtime_error(
+                "Real winding geometry (connection/lead routing) is not implemented for planar "
+                "(PCB) constructions; disable coilUseRealWindingGeometry for planar magnetics");
+        }
+    }
+
     // Provided terminal-lead lengths from the design requirements apply to the winding as a whole;
     // split evenly across its parallels (each parallel reaches the same terminal).
     std::vector<double> providedTerminalLength(windings.size(), 0.0);
