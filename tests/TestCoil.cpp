@@ -4,6 +4,8 @@
 #include "support/Painter.h"
 #include "constructive_models/Coil.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/WindingSkinEffectLosses.h"
+#include "processors/Inputs.h"
 #include "json.hpp"
 #include "support/Utils.h"
 #include "TestingUtils.h"
@@ -12305,6 +12307,119 @@ TEST_CASE("Test_Real_Geometry_Connection_Resistance_Is_Centerline_Geometry", "[c
             CoilAlignment::INNER_OR_TOP, CoilAlignment::INNER_OR_TOP);
         REQUIRE(coil.get_turns_description());
         check_connection_resistance_matches(coil, expected_connection_length_toroidal(coil));
+        settings.reset();
+    }
+}
+
+TEST_CASE("Test_Real_Geometry_Connection_Skin_Losses", "[constructive-model][coil][real-geometry]") {
+    // Option A (ABT #492): connection copper (terminal leads, layer-to-layer links, YZ-face
+    // dragbacks) gets the isolated-conductor skin correction per harmonic — the same per-meter
+    // machinery, above-DC convention and routed lengths as the DC stage, at each parallel's DC
+    // current divider — reported on the per-WINDING loss element (connections are not turns, and
+    // per-turn consumers map elements by turn name). Proximity stays zero for connections BY
+    // DESIGN: those runs are perpendicular to the winding and outside the window field.
+    double temperature = 25;
+
+    auto runStages = [&](OpenMagnetics::Coil& coil, double frequency, double& connectionSkinTotal,
+                         double& turnSkinTotal, double& totalBeforeSkin, double& totalAfterSkin) {
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            frequency, 100e-6, temperature, WaveformLabel::TRIANGULAR, 2, 0.5, 0, {1});
+        auto operatingPoint = inputs.get_operating_point(0);
+        auto ohmicOutput = OpenMagnetics::WindingOhmicLosses::calculate_ohmic_losses(coil, operatingPoint, temperature);
+        totalBeforeSkin = ohmicOutput.get_winding_losses();
+        auto skinOutput = OpenMagnetics::WindingSkinEffectLosses::calculate_skin_effect_losses(coil, temperature, ohmicOutput);
+        totalAfterSkin = skinOutput.get_winding_losses();
+        connectionSkinTotal = 0;
+        auto lossesPerWinding = skinOutput.get_winding_losses_per_winding().value();
+        for (auto& element : lossesPerWinding) {
+            REQUIRE(element.get_skin_effect_losses());
+            auto connectionElement = element.get_skin_effect_losses().value();
+            CHECK(connectionElement.get_method_used() == "ConnectionSkin");
+            for (auto loss : connectionElement.get_losses_per_harmonic()) {
+                connectionSkinTotal += loss;
+            }
+        }
+        turnSkinTotal = 0;
+        auto lossesPerTurn = skinOutput.get_winding_losses_per_turn().value();
+        for (auto& element : lossesPerTurn) {
+            REQUIRE(element.get_skin_effect_losses());
+            auto turnElement = element.get_skin_effect_losses().value();
+            for (auto loss : turnElement.get_losses_per_harmonic()) {
+                turnSkinTotal += loss;
+            }
+        }
+    };
+
+    // Independent value: geometry-derived connection lengths (turn positions, bump radii, edge
+    // routes — NOT the markers) x the per-meter skin machinery with this coil's dividers (single
+    // parallel -> exactly 1), same harmonic pruning as the stage.
+    auto expectedConnectionSkin = [&](OpenMagnetics::Coil& coil, double frequency) {
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            frequency, 100e-6, temperature, WaveformLabel::TRIANGULAR, 2, 0.5, 0, {1});
+        auto prunedOperatingPoint = OpenMagnetics::Inputs::prune_harmonics(
+            inputs.get_operating_point(0), Defaults().harmonicAmplitudeThreshold);
+        auto expectedLengths = expected_connection_length_rectangular(coil);
+        double expected = 0;
+        for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+            auto windingName = coil.get_functional_description()[windingIndex].get_name();
+            auto current = prunedOperatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+            double perMeter = OpenMagnetics::WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(
+                coil.resolve_wire(windingIndex), current, temperature, 1).first;
+            expected += perMeter * expectedLengths.at({windingName, 0});
+        }
+        return expected;
+    };
+
+    SECTION("overlapping round wire: value from geometry-derived lengths, assembly, monotonicity") {
+        settings.set_coil_use_real_winding_geometry(true);
+        auto coil = OpenMagneticsTesting::get_quick_coil({40, 40}, {1, 1}, "PQ 28/20", 2);
+        REQUIRE(coil.get_turns_description());
+        double connectionSkin100k, turnSkin, totalBefore, totalAfter;
+        runStages(coil, 100000, connectionSkin100k, turnSkin, totalBefore, totalAfter);
+        CHECK(connectionSkin100k > 0);  // wiring guard: the term cannot silently drop out
+        CHECK_THAT(connectionSkin100k, Catch::Matchers::WithinRel(expectedConnectionSkin(coil, 100000), 1e-6));  // 1e-6 absorbs the emitters' nanometre roundFloat on marker lengths
+        // Assembly invariant: total = ohmic (turns + connections) + skin(turns) + skin(connections).
+        CHECK_THAT(totalAfter, Catch::Matchers::WithinRel(totalBefore + turnSkin + connectionSkin100k, 1e-9));
+        // Monotonic in frequency.
+        double connectionSkin400k, turnSkin400, totalBefore400, totalAfter400;
+        runStages(coil, 400000, connectionSkin400k, turnSkin400, totalBefore400, totalAfter400);
+        CHECK(connectionSkin400k > connectionSkin100k);
+        settings.reset();
+    }
+
+    SECTION("tall rectangular wire: the dragback-heavy fixture dispatches the rectangular model") {
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.00045);
+        wire.set_nominal_value_conducting_height(0.0019);
+        wire.set_nominal_value_outer_width(0.0005);
+        wire.set_nominal_value_outer_height(0.002);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+        settings.set_coil_use_real_winding_geometry(true);
+        auto coil = OpenMagneticsTesting::get_quick_coil({4, 4}, {1, 1}, "PQ 28/20", 2,
+            WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+            CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire, wire});
+        REQUIRE(coil.get_turns_description());
+        double connectionSkin, turnSkin, totalBefore, totalAfter;
+        runStages(coil, 100000, connectionSkin, turnSkin, totalBefore, totalAfter);
+        CHECK(connectionSkin > 0);
+        CHECK_THAT(connectionSkin, Catch::Matchers::WithinRel(expectedConnectionSkin(coil, 100000), 1e-6));  // 1e-6 absorbs the emitters' nanometre roundFloat on marker lengths
+        settings.reset();
+    }
+
+    SECTION("ideal mode: zero connection skin, per-winding elements untouched") {
+        settings.reset();
+        auto coil = OpenMagneticsTesting::get_quick_coil({40, 40}, {1, 1}, "PQ 28/20", 2);
+        REQUIRE(coil.get_turns_description());
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            100000, 100e-6, temperature, WaveformLabel::TRIANGULAR, 2, 0.5, 0, {1});
+        auto ohmicOutput = OpenMagnetics::WindingOhmicLosses::calculate_ohmic_losses(coil, inputs.get_operating_point(0), temperature);
+        auto skinOutput = OpenMagnetics::WindingSkinEffectLosses::calculate_skin_effect_losses(coil, temperature, ohmicOutput);
+        auto lossesPerWinding = skinOutput.get_winding_losses_per_winding().value();
+        for (auto& element : lossesPerWinding) {
+            CHECK(!element.get_skin_effect_losses());
+        }
         settings.reset();
     }
 }

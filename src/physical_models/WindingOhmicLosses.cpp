@@ -14,17 +14,17 @@
 
 namespace OpenMagnetics {
 
-std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(Coil coil, double temperature) {
+std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_length_per_winding_per_parallel(Coil coil) {
     auto windings = coil.get_functional_description();
-    std::vector<std::vector<double>> connectionResistance;
+    std::vector<std::vector<double>> connectionLength;
     for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
-        connectionResistance.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0.0));
+        connectionLength.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0.0));
     }
 
     // Connections only contribute when real winding geometry is enabled (otherwise ideal mode keeps
     // historical results untouched).
     if (!Settings::GetInstance().get_coil_use_real_winding_geometry()) {
-        return connectionResistance;
+        return connectionLength;
     }
 
     auto wirePerWinding = coil.get_wires();
@@ -95,7 +95,6 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resist
 
     for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
         int64_t numberParallels = int64_t(coil.get_number_parallels(windingIndex));
-        double resistancePerMeter = calculate_dc_resistance_per_meter(wirePerWinding[windingIndex], temperature);
         for (int64_t parallelIndex = 0; parallelIndex < numberParallels; ++parallelIndex) {
             // The terminal-lead length is taken from the design requirements when provided (shared
             // across the parallels), otherwise from the per-parallel geometric routing to the window
@@ -103,10 +102,35 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resist
             double terminalLength = providedTerminalLength[windingIndex] > 0
                 ? providedTerminalLength[windingIndex] / double(numberParallels)
                 : geometricTerminalLength[windingIndex][parallelIndex];
-            double leadLength = crossingLength[windingIndex][parallelIndex] + terminalLength;
-            if (leadLength > 0) {
-                connectionResistance[windingIndex][parallelIndex] += resistancePerMeter * leadLength;
+            connectionLength[windingIndex][parallelIndex] = crossingLength[windingIndex][parallelIndex] + terminalLength;
+        }
+    }
+
+    return connectionLength;
+}
+
+std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(Coil coil, double temperature) {
+    // DC resistance of the connection copper. The AC (skin) increment of the same lengths is added
+    // by WindingSkinEffectLosses::calculate_skin_effect_losses from the SAME length source, so the
+    // DC and AC stages can never disagree about what copper exists.
+    auto connectionLength = calculate_connection_length_per_winding_per_parallel(coil);
+    auto wirePerWinding = coil.get_wires();
+    std::vector<std::vector<double>> connectionResistance;
+    for (size_t windingIndex = 0; windingIndex < connectionLength.size(); ++windingIndex) {
+        connectionResistance.push_back(std::vector<double>(connectionLength[windingIndex].size(), 0.0));
+        bool anyLength = false;
+        for (double length : connectionLength[windingIndex]) {
+            if (length > 0) {
+                anyLength = true;
             }
+        }
+        if (!anyLength) {
+            continue;
+        }
+        double resistancePerMeter = calculate_dc_resistance_per_meter(wirePerWinding[windingIndex], temperature);
+        for (size_t parallelIndex = 0; parallelIndex < connectionLength[windingIndex].size(); ++parallelIndex) {
+            connectionResistance[windingIndex][parallelIndex] =
+                resistancePerMeter * connectionLength[windingIndex][parallelIndex];
         }
     }
 
