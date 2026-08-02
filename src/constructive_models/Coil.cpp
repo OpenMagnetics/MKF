@@ -8134,16 +8134,50 @@ bool Coil::wind_toroidal_additional_turns() {
                             // the colliding placement, which is where the reported 0.87 OD centre-to-
                             // centre spacing came from. This one never accepts a collision: it either
                             // finds a clear radius or throws.
+                            //
+                            // COMPACTION is continuous, not quantized: stepping a full wire outward per
+                            // collision could only produce base-radius or base+N*OD placements, so a
+                            // crossing sitting azimuthally BETWEEN two inner-ring crossings was thrown a
+                            // whole OD out instead of resting in their V-groove. The physical position is
+                            // the TANGENCY radius: the wire slides outward at its fixed azimuth exactly
+                            // until it touches the binding placed crossing(s) (centre distance == one
+                            // wire OD), i.e. r = rP*cos(dAng) + sqrt(od^2 - rP^2*sin^2(dAng)) against the
+                            // deepest-binding neighbour, iterated in case the rested position uncovers a
+                            // further collision.
+                            const double windowRadialHeight = windingWindows[0].get_radial_height().value();
                             double candidateRadialHeight = currentBaseRadialHeight;
                             uint64_t radialTimeout = 1000;
-                            while (!get_collision_distances({candidateRadialHeight, additionalCoordinates[1]},
-                                                            placedTurnsCoordinates, wireHeight).empty()) {
+                            while (true) {
+                                auto collisions = get_collision_distances(
+                                    {candidateRadialHeight, additionalCoordinates[1]},
+                                    placedTurnsCoordinates, wireHeight);
+                                if (collisions.empty()) {
+                                    break;
+                                }
                                 if (--radialTimeout == 0) {
                                     throw CalculationException(ErrorCode::CALCULATION_TIMEOUT,
                                         "wind_toroidal_additional_turns: no collision-free outer radius for turn " + turn.get_name());
                                 }
                                 // Outward on the outer face is DECREASING radial height (r = windingWindowRadialHeight - radialHeight).
-                                candidateRadialHeight -= wireHeight;
+                                double candidateRadius = windowRadialHeight - candidateRadialHeight;
+                                double restedRadius = candidateRadius;
+                                for (auto& collision : collisions) {
+                                    double placedRadius = windowRadialHeight - collision.second[0];
+                                    double dAng = (collision.second[1] - additionalCoordinates[1]) / 180 * std::numbers::pi;
+                                    double chord = placedRadius * sin(dAng);
+                                    double discriminant = wireHeight * wireHeight - chord * chord;
+                                    if (discriminant <= 0) {
+                                        continue;   // cannot bind at this azimuth
+                                    }
+                                    double tangentRadius = placedRadius * cos(dAng) + sqrt(discriminant);
+                                    restedRadius = std::max(restedRadius, tangentRadius);
+                                }
+                                if (restedRadius <= candidateRadius + 1e-12) {
+                                    // No binding neighbour produced an outward tangency (degenerate
+                                    // geometry): fall back to one wire out so the loop always progresses.
+                                    restedRadius = candidateRadius + wireHeight;
+                                }
+                                candidateRadialHeight = windowRadialHeight - restedRadius;
                             }
                             additionalCoordinates[0] = candidateRadialHeight;
                             }
