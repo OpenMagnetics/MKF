@@ -778,7 +778,10 @@ SignalDescriptor Inputs::get_common_mode_choke_magnetizing_current(OperatingPoin
 
     ProcessedWaveform triangularProcessed;
     triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
-    triangularProcessed.set_offset(peakToPeak / 2);
+    // Centered around zero, as documented above: a CMC carries no DC flux bias, so the
+    // triangular swings ±pp/2. The previous offset of pp/2 shifted the waveform to 0..pp,
+    // doubling the peak the saturation/loss models saw — contradicting this very comment.
+    triangularProcessed.set_offset(0);
     triangularProcessed.set_peak_to_peak(peakToPeak);
     auto waveform = create_waveform(triangularProcessed, frequency);
     SignalDescriptor magnetizingCurrent;
