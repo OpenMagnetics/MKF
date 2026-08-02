@@ -85,11 +85,25 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resist
             : sectionOrientation->second;
         size_t cartesianLeadRunAxis = (layersOrientation == WindingOrientation::OVERLAPPING) ? 0 : 1;
         size_t leadRunAxis = (space.coordinateSystem == CoordinateSystem::POLAR) ? 0 : cartesianLeadRunAxis;
-        if (space.isTerminal) {
-            geometricTerminalLength[windingIndex][parallelIndex] += space.dimensions[leadRunAxis];
+        double runLength;
+        if (space.plane == RoutePlane::FRONT_YZ) {
+            // ABT #492: a Z interleaved return's dragback on the core's front/back face mixes radial
+            // climbs and a near-axial run in one group of segments, so no single orientation-derived
+            // index fits them all. Each segment is an axis-aligned THIN rectangle (thickness = one
+            // wire), so its routed length is its LONGER dimension — the contract documented on
+            // RoutePlane::FRONT_YZ. The dragback is deliberately LONGER than the straight diagonal
+            // it replaces (it detours over the intervening sections' build); that extra copper is
+            // physical and must be paid for here.
+            runLength = std::max(space.dimensions[0], space.dimensions[1]);
         }
         else {
-            crossingLength[windingIndex][parallelIndex] += space.dimensions[leadRunAxis];
+            runLength = space.dimensions[leadRunAxis];
+        }
+        if (space.isTerminal) {
+            geometricTerminalLength[windingIndex][parallelIndex] += runLength;
+        }
+        else {
+            crossingLength[windingIndex][parallelIndex] += runLength;
         }
     }
 

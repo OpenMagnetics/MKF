@@ -10867,80 +10867,89 @@ static int real_geometry_collisions(OpenMagnetics::Coil& coil) {
     return collisions;
 }
 
-// ABT #492: number of conduction turns intruding into the corridor a Z interleaved continuation's
-// DIAGONAL needs through the layers it crosses. Computed from the drawn diagonal itself — endpoints
-// reconstructed from the marker's centre/length/rotation — rather than from the per-layer squeeze
-// markers, so it fails whenever a crossed layer's turns sit on the diagonal's crossing, whether or
-// not the blocking machinery emitted (or honoured) a corridor for it. The crossing with a layer is
-// where the diagonal's centreline intersects the layer's stacking position (linear interpolation
-// between the endpoints); the corridor is one run-wire square around it. countedCrossings reports
-// how many layer crossings were checked, so a fixture can prove it is not vacuous. 0 intrusions
-// means every crossed layer's turns are clear of every Z return.
-static int z_return_corridor_intrusions(OpenMagnetics::Coil& coil, int* countedCrossings = nullptr) {
-    if (countedCrossings) {
-        *countedCrossings = 0;
+// ABT #492: a Z interleaved inter-section return is manufactured as a DRAGBACK on the core's
+// front/back (YZ) face — a radial climb over the intervening sections' build, a near-axial run on
+// that face, and a climb back down — consuming NO winding-window space. This aggregates the
+// FRONT_YZ segments per (winding, parallel): valid for fixtures whose windings have at most one
+// inter-section return each (two sections per winding), which all the fixtures below are.
+struct ZDragbackGroup {
+    std::string winding;
+    int64_t parallel = -1;
+    int segments = 0;
+    double totalLength = 0;    // sum of each segment's long-axis extent (the FRONT_YZ length rule)
+    double bumpRadius = std::numeric_limits<double>::quiet_NaN();  // radial position of the axial run
+    double axialRunExtent = 0; // the near-axial run's own axial extent (incl. corner overlaps)
+    double wireWidth = 0;      // thickness of the radial climbs (= the run wire's width)
+    double wireHeight = 0;     // thickness of the axial run (= the run wire's height)
+    // The turn-side end of each radial climb: {radius, axial level}. Two climbs = the return's
+    // endpoint turns.
+    std::vector<std::pair<double, double>> climbEnds;
+};
+static std::vector<ZDragbackGroup> front_yz_dragback_groups(OpenMagnetics::Coil& coil) {
+    std::map<std::pair<std::string, int64_t>, std::vector<const OpenMagnetics::ConnectionReservedSpace*>> byConductor;
+    auto spaces = coil.get_connection_reserved_spaces();
+    for (const auto& space : spaces) {
+        if (space.plane == RoutePlane::FRONT_YZ) {
+            byConductor[{space.winding, space.parallel}].push_back(&space);
+        }
     }
-    if (!coil.get_turns_description() || !coil.get_layers_description()) {
-        return -1;
+    std::vector<ZDragbackGroup> groups;
+    for (const auto& [key, segments] : byConductor) {
+        ZDragbackGroup group;
+        group.winding = key.first;
+        group.parallel = key.second;
+        double axialRunCenter = std::numeric_limits<double>::quiet_NaN();
+        for (const auto* seg : segments) {
+            group.segments++;
+            group.totalLength += std::max(seg->dimensions[0], seg->dimensions[1]);
+            if (seg->dimensions[1] > seg->dimensions[0]) {
+                // The near-axial run (thin in x, long in y for overlapping layers).
+                group.bumpRadius = seg->coordinates[0];
+                group.axialRunExtent = seg->dimensions[1];
+                group.wireWidth = seg->dimensions[0];
+                axialRunCenter = seg->coordinates[1];
+            }
+        }
+        // Second pass: the climbs' turn-side ends are the ends FARTHER from the bump radius.
+        for (const auto* seg : segments) {
+            if (seg->dimensions[0] >= seg->dimensions[1]) {
+                group.wireHeight = seg->dimensions[1];
+                double left = seg->coordinates[0] - seg->dimensions[0] / 2;
+                double right = seg->coordinates[0] + seg->dimensions[0] / 2;
+                double turnSide = (std::abs(left - group.bumpRadius) > std::abs(right - group.bumpRadius))
+                    ? left : right;
+                group.climbEnds.push_back({turnSide, seg->coordinates[1]});
+            }
+        }
+        // When the destination layer sits exactly at the bump radius (the usual case: the bump
+        // clears the build by half a wire plus insulation, which is precisely where the next
+        // section's inner layer starts), the climb-down degenerates and the axial run lands
+        // straight on the entry turn — reconstruct that endpoint from the run's far end, stripping
+        // the half-wire corner overhangs.
+        if (group.segments >= 2 && group.climbEnds.size() == 1 && group.axialRunExtent > 0) {
+            double sourceLevel = group.climbEnds[0].second;
+            double runLowTurnLevel = axialRunCenter - (group.axialRunExtent - group.wireHeight) / 2;
+            double runHighTurnLevel = axialRunCenter + (group.axialRunExtent - group.wireHeight) / 2;
+            double destinationLevel = (std::abs(runLowTurnLevel - sourceLevel) > std::abs(runHighTurnLevel - sourceLevel))
+                ? runLowTurnLevel : runHighTurnLevel;
+            group.climbEnds.push_back({group.bumpRadius, destinationLevel});
+        }
+        groups.push_back(group);
     }
-    auto turns = coil.get_turns_description().value();
-    auto layers = coil.get_layers_description().value();
-    int intrusions = 0;
+    return groups;
+}
+
+// ABT #492 (b): Z returns must not touch the winding window at all — no in-window squeeze marker
+// may name a layer for a non-U continuation (that is what would feed blocking / filling factors).
+static int z_return_window_markers(OpenMagnetics::Coil& coil) {
+    int markers = 0;
     for (const auto& space : coil.get_connection_reserved_spaces()) {
-        // Drawn Z diagonals only: link entries (no layer), cartesian, genuinely rotated. (Toroidal
-        // links are POLAR; U links and stubs are axis-aligned with rotation 0.)
-        if (!space.layer.empty() || space.coordinateSystem != CoordinateSystem::CARTESIAN
-            || std::abs(space.rotation) < 1e-6) {
-            continue;
-        }
-        double theta = space.rotation * std::numbers::pi / 180.0;
-        double halfLength = space.dimensions[0] / 2;
-        double thickness = space.dimensions[1];
-        double endpointA[2] = {space.coordinates[0] - halfLength * std::cos(theta),
-                               space.coordinates[1] - halfLength * std::sin(theta)};
-        double endpointB[2] = {space.coordinates[0] + halfLength * std::cos(theta),
-                               space.coordinates[1] + halfLength * std::sin(theta)};
-        for (const auto& layer : layers) {
-            if (layer.get_type() != ElectricalType::CONDUCTION) {
-                continue;
-            }
-            // Layers stack along X when OVERLAPPING and along Y when CONTIGUOUS; the corridor is
-            // taken out of the other axis, the one the layer's turns run along.
-            size_t layerAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 0 : 1;
-            size_t turnAxis = 1 - layerAxis;
-            double layerPosition = layer.get_coordinates()[layerAxis];
-            double lo = std::min(endpointA[layerAxis], endpointB[layerAxis]);
-            double hi = std::max(endpointA[layerAxis], endpointB[layerAxis]);
-            if (layerPosition <= lo + 1e-9 || layerPosition >= hi - 1e-9) {
-                continue;  // the diagonal does not cross this layer (endpoint layers excluded)
-            }
-            double t = (layerPosition - endpointA[layerAxis]) / (endpointB[layerAxis] - endpointA[layerAxis]);
-            double crossing[2];
-            crossing[layerAxis] = layerPosition;
-            crossing[turnAxis] = endpointA[turnAxis] + t * (endpointB[turnAxis] - endpointA[turnAxis]);
-            if (countedCrossings) {
-                (*countedCrossings)++;
-            }
-            for (const auto& turn : turns) {
-                if (!turn.get_layer() || turn.get_layer().value() != layer.get_name()) {
-                    continue;
-                }
-                auto tc = turn.get_coordinates();
-                auto td = turn.get_dimensions().value();
-                double overlapX = (td[0] + thickness) / 2 - std::abs(tc[0] - crossing[0]);
-                double overlapY = (td[1] + thickness) / 2 - std::abs(tc[1] - crossing[1]);
-                if (overlapX > 1e-6 && overlapY > 1e-6) {
-                    intrusions++;
-                    std::cout << "[ZCORR] turn " << turn.get_name() << " (c=" << tc[0] * 1e3 << ","
-                              << tc[1] * 1e3 << " mm) intrudes the Z-return corridor at ("
-                              << crossing[0] * 1e3 << "," << crossing[1] * 1e3 << ") mm on "
-                              << layer.get_name() << " (link w=" << space.winding
-                              << " p=" << space.parallel << ")\n";
-                }
-            }
+        if (!space.isTerminal && !space.layer.empty()
+            && coil.get_winding_order(space.section) != WindingOrder::U) {
+            markers++;
         }
     }
-    return intrusions;
+    return markers;
 }
 
 // ABT #229: number of pairs of drawn HORIZONTAL lead runs belonging to DIFFERENT conductors
@@ -11469,19 +11478,80 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
     settings.reset();
 }
 
-TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Corridor", "[constructive-model][coil][real-geometry]") {
-    // ABT #492: radially-interleaved sections wound Z. The inter-section continuation runs
-    // diagonally from the last turn of section i's outermost layer to the first turn of section
-    // i+1's innermost layer, CROSSING the intervening winding's layers — whose turns are full
-    // rings, present at every azimuth, so the return has no conflict-free route unless the layout
-    // reserves a corridor where the diagonal crosses each of them. The blocking machinery must
-    // push every crossed layer's turns clear of its crossing.
+// ABT #492: shared assertions for a Z interleaved inter-section return's YZ-face dragback.
+// The return is manufactured as a dragback on the core's front/back face — where there are no
+// lateral legs — riding as a local radial bump over the intervening sections' build, so in the XY
+// window cross-section it simply is not there. Checks, per dragback: (a) its geometry (endpoints
+// land exactly on real turns of its conductor, the bump clears the intervening build by at least
+// half the run wire and never overshoots the outer endpoint, the axial run spans the endpoints'
+// levels) and (c) its length exceeds the straight diagonal it replaces (the detour is physical and
+// the loss model pays for it).
+static void check_z_dragback_geometry(OpenMagnetics::Coil& coil, const std::vector<ZDragbackGroup>& groups) {
+    auto turns = coil.get_turns_description().value();
+    auto conductionLayers = coil.get_layers_description_conduction();
+    for (const auto& group : groups) {
+        INFO("dragback w=" << group.winding << " p=" << group.parallel << " segments=" << group.segments
+             << " bump=" << group.bumpRadius * 1e3 << "mm length=" << group.totalLength * 1e3 << "mm");
+        CHECK(group.segments >= 2);
+        REQUIRE(std::isfinite(group.bumpRadius));
+        REQUIRE(group.climbEnds.size() == 2);
+        double x1 = group.climbEnds[0].first;
+        double y1 = group.climbEnds[0].second;
+        double x2 = group.climbEnds[1].first;
+        double y2 = group.climbEnds[1].second;
+        // Both endpoints must coincide with actual turns of this conductor — the dragback connects
+        // the real exit turn to the real entry turn (this also validates the degenerate-climb
+        // reconstruction: the axial run really lands on the entry turn).
+        for (const auto& [endRadius, endLevel] : group.climbEnds) {
+            bool onTurn = false;
+            for (const auto& turn : turns) {
+                if (turn.get_winding() == group.winding && turn.get_parallel() == group.parallel
+                    && std::abs(turn.get_coordinates()[0] - endRadius) < 1e-6
+                    && std::abs(turn.get_coordinates()[1] - endLevel) < 1e-6) {
+                    onTurn = true;
+                    break;
+                }
+            }
+            CHECK(onTurn);
+        }
+        // The bump rides over the intervening sections' build: above the outer edge of every
+        // conduction layer radially between the endpoints by at least half the run wire (plus any
+        // inter-winding insulation, not asserted exactly here), and never beyond the outer
+        // endpoint's own radius.
+        double radialLow = std::min(x1, x2);
+        double radialHigh = std::max(x1, x2);
+        double interveningOuter = std::numeric_limits<double>::lowest();
+        int intervening = 0;
+        for (const auto& layer : conductionLayers) {
+            double x = layer.get_coordinates()[0];
+            if (x > radialLow + 1e-9 && x < radialHigh - 1e-9) {
+                intervening++;
+                interveningOuter = std::max(interveningOuter, x + layer.get_dimensions()[0] / 2);
+            }
+        }
+        CHECK(intervening > 0);  // vacuity guard: the return really crosses another section's build
+        CHECK(group.bumpRadius >= interveningOuter + group.wireWidth / 2 - 1e-9);
+        CHECK(group.bumpRadius <= radialHigh + 1e-9);
+        // The axial run spans the endpoints' levels plus the half-wire corner overlaps.
+        CHECK_THAT(group.axialRunExtent,
+                   Catch::Matchers::WithinAbs(std::abs(y2 - y1) + group.wireHeight, 1e-6));
+        // (c) The dragback is strictly longer than the straight in-window diagonal it replaces.
+        CHECK(group.totalLength > std::hypot(x2 - x1, y2 - y1));
+    }
+}
+
+TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Dragback", "[constructive-model][coil][real-geometry]") {
+    // ABT #492: radially-interleaved sections wound Z. The inter-section return is a DRAGBACK on
+    // the core's front/back (YZ) face and consumes NO winding-window space: FRONT_YZ segments are
+    // emitted for the loss model and 3D consumers, while the XY layout stays exactly the layout of
+    // a coil whose Z returns take nothing from the window (an in-window reservation was measured to
+    // run away in the blocking fixpoint — corroborating that the return does not belong there).
     std::vector<int64_t> numberTurns = {40, 40};
     std::vector<int64_t> numberParallels = {1, 1};
     uint8_t interleavingLevel = 2;
 
     settings.set_coil_use_real_winding_geometry(true);
-    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", interleavingLevel);
 
     REQUIRE(coil.get_turns_description());
     // The fixture must genuinely exercise the class: default Z winding order, both windings
@@ -11493,37 +11563,72 @@ TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Corridor", "[constructive-mod
     }
     REQUIRE(windingsPresent.size() == 2);
 
-    int crossings = 0;
-    CHECK(z_return_corridor_intrusions(coil, &crossings) == 0);
-    CHECK(crossings > 0);  // vacuity guard: some Z return must actually cross an intervening layer
+    // (a) One YZ-face dragback per winding (each has exactly one inter-section return), with the
+    // bump and endpoints derived from the real geometry.
+    auto groups = front_yz_dragback_groups(coil);
+    REQUIRE(groups.size() == 2);
+    check_z_dragback_geometry(coil, groups);
+
+    // (b) Z returns take NOTHING from the winding window: no in-window marker names a layer for a
+    // non-U continuation, and the layout equals the no-Z-blocking layout of pre-#492 main —
+    // pinned per-layer turn counts, radially ordered (measured on main @ 0cba81d6, where Z markers
+    // existed but were skipped by blocking; identical because the dragback removes them entirely).
+    CHECK(z_return_window_markers(coil) == 0);
+    auto conductionLayers = coil.get_layers_description_conduction();
+    std::sort(conductionLayers.begin(), conductionLayers.end(), [](const Layer& a, const Layer& b) {
+        return a.get_coordinates()[0] < b.get_coordinates()[0];
+    });
+    std::vector<size_t> turnsPerLayer;
+    for (const auto& layer : conductionLayers) {
+        turnsPerLayer.push_back(coil.get_turns_by_layer(layer.get_name()).size());
+    }
+    std::vector<size_t> expectedTurnsPerLayer = {20, 18, 17, 4, 16, 7};
+    CHECK(turnsPerLayer == expectedTurnsPerLayer);
+
+    // (c) The connection resistance includes the dragback: real winding geometry must cost more
+    // copper than the ideal wind of the same coil.
+    auto resistanceReal = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, 25.0);
+    settings.set_coil_use_real_winding_geometry(false);
+    auto idealCoil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", interleavingLevel);
+    auto resistanceIdeal = WindingOhmicLosses::calculate_dc_resistance_per_winding(idealCoil, 25.0);
+    CHECK(resistanceReal[0] > resistanceIdeal[0]);
+    CHECK(resistanceReal[1] > resistanceIdeal[1]);
+
+    settings.set_coil_use_real_winding_geometry(true);
     CHECK(real_geometry_collisions(coil) == 0);
     CHECK(coincident_connection_runs(coil) == 0);
-    paint_connection_demo(coil, "PQ 40/40", "Test_Real_Z_Interleaved_Return_Corridor.svg", true);
+    paint_connection_demo(coil, "PQ 28/20", "Test_Real_Z_Interleaved_Return_Dragback.svg", true);
 
     settings.reset();
 }
 
-TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Corridor_Bifilar", "[constructive-model][coil][real-geometry]") {
+TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Dragback_Bifilar", "[constructive-model][coil][real-geometry]") {
     // ABT #492, same class with a BIFILAR primary: each parallel is its own conductor with its own
-    // Z return diagonal, and each of those crossings needs its corridor freed (the blocking takes
-    // the deepest corridor per crossed layer edge, which must cover every parallel's diagonal).
+    // inter-section return, so each emits its own YZ-face dragback (three in total with the single
+    // secondary), each connecting its own parallel's exit/entry turns.
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {2, 1};
     uint8_t interleavingLevel = 2;
 
     settings.set_coil_use_real_winding_geometry(true);
-    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", interleavingLevel);
 
     REQUIRE(coil.get_turns_description());
     REQUIRE(coil.get_winding_order(coil.get_sections_description_conduction()[0].get_name()) == WindingOrder::Z);
 
-    int crossings = 0;
-    CHECK(z_return_corridor_intrusions(coil, &crossings) == 0);
-    // Both primary parallels' returns and the secondary's return cross intervening layers.
-    CHECK(crossings >= 2);
+    auto groups = front_yz_dragback_groups(coil);
+    REQUIRE(groups.size() == 3);  // primary parallel 0 + parallel 1 + secondary
+    std::set<std::pair<std::string, int64_t>> conductors;
+    for (const auto& group : groups) {
+        conductors.insert({group.winding, group.parallel});
+    }
+    CHECK(conductors.size() == 3);
+    check_z_dragback_geometry(coil, groups);
+
+    CHECK(z_return_window_markers(coil) == 0);
     CHECK(real_geometry_collisions(coil) == 0);
     CHECK(coincident_connection_runs(coil) == 0);
-    paint_connection_demo(coil, "PQ 40/40", "Test_Real_Z_Interleaved_Return_Corridor_Bifilar.svg", true);
+    paint_connection_demo(coil, "PQ 28/20", "Test_Real_Z_Interleaved_Return_Dragback_Bifilar.svg", true);
 
     settings.reset();
 }
