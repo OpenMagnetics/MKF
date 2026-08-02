@@ -9259,32 +9259,57 @@ TEST_CASE("Test_Additiona_Turns_Bug", "[constructive-model][coil][round-winding-
         turnsByLayer[turns[i].get_layer().value()].push_back(i);
     }
     
-    // ABT #231, user-approved re-pin. This used to assert uniqueRadii.size() == 1 — every
-    // outer crossing on ONE radius. That is only reachable by SKEWING turns: placing a
-    // turn's outer crossing at a different azimuth from its own inner crossing so it can
-    // drop into a gap. That skew IS the defect #231 reported — it made outer angles run
-    // non-monotonic (26.1, 41.1, 56.0, 48.5, 63.5 against monotonic inner angles), which
-    // crosses consecutive turns' top chords in 3D.
+    // ABT #231 + gap-fill lean (user-mandated, 2026-08-03). History of this contract:
+    // the ORIGINAL bug test wanted every outer crossing on ONE radius (maximal fill),
+    // reachable only by skewing crossings azimuthally into the gaps — but the then-code
+    // skewed NON-MONOTONICALLY (26.1, 41.1, 56.0, 48.5, 63.5 against monotonic inners),
+    // crossing consecutive turns' top chords in 3D (the actual #231 defect). The interim
+    // re-pin locked outer azimuth == inner azimuth, which killed the crossings but ALSO
+    // the fill: a crossing azimuthally aligned with a lower-layer wire perched a full OD
+    // on top instead of leaning into the free gap beside it, which no real winding does.
     //
-    // Asserted instead is the physical contract, which keeps the original bug's intent
-    // (compact where there IS room) without demanding the unphysical single radius:
-    //   (1) every outer crossing shares its own turn's azimuth;
+    // The physical contract, asserted here:
+    //   (1) every outer crossing lies within the LEAN WINDOW of its turn's azimuth (the
+    //       outer leg may lean up to ~one wire OD of arc to rest in a gap);
+    //   (1b) outer azimuths stay MONOTONIC in winding order within each layer — the lean
+    //       may never reorder crossings (that is what crossed the chords in #231);
     //   (2) no two outer crossings are closer than one wire OD;
-    //   (3) compaction still happens — the innermost outer ring is genuinely used.
-    // On this fixture the correct answer is TWO radii: at the first outer ring one wire OD
-    // subtends 2.84 deg, and layer 1's turn at 60 deg lands exactly on a layer-0 turn while
-    // its 6.67 deg turn sits 1.22 deg from one. Those must lie on top; the 20 deg turn is
-    // 3.64 deg clear and does compact.
+    //   (3) compaction genuinely fills: the innermost outer ring is used by more than
+    //       one layer, and no crossing sits at or beyond a full OD above the base ring
+    //       (full-OD stacking means the lean failed to find the gap that must exist on
+    //       this spare-roomed fixture).
     double wireOuterDiameter = coil.get_wires()[0].get_maximum_outer_height();
 
     std::vector<std::vector<double>> outerCrossings;
+    std::vector<double> outerAngles(turns.size()), innerAngles(turns.size());
+    double minOuterRadius = std::numeric_limits<double>::max();
     for (size_t i = 0; i < turns.size(); ++i) {
         auto addCoords = turns[i].get_additional_coordinates().value()[0];
-        // (1) same azimuth as its own inner crossing
-        double innerAngle = atan2(turns[i].get_coordinates()[1], turns[i].get_coordinates()[0]);
-        double outerAngle = atan2(addCoords[1], addCoords[0]);
-        CHECK_THAT(outerAngle, Catch::Matchers::WithinAbs(innerAngle, 1e-9));
+        innerAngles[i] = atan2(turns[i].get_coordinates()[1], turns[i].get_coordinates()[0]);
+        outerAngles[i] = atan2(addCoords[1], addCoords[0]);
         outerCrossings.push_back({addCoords[0], addCoords[1]});
+        minOuterRadius = std::min(minOuterRadius, hypot(addCoords[0], addCoords[1]));
+    }
+    const double leanLimit = wireOuterDiameter / minOuterRadius + 1e-6;
+    for (size_t i = 0; i < turns.size(); ++i) {
+        // (1) within the lean window of its own azimuth
+        double lean = std::remainder(outerAngles[i] - innerAngles[i], 2 * std::numbers::pi);
+        CHECK(std::abs(lean) <= leanLimit);
+    }
+    // (1b) monotonic per layer, in the layer's own winding direction
+    for (auto& [layerName, turnIndices] : turnsByLayer) {
+        if (turnIndices.size() < 2) continue;
+        double direction = std::remainder(innerAngles[turnIndices[1]] - innerAngles[turnIndices[0]],
+                                          2 * std::numbers::pi) < 0 ? -1.0 : 1.0;
+        for (size_t k = 0; k + 1 < turnIndices.size(); ++k) {
+            double step = std::remainder(outerAngles[turnIndices[k + 1]] - outerAngles[turnIndices[k]],
+                                         2 * std::numbers::pi) * direction;
+            CHECK(step > 0);
+        }
+    }
+    // (3, second half) nothing stacked a full OD out on this spare-roomed fixture
+    for (const auto& crossing : outerCrossings) {
+        CHECK(hypot(crossing[0], crossing[1]) < minOuterRadius + wireOuterDiameter - 1e-9);
     }
 
     // (2) mutual clearance of at least one wire OD
@@ -13017,14 +13042,22 @@ TEST_CASE("Test_Toroidal_Outer_Crossings_Stack_When_Outer_Face_Is_Full",
     double wireOuterDiameter = coil.get_wires()[0].get_maximum_outer_height();
 
     std::vector<std::vector<double>> outerCrossings;
+    double minOuterRadiusFull = std::numeric_limits<double>::max();
     for (const auto& turn : turns) {
         REQUIRE(turn.get_additional_coordinates());
         auto addCoords = turn.get_additional_coordinates().value()[0];
-        // Same azimuth as its own inner crossing — a turn wraps the core at one angle.
+        outerCrossings.push_back({addCoords[0], addCoords[1]});
+        minOuterRadiusFull = std::min(minOuterRadiusFull, hypot(addCoords[0], addCoords[1]));
+    }
+    // Within the LEAN WINDOW of its own azimuth (the outer leg may lean up to ~one wire OD
+    // of arc into a gap of the layers below — gap-fill compaction), never further.
+    const double leanLimitFull = wireOuterDiameter / minOuterRadiusFull + 1e-6;
+    for (const auto& turn : turns) {
+        auto addCoords = turn.get_additional_coordinates().value()[0];
         double innerAngle = atan2(turn.get_coordinates()[1], turn.get_coordinates()[0]);
         double outerAngle = atan2(addCoords[1], addCoords[0]);
-        CHECK_THAT(outerAngle, Catch::Matchers::WithinAbs(innerAngle, 1e-9));
-        outerCrossings.push_back({addCoords[0], addCoords[1]});
+        double lean = std::remainder(outerAngle - innerAngle, 2 * std::numbers::pi);
+        CHECK(std::abs(lean) <= leanLimitFull);
     }
 
     // No two outer crossings closer than one wire OD, even though the face is over-subscribed.

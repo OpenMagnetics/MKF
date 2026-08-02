@@ -8105,6 +8105,15 @@ bool Coil::wind_toroidal_additional_turns() {
                     auto turnsThisLayer = get_turns_by_layer(layer.get_name());
                     bool isFirstConductionLayer = (conductionLayerCount == 0);
                     conductionLayerCount++;
+                    // Winding progression sense of this layer (sign of the inner-azimuth step),
+                    // for the outer-crossing monotonicity guard.
+                    std::optional<double> previousOuterCrossingAzimuth;
+                    double layerWindingDirection = 0.0;
+                    if (turnsThisLayer.size() >= 2) {
+                        double firstStep = std::remainder(turnsThisLayer[1].get_coordinates()[1] -
+                                                          turnsThisLayer[0].get_coordinates()[1], 360.0);
+                        layerWindingDirection = firstStep < 0 ? -1.0 : 1.0;
+                    }
                     for (auto turn : turnsThisLayer) {
                         auto turnIndex = get_turn_index_by_name(turn.get_name());
                         std::vector<double> additionalCoordinates = {-bobbinColumnWidth * 2 - turn.get_coordinates()[0], turn.get_coordinates()[1]};
@@ -8135,54 +8144,68 @@ bool Coil::wind_toroidal_additional_turns() {
                             // centre spacing came from. This one never accepts a collision: it either
                             // finds a clear radius or throws.
                             //
-                            // COMPACTION is continuous, not quantized: stepping a full wire outward per
-                            // collision could only produce base-radius or base+N*OD placements, so a
-                            // crossing sitting azimuthally BETWEEN two inner-ring crossings was thrown a
-                            // whole OD out instead of resting in their V-groove. The physical position is
-                            // the TANGENCY radius: the wire slides outward at its fixed azimuth exactly
-                            // until it touches the binding placed crossing(s) (centre distance == one
-                            // wire OD), i.e. r = rP*cos(dAng) + sqrt(od^2 - rP^2*sin^2(dAng)) against the
-                            // deepest-binding neighbour, iterated in case the rested position uncovers a
-                            // further collision.
+                            // COMPACTION fills the previous layers' gaps AS MUCH AS POSSIBLE. The wire's
+                            // outer leg is not rigidly locked to the turn's poloidal plane: on a real
+                            // part it LEANS azimuthally (up to about one wire OD of arc) into the
+                            // nearest gap of the layers below and rests there. So the crossing takes
+                            // the DEEPEST rest position within that lean window, where the rest radius
+                            // at any azimuth is the packing-surface height: the base radius, pushed out
+                            // by tangency against every already-placed crossing (centre distance == one
+                            // wire OD: r = rP*cos(dAng) + sqrt(od^2 - rP^2*sin^2(dAng))). Ties resolve
+                            // to the smallest lean. MONOTONICITY in winding order is enforced against
+                            // the previous same-layer crossing -- the pre-ABT-#231 free angular search
+                            // filled gaps too, but out of sequence, which crossed consecutive turns'
+                            // top chords in 3D; the lean window plus the order guard keeps the fill
+                            // without the crossings.
                             const double windowRadialHeight = windingWindows[0].get_radial_height().value();
-                            double candidateRadialHeight = currentBaseRadialHeight;
-                            uint64_t radialTimeout = 1000;
-                            while (true) {
-                                auto collisions = get_collision_distances(
-                                    {candidateRadialHeight, additionalCoordinates[1]},
-                                    placedTurnsCoordinates, wireHeight);
-                                if (collisions.empty()) {
-                                    break;
+                            const double baseRadius = windowRadialHeight - currentBaseRadialHeight;
+                            const double leanDegrees = (wireHeight / baseRadius) * 180 / std::numbers::pi;
+                            const double thetaDeg = additionalCoordinates[1];
+                            double bestRadius = std::numeric_limits<double>::max();
+                            double bestAzimuth = thetaDeg;
+                            const int leanSteps = 81;
+                            for (int leanIndex = 0; leanIndex < leanSteps; ++leanIndex) {
+                                double az = thetaDeg + leanDegrees * (2.0 * leanIndex / (leanSteps - 1) - 1.0);
+                                if (previousOuterCrossingAzimuth.has_value() && layerWindingDirection != 0.0) {
+                                    double progress = std::remainder(az - previousOuterCrossingAzimuth.value(), 360.0) * layerWindingDirection;
+                                    if (progress <= 1e-9) {
+                                        continue;   // would step backwards past the previous crossing: chords would cross
+                                    }
                                 }
-                                if (--radialTimeout == 0) {
-                                    throw CalculationException(ErrorCode::CALCULATION_TIMEOUT,
-                                        "wind_toroidal_additional_turns: no collision-free outer radius for turn " + turn.get_name());
-                                }
-                                // Outward on the outer face is DECREASING radial height (r = windingWindowRadialHeight - radialHeight).
-                                double candidateRadius = windowRadialHeight - candidateRadialHeight;
-                                double restedRadius = candidateRadius;
-                                for (auto& collision : collisions) {
-                                    double placedRadius = windowRadialHeight - collision.second[0];
-                                    double dAng = (collision.second[1] - additionalCoordinates[1]) / 180 * std::numbers::pi;
+                                double restRadius = baseRadius;
+                                for (auto& placedCoordinates : placedTurnsCoordinates) {
+                                    double placedRadius = windowRadialHeight - placedCoordinates[0];
+                                    double dAng = std::remainder(placedCoordinates[1] - az, 360.0) / 180 * std::numbers::pi;
                                     double chord = placedRadius * sin(dAng);
                                     double discriminant = wireHeight * wireHeight - chord * chord;
                                     if (discriminant <= 0) {
                                         continue;   // cannot bind at this azimuth
                                     }
                                     double tangentRadius = placedRadius * cos(dAng) + sqrt(discriminant);
-                                    restedRadius = std::max(restedRadius, tangentRadius);
+                                    restRadius = std::max(restRadius, tangentRadius);
                                 }
-                                if (restedRadius <= candidateRadius + 1e-12) {
-                                    // No binding neighbour produced an outward tangency (degenerate
-                                    // geometry): fall back to one wire out so the loop always progresses.
-                                    restedRadius = candidateRadius + wireHeight;
+                                bool deeper = restRadius < bestRadius - 1e-9;
+                                bool tieCloser = std::abs(restRadius - bestRadius) <= 1e-9 &&
+                                                 std::abs(az - thetaDeg) < std::abs(bestAzimuth - thetaDeg);
+                                if (deeper || tieCloser) {
+                                    bestRadius = restRadius;
+                                    bestAzimuth = az;
                                 }
-                                candidateRadialHeight = windowRadialHeight - restedRadius;
                             }
-                            additionalCoordinates[0] = candidateRadialHeight;
+                            if (bestRadius == std::numeric_limits<double>::max()) {
+                                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                    "wind_toroidal_additional_turns: no monotonic outer-crossing position in the lean window for turn " + turn.get_name());
+                            }
+                            additionalCoordinates[0] = windowRadialHeight - bestRadius;
+                            additionalCoordinates[1] = bestAzimuth;
+                            if (!get_collision_distances(additionalCoordinates, placedTurnsCoordinates, wireHeight).empty()) {
+                                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                    "wind_toroidal_additional_turns: rested outer crossing still collides for turn " + turn.get_name());
+                            }
                             }
                         }
                         currentSectionMaximumAdditionalRadialHeight = std::min(currentSectionMaximumAdditionalRadialHeight, additionalCoordinates[0]);
+                        previousOuterCrossingAzimuth = additionalCoordinates[1];
                         turn.set_additional_coordinates(std::vector<std::vector<double>>{additionalCoordinates});
 
                         if (bobbinColumnShape == ColumnShape::ROUND) {
