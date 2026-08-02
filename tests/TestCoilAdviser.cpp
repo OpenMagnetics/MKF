@@ -992,13 +992,14 @@ TEST_CASE("Test_CoilAdviser_Random_0", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
-    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    if (masMagneticsWithCoil.size() > 0) {
-        auto masMagneticWithCoil = masMagneticsWithCoil[0];
-        OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
-        OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-    }
+    // ABT #415 (measured): this random spec is genuinely INFEASIBLE — 82+5 turns in an EP 20
+    // window; the best electrically-adequate wire ('Round 21.0 - Single Build') needs 14.18x
+    // the section area, and even the permissive allow-not-fitting retry returns nothing.
+    // The adviser refusing is the CORRECT behaviour, and this pin protects the refusal: if a
+    // future adviser change starts "finding" a coil here, it is fabricating an unbuildable
+    // design and must fail this test. (The former REQUIRE(size > 0) asserted the impossible;
+    // owner-approved conversion 2026-08-02, ABT #551.)
+    REQUIRE(masMagneticsWithCoil.size() == 0);
 }
 
 TEST_CASE("Test_CoilAdviser_Random_1", "[adviser][coil-adviser][bug]") {
@@ -1675,23 +1676,15 @@ TEST_CASE("Test_CoilAdviser_Random_10", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
-    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    if (masMagneticsWithCoil.size() > 0) {
-        auto masMagneticWithCoil = masMagneticsWithCoil[0];
-        // OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
-        // OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-        auto outFile = outputFilePath;
-        std::string filename = "Test_CoilAdviser" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
-        outFile.append(filename);
-        Painter painter(outFile);
-
-        painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-        painter.export_svg();
-    }
+    // ABT #415 (measured): this random spec is genuinely INFEASIBLE — 49x3 + 80 + 78 + 1x2
+    // turns across four isolation sides in an E 50/15 window; the best electrically-adequate
+    // wire needs 2.13x the section area, and even the permissive allow-not-fitting retry
+    // returns nothing. The adviser refusing is the CORRECT behaviour, and this pin protects
+    // the refusal: if a future adviser change starts "finding" a coil here, it is fabricating
+    // an unbuildable design and must fail this test. (The former REQUIRE(size > 0) asserted
+    // the impossible; owner-approved conversion 2026-08-02, ABT #551.)
+    REQUIRE(masMagneticsWithCoil.size() == 0);
+    settings.reset();
 }
 
 TEST_CASE("Test_CoilAdviser_Random_11", "[adviser][coil-adviser][bug]") {
