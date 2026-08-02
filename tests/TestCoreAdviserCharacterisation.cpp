@@ -54,7 +54,13 @@ using Catch::Matchers::WithinRel;
 namespace {
 
 constexpr bool kRegenerateBaselines = false;
-constexpr double kRelTol = 1e-6;
+// 1e-4, NOT 1e-6: clean-rebuild reproducibility of these scores is ~3e-5 relative
+// (measured 2026-08-02 at the cbb622a4 re-pin commit itself: identical source,
+// clean ninja rebuild, top-5 identities identical, every score off by ~2.7e-5 —
+// the 1e-6 pins only ever matched the exact binary that generated them). 1e-4
+// sits 3x above that floor and 100x below the ~1e-2 shift a real physics change
+// produces, so identity flips and real drift still fail loudly.
+constexpr double kRelTol = 1e-4;
 
 // --- Fixture loader ---------------------------------------------------------
 std::vector<Core> load_test_cores_fixture() {
@@ -198,12 +204,19 @@ void check_top_n(const std::string& label,
 // MagneticEnergy min/max interval fix (energy target at L_max -> 1.5x gap energy).
 // Same top core; 3C96/3C94 swap in slots 1-2; scores -1.4%. Regenerated with
 // kRegenerateBaselines on main 17e1f850.
+// Refreshed 2026-08-02 (ABT #551): root cause = ABT #378 restored in 7f50d4dc
+// (clean-build identity bisect over cbb622a4..HEAD). Zhang's fringing 'h' is the
+// adjacent core-limb segment per the paper, not max(h, column width); the old
+// substitution over-predicted gapped inductance, worst on short-window cores.
+// Under the corrected model the EFD 25/13/9 pair overtakes EP 20 (slot 0 -> 2)
+// and the PQ 20/20 tail compresses; scores shift ~1-2%. All five remain sane
+// small/mid gapped power ferrites for the 100 uH / 100 kHz / 600 Vpp fixture.
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.8966756636009796},
-    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.854716197272996},
-    {"PQ 20/20 - 3C94 - Gapped 0.472 mm",          3.8494928517386233},
-    {"PQ 20/20 - 3C90 - Gapped 0.472 mm",          3.8341659260385046},
-    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          3.8233252319348403},
+    {"EFD 25/13/9 - 3C96 - Gapped 0.43 mm",        3.9433293894745161},
+    {"EFD 25/13/9 - 3C95 - Gapped 0.44 mm",        3.8958356451850529},
+    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.839613686179371},
+    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.8081833338682394},
+    {"PQ 20/20 - 3C94 - Gapped 0.472 mm",          3.8042608085765606},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
@@ -232,12 +245,16 @@ const std::vector<TopEntry> kTopAvailablePower = {
 // displaces EQ 25/6 and seats RM 10/ILP at slot 1; the paralleled dummy coil
 // admits the 3/4-stack E 16/E 19 variants (physically sane for 100 uH /
 // 100 kHz / 600 Vpp). Regenerated on main 17e1f850, user-approved.
+// Refreshed 2026-08-02 (ABT #551): same root cause as kTopAvailablePower —
+// ABT #378 restored in 7f50d4dc. RM 10/ILP keeps slot 0 (score +1.3%); the
+// corrected fringing re-solves the stacked-E gaps, promoting the 2-stack
+// E 19/8/9 over the 3/4-stack variants and admitting RM 10/13.
 const std::vector<TopEntry> kTopStandardPower = {
-    {"98 RM 10/ILP gapped 0.32 mm",                3.8624574793397786},
-    {"98 PQ 27/15 gapped 0.25 mm",                 3.7835392946594726},
-    {"98 E 16/7/5 4 stacks gapped 0.09 mm",        3.7500041208232733},
-    {"95 RM 10/ILP gapped 0.32 mm",                3.6867104806869007},
-    {"98 E 19/8/9 3 stacks gapped 0.08 mm",        3.6749555384431662},
+    {"98 RM 10/ILP gapped 0.32 mm",                3.914341192939919},
+    {"98 E 19/8/9 2 stacks gapped 0.17 mm",        3.8451474121791862},
+    {"98 PQ 27/15 gapped 0.25 mm",                 3.8416348127966478},
+    {"98 RM 10/13 gapped 0.32 mm",                 3.7389036633664192},
+    {"95 RM 10/ILP gapped 0.32 mm",                3.7379408343271905},
 };
 
 // Refreshed 2026-06-16 (ABT #10) after landing the suppression returns-0 fix
