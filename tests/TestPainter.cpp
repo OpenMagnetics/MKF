@@ -1,5 +1,6 @@
 #include "support/Painter.h"
 #include "support/CciCoordinatesData.h"
+#include "support/Utils.h"
 #include "json.hpp"
 #include "TestingUtils.h"
 #include "Fixtures.h"
@@ -1756,7 +1757,13 @@ namespace {
             int64_t numberStacks = 1;
             std::string coreShape = shapeName;
             std::string coreMaterial = "3C97";
-            auto gapping = OpenMagneticsTesting::get_ground_gap(0.0001);
+            // drumRing (shielded drum, ABT #366) rejects user gapping: its two annular clearance
+            // gaps are structural, derived from the geometry. Paint it with no user gaps and let
+            // process_gap derive them; every other family keeps the ground gap.
+            std::vector<CoreGap> gapping;
+            if (OpenMagnetics::find_core_shape_by_name(coreShape).get_family() != CoreShapeFamily::DRUM_RING) {
+                gapping = OpenMagneticsTesting::get_ground_gap(0.0001);
+            }
 
             auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
             auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
