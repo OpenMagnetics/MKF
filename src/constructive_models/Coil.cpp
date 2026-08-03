@@ -6430,6 +6430,20 @@ bool Coil::wind_by_rectangular_layers() {
                 && !sections[sectionIndex].get_number_layers()
                 && maximumNumberPhysicalTurnsPerLayer > 1
                 && maximumNumberPhysicalTurnsPerLayer >= uint64_t(numberParallels);
+            // INPUT-CONNECTION ANGULAR BLOCKER (toroids, Alf's rule -- the round-window analog of
+            // the height reserved for connections on concentric windings): the connection enters
+            // at the section's start extreme on the FIRST ring, so every SUBSEQUENT ring
+            // surrenders the angular slots the connection's parallels occupy on that edge, and
+            // -- since a deeper ring's circumference shrinks -- its capacity is measured at ITS
+            // OWN radius, not the bore rim's (the uniform rim capacity is what let outer rings
+            // overhang the first ring on both edges). The spread placement applies the matching
+            // angular shift (wind_by_round_turns).
+            auto resolvedBobbinForCorridor = resolve_bobbin();
+            bool toroidalConnectionCorridor = settings.get_coil_use_real_winding_geometry()
+                && resolvedBobbinForCorridor.get_winding_window_shape() == WindingWindowShape::ROUND
+                && !sections[sectionIndex].get_number_layers()
+                && maximumNumberPhysicalTurnsPerLayer > 1
+                && maximumNumberPhysicalTurnsPerLayer >= uint64_t(numberParallels);
             double wireTurnAxisSize = layersStackAlongWidth
                 ? wirePerWinding[windingIndex].get_maximum_outer_height()
                 : wirePerWinding[windingIndex].get_maximum_outer_width();
@@ -6442,13 +6456,31 @@ bool Coil::wind_by_rectangular_layers() {
                 return found->second;
             };
             std::vector<uint64_t> realPerLayerTurns;
-            if (realWindingBlocking) {
+            if (realWindingBlocking || toroidalConnectionCorridor) {
                 uint64_t remainingTurns = physicalTurnsInSection;
                 size_t builtLayers = 0;
                 while (remainingTurns > 0) {
                     auto blocked = blockedSlotsForLayer(builtLayers);
                     uint64_t blockedSlots = std::min<uint64_t>(blocked.first + blocked.second, maximumNumberPhysicalTurnsPerLayer - 1);
                     uint64_t capacity = maximumNumberPhysicalTurnsPerLayer - blockedSlots;
+                    if (toroidalConnectionCorridor) {
+                        // Deeper rings hold fewer turns (same wire, smaller radius) and, past the
+                        // first ring, surrender the connection corridor's slots.
+                        auto windingWindowsForCapacity = resolvedBobbinForCorridor.get_processed_description().value().get_winding_windows();
+                        double boreRadius = windingWindowsForCapacity[0].get_radial_height().value();
+                        double ringRadiusFirst = boreRadius - wireTurnAxisSize / 2;
+                        double ringRadiusThis = boreRadius - (double(builtLayers) + 0.5) * wireTurnAxisSize;
+                        if (ringRadiusThis <= 0) {
+                            break;   // past the toroid centre: nothing more fits
+                        }
+                        uint64_t radiusCapacity = uint64_t(std::floor(
+                            double(maximumNumberPhysicalTurnsPerLayer) * ringRadiusThis / ringRadiusFirst));
+                        capacity = std::min(capacity, radiusCapacity);
+                        if (builtLayers >= 1) {
+                            uint64_t corridorSlots = uint64_t(numberParallels) + 2;
+                            capacity = capacity > corridorSlots ? capacity - corridorSlots : 0;
+                        }
+                    }
                     // Side-by-side parallels: hold an equal number of turns of every parallel, so the
                     // layer capacity is a whole number of parallel rows (a multiple of the parallel
                     // count). K=1 leaves it unchanged.
@@ -6543,14 +6575,14 @@ bool Coil::wind_by_rectangular_layers() {
             // long-standing path). For a bifilar/N-filar winding we KEEP CONSECUTIVE_PARALLELS so the
             // parallels are laid side by side (better current sharing / proximity) and the forced count
             // is split evenly across them — forcing TURNS here would change the electrical layout.
-            if (realWindingBlocking && numberParallels == 1) {
+            if ((realWindingBlocking || toroidalConnectionCorridor) && numberParallels == 1) {
                 windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
             }
 
             for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
                 Layer layer;
 
-                auto parallelsProportions = realWindingBlocking
+                auto parallelsProportions = (realWindingBlocking || toroidalConnectionCorridor)
                     ? get_parallels_proportions(layerIndex, numberLayers, get_number_turns(windingIndex), get_number_parallels(windingIndex),
                                                 remainingParallelsProportionInSection, windByConsecutiveTurns, totalParallelsProportionInSection,
                                                 1.0, double(realPerLayerTurns[layerIndex]))
@@ -7602,6 +7634,28 @@ bool Coil::wind_by_round_turns() {
                 return false;
             }
 
+            // INPUT-CONNECTION ANGULAR BLOCKER (real winding, toroids): rings after the first
+            // surrender the connection corridor on the section-start (low-angle) edge -- the
+            // entrance runs there on the first ring, and a later ring's turn placed behind it
+            // is copper the final 3D cannot avoid crossing. Work in the REDUCED, SHIFTED span
+            // for every alignment so no fallback path can reoccupy the corridor. Capacity was
+            // already charged in wind_by_layers; here only the angular window moves.
+            double layerAngularDimension = layer.get_dimensions()[1];
+            double layerAngularCentre = layer.get_coordinates()[1];
+            if (settings.get_coil_use_real_winding_geometry() &&
+                layer.get_type() == ElectricalType::CONDUCTION) {
+                const std::string& layerNameForCorridor = layer.get_name();
+                auto marker = layerNameForCorridor.rfind(" layer ");
+                if (marker != std::string::npos &&
+                    std::stoul(layerNameForCorridor.substr(marker + 7)) >= 1) {
+                    double corridorAngle =
+                        (double(get_number_parallels(windingIndex)) + 1.0) * wireAngle;
+                    corridorAngle = std::min(corridorAngle, layerAngularDimension / 2);
+                    layerAngularDimension -= corridorAngle;
+                    layerAngularCentre += corridorAngle / 2;
+                }
+            }
+
             if (layer.get_orientation() == WindingOrientation::OVERLAPPING) {
                 totalLayerAngle = physicalTurnsInLayer * wireAngle;
 
@@ -7609,23 +7663,23 @@ bool Coil::wind_by_round_turns() {
                 currentTurnCenterRadialHeight = roundFloat(layer.get_coordinates()[0], 9);
                 switch (alignment) {
                     case CoilAlignment::CENTERED:
-                        currentTurnCenterAngle = roundFloat(layer.get_coordinates()[1] - totalLayerAngle / 2 + wireAngle / 2, 9);
+                        currentTurnCenterAngle = roundFloat(layerAngularCentre - totalLayerAngle / 2 + wireAngle / 2, 9);
                         currentTurnAngleIncrement = wireAngle;
                         break;
 
                     case CoilAlignment::INNER_OR_TOP:
-                        currentTurnCenterAngle = roundFloat(layer.get_coordinates()[1] - layer.get_dimensions()[1] / 2 + wireAngle / 2, 9);
+                        currentTurnCenterAngle = roundFloat(layerAngularCentre - layerAngularDimension / 2 + wireAngle / 2, 9);
                         currentTurnAngleIncrement = wireAngle;
                         break;
 
                     case CoilAlignment::OUTER_OR_BOTTOM:
-                        currentTurnCenterAngle = roundFloat(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 - totalLayerAngle + wireAngle / 2, 9);
+                        currentTurnCenterAngle = roundFloat(layerAngularCentre + layerAngularDimension / 2 - totalLayerAngle + wireAngle / 2, 9);
                         currentTurnAngleIncrement = wireAngle;
                         break;
 
                     case CoilAlignment::SPREAD:
-                        currentTurnAngleIncrement = roundFloat(layer.get_dimensions()[1] / physicalTurnsInLayer, 9);
-                        currentTurnCenterAngle = roundFloat(layer.get_coordinates()[1] - layer.get_dimensions()[1] / 2 + currentTurnAngleIncrement / 2, 9);
+                        currentTurnAngleIncrement = roundFloat(layerAngularDimension / physicalTurnsInLayer, 9);
+                        currentTurnCenterAngle = roundFloat(layerAngularCentre - layerAngularDimension / 2 + currentTurnAngleIncrement / 2, 9);
                         break;
                 }
 
@@ -7642,10 +7696,10 @@ bool Coil::wind_by_round_turns() {
                     // Spread over the angle MINUS one wire, leaving a one-wire seam where the winding
                     // starts/ends (physically real, and it keeps a full ring from closing onto its own
                     // first turn — the consecutive-parallels placement can round to one extra turn).
-                    double spreadIncrement = roundFloat((layer.get_dimensions()[1] - wireAngle) / physicalTurnsInLayer, 9);
+                    double spreadIncrement = roundFloat((layerAngularDimension - wireAngle) / physicalTurnsInLayer, 9);
                     if (spreadIncrement >= wireAngle) {
                         currentTurnAngleIncrement = spreadIncrement;
-                        currentTurnCenterAngle = roundFloat(layer.get_coordinates()[1] - physicalTurnsInLayer * spreadIncrement / 2 + spreadIncrement / 2, 9);
+                        currentTurnCenterAngle = roundFloat(layerAngularCentre - physicalTurnsInLayer * spreadIncrement / 2 + spreadIncrement / 2, 9);
                     }
                 }
 
@@ -8359,11 +8413,22 @@ bool Coil::wind_toroidal_additional_turns() {
                                 }
                             }
                             if (bestRadius == std::numeric_limits<double>::max()) {
+                                std::string stationMap = "; section stations (layer:angle):";
+                                for (const auto& sectionTurn : turnsInSection) {
+                                    stationMap += " " + (sectionTurn.get_layer() ? sectionTurn.get_layer().value().substr(sectionTurn.get_layer().value().rfind(' ') + 1) : "?") +
+                                                  ":" + std::to_string(sectionTurn.get_coordinates()[1]).substr(0, 6);
+                                }
+                                std::string blockers = "; verticals:";
+                                for (const auto& vertical : terminalVerticals) {
+                                    blockers += std::string(" ") + (vertical.below ? "in@" : "out@") +
+                                                std::to_string(atan2(vertical.y, vertical.x) * 180 / std::numbers::pi).substr(0, 6);
+                                }
                                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                                     "wind_toroidal_additional_turns: NO outer-crossing azimuth exists for turn " + turn.get_name() +
                                     " whose implied 3D runs clear the terminal connection verticals while keeping "
                                     "the winding order monotonic -- the inner-station layout leaves the connection "
-                                    "corridor blocked (fix the layer spread / turn distribution, not this sweep)");
+                                    "corridor blocked (fix the layer spread / turn distribution, not this sweep)" +
+                                    stationMap + blockers);
                             }
                             additionalCoordinates[0] = windowRadialHeight - bestRadius;
                             additionalCoordinates[1] = bestAzimuth;
