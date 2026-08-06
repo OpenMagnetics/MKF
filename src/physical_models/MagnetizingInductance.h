@@ -91,6 +91,14 @@ class MagnetizingInductance {
     // throws when the coating, its type, its material, or the material record is missing.
     static double calculate_semishielded_drum_magnetizing_inductance(Core core, double numberTurns, double temperature);
 
+    // Shielded drum whose ring is a DIFFERENT grade from the drum (ABT #576): the drum sections
+    // take the drum mu and the ring sections the ring mu, via the piece's c1 split, with the two
+    // structural annular clearances added on top unchanged. Routed only when a distinct ring
+    // grade is declared as a geometricalDescription piece; single-material drumRing cores keep
+    // the existing path exactly.
+    static double calculate_drum_ring_magnetizing_inductance(Core core, CoreMaterial ringMaterial,
+                                                             double numberTurns, double temperature);
+
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
         Core core,
         Coil coil,

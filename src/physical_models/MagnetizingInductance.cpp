@@ -164,6 +164,61 @@ double MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance
     return pow(numberTurns, 2) / reluctance;
 }
 
+// ABT #576: a shielded drum and its closing ring are routinely DIFFERENT grades — WE-DPC-6040 is
+// an ACME P47 MnZn drum (mu_i 3000) inside an ACME B45 NiZn ring (mu_i 450), a 6.7x difference
+// across two material SYSTEMS. The grades are declared on functionalDescription.material as a
+// LIST, primary piece first: ["P47", "B45"] is the drum then its ring. That field is the one the
+// schema designates for analytical models; geometricalDescription is the CAD-facing view and is
+// REGENERATED whenever absent, so a material declared only there would silently vanish and take
+// the inductance 15% with it.
+//
+// A single material is not an error — the overwhelming majority of drumRing cores are one grade,
+// and they keep the standard path. But a list that names MORE than two pieces is: a drumRing has
+// exactly a drum and a ring, so anything else means the data does not describe this shape and we
+// refuse rather than quietly using the first two.
+static std::optional<CoreMaterial> resolve_drum_ring_ring_material(Core& core) {
+    auto materials = core.resolve_materials();
+    if (materials.size() == 1) {
+        return std::nullopt;
+    }
+    if (materials.size() != 2) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "drumRing names " + std::to_string(materials.size()) + " materials; it has exactly two "
+            "pieces (drum then ring), so the list must hold one or two entries");
+    }
+    return materials[1];
+}
+
+// Sectioned reluctance for a two-grade shielded drum: the drum sections take the drum's mu, the
+// ring sections take the ring's mu, and the two STRUCTURAL annular clearances (ABT #366/#368,
+// synthesised by Core::process_gap from A/K/D/F) are added on top exactly as before. Those
+// clearances carry most of the reluctance in practice, which is why the single-material
+// approximation is only ~15% out on inductance — but the grades differ far more than that for
+// saturation and losses, so the split still matters.
+double MagnetizingInductance::calculate_drum_ring_magnetizing_inductance(Core core,
+                                                                        CoreMaterial ringMaterial,
+                                                                        double numberTurns,
+                                                                        double temperature) {
+    auto corePiece = CorePiece::factory(core.resolve_shape());
+    auto mixedConstants = corePiece->get_mixed_material_constants();
+    if (!mixedConstants) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "drumRing piece did not expose its split drum/ring shape constants");
+    }
+    double drumC1 = (*mixedConstants)[0];
+    double ringC1 = (*mixedConstants)[2];
+    double drumPermeability = InitialPermeability::get_initial_permeability(core.resolve_material(), temperature);
+    double ringPermeability = InitialPermeability::get_initial_permeability(ringMaterial, temperature);
+
+    double vacuumPermeability = Constants().vacuumPermeability;
+    double ferriteReluctance = (drumC1 / drumPermeability + ringC1 / ringPermeability) / vacuumPermeability;
+
+    auto reluctanceModelForGaps = ReluctanceModel::factory(Defaults().reluctanceModelDefault);
+    double clearanceReluctance = reluctanceModelForGaps->get_gapping_reluctance(core).get_gapping_reluctance().value();
+
+    return pow(numberTurns, 2) / (ferriteReluctance + clearanceReluctance);
+}
+
 // ABT #362/#331: the drum-family paths below return early with their own inductance model, so
 // they must ALSO produce the magnetic flux density this function is contracted to return —
 // MagneticSimulator feeds result.second straight into the core-loss stage, and a default-
@@ -212,6 +267,35 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             semishieldedInductance, numberTurnsSemishielded,
             core.get_columns()[0].get_area(), operatingPoint);
         return semishieldedResult;
+    }
+
+    // Shielded drums whose ring is a different grade from the drum (ABT #576). Gated on a
+    // distinct ring grade actually being declared: with one grade this is a no-op and the core
+    // falls through to the standard path below, so nothing already validated changes.
+    if (core.get_shape_family() == CoreShapeFamily::DRUM_RING) {
+        auto ringMaterial = resolve_drum_ring_ring_material(core);
+        if (ringMaterial) {
+            double drumRingTemperature = operatingPoint ? operatingPoint->get_conditions().get_ambient_temperature()
+                                                        : Defaults().ambientTemperature;
+            double numberTurnsDrumRing = coil.get_functional_description()[0].get_number_turns();
+            double drumRingInductance = calculate_drum_ring_magnetizing_inductance(
+                core, ringMaterial.value(), numberTurnsDrumRing, drumRingTemperature);
+            MagnetizingInductanceOutput drumRingOutput;
+            DimensionWithTolerance drumRingWithTolerance;
+            drumRingWithTolerance.set_nominal(drumRingInductance);
+            drumRingWithTolerance.set_minimum(drumRingInductance * 0.8);
+            drumRingWithTolerance.set_maximum(drumRingInductance * 1.2);
+            drumRingOutput.set_magnetizing_inductance(drumRingWithTolerance);
+            drumRingOutput.set_method_used("DrumRingMixedSectionReluctance");
+            drumRingOutput.set_origin(ResultOrigin::SIMULATION);
+            std::pair<MagnetizingInductanceOutput, SignalDescriptor> drumRingResult;
+            drumRingResult.first = drumRingOutput;
+            // Flux crosses the post, same as every other drum-family model here.
+            drumRingResult.second = calculate_flux_density_for_family_model(
+                drumRingInductance, numberTurnsDrumRing,
+                core.get_columns()[0].get_area(), operatingPoint);
+            return drumRingResult;
+        }
     }
 
     // Open shapes (drums, rods): route to the open-core model — the closed-circuit reluctance

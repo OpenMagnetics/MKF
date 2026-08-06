@@ -2109,7 +2109,11 @@ class CorePieceDrumRing : public CorePieceDrum {
         set_height(std::max(dimensions["B"], dimensions["L"]));
     }
 
-    std::tuple<double, double, double> get_shape_constants() {
+    // ABT #576: the drum and its closing ring are routinely DIFFERENT grades (e.g. WE-DPC-6040 is
+    // an ACME P47 MnZn drum, mu_i 3000, inside an ACME B45 NiZn ring, mu_i 450). The two sections
+    // are therefore kept apart here so MagnetizingInductance can apply a permeability to each;
+    // get_shape_constants() just sums them, so every single-material caller is unaffected.
+    std::tuple<double, double, double, double, double> get_split_constants() {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         double pi = std::numbers::pi;
         double flangeRadius = dimensions["A"] / 2;
@@ -2119,46 +2123,56 @@ class CorePieceDrumRing : public CorePieceDrum {
         double ringOuterRadius = dimensions["J"] / 2;
         double ringInnerRadius = dimensions["K"] / 2;
 
-        // Post + two spreading flanges + post corners: identical to the bare drum.
+        // Post + two spreading flanges + post corners: identical to the bare drum. DRUM SIDE.
         double postArea = pi * (pow(postRadius, 2) - pow(boreRadius, 2));
         std::vector<double> areas;
         areas.push_back(postArea);
-        double c1 = grooveHeight / postArea;
-        double c2 = grooveHeight / pow(postArea, 2);
+        double drumC1 = grooveHeight / postArea;
+        double drumC2 = grooveHeight / pow(postArea, 2);
         for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
-            c1 += 1.0 / (2 * pi * flangeThickness) * log(flangeRadius / postRadius);
-            c2 += 1.0 / (2 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
+            drumC1 += 1.0 / (2 * pi * flangeThickness) * log(flangeRadius / postRadius);
+            drumC2 += 1.0 / (2 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
             areas.push_back(2 * pi * postRadius * flangeThickness);
             double s1 = postRadius - sqrt((pow(boreRadius, 2) + pow(postRadius, 2)) / 2);
             double cornerLength = pi / 4 * (2 * s1 + flangeThickness);
             double cornerArea = 0.5 * (postArea + 2 * pi * postRadius * flangeThickness);
             areas.push_back(cornerArea);
-            c1 += cornerLength / cornerArea;
-            c2 += cornerLength / pow(cornerArea, 2);
+            drumC1 += cornerLength / cornerArea;
+            drumC2 += cornerLength / pow(cornerArea, 2);
         }
 
         // Ring: axial annulus running between the two flange mid-planes (bounded by the
-        // ring's own height when the ring is shorter than the drum).
+        // ring's own height when the ring is shorter than the drum). RING SIDE.
         double ringArea = pi * (pow(ringOuterRadius, 2) - pow(ringInnerRadius, 2));
         double ringLength = std::min(dimensions["L"],
                                      dimensions["B"] - (dimensions["D"] + dimensions["F"]) / 2);
-        c1 += ringLength / ringArea;
-        c2 += ringLength / pow(ringArea, 2);
+        double ringC1 = ringLength / ringArea;
+        double ringC2 = ringLength / pow(ringArea, 2);
         areas.push_back(ringArea);
 
         // Two radial->axial turns inside the ring wall, IEC 60205 clause 4.6 idiom: mean of
         // the entry band (ring bore over one flange thickness, where the gap flux lands) and
-        // the axial annulus.
+        // the axial annulus. These sit in the RING material, so they belong to the ring side.
         for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
             double entryArea = 2 * pi * ringInnerRadius * flangeThickness;
             double ringWall = ringOuterRadius - ringInnerRadius;
             double cornerLength = pi / 4 * (ringWall / 2 + flangeThickness / 2);
             double cornerArea = 0.5 * (entryArea + ringArea);
             areas.push_back(cornerArea);
-            c1 += cornerLength / cornerArea;
-            c2 += cornerLength / pow(cornerArea, 2);
+            ringC1 += cornerLength / cornerArea;
+            ringC2 += cornerLength / pow(cornerArea, 2);
         }
-        return {c1, c2, *min_element(areas.begin(), areas.end())};
+        return {drumC1, drumC2, ringC1, ringC2, *min_element(areas.begin(), areas.end())};
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto [drumC1, drumC2, ringC1, ringC2, minimumArea] = get_split_constants();
+        return {drumC1 + ringC1, drumC2 + ringC2, minimumArea};
+    }
+
+    std::optional<std::array<double, 4>> get_mixed_material_constants() override {
+        auto [drumC1, drumC2, ringC1, ringC2, minimumArea] = get_split_constants();
+        return std::array<double, 4>{drumC1, drumC2, ringC1, ringC2};
     }
 };
 

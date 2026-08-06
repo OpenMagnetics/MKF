@@ -55,6 +55,13 @@ class Core : public MAS::MagneticCore {
     CoreMaterial resolve_material();
     CoreMaterial resolve_material() const;
     static CoreMaterial resolve_material(CoreMaterialDataOrNameUnion coreMaterial);
+
+    // ABT #576: multi-grade assemblies list their pieces in the order the magnetic circuit
+    // crosses them, primary (wound) piece first. resolve_material() above keeps returning that
+    // primary, so every existing caller is unaffected; this returns the whole list, and a
+    // single-material core yields a one-element vector so callers never branch on the form.
+    std::vector<CoreMaterial> resolve_materials();
+    static CoreMaterialDataOrNameUnion material_element_to_union(const MaterialElement& materialElement);
     CoreShape resolve_shape();
     CoreShape resolve_shape() const;
     static CoreShape resolve_shape(CoreShapeDataOrNameUnion coreShape);

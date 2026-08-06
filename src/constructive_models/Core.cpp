@@ -1201,9 +1201,15 @@ bool Core::process_gap() {
     return true;
 }
 
+// The write-back below memoizes the resolved record into the functional description. For a
+// MULTI-GRADE assembly that would overwrite the whole list with just the primary piece and
+// silently destroy every closing material (ABT #576) — so a list is cached but never written
+// back. The list form is already fully resolvable on demand through resolve_materials().
 CoreMaterial Core::resolve_material() {
     auto material = resolve_material(get_functional_description().get_material());
-    get_mutable_functional_description().set_material(material);
+    if (!std::holds_alternative<std::vector<MaterialElement>>(get_functional_description().get_material())) {
+        get_mutable_functional_description().set_material(material);
+    }
     _cachedResolvedMaterial = material;
     return material;
 }
@@ -1222,7 +1228,10 @@ CoreMaterial Core::resolve_material() const {
     if (_cachedResolvedMaterial) return *_cachedResolvedMaterial;
     auto material = resolve_material(get_functional_description().get_material());
     _cachedResolvedMaterial = material;
-    const_cast<Core*>(this)->get_mutable_functional_description().set_material(material);
+    // Same guard as the non-const overload: never collapse a multi-grade list to its primary.
+    if (!std::holds_alternative<std::vector<MaterialElement>>(get_functional_description().get_material())) {
+        const_cast<Core*>(this)->get_mutable_functional_description().set_material(material);
+    }
     return material;
 }
 
@@ -1250,9 +1259,51 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
         coreMaterial = coreMaterialData;
         return coreMaterialData;
     }
+    // ABT #576: a multi-grade assembly lists its pieces, primary first. Everything that asks for
+    // "the" material of the core means the primary (wound) piece — the drum of a drum+ring, the
+    // piece the turns sit on — so resolve that and hand it back. Callers that need the closing
+    // pieces ask resolve_materials() instead.
+    else if (std::holds_alternative<std::vector<MaterialElement>>(coreMaterial)) {
+        auto materials = std::get<std::vector<MaterialElement>>(coreMaterial);
+        if (materials.empty()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "core material list is empty — it must name at least the primary piece");
+        }
+        return resolve_material(material_element_to_union(materials[0]));
+    }
     else {
         return std::get<CoreMaterial>(coreMaterial);
     }
+}
+
+// The array items are their own two-way union; widen one to the outer union so the single
+// resolution path above handles names and inline records identically.
+CoreMaterialDataOrNameUnion Core::material_element_to_union(const MaterialElement& materialElement) {
+    if (std::holds_alternative<std::string>(materialElement)) {
+        return std::get<std::string>(materialElement);
+    }
+    return std::get<CoreMaterial>(materialElement);
+}
+
+// Every piece of the assembly, in the order the magnetic circuit crosses them: primary (wound)
+// piece first, then the closing pieces. A single-material core yields a one-element vector, so
+// callers never need to branch on how the core was written.
+std::vector<CoreMaterial> Core::resolve_materials() {
+    auto materialField = get_functional_description().get_material();
+    if (!std::holds_alternative<std::vector<MaterialElement>>(materialField)) {
+        return {resolve_material()};
+    }
+    auto materials = std::get<std::vector<MaterialElement>>(materialField);
+    if (materials.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "core material list is empty — it must name at least the primary piece");
+    }
+    std::vector<CoreMaterial> resolved;
+    resolved.reserve(materials.size());
+    for (const auto& materialElement : materials) {
+        resolved.push_back(resolve_material(material_element_to_union(materialElement)));
+    }
+    return resolved;
 }
 
 void Core::set_type(CoreType coreType) {
