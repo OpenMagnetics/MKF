@@ -821,50 +821,16 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         }
     }
 
-    // Entrance and exit terminal leads route a winding end radially out to the outer window border.
-    {
-        // ABT #577 (reporter follow-up): WITHIN a winding, edge rows MUST be allocated
-        // NEAREST-EDGE-TURN FIRST -- not in parallel order. The allocator stacks rows
-        // inward from the edge, and the fence-post/N-filar layout (#578/#579) stacks the
-        // parallels' end turns the same way, so matching the two orders puts every lead ON
-        // its own turn's row (the stub degenerates) instead of one row off, dead-centre in
-        // a sibling's turn band (measured on 11_pushpull: parallel 1's exit run drawn
-        // through parallel 0's top turn; same class on 06/23/24). Winding-major order is
-        // PRESERVED: cross-winding stacking (an inner winding's leads outside an outer
-        // winding's flush rows, and the blocking that follows it) is correct as-is -- a
-        // fully global nearest-first sort broke it (14_dab secondary terminal -0.8 mm into
-        // sibling copper, and the routed-length checks).
-        struct TerminalLeadReq {
-            size_t windingIndex;
-            int64_t parallel;
-            Turn turn;
-        };
-        std::vector<TerminalLeadReq> leadReqs;
-        for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
-            auto windingName = get_functional_description()[windingIndex].get_name();
-            int64_t numberParallels = int64_t(get_number_parallels(windingIndex));
-            for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
-                auto key = std::make_pair(windingName, parallel);
-                if (entranceTurnByWindingParallel.count(key)) {
-                    leadReqs.push_back({windingIndex, parallel, entranceTurnByWindingParallel.at(key)});
-                }
-                if (exitTurnByWindingParallel.count(key)) {
-                    leadReqs.push_back({windingIndex, parallel, exitTurnByWindingParallel.at(key)});
-                }
-            }
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        auto windingName = get_functional_description()[windingIndex].get_name();
+        // Wire footprint in the virtual frame: width is along the layer axis, height along the turn
+        // axis, so swap them for contiguous layers (where the wire runs along x within a layer).
+        double wireOuterWidth = wires[windingIndex].get_maximum_outer_width();
+        double wireOuterHeight = wires[windingIndex].get_maximum_outer_height();
+        if (layersAreContiguous) {
+            std::swap(wireOuterWidth, wireOuterHeight);
         }
-        // turns were already transposed into the virtual frame above, so [1] is the turn axis
-        auto edgeDistance = [&](const Turn& turn) {
-            double turnY = turn.get_coordinates()[1];
-            return (turnY >= windowCenterY) ? windowTopY - turnY : turnY - windowBottomY;
-        };
-        std::stable_sort(leadReqs.begin(), leadReqs.end(),
-                         [&](const TerminalLeadReq& a, const TerminalLeadReq& b) {
-                             if (a.windingIndex != b.windingIndex) {
-                                 return a.windingIndex < b.windingIndex;
-                             }
-                             return edgeDistance(a.turn) < edgeDistance(b.turn);
-                         });
+        int64_t numberParallels = int64_t(get_number_parallels(windingIndex));
 
         // Entrance and exit terminal leads route a winding end radially out to the outer window border.
         // Each PARALLEL of a bifilar/N-filar group is its own conductor, so each emits its own entrance
@@ -874,16 +840,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         // extreme edge, (2) is drawn as an L — a short vertical stub from the connecting turn up/down to
         // its own layer's edge, then a horizontal run along the edge to the border. Routing at the
         // connecting turn's interior level instead would clip the wound turns of the layers it crosses.
-        auto addTerminalLead = [&](size_t windingIndex, const Turn& connectingTurn,
-                                   int64_t parallel) {
-            auto windingName = get_functional_description()[windingIndex].get_name();
-            // Wire footprint in the virtual frame: width along the layer axis, height along
-            // the turn axis, so swap for contiguous layers.
-            double wireOuterWidth = wires[windingIndex].get_maximum_outer_width();
-            double wireOuterHeight = wires[windingIndex].get_maximum_outer_height();
-            if (layersAreContiguous) {
-                std::swap(wireOuterWidth, wireOuterHeight);
-            }
+        auto addTerminalLead = [&](const Turn& connectingTurn, int64_t parallel) {
             double turnX = connectingTurn.get_coordinates()[0];
             double turnY = connectingTurn.get_coordinates()[1];
             if (windowOuterX <= turnX) {
@@ -989,19 +946,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             lead.edgeDepth = runDepth;
             spaces.push_back(lead);
         };
-        for (const auto& req : leadReqs) {
-            addTerminalLead(req.windingIndex, req.turn, req.parallel);
+        for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
+            auto key = std::make_pair(windingName, parallel);
+            if (entranceTurnByWindingParallel.count(key)) {
+                addTerminalLead(entranceTurnByWindingParallel.at(key), parallel);
+            }
+            if (exitTurnByWindingParallel.count(key)) {
+                addTerminalLead(exitTurnByWindingParallel.at(key), parallel);
+            }
         }
-    }
-
-    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
-        auto windingName = get_functional_description()[windingIndex].get_name();
-        double wireOuterWidth = wires[windingIndex].get_maximum_outer_width();
-        double wireOuterHeight = wires[windingIndex].get_maximum_outer_height();
-        if (layersAreContiguous) {
-            std::swap(wireOuterWidth, wireOuterHeight);
-        }
-        int64_t numberParallels = int64_t(get_number_parallels(windingIndex));
 
         std::vector<Layer> windingLayers;
         for (const auto& layer : allLayers) {
