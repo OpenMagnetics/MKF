@@ -2738,7 +2738,13 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread", "[
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
     REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
+    // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
+    // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
+    // Fence-post spread puts that space back BETWEEN the turns, so the section now covers the full
+    // span the turns were always allotted and the tape has nothing left to absorb -- the filled
+    // margin IS the requested one. Equality within a nanometre; section bounds round to 1 nm.
+    REQUIRE_THAT(marginAfterMarginFill[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill[1], 1e-9));
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -2856,9 +2862,19 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Thre
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
     REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
+    // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
+    // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
+    // Fence-post spread puts that space back BETWEEN the turns, so the section now covers the full
+    // span the turns were always allotted and the tape has nothing left to absorb -- the filled
+    // margin IS the requested one. Equality within a nanometre; section bounds round to 1 nm.
+    REQUIRE_THAT(marginAfterMarginFill_0[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_0[1], 1e-9));
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+    // Same fence-post consequence as the _0 margin above (ABT #579): with no dead half-gap left
+    // at the ends of the run, filling cannot grow THIS section's own margin either. The
+    // cross-section comparisons below (_1 against _0) still hold -- those compare different
+    // requested margins, not a margin against itself.
+    REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 1e-9));
     REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
     REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
@@ -3565,7 +3581,13 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread", "[const
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
     REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
+    // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
+    // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
+    // Fence-post spread puts that space back BETWEEN the turns, so the section now covers the full
+    // span the turns were always allotted and the tape has nothing left to absorb -- the filled
+    // margin IS the requested one. Equality within a nanometre; section bounds round to 1 nm.
+    REQUIRE_THAT(marginAfterMarginFill[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill[1], 1e-9));
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -3684,9 +3706,19 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Dif
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
     REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
+    // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
+    // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
+    // Fence-post spread puts that space back BETWEEN the turns, so the section now covers the full
+    // span the turns were always allotted and the tape has nothing left to absorb -- the filled
+    // margin IS the requested one. Equality within a nanometre; section bounds round to 1 nm.
+    REQUIRE_THAT(marginAfterMarginFill_0[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_0[1], 1e-9));
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+    // Same fence-post consequence as the _0 margin above (ABT #579): with no dead half-gap left
+    // at the ends of the run, filling cannot grow THIS section's own margin either. The
+    // cross-section comparisons below (_1 against _0) still hold -- those compare different
+    // requested margins, not a margin against itself.
+    REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 1e-9));
     REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
     REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
@@ -4390,7 +4422,13 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread", "[co
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
     REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
+    // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
+    // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
+    // Fence-post spread puts that space back BETWEEN the turns, so the section now covers the full
+    // span the turns were always allotted and the tape has nothing left to absorb -- the filled
+    // margin IS the requested one. Equality within a nanometre; section bounds round to 1 nm.
+    REQUIRE_THAT(marginAfterMarginFill[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill[1], 1e-9));
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -4509,9 +4547,19 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
     REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
+    // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
+    // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
+    // Fence-post spread puts that space back BETWEEN the turns, so the section now covers the full
+    // span the turns were always allotted and the tape has nothing left to absorb -- the filled
+    // margin IS the requested one. Equality within a nanometre; section bounds round to 1 nm.
+    REQUIRE_THAT(marginAfterMarginFill_0[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_0[1], 1e-9));
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+    // Same fence-post consequence as the _0 margin above (ABT #579): with no dead half-gap left
+    // at the ends of the run, filling cannot grow THIS section's own margin either. The
+    // cross-section comparisons below (_1 against _0) still hold -- those compare different
+    // requested margins, not a margin against itself.
+    REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 1e-9));
     REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
     REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
@@ -5218,7 +5266,13 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread", "[co
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
     REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
+    // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
+    // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
+    // Fence-post spread puts that space back BETWEEN the turns, so the section now covers the full
+    // span the turns were always allotted and the tape has nothing left to absorb -- the filled
+    // margin IS the requested one. Equality within a nanometre; section bounds round to 1 nm.
+    REQUIRE_THAT(marginAfterMarginFill[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill[1], 1e-9));
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -5337,9 +5391,19 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
     REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
+    // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
+    // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
+    // Fence-post spread puts that space back BETWEEN the turns, so the section now covers the full
+    // span the turns were always allotted and the tape has nothing left to absorb -- the filled
+    // margin IS the requested one. Equality within a nanometre; section bounds round to 1 nm.
+    REQUIRE_THAT(marginAfterMarginFill_0[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_0[1], 1e-9));
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+    // Same fence-post consequence as the _0 margin above (ABT #579): with no dead half-gap left
+    // at the ends of the run, filling cannot grow THIS section's own margin either. The
+    // cross-section comparisons below (_1 against _0) still hold -- those compare different
+    // requested margins, not a margin against itself.
+    REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 1e-9));
     REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
     REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
@@ -13249,6 +13313,337 @@ TEST_CASE("Test_Toroidal_Dense_Winding_Fills_Concentric_Rings_With_Slack", "[coi
         CHECK(closestApproach >= wireOuterDiameter - 1e-9);
         // ...and no ring may be packed solid, or a lead would have no azimuth to pass through.
         CHECK(occupied < ringCircumference);
+    }
+    settings.reset();
+}
+
+// Pins the two SPREAD placement rules the turn placer must keep (ABT #578 / ABT #579):
+//   #579 fence-post -- the outermost turns' SURFACES sit on the layer edges, so a SPREAD layer
+//        leaves no dead margin at the flanges (it used to park half a gap outside each end).
+//   #578 bundles    -- when parallels are wound together N-filar (WIND_BY_CONSECUTIVE_PARALLELS)
+//        the members of one bundle TOUCH, and only the gaps BETWEEN bundles carry the slack.
+// Sweeps 1..4 parallels so both the degenerate (bundle == 1 turn) and the N-filar cases are
+// covered, and requires that the N-filar configurations really did produce bundles, so the
+// bundling assertions cannot go quietly vacuous if the winding-style heuristic changes.
+TEST_CASE("Test_Spread_Is_Fence_Post_And_Keeps_Bundles_Together", "[constructive-model][coil][spread]") {
+    settings.reset();
+    size_t layersWithBundlesChecked = 0;
+    for (int64_t parallels : {1, 2, 3, 4}) {
+        auto coil = OpenMagneticsTesting::get_quick_coil(std::vector<int64_t>{12},
+                                                         std::vector<int64_t>{parallels},
+                                                         "PQ 28/20", 1,
+                                                         WindingOrientation::OVERLAPPING,
+                                                         WindingOrientation::OVERLAPPING,
+                                                         CoilAlignment::SPREAD,
+                                                         CoilAlignment::CENTERED);
+        REQUIRE(coil.get_turns_description());
+        auto turns = coil.get_turns_description().value();
+        auto layers = coil.get_layers_description().value();
+        for (auto& layer : layers) {
+            if (layer.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            std::vector<double> centres;
+            for (auto& turn : turns) {
+                if (turn.get_layer() && turn.get_layer().value() == layer.get_name()) {
+                    centres.push_back(turn.get_coordinates()[1]);
+                }
+            }
+            if (centres.size() < 2) {
+                continue;
+            }
+            std::sort(centres.begin(), centres.end());
+            auto windingIndex = coil.get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
+            double wireOuterHeight = coil.get_wires()[windingIndex].get_maximum_outer_height();
+            double layerLow = layer.get_coordinates()[1] - layer.get_dimensions()[1] / 2;
+            double layerHigh = layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2;
+            INFO("parallels=" << parallels << " layer=" << layer.get_name() << " turns=" << centres.size());
+
+            // ABT #579: outermost turn surfaces flush with the layer edges (1 nm coordinate rounding).
+            CHECK_THAT(centres.front() - wireOuterHeight / 2, Catch::Matchers::WithinAbs(layerLow, 1e-9));
+            CHECK_THAT(centres.back() + wireOuterHeight / 2, Catch::Matchers::WithinAbs(layerHigh, 1e-9));
+
+            // ABT #578: inside a bundle the turns touch; between bundles every gap is the same.
+            int64_t bundleSize = 1;
+            if (layer.get_winding_style() &&
+                layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS) {
+                for (auto proportion : layer.get_partial_windings()[0].get_parallels_proportion()) {
+                    if (proportion > 0) {
+                        bundleSize++;
+                    }
+                }
+                bundleSize--;
+            }
+            if (bundleSize > 1) {
+                layersWithBundlesChecked++;
+            }
+            double interBundleGap = -1;
+            for (size_t k = 1; k < centres.size(); ++k) {
+                double gap = centres[k] - centres[k - 1] - wireOuterHeight;
+                if (int64_t(k) % bundleSize != 0) {
+                    CHECK_THAT(gap, Catch::Matchers::WithinAbs(0.0, 1e-9));  // inside a bundle: touching
+                }
+                else {
+                    if (interBundleGap < 0) {
+                        interBundleGap = gap;
+                    }
+                    CHECK(gap >= -1e-9);
+                    // Turn centres are rounded to 1 nm (roundFloat(..., 9)), so a gap measured
+                    // between two of them can differ from its neighbour by up to ~2 nm purely from
+                    // that grid. Compare at the quantization, not below it.
+                    CHECK_THAT(gap, Catch::Matchers::WithinAbs(interBundleGap, 5e-9));
+                }
+            }
+        }
+    }
+    CHECK(layersWithBundlesChecked > 0);
+    settings.reset();
+}
+
+// The five ABT #577 examples whose drawn connection routes used to interpenetrate winding copper
+// must keep POSITIVE bare-copper clearance under the SPREAD layout (ABT #578/#579 + continuous
+// blocked depths). Replicates the MVB++ gate's 2D test: distance from every drawn TERMINAL
+// segment's copper CENTERLINE to every turn centre, minus the sum of bare radii. Z-order
+// continuations are exempt (the classic in-plane crossover, same convention as
+// compute_connection_blocked_slots_per_layer), and junction contact — a segment ending ON the
+// turn it serves — is excluded by endpoint proximity. The authoritative gate is MVB++'s 3D
+// realization; this pins the 2D geometry that gate measures, so a regression cannot ship unseen.
+// Baselines on the fixed layout (2026-08-07): 06 +0.034, 13 +0.0125, 14 +0.055, 23 +0.034,
+// 24 +0.057 mm — and the 38.6 mm full-window exit vertical of 14_dab is gone.
+TEST_CASE("Test_Abt577_Terminal_Routes_Clear_Winding_Copper", "[constructive-model][coil][real-geometry][abt577]") {
+    std::vector<std::string> exampleFiles = {
+        "06_llc_xfmr_eq4128_3c97.json",
+        "13_current_sense_er95_n87.json",
+        "14_dab_xfmr_pm8770_n97.json",
+        "23_interleaved_llc_pq3530_n97.json",
+        "24_margin_interleaved_flyback_pq3230_3c94.json",
+    };
+    auto examplesDir = std::filesystem::path{__FILE__}.parent_path().append("..").append("MAS").append("examples");
+    for (auto& exampleFile : exampleFiles) {
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        auto mas = OpenMagneticsTesting::mas_loader((examplesDir / exampleFile).string());
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        magnetic.get_mutable_coil().wind();
+        auto& coil = magnetic.get_mutable_coil();
+        INFO(exampleFile);
+        REQUIRE(coil.get_turns_description());
+        auto turns = coil.get_turns_description().value();
+        auto wires = coil.get_wires();
+
+        double worstClearance = std::numeric_limits<double>::max();
+        std::string worstDescription;
+        for (const auto& space : coil.get_connection_reserved_spaces()) {
+            if (!space.layer.empty() || space.plane == OpenMagnetics::RoutePlane::FRONT_YZ) {
+                continue;  // squeeze bookkeeping / out-of-plane dragbacks: not drawn in XY
+            }
+            // Z-order continuations are the classic in-plane crossover — they ride OVER the
+            // adjacent turns at one azimuth by convention, and MKF's own blocking exempts them
+            // (compute_connection_blocked_slots_per_layer skips non-terminal non-U markers). All
+            // five #577 violations were TERMINAL segments; scope this sweep the same way.
+            if (!space.isTerminal && coil.get_winding_order(space.section) != WindingOrder::U) {
+                continue;
+            }
+            auto runWindingIndex = coil.get_winding_index_by_name(space.winding);
+            double runBareRadius = std::min(wires[runWindingIndex].get_maximum_conducting_width(),
+                                            wires[runWindingIndex].get_maximum_conducting_height()) / 2;
+            double runOuterRadius = std::min(space.dimensions[0], space.dimensions[1]) / 2;
+            // The rectangle is the copper's OUTER envelope; MVB++ realizes its CENTERLINE. Model the
+            // copper as the long-axis centerline segment, endpoints inset by the outer radius, rotated
+            // by the drawn rotation about the centre. A junction marker (square ~OD x OD on the turn)
+            // degenerates to a point at the turn — excluded by the endpoint rule below.
+            bool longAxisIsX = space.dimensions[0] >= space.dimensions[1];
+            double halfRun = (longAxisIsX ? space.dimensions[0] : space.dimensions[1]) / 2 - runOuterRadius;
+            if (halfRun < 0) {
+                halfRun = 0;
+            }
+            double axisX = longAxisIsX ? 1.0 : 0.0;
+            double axisY = longAxisIsX ? 0.0 : 1.0;
+            if (std::abs(space.rotation) > 1e-9) {
+                double rotationRadians = space.rotation * std::numbers::pi / 180.0;
+                double rotatedX = axisX * std::cos(rotationRadians) - axisY * std::sin(rotationRadians);
+                double rotatedY = axisX * std::sin(rotationRadians) + axisY * std::cos(rotationRadians);
+                axisX = rotatedX;
+                axisY = rotatedY;
+            }
+            double endAX = space.coordinates[0] - axisX * halfRun;
+            double endAY = space.coordinates[1] - axisY * halfRun;
+            double endBX = space.coordinates[0] + axisX * halfRun;
+            double endBY = space.coordinates[1] + axisY * halfRun;
+            for (auto& turn : turns) {
+                double turnX = turn.get_coordinates()[0];
+                double turnY = turn.get_coordinates()[1];
+                auto turnWindingIndex = coil.get_winding_index_by_name(turn.get_winding());
+                double turnOuterRadius = std::min(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) / 2;
+                double turnBareRadius = std::min(wires[turnWindingIndex].get_maximum_conducting_width(),
+                                                 wires[turnWindingIndex].get_maximum_conducting_height()) / 2;
+                // Junction exclusion: the segment ends ON the turn it serves (marker covers the wire
+                // surface at the turn), so a turn within outer-radii contact of an ENDPOINT is the
+                // intended connection, not a violation.
+                double contactDistance = runOuterRadius + turnOuterRadius + 1e-6;
+                if (std::hypot(turnX - endAX, turnY - endAY) <= contactDistance ||
+                    std::hypot(turnX - endBX, turnY - endBY) <= contactDistance) {
+                    continue;
+                }
+                // Point-to-segment distance, then bare-copper clearance as the ticket measures it.
+                double segmentDX = endBX - endAX;
+                double segmentDY = endBY - endAY;
+                double segmentLengthSquared = segmentDX * segmentDX + segmentDY * segmentDY;
+                double projection = segmentLengthSquared > 0
+                    ? std::clamp(((turnX - endAX) * segmentDX + (turnY - endAY) * segmentDY) / segmentLengthSquared, 0.0, 1.0)
+                    : 0.0;
+                double nearestX = endAX + projection * segmentDX;
+                double nearestY = endAY + projection * segmentDY;
+                double clearance = std::hypot(turnX - nearestX, turnY - nearestY) - runBareRadius - turnBareRadius;
+                if (clearance < worstClearance) {
+                    worstClearance = clearance;
+                    worstDescription = space.winding + " p" + std::to_string(space.parallel) +
+                                       (space.isTerminal ? " TERM" : " trans") + " vs " + turn.get_name();
+                }
+            }
+        }
+        // Through-layer verticals (the 14_dab class): any drawn rectangle overlapping a conduction
+        // layer's radial band while spanning more than two of that layer's pitches vertically.
+        // The 14_dab failure class: a terminal segment drawn down a conduction layer's own radial
+        // band for a large number of that layer's pitches (the ticket's exit vertical spanned the
+        // full 43.7 mm window — 45 pitches — 6.5 um from its own helix). Track the worst such span;
+        // the legitimate residue is the short climb stubs at the window edge (<= 3.5 pitches).
+        double worstThroughLayerSpanPitches = 0;
+        auto layersForProbe = coil.get_layers_description().value();
+        for (const auto& space : coil.get_connection_reserved_spaces()) {
+            if (!space.layer.empty() || space.plane == OpenMagnetics::RoutePlane::FRONT_YZ) {
+                continue;
+            }
+            if (!space.isTerminal && coil.get_winding_order(space.section) != WindingOrder::U) {
+                continue;  // Z crossover convention, as above
+            }
+            for (auto& layer : layersForProbe) {
+                if (layer.get_type() != ElectricalType::CONDUCTION) {
+                    continue;
+                }
+                auto layerWindingIndex = coil.get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
+                double layerPitch = wires[layerWindingIndex].get_maximum_outer_height();
+                bool overlapsRadially = std::abs(space.coordinates[0] - layer.get_coordinates()[0]) <
+                                        (space.dimensions[0] + wires[layerWindingIndex].get_maximum_outer_width()) / 2;
+                if (overlapsRadially && layerPitch > 0) {
+                    worstThroughLayerSpanPitches = std::max(worstThroughLayerSpanPitches,
+                                                            space.dimensions[1] / layerPitch);
+                }
+            }
+        }
+        INFO(exampleFile << ": worst bare clearance " << worstClearance * 1000 << " mm (" << worstDescription
+                         << "), worst through-layer span " << worstThroughLayerSpanPitches << " pitches");
+        // The #577 contract: every drawn terminal route keeps its bare copper clear of every turn...
+        CHECK(worstClearance > 0);
+        // ...and no terminal segment runs down a layer's radial band for more than a handful of its
+        // pitches. The bound tolerates the edge climb stubs (3.5 pitches today) with headroom, while
+        // the 14_dab regression it guards against sat at 45.
+        CHECK(worstThroughLayerSpanPitches < 8);
+    }
+    settings.reset();
+}
+
+// Visual + numeric preview harness for the SPREAD placer rules: ABT #578 (N-filar bundles stay
+// TOUCHING, slack goes in the gaps BETWEEN bundles) and ABT #579 (fence-post: the outermost
+// turns' surfaces sit on the layer edges, no dead margin at the flanges). Paints every case with
+// real winding geometry OFF and ON so the two layouts can be compared, and prints the turn
+// stations of the tallest layer so the spacing can be checked by eye against the numbers.
+// Not an assertion test -- it exists to produce the SVGs and the station tables.
+TEST_CASE("Test_Spread_Preview_Svg", "[constructive-model][coil][svg-preview]") {
+    struct PreviewCase { std::string file; std::string label; };
+    std::vector<PreviewCase> previewCases = {
+        {"15_gan_inductor_e138_3f4.json", "15_gan"},  // ABT #579 repro: 6 turns, 1 parallel
+        {"06_llc_xfmr_eq4128_3c97.json", "06_llc"},   // ABT #577/#578: 3 and 3 parallels
+        {"14_dab_xfmr_pm8770_n97.json", "14_dab"},    // ABT #577/#578: 4 and 4 parallels
+        {"23_interleaved_llc_pq3530_n97.json", "23_llc"},  // ABT #577: 2 and 4 parallels
+    };
+    auto examplesDir = std::filesystem::path{__FILE__}.parent_path().append("..").append("MAS").append("examples");
+
+    for (auto& previewCase : previewCases) {
+        for (bool realWinding : {false, true}) {
+            settings.reset();
+            settings.set_coil_use_real_winding_geometry(realWinding);
+            auto mas = OpenMagneticsTesting::mas_loader((examplesDir / previewCase.file).string());
+            auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+            // Several examples ship fully wound, so autocomplete alone would not re-run the placer
+            // and the real-winding flag would never engage. Force the wind so both variants are real.
+            magnetic.get_mutable_coil().wind();
+
+            std::string variant = realWinding ? "real" : "ideal";
+            auto outFile = outputFilePath;
+            outFile.append("spread_" + previewCase.label + "_" + variant + ".svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            // Terminal leads (magenta) and inter-layer/section transitions (blue). Drawn from the
+            // coil's connection reserved spaces, which only exist under real winding geometry — the
+            // count is reported below so an empty ideal drawing is visibly a real absence of
+            // connections rather than a forgotten paint call.
+            painter.paint_coil_connections(magnetic);
+            painter.export_svg();
+            std::cout << previewCase.label << " [" << variant << "] connection reserved spaces: "
+                      << magnetic.get_mutable_coil().get_connection_reserved_spaces().size() << std::endl;
+
+            auto coil = magnetic.get_coil();
+            if (!coil.get_turns_description()) {
+                std::cout << previewCase.label << " [" << variant << "] produced NO turns" << std::endl;
+                continue;
+            }
+            auto turns = coil.get_turns_description().value();
+            // Report the conduction layer holding the most turns -- the one where the spacing rule
+            // is most visible.
+            std::map<std::string, std::vector<double>> centresPerLayer;
+            for (auto& turn : turns) {
+                if (turn.get_layer()) {
+                    centresPerLayer[turn.get_layer().value()].push_back(turn.get_coordinates()[1]);
+                }
+            }
+            std::string tallestLayer;
+            size_t tallestCount = 0;
+            for (auto& [layerName, centres] : centresPerLayer) {
+                if (centres.size() > tallestCount) {
+                    tallestCount = centres.size();
+                    tallestLayer = layerName;
+                }
+            }
+            if (tallestLayer.empty()) {
+                continue;
+            }
+            auto centres = centresPerLayer[tallestLayer];
+            std::sort(centres.begin(), centres.end());
+            double wireOuterHeight = 0;
+            auto layersForPreview = coil.get_layers_description().value();
+            for (auto& layer : layersForPreview) {
+                if (layer.get_name() == tallestLayer) {
+                    auto windingIndex = coil.get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
+                    wireOuterHeight = coil.get_wires()[windingIndex].get_maximum_outer_height();
+                    // Measure the dead margin against the WINDING WINDOW, not the layer:
+                    // delimit_and_compact shrinks each layer to its turns' own bounding box, so a
+                    // layer-relative margin is 0 by construction and hides the flange gap entirely.
+                    auto bobbin = coil.resolve_bobbin();
+                    auto windowDimensions = bobbin.get_winding_window_dimensions(0);
+                    auto windowCoordinates = bobbin.get_winding_window_coordinates(0);
+                    double windowLow = windowCoordinates[1] - windowDimensions[1] / 2;
+                    double windowHigh = windowCoordinates[1] + windowDimensions[1] / 2;
+                    std::cout << previewCase.label << " [" << variant << "] layer '" << tallestLayer
+                              << "' h=" << layer.get_dimensions()[1] * 1000 << " mm centred at "
+                              << layer.get_coordinates()[1] * 1000 << " mm, OD " << wireOuterHeight * 1000
+                              << " mm, " << centres.size() << " turns; window h="
+                              << windowDimensions[1] * 1000 << " mm" << std::endl;
+                    std::cout << "    dead margin to FLANGE: low "
+                              << ((centres.front() - wireOuterHeight / 2) - windowLow) * 1000 << " mm, high "
+                              << (windowHigh - (centres.back() + wireOuterHeight / 2)) * 1000 << " mm" << std::endl;
+                }
+            }
+            // Surface-to-surface gap between consecutive turns: 0 means touching (one bundle).
+            std::cout << "    gaps (mm):";
+            for (size_t k = 1; k < centres.size(); ++k) {
+                std::cout << " " << (centres[k] - centres[k - 1] - wireOuterHeight) * 1000;
+            }
+            std::cout << std::endl;
+        }
     }
     settings.reset();
 }

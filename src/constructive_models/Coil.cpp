@@ -40,6 +40,103 @@ static inline size_t factorial(size_t n) {
     return result;
 }
 
+// Number of physical turns wound TOGETHER as one N-filar bundle on this layer (ABT #578).
+// WIND_BY_CONSECUTIVE_PARALLELS lays the parallels of one electrical turn side by side
+// (P0T0, P1T0, ... P0T1, P1T1, ...), so a bundle is one turn of every parallel actually PRESENT
+// on the layer — parallels whose proportion is zero are not wound here and must not be counted,
+// or the bundle would be padded with turns that never get placed. Every other winding style
+// advances one parallel at a time, so each turn is its own bundle.
+static int64_t get_layer_bundle_size(const Layer& layer) {
+    if (!layer.get_winding_style() ||
+        layer.get_winding_style().value() != WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS) {
+        return 1;
+    }
+    int64_t bundleSize = 0;
+    auto parallelsProportion = layer.get_partial_windings()[0].get_parallels_proportion();
+    for (auto proportion : parallelsProportion) {
+        if (roundFloat(proportion, 10) > 0) {
+            bundleSize++;
+        }
+    }
+    // A layer with no wound parallel places no turns at all, so the bundle size is moot; 1 keeps
+    // the station arithmetic below total instead of dividing by zero.
+    return bundleSize > 0 ? bundleSize : 1;
+}
+
+// Turn-centre stations for a SPREAD layer along its turn axis, in ASCENDING coordinate order.
+//
+// SPREAD distributes the layer's slack FENCE-POST (ABT #579): the outermost turns' SURFACES sit
+// on the layer edges and the slack lands only in the gaps BETWEEN turn groups — never as a dead
+// half-gap margin outside them, which is exactly what centring each turn in an equal
+// axisLength/N slot used to leave at both flanges. When turns are wound together N-filar the
+// members of a bundle stay TOUCHING and the slack is shared over the gaps BETWEEN bundles only
+// (ABT #578), so every terminal connection leaves straight out along its own bundle's row
+// instead of threading between parallels that have been pulled apart:
+//
+//     gap = (axisLength - numberPhysicalTurns * wireSize) / (numberBundles - 1)
+//
+// A single bundle — or a layer with no slack left to give — falls back to a centred contiguous
+// block: there is no gap to distribute, and centring keeps an over-full layer overflowing
+// symmetrically instead of hanging off one edge. Both cases are the same expression: with the
+// gap above, the block length is exactly axisLength, so centring it lands the first turn's
+// surface on the low edge.
+static std::vector<double> compute_spread_turn_stations(double axisCenter,
+                                                        double axisLength,
+                                                        double wireSize,
+                                                        int64_t numberPhysicalTurns,
+                                                        int64_t bundleSize) {
+    std::vector<double> stations;
+    if (numberPhysicalTurns <= 0) {
+        return stations;
+    }
+    stations.reserve(numberPhysicalTurns);
+    if (bundleSize < 1) {
+        bundleSize = 1;
+    }
+    int64_t numberBundles = (numberPhysicalTurns + bundleSize - 1) / bundleSize;
+    double slack = axisLength - double(numberPhysicalTurns) * wireSize;
+    double gap = (numberBundles > 1 && slack > 0) ? slack / double(numberBundles - 1) : 0;
+    double blockLength = double(numberPhysicalTurns) * wireSize + double(numberBundles - 1) * gap;
+    double blockLow = axisCenter - blockLength / 2;
+    // Each station is computed from its own index rather than accumulated, so the run carries one
+    // rounding instead of N of them. Accumulating drifted the last turn off the far edge by ~1 nm,
+    // which is enough to make the margin-tape arithmetic see the turns as overflowing the section.
+    // turnIndex / bundleSize is the number of COMPLETED bundles before this turn, i.e. how many
+    // inter-bundle gaps precede it; turns inside a bundle share that count and so stay touching.
+    for (int64_t turnIndex = 0; turnIndex < numberPhysicalTurns; ++turnIndex) {
+        double position = blockLow + wireSize / 2 + double(turnIndex) * wireSize + double(turnIndex / bundleSize) * gap;
+        stations.push_back(roundFloat(position, 9));
+    }
+    return stations;
+}
+
+// Move the running turn centre onto the next SPREAD station. Only the spread axis is driven from
+// the stations; the other axis keeps the fixed value the alignment switch set. A no-op for every
+// non-SPREAD alignment (no stations), whose uniform increment still carries placement.
+// Running out of stations means the placer laid more physical turns than the layer reported, which
+// would silently stack turns on the last station's coordinates — so say so instead.
+static void take_next_spread_station(const std::vector<double>& stations,
+                                     size_t& stationIndex,
+                                     size_t stationAxis,
+                                     const std::string& layerName,
+                                     double& currentTurnCenterWidth,
+                                     double& currentTurnCenterHeight) {
+    if (stations.empty()) {
+        return;
+    }
+    if (stationIndex >= stations.size()) {
+        throw std::runtime_error("SPREAD turn stations exhausted on layer " + layerName + ": the placer laid more physical turns than the layer reports (" +
+                                 std::to_string(stations.size()) + ")");
+    }
+    if (stationAxis == 1) {
+        currentTurnCenterHeight = stations[stationIndex];
+    }
+    else {
+        currentTurnCenterWidth = stations[stationIndex];
+    }
+    stationIndex++;
+}
+
 
 
 std::vector<double> Coil::cartesian_to_polar(std::vector<double> value) {
@@ -1199,7 +1296,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
     return spaces;
 }
 
-std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_blocked_slots_per_layer() {
+std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_blocked_slots_per_layer(
+        std::map<std::string, std::pair<double, double>>* freshDepths) {
     std::map<std::string, std::pair<uint64_t, uint64_t>> blockedSlotsPerLayer;  // layer name -> {top, bottom}
     if (!get_layers_description()) {
         return blockedSlotsPerLayer;
@@ -1282,6 +1380,12 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
             return connectionDepth > 1e-12 ? uint64_t(std::ceil(connectionDepth / crossedWirePitch - 1e-9)) : 0u;
         };
         blockedSlotsPerLayer[layerName] = {slots(edges.first), slots(edges.second)};
+        // Same keys as the slot map, by construction: the continuous depths the ceil above rounded up
+        // from. The placement pass hugs THESE, so turns reach the crossing runs exactly instead of
+        // stopping at the whole-slot grid.
+        if (freshDepths != nullptr) {
+            (*freshDepths)[layerName] = edges;
+        }
     }
     return blockedSlotsPerLayer;
 }
@@ -1456,24 +1560,53 @@ void Coil::align_blocked_layer_turns() {
             return turns[a].get_coordinates()[turnAxis] < turns[b].get_coordinates()[turnAxis];
         });
 
-        // Centres of the first and last usable slots once the blocked slots are reserved at each edge.
-        double bandLow = roundFloat(windowLowSide + double(blockedLowSide) * wirePitch + wirePitch / 2, 9);
-        double bandHigh = roundFloat(windowHighSide - double(blockedHighSide) * wirePitch - wirePitch / 2, 9);
+        // The usable span runs from each window edge to the deepest run that crosses it — the
+        // CONTINUOUS depth recorded alongside the slot counts, not the whole-slot quantization.
+        // The ceil'd slots are the capacity currency (a partially covered slot still costs a whole
+        // turn of capacity), but placing turns on the slot grid parked up to one pitch of dead band
+        // against every run row: on 23_llc the primary's 1.093 mm run stack over the 0.679 mm
+        // secondary rounded to 2 slots = 1.358 mm, floating the secondary 0.265 mm short of the
+        // space it was actually free to reach. The turns may hug the runs exactly — edgeDepth
+        // already includes the inter-winding insulation.
+        const auto& blockedDepths = _connectionBlockedDepthPerLayer.at(layer.get_name());
+        double spanLow = roundFloat(windowLowSide + blockedDepths.second, 9);
+        double spanHigh = roundFloat(windowHighSide - blockedDepths.first, 9);
         size_t numberTurnsInLayer = layerTurns.size();
-        double step = (numberTurnsInLayer > 1) ? (bandHigh - bandLow) / double(numberTurnsInLayer - 1) : 0.0;
-        if (numberTurnsInLayer > 1 && step < wirePitch) {
-            step = wirePitch;  // capacity should make this unreachable; never overlap turns
+        int64_t bundleSize = get_layer_bundle_size(layer);
+        int64_t numberBundles = (int64_t(numberTurnsInLayer) + bundleSize - 1) / bundleSize;
+        std::vector<double> stations;
+        if (numberBundles == 1) {
+            // A lone bundle has no fence-post meaning (no gaps to distribute), and centring it
+            // strands it mid-window between the run stacks. Pack it against the LESS-blocked edge
+            // instead — directly under the shallower run stack (on 23_llc: right below the primary's
+            // two rows, not floating between them and the secondary's four entrance rows). Its own
+            // terminal leads then exit at rows adjacent to that shallow stack, away from the deep one.
+            bool packAgainstHighSide = blockedDepths.first <= blockedDepths.second;
+            double firstCentre = packAgainstHighSide
+                ? spanHigh - double(numberTurnsInLayer) * wirePitch + wirePitch / 2
+                : spanLow + wirePitch / 2;
+            for (size_t k = 0; k < numberTurnsInLayer; ++k) {
+                stations.push_back(roundFloat(firstCentre + double(k) * wirePitch, 9));
+            }
         }
-        for (size_t k = 0; k < numberTurnsInLayer; ++k) {
-            double newPosition = (numberTurnsInLayer == 1)
-                ? roundFloat((bandLow + bandHigh) / 2, 9)
-                : roundFloat(bandLow + double(k) * step, 9);
+        else {
+            // Re-spread on the SAME rule the winder uses (ABT #578/#579): fence-post over the span,
+            // bundles touching. Spacing the turns uniformly here would silently undo the winder's
+            // bundle grouping on exactly the layers that carry connection leads — the real-winding
+            // layers this whole routine exists for.
+            stations = compute_spread_turn_stations((spanLow + spanHigh) / 2,
+                                                    spanHigh - spanLow,
+                                                    wirePitch,
+                                                    int64_t(numberTurnsInLayer),
+                                                    bundleSize);
+        }
+        for (size_t k = 0; k < numberTurnsInLayer && k < stations.size(); ++k) {
             auto coords = turns[layerTurns[k]].get_coordinates();
-            coords[turnAxis] = newPosition;
+            coords[turnAxis] = stations[k];
             turns[layerTurns[k]].set_coordinates(coords);
         }
         auto layerCoordinates = layer.get_coordinates();
-        layerCoordinates[turnAxis] = roundFloat((bandLow + bandHigh) / 2, 9);
+        layerCoordinates[turnAxis] = roundFloat((stations.front() + stations.back()) / 2, 9);
         layer.set_coordinates(std::vector<double>{layerCoordinates[0], layerCoordinates[1], 0});
     }
     set_layers_description(layers);
@@ -2109,6 +2242,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             // re-derived and re-applied below only when the real-geometry setting is on.
             _applyConnectionBlocking = false;
             _connectionBlockedSlotsPerLayer.clear();
+            _connectionBlockedDepthPerLayer.clear();
             _connectionBlockedRoomPerLayer.clear();
 
             // Special case: toroid with one physical turn whose wire OD
@@ -2186,7 +2320,8 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         // and the post-loop check below turns genuine divergence into a loud error.
         const size_t maximumBlockingIterations = 16;
         for (size_t blockingIteration = 0; blockingIteration < maximumBlockingIterations; ++blockingIteration) {
-            auto freshBlocked = compute_connection_blocked_slots_per_layer();
+            std::map<std::string, std::pair<double, double>> freshDepths;
+            auto freshBlocked = compute_connection_blocked_slots_per_layer(&freshDepths);
             // Accumulate the blocked slots MONOTONICALLY (element-wise max) instead of replacing them.
             // Freeing the outermost layer's exit slot spills a turn into a new outer layer, which then
             // makes the previous layer's top look unblocked — so a plain replace flip-flops between an
@@ -2200,6 +2335,22 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                 uint64_t newBottom = std::max(accumulated.second, edges.second);
                 if (newTop != accumulated.first || newBottom != accumulated.second) {
                     accumulated = {newTop, newBottom};
+                    changed = true;
+                }
+            }
+            // The continuous depths accumulate the same way, and drive re-iteration on their own:
+            // a deeper run can appear WITHOUT changing the ceil'd slot count (1.05 -> 1.09 pitches
+            // both block 2 slots), and the aligned turns hug these depths — so a depth-only growth
+            // still moves turns and must be re-measured. Monotone and bounded (row stacks take
+            // finitely many values), so convergence is unaffected.
+            for (const auto& [layerName, edges] : freshDepths) {
+                auto& accumulated = _connectionBlockedDepthPerLayer[layerName];
+                if (edges.first > accumulated.first + 1e-9) {
+                    accumulated.first = edges.first;
+                    changed = true;
+                }
+                if (edges.second > accumulated.second + 1e-9) {
+                    accumulated.second = edges.second;
                     changed = true;
                 }
             }
@@ -7231,6 +7382,14 @@ bool Coil::wind_by_rectangular_turns() {
             double currentTurnHeightIncrement = 0;
             double totalLayerHeight;
             double totalLayerWidth;
+            // SPREAD lays its turns on explicit fence-post stations (ABT #578/#579) rather than on a
+            // uniform increment: bundle members touch while only the gaps BETWEEN bundles carry the
+            // slack, so consecutive steps differ and no single increment can express them. Left empty
+            // by every other alignment, which keeps its uniform-increment placement untouched (those
+            // alignments pack turns at exactly one wire pitch, so their bundles already touch).
+            std::vector<double> turnStations;
+            size_t turnStationAxis = 0;  // 0 = width, 1 = height; only read when turnStations is set
+            size_t turnStationIndex = 0;
             if (layer.get_partial_windings().size() > 1) {
                 throw NotImplementedException("More than one winding per layer not supported yet");
             }
@@ -7265,8 +7424,17 @@ bool Coil::wind_by_rectangular_turns() {
                         break;
 
                     case CoilAlignment::SPREAD:
-                        currentTurnHeightIncrement = roundFloat(layer.get_dimensions()[1] / physicalTurnsInLayer, 9);
-                        currentTurnCenterHeight = roundFloat(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 - currentTurnHeightIncrement / 2, 9);
+                        // Fence-post, bundle-aware stations (ABT #578/#579) instead of a uniform
+                        // height/N increment: the step is not constant, so it cannot be carried in
+                        // currentTurnHeightIncrement. Stations come back ascending; placement here
+                        // runs top-down, so reverse them.
+                        turnStations = compute_spread_turn_stations(layer.get_coordinates()[1],
+                                                                    layer.get_dimensions()[1],
+                                                                    wireHeight,
+                                                                    physicalTurnsInLayer,
+                                                                    get_layer_bundle_size(layer));
+                        std::reverse(turnStations.begin(), turnStations.end());
+                        turnStationAxis = 1;
                         break;
                 }
 
@@ -7305,8 +7473,15 @@ bool Coil::wind_by_rectangular_turns() {
                         break;
 
                     case CoilAlignment::SPREAD:
-                        currentTurnWidthIncrement = roundFloat(layer.get_dimensions()[0] / physicalTurnsInLayer, 9);
-                        currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + currentTurnWidthIncrement / 2, 9);
+                        // Mirror of the OVERLAPPING branch above (ABT #578/#579), on the width axis.
+                        // Placement here runs left-to-right, which is already the stations' ascending
+                        // order, so unlike the height branch these are NOT reversed.
+                        turnStations = compute_spread_turn_stations(layer.get_coordinates()[0],
+                                                                    layer.get_dimensions()[0],
+                                                                    wireWidth,
+                                                                    physicalTurnsInLayer,
+                                                                    get_layer_bundle_size(layer));
+                        turnStationAxis = 0;
                         break;
                 }
             }
@@ -7329,6 +7504,10 @@ bool Coil::wind_by_rectangular_turns() {
                 currentTurnCenterHeight = roundFloat(currentTurnCenterHeight - (int64_t(physicalTurnsInLayer) - 1) * currentTurnHeightIncrement, 9);
                 currentTurnWidthIncrement = -currentTurnWidthIncrement;
                 currentTurnHeightIncrement = -currentTurnHeightIncrement;
+                // The increment arithmetic above reverses a uniform run by starting from its last
+                // position and negating the step; SPREAD's stations are not uniform, so they reverse
+                // by reversing the list. (The arithmetic is a no-op for SPREAD: its increments are 0.)
+                std::reverse(turnStations.begin(), turnStations.end());
             }
 
             if (!layer.get_winding_style()) {
@@ -7340,6 +7519,8 @@ bool Coil::wind_by_rectangular_turns() {
                 for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
                     int64_t numberTurns = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
                     for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+                        take_next_spread_station(turnStations, turnStationIndex, turnStationAxis, layer.get_name(),
+                                                 currentTurnCenterWidth, currentTurnCenterHeight);
                         Turn turn;
                         turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
                         turn.set_layer(layer.get_name());
@@ -7380,6 +7561,8 @@ bool Coil::wind_by_rectangular_turns() {
                 for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
                     for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
                         if (roundFloat(partialWinding.get_parallels_proportion()[parallelIndex], 10) > 0) {
+                            take_next_spread_station(turnStations, turnStationIndex, turnStationAxis, layer.get_name(),
+                                                     currentTurnCenterWidth, currentTurnCenterHeight);
                             Turn turn;
                             turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
                             turn.set_layer(layer.get_name());

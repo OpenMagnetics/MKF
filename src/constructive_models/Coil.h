@@ -200,6 +200,13 @@ class Coil : public MAS::Coil {
         // blocked at its {top, bottom}. Consumed by wind_by_rectangular_layers when
         // _applyConnectionBlocking is set. Both stay empty/false unless real winding geometry is on.
         std::map<std::string, std::pair<uint64_t, uint64_t>> _connectionBlockedSlotsPerLayer;
+        // The CONTINUOUS depths those slot counts were quantized from: per crossed layer, the deepest
+        // crossing run's edgeDepth (insulation included) at its {high, low} edge, in metres along its
+        // turn axis, accumulated monotonically like the slots. Slots stay the CAPACITY currency
+        // (integer turns freed, ceil-conservative); these depths are the PLACEMENT currency —
+        // align_blocked_layer_turns lets turns reach exactly to the crossing runs instead of stopping
+        // at the whole-slot grid, which parked up to one pitch of dead band against every run row.
+        std::map<std::string, std::pair<double, double>> _connectionBlockedDepthPerLayer;
         // ABT #430: the room each layer ACTUALLY surrendered to those leads, in metres along its turn
         // axis, as applied by wind_by_rectangular_layers (blocked slots * the layer's own wire, after
         // the one-slot-minimum cap). The layer's extent — and so its filling factor — already excludes
@@ -459,8 +466,11 @@ class Coil : public MAS::Coil {
         // Counts, per conduction layer, how many connection leads cross its {top, bottom} — derived
         // from get_connection_reserved_spaces() and the wound layer centres. This is the global
         // (window-wide) turn-blocking incidence wind() iterates on; a lead blocks any layer it
-        // crosses regardless of section/winding.
-        std::map<std::string, std::pair<uint64_t, uint64_t>> compute_connection_blocked_slots_per_layer();
+        // crosses regardless of section/winding. When freshDepths is given, it also receives the
+        // continuous per-edge run depths the slot counts were quantized from (same keys), for the
+        // caller to accumulate into _connectionBlockedDepthPerLayer.
+        std::map<std::string, std::pair<uint64_t, uint64_t>> compute_connection_blocked_slots_per_layer(
+            std::map<std::string, std::pair<double, double>>* freshDepths = nullptr);
         // Real-winding blocking makes a section's interior layers lose top/bottom slots, so an even
         // interleaving turn split leaves orphan turns in a near-empty spillover layer. Re-split each
         // winding's turns across its conduction sections (radial order) so interior sections fill
