@@ -946,14 +946,86 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             lead.edgeDepth = runDepth;
             spaces.push_back(lead);
         };
+        // ABT #577: the order leads are EMITTED is the order allocateEdgeRow hands out the
+        // stacked rows, so it decides which lead is drawn on which row. In parallel order the
+        // rows come out REVERSED against the turns: at the top edge the allocator gives
+        // parallel 0 the row nearest the edge, while the fence-post N-filar bundle (#578/#579)
+        // puts parallel 0's end turn at the BOTTOM of its bundle -- so every exit lead is drawn
+        // on a SIBLING's turn row and its L-stub is driven straight through that sibling's
+        // copper (measured on 06/11/14/23/24; worst 0.907 mm of interpenetration on
+        // 11_pushpull). Alf, 2026-08-07: "in the output connection you have to invert the order
+        // of exit for parallels ... the L segments are not needed anymore".
+        //
+        // Emit NEAREST-EDGE-TURN FIRST so each lead lands on its OWN turn's row: the fence-post
+        // layout puts the outermost turn exactly one wire from the flange and the bundle one
+        // wire apart, which is precisely the allocator's own row pitch, so the rows coincide
+        // with the turn rows and every stub degenerates (the |edgeY - turnY| guard below).
+        //
+        // ONLY leads that cross the SAME set of layers may be permuted. Their per-layer
+        // squeezes are then the same multiset of depths on the same layers, so the TURN
+        // BLOCKING that reads edgeDepth is bit-identical. (A previous attempt sorted every
+        // lead of the winding together -- entrance leads start on the innermost layer and
+        // exits on the outermost, so they cross DIFFERENT layers; permuting those changed each
+        // layer's reserved depth and MOVED THE TURNS: the 24-design sweep fell 18/25 -> 11/25.
+        // Reverted in cca5a9e5; this is the surgical version.)
+        struct LeadEmission {
+            Turn turn;
+            int64_t parallel;
+            bool atTop;
+            std::string crossedSignature;
+            size_t groupRank;      // first emission index of this lead's group, keeps groups in order
+            double edgeDistance;   // ordering WITHIN a group: nearest the edge first
+        };
+        std::vector<LeadEmission> emissions;
+        auto crossedSignatureOf = [&](const Turn& connectingTurn) {
+            std::string signature;
+            double turnX = connectingTurn.get_coordinates()[0];
+            for (const auto& crossed : allLayers) {
+                double crossedX = crossed.get_coordinates()[0];
+                if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
+                    signature += crossed.get_name() + "|";
+                }
+            }
+            return signature;
+        };
         for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
             auto key = std::make_pair(windingName, parallel);
-            if (entranceTurnByWindingParallel.count(key)) {
-                addTerminalLead(entranceTurnByWindingParallel.at(key), parallel);
+            for (bool entrance : {true, false}) {
+                const auto& source = entrance ? entranceTurnByWindingParallel
+                                              : exitTurnByWindingParallel;
+                if (!source.count(key)) {
+                    continue;
+                }
+                const Turn& connectingTurn = source.at(key);
+                double turnY = connectingTurn.get_coordinates()[1];
+                bool atTop = (turnY >= windowCenterY);
+                emissions.push_back({connectingTurn, parallel, atTop,
+                                     crossedSignatureOf(connectingTurn), 0,
+                                     atTop ? windowTopY - turnY : turnY - windowBottomY});
             }
-            if (exitTurnByWindingParallel.count(key)) {
-                addTerminalLead(exitTurnByWindingParallel.at(key), parallel);
+        }
+        std::map<std::tuple<size_t, bool, std::string>, size_t> groupRankByKey;
+        for (size_t i = 0; i < emissions.size(); ++i) {
+            auto groupKey = std::make_tuple(windowIndexOf(emissions[i].turn.get_section().value_or("")),
+                                            emissions[i].atTop, emissions[i].crossedSignature);
+            auto found = groupRankByKey.find(groupKey);
+            if (found == groupRankByKey.end()) {
+                groupRankByKey[groupKey] = i;
+                emissions[i].groupRank = i;
             }
+            else {
+                emissions[i].groupRank = found->second;
+            }
+        }
+        std::stable_sort(emissions.begin(), emissions.end(),
+                         [](const LeadEmission& a, const LeadEmission& b) {
+                             if (a.groupRank != b.groupRank) {
+                                 return a.groupRank < b.groupRank;
+                             }
+                             return a.edgeDistance < b.edgeDistance;
+                         });
+        for (const auto& emission : emissions) {
+            addTerminalLead(emission.turn, emission.parallel);
         }
 
         std::vector<Layer> windingLayers;
