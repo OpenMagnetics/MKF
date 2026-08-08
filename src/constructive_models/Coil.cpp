@@ -759,6 +759,18 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         std::swap(windowSizeLayerAxis, windowSizeTurnAxis);
     }
     double windowOuterX = windowCenterLayerAxis + windowSizeLayerAxis / 2;
+    // A winding that does not FIT still has to be drawn honestly: when MKF places layers past
+    // the window's outer edge (over-subscribed design), the terminal border and the crossed-layer
+    // test must follow the COPPER, not the window. Clipping them at the window let every layer
+    // outside it escape the lead's reservation, so an out-of-space design drew as if it fitted --
+    // Alf, 2026-08-08: "when the turns go beyond the winding window (even if it's impossible in
+    // reality) we have to maintain that restriction to show the customer how much out of space
+    // he is".
+    double outermostLayerX = windowOuterX;
+    for (const auto& layer : allLayers)
+        outermostLayerX = std::max(outermostLayerX,
+                                   layer.get_coordinates()[0] + layer.get_dimensions()[0] / 2);
+    windowOuterX = std::max(windowOuterX, outermostLayerX);
     // Axial extent of the window: terminal leads run along its top edge (entrance) or bottom edge
     // (exit), i.e. above/below all the (blocking-shrunk) conduction layers.
     double windowCenterY = windowCenterTurnAxis;
@@ -850,6 +862,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             std::vector<const Layer*> crossedLayers;
             for (const auto& crossed : allLayers) {
                 double crossedX = crossed.get_coordinates()[0];
+                // No window clip: a layer OUTSIDE the window is still crossed and still
+                // squeezed (see windowOuterX above).
                 if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
                     crossedLayers.push_back(&crossed);
                 }
