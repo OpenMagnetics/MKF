@@ -10945,6 +10945,34 @@ std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType cor
         sectionPatterns = std::vector<std::vector<size_t>>(sectionPatterns.begin(), sectionPatterns.end() - (sectionPatterns.size() - elementsToKeep));
     }
 
+    // ABT #609: under REAL WINDING geometry, also offer each pattern's REVERSAL, appended AFTER
+    // the base set. The n!/2 bound above deliberately drops reversed permutations because an
+    // ideal winding is radially symmetric under reversal — but a real winding is not: the leads,
+    // margins and blocking load the two orders differently, and 13_current_sense is the proof
+    // (order 01 over-subscribes the ER 9.5 window to ~2x while order 10 fits and builds
+    // watertight 3D). Appending — never interleaving — keeps the adviser's behaviour and
+    // runtime identical whenever the base patterns deliver: the enumeration loop early-terminates
+    // on a full candidate pool, so the reversals are only ever REACHED when the base set failed
+    // to produce enough fitting candidates (Alf, 2026-08-08: "try more pattern combinations, but
+    // make sure that time is not increased"). Gated behind the real-winding setting so every
+    // existing flow with the setting off sees the exact historical pattern list.
+    if (settings.get_coil_use_real_winding_geometry()) {
+        size_t baseCount = sectionPatterns.size();
+        for (size_t i = 0; i < baseCount && sectionPatterns.size() < defaults.maximumCoilPattern; ++i) {
+            std::vector<size_t> reversed(sectionPatterns[i].rbegin(), sectionPatterns[i].rend());
+            bool isNew = true;
+            for (const auto& existing : sectionPatterns) {
+                if (existing == reversed) {
+                    isNew = false;
+                    break;
+                }
+            }
+            if (isNew) {
+                sectionPatterns.push_back(reversed);
+            }
+        }
+    }
+
     return sectionPatterns;
 }
 

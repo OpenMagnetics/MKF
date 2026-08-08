@@ -2790,4 +2790,40 @@ TEST_CASE("Test_WireAdviser_HFInductor_SynthesizesLitz", "[adviser][coil-adviser
     settings.reset();
 }
 
+TEST_CASE("Test_CoilAdviser_Real_Winding_Adds_Reversed_Patterns", "[adviser][coil-adviser][real-geometry]") {
+    // ABT #609: an ideal winding is radially symmetric under pattern reversal, so get_patterns
+    // caps the enumeration at n!/2 and a 2-winding transformer gets ONE pattern (order 01). A
+    // REAL winding is not symmetric: leads, margins and blocking load the two orders differently
+    // — 13_current_sense is the proof (order 01 over-subscribes the ER 9.5 window ~2x, order 10
+    // fits and builds watertight 3D). Under the real-winding setting the reversals are appended
+    // AFTER the base set, so the adviser's candidate loop only reaches them when the base
+    // patterns under-deliver — more combinations, no extra time on the happy path (Alf: "try
+    // more pattern combinations, but make sure that time is not increased").
+    auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_606641};
+    altitude.set_maximum(2000);
+    mainSupplyVoltage.set_nominal(400);
+    OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(
+        altitude, cti, IsolationClass::FUNCTIONAL, mainSupplyVoltage, overvoltageCategory,
+        pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency,
+        WiringTechnology::WOUND);
+    DimensionWithTolerance turnsRatio;
+    turnsRatio.set_nominal(1);
+    inputs.get_mutable_design_requirements().set_turns_ratios({turnsRatio});
+    inputs.get_mutable_design_requirements().set_isolation_sides(
+        std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
+
+    settings.set_coil_use_real_winding_geometry(false);
+    auto idealPatterns = OpenMagnetics::Coil::get_patterns(inputs, CoreType::TWO_PIECE_SET);
+    REQUIRE(idealPatterns.size() == 1);
+    REQUIRE(idealPatterns[0] == std::vector<size_t>{0, 1});
+
+    settings.set_coil_use_real_winding_geometry(true);
+    auto realPatterns = OpenMagnetics::Coil::get_patterns(inputs, CoreType::TWO_PIECE_SET);
+    REQUIRE(realPatterns.size() == 2);
+    // Base set FIRST and unchanged (priority and happy-path runtime identical), reversal after.
+    REQUIRE(realPatterns[0] == std::vector<size_t>{0, 1});
+    REQUIRE(realPatterns[1] == std::vector<size_t>{1, 0});
+    settings.reset();
+}
+
 }  // namespace
