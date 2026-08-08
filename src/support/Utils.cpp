@@ -2783,7 +2783,66 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
             magnetic.get_mutable_coil().wind(pattern);
         }
         else {
-            magnetic.get_mutable_coil().wind();
+            // ABT #610: a MAS file that carries a sectionsDescription has already SAID its winding
+            // pattern — the conduction sections' winding sequence IS the interleaving (P,S,P,S =
+            // pattern {0,1} x 2). MAS has no other field for it (deliberately: the sections are
+            // the description), and winding with the default pattern here silently UN-interleaved
+            // such files: 09_planar declares P,S,P,S,P,S and was rebuilt P,S. Derive the pattern
+            // from the given sections — the smallest repeating unit and its count map onto wind's
+            // (pattern, repetitions) form — and fall back to the default wind for anything the
+            // derivation cannot express (sections sharing partial windings, unknown winding
+            // names). Data first, never invented: this reads the file's own structure.
+            std::vector<size_t> sequence;
+            bool derivable = false;
+            if (magnetic.get_coil().get_sections_description()) {
+                derivable = true;
+                auto sections = magnetic.get_coil().get_sections_description().value();
+                auto windings = magnetic.get_coil().get_functional_description();
+                for (const auto& section : sections) {
+                    if (section.get_type() != ElectricalType::CONDUCTION) {
+                        continue;
+                    }
+                    if (section.get_partial_windings().size() != 1) {
+                        derivable = false;
+                        break;
+                    }
+                    auto name = section.get_partial_windings()[0].get_winding();
+                    size_t index = windings.size();
+                    for (size_t w = 0; w < windings.size(); ++w) {
+                        if (windings[w].get_name() == name) {
+                            index = w;
+                            break;
+                        }
+                    }
+                    if (index == windings.size()) {
+                        derivable = false;
+                        break;
+                    }
+                    sequence.push_back(index);
+                }
+            }
+            if (derivable && !sequence.empty()) {
+                // Smallest repeating unit: sequence = unit repeated k times.
+                size_t unitLength = sequence.size();
+                for (size_t u = 1; u <= sequence.size() / 2; ++u) {
+                    if (sequence.size() % u != 0) {
+                        continue;
+                    }
+                    bool repeats = true;
+                    for (size_t i = u; i < sequence.size() && repeats; ++i) {
+                        repeats = sequence[i] == sequence[i % u];
+                    }
+                    if (repeats) {
+                        unitLength = u;
+                        break;
+                    }
+                }
+                std::vector<size_t> pattern(sequence.begin(), sequence.begin() + unitLength);
+                magnetic.get_mutable_coil().wind(pattern, sequence.size() / unitLength);
+            }
+            else {
+                magnetic.get_mutable_coil().wind();
+            }
         }
     }
 
