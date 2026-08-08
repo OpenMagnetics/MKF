@@ -818,9 +818,6 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
     std::map<std::pair<std::string, int64_t>, Turn> exitTurnByWindingParallel;
     std::map<std::pair<std::string, int64_t>, Turn> firstTurnByLayerParallel;
     std::map<std::pair<std::string, int64_t>, Turn> lastTurnByLayerParallel;
-    // Last-wound turn of each (section, parallel): the U tangential blocker below is not needed
-    // when the layer it would land on holds nothing but the section's final turn (ABT #608).
-    std::map<std::pair<std::string, int64_t>, std::string> lastTurnNameBySectionParallel;
     for (const auto& turn : turns) {
         auto windingKey = std::make_pair(turn.get_winding(), turn.get_parallel());
         if (entranceTurnByWindingParallel.find(windingKey) == entranceTurnByWindingParallel.end()) {
@@ -833,9 +830,6 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 firstTurnByLayerParallel[layerKey] = turn;
             }
             lastTurnByLayerParallel[layerKey] = turn;
-        }
-        if (turn.get_section()) {
-            lastTurnNameBySectionParallel[{turn.get_section().value(), turn.get_parallel()}] = turn.get_name();
         }
     }
 
@@ -1308,68 +1302,20 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     }
                 }
                 else {
-                    // ABT #608 — the U inter-layer link is TANGENTIAL, and it costs the layer it
-                    // lands on a turn slot. It leaves the source layer's end turn at that turn's own
-                    // height and runs horizontally to the next layer, so it arrives at the SAME
-                    // height it departed: the destination layer's first turn cannot be there, the
-                    // arriving wire already is. Left unreserved, MKF placed that first turn flat at
-                    // the departure height (13u secondary: turn 5 at y=0.2994 ends layer 0, turn 6
-                    // at y=0.2994 starts layer 1 — same height, same 0.1125 mm wire) and the turn
-                    // after it had nowhere to pass. So EVERY layer of a U section but the first
-                    // accounts for N_layer + 1 turns — Alf, 2026-08-08: "the first layer already
-                    // must start decreasing height to avoid collision with the tangential
-                    // connection".
-                    //
-                    // Reserved the way this model reserves everything: as the BAND from the window
-                    // edge to the link's inner side. A bare one-wire rectangle at the link would be
-                    // silently swallowed — blocking takes the deepest run per edge, and the
-                    // terminal leads' band is already deeper — and it would also be wrong: the
-                    // layer winds AWAY from the link, so nothing of it may sit between the link and
-                    // that edge either. Measured this way the reservation subsumes the lead rows
-                    // when the link is shallower and extends past them when it is deeper, and the
-                    // placement pass (which spreads turns over window-edge-to-depth spans) puts the
-                    // destination's first turn exactly one pitch below the source's end turn.
-                    //
-                    // Which edge it takes is read from the geometry, never assumed: a serpentine
-                    // alternates, layer 0 -> 1 turning around at the top and layer 1 -> 2 at the
-                    // bottom. Space-only, like the crossed-layer squeezes: the copper is the
-                    // horizontal link drawn just below.
-                    //
-                    // EXCEPTION (Alf): when the landing turn is the section's LAST, nothing follows
-                    // it, so the turn is wound in the link's own space and nothing is reserved.
-                    // Scope: adjacent layers of ONE section. An interleaved U continuation is not
-                    // tangential — it climbs to a window-edge row it already reserves (above) and
-                    // drops into a destination turn sitting at that edge — and the first layer of a
-                    // section is fed by a terminal lead, which reserves its own row.
-                    const auto& landingSection = windingLayers[i + 1].get_section();
-                    const bool sameSection = windingLayers[i].get_section() == landingSection;
-                    const auto sectionEnd = landingSection
-                        ? lastTurnNameBySectionParallel.find({landingSection.value(), parallel})
-                        : lastTurnNameBySectionParallel.end();
-                    const bool landingIsSectionEnd = sectionEnd != lastTurnNameBySectionParallel.end()
-                                                     && sectionEnd->second == entryTurn.get_name();
-                    if (windingOrder == WindingOrder::U && sameSection && !landingIsSectionEnd) {
-                        const bool linkAtHighSide = y1 >= windingLayers[i + 1].get_coordinates()[1];
-                        const double linkInnerSide = linkAtHighSide ? y1 - wireOuterHeight / 2
-                                                                    : y1 + wireOuterHeight / 2;
-                        const double bandDepth = linkAtHighSide ? windowTopY - linkInnerSide
-                                                                : linkInnerSide - windowBottomY;
-                        ConnectionReservedSpace tangential;
-                        tangential.section = landingSection.value();
-                        tangential.layer = windingLayers[i + 1].get_name();
-                        tangential.winding = windingName;
-                        tangential.parallel = parallel;
-                        tangential.coordinates = {roundFloat(windingLayers[i + 1].get_coordinates()[0], 9),
-                                                  roundFloat(y1, 9)};
-                        tangential.dimensions = {wireOuterWidth, wireOuterHeight};
-                        tangential.routedLength = 0;  // space-only: the copper is the link drawn below
-                        // A link outside the window (over-subscribed design) still costs its own wire.
-                        tangential.edgeDepth = roundFloat(std::max(bandDepth, wireOuterHeight), 9);
-                        // The reserved slot holds the ARRIVING CROSSING — real copper in the XY
-                        // cross-section, drawn by the Painter under the blue link (ABT #608).
-                        tangential.isCrossingWire = true;
-                        spaces.push_back(tangential);
-                    }
+                    // ABT #608 RETRACTED (Alf, 2026-08-08): the U tangential link does NOT cost
+                    // the landing layer a turn slot. The "arriving crossing" is not a separate
+                    // occupant of the top slot -- it IS the layer's top turn: the turn starts with
+                    // the tangential segment at the source turn's height, its revolution is the top
+                    // turn, and it ends at its own station at that same height. Reserving a slot
+                    // for the crossing AND dropping the first turn a pitch counted the same copper
+                    // twice: on the exact cut plane a non-first U layer shows M circles, not M+1
+                    // (the tangential segment's only cut-plane copper is its start point, which
+                    // coincides with the previous layer's last station), and a real serpentine
+                    // loses no capacity per layer -- its first turn nests level with the previous
+                    // layer's last. Crossing accounting stays N + 1 per parallel per winding, the
+                    // global RealWindingCrossingBump, and nothing else.
+                    const bool sameSection =
+                        windingLayers[i].get_section() == windingLayers[i + 1].get_section();
 
                     // U adjacent layers: route the wire orthogonally — a horizontal stretch from the
                     // source turn out to the destination layer's radial position, then a vertical
@@ -1377,14 +1323,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     // The horizontal runs half a wire past the corner and the vertical is pulled back
                     // half a wire so the bend reads as one continuous wire.
                     //
-                    // ...EXCEPT for the tangential inter-layer link, which is horizontal ONLY. It is
-                    // manufactured as a tangential run at constant height — Alf, 2026-08-08: "vertical
-                    // connections are for dragbacks; the connection to the external next layer must be
-                    // tangential". The one-pitch height difference ABT #608 introduced is not bridged
-                    // by a vertical stub: it is what the destination's first TURN does on its own, the
-                    // helix starting at the arriving crossing and ending one pitch below. Bridging it
-                    // here would draw copper the winder never lays, and would contradict the 3D, which
-                    // already builds this link as a constant-height tangential segment.
+                    // ...EXCEPT for the same-section tangential link, which is horizontal ONLY. It
+                    // is manufactured as a tangential run at constant height — Alf, 2026-08-08:
+                    // "vertical connections are for dragbacks; the connection to the external next
+                    // layer must be tangential". Normally the two stations sit at the same height
+                    // and this guard is dormant; when spread layers put them apart, any residual
+                    // height difference is the destination turn's own helix, not a drawn stub —
+                    // bridging it would draw copper the winder never lays, and would contradict the
+                    // 3D, which builds this link as a constant-height tangential segment.
                     bool needVertical = std::abs(y2 - y1) > 0.5 * wireOuterHeight
                                         && !(windingOrder == WindingOrder::U && sameSection);
                     ConnectionReservedSpace horizontal;
