@@ -1373,7 +1373,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     // stretch down/up to the destination turn when the two are at different heights.
                     // The horizontal runs half a wire past the corner and the vertical is pulled back
                     // half a wire so the bend reads as one continuous wire.
-                    bool needVertical = std::abs(y2 - y1) > 0.5 * wireOuterHeight;
+                    //
+                    // ...EXCEPT for the tangential inter-layer link, which is horizontal ONLY. It is
+                    // manufactured as a tangential run at constant height — Alf, 2026-08-08: "vertical
+                    // connections are for dragbacks; the connection to the external next layer must be
+                    // tangential". The one-pitch height difference ABT #608 introduced is not bridged
+                    // by a vertical stub: it is what the destination's first TURN does on its own, the
+                    // helix starting at the arriving crossing and ending one pitch below. Bridging it
+                    // here would draw copper the winder never lays, and would contradict the 3D, which
+                    // already builds this link as a constant-height tangential segment.
+                    bool needVertical = std::abs(y2 - y1) > 0.5 * wireOuterHeight
+                                        && !(windingOrder == WindingOrder::U && sameSection);
                     ConnectionReservedSpace horizontal;
                     horizontal.winding = windingName;
                     horizontal.parallel = parallel;
