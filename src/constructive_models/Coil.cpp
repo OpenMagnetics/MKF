@@ -1408,10 +1408,12 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     std::map<std::string, size_t> layerTurnAxis;
     std::map<std::string, double> layerCenterOnTurnAxis;
     std::map<std::string, double> layerWirePitch;  // crossed layer's own wire, along its turn axis
+    std::map<std::string, double> layerExtent;     // crossed layer's own extent, same axis
     for (const auto& layer : layers) {
         size_t turnAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
         layerTurnAxis[layer.get_name()] = turnAxis;
         layerCenterOnTurnAxis[layer.get_name()] = layer.get_coordinates()[turnAxis];
+        layerExtent[layer.get_name()] = layer.get_dimensions()[turnAxis];
         // Insulation layers have no partial windings; only conduction layers have a wire/turn pitch.
         if (layer.get_type() == ElectricalType::CONDUCTION && !layer.get_partial_windings().empty()) {
             size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
@@ -1462,10 +1464,35 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
         if (crossedWirePitch <= 0) {
             continue;
         }
-        auto slots = [&](double connectionDepth) -> uint64_t {
-            return connectionDepth > 1e-12 ? uint64_t(std::ceil(connectionDepth / crossedWirePitch - 1e-9)) : 0u;
+        // The layer loses the CAPACITY the reserved band actually costs it, not the band rounded
+        // up to whole slots at each edge. Rounding each edge up charged a THIN lead a whole THICK
+        // slot: Alf, 2026-08-08, on a reordered 13_current_sense -- the secondary's 0.1125 mm lead
+        // took a full 0.534 mm primary slot at each edge (1.068 mm of an 1.8293 mm window), so the
+        // primary kept 0.801 mm, fitting ONE turn, and its two real-winding crossings could not
+        // share a layer. Comparing the packing WITH and WITHOUT the bands charges exactly the
+        // turns that no longer fit: a fat lead over a fine layer still displaces the several fine
+        // turns it really covers (unchanged, 10 slots in the original order), while a thin lead
+        // over a thick layer costs a slot only when it genuinely pushes one out.
+        const double extent = layerExtent.count(layerName) ? layerExtent.at(layerName) : 0.0;
+        const auto fits = [&](double usable) -> uint64_t {
+            return usable > 0.0 ? uint64_t(std::floor(usable / crossedWirePitch + 1e-9)) : 0u;
         };
-        blockedSlotsPerLayer[layerName] = {slots(edges.first), slots(edges.second)};
+        const uint64_t freeCapacity = fits(extent);
+        const uint64_t blockedCapacity =
+            freeCapacity - std::min(freeCapacity, fits(extent - edges.first - edges.second));
+        // Attribute the lost slots to the edges that caused them (deepest first), so the placement
+        // pass below still knows which side to pack against.
+        uint64_t topSlots = 0, bottomSlots = 0;
+        if (blockedCapacity > 0) {
+            const double totalDepth = edges.first + edges.second;
+            if (totalDepth > 1e-12) {
+                topSlots = uint64_t(std::llround(blockedCapacity * (edges.first / totalDepth)));
+                topSlots = std::min<uint64_t>(topSlots, blockedCapacity);
+            }
+            bottomSlots = blockedCapacity - topSlots;
+            if (topSlots == 0 && edges.first > edges.second) std::swap(topSlots, bottomSlots);
+        }
+        blockedSlotsPerLayer[layerName] = {topSlots, bottomSlots};
         // Same keys as the slot map, by construction: the continuous depths the ceil above rounded up
         // from. The placement pass hugs THESE, so turns reach the crossing runs exactly instead of
         // stopping at the whole-slot grid.
