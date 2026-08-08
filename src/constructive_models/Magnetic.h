@@ -187,15 +187,28 @@ inline void from_file(std::filesystem::path filepath, Magnetic & x) {
 }
 
 inline void from_json(const json & j, Magnetic& x) {
-    if (j.contains("coil") && !j.at("coil").is_null()) {
-        x.set_coil(j.at("coil").get<Coil>());
+    // migrate_pre_1_0 was previously only wired into from_file() below — a
+    // filesystem-path loader nothing in the product calls. Every real entry
+    // point (every PyOM/WASM binding) constructs a Magnetic straight from an
+    // in-memory json via this from_json, so any pre-1.0 MAS export (old
+    // Title-Case/spaced enum strings — "Industrial", "Printed", "Phase-Shifted
+    // Full-Bridge Converter", ...) threw the generic quicktype
+    // "Input JSON does not conform to schema!" here before ever reaching a
+    // physics call. Migrate first, exactly like from_file already does, so a
+    // bare-magnetic construction is migrated the same as a full-MAS one
+    // (Mas.h / Inputs.h already call this) (ABT #606).
+    auto migrated = j;
+    OpenMagnetics::compat::migrate_pre_1_0(migrated);
+
+    if (migrated.contains("coil") && !migrated.at("coil").is_null()) {
+        x.set_coil(migrated.at("coil").get<Coil>());
     }
-    if (j.contains("core") && !j.at("core").is_null()) {
-        x.set_core(j.at("core").get<Core>());
+    if (migrated.contains("core") && !migrated.at("core").is_null()) {
+        x.set_core(migrated.at("core").get<Core>());
     }
-    x.set_distributors_info(get_stack_optional<std::vector<DistributorInfo>>(j, "distributorsInfo"));
-    x.set_manufacturer_info(get_stack_optional<MagneticManufacturerInfo>(j, "manufacturerInfo"));
-    x.set_rotation(get_stack_optional<std::vector<double>>(j, "rotation"));
+    x.set_distributors_info(get_stack_optional<std::vector<DistributorInfo>>(migrated, "distributorsInfo"));
+    x.set_manufacturer_info(get_stack_optional<MagneticManufacturerInfo>(migrated, "manufacturerInfo"));
+    x.set_rotation(get_stack_optional<std::vector<double>>(migrated, "rotation"));
 }
 
 inline void to_json(json & j, const Magnetic & x) {
