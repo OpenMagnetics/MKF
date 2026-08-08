@@ -452,37 +452,6 @@ void Painter::paint_coil_connections(Magnetic magnetic) {
     if (reservedSpaces.empty()) {
         return;
     }
-    // ABT #608: a U tangential link's reserved slot holds the ARRIVING CROSSING — the wire coming
-    // from the previous layer's top, i.e. the start of this layer's first turn, the copper that
-    // makes the layer account N_layer + 1. It is real copper in the XY cross-section, so it is
-    // drawn as a wire of the owning winding — BEFORE the connection rectangles below, so the blue
-    // link stays on top of it and marks where the connection comes from. It is deliberately NOT a
-    // turn in turnsDescription (space, copper length and 3D geometry are each already accounted
-    // once — by this marker's reservation, the link's routedLength and the tangential segment).
-    {
-        auto wires = coil.get_wires();
-        for (const auto& space : reservedSpaces) {
-            if (!space.isCrossingWire) {
-                continue;
-            }
-            auto windingIndex = coil.get_winding_index_by_name(space.winding);
-            auto wire = wires[windingIndex];
-            std::string label = space.winding + " parallel " + std::to_string(space.parallel) +
-                                " crossing into " + space.layer;
-            if (wire.get_type() == WireType::ROUND) {
-                paint_round_wire(space.coordinates[0], space.coordinates[1], wire, label);
-            }
-            else if (wire.get_type() == WireType::LITZ) {
-                paint_litz_wire(space.coordinates[0], space.coordinates[1], wire, label);
-            }
-            else {
-                SVG::Group* wireShape = _root.add_child<SVG::Group>();
-                paint_rectangle(space.coordinates[0], space.coordinates[1],
-                                space.dimensions[0], space.dimensions[1], "copper", wireShape,
-                                0, {0, 0}, label);
-            }
-        }
-    }
     auto shapes = _root.add_child<SVG::Group>();
     // Two translucent colours: inter-layer / inter-section transitions vs entrance/exit terminal
     // leads. Transparency lets overlapping leads and the turns beneath them stay visible.
