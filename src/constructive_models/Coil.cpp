@@ -818,6 +818,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
     std::map<std::pair<std::string, int64_t>, Turn> exitTurnByWindingParallel;
     std::map<std::pair<std::string, int64_t>, Turn> firstTurnByLayerParallel;
     std::map<std::pair<std::string, int64_t>, Turn> lastTurnByLayerParallel;
+    // Last-wound turn of each (section, parallel): the U tangential blocker below is not needed
+    // when the layer it would land on holds nothing but the section's final turn (ABT #608).
+    std::map<std::pair<std::string, int64_t>, std::string> lastTurnNameBySectionParallel;
     for (const auto& turn : turns) {
         auto windingKey = std::make_pair(turn.get_winding(), turn.get_parallel());
         if (entranceTurnByWindingParallel.find(windingKey) == entranceTurnByWindingParallel.end()) {
@@ -830,6 +833,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 firstTurnByLayerParallel[layerKey] = turn;
             }
             lastTurnByLayerParallel[layerKey] = turn;
+        }
+        if (turn.get_section()) {
+            lastTurnNameBySectionParallel[{turn.get_section().value(), turn.get_parallel()}] = turn.get_name();
         }
     }
 
@@ -1302,6 +1308,66 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     }
                 }
                 else {
+                    // ABT #608 — the U inter-layer link is TANGENTIAL, and it costs the layer it
+                    // lands on a turn slot. It leaves the source layer's end turn at that turn's own
+                    // height and runs horizontally to the next layer, so it arrives at the SAME
+                    // height it departed: the destination layer's first turn cannot be there, the
+                    // arriving wire already is. Left unreserved, MKF placed that first turn flat at
+                    // the departure height (13u secondary: turn 5 at y=0.2994 ends layer 0, turn 6
+                    // at y=0.2994 starts layer 1 — same height, same 0.1125 mm wire) and the turn
+                    // after it had nowhere to pass. So EVERY layer of a U section but the first
+                    // accounts for N_layer + 1 turns — Alf, 2026-08-08: "the first layer already
+                    // must start decreasing height to avoid collision with the tangential
+                    // connection".
+                    //
+                    // Reserved the way this model reserves everything: as the BAND from the window
+                    // edge to the link's inner side. A bare one-wire rectangle at the link would be
+                    // silently swallowed — blocking takes the deepest run per edge, and the
+                    // terminal leads' band is already deeper — and it would also be wrong: the
+                    // layer winds AWAY from the link, so nothing of it may sit between the link and
+                    // that edge either. Measured this way the reservation subsumes the lead rows
+                    // when the link is shallower and extends past them when it is deeper, and the
+                    // placement pass (which spreads turns over window-edge-to-depth spans) puts the
+                    // destination's first turn exactly one pitch below the source's end turn.
+                    //
+                    // Which edge it takes is read from the geometry, never assumed: a serpentine
+                    // alternates, layer 0 -> 1 turning around at the top and layer 1 -> 2 at the
+                    // bottom. Space-only, like the crossed-layer squeezes: the copper is the
+                    // horizontal link drawn just below.
+                    //
+                    // EXCEPTION (Alf): when the landing turn is the section's LAST, nothing follows
+                    // it, so the turn is wound in the link's own space and nothing is reserved.
+                    // Scope: adjacent layers of ONE section. An interleaved U continuation is not
+                    // tangential — it climbs to a window-edge row it already reserves (above) and
+                    // drops into a destination turn sitting at that edge — and the first layer of a
+                    // section is fed by a terminal lead, which reserves its own row.
+                    const auto& landingSection = windingLayers[i + 1].get_section();
+                    const bool sameSection = windingLayers[i].get_section() == landingSection;
+                    const auto sectionEnd = landingSection
+                        ? lastTurnNameBySectionParallel.find({landingSection.value(), parallel})
+                        : lastTurnNameBySectionParallel.end();
+                    const bool landingIsSectionEnd = sectionEnd != lastTurnNameBySectionParallel.end()
+                                                     && sectionEnd->second == entryTurn.get_name();
+                    if (windingOrder == WindingOrder::U && sameSection && !landingIsSectionEnd) {
+                        const bool linkAtHighSide = y1 >= windingLayers[i + 1].get_coordinates()[1];
+                        const double linkInnerSide = linkAtHighSide ? y1 - wireOuterHeight / 2
+                                                                    : y1 + wireOuterHeight / 2;
+                        const double bandDepth = linkAtHighSide ? windowTopY - linkInnerSide
+                                                                : linkInnerSide - windowBottomY;
+                        ConnectionReservedSpace tangential;
+                        tangential.section = landingSection.value();
+                        tangential.layer = windingLayers[i + 1].get_name();
+                        tangential.winding = windingName;
+                        tangential.parallel = parallel;
+                        tangential.coordinates = {roundFloat(windingLayers[i + 1].get_coordinates()[0], 9),
+                                                  roundFloat(y1, 9)};
+                        tangential.dimensions = {wireOuterWidth, wireOuterHeight};
+                        tangential.routedLength = 0;  // space-only: the copper is the link drawn below
+                        // A link outside the window (over-subscribed design) still costs its own wire.
+                        tangential.edgeDepth = roundFloat(std::max(bandDepth, wireOuterHeight), 9);
+                        spaces.push_back(tangential);
+                    }
+
                     // U adjacent layers: route the wire orthogonally — a horizontal stretch from the
                     // source turn out to the destination layer's radial position, then a vertical
                     // stretch down/up to the destination turn when the two are at different heights.
@@ -1473,7 +1539,21 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
         // turns that no longer fit: a fat lead over a fine layer still displaces the several fine
         // turns it really covers (unchanged, 10 slots in the original order), while a thin lead
         // over a thick layer costs a slot only when it genuinely pushes one out.
-        const double extent = layerExtent.count(layerName) ? layerExtent.at(layerName) : 0.0;
+        // Measured against the layer's UNBLOCKED extent. A layer that has already been shrunk by a
+        // previous iteration of the fixpoint carries a smaller extent, while the depths are absolute
+        // (from the window edge) — so comparing the two counts the same reservation twice, saturates
+        // (`fits(extent - depths)` hits 0), and reports FEWER blocked slots than the first iteration
+        // did. The loop only survived that because it accumulates the slot counts monotonically, but
+        // the DEPTHS kept growing underneath, and the placement pass hugs the depths: a layer could
+        // end up spreading more turns than its own reserved span holds. Adding back the room the
+        // layer surrendered (recorded by wind_by_layers, already capped to what it really gave up)
+        // restores the ideal extent, so every iteration measures the same geometry the first one did
+        // and the two currencies agree.
+        double extent = layerExtent.count(layerName) ? layerExtent.at(layerName) : 0.0;
+        auto surrendered = _connectionBlockedRoomPerLayer.find(layerName);
+        if (surrendered != _connectionBlockedRoomPerLayer.end()) {
+            extent += surrendered->second;
+        }
         const auto fits = [&](double usable) -> uint64_t {
             return usable > 0.0 ? uint64_t(std::floor(usable / crossedWirePitch + 1e-9)) : 0u;
         };
@@ -1493,6 +1573,16 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
             if (topSlots == 0 && edges.first > edges.second) std::swap(topSlots, bottomSlots);
         }
         blockedSlotsPerLayer[layerName] = {topSlots, bottomSlots};
+        // MKF_BLOCKING_DIAG: what each layer surrendered and to which edge. The fixpoint is easy to
+        // misread from the wound geometry alone (a layer can look one slot short at the wrong edge),
+        // so print the currency it actually decided in: unblocked extent, the two reserved depths,
+        // and the capacity that comparison costs.
+        if (std::getenv("MKF_BLOCKING_DIAG")) {
+            std::cerr << "[blocking] " << layerName << " extent=" << extent * 1e3
+                      << " pitch=" << crossedWirePitch * 1e3 << " depths={" << edges.first * 1e3
+                      << "," << edges.second * 1e3 << "} free=" << freeCapacity
+                      << " blocked=" << blockedCapacity << " -> {" << topSlots << "," << bottomSlots << "}\n";
+        }
         // Same keys as the slot map, by construction: the continuous depths the ceil above rounded up
         // from. The placement pass hugs THESE, so turns reach the crossing runs exactly instead of
         // stopping at the whole-slot grid.

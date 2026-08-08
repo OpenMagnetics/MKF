@@ -11760,16 +11760,33 @@ static void check_contiguous_lead_reservation(OpenMagnetics::Coil& coil) {
     }
     auto layers = coil.get_layers_description().value();
     std::vector<MAS::Layer> crossed;
-    std::vector<MAS::Layer> uncrossed;
     for (const auto& layer : layers) {
         if (layer.get_type() != ElectricalType::CONDUCTION
             || layer.get_orientation() != WindingOrientation::CONTIGUOUS) {
             continue;
         }
-        (reservedPerLayer.count(layer.get_name()) ? crossed : uncrossed).push_back(layer);
+        if (reservedPerLayer.count(layer.get_name())) {
+            crossed.push_back(layer);
+        }
     }
-    REQUIRE(!crossed.empty());    // the fixture must exercise a crossed contiguous layer
-    REQUIRE(!uncrossed.empty());  // ... and keep an untouched one to compare it against
+    REQUIRE(!crossed.empty());  // the fixture must exercise a crossed contiguous layer
+    // The yardstick is each layer's OWN unblocked geometry, not an untouched sibling. ABT #608 gave
+    // the U tangential inter-layer link its own reservation, so in a U winding every layer but the
+    // first is crossed and there is no full untouched layer left to compare against — the only
+    // uncrossed one is the section's final spillover layer, which is narrow because it holds one
+    // turn per parallel, not because nothing crosses it (comparing against THAT is what broke: a
+    // 7.03 mm layer measured against a 1.6 mm stub). The two invariants the sibling stood for are
+    // absolute anyway, and asserting them directly is stronger: the width came out of the SECTION's
+    // width, and the height is exactly one wire, untouched.
+    auto sections = coil.get_sections_description().value();
+    auto sectionWidthOf = [&](const MAS::Layer& layer) {
+        for (const auto& section : sections) {
+            if (section.get_name() == layer.get_section().value()) {
+                return section.get_dimensions()[0];
+            }
+        }
+        throw std::runtime_error("layer " + layer.get_name() + " names no known section");
+    };
     // The coil-wide convention holds for contiguous windings too: a marker that names a layer is an
     // AXIS-ALIGNED rectangle whose dimensions are {X extent, Y extent}, exactly as for overlapping
     // layers and exactly as sections, layers and turns are. The contiguous case is one index apart,
@@ -11796,11 +11813,12 @@ static void check_contiguous_lead_reservation(OpenMagnetics::Coil& coil) {
         INFO("crossed layer " << layer.get_name() << " " << layerWidth << "x" << layer.get_dimensions()[1]
              << " leads " << reservedPerLayer.at(layer.get_name()) << " from " << markersOnLayer
              << " markers, wire width " << wireWidth << ", " << turnsOnLayer << " turns");
-        // The leads' room came out of the WIDTH, so the layer is narrower than one nothing crosses...
-        CHECK(layerWidth < uncrossed[0].get_dimensions()[0]);
+        // The leads' room came out of the WIDTH, so the layer is narrower than its section...
+        CHECK(layerWidth < sectionWidthOf(layer));
         // ... and NOT out of the height, which stays exactly one wire as it was built.
         CHECK_THAT(layer.get_dimensions()[1],
-                   Catch::Matchers::WithinRel(uncrossed[0].get_dimensions()[1], 1e-12));
+                   Catch::Matchers::WithinRel(coil.get_wires()[windingIndex].get_maximum_outer_height(),
+                                              1e-12));
         // Each lead crossing this layer costs one turn slot measured on the TURN axis, which for a
         // contiguous layer is the wire's OUTER WIDTH. This is the assertion round wire cannot make:
         // with a square marker the width and the height are the same number, so reading the wrong
