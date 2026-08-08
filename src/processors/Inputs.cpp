@@ -1576,13 +1576,16 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
     bool allExcitationsHaveVoltage = true;
 
     for (auto excitation : operatingPoint.get_excitations_per_winding()) {
-        if (!excitation.get_current()) {
+        // A signal only takes part in pruning if it actually carries harmonics;
+        // the branches below dereference get_harmonics().value() (ABT #599: a
+        // SignalDescriptor present without harmonics threw bad_optional_access).
+        if (!excitation.get_current() || !excitation.get_current()->get_harmonics()) {
             allExcitationsHaveCurrent = false;
         }
-        if (!excitation.get_magnetizing_current()) {
+        if (!excitation.get_magnetizing_current() || !excitation.get_magnetizing_current()->get_harmonics()) {
             allExcitationsHaveMagnetizingCurrent = false;
         }
-        if (!excitation.get_voltage()) {
+        if (!excitation.get_voltage() || !excitation.get_voltage()->get_harmonics()) {
             allExcitationsHaveVoltage = false;
         }
     }

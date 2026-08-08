@@ -180,6 +180,72 @@ namespace TestWindingLossesRound {
         settings.reset();
     }
 
+    TEST_CASE("Test_Winding_Losses_Underspecified_Current_Normalised", "[physical-model][winding-losses][round][rectangular-winding-window][bug]") {
+        // ABT #598/#599: an excitation whose current carried only a raw
+        // waveform (no processed block, no harmonics) returned
+        // windingLosses=0.0 labelled "Ohm" (its RMS silently read as 0 A), and
+        // one with processed data but no harmonics threw bad optional access
+        // in prune_harmonics. calculate_losses now normalises such operating
+        // points through Inputs::process_operating_point, so both variants
+        // must reproduce the fully-processed result.
+        settings.reset();
+        clear_databases();
+
+        double temperature = 20;
+        double frequency = 100000;
+        double magnetizingInductance = 1e-3;
+        double peakToPeak = 2 * 1.73205;
+        std::string shapeName = "ETD 34/17/11";
+
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            frequency, magnetizingInductance, temperature, WaveformLabel::TRIANGULAR, peakToPeak, 0.5, 0);
+
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                         WindingOrientation::OVERLAPPING,
+                                                         WindingOrientation::OVERLAPPING,
+                                                         CoilAlignment::CENTERED,
+                                                         CoilAlignment::CENTERED);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, OpenMagneticsTesting::get_ground_gap(2e-5), 1, "3C97");
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto processedLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+        REQUIRE(processedLosses.get_winding_losses() > 0);
+
+        // Same operating point stripped down to the raw waveform only.
+        OperatingPoint rawOperatingPoint = inputs.get_operating_point(0);
+        {
+            auto& excitation = rawOperatingPoint.get_mutable_excitations_per_winding()[0];
+            SignalDescriptor rawCurrent;
+            rawCurrent.set_waveform(excitation.get_current()->get_waveform().value());
+            excitation.set_current(rawCurrent);
+            excitation.set_magnetizing_current(std::nullopt);
+            excitation.set_voltage(std::nullopt);
+        }
+        auto rawLosses = WindingLosses().calculate_losses(magnetic, rawOperatingPoint, temperature);
+        REQUIRE_THAT(rawLosses.get_winding_losses(),
+                     Catch::Matchers::WithinRel(processedLosses.get_winding_losses(), 0.01));
+
+        // And stripped down to the processed block only (no waveform, no harmonics).
+        OperatingPoint processedOnlyOperatingPoint = inputs.get_operating_point(0);
+        {
+            auto& excitation = processedOnlyOperatingPoint.get_mutable_excitations_per_winding()[0];
+            SignalDescriptor processedOnlyCurrent;
+            processedOnlyCurrent.set_processed(excitation.get_current()->get_processed().value());
+            excitation.set_current(processedOnlyCurrent);
+            excitation.set_magnetizing_current(std::nullopt);
+            excitation.set_voltage(std::nullopt);
+        }
+        auto processedOnlyLosses = WindingLosses().calculate_losses(magnetic, processedOnlyOperatingPoint, temperature);
+        REQUIRE_THAT(processedOnlyLosses.get_winding_losses(),
+                     Catch::Matchers::WithinRel(processedLosses.get_winding_losses(), 0.01));
+
+        settings.reset();
+    }
+
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
         // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae
         // (Wojda 3/4 integer division, Payne FR vs FR-1, Lotfi current scaling).

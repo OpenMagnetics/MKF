@@ -1,6 +1,7 @@
 #include "MAS.hpp"
 #include "constructive_models/Wire.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "support/Exceptions.h"
 #include "support/Utils.h"
 
 #include "TestingUtils.h"
@@ -155,6 +156,57 @@ namespace {
         double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 3.3e-3;
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
+    }
+
+    TEST_CASE("Test_Winding_Ohmic_Losses_Unresolvable_Current", "[physical-model][ohmic-losses][bug]") {
+        // ABT #598: a current that IS specified but carries no processed RMS
+        // used to be silently read as 0 A, returning windingLosses=0.0 labelled
+        // "Ohm". Now the RMS is derived from the caller's own waveform when one
+        // exists, and only a current with nothing to derive from throws (a
+        // genuinely absent current still means zero current, as in
+        // Test_Winding_Ohmic_Losses_Two_Windings).
+        double temperature = 20;
+        std::vector<int64_t> numberTurns = {1};
+        std::vector<int64_t> numberParallels = {1};
+        auto winding = get_coil(numberTurns, numberParallels);
+        auto windingOhmicLosses = WindingOhmicLosses();
+
+        // Triangular +/-1 A waveform: RMS = 1/sqrt(3).
+        OperatingPoint waveformOnlyOperatingPoint;
+        {
+            OperatingPointExcitation excitation;
+            excitation.set_frequency(100000);
+            SignalDescriptor current;
+            Waveform waveform;
+            waveform.set_data({-1, 1, -1});
+            waveform.set_time(std::vector<double>({0, 5e-6, 10e-6}));
+            current.set_waveform(waveform);
+            excitation.set_current(current);
+            waveformOnlyOperatingPoint.set_excitations_per_winding({excitation});
+        }
+        double waveformOnlyLosses =
+            windingOhmicLosses.calculate_ohmic_losses(winding, waveformOnlyOperatingPoint, temperature).get_winding_losses();
+
+        auto rmsOperatingPoint = get_operating_point_with_dc_current({1 / std::sqrt(3.0)});
+        double rmsLosses =
+            windingOhmicLosses.calculate_ohmic_losses(winding, rmsOperatingPoint, temperature).get_winding_losses();
+        REQUIRE(waveformOnlyLosses > 0);
+        REQUIRE_THAT(waveformOnlyLosses, Catch::Matchers::WithinRel(rmsLosses, 0.01));
+
+        // A current with neither a resolvable RMS nor a waveform must throw.
+        OperatingPoint unresolvableOperatingPoint;
+        {
+            OperatingPointExcitation excitation;
+            excitation.set_frequency(100000);
+            SignalDescriptor current;
+            ProcessedWaveform processedWithoutRms;
+            processedWithoutRms.set_label(WaveformLabel::TRIANGULAR);
+            current.set_processed(processedWithoutRms);
+            excitation.set_current(current);
+            unresolvableOperatingPoint.set_excitations_per_winding({excitation});
+        }
+        REQUIRE_THROWS_AS(windingOhmicLosses.calculate_ohmic_losses(winding, unresolvableOperatingPoint, temperature),
+                          InvalidInputException);
     }
 
     TEST_CASE("Test_Winding_Ohmic_Losses_One_Turn", "[physical-model][ohmic-losses][smoke-test]") {

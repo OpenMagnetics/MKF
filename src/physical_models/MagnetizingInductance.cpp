@@ -706,12 +706,39 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
         if (next == numberTurnsPrimary) break;
         numberTurnsPrimary = next;
     }
-    // Ensure the operating inductance actually clears the target (integer
-    // rounding and real permeability rolloff can leave it just under).
-    for (int bump = 0; bump < 100; ++bump) {
-        double inductance = inductanceAtTurns(numberTurnsPrimary);
-        if (inductance <= 0 || inductance >= desiredMagnetizingInductance) break;
-        numberTurnsPrimary += 1;
+    if (preferredValue == DimensionalValues::MINIMUM) {
+        // The caller asked for a lower bound (e.g. the core adviser sizes
+        // against the minimum requirement): the target is a hard floor, so
+        // bump until the operating inductance actually clears it (integer
+        // rounding and real permeability rolloff can leave it just under).
+        for (int bump = 0; bump < 100; ++bump) {
+            double inductance = inductanceAtTurns(numberTurnsPrimary);
+            if (inductance <= 0 || inductance >= desiredMagnetizingInductance) break;
+            numberTurnsPrimary += 1;
+        }
+    }
+    else {
+        // A nominal/typical target is not a hard floor: integer turns cannot
+        // hit it exactly, so pick the neighbour with the smallest absolute
+        // error. Ceil-style bumping here accepted a +26.6% overshoot to avoid
+        // a -0.6% undershoot (ABT #600).
+        double bestError = std::numeric_limits<double>::infinity();
+        int bestTurns = numberTurnsPrimary;
+        for (int candidate : {numberTurnsPrimary - 1, numberTurnsPrimary, numberTurnsPrimary + 1}) {
+            if (candidate < 1) {
+                continue;
+            }
+            double inductance = inductanceAtTurns(candidate);
+            if (inductance <= 0) {
+                continue;
+            }
+            double error = std::abs(inductance - desiredMagnetizingInductance);
+            if (error < bestError) {
+                bestError = error;
+                bestTurns = candidate;
+            }
+        }
+        numberTurnsPrimary = bestTurns;
     }
 
     return std::max(1, numberTurnsPrimary);

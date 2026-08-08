@@ -54,6 +54,10 @@ std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint opera
         }
         return commonHarmonicIndexes;
     }
+    if (!operatingPoint.get_excitations_per_winding()[0].get_current() ||
+        !operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Primary excitation current is missing harmonics in Coil Mesher");
+    }
     if (commonHarmonicIndexes.size() > operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size() * _quickModeForManyHarmonicsThreshold) {
         return get_common_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold * 3);
     }
@@ -382,7 +386,11 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
         auto turn = turns[turnIndex];
         int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto wire = wirePerWinding[windingIndex];
-        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        auto excitationCurrent = operatingPoint.get_excitations_per_winding()[windingIndex].get_current();
+        if (!excitationCurrent || !excitationCurrent->get_harmonics()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) + " is missing harmonics in Coil Mesher");
+        }
+        auto harmonics = excitationCurrent->get_harmonics().value();
 
         auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_inducing_turn(turn, wire, turnIndex, turn.get_length(), magnetic.get_core());
 
@@ -492,7 +500,11 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, Ope
         auto turn = turns[turnIndex];
         int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto wire = wirePerWinding[windingIndex];
-        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        auto excitationCurrent = operatingPoint.get_excitations_per_winding()[windingIndex].get_current();
+        if (!excitationCurrent || !excitationCurrent->get_harmonics()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) + " is missing harmonics in Coil Mesher");
+        }
+        auto harmonics = excitationCurrent->get_harmonics().value();
 
         auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_induced_turn(turn, wire, turnIndex);
 

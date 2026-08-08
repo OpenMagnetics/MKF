@@ -169,6 +169,30 @@ double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magneti
 WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
 
+    // Normalise under-specified excitations the same way core losses does
+    // (Inputs(json) runs process()): derive waveform/harmonics/processed from
+    // the caller's own signal instead of throwing bad_optional_access or
+    // silently reading 0 A (ABT #598/#599). Fully-processed operating points
+    // pass through untouched.
+    bool needsProcessing = false;
+    for (const auto& excitation : operatingPoint.get_excitations_per_winding()) {
+        if (excitation.get_current() &&
+            (!excitation.get_current()->get_waveform() ||
+             !excitation.get_current()->get_harmonics() ||
+             !excitation.get_current()->get_processed() ||
+             !excitation.get_current()->get_processed()->get_rms())) {
+            needsProcessing = true;
+            break;
+        }
+    }
+    if (needsProcessing) {
+        auto magnetizingInductance = resolve_dimensional_values(
+            MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
+                magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+        operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance,
+                                                         magnetic.get_mutable_coil().get_turns_ratios());
+    }
+
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
     windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), _models.skinEffectModel);
 

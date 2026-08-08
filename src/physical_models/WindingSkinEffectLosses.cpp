@@ -220,6 +220,9 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     if (operatingPoint.get_excitations_per_winding().empty()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Operating point has no excitations for skin effect losses");
     }
+    if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Primary excitation has no current for skin effect losses");
+    }
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform() ||
         operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform()->get_data().size() == 0)
     {

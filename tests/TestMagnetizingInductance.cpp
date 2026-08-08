@@ -348,6 +348,55 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(numberTurns, max_error * expectedValue));
     }
 
+    TEST_CASE("Test_NumberTurns_Nominal_Picks_Closest_Not_Ceil", "[physical-model][magnetizing-inductance][bug]") {
+        // ABT #600: with a NOMINAL target the recommender ceil()-ed against the
+        // target, accepting a +26.6% overshoot to avoid a -0.6% undershoot
+        // (E 42/21/15 / 3C95 / 1 mm gap / 10 uH: L(8)=9.94 uH, L(9)=12.58 uH,
+        // and it returned 9). NOMINAL must pick the neighbour with the smallest
+        // absolute error; MINIMUM keeps floor-clearing semantics.
+        settings.reset();
+        clear_databases();
+
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double desiredMagnetizingInductance = 10e-6;
+        double frequency = 100000;
+        std::string coreShape = "E 42/21/15";
+        std::string coreMaterial = "3C95";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+
+        Core core;
+        OpenMagnetics::Coil winding;
+        OpenMagnetics::Inputs inputs;
+        MagnetizingInductance magnetizing_inductance("ZHANG");
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, -1, desiredMagnetizingInductance, gapping,
+                                coreShape, coreMaterial, core, winding, inputs);
+
+        int numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, winding, &inputs);
+
+        auto inductanceAt = [&](int n) {
+            winding.get_mutable_functional_description()[0].set_number_turns(n);
+            auto operatingPoint = inputs.get_operating_point(0);
+            return resolve_dimensional_values(
+                magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint)
+                    .get_magnetizing_inductance());
+        };
+
+        // Neither neighbour may deliver an inductance closer to the target.
+        double errorAtN = std::fabs(inductanceAt(numberTurns) - desiredMagnetizingInductance);
+        REQUIRE(errorAtN <= std::fabs(inductanceAt(numberTurns + 1) - desiredMagnetizingInductance));
+        if (numberTurns > 1) {
+            REQUIRE(errorAtN <= std::fabs(inductanceAt(numberTurns - 1) - desiredMagnetizingInductance));
+        }
+
+        // The same target requested as a hard floor (MINIMUM) must clear it.
+        int numberTurnsMinimum = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(
+            core, winding, &inputs, DimensionalValues::MINIMUM);
+        REQUIRE(numberTurnsMinimum >= numberTurns);
+        REQUIRE(inductanceAt(numberTurnsMinimum) >= desiredMagnetizingInductance * 0.999);
+    }
+
     TEST_CASE("Test_NumberTurns_Legacy_NoCoil_Overload_Matches_SingleWinding",
               "[physical-model][magnetizing-inductance][smoke-test]") {
         // The legacy 3-argument overload (no coil) must reproduce the coil-aware

@@ -1,5 +1,6 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/Resistivity.h"
+#include "processors/Inputs.h"
 #include "Constants.h"
 
 #include <cmath>
@@ -290,15 +291,37 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         }
         
         auto& exc = operatingPoint.get_excitations_per_winding()[windingIndex];
-        if (!exc.get_current() || !exc.get_current()->get_processed() || !exc.get_current()->get_processed()->get_rms()) {
-            // Missing RMS is handled the same way as a missing current spec (the guard
-            // used to stop at get_processed() and then .value() the RMS — a raw
-            // bad_optional_access instead of the documented absent-data path).
+        if (!exc.get_current()) {
+            // No current specified for this winding: genuinely zero current.
             dcCurrentPerWinding.push_back(0);
             continue;
         }
-
-        double currentRms = exc.get_current()->get_processed()->get_rms().value();
+        auto current = exc.get_current().value();
+        double currentRms;
+        if (current.get_processed() && current.get_processed()->get_rms()) {
+            currentRms = current.get_processed()->get_rms().value();
+        }
+        else if (current.get_waveform() && !current.get_waveform()->get_data().empty()) {
+            // A missing RMS is derivable from the caller's own waveform
+            // (ABT #598: it used to be silently read as 0 A, returning
+            // windingLosses=0.0 labelled "Ohm").
+            auto waveform = current.get_waveform().value();
+            if (!Inputs::is_waveform_sampled(waveform)) {
+                waveform = Inputs::calculate_sampled_waveform(waveform, exc.get_frequency());
+            }
+            // includeAdvancedData=true: the RMS is only computed on that path.
+            auto processed = Inputs::calculate_processed_data(waveform, exc.get_frequency(), true);
+            if (!processed.get_rms()) {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                    "Could not derive RMS from the waveform of winding " + std::to_string(windingIndex));
+            }
+            currentRms = processed.get_rms().value();
+        }
+        else {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                "Current for winding " + std::to_string(windingIndex) +
+                " has neither a processed RMS nor a waveform to derive it from");
+        }
         dcCurrentPerWinding.push_back(currentRms);
     }
 
