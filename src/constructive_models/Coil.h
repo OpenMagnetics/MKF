@@ -160,6 +160,15 @@ struct ConnectionReservedSpace {
     // (compute_connection_blocked_slots_per_layer) derives each crossed layer's freed slots from the
     // DEEPEST run crossing it. 0 = not an edge-routed run (radial exits, stubs, Z diagonals).
     double edgeDepth = 0;
+    // ABT #608: this marker's reserved slot is not empty space — it holds a REAL COPPER CROSSING of
+    // the XY plane: the wire arriving over the U tangential link, i.e. the start of the destination
+    // layer's first turn, which is what makes that layer account N_layer + 1. The Painter draws a
+    // wire of the owning winding at `coordinates` (under the blue link rectangle, which stays on top
+    // to mark where the connection comes from). It is NOT a turn in turnsDescription: its space is
+    // this marker's reservation, its copper length is the link's routedLength + the first turn, and
+    // its 3D geometry is the tangential segment MVB++ already builds — a turn entry would count each
+    // of those a second time.
+    bool isCrossingWire = false;
 };
 
 // The column a section's turns are wound around, in the winding frame (+x side of

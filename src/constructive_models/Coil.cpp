@@ -1365,6 +1365,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         tangential.routedLength = 0;  // space-only: the copper is the link drawn below
                         // A link outside the window (over-subscribed design) still costs its own wire.
                         tangential.edgeDepth = roundFloat(std::max(bandDepth, wireOuterHeight), 9);
+                        // The reserved slot holds the ARRIVING CROSSING — real copper in the XY
+                        // cross-section, drawn by the Painter under the blue link (ABT #608).
+                        tangential.isCrossingWire = true;
                         spaces.push_back(tangential);
                     }
 
