@@ -1552,6 +1552,132 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     return blockedSlotsPerLayer;
 }
 
+std::map<std::string, std::pair<double, double>> Coil::compute_u_landing_extra_depths() {
+    // See the header comment (ABT #608 final form): a non-first U layer's first station sits one
+    // wire OD past the tangential arrival — placement only, via the depth map, never a slot.
+    std::map<std::string, std::pair<double, double>> extraDepths;
+    if (!get_layers_description() || !get_turns_description()) {
+        return extraDepths;
+    }
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return extraDepths;
+    }
+    auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
+    std::array<double, 2> windowCenterPerAxis = {windingWindow.get_coordinates().value()[0],
+                                                 windingWindow.get_coordinates().value()[1]};
+    std::array<double, 2> windowHalfSizePerAxis = {windingWindow.get_width().value() / 2,
+                                                   windingWindow.get_height().value() / 2};
+    auto wires = get_wires();
+    auto layers = get_layers_description().value();
+    auto turns = get_turns_description().value();
+
+    // Layers in ELECTRICAL order (the order their turns are first wound), with each layer's turns.
+    std::map<std::string, size_t> layerElectricalOrder;
+    std::map<std::string, std::vector<const Turn*>> turnsByLayer;
+    size_t order = 0;
+    for (const auto& turn : turns) {
+        if (!turn.get_layer()) {
+            continue;
+        }
+        const std::string layerName = turn.get_layer().value();
+        if (layerElectricalOrder.find(layerName) == layerElectricalOrder.end()) {
+            layerElectricalOrder[layerName] = order++;
+        }
+        turnsByLayer[layerName].push_back(&turn);
+    }
+
+    // Conduction layers grouped by SECTION (the tangential link is a same-section transition),
+    // U-order sections only, in electrical order within the section.
+    std::map<std::string, std::vector<const Layer*>> sectionLayers;
+    for (const auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION || !layer.get_section()
+            || !layerElectricalOrder.count(layer.get_name())) {
+            continue;
+        }
+        if (get_winding_order(layer.get_section().value()) != WindingOrder::U) {
+            continue;
+        }
+        sectionLayers[layer.get_section().value()].push_back(&layer);
+    }
+    for (auto& [sectionName, sorted] : sectionLayers) {
+        std::sort(sorted.begin(), sorted.end(), [&](const Layer* a, const Layer* b) {
+            return layerElectricalOrder.at(a->get_name()) < layerElectricalOrder.at(b->get_name());
+        });
+        for (size_t i = 0; i + 1 < sorted.size(); ++i) {
+            const Layer& previous = *sorted[i];
+            const Layer& landing = *sorted[i + 1];
+            size_t windingIndex =
+                get_winding_index_by_name(landing.get_partial_windings()[0].get_winding());
+            // EXCEPTION (Alf): a landing turn that is the section's LAST stays level — nothing
+            // follows it, so it winds in the connection's own height. That is the section's final
+            // layer holding one turn per parallel and nothing more.
+            bool landingIsSectionEnd =
+                (i + 2 == sorted.size())
+                && turnsByLayer.at(landing.get_name()).size()
+                       <= size_t(get_number_parallels(windingIndex));
+            if (landingIsSectionEnd) {
+                continue;
+            }
+            size_t turnAxis = (landing.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+            double wireOD = (turnAxis == 1) ? wires[windingIndex].get_maximum_outer_height()
+                                            : wires[windingIndex].get_maximum_outer_width();
+            // The arrival height is the previous layer's ELECTRICALLY LAST turn (the one the
+            // tangential chunk leaves); with parallels wound side by side, the link leaves the
+            // turn nearest the landing edge, so take the extreme over the last bundle.
+            const auto& previousTurns = turnsByLayer.at(previous.get_name());
+            double lastY = previousTurns.back()->get_coordinates()[turnAxis];
+            bool landsAtHighSide = lastY >= landing.get_coordinates()[turnAxis];
+            double arrivalY = lastY;
+            int64_t numberParallels = get_number_parallels(windingIndex);
+            for (size_t k = previousTurns.size() - std::min<size_t>(previousTurns.size(),
+                                                                    size_t(numberParallels));
+                 k < previousTurns.size(); ++k) {
+                double y = previousTurns[k]->get_coordinates()[turnAxis];
+                arrivalY = landsAtHighSide ? std::max(arrivalY, y) : std::min(arrivalY, y);
+            }
+            // Place the landing layer's first station one OD past the arrival: the aligned spread
+            // puts the end station half an OD inside the span, so the span boundary sits at
+            // arrival -/+ OD/2. CAPPED to what the layer's own turns leave free: a FULL layer
+            // cannot descend without its far-end turn overflowing into the window edge or the
+            // terminal-lead rows (pigeonhole — the drop and the turn count cannot both hold, and
+            // capacity is deliberately NOT charged, per the N_layer+1 retraction). Physically
+            // that IS the serpentine: where the window has slack the landing descends, and a
+            // packed layer lands level with the previous layer's last turn. The cap never goes
+            // below the depth already accumulated (lead rows keep their reservation).
+            double windowHigh = windowCenterPerAxis[turnAxis] + windowHalfSizePerAxis[turnAxis];
+            double windowLow = windowCenterPerAxis[turnAxis] - windowHalfSizePerAxis[turnAxis];
+            double copperNeeded = double(turnsByLayer.at(landing.get_name()).size()) * wireOD;
+            std::pair<double, double> accumulated{0.0, 0.0};
+            auto accumulatedIt = _connectionBlockedDepthPerLayer.find(landing.get_name());
+            if (accumulatedIt != _connectionBlockedDepthPerLayer.end()) {
+                accumulated = accumulatedIt->second;
+            }
+            auto& edges = extraDepths[landing.get_name()];
+            if (landsAtHighSide) {
+                double ideal = windowHigh - arrivalY + wireOD / 2;
+                double maxAllowed = (windowHigh - windowLow) - accumulated.second - copperNeeded;
+                double depth = std::max(accumulated.first, std::min(ideal, maxAllowed));
+                edges.first = std::max(edges.first, roundFloat(depth, 9));
+            }
+            else {
+                double ideal = arrivalY - windowLow + wireOD / 2;
+                double maxAllowed = (windowHigh - windowLow) - accumulated.first - copperNeeded;
+                double depth = std::max(accumulated.second, std::min(ideal, maxAllowed));
+                edges.second = std::max(edges.second, roundFloat(depth, 9));
+            }
+            if (std::getenv("MKF_BLOCKING_DIAG")) {
+                std::cerr << "[u-landing] " << landing.get_name() << " arrival=" << arrivalY * 1e3
+                          << (landsAtHighSide ? " (top)" : " (bottom)")
+                          << " accumulated={" << accumulated.first * 1e3 << ","
+                          << accumulated.second * 1e3 << "} copper=" << copperNeeded * 1e3
+                          << " -> depths={" << edges.first * 1e3 << "," << edges.second * 1e3 << "}\n";
+            }
+        }
+    }
+    return extraDepths;
+}
+
 void Coil::redistribute_section_turns_for_blocking() {
     if (!get_sections_description()) {
         return;
@@ -1695,14 +1821,22 @@ void Coil::align_blocked_layer_turns() {
         // one — in both cases keeping every turn clear of the slots the connection leads route through.
         // delimit re-centres each layer over the full window height, which would otherwise drop the edge
         // turns back under the leads, so this runs after delimit and overrides its vertical placement.
-        auto found = _connectionBlockedSlotsPerLayer.find(layer.get_name());
-        if (found == _connectionBlockedSlotsPerLayer.end()) {
-            continue;  // unblocked layer: leave delimit's centring (fills the full height)
+        // Keyed on the DEPTHS, not the slot counts: a U landing layer (ABT #608 final form) carries
+        // a placement-only depth with NO blocked slots — its turns still must move off the arrival
+        // band, exactly as lead-crossed layers move off the lead rows. The effective depth per edge
+        // is the max of the (monotone) marker depths and the (recomputed) U landing overlay.
+        std::pair<double, double> effectiveDepths{0.0, 0.0};
+        auto foundDepths = _connectionBlockedDepthPerLayer.find(layer.get_name());
+        if (foundDepths != _connectionBlockedDepthPerLayer.end()) {
+            effectiveDepths = foundDepths->second;
         }
-        uint64_t blockedHighSide = found->second.first;
-        uint64_t blockedLowSide = found->second.second;
-        if (blockedHighSide == 0 && blockedLowSide == 0) {
-            continue;
+        auto foundLanding = _uLandingDepthPerLayer.find(layer.get_name());
+        if (foundLanding != _uLandingDepthPerLayer.end()) {
+            effectiveDepths.first = std::max(effectiveDepths.first, foundLanding->second.first);
+            effectiveDepths.second = std::max(effectiveDepths.second, foundLanding->second.second);
+        }
+        if (effectiveDepths.first <= 1e-12 && effectiveDepths.second <= 1e-12) {
+            continue;  // untouched layer: leave delimit's centring (fills the full height)
         }
         size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
         double wirePitch = (turnAxis == 1) ? wires[windingIndex].get_maximum_outer_height()
@@ -1730,7 +1864,7 @@ void Coil::align_blocked_layer_turns() {
         // secondary rounded to 2 slots = 1.358 mm, floating the secondary 0.265 mm short of the
         // space it was actually free to reach. The turns may hug the runs exactly — edgeDepth
         // already includes the inter-winding insulation.
-        const auto& blockedDepths = _connectionBlockedDepthPerLayer.at(layer.get_name());
+        const auto& blockedDepths = effectiveDepths;
         double spanLow = roundFloat(windowLowSide + blockedDepths.second, 9);
         double spanHigh = roundFloat(windowHighSide - blockedDepths.first, 9);
         size_t numberTurnsInLayer = layerTurns.size();
@@ -2406,6 +2540,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             _connectionBlockedSlotsPerLayer.clear();
             _connectionBlockedDepthPerLayer.clear();
             _connectionBlockedRoomPerLayer.clear();
+            _uLandingDepthPerLayer.clear();
 
             // Special case: toroid with one physical turn whose wire OD
             // exceeds the inner-hole radius. The wire cannot be wound on
@@ -2515,6 +2650,30 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                     accumulated.second = edges.second;
                     changed = true;
                 }
+            }
+            // ABT #608 (final form): U landing placement — a non-first U layer's span excludes one
+            // wire OD past the tangential arrival, so its first station descends from the arrival
+            // instead of sitting level with it. Depths ONLY (align spreads against them): no slot
+            // counts, no capacity, no markers. REPLACED each iteration, not max-merged: the depth
+            // is capped by the layer's current turn count, which the redistribution moves — see
+            // _uLandingDepthPerLayer.
+            {
+                auto freshLanding = compute_u_landing_extra_depths();
+                if (freshLanding.size() != _uLandingDepthPerLayer.size()) {
+                    changed = true;
+                }
+                else {
+                    for (const auto& [layerName, edges] : freshLanding) {
+                        auto previous = _uLandingDepthPerLayer.find(layerName);
+                        if (previous == _uLandingDepthPerLayer.end()
+                            || std::abs(edges.first - previous->second.first) > 1e-9
+                            || std::abs(edges.second - previous->second.second) > 1e-9) {
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+                _uLandingDepthPerLayer = std::move(freshLanding);
             }
             if (!changed) {
                 break;

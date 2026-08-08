@@ -207,6 +207,16 @@ class Coil : public MAS::Coil {
         // align_blocked_layer_turns lets turns reach exactly to the crossing runs instead of stopping
         // at the whole-slot grid, which parked up to one pitch of dead band against every run row.
         std::map<std::string, std::pair<double, double>> _connectionBlockedDepthPerLayer;
+        // ABT #608 (final form): the U landing placement depths, kept SEPARATE from the marker
+        // depths above because they are RECOMPUTED (replaced) each blocking iteration, never
+        // max-merged: the depth is capped by the layer's own turn count (a full layer cannot
+        // descend without overflowing), and that count moves while the fixpoint redistributes —
+        // an early uncapped value locked in by a monotone merge squeezed the span below the
+        // layer's copper and pushed turns into the terminal-lead rows. Converges because the
+        // slot counts (monotone) pin the per-layer copper, after which this map is a pure
+        // function of settled state. align_blocked_layer_turns spreads against the element-wise
+        // max of both maps.
+        std::map<std::string, std::pair<double, double>> _uLandingDepthPerLayer;
         // ABT #430: the room each layer ACTUALLY surrendered to those leads, in metres along its turn
         // axis, as applied by wind_by_rectangular_layers (blocked slots * the layer's own wire, after
         // the one-slot-minimum cap). The layer's extent — and so its filling factor — already excludes
@@ -477,6 +487,19 @@ class Coil : public MAS::Coil {
         // complete blocked layers and the remainder is pushed to the outermost section. Single
         // parallel only (bifilar needs per-parallel connections). Called in the wind() blocking pass.
         void redistribute_section_turns_for_blocking();
+        // ABT #608 (final form, Alf 2026-08-08): in a U (serpentine) section, every layer after the
+        // first receives its wire over the TANGENTIAL link from the previous layer's last turn, and
+        // that landing turn "must already include the decrease of the pitch": it starts at the
+        // arrival height and its own revolution descends, so its STATION sits one wire OD into the
+        // layer from the arrival — NOT level with it (level is legal only when the landing turn is
+        // the section's last, where nothing follows it). This returns, per landing layer, the extra
+        // {top, bottom} span depth (from the window edge on the layer's turn axis) that places its
+        // first station exactly one OD past the arrival. It is PLACEMENT ONLY — merged into
+        // _connectionBlockedDepthPerLayer (which align_blocked_layer_turns spreads against), never
+        // into the slot counts: no capacity is charged, no reserved-space marker is emitted, no
+        // filling factor moves (the N_layer+1 reservation model was retracted — the arrival IS the
+        // landing turn's own copper, already accounted).
+        std::map<std::string, std::pair<double, double>> compute_u_landing_extra_depths();
         // After delimit (which re-centres every layer), shift each blocked conduction layer's turns to
         // the UNblocked edge, so the slots freed by turn-blocking sit exactly where the connection
         // leads run (top edge for top-crossing leads, bottom for bottom) and no window space is wasted
