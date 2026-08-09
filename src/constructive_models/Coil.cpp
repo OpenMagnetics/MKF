@@ -877,6 +877,151 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         }
     }
 
+    // Terminal lead emissions are collected for ALL windings and sorted GLOBALLY before any row
+    // is allocated (Alf, 2026-08-09, on 25_psps: sections were displaced because a lead whose span
+    // never reaches them forced another lead's row deeper). Primary key: WIDEST-CROSSING FIRST —
+    // the lead crossing the most layers takes the shallowest row, so the fewest layers pay the
+    // deepest depths and a narrow lead (an exit connecting near the border) stacks below without
+    // charging inner sections. Groups (same window/edge/crossed-set) then keep first-seen order,
+    // and WITHIN a group leads emit nearest-edge-turn first (the ABT #577 rule, unchanged).
+    struct LeadEmission {
+        Turn turn;
+        int64_t parallel;
+        bool atTop;
+        std::string crossedSignature;
+        size_t crossedCount;
+        size_t groupRank;      // first emission index of this lead's group, keeps groups in order
+        double edgeDistance;   // ordering WITHIN a group: nearest the edge first
+        std::string windingName;
+        double wireW;
+        double wireH;
+    };
+    std::vector<LeadEmission> allEmissions;
+    auto crossedLayerCountAndSignature = [&](const Turn& connectingTurn) {
+        std::string signature;
+        size_t count = 0;
+        double turnX = connectingTurn.get_coordinates()[0];
+        for (const auto& crossed : allLayers) {
+            double crossedX = crossed.get_coordinates()[0];
+            if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
+                signature += crossed.get_name() + "|";
+                ++count;
+            }
+        }
+        return std::make_pair(count, signature);
+    };
+    auto addTerminalLead = [&](const std::string& windingName, double wireOuterWidth,
+                           double wireOuterHeight, const Turn& connectingTurn, int64_t parallel) {
+        double turnX = connectingTurn.get_coordinates()[0];
+        double turnY = connectingTurn.get_coordinates()[1];
+        if (windowOuterX <= turnX) {
+            return;
+        }
+        // The layers the lead routes OVER (outward of the connecting turn) to reach the border.
+        std::vector<const Layer*> crossedLayers;
+        for (const auto& crossed : allLayers) {
+            double crossedX = crossed.get_coordinates()[0];
+            // No window clip: a layer OUTSIDE the window is still crossed and still
+            // squeezed (see windowOuterX above).
+            if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
+                crossedLayers.push_back(&crossed);
+            }
+        }
+
+        if (crossedLayers.empty()) {
+            // Outermost end: the lead crosses nothing, so it just leaves radially at its OWN axial
+            // level straight to the border — no edge routing, no vertical stub (which would cross its
+            // own column when the end sits mid-window, e.g. a half-full outer interleaved section).
+            ConnectionReservedSpace lead;
+            lead.isTerminal = true;
+            lead.winding = windingName;
+            lead.parallel = parallel;
+            lead.section = connectingTurn.get_section().value_or("");
+            lead.layer = "";
+            lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), roundFloat(turnY, 9)};
+            lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
+            lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the radial run
+            spaces.push_back(lead);
+            return;
+        }
+
+        // Crosses outer layers: route along the window edge NEAREST the end so the lead sits in the
+        // extreme slots that turn-blocking frees on the crossed layers. A short stub bridges the end
+        // turn up/down to that edge within its own column. ABT #229: the row on that edge comes from
+        // the per-edge allocator, so each parallel's lead is its own line. Allocating in parallel
+        // order matches the order the parallels' end turns stack from the edge, so for uniform wire
+        // the k-th parallel's lead lines up with its own turn and the stub degenerates.
+        bool turnAtTop = (turnY >= windowCenterY);
+        // The lead occupies its row from the connecting turn's stub out to the border.
+        auto [edgeY, runDepth] = allocateEdgeRow(windowIndexOf(connectingTurn.get_section().value_or("")),
+                                                 turnAtTop, wireOuterHeight,
+                                                 turnX - wireOuterWidth / 2, windowOuterX);
+        for (const Layer* crossed : crossedLayers) {
+            ConnectionReservedSpace space;
+            space.isTerminal = true;
+            space.winding = windingName;
+            space.parallel = parallel;
+            space.section = crossed->get_section().value_or("");
+            space.layer = crossed->get_name();
+            space.coordinates = {crossed->get_coordinates()[0], edgeY};
+            space.dimensions = {wireOuterWidth, wireOuterHeight};
+            // ABT #240: a lead crossing a layer of ANOTHER winding must clear that winding's
+            // turns by the mechanical insulation that separates the two windings — the same
+            // insulation the coil already builds between them. Without it the reserved band is
+            // exactly one wire deep, so the crossed layer's extreme turn ends up flush against
+            // the lead (measured separation 7.6e-13 um on 16_coupled_inductor_e2513_dmr95):
+            // legal for same-winding packing, where adjacent turns touch by convention, but two
+            // different windings may not touch.
+            //
+            // The clearance is NOT a margin invented here: it is the summed thickness of the
+            // insulation sections the coil placed radially between the connecting turn and the
+            // crossed layer, read back through get_insulation_section_thickness.
+            double interWindingInsulation = 0;
+            if (!crossed->get_partial_windings().empty() &&
+                crossed->get_partial_windings()[0].get_winding() != windingName) {
+                double crossedX = crossed->get_coordinates()[0];
+                for (const auto& insulationSection : get_sections_by_type(ElectricalType::INSULATION)) {
+                    // Sections come back in the REAL frame; turnX/crossedX live in the virtual
+                    // frame, which is the x<->y transpose of it for contiguous layers.
+                    double insulationX = layersAreContiguous ? insulationSection.get_coordinates()[1]
+                                                             : insulationSection.get_coordinates()[0];
+                    if (insulationX > turnX && insulationX < crossedX) {
+                        interWindingInsulation +=
+                            get_insulation_section_thickness(insulationSection.get_name());
+                    }
+                }
+            }
+            space.edgeDepth = runDepth + interWindingInsulation;
+            space.routedLength = 0;  // space-only squeeze: the lead's copper is the drawn stub + edge run
+            spaces.push_back(space);
+        }
+        if (std::abs(edgeY - turnY) > wireOuterHeight / 2) {
+            double stubDirection = (edgeY >= turnY) ? 1.0 : -1.0;
+            double stubFarEnd = edgeY + stubDirection * wireOuterHeight / 2;
+            ConnectionReservedSpace stub;
+            stub.isTerminal = true;
+            stub.winding = windingName;
+            stub.parallel = parallel;
+            stub.section = connectingTurn.get_section().value_or("");
+            stub.layer = "";
+            stub.coordinates = {turnX, roundFloat((turnY + stubFarEnd) / 2, 9)};
+            stub.dimensions = {wireOuterWidth, roundFloat(std::abs(stubFarEnd - turnY), 9)};
+            stub.routedLength = roundFloat(std::abs(stubFarEnd - turnY), 9);  // the vertical climb to the edge row
+            spaces.push_back(stub);
+        }
+        ConnectionReservedSpace lead;
+        lead.isTerminal = true;
+        lead.winding = windingName;
+        lead.parallel = parallel;
+        lead.section = connectingTurn.get_section().value_or("");
+        lead.layer = "";
+        lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), edgeY};
+        lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
+        lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the edge run to the border
+        lead.edgeDepth = runDepth;
+        spaces.push_back(lead);
+    };
+
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         auto windingName = get_functional_description()[windingIndex].get_name();
         // Wire footprint in the virtual frame: width is along the layer axis, height along the turn
@@ -896,116 +1041,6 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         // extreme edge, (2) is drawn as an L — a short vertical stub from the connecting turn up/down to
         // its own layer's edge, then a horizontal run along the edge to the border. Routing at the
         // connecting turn's interior level instead would clip the wound turns of the layers it crosses.
-        auto addTerminalLead = [&](const Turn& connectingTurn, int64_t parallel) {
-            double turnX = connectingTurn.get_coordinates()[0];
-            double turnY = connectingTurn.get_coordinates()[1];
-            if (windowOuterX <= turnX) {
-                return;
-            }
-            // The layers the lead routes OVER (outward of the connecting turn) to reach the border.
-            std::vector<const Layer*> crossedLayers;
-            for (const auto& crossed : allLayers) {
-                double crossedX = crossed.get_coordinates()[0];
-                // No window clip: a layer OUTSIDE the window is still crossed and still
-                // squeezed (see windowOuterX above).
-                if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
-                    crossedLayers.push_back(&crossed);
-                }
-            }
-
-            if (crossedLayers.empty()) {
-                // Outermost end: the lead crosses nothing, so it just leaves radially at its OWN axial
-                // level straight to the border — no edge routing, no vertical stub (which would cross its
-                // own column when the end sits mid-window, e.g. a half-full outer interleaved section).
-                ConnectionReservedSpace lead;
-                lead.isTerminal = true;
-                lead.winding = windingName;
-                lead.parallel = parallel;
-                lead.section = connectingTurn.get_section().value_or("");
-                lead.layer = "";
-                lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), roundFloat(turnY, 9)};
-                lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
-                lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the radial run
-                spaces.push_back(lead);
-                return;
-            }
-
-            // Crosses outer layers: route along the window edge NEAREST the end so the lead sits in the
-            // extreme slots that turn-blocking frees on the crossed layers. A short stub bridges the end
-            // turn up/down to that edge within its own column. ABT #229: the row on that edge comes from
-            // the per-edge allocator, so each parallel's lead is its own line. Allocating in parallel
-            // order matches the order the parallels' end turns stack from the edge, so for uniform wire
-            // the k-th parallel's lead lines up with its own turn and the stub degenerates.
-            bool turnAtTop = (turnY >= windowCenterY);
-            // The lead occupies its row from the connecting turn's stub out to the border.
-            auto [edgeY, runDepth] = allocateEdgeRow(windowIndexOf(connectingTurn.get_section().value_or("")),
-                                                     turnAtTop, wireOuterHeight,
-                                                     turnX - wireOuterWidth / 2, windowOuterX);
-            for (const Layer* crossed : crossedLayers) {
-                ConnectionReservedSpace space;
-                space.isTerminal = true;
-                space.winding = windingName;
-                space.parallel = parallel;
-                space.section = crossed->get_section().value_or("");
-                space.layer = crossed->get_name();
-                space.coordinates = {crossed->get_coordinates()[0], edgeY};
-                space.dimensions = {wireOuterWidth, wireOuterHeight};
-                // ABT #240: a lead crossing a layer of ANOTHER winding must clear that winding's
-                // turns by the mechanical insulation that separates the two windings — the same
-                // insulation the coil already builds between them. Without it the reserved band is
-                // exactly one wire deep, so the crossed layer's extreme turn ends up flush against
-                // the lead (measured separation 7.6e-13 um on 16_coupled_inductor_e2513_dmr95):
-                // legal for same-winding packing, where adjacent turns touch by convention, but two
-                // different windings may not touch.
-                //
-                // The clearance is NOT a margin invented here: it is the summed thickness of the
-                // insulation sections the coil placed radially between the connecting turn and the
-                // crossed layer, read back through get_insulation_section_thickness.
-                double interWindingInsulation = 0;
-                if (!crossed->get_partial_windings().empty() &&
-                    crossed->get_partial_windings()[0].get_winding() != windingName) {
-                    double crossedX = crossed->get_coordinates()[0];
-                    for (const auto& insulationSection : get_sections_by_type(ElectricalType::INSULATION)) {
-                        // Sections come back in the REAL frame; turnX/crossedX live in the virtual
-                        // frame, which is the x<->y transpose of it for contiguous layers.
-                        double insulationX = layersAreContiguous ? insulationSection.get_coordinates()[1]
-                                                                 : insulationSection.get_coordinates()[0];
-                        if (insulationX > turnX && insulationX < crossedX) {
-                            interWindingInsulation +=
-                                get_insulation_section_thickness(insulationSection.get_name());
-                        }
-                    }
-                }
-                space.edgeDepth = runDepth + interWindingInsulation;
-                space.routedLength = 0;  // space-only squeeze: the lead's copper is the drawn stub + edge run
-                spaces.push_back(space);
-            }
-            if (std::abs(edgeY - turnY) > wireOuterHeight / 2) {
-                double stubDirection = (edgeY >= turnY) ? 1.0 : -1.0;
-                double stubFarEnd = edgeY + stubDirection * wireOuterHeight / 2;
-                ConnectionReservedSpace stub;
-                stub.isTerminal = true;
-                stub.winding = windingName;
-                stub.parallel = parallel;
-                stub.section = connectingTurn.get_section().value_or("");
-                stub.layer = "";
-                stub.coordinates = {turnX, roundFloat((turnY + stubFarEnd) / 2, 9)};
-                stub.dimensions = {wireOuterWidth, roundFloat(std::abs(stubFarEnd - turnY), 9)};
-                stub.routedLength = roundFloat(std::abs(stubFarEnd - turnY), 9);  // the vertical climb to the edge row
-                spaces.push_back(stub);
-            }
-            ConnectionReservedSpace lead;
-            lead.isTerminal = true;
-            lead.winding = windingName;
-            lead.parallel = parallel;
-            lead.section = connectingTurn.get_section().value_or("");
-            lead.layer = "";
-            lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), edgeY};
-            lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
-            lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the edge run to the border
-            lead.edgeDepth = runDepth;
-            spaces.push_back(lead);
-        };
         // ABT #577: the order leads are EMITTED is the order allocateEdgeRow hands out the
         // stacked rows, so it decides which lead is drawn on which row. In parallel order the
         // rows come out REVERSED against the turns: at the top edge the allocator gives
@@ -1028,26 +1063,6 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         // exits on the outermost, so they cross DIFFERENT layers; permuting those changed each
         // layer's reserved depth and MOVED THE TURNS: the 24-design sweep fell 18/25 -> 11/25.
         // Reverted in cca5a9e5; this is the surgical version.)
-        struct LeadEmission {
-            Turn turn;
-            int64_t parallel;
-            bool atTop;
-            std::string crossedSignature;
-            size_t groupRank;      // first emission index of this lead's group, keeps groups in order
-            double edgeDistance;   // ordering WITHIN a group: nearest the edge first
-        };
-        std::vector<LeadEmission> emissions;
-        auto crossedSignatureOf = [&](const Turn& connectingTurn) {
-            std::string signature;
-            double turnX = connectingTurn.get_coordinates()[0];
-            for (const auto& crossed : allLayers) {
-                double crossedX = crossed.get_coordinates()[0];
-                if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
-                    signature += crossed.get_name() + "|";
-                }
-            }
-            return signature;
-        };
         for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
             auto key = std::make_pair(windingName, parallel);
             for (bool entrance : {true, false}) {
@@ -1059,34 +1074,54 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 const Turn& connectingTurn = source.at(key);
                 double turnY = connectingTurn.get_coordinates()[1];
                 bool atTop = (turnY >= windowCenterY);
-                emissions.push_back({connectingTurn, parallel, atTop,
-                                     crossedSignatureOf(connectingTurn), 0,
-                                     atTop ? windowTopY - turnY : turnY - windowBottomY});
+                auto [crossedCount, crossedSignature] = crossedLayerCountAndSignature(connectingTurn);
+                allEmissions.push_back({connectingTurn, parallel, atTop, crossedSignature,
+                                        crossedCount, 0,
+                                        atTop ? windowTopY - turnY : turnY - windowBottomY,
+                                        windingName, wireOuterWidth, wireOuterHeight});
             }
         }
+    }
+    {
         std::map<std::tuple<size_t, bool, std::string>, size_t> groupRankByKey;
-        for (size_t i = 0; i < emissions.size(); ++i) {
-            auto groupKey = std::make_tuple(windowIndexOf(emissions[i].turn.get_section().value_or("")),
-                                            emissions[i].atTop, emissions[i].crossedSignature);
+        for (size_t i = 0; i < allEmissions.size(); ++i) {
+            auto groupKey = std::make_tuple(windowIndexOf(allEmissions[i].turn.get_section().value_or("")),
+                                            allEmissions[i].atTop, allEmissions[i].crossedSignature);
             auto found = groupRankByKey.find(groupKey);
             if (found == groupRankByKey.end()) {
                 groupRankByKey[groupKey] = i;
-                emissions[i].groupRank = i;
+                allEmissions[i].groupRank = i;
             }
             else {
-                emissions[i].groupRank = found->second;
+                allEmissions[i].groupRank = found->second;
             }
         }
-        std::stable_sort(emissions.begin(), emissions.end(),
+        std::stable_sort(allEmissions.begin(), allEmissions.end(),
                          [](const LeadEmission& a, const LeadEmission& b) {
+                             if (a.crossedCount != b.crossedCount) {
+                                 return a.crossedCount > b.crossedCount;  // widest-crossing first
+                             }
                              if (a.groupRank != b.groupRank) {
                                  return a.groupRank < b.groupRank;
                              }
                              return a.edgeDistance < b.edgeDistance;
                          });
-        for (const auto& emission : emissions) {
-            addTerminalLead(emission.turn, emission.parallel);
+        for (const auto& emission : allEmissions) {
+            addTerminalLead(emission.windingName, emission.wireW, emission.wireH,
+                            emission.turn, emission.parallel);
         }
+    }
+
+    // SECOND PASS: inter-layer and inter-section links, after every winding's terminal rows are
+    // allocated, so the shared continuation bands stack against the final terminal occupancy.
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        auto windingName = get_functional_description()[windingIndex].get_name();
+        double wireOuterWidth = wires[windingIndex].get_maximum_outer_width();
+        double wireOuterHeight = wires[windingIndex].get_maximum_outer_height();
+        if (layersAreContiguous) {
+            std::swap(wireOuterWidth, wireOuterHeight);
+        }
+        int64_t numberParallels = int64_t(get_number_parallels(windingIndex));
 
         std::vector<Layer> windingLayers;
         for (const auto& layer : allLayers) {

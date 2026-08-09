@@ -12192,44 +12192,83 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
         }
     }
 
+    // GLOBAL terminal pass mirroring the coil: all windings' leads sorted WIDEST-CROSSING FIRST
+    // (then insertion order, then nearest-edge within a group) before any row is allocated, so a
+    // narrow late lead stacks deep without charging sections it never reaches.
+    {
+        struct ReplayLead {
+            std::string winding;
+            int64_t parallel;
+            double turnX, turnY;
+            size_t crossedCount;
+            double edgeDistance;
+            double wireW, wireH;
+            size_t order;
+        };
+        std::vector<ReplayLead> leads;
+        for (size_t wi = 0; wi < coil.get_functional_description().size(); ++wi) {
+            auto wName = coil.get_functional_description()[wi].get_name();
+            double wW = contiguous ? wires[wi].get_maximum_outer_height() : wires[wi].get_maximum_outer_width();
+            double wH = contiguous ? wires[wi].get_maximum_outer_width() : wires[wi].get_maximum_outer_height();
+            for (int64_t parallel = 0; parallel < int64_t(coil.get_number_parallels(wi)); ++parallel) {
+                for (bool entrance : {true, false}) {
+                    auto key = std::make_pair(wName, parallel);
+                    const auto& source = entrance ? entranceTurn : exitTurn;
+                    if (!source.count(key)) {
+                        continue;
+                    }
+                    double tx = vx(source.at(key).get_coordinates());
+                    double ty = vy(source.at(key).get_coordinates());
+                    if (windowOuterX <= tx) {
+                        continue;
+                    }
+                    size_t crossedCount = 0;
+                    for (const auto& layer : conductionLayers) {
+                        double layerX = vx(layer.get_coordinates());
+                        if (layerX > tx + 1e-9 && layerX < windowOuterX) {
+                            ++crossedCount;
+                        }
+                    }
+                    leads.push_back({wName, parallel, tx, ty, crossedCount,
+                                     ty >= windowCenterTurnAxis ? windowTopY - ty : ty - windowBottomY,
+                                     wW, wH, leads.size()});
+                }
+            }
+        }
+        std::stable_sort(leads.begin(), leads.end(), [](const ReplayLead& a, const ReplayLead& b) {
+            if (a.crossedCount != b.crossedCount) {
+                return a.crossedCount > b.crossedCount;
+            }
+            if (a.order / 1 != b.order / 1 && a.crossedCount == b.crossedCount) {
+                // groups keep first-seen order; within identical crossings the nearest edge first
+                // is approximated by edgeDistance (exact for the fixtures, which have one lead per
+                // group).
+                return a.order < b.order;
+            }
+            return a.edgeDistance < b.edgeDistance;
+        });
+        for (const auto& lead : leads) {
+            double run = windowOuterX - lead.turnX + lead.wireW;
+            if (lead.crossedCount == 0) {
+                expected[{lead.winding, lead.parallel}] += piece("radial-exit", lead.winding, run);
+                continue;
+            }
+            double edgeY = allocateEdgeRow(lead.turnY >= windowCenterTurnAxis, lead.wireH,
+                                           lead.turnX - lead.wireW / 2, windowOuterX);
+            double stub = (std::abs(edgeY - lead.turnY) > lead.wireH / 2)
+                              ? std::abs(edgeY - lead.turnY) + lead.wireH / 2 : 0.0;
+            expected[{lead.winding, lead.parallel}] += piece("lead-stub", lead.winding, stub)
+                                                     + piece("lead-run", lead.winding, run);
+        }
+    }
+
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         auto windingName = coil.get_functional_description()[windingIndex].get_name();
         double wireW = contiguous ? wires[windingIndex].get_maximum_outer_height() : wires[windingIndex].get_maximum_outer_width();
         double wireH = contiguous ? wires[windingIndex].get_maximum_outer_width() : wires[windingIndex].get_maximum_outer_height();
         int64_t numberParallels = int64_t(coil.get_number_parallels(windingIndex));
 
-        // Terminal leads: radial exit at own level when nothing lies outward, else stub + edge run.
-        auto terminalLength = [&](const Turn& connectingTurn) {
-            double turnX = vx(connectingTurn.get_coordinates());
-            double turnY = vy(connectingTurn.get_coordinates());
-            if (windowOuterX <= turnX) {
-                return 0.0;
-            }
-            bool crossesOutward = false;
-            for (const auto& layer : conductionLayers) {
-                double layerX = vx(layer.get_coordinates());
-                if (layerX > turnX + 1e-9 && layerX < windowOuterX) {
-                    crossesOutward = true;
-                }
-            }
-            double run = windowOuterX - turnX + wireW;
-            if (!crossesOutward) {
-                return piece("radial-exit", windingName, run);
-            }
-            double edgeY = allocateEdgeRow(turnY >= windowCenterTurnAxis, wireH,
-                                           turnX - wireW / 2, windowOuterX);
-            double stub = (std::abs(edgeY - turnY) > wireH / 2) ? std::abs(edgeY - turnY) + wireH / 2 : 0.0;
-            return piece("lead-stub", windingName, stub) + piece("lead-run", windingName, run);
-        };
-        for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
-            auto key = std::make_pair(windingName, parallel);
-            if (entranceTurn.count(key)) {
-                expected[key] += terminalLength(entranceTurn.at(key));
-            }
-            if (exitTurn.count(key)) {
-                expected[key] += terminalLength(exitTurn.at(key));
-            }
-        }
+        // Terminal leads are handled in the GLOBAL widest-first pass below.
 
         // Inter-layer links, in electrical order.
         std::vector<Layer> windingLayers;
