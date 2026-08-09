@@ -11080,8 +11080,12 @@ static int coincident_connection_runs(OpenMagnetics::Coil& coil) {
         if (s.dimensions[1] > s.dimensions[0]) {
             continue;  // vertical stub/link — azimuthally separated in 3D, not a row
         }
-        if (!s.isTerminal && s.edgeDepth <= 0) {
-            continue;  // U adjacent-layer turnaround stretch at turn level — not edge-routed
+        if (!s.isTerminal) {
+            // ABT #615: inter-section continuation runs SHARE one band by design — in 3D they are
+            // tangential chords separated in AZIMUTH, so coincident 2D rectangles are the model,
+            // not a defect. Only terminal leads still demand one row per conductor (they fan on
+            // one connection plane).
+            continue;
         }
         runs.push_back(&s);
     }
@@ -11670,27 +11674,39 @@ TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Dragback", "[constructive-mod
     }
     REQUIRE(windingsPresent.size() == 2);
 
-    // (a) One YZ-face dragback per winding (each has exactly one inter-section return), with the
-    // bump and endpoints derived from the real geometry.
+    // (a) ABT #615 (supersedes #492): the inter-section return routes IN-WINDOW along the shared
+    // top-edge band — no FRONT_YZ face dragbacks exist any more.
     auto groups = front_yz_dragback_groups(coil);
-    REQUIRE(groups.size() == 2);
-    check_z_dragback_geometry(coil, groups);
+    REQUIRE(groups.empty());
 
-    // (b) Z returns take NOTHING from the winding window: no in-window marker names a layer for a
-    // non-U continuation, and the layout equals the no-Z-blocking layout of pre-#492 main —
-    // pinned per-layer turn counts, radially ordered (measured on main @ 0cba81d6, where Z markers
-    // existed but were skipped by blocking; identical because the dragback removes them entirely).
-    CHECK(z_return_window_markers(coil) == 0);
-    auto conductionLayers = coil.get_layers_description_conduction();
-    std::sort(conductionLayers.begin(), conductionLayers.end(), [](const Layer& a, const Layer& b) {
-        return a.get_coordinates()[0] < b.get_coordinates()[0];
-    });
-    std::vector<size_t> turnsPerLayer;
-    for (const auto& layer : conductionLayers) {
-        turnsPerLayer.push_back(coil.get_turns_by_layer(layer.get_name()).size());
+    // (b) The return's corridor now BLOCKS the intervening sections (the missing clearance of ABT
+    // #612) — in-window markers exist — but per Alf's ruling it must never charge the return's OWN
+    // section or the RECEIVING section, both of which belong to the return's own winding: no
+    // non-terminal marker may name a layer owned by the marker's winding.
+    CHECK(z_return_window_markers(coil) > 0);
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (space.isTerminal || space.layer.empty()) {
+            continue;
+        }
+        for (const auto& layer : coil.get_layers_description_conduction()) {
+            if (layer.get_name() == space.layer) {
+                INFO("marker of " << space.winding << " names layer " << space.layer);
+                CHECK(layer.get_partial_windings()[0].get_winding() != space.winding);
+            }
+        }
     }
-    std::vector<size_t> expectedTurnsPerLayer = {20, 18, 17, 4, 16, 7};
-    CHECK(turnsPerLayer == expectedTurnsPerLayer);
+    // Each winding's single inter-section return draws a run in the shared band: a horizontal
+    // non-terminal run with an allocated depth, one per conductor.
+    {
+        std::set<std::pair<std::string, int64_t>> runConductors;
+        for (const auto& space : coil.get_connection_reserved_spaces()) {
+            if (!space.isTerminal && space.layer.empty() && space.edgeDepth > 0
+                && space.dimensions[0] >= space.dimensions[1]) {
+                runConductors.insert({space.winding, space.parallel});
+            }
+        }
+        CHECK(runConductors.size() == 2);
+    }
 
     // (c) The connection resistance includes the dragback: real winding geometry must cost more
     // copper than the ideal wind of the same coil.
@@ -11723,16 +11739,20 @@ TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Dragback_Bifilar", "[construc
     REQUIRE(coil.get_turns_description());
     REQUIRE(coil.get_winding_order(coil.get_sections_description_conduction()[0].get_name()) == WindingOrder::Z);
 
+    // ABT #615: no FRONT_YZ dragbacks; each parallel's return draws its own run in the SHARED
+    // in-window band instead (three conductors: primary parallel 0 + parallel 1 + secondary).
     auto groups = front_yz_dragback_groups(coil);
-    REQUIRE(groups.size() == 3);  // primary parallel 0 + parallel 1 + secondary
+    REQUIRE(groups.empty());
     std::set<std::pair<std::string, int64_t>> conductors;
-    for (const auto& group : groups) {
-        conductors.insert({group.winding, group.parallel});
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (!space.isTerminal && space.layer.empty() && space.edgeDepth > 0
+            && space.dimensions[0] >= space.dimensions[1]) {
+            conductors.insert({space.winding, space.parallel});
+        }
     }
     CHECK(conductors.size() == 3);
-    check_z_dragback_geometry(coil, groups);
 
-    CHECK(z_return_window_markers(coil) == 0);
+    CHECK(z_return_window_markers(coil) > 0);
     CHECK(real_geometry_collisions(coil) == 0);
     CHECK(coincident_connection_runs(coil) == 0);
     paint_connection_demo(coil, "PQ 28/20", "Test_Real_Z_Interleaved_Return_Dragback_Bifilar.svg", true);
@@ -12094,6 +12114,17 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
         used += wireHeight;
         return edgeY;
     };
+    // ABT #615: ALL inter-section continuations share ONE top-edge band (tangential chords
+    // separate in azimuth in 3D); a new band is allocated only when a taller wire arrives.
+    double continuationBandY = 0;
+    double continuationBandHeight = 0;
+    auto continuationRow = [&](double wireHeight) {
+        if (continuationBandHeight + 1e-12 < wireHeight) {
+            continuationBandY = allocateEdgeRow(true, wireHeight);
+            continuationBandHeight = wireHeight;
+        }
+        return continuationBandY;
+    };
 
     // Electrical order of layers, and endpoint turns per (winding|layer, parallel).
     std::map<std::string, size_t> layerElectricalOrder;
@@ -12193,35 +12224,14 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
                 double y1 = vy(lastTurnInLayer.at(exitKey).get_coordinates());
                 double x2 = vx(firstTurnInLayer.at(entryKey).get_coordinates());
                 double y2 = vy(firstTurnInLayer.at(entryKey).get_coordinates());
-                if (windingOrder == WindingOrder::Z && !intervening.empty()) {
-                    // YZ-face dragback: climb over the intervening build, near-axial run, climb down.
-                    double insulation = 0;
-                    if (!outermostIntervening->get_partial_windings().empty()
-                        && outermostIntervening->get_partial_windings()[0].get_winding() != windingName) {
-                        for (const auto& insulationSection : coil.get_sections_by_type(ElectricalType::INSULATION)) {
-                            double insulationX = vx(insulationSection.get_coordinates());
-                            if (insulationX > interveningOuter && insulationX < std::max(x1, x2)) {
-                                insulation += coil.get_insulation_section_thickness(insulationSection.get_name());
-                            }
-                        }
-                    }
-                    double bump = interveningOuter + insulation + wireW / 2;
-                    if (std::abs(bump - x1) > wireW / 2) {
-                        expected[{windingName, parallel}] += std::abs(bump - x1) + wireW / 2;
-                    }
-                    if (std::abs(y2 - y1) > wireH / 2) {
-                        expected[{windingName, parallel}] += std::abs(y2 - y1) + wireH;
-                    }
-                    if (std::abs(bump - x2) > wireW / 2) {
-                        expected[{windingName, parallel}] += std::abs(bump - x2) + wireW / 2;
-                    }
-                }
-                else if (windingOrder == WindingOrder::Z) {
+                if (windingOrder == WindingOrder::Z && intervening.empty()) {
                     expected[{windingName, parallel}] += std::hypot(x2 - x1, y2 - y1);
                 }
                 else if (!intervening.empty()) {
-                    // U interleaved: stubs to the allocated top edge row + run across.
-                    double edgeY = allocateEdgeRow(true, wireH);
+                    // ABT #615: any inter-section continuation (U or Z) routes in-window along the
+                    // SHARED top-edge band: stubs from both end turns to the band + run across.
+                    // (The FRONT_YZ face-dragback model for Z is superseded.)
+                    double edgeY = continuationRow(wireH);
                     if (std::abs(edgeY - y1) > wireH / 2) {
                         expected[{windingName, parallel}] += std::abs(edgeY - y1) + wireH / 2;
                     }
@@ -12389,14 +12399,17 @@ TEST_CASE("Test_Real_Geometry_Connection_Resistance_Is_Centerline_Geometry", "[c
         // longer side — the exact condition under which the old max() shape rule overcounts. (The
         // rectangle alone cannot even classify such a segment as a climb: a 1.3 mm climb of a
         // 2.0 mm-tall wire is a 1.3 x 2.0 rect whose long side is the wire.)
-        bool anyShortClimb = false;
+        // ABT #615 moved the return in-window, so the shape-misread case is now the RUN of a
+        // TALL wire: its rectangle is (run x wireHeight) with the wire height the longer side,
+        // so "the longer dimension" would overcount exactly as the old climb did.
+        bool anyShortRun = false;
         for (const auto& space : coil.get_connection_reserved_spaces()) {
-            if (space.plane == RoutePlane::FRONT_YZ
+            if (space.routedLength
                 && space.routedLength.value() < std::max(space.dimensions[0], space.dimensions[1]) - 1e-9) {
-                anyShortClimb = true;
+                anyShortRun = true;
             }
         }
-        REQUIRE(anyShortClimb);
+        REQUIRE(anyShortRun);
         check_connection_resistance_matches(coil, expected_connection_length_rectangular(coil));
         settings.reset();
     }

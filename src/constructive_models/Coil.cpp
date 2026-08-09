@@ -798,16 +798,59 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         auto found = windowIndexBySection.find(sectionName);
         return found == windowIndexBySection.end() ? 0 : found->second;
     };
-    // {windowIndex, edge (0 = top, 1 = bottom)} -> stacked depth already used, measured from the edge.
-    std::map<std::pair<size_t, int>, double> usedEdgeDepth;
-    // Allocates the next free row for a run of height `wireHeight`; returns {edgeY, runDepth} where
-    // edgeY is the row's centre and runDepth the distance from the window edge to the row's inner side.
-    auto allocateEdgeRow = [&](size_t windowIndex, bool atTop, double wireHeight) -> std::pair<double, double> {
-        double& used = usedEdgeDepth[{windowIndex, atTop ? 0 : 1}];
-        double edgeY = atTop ? roundFloat(windowTopY - used - wireHeight / 2, 9)
-                             : roundFloat(windowBottomY + used + wireHeight / 2, 9);
-        used += wireHeight;
-        return {edgeY, used};
+    // ABT #615: edge rows are SHARED by runs whose RADIAL SPANS don't overlap (Alf, 2026-08-09:
+    // the primary's inter-section run covers the secondary's section and vice versa — disjoint
+    // spans, ONE row, "which can then be reused by the inter section connection in secondary").
+    // Each (window, edge) keeps a stack of rows; a run takes the outermost row of its own wire
+    // height whose occupied intervals it does not cross, else opens a new row underneath. Sharing
+    // never permutes rows, so the #577 emission-order doctrine is untouched, and blocking stays
+    // exact: a crossed layer only sees the runs whose span actually covers it.
+    struct EdgeRow {
+        double height;                                 // rows shared only between equal wire heights
+        double depthBefore;                            // stack depth from the window edge to this row
+        std::vector<std::pair<double, double>> spans;  // occupied radial intervals
+    };
+    std::map<std::pair<size_t, int>, std::vector<EdgeRow>> edgeRows;
+    // ABT #615: the one shared inter-section continuation band per (window, edge) — see the
+    // continuation allocation below.
+    struct ContinuationBand {
+        double edgeY;
+        double runDepth;
+        double height;
+    };
+    std::map<std::pair<size_t, int>, ContinuationBand> continuationBand;
+    // Allocates a row for a run of height `wireHeight` spanning [spanLo, spanHi] radially; returns
+    // {edgeY, runDepth} where edgeY is the row's centre and runDepth the distance from the window
+    // edge to the row's inner side.
+    auto allocateEdgeRow = [&](size_t windowIndex, bool atTop, double wireHeight,
+                               double spanLo, double spanHi) -> std::pair<double, double> {
+        auto& rows = edgeRows[{windowIndex, atTop ? 0 : 1}];
+        EdgeRow* target = nullptr;
+        for (auto& row : rows) {
+            if (std::abs(row.height - wireHeight) > 1e-12) {
+                continue;
+            }
+            bool overlaps = false;
+            for (const auto& [lo, hi] : row.spans) {
+                if (spanLo < hi - 1e-12 && lo < spanHi - 1e-12) {
+                    overlaps = true;
+                    break;
+                }
+            }
+            if (!overlaps) {
+                target = &row;
+                break;
+            }
+        }
+        if (target == nullptr) {
+            double depthBefore = rows.empty() ? 0.0 : rows.back().depthBefore + rows.back().height;
+            rows.push_back({wireHeight, depthBefore, {}});
+            target = &rows.back();
+        }
+        target->spans.push_back({spanLo, spanHi});
+        double edgeY = atTop ? roundFloat(windowTopY - target->depthBefore - wireHeight / 2, 9)
+                             : roundFloat(windowBottomY + target->depthBefore + wireHeight / 2, 9);
+        return {edgeY, target->depthBefore + wireHeight};
     };
 
     // First-wound (entrance) and last-wound (exit) turn of each (winding, parallel): each parallel of
@@ -893,8 +936,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             // order matches the order the parallels' end turns stack from the edge, so for uniform wire
             // the k-th parallel's lead lines up with its own turn and the stub degenerates.
             bool turnAtTop = (turnY >= windowCenterY);
+            // The lead occupies its row from the connecting turn's stub out to the border.
             auto [edgeY, runDepth] = allocateEdgeRow(windowIndexOf(connectingTurn.get_section().value_or("")),
-                                                     turnAtTop, wireOuterHeight);
+                                                     turnAtTop, wireOuterHeight,
+                                                     turnX - wireOuterWidth / 2, windowOuterX);
             for (const Layer* crossed : crossedLayers) {
                 ConnectionReservedSpace space;
                 space.isTerminal = true;
@@ -1081,7 +1126,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             // (Squeeze at the WINDOW edge, not the crossed layer's own edge — once the layer is
             // centred/shrunk its edge is where its end turn sits, which would put the slot on a turn.)
             WindingOrder windingOrder = get_winding_order(windingLayers[i].get_section().value());
-            bool routesAlongEdge = (windingOrder == WindingOrder::U) && crossesIntervening;
+            // ABT #615 (Alf, 2026-08-09): EVERY inter-section continuation crossing intervening
+            // sections routes along the window edge — drawn (blue), row-allocated and BLOCKING the
+            // crossed sections — regardless of winding order. The ABT #492 FRONT_YZ face dragback
+            // is superseded for this case: invisible no-cost returns left the crossed section's end
+            // turns inside the return's climb corridor (ABT #612, 0.267 mm vs 0.500 needed on the
+            // PSPS pair). Adjacent-layer Z dragbacks (nothing intervening) keep their in-plane
+            // diagonal.
+            bool routesAlongEdge = crossesIntervening;
             size_t routeWindowIndex = windowIndexOf(windingLayers[i].get_section().value_or(""));
 
             // Each parallel is its own conductor: it has its own last-turn-of-layer-i and
@@ -1095,27 +1147,39 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 const auto& exitTurn = lastTurnByLayerParallel.at(exitKey);
                 const auto& entryTurn = firstTurnByLayerParallel.at(entryKey);
 
-                // ABT #229: a U interleaved continuation routes along the edge, so each parallel's run
-                // is its own conductor and takes its own allocated row (stacking with the terminal
-                // leads already on that edge). ABT #492: a Z interleaved continuation routes as a
-                // DRAGBACK on the core's front/back (YZ) face — outside the winding window — so it
-                // reserves no edge row and, unlike before, no in-window squeeze markers either: it
-                // consumes no window space at all (see the FRONT_YZ emission below).
+                // ABT #615: ALL inter-section continuations on an edge share ONE band (Alf: the
+                // corridor blocking part of the crossed section "can then be reused by the inter
+                // section connection in secondary"). The band is a HEIGHT reservation; in 3D the
+                // connections are tangential chords separated in AZIMUTH, so radial overlap inside
+                // the band is fine — unlike terminal leads, which fan on one connection plane and
+                // therefore still need one row each. The band spans the whole window so no lead
+                // ever shares it.
                 double routeEdgeY = roundFloat(windowTopY - wireOuterHeight / 2, 9);
                 double runDepth = 0;
                 if (routesAlongEdge) {
-                    std::tie(routeEdgeY, runDepth) = allocateEdgeRow(routeWindowIndex, true, wireOuterHeight);
+                    auto bandKey = std::make_pair(routeWindowIndex, 0);
+                    auto existingBand = continuationBand.find(bandKey);
+                    if (existingBand != continuationBand.end()
+                        && existingBand->second.height + 1e-12 >= wireOuterHeight) {
+                        routeEdgeY = existingBand->second.edgeY;
+                        runDepth = existingBand->second.runDepth;
+                    }
+                    else {
+                        std::tie(routeEdgeY, runDepth) =
+                            allocateEdgeRow(routeWindowIndex, true, wireOuterHeight,
+                                            windowCenterLayerAxis - windowSizeLayerAxis,
+                                            windowOuterX + windowSizeLayerAxis);
+                        continuationBand[bandKey] = {routeEdgeY, runDepth, wireOuterHeight};
+                    }
                 }
 
                 // Per-layer squeeze: a U parallel's interleaved continuation crosses (and squeezes)
                 // each intervening layer in its allocated edge row. These entries (layer set) drive
                 // the filling factor and the turn blocking and are NOT drawn — the link itself is
-                // drawn below. Z interleaved continuations emit NO squeeze markers: their return
-                // rides the YZ face (ABT #492), so the crossed layers keep every slot and every bit
-                // of filling-factor room. (Blocking already skipped Z markers; before ABT #492 they
-                // still charged the filling factor from a parked edge-row position, which was a
-                // fiction of the in-window model.)
-                if (windingOrder == WindingOrder::U) {
+                // drawn below. ABT #615: Z interleaved continuations now squeeze too — their run is
+                // in-window like U's, and the blocked corridor is exactly what keeps the crossed
+                // section's end turns out of the return's path (ABT #612).
+                if (routesAlongEdge) {
                     for (const Layer* crossed : interveningLayers) {
                         ConnectionReservedSpace squeeze;
                         squeeze.section = crossed->get_section().value();
@@ -1130,25 +1194,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     }
                 }
 
-                // ABT #229: a run deeper than the first row carries its half-wire corner overhang over
-                // its ENDPOINT layers' columns below the window edge, so those layers' turns must also
-                // clear the corridor. At row 0 the overhang meets the connecting end turn itself (the
-                // same conductor drawn as one continuous wire); deeper rows would clip OTHER turns of
-                // the endpoint layers, so squeeze them too.
-                if (routesAlongEdge && runDepth > wireOuterHeight + 1e-12) {
-                    for (const Layer* endpoint : {&windingLayers[i], &windingLayers[i + 1]}) {
-                        ConnectionReservedSpace squeeze;
-                        squeeze.section = endpoint->get_section().value();
-                        squeeze.layer = endpoint->get_name();
-                        squeeze.winding = windingName;
-                        squeeze.parallel = parallel;
-                        squeeze.coordinates = {endpoint->get_coordinates()[0], routeEdgeY};
-                        squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
-                        squeeze.routedLength = 0;  // space-only: the copper is the drawn stubs + edge run below
-                        squeeze.edgeDepth = runDepth;
-                        spaces.push_back(squeeze);
-                    }
-                }
+                // NO ENDPOINT SQUEEZE — Alf, 2026-08-09 (ABT #615): "the blue connections from a
+                // section should not block space in its own section, or the receiving section, just
+                // the sections in between." The run is the endpoint turns' OWN wire continuing —
+                // charging their layers took two top slots from the source section's outer layers
+                // (25_psps: P0 layers 1-2 topped at +0.325 instead of ~+0.97), and a first-iteration
+                // endpoint marker could seed the monotone depth map with source-section depths that
+                // outlived the layer layout. The old #229 corner-overhang rationale dies with the
+                // tangential-chord 3D realization: the connection leaves the end turn as a chord at
+                // the corridor height, not as a stub-and-corner over the endpoint columns.
                 // The continuation does NOT reserve a slot on its endpoint layers (the source's end turn
                 // and the destination's start turn): the link is those turns' own wire continuing, so
                 // they sit at the edge and the link is drawn between them. Only the intervening layers
@@ -1163,93 +1217,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 double x2 = entryTurn.get_coordinates()[0];
                 double y2 = entryTurn.get_coordinates()[1];
 
-                if (windingOrder == WindingOrder::Z && crossesIntervening) {
-                    // ABT #492: a Z INTER-SECTION return (radially-interleaved winding) is
-                    // manufactured as a DRAGBACK on the core's front/back (YZ) face, where there are
-                    // no lateral legs: the wire leaves the source turn, climbs radially over the
-                    // intervening sections' build as a local bump on that face, runs as vertically
-                    // (axially) as possible to the destination's axial level, and climbs back down
-                    // to the destination layer's radius. It consumes NO winding-window space — in
-                    // the XY cross-section the return simply is not there (no corridor, no blocked
-                    // slots, no turn displacement; reserving it in-window was measured to run away
-                    // in the blocking fixpoint, corroborating that it does not belong there). The
-                    // segments are emitted with plane = FRONT_YZ so the XY Painter skips them while
-                    // the loss model still walks their full length, and 3D consumers (MVB++/OMFEM)
-                    // route the declared bump on that face.
-                    //
-                    // Bump radius: the centreline must clear the OUTERMOST intervening layer's build
-                    // by half the run wire — plus, when that build belongs to ANOTHER winding, the
-                    // mechanical insulation the coil itself placed between the two windings (the
-                    // ABT #240 contract, read back from the insulation sections, never invented).
-                    // Layer dimensions were not transposed on the way into the virtual frame, so the
-                    // radial extent of a crossed layer is dimensions[0] for overlapping layers and
-                    // dimensions[1] for contiguous ones.
-                    double interveningOuterBuild = std::numeric_limits<double>::lowest();
-                    const Layer* outermostIntervening = nullptr;
-                    for (const Layer* crossed : interveningLayers) {
-                        double radialExtent = layersAreContiguous ? crossed->get_dimensions()[1]
-                                                                  : crossed->get_dimensions()[0];
-                        double outerEdge = crossed->get_coordinates()[0] + radialExtent / 2;
-                        if (outerEdge > interveningOuterBuild) {
-                            interveningOuterBuild = outerEdge;
-                            outermostIntervening = crossed;
-                        }
-                    }
-                    double interWindingInsulation = 0;
-                    if (!outermostIntervening->get_partial_windings().empty()
-                        && outermostIntervening->get_partial_windings()[0].get_winding() != windingName) {
-                        double radialFar = std::max(x1, x2);
-                        for (const auto& insulationSection : get_sections_by_type(ElectricalType::INSULATION)) {
-                            // Sections come back in the REAL frame; the virtual frame is its x<->y
-                            // transpose for contiguous layers.
-                            double insulationX = layersAreContiguous ? insulationSection.get_coordinates()[1]
-                                                                     : insulationSection.get_coordinates()[0];
-                            if (insulationX > interveningOuterBuild && insulationX < radialFar) {
-                                interWindingInsulation +=
-                                    get_insulation_section_thickness(insulationSection.get_name());
-                            }
-                        }
-                    }
-                    double bumpRadius = roundFloat(interveningOuterBuild + interWindingInsulation
-                                                   + wireOuterWidth / 2, 9);
-
-                    // Each segment's copper length is passed EXPLICITLY: a radial climb's run is its
-                    // radial extent even when the wire's own height is larger (tall RECTANGULAR/FOIL
-                    // wire), so no consumer may infer it from the rectangle's shape.
-                    auto pushDragback = [&](double cx, double cy, double w, double h, double copperLength) {
-                        ConnectionReservedSpace seg;
-                        seg.plane = RoutePlane::FRONT_YZ;
-                        seg.winding = windingName;
-                        seg.parallel = parallel;
-                        seg.section = windingLayers[i].get_section().value_or("");
-                        seg.layer = "";  // out-of-window: reserves no layer/section space
-                        seg.coordinates = {roundFloat(cx, 9), roundFloat(cy, 9)};
-                        seg.dimensions = {roundFloat(w, 9), roundFloat(h, 9)};
-                        seg.routedLength = roundFloat(copperLength, 9);
-                        spaces.push_back(seg);
-                    };
-                    // Radial climb out at the source turn's axial level, from the source turn's
-                    // radius up to the bump, overlapping the axial run by half a wire at the corner
-                    // (the same corner convention the U edge route uses).
-                    if (std::abs(bumpRadius - x1) > 0.5 * wireOuterWidth) {
-                        double far1 = bumpRadius + ((bumpRadius >= x1) ? 1.0 : -1.0) * wireOuterWidth / 2;
-                        pushDragback((x1 + far1) / 2, y1, std::abs(far1 - x1), wireOuterHeight,
-                                     std::abs(far1 - x1));
-                    }
-                    // Near-axial run riding the bump between the two endpoints' axial levels.
-                    if (std::abs(y2 - y1) > 0.5 * wireOuterHeight) {
-                        pushDragback(bumpRadius, (y1 + y2) / 2, wireOuterWidth,
-                                     std::abs(y2 - y1) + wireOuterHeight,
-                                     std::abs(y2 - y1) + wireOuterHeight);
-                    }
-                    // Radial climb back down to the destination layer's radius at its axial level.
-                    if (std::abs(bumpRadius - x2) > 0.5 * wireOuterWidth) {
-                        double far2 = bumpRadius + ((bumpRadius >= x2) ? 1.0 : -1.0) * wireOuterWidth / 2;
-                        pushDragback((x2 + far2) / 2, y2, std::abs(far2 - x2), wireOuterHeight,
-                                     std::abs(far2 - x2));
-                    }
-                }
-                else if (windingOrder == WindingOrder::Z) {
+                // ABT #615: the FRONT_YZ face-dragback emission for Z inter-section returns lived
+                // here (ABT #492). Superseded: a return crossing intervening sections now routes
+                // in-window along the edge — same drawn run, squeezes and blocking as the U
+                // interleaved continuation, emitted by the crossesIntervening branch below.
+                if (windingOrder == WindingOrder::Z && !crossesIntervening) {
                     // Z between ADJACENT layers: the classic dragback, drawn as the single in-plane
                     // diagonal from one turn straight to the next (a rotated rectangle from centre
                     // to centre). Nothing intervenes, so it displaces and reserves nothing.
@@ -1456,17 +1428,13 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     // shallow stack over a thick layer still costs at least one thick turn). Since parallels'
     // (and different windings') runs stack in distinct rows, this replaces the old per-parallel
     // max-then-SUM rule — which coincided all runs on one line and merged different windings that
-    // shared a parallel index. Z continuations never displace turns: adjacent dragbacks are the
-    // classic in-plane crossover, and inter-section returns ride the core's front/back (YZ) face
-    // outside the window entirely (FRONT_YZ dragback, ABT #492) — only terminals block in Z. The
-    // non-U skip below is belt-and-braces: since ABT #492, Z continuations emit no layer-naming
-    // markers at all.
+    // shared a parallel index. ABT #615: EVERY layer-naming marker blocks — Z inter-section
+    // continuations route in-window along the edge like U's (the ABT #492 FRONT_YZ model is
+    // superseded), so their squeezes carry real corridor depths; only the adjacent-layer Z
+    // diagonal (which names no layer) reserves nothing.
     std::map<std::string, std::pair<double, double>> maxRunDepth;  // layer -> {top, bottom}
     for (const auto& space : get_connection_reserved_spaces()) {
         if (space.layer.empty()) {
-            continue;
-        }
-        if (!space.isTerminal && get_winding_order(space.section) != WindingOrder::U) {
             continue;
         }
         auto found = layerCenterOnTurnAxis.find(space.layer);
