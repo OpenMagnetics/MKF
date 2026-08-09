@@ -4729,46 +4729,52 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
         }
     }
 
-    // --- Dragback lanes and band hops (under the turns, like layers) --------------------
+    // --- Dragback lanes and band hops -----------------------------------------------------
+    // Each connection is ONE continuous stroked ribbon whose endpoints sit exactly on the
+    // centres of the two crossings it joins (Alf: "some indication of how the dragback is
+    // connected" — disjoint rectangles read as connecting anywhere left or right). Round
+    // caps/joins make the path read as a single wire.
+    auto paintWirePath = [&](const std::vector<std::pair<double, double>>& points, double od,
+                             const std::string& label) {
+        auto path = shapes->add_child<SVG::Path>();
+        for (const auto& [px, py] : points) {
+            path->line_to(px * _scale, -py * _scale);
+        }
+        auto copperColor = std::regex_replace(std::string(settings.get_painter_color_copper()),
+                                              std::regex("0x"), "#");
+        path->set_attr("stroke", copperColor);
+        path->set_attr("stroke-width", od * _scale);
+        path->set_attr("fill", "none");
+        path->set_attr("opacity", 0.55);
+        path->set_attr("stroke-linecap", "round");
+        path->set_attr("stroke-linejoin", "round");
+        path->add_child<SVG::Title>(label);
+    };
     for (const auto& r : yzReturns) {
         const double sign = (r.side == 0) ? -1.0 : 1.0;
-        std::string laneClass = "copper_translucent";
+        const double srcFaceZ = sign * (r.srcZ + rideFor(r.srcZ, r.side));
+        const double dstFaceZ = sign * (r.dstZ + rideFor(r.dstZ, r.side));
         if (!r.interSection) {
-            // Plain descent: the full connecting path (Alf: "draw the dragback diagonal") —
-            // a stub OUT from the source crossing at its own row, the vertical descent on
-            // the destination face displaced by the levels INSIDE it (its own level's room
-            // is the lane itself: destRide - od), and a stub IN to the destination crossing.
-            const double laneZ = r.dstZ + rideFor(r.dstZ, r.side) - r.od;
-            const double srcFaceZ = r.srcZ + rideFor(r.srcZ, r.side);
-            const double dstFaceZ = r.dstZ + rideFor(r.dstZ, r.side);
-            const double y0 = std::min(r.srcY, r.dstY);
-            const double y1 = std::max(r.srcY, r.dstY);
-            paint_rectangle(sign * (srcFaceZ + laneZ) / 2, r.srcY,
-                            std::abs(laneZ - srcFaceZ) + r.od, r.od, laneClass, shapes, 0,
-                            {0, 0}, r.label + " out");
-            paint_rectangle(sign * laneZ, (y0 + y1) / 2, r.od, (y1 - y0) + r.od, laneClass,
-                            shapes, 0, {0, 0}, r.label);
-            paint_rectangle(sign * (dstFaceZ + laneZ) / 2, r.dstY,
-                            std::abs(dstFaceZ - laneZ) + r.od, r.od, laneClass, shapes, 0,
-                            {0, 0}, r.label + " in");
+            // Plain descent: from the source crossing OUT to the descent lane (displaced by
+            // the levels INSIDE the destination face; its own level's room is the lane
+            // itself: destRide - od), down it, and IN to the destination crossing.
+            const double laneZ = sign * (r.dstZ + rideFor(r.dstZ, r.side) - r.od);
+            paintWirePath({{srcFaceZ, r.srcY},
+                           {laneZ, r.srcY},
+                           {laneZ, r.dstY},
+                           {dstFaceZ, r.dstY}},
+                          r.od, r.label);
         }
         else {
-            // Band-routed inter-section hop: stub up from the source turn, run at the band
-            // row over the intervening sections, stub down to the receiving turn. The band
-            // row is one wire outside the deeper of the two endpoint faces' ride stacks —
-            // drawn at the source/destination turn rows' outer edge (the MKF band markers
-            // carry the exact row; the projection uses the endpoint turns directly).
-            const double zA = r.srcZ + rideFor(r.srcZ, r.side);
-            const double zB = r.dstZ + rideFor(r.dstZ, r.side);
+            // Band-routed inter-section hop: stub from the source crossing to the band row
+            // (the endpoint turns' outer edge — MKF's stage-2 alternation puts them adjacent
+            // to the band), run over the intervening sections, stub to the receiving crossing.
             const double bandY = (std::abs(r.srcY) > std::abs(r.dstY) ? r.srcY : r.dstY);
-            paint_rectangle(sign * zA, (r.srcY + bandY) / 2, r.od,
-                            std::abs(bandY - r.srcY) + r.od, laneClass, shapes, 0, {0, 0},
-                            r.label + " stub");
-            paint_rectangle(sign * (zA + zB) / 2, bandY, std::abs(zB - zA) + r.od, r.od,
-                            laneClass, shapes, 0, {0, 0}, r.label + " run");
-            paint_rectangle(sign * zB, (r.dstY + bandY) / 2, r.od,
-                            std::abs(bandY - r.dstY) + r.od, laneClass, shapes, 0, {0, 0},
-                            r.label + " stub");
+            paintWirePath({{srcFaceZ, r.srcY},
+                           {srcFaceZ, bandY},
+                           {dstFaceZ, bandY},
+                           {dstFaceZ, r.dstY}},
+                          r.od, r.label + " (band)");
         }
     }
 
