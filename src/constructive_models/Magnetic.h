@@ -226,6 +226,11 @@ inline void to_json(json & j, const Magnetic & x) {
 
 inline void from_json(const json& j, std::vector<Magnetic>& v) {
     for (auto e : j) {
+        // Same migration this file's singular from_json(const json&, Magnetic&)
+        // does (ABT #606) — this overload is the untouched twin of that fix and
+        // would otherwise reject pre-1.0 MAS enum casing for any caller that
+        // deserializes a list of magnetics directly.
+        OpenMagnetics::compat::migrate_pre_1_0(e);
         Magnetic x;
         if (e.contains("coil") && !e.at("coil").is_null()) {
             x.set_coil(e.at("coil").get<Coil>());

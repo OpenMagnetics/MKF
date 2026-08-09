@@ -87,3 +87,25 @@ TEST_CASE("Test_MasMigration_Magnetic_From_Json_Rejects_Genuinely_Unknown_Enum_V
     OpenMagnetics::Magnetic rejected;
     REQUIRE_THROWS(OpenMagnetics::from_json(magJson, rejected));
 }
+
+TEST_CASE("Test_MasMigration_Magnetic_Vector_From_Json_Accepts_Pre_1_0_Enum_Casing", "[constructive-model][magnetic][mas-migration][smoke-test]") {
+    // from_json(const json&, std::vector<Magnetic>&) is the untouched twin of
+    // the singular overload fixed for ABT #606 — it iterates elements without
+    // migrating each one. Same fixture, wrapped in a list, exercised through
+    // the vector overload specifically.
+    auto testDataPath = get_test_data_path(std::source_location::current(), "user_report_abt606_legacy_casing_magnetic.json");
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    json magJson;
+    file >> magJson;
+    REQUIRE(magJson.at("coil").at("groupsDescription").at(0).at("type").get<std::string>() == "Printed");
+
+    json magneticsArrayJson = json::array({magJson});
+    std::vector<OpenMagnetics::Magnetic> magnetics;
+    REQUIRE_NOTHROW(OpenMagnetics::from_json(magneticsArrayJson, magnetics));
+
+    REQUIRE(magnetics.size() == 1);
+    double effectiveArea = magnetics[0].get_core().get_processed_description().value().get_effective_parameters().get_effective_area();
+    REQUIRE(effectiveArea > 0);
+    REQUIRE(magnetics[0].get_coil().get_functional_description().size() > 0);
+}

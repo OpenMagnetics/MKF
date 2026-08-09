@@ -1652,6 +1652,47 @@ TEST_CASE("Test_Reflect_Flyback_Primary_Web", "[processor][inputs][smoke-test]")
     REQUIRE(processed.get_label() == WaveformLabel::FLYBACK_SECONDARY);
 }
 
+TEST_CASE("Test_Imported_Rectangle_Is_Custom_Not_Sinusoidal_Via_Inputs", "[processor][inputs][mas-migration][bug]") {
+    // ABT #602: Inputs::calculate_basic_processed_data / try_guess_waveform_label /
+    // try_guess_duty_cycle used to be a verbatim, independently-bugged twin of
+    // WaveformProcessor's classifier (fixed in 6be9b794 but deliberately left
+    // untouched here at the time). Every real entry point — every PyOM/WASM
+    // binding — reaches THIS Inputs-facing copy, not WaveformProcessor's
+    // directly, so the user-reported symptom (a 300 kHz FlyBuck switch-node
+    // waveform, true duty ~20.7%, read back as label=sinusoidal, dutyCycle=0.5)
+    // is only actually closed once this copy is fixed too. Reproduces the
+    // reported file's shape: a two-level rectangle with finite edges and
+    // plateau ripple, which compress_waveform does NOT collapse to an exact
+    // 5-point analytical shape (real SPICE data never does).
+    const size_t numberPoints = 512;
+    const double dutyCycle = 0.207;
+    const double high = 15.086;
+    const double low = -3.92;
+    const double period = 1.0 / 300000;
+    const double ripple = 0.25;
+    size_t pointsHigh = static_cast<size_t>(numberPoints * dutyCycle);
+
+    std::vector<double> data;
+    std::vector<double> time;
+    for (size_t i = 0; i < numberPoints; ++i) {
+        double value = (i < pointsHigh) ? high : low;
+        if (i == pointsHigh || i == pointsHigh + 1) {
+            value = high + (low - high) * (i - pointsHigh + 1) / 3.0;
+        }
+        value += ripple * sin(2 * M_PI * i * 7 / numberPoints);
+        data.push_back(value);
+        time.push_back(period * i / numberPoints);
+    }
+    Waveform waveform;
+    waveform.set_data(data);
+    waveform.set_time(time);
+
+    auto processed = OpenMagnetics::Inputs::calculate_basic_processed_data(waveform);
+    REQUIRE(processed.get_label() == WaveformLabel::CUSTOM);
+    // Measured, not assumed: the duty must track the real high time, not be 0.5.
+    REQUIRE_THAT(processed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(dutyCycle, 0.01));
+}
+
 TEST_CASE("Test_Flyback_Json", "[processor][inputs][smoke-test]") {
     json masJson = OpenMagneticsTesting::fixtures::get_json("mas-flyback-3-winding-lv");
 

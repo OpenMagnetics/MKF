@@ -328,142 +328,17 @@ bool Inputs::include_dc_offset_into_magnetizing_current(OperatingPoint operating
 
 
 double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label, double frequency) {
-    if (label != WaveformLabel::CUSTOM) {
-        switch(label) {
-            case WaveformLabel::TRIANGULAR: {
-                if (waveform.get_time()->size() == 3) {
-                    return (waveform.get_time().value()[1] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
-                }
-                else if (waveform.get_time()->size() == 4) {
-                    return ((waveform.get_time().value()[1] + waveform.get_time().value()[2]) / 2 - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
-                }
-                break;
-            }
-            case WaveformLabel::UNIPOLAR_TRIANGULAR: {
-                return (waveform.get_time().value()[1] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
-            }
-            case WaveformLabel::RECTANGULAR: {
-                return (waveform.get_time().value()[2] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
-            }
-            case WaveformLabel::UNIPOLAR_RECTANGULAR: {
-                return (waveform.get_time().value()[2] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
-            }
-            case WaveformLabel::BIPOLAR_RECTANGULAR: {
-                return (waveform.get_time().value()[3] - waveform.get_time().value()[2]) / (waveform.get_time()->back() - waveform.get_time()->front());
-            }
-            case WaveformLabel::BIPOLAR_TRIANGULAR: {
-                return (waveform.get_time().value()[2] - waveform.get_time().value()[1]) / (waveform.get_time()->back() - waveform.get_time()->front());
-            }
-            case WaveformLabel::FLYBACK_PRIMARY:{
-                if (waveform.get_time()->size() == 4) {
-                    return (waveform.get_time().value()[1] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
-                }
-                else if (waveform.get_time()->size() == 5) {
-                    return (waveform.get_time().value()[2] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
-                }
-                break;
-            }
-            case WaveformLabel::FLYBACK_SECONDARY:{
-                if (waveform.get_time()->size() == 4) {
-                    return (waveform.get_time().value()[1] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
-                }
-                else if (waveform.get_time()->size() == 5) {
-                    return (waveform.get_time().value()[2] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
-                }
-                break;
-            }
-            case WaveformLabel::SINUSOIDAL: {
-                return 0.5;
-            }
-            default:
-                break;
-            }
-    }
-
-    Waveform sampledWaveform;
-    if (!is_waveform_sampled(waveform)) {
-        if (frequency > 0) {
-            sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
-        }
-        else if (waveform.get_time() && waveform.get_time()->size() >= 3) {
-            // Can compute duty cycle directly from the waveform time points without sampling
-            auto timeVec = waveform.get_time().value();
-            auto dataVec = waveform.get_data();
-            double totalPeriod = timeVec.back() - timeVec.front();
-            if (totalPeriod <= 0) {
-                return 0.5;
-            }
-            if (dataVec.size() == 3) {
-                // 3-point triangular: peak at middle time point
-                return roundFloat((timeVec[1] - timeVec[0]) / totalPeriod, 2);
-            }
-            else if (dataVec.size() == 4) {
-                // 4-point waveform: duty cycle from average of middle two points
-                return roundFloat(((timeVec[1] + timeVec[2]) / 2 - timeVec[0]) / totalPeriod, 2);
-            }
-            else if (dataVec.size() == 5) {
-                // 5-point rectangular: time from point 0 to 2 over total
-                return roundFloat((timeVec[2] - timeVec[0]) / totalPeriod, 2);
-            }
-            else {
-                // Cannot compute duty cycle without frequency for arbitrary waveforms
-                return 0.5;
-            }
-        }
-        else {
-            // Cannot sample without frequency, return default duty cycle
-            return 0.5;
-        }
-    }
-    else {
-        sampledWaveform = waveform;
-    }
- 
-    std::vector<double> data = sampledWaveform.get_data();
-    std::vector<double> diff_data;
-    std::vector<double> diff_diff_data;
-
-    for (size_t i = 0; i < data.size() - 1; ++i) {
-        diff_data.push_back(roundFloat(data[i + 1] - data[i], 9));
-    }
-    for (size_t i = 0; i < diff_data.size() - 1; ++i) {
-        diff_diff_data.push_back(fabs(roundFloat(diff_data[i + 1] - diff_data[i], 9)));
-    }
-
-    double maximum = *max_element(diff_diff_data.begin(), diff_diff_data.end());
-    size_t maximum_index = 0;
-    size_t distanceToMiddle = settings.get_inputs_number_points_sampled_waveforms();
-    for (size_t i = 0; i < diff_diff_data.size(); ++i)
-    {
-        if (diff_diff_data[i] == maximum) {
-            if (fabs(double(settings.get_inputs_number_points_sampled_waveforms()) / 2 - i) < distanceToMiddle) {
-                distanceToMiddle = fabs(double(settings.get_inputs_number_points_sampled_waveforms()) / 2 - i);
-                maximum_index = i;
-            }
-        }
-    }
-    auto dutyCycle = roundFloat((maximum_index + 1.0) / settings.get_inputs_number_points_sampled_waveforms(), 2);
-
-    if (dutyCycle <= 0.03 || dutyCycle >= 0.97) {
-
-        double maximum = *max_element(data.begin(), data.end());
-        double threshold = maximum * 0.05;
-
-        double numberPointsOn = 0;
-        double numberPointsOff = 0;
-        for (size_t i = 0; i < data.size() - 1; ++i) {
-            if (data[i] < threshold) {
-                numberPointsOff++;
-            }
-            else {
-                numberPointsOn++;
-            }
-        }
-
-        dutyCycle = numberPointsOn / data.size();
-    }
-
-    return dutyCycle;
+    // Delegates to WaveformProcessor, which fixed the same classifier bug
+    // (ABT #602): three unconditional `return 0.5` defaults for genuinely
+    // unrecognised shapes, and a second-difference heuristic that divided an
+    // index into `data` by numberPointsSampledWaveforms (a 128-vs-512
+    // mismatch for imported waveforms) and thresholded at 5% of the maximum
+    // (duty = 1 for any DC-biased signal). This used to be a verbatim,
+    // independently-bugged twin of that logic — kept as a delegating wrapper
+    // so the two can no longer drift apart, matching every other Inputs::X
+    // waveform-DSP method in this file.
+    return WaveformProcessor::try_guess_duty_cycle(waveform, label, frequency,
+                                                   settings.get_inputs_number_points_sampled_waveforms());
 }
 
 bool Inputs::is_standardized(SignalDescriptor signal) {
@@ -1457,58 +1332,13 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
 }
 
 ProcessedWaveform Inputs::calculate_basic_processed_data(Waveform waveform) {
-    ProcessedWaveform processed;
-    std::vector<double> dataToProcess;
-    auto sampledWaveform = waveform;
-    auto compressedWaveform = waveform;
-
-    for (size_t i = 0; i < waveform.get_data().size(); ++i) {
-        if (std::isnan(waveform.get_data()[i])) {
-            throw std::invalid_argument("Waveform data contains NaN");
-        }
-    }
-
-    if (is_waveform_sampled(waveform)) {
-        compressedWaveform = compress_waveform(waveform);
-    }
-
-    WaveformLabel label;
-
-    label = try_guess_waveform_label(compressedWaveform);
-    processed.set_label(label);
-
-    if (is_waveform_sampled(waveform)) {
-        processed.set_average(std::accumulate(std::begin(sampledWaveform.get_data()), std::end(sampledWaveform.get_data()), 0.0) /
-                         sampledWaveform.get_data().size());
-    }
-    else {
-        // auto average = calculate_waveform_average(compressedWaveform);
-        // processed.set_average(average);
-    }
-
-    double offset = calculate_offset(compressedWaveform, label);
-    processed.set_offset(offset);
-
-    processed.set_peak_to_peak(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()) -
-                               *min_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()));
-
-    if (label == WaveformLabel::FLYBACK_PRIMARY ||
-        label == WaveformLabel::FLYBACK_SECONDARY) {
-        // Flyback waveforms include a 0-level floor, so max - min overstates the
-        // ramp peak-to-peak by the offset. UNIPOLAR_* waveforms never touch 0
-        // (their minimum IS the offset), so max - min is already correct for them.
-        processed.set_peak_to_peak(processed.get_peak_to_peak().value() - offset);
-    }
-
-    double positivePeak = *max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end());
-    double negativePeak = *min_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end());
-    processed.set_peak(std::max(positivePeak, -negativePeak));
-    processed.set_positive_peak(positivePeak);
-    processed.set_negative_peak(negativePeak);
-
-    processed.set_duty_cycle(try_guess_duty_cycle(compressedWaveform, label));
-
-    return processed;
+    // Delegates to WaveformProcessor, which additionally fixed part of ABT
+    // #602 this copy never had: the duty-cycle measurement for a CUSTOM label
+    // (i.e. real imported/simulated data) needs the UNCOMPRESSED waveform —
+    // this copy always passed the compressed one, so real SPICE data (which
+    // compress_waveform collapses to 50-60 points instead of an analytical
+    // 3/4/5-point shape) had its duty measured against a thinned-out signal.
+    return WaveformProcessor::calculate_basic_processed_data(waveform, settings.get_inputs_number_points_sampled_waveforms());
 }
 
 ProcessedWaveform Inputs::calculate_processed_data(Waveform waveform,
@@ -2936,151 +2766,17 @@ double Inputs::calculate_instantaneous_power(OperatingPointExcitation excitation
 }
 
 WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
-    if (waveform.get_ancillary_label()) {
-        return waveform.get_ancillary_label().value();
-    }
-
-    auto compressedWaveform = waveform;
-    if (is_waveform_sampled(waveform))
-        compressedWaveform = compress_waveform(waveform);
-    double period = 0;
-    if (compressedWaveform.get_time()) {
-        period = compressedWaveform.get_time()->back() - compressedWaveform.get_time()->front();
-    }
-
-    if (compressedWaveform.get_data().size() == 3 && 
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[2]) {
-            return WaveformLabel::TRIANGULAR;
-    }
-    else if (compressedWaveform.get_time()) {
-        if (compressedWaveform.get_data().size() == 4 &&
-            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[3]) {
-                return WaveformLabel::UNIPOLAR_TRIANGULAR;
-        }
-        else if (compressedWaveform.get_data().size() == 5 &&
-            !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-                return WaveformLabel::UNIPOLAR_RECTANGULAR;
-        }
-        else if (compressedWaveform.get_data().size() == 5 &&
-            !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-                return WaveformLabel::UNIPOLAR_RECTANGULAR;
-        }
-        else if (compressedWaveform.get_data().size() == 5 &&
-            is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-                return WaveformLabel::RECTANGULAR;
-        }
-        else if (compressedWaveform.get_data().size() == 5 &&
-            is_close_enough((compressedWaveform.get_time().value()[1] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[1] + (compressedWaveform.get_time().value()[3] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[3], 0 , period) &&
-            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-                return WaveformLabel::RECTANGULAR;
-        }
-        else if (compressedWaveform.get_data().size() == 10 &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
-            is_close_enough(compressedWaveform.get_time().value()[5], compressedWaveform.get_time().value()[6], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[6] == compressedWaveform.get_data()[7] &&
-            is_close_enough(compressedWaveform.get_time().value()[7], compressedWaveform.get_time().value()[8], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[8] == compressedWaveform.get_data()[9] &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[9]) {
-                return WaveformLabel::BIPOLAR_RECTANGULAR;
-        }
-        else if (compressedWaveform.get_data().size() == 6 &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-            is_close_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-            compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[5]) {
-                return WaveformLabel::BIPOLAR_TRIANGULAR;
-        }
-        else if (compressedWaveform.get_data().size() == 5 &&
-            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[1] < compressedWaveform.get_data()[2] &&
-            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-                return WaveformLabel::FLYBACK_PRIMARY;
-        }
-        else if (compressedWaveform.get_data().size() == 5 &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[2] > compressedWaveform.get_data()[3] &&
-            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-                return WaveformLabel::FLYBACK_SECONDARY;
-        }
-        else {
-            double error = 0;
-            double area = 0;
-            double maximum = *max_element(waveform.get_data().begin(), waveform.get_data().end());
-            double minimum = *min_element(waveform.get_data().begin(), waveform.get_data().end());
-
-            double peakToPeak = maximum - minimum;
-            double offset = (maximum + minimum) / 2; // FIXED: BUG-08
-
-            for (size_t i = 0; i < waveform.get_data().size(); ++i) {
-                double angle = i * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();
-                double calculated_data = (sin(angle) * peakToPeak / 2) + offset;
-                area += fabs(waveform.get_data()[i]);
-                error += fabs(calculated_data - waveform.get_data()[i]);
-            }
-            error /= waveform.get_data().size();
-            error /= area;
-            if (error < 0.05) {
-                return WaveformLabel::SINUSOIDAL;
-            }
-            else {
-                return WaveformLabel::CUSTOM;
-            }
-        }
-    }
-    else {
-        double error = 0;
-        double area = 0;
-        double maximum = *max_element(waveform.get_data().begin(), waveform.get_data().end());
-        double minimum = *min_element(waveform.get_data().begin(), waveform.get_data().end());
-
-        double peakToPeak = maximum - minimum;
-        double offset = (maximum + minimum) / 2; // FIXED: BUG-08
-
-        for (size_t i = 0; i < waveform.get_data().size(); ++i) {
-            double angle = i * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();
-            double calculated_data = (sin(angle) * peakToPeak / 2) + offset;
-            area += fabs(waveform.get_data()[i]);
-            error += fabs(calculated_data - waveform.get_data()[i]);
-        }
-        error /= waveform.get_data().size();
-        error /= area;
-        if (error < 0.05) {
-            return WaveformLabel::SINUSOIDAL;
-        }
-        else {
-            return WaveformLabel::CUSTOM;
-        }
-    }
+    // Delegates to WaveformProcessor, which fixed this classifier (ABT #602):
+    // the sine-vs-custom fallback divided its error metric by N twice
+    // (error /= data.size() then error /= area, where area was already a sum
+    // over N points), so the 5% acceptance threshold became an effective
+    // 2560% relative error at N=512 and every imported waveform — rectangles
+    // and triangles included — was labelled sinusoidal; the reference sine
+    // also ran off the nominal sample count instead of this waveform's own.
+    // This used to be a verbatim, independently-bugged twin of that logic —
+    // kept as a delegating wrapper so the two can no longer drift apart,
+    // matching every other Inputs::X waveform-DSP method in this file.
+    return WaveformProcessor::try_guess_waveform_label(waveform, settings.get_inputs_number_points_sampled_waveforms());
 }
 
 void Inputs::scale_time_to_frequency(Inputs& inputs, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals, bool useCurrentAsBase){
