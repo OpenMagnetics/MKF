@@ -3,6 +3,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/Reluctance.h"
 #include "constructive_models/Bobbin.h"
+#include "constructive_models/Magnetic.h"
 #include "TestingUtils.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
@@ -1373,6 +1374,86 @@ TEST_CASE("Test_Drum_Ring_Inductance_Brackets", "[physical-model][magnetizing-in
     UNSCOPED_INFO("analytic two-gap estimate " << basicEstimate * 1e6 << " uH");
     CHECK(ringInductance > 0.5 * basicEstimate);
     CHECK(ringInductance < 3.0 * basicEstimate);
+    settings.reset();
+}
+
+// ABT #417: drumRing's two structural annular-clearance gaps are DERIVED (Core::process_gap
+// synthesizes them from A/K/D/F) — functionalDescription.gapping is legitimately empty in the
+// raw MAS record, unlike a normal gapped E-core where the user/adviser always specifies real
+// entries. Core's free from_json (used whenever a Core is deserialized as a struct MEMBER —
+// e.g. Magnetic::from_json, which every PyOM/WASM binding reaches for a loaded MAS document)
+// never calls process_data()/process_gap(), unlike the Core(json) constructor. A drumRing core
+// arriving via that path kept gapping==[], and ReluctanceModel::get_gapping_reluctance treated
+// "empty" as "no gap" instead of "not yet derived" — silently dropping the dominant reluctance
+// term and reporting an inductance 3.8-10.7x too high, so calculate_saturation_current
+// under-reported Isat by the same factor. Fixed in calculate_inductance_and_magnetic_flux_density:
+// self-heals (calls core.process_gap()) whenever a drumRing core arrives with empty gapping.
+TEST_CASE("Test_ABT417_DrumRing_Saturation_Current_Matches_Model_Inductance_Unprocessed", "[physical-model][magnetizing-inductance][drum-ring][bug]") {
+    settings.reset();
+    clear_databases();
+    int64_t numberTurns = 20;
+
+    // Raw catalog-style json (shape as a bare name string, gapping empty) round-tripped through
+    // Core's free from_json — reproduces the state a Magnetic loaded via Magnetic::from_json
+    // arrives in (NOT the Core(json) constructor, which self-processes and would mask this bug).
+    json rawCoreJson;
+    rawCoreJson["functionalDescription"]["name"] = "ABT417Test";
+    rawCoreJson["functionalDescription"]["type"] = "pieceAndPlate";
+    rawCoreJson["functionalDescription"]["material"] = "3C90";
+    rawCoreJson["functionalDescription"]["shape"] = "DR 2.3 + SRI 3.0";
+    rawCoreJson["functionalDescription"]["gapping"] = json::array();
+    rawCoreJson["functionalDescription"]["numberStacks"] = 1;
+
+    Core unprocessedCore;
+    OpenMagnetics::from_json(rawCoreJson, unprocessedCore);
+    REQUIRE(unprocessedCore.get_functional_description().get_gapping().empty());
+    // Populate processedDescription (effective area etc.) WITHOUT deriving the structural
+    // clearance gaps — process_data() and process_gap() are separate calls, and this is the
+    // partially-processed state a core can plausibly reach outside the Core(json) constructor
+    // (which always runs both together). get_effective_area() requires processedDescription,
+    // so calculate_saturation_current would throw CoreNotProcessedException without this —
+    // masking the numeric bug behind an exception instead of reproducing the ticket's reported
+    // finite-but-wrong Isat.
+    unprocessedCore.process_data();
+    REQUIRE(unprocessedCore.get_functional_description().get_gapping().empty());
+
+    json windingData = json::parse(
+        R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+            "numberParallels": 1, "numberTurns": 20, "wire": "Dummy"}]})");
+    OpenMagnetics::Coil winding(windingData);
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(unprocessedCore);
+    magnetic.set_coil(winding);
+
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    double modelInductance = magnetizingInductanceModel
+        .calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), nullptr)
+        .get_magnetizing_inductance().get_nominal().value();
+
+    double saturationCurrent = magnetic.calculate_saturation_current(25, false);
+    double bSat = magnetic.get_mutable_core().get_magnetic_flux_density_saturation(25, false);
+    double effectiveArea = magnetic.get_mutable_core().get_effective_area();
+    double impliedInductance = bSat * numberTurns * effectiveArea / saturationCurrent;
+
+    // Ground truth: the SAME shape/material/turns, but the core built through the
+    // Core(json) constructor path (which always derives the clearance gaps regardless of
+    // this fix — see Test_Drum_Ring_Inductance_Brackets). Comparing modelInductance only
+    // against impliedInductance is not enough: before the fix, BOTH go through the same
+    // unhealed generic path and agree with each other while being 30x too high together.
+    // This reference catches that — it must independently derive the same, correct answer.
+    auto referenceCore = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90");
+    double referenceInductance = magnetizingInductanceModel
+        .calculate_inductance_from_number_turns_and_gapping(referenceCore, winding, nullptr)
+        .get_magnetizing_inductance().get_nominal().value();
+
+    UNSCOPED_INFO("model inductance " << modelInductance * 1e6 << " uH, saturation-implied inductance "
+                                      << impliedInductance * 1e6 << " uH, reference (always-processed) "
+                                      << referenceInductance * 1e6 << " uH");
+    CHECK_THAT(impliedInductance, Catch::Matchers::WithinRel(modelInductance, 0.05));
+    CHECK_THAT(modelInductance, Catch::Matchers::WithinRel(referenceInductance, 0.05));
+
+    CHECK(unprocessedCore.get_shape_family() == CoreShapeFamily::DRUM_RING);
     settings.reset();
 }
 

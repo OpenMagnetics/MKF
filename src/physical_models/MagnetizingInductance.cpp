@@ -244,6 +244,21 @@ static SignalDescriptor calculate_flux_density_for_family_model(double magnetizi
 
 std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(Core core, Coil coil, OperatingPoint* operatingPoint) {
 
+    // ABT #417: a drumRing core's two structural annular-clearance gaps are DERIVED
+    // (Core::process_gap synthesizes them from A/K/D/F — nothing is ever hand-authored
+    // in functionalDescription.gapping for this family, unlike a normal gapped E-core).
+    // Core's free from_json (used whenever a Core is deserialized as a MEMBER — e.g.
+    // Magnetic::from_json, which every PyOM/WASM binding reaches) never calls
+    // process_data()/process_gap(), unlike the Core(json) constructor. A drumRing core
+    // arriving here via that path has gapping==[] and ReluctanceModel::get_gapping_reluctance
+    // silently treats "empty" as "no gap" instead of "not yet derived", dropping the
+    // dominant reluctance term and reporting an inductance 3.8-10.7x too high. gapping is
+    // NEVER legitimately empty for this family (single- or dual-material), so self-heal
+    // unconditionally here — process_gap() is idempotent and a no-op if already derived.
+    if (core.get_shape_family() == CoreShapeFamily::DRUM_RING && core.get_functional_description().get_gapping().empty()) {
+        core.process_gap();
+    }
+
     // Semi-shielded drums (ABT #362): mixed-material sectioned reluctance, drum mu + glue mu.
     if (core.get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
         double semishieldedTemperature = operatingPoint ? operatingPoint->get_conditions().get_ambient_temperature()
