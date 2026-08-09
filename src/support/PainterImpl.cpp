@@ -4705,11 +4705,20 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
         const double bobbinWindowHeight = windingWindow.get_height().value();
         const double flangeHalfDepth = halfD + windowWidth;
         const double wallThickness = (windowHeight - bobbinWindowHeight) / 2;
-        if (wallThickness > 1e-9) {
-            paint_rectangle(0, bobbinWindowHeight / 2 + wallThickness / 2, 2 * flangeHalfDepth,
-                            wallThickness, "bobbin", shapes);
-            paint_rectangle(0, -bobbinWindowHeight / 2 - wallThickness / 2, 2 * flangeHalfDepth,
-                            wallThickness, "bobbin", shapes);
+        // The flange is an annulus around the column: at the x = 0 cut it exists only
+        // OUTBOARD of the column hole — nothing is drawn in front of the ferrite column
+        // (Alf, 25_psps YZ review: "the flanges are not visible in the section" there).
+        const double flangeInnerZ = mainColumn.get_depth() / 2;
+        const double flangeSpan = flangeHalfDepth - flangeInnerZ;
+        if (wallThickness > 1e-9 && flangeSpan > 1e-9) {
+            for (double sgn : {-1.0, +1.0}) {
+                paint_rectangle(sgn * (flangeInnerZ + flangeSpan / 2),
+                                bobbinWindowHeight / 2 + wallThickness / 2, flangeSpan,
+                                wallThickness, "bobbin", shapes);
+                paint_rectangle(sgn * (flangeInnerZ + flangeSpan / 2),
+                                -bobbinWindowHeight / 2 - wallThickness / 2, flangeSpan,
+                                wallThickness, "bobbin", shapes);
+            }
         }
         const double tubeThickness = halfD - mainColumn.get_depth() / 2;
         if (tubeThickness > 1e-9) {
@@ -4725,13 +4734,23 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
         const double sign = (r.side == 0) ? -1.0 : 1.0;
         std::string laneClass = "copper_translucent";
         if (!r.interSection) {
-            // Plain descent: vertical lane on the destination face, displaced by the levels
-            // INSIDE it (its own level's room is the lane itself: destRide - od).
+            // Plain descent: the full connecting path (Alf: "draw the dragback diagonal") —
+            // a stub OUT from the source crossing at its own row, the vertical descent on
+            // the destination face displaced by the levels INSIDE it (its own level's room
+            // is the lane itself: destRide - od), and a stub IN to the destination crossing.
             const double laneZ = r.dstZ + rideFor(r.dstZ, r.side) - r.od;
+            const double srcFaceZ = r.srcZ + rideFor(r.srcZ, r.side);
+            const double dstFaceZ = r.dstZ + rideFor(r.dstZ, r.side);
             const double y0 = std::min(r.srcY, r.dstY);
             const double y1 = std::max(r.srcY, r.dstY);
+            paint_rectangle(sign * (srcFaceZ + laneZ) / 2, r.srcY,
+                            std::abs(laneZ - srcFaceZ) + r.od, r.od, laneClass, shapes, 0,
+                            {0, 0}, r.label + " out");
             paint_rectangle(sign * laneZ, (y0 + y1) / 2, r.od, (y1 - y0) + r.od, laneClass,
                             shapes, 0, {0, 0}, r.label);
+            paint_rectangle(sign * (dstFaceZ + laneZ) / 2, r.dstY,
+                            std::abs(dstFaceZ - laneZ) + r.od, r.od, laneClass, shapes, 0,
+                            {0, 0}, r.label + " in");
         }
         else {
             // Band-routed inter-section hop: stub up from the source turn, run at the band
