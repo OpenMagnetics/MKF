@@ -12080,6 +12080,11 @@ TEST_CASE("Test_Real_Geometry_Contiguous_Oversubscribed_Charge_Is_Measured_In_Tu
 // dragback climbs as the wire height). Rectangular windows only; single winding window (the edge
 // row allocator is replayed with window index 0). Mirrors the emitter's spec, not its code.
 static std::map<std::pair<std::string, int64_t>, double> expected_connection_length_rectangular(OpenMagnetics::Coil& coil) {
+    const bool diag = std::getenv("MKF_TEST_DIAG") != nullptr;
+    auto piece = [&](const std::string& what, const std::string& winding, double value) {
+        if (diag) fprintf(stderr, "[replay] %s %s += %.4f mm\n", winding.c_str(), what.c_str(), value * 1e3);
+        return value;
+    };
     std::map<std::pair<std::string, int64_t>, double> expected;
     auto turns = coil.get_turns_description().value();
     auto allLayers = coil.get_layers_description().value();
@@ -12139,26 +12144,30 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
         return atTop ? windowTopY - target->depthBefore - wireHeight / 2
                      : windowBottomY + target->depthBefore + wireHeight / 2;
     };
-    // ABT #615: ALL inter-section continuations share ONE top-edge band (tangential chords
+    // ABT #615: ALL inter-section continuations of an edge share ONE band (tangential chords
     // separate in azimuth in 3D); the band claims only its runs' spans, registered on its row.
-    double continuationBandY = 0;
-    double continuationBandHeight = 0;
-    int continuationBandRow = -1;
-    auto continuationRow = [&](double wireHeight, double spanLo, double spanHi) {
-        if (continuationBandHeight + 1e-12 < wireHeight) {
-            continuationBandY = allocateEdgeRow(true, wireHeight, spanLo, spanHi);
-            continuationBandHeight = wireHeight;
-            for (size_t r = 0; r < replayRows[0].size(); ++r) {
-                double y = windowTopY - replayRows[0][r].depthBefore - replayRows[0][r].height / 2;
-                if (std::abs(y - continuationBandY) < 1e-12) {
-                    continuationBandRow = int(r);
+    // Stage 2: the band's EDGE follows the hop's exit turn (top for hop 1, bottom for hop 2...).
+    struct ReplayBand { double y; double height; int row; };
+    std::map<int, ReplayBand> continuationBands;
+    auto continuationRow = [&](bool atTop, double wireHeight, double spanLo, double spanHi) {
+        int edge = atTop ? 0 : 1;
+        auto found = continuationBands.find(edge);
+        if (found == continuationBands.end() || found->second.height + 1e-12 < wireHeight) {
+            double y = allocateEdgeRow(atTop, wireHeight, spanLo, spanHi);
+            int row = -1;
+            for (size_t r = 0; r < replayRows[edge].size(); ++r) {
+                double ry = atTop ? windowTopY - replayRows[edge][r].depthBefore - replayRows[edge][r].height / 2
+                                  : windowBottomY + replayRows[edge][r].depthBefore + replayRows[edge][r].height / 2;
+                if (std::abs(ry - y) < 1e-12) {
+                    row = int(r);
                 }
             }
+            continuationBands[edge] = {y, wireHeight, row};
         }
-        else if (continuationBandRow >= 0) {
-            replayRows[0][continuationBandRow].spans.push_back({spanLo, spanHi});
+        else if (found->second.row >= 0) {
+            replayRows[edge][found->second.row].spans.push_back({spanLo, spanHi});
         }
-        return continuationBandY;
+        return continuationBands[edge].y;
     };
 
     // Electrical order of layers, and endpoint turns per (winding|layer, parallel).
@@ -12205,12 +12214,12 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
             }
             double run = windowOuterX - turnX + wireW;
             if (!crossesOutward) {
-                return run;
+                return piece("radial-exit", windingName, run);
             }
             double edgeY = allocateEdgeRow(turnY >= windowCenterTurnAxis, wireH,
                                            turnX - wireW / 2, windowOuterX);
             double stub = (std::abs(edgeY - turnY) > wireH / 2) ? std::abs(edgeY - turnY) + wireH / 2 : 0.0;
-            return stub + run;
+            return piece("lead-stub", windingName, stub) + piece("lead-run", windingName, run);
         };
         for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
             auto key = std::make_pair(windingName, parallel);
@@ -12261,20 +12270,21 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
                 double x2 = vx(firstTurnInLayer.at(entryKey).get_coordinates());
                 double y2 = vy(firstTurnInLayer.at(entryKey).get_coordinates());
                 if (windingOrder == WindingOrder::Z && intervening.empty()) {
-                    expected[{windingName, parallel}] += std::hypot(x2 - x1, y2 - y1);
+                    expected[{windingName, parallel}] += piece("diagonal", windingName, std::hypot(x2 - x1, y2 - y1));
                 }
                 else if (!intervening.empty()) {
                     // ABT #615: any inter-section continuation (U or Z) routes in-window along the
                     // SHARED top-edge band: stubs from both end turns to the band + run across.
                     // (The FRONT_YZ face-dragback model for Z is superseded.)
-                    double edgeY = continuationRow(wireH, std::min(x1, x2) - wireW / 2,
+                    double edgeY = continuationRow(y1 >= windowCenterTurnAxis, wireH,
+                                                   std::min(x1, x2) - wireW / 2,
                                                    std::max(x1, x2) + wireW / 2);
                     if (std::abs(edgeY - y1) > wireH / 2) {
-                        expected[{windingName, parallel}] += std::abs(edgeY - y1) + wireH / 2;
+                        expected[{windingName, parallel}] += piece("band-stub1", windingName, std::abs(edgeY - y1) + wireH / 2);
                     }
-                    expected[{windingName, parallel}] += std::abs(x2 - x1) + wireW;
+                    expected[{windingName, parallel}] += piece("band-run", windingName, std::abs(x2 - x1) + wireW);
                     if (std::abs(edgeY - y2) > wireH / 2) {
-                        expected[{windingName, parallel}] += std::abs(edgeY - y2) + wireH / 2;
+                        expected[{windingName, parallel}] += piece("band-stub2", windingName, std::abs(edgeY - y2) + wireH / 2);
                     }
                 }
                 else {
@@ -12391,6 +12401,11 @@ static void check_connection_resistance_matches(OpenMagnetics::Coil& coil,
             REQUIRE(found != expected.end());
             INFO("winding " << windingName << " parallel " << parallel
                  << " expectedLength=" << found->second * 1e3 << " mm");
+            if (std::getenv("MKF_TEST_DIAG")) {
+                fprintf(stderr, "[code] %s p%zu length=%.4f mm  (replay %.4f)\n", windingName.c_str(),
+                        parallel, connectionResistance[windingIndex][parallel] / perMeter * 1e3,
+                        found->second * 1e3);
+            }
             CHECK(found->second > 0);  // vacuity: every conductor must route some connection copper
             CHECK_THAT(connectionResistance[windingIndex][parallel],
                        Catch::Matchers::WithinRel(perMeter * found->second, 1e-6));

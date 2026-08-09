@@ -1155,7 +1155,13 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 // the band is fine — unlike terminal leads, which fan on one connection plane and
                 // therefore still need one row each. The band claims only its runs' radial span
                 // (Alf, 2026-08-09), so it shares the leads' row height wherever they don't meet.
-                double routeEdgeY = roundFloat(windowTopY - wireOuterHeight / 2, 9);
+                // ABT #615 stage 2: the connection edge FOLLOWS THE EXIT TURN (Alf's alternation
+                // — hop 1 exits top, hop 2 exits bottom, ...). With direction alternation the
+                // receiving section starts on the same edge, so both stubs stay short.
+                const bool routeAtTop =
+                    exitTurn.get_coordinates()[1] >= windowCenterTurnAxis;
+                double routeEdgeY = roundFloat(routeAtTop ? windowTopY - wireOuterHeight / 2
+                                                          : windowBottomY + wireOuterHeight / 2, 9);
                 double runDepth = 0;
                 if (routesAlongEdge) {
                     // ABT #615, Alf 2026-08-09: the band claims ONLY the radial span its runs
@@ -1170,20 +1176,21 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                                                    entryTurn.get_coordinates()[0]) - wireOuterWidth / 2;
                     const double spanHi = std::max(exitTurn.get_coordinates()[0],
                                                    entryTurn.get_coordinates()[0]) + wireOuterWidth / 2;
-                    auto bandKey = std::make_pair(routeWindowIndex, 0);
+                    const int routeEdge = routeAtTop ? 0 : 1;
+                    auto bandKey = std::make_pair(routeWindowIndex, routeEdge);
                     auto existingBand = continuationBand.find(bandKey);
                     if (existingBand != continuationBand.end()
                         && existingBand->second.height + 1e-12 >= wireOuterHeight) {
                         routeEdgeY = existingBand->second.edgeY;
                         runDepth = existingBand->second.runDepth;
-                        edgeRows[{routeWindowIndex, 0}][existingBand->second.rowIndex]
+                        edgeRows[{routeWindowIndex, routeEdge}][existingBand->second.rowIndex]
                             .spans.push_back({spanLo, spanHi});
                     }
                     else {
                         std::tie(routeEdgeY, runDepth) =
-                            allocateEdgeRow(routeWindowIndex, true, wireOuterHeight, spanLo, spanHi);
+                            allocateEdgeRow(routeWindowIndex, routeAtTop, wireOuterHeight, spanLo, spanHi);
                         size_t rowIndex = 0;
-                        auto& rows = edgeRows[{routeWindowIndex, 0}];
+                        auto& rows = edgeRows[{routeWindowIndex, routeEdge}];
                         for (size_t r = 0; r < rows.size(); ++r) {
                             if (std::abs((rows[r].depthBefore + rows[r].height) - runDepth) < 1e-12) {
                                 rowIndex = r;
@@ -2696,6 +2703,86 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             // blocking must be derived from the ALIGNED geometry — aligning only after
             // the loop leaves silently unblocked slots (turns inside terminal leads).
             align_blocked_layer_turns();
+        }
+        // RELAXATION (ABT #615, Alf 2026-08-09 on 25_psps: "layer 3 could fit more turns,
+        // right?"): the monotone max above converges by keeping the DEEPEST reservation any
+        // iteration ever measured, so a band that settled shallower leaves stale slots — S0's
+        // layers were charged 3 bottom slots by early iterations whose final need was 2, holding
+        // one fewer turn each and floating 0.43 mm off the corridor. After convergence, recompute
+        // the blocking FRESH from the final geometry; if the accumulated maps over-reserve
+        // anywhere, adopt the fresh values and re-wind once. If the relaxed layout re-introduces
+        // residual blocking (the layout genuinely needed the conservative reservation), restore
+        // the maps and re-wind back — deterministic, one extra pass, never a collision.
+        {
+            std::map<std::string, std::pair<double, double>> freshDepths;
+            auto freshBlocked = compute_connection_blocked_slots_per_layer(&freshDepths);
+            bool overReserved = false;
+            for (const auto& [layerName, accumulated] : _connectionBlockedSlotsPerLayer) {
+                auto fresh = freshBlocked.find(layerName);
+                uint64_t freshTop = fresh == freshBlocked.end() ? 0 : fresh->second.first;
+                uint64_t freshBottom = fresh == freshBlocked.end() ? 0 : fresh->second.second;
+                if (accumulated.first > freshTop || accumulated.second > freshBottom) {
+                    overReserved = true;
+                    break;
+                }
+            }
+            if (!overReserved) {
+                for (const auto& [layerName, accumulated] : _connectionBlockedDepthPerLayer) {
+                    auto fresh = freshDepths.find(layerName);
+                    double freshTop = fresh == freshDepths.end() ? 0.0 : fresh->second.first;
+                    double freshBottom = fresh == freshDepths.end() ? 0.0 : fresh->second.second;
+                    if (accumulated.first > freshTop + 1e-9 || accumulated.second > freshBottom + 1e-9) {
+                        overReserved = true;
+                        break;
+                    }
+                }
+            }
+            if (std::getenv("MKF_BLOCKING_DIAG")) {
+                std::cerr << "[relax] overReserved=" << overReserved << "\n";
+            }
+            if (overReserved) {
+                auto backupSlots = _connectionBlockedSlotsPerLayer;
+                auto backupDepths = _connectionBlockedDepthPerLayer;
+                auto backupLanding = _uLandingDepthPerLayer;
+                auto rewindOnce = [&]() {
+                    wind_by_sections(proportionPerWinding, pattern, repetitions);
+                    redistribute_section_turns_for_blocking();
+                    wind_by_layers();
+                    if (get_layers_description()) {
+                        wind_by_turns();
+                        if (get_turns_description() && delimitAndCompact) {
+                            delimit_and_compact();
+                        }
+                        align_blocked_layer_turns();
+                    }
+                };
+                _connectionBlockedSlotsPerLayer = freshBlocked;
+                _connectionBlockedDepthPerLayer = freshDepths;
+                _uLandingDepthPerLayer = compute_u_landing_extra_depths();
+                rewindOnce();
+                bool relaxedHolds = bool(get_turns_description());
+                if (relaxedHolds) {
+                    auto relaxedResidual = compute_connection_blocked_slots_per_layer();
+                    for (const auto& [layerName, edges] : relaxedResidual) {
+                        auto applied = _connectionBlockedSlotsPerLayer.find(layerName);
+                        uint64_t appliedTop = applied == _connectionBlockedSlotsPerLayer.end() ? 0 : applied->second.first;
+                        uint64_t appliedBottom = applied == _connectionBlockedSlotsPerLayer.end() ? 0 : applied->second.second;
+                        if (edges.first > appliedTop || edges.second > appliedBottom) {
+                            relaxedHolds = false;
+                            break;
+                        }
+                    }
+                }
+                if (std::getenv("MKF_BLOCKING_DIAG")) {
+                    std::cerr << "[relax] relaxedHolds=" << relaxedHolds << "\n";
+                }
+                if (!relaxedHolds) {
+                    _connectionBlockedSlotsPerLayer = backupSlots;
+                    _connectionBlockedDepthPerLayer = backupDepths;
+                    _uLandingDepthPerLayer = backupLanding;
+                    rewindOnce();
+                }
+            }
         }
         // Verify the fixpoint actually converged: the last re-wind may have produced NEW
         // blocking that the loop never re-applied (cap exhaustion) — silent residue leaves
@@ -7683,6 +7770,12 @@ bool Coil::wind_by_rectangular_turns() {
     // layer by layer across the WHOLE winding (continuously, even over interleaved section breaks),
     // so the connection always leaves on the side the previous layer finished.
     std::map<std::string, int64_t> windingLayerOrderCount;
+    // ABT #615 stage 2: each winding's k-th SECTION alternates its winding direction (Alf,
+    // 2026-08-09: the connection arrives on top, so the receiving section "should connect to the
+    // topmost turn, and from there start the Z winding the other way around: from top to bottom in
+    // the layer, and back to top with a dragback" -- and invert again on the next hop).
+    std::map<std::string, int64_t> windingSectionOrdinal;
+    std::map<std::string, std::string> windingLastSection;
     std::vector<Turn> turns;
     for (auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION) {
@@ -7805,11 +7898,29 @@ bool Coil::wind_by_rectangular_turns() {
             // increment, which holds for any turns alignment.
             std::string windingNameForOrder = layer.get_partial_windings()[0].get_winding();
             int64_t windingLayerOrdinal = windingLayerOrderCount[windingNameForOrder]++;
+            if (layer.get_section()
+                && windingLastSection[windingNameForOrder] != layer.get_section().value()) {
+                if (!windingLastSection[windingNameForOrder].empty()) {
+                    windingSectionOrdinal[windingNameForOrder]++;
+                }
+                windingLastSection[windingNameForOrder] = layer.get_section().value();
+            }
             // Convention: every winding STARTS FROM THE BOTTOM. The alignment above lays the first turn
-            // at the top, so reverse it to start at the bottom and wind up — for every layer EXCEPT the
-            // odd ordinals of a U winding, whose boustrophedon turnaround means they start at the top
-            // (so consecutive layers stay adjacent and the layer-to-layer connection stays on top).
-            if (!(get_winding_order(layer.get_section().value()) == WindingOrder::U && (windingLayerOrdinal % 2 == 1))) {
+            // at the top, so reverse it to start at the bottom and wind up — for every layer EXCEPT:
+            //   - the odd ordinals of a U winding, whose boustrophedon turnaround means they start at
+            //     the top (so consecutive layers stay adjacent and the connection stays on top);
+            //   - ABT #615 stage 2 (real winding): the odd SECTIONS of a winding's interleave chain.
+            //     The inter-section connection arrives at the edge the previous section finished on,
+            //     so the receiving section starts at its TOPMOST turn and winds the other way (top to
+            //     bottom per layer, dragbacks returning bottom to top), inverting again per hop.
+            bool startFromTop = false;
+            if (get_winding_order(layer.get_section().value()) == WindingOrder::U) {
+                startFromTop = (windingLayerOrdinal % 2 == 1);
+            }
+            else if (settings.get_coil_use_real_winding_geometry()) {
+                startFromTop = (windingSectionOrdinal[windingNameForOrder] % 2 == 1);
+            }
+            if (!startFromTop) {
                 currentTurnCenterWidth = roundFloat(currentTurnCenterWidth + (int64_t(physicalTurnsInLayer) - 1) * currentTurnWidthIncrement, 9);
                 currentTurnCenterHeight = roundFloat(currentTurnCenterHeight - (int64_t(physicalTurnsInLayer) - 1) * currentTurnHeightIncrement, 9);
                 currentTurnWidthIncrement = -currentTurnWidthIncrement;
