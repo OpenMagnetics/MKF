@@ -12106,22 +12106,57 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
     double windowTopY = windowCenterTurnAxis + windowSizeTurnAxis / 2;
     double windowBottomY = windowCenterTurnAxis - windowSizeTurnAxis / 2;
 
-    // Per-edge row allocator replay (single window): {edge 0 = top, 1 = bottom} -> used depth.
-    std::map<int, double> usedEdgeDepth;
-    auto allocateEdgeRow = [&](bool atTop, double wireHeight) {
-        double& used = usedEdgeDepth[atTop ? 0 : 1];
-        double edgeY = atTop ? windowTopY - used - wireHeight / 2 : windowBottomY + used + wireHeight / 2;
-        used += wireHeight;
-        return edgeY;
+    // Per-edge SPAN-AWARE row allocator replay (single window), mirroring the coil's: rows are
+    // shared between runs whose radial spans don't overlap (a terminal lead only occupies
+    // [connecting turn, border] -- Alf 2026-08-09: it blocks nothing inward of its turn).
+    struct ReplayRow { double height; double depthBefore; std::vector<std::pair<double,double>> spans; };
+    std::map<int, std::vector<ReplayRow>> replayRows;
+    auto allocateEdgeRow = [&](bool atTop, double wireHeight, double spanLo, double spanHi) {
+        auto& rows = replayRows[atTop ? 0 : 1];
+        ReplayRow* target = nullptr;
+        for (auto& row : rows) {
+            if (std::abs(row.height - wireHeight) > 1e-12) {
+                continue;
+            }
+            bool overlaps = false;
+            for (const auto& [lo, hi] : row.spans) {
+                if (spanLo < hi - 1e-12 && lo < spanHi - 1e-12) {
+                    overlaps = true;
+                    break;
+                }
+            }
+            if (!overlaps) {
+                target = &row;
+                break;
+            }
+        }
+        if (target == nullptr) {
+            double depthBefore = rows.empty() ? 0.0 : rows.back().depthBefore + rows.back().height;
+            rows.push_back({wireHeight, depthBefore, {}});
+            target = &rows.back();
+        }
+        target->spans.push_back({spanLo, spanHi});
+        return atTop ? windowTopY - target->depthBefore - wireHeight / 2
+                     : windowBottomY + target->depthBefore + wireHeight / 2;
     };
     // ABT #615: ALL inter-section continuations share ONE top-edge band (tangential chords
-    // separate in azimuth in 3D); a new band is allocated only when a taller wire arrives.
+    // separate in azimuth in 3D); the band claims only its runs' spans, registered on its row.
     double continuationBandY = 0;
     double continuationBandHeight = 0;
-    auto continuationRow = [&](double wireHeight) {
+    int continuationBandRow = -1;
+    auto continuationRow = [&](double wireHeight, double spanLo, double spanHi) {
         if (continuationBandHeight + 1e-12 < wireHeight) {
-            continuationBandY = allocateEdgeRow(true, wireHeight);
+            continuationBandY = allocateEdgeRow(true, wireHeight, spanLo, spanHi);
             continuationBandHeight = wireHeight;
+            for (size_t r = 0; r < replayRows[0].size(); ++r) {
+                double y = windowTopY - replayRows[0][r].depthBefore - replayRows[0][r].height / 2;
+                if (std::abs(y - continuationBandY) < 1e-12) {
+                    continuationBandRow = int(r);
+                }
+            }
+        }
+        else if (continuationBandRow >= 0) {
+            replayRows[0][continuationBandRow].spans.push_back({spanLo, spanHi});
         }
         return continuationBandY;
     };
@@ -12172,7 +12207,8 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
             if (!crossesOutward) {
                 return run;
             }
-            double edgeY = allocateEdgeRow(turnY >= windowCenterTurnAxis, wireH);
+            double edgeY = allocateEdgeRow(turnY >= windowCenterTurnAxis, wireH,
+                                           turnX - wireW / 2, windowOuterX);
             double stub = (std::abs(edgeY - turnY) > wireH / 2) ? std::abs(edgeY - turnY) + wireH / 2 : 0.0;
             return stub + run;
         };
@@ -12231,7 +12267,8 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
                     // ABT #615: any inter-section continuation (U or Z) routes in-window along the
                     // SHARED top-edge band: stubs from both end turns to the band + run across.
                     // (The FRONT_YZ face-dragback model for Z is superseded.)
-                    double edgeY = continuationRow(wireH);
+                    double edgeY = continuationRow(wireH, std::min(x1, x2) - wireW / 2,
+                                                   std::max(x1, x2) + wireW / 2);
                     if (std::abs(edgeY - y1) > wireH / 2) {
                         expected[{windingName, parallel}] += std::abs(edgeY - y1) + wireH / 2;
                     }

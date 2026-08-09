@@ -817,6 +817,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         double edgeY;
         double runDepth;
         double height;
+        size_t rowIndex;  // into edgeRows[{window, edge}], so reuse can register more spans
     };
     std::map<std::pair<size_t, int>, ContinuationBand> continuationBand;
     // Allocates a row for a run of height `wireHeight` spanning [spanLo, spanHi] radially; returns
@@ -1152,24 +1153,44 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 // section connection in secondary"). The band is a HEIGHT reservation; in 3D the
                 // connections are tangential chords separated in AZIMUTH, so radial overlap inside
                 // the band is fine — unlike terminal leads, which fan on one connection plane and
-                // therefore still need one row each. The band spans the whole window so no lead
-                // ever shares it.
+                // therefore still need one row each. The band claims only its runs' radial span
+                // (Alf, 2026-08-09), so it shares the leads' row height wherever they don't meet.
                 double routeEdgeY = roundFloat(windowTopY - wireOuterHeight / 2, 9);
                 double runDepth = 0;
                 if (routesAlongEdge) {
+                    // ABT #615, Alf 2026-08-09: the band claims ONLY the radial span its runs
+                    // actually cover -- "the terminal wire is not there [inward of its connecting
+                    // turn], and we don't need to reserve the space blocker". A terminal row blocks
+                    // from its connecting turn OUTWARD, so a band whose runs live inward of the
+                    // leads SHARES the leads' row height instead of stacking under it (span-aware
+                    // allocateEdgeRow). Reuse registers each new run's span on the band's row, so
+                    // later terminal leads still see the true occupancy and stack below only where
+                    // they genuinely overlap it.
+                    const double spanLo = std::min(exitTurn.get_coordinates()[0],
+                                                   entryTurn.get_coordinates()[0]) - wireOuterWidth / 2;
+                    const double spanHi = std::max(exitTurn.get_coordinates()[0],
+                                                   entryTurn.get_coordinates()[0]) + wireOuterWidth / 2;
                     auto bandKey = std::make_pair(routeWindowIndex, 0);
                     auto existingBand = continuationBand.find(bandKey);
                     if (existingBand != continuationBand.end()
                         && existingBand->second.height + 1e-12 >= wireOuterHeight) {
                         routeEdgeY = existingBand->second.edgeY;
                         runDepth = existingBand->second.runDepth;
+                        edgeRows[{routeWindowIndex, 0}][existingBand->second.rowIndex]
+                            .spans.push_back({spanLo, spanHi});
                     }
                     else {
                         std::tie(routeEdgeY, runDepth) =
-                            allocateEdgeRow(routeWindowIndex, true, wireOuterHeight,
-                                            windowCenterLayerAxis - windowSizeLayerAxis,
-                                            windowOuterX + windowSizeLayerAxis);
-                        continuationBand[bandKey] = {routeEdgeY, runDepth, wireOuterHeight};
+                            allocateEdgeRow(routeWindowIndex, true, wireOuterHeight, spanLo, spanHi);
+                        size_t rowIndex = 0;
+                        auto& rows = edgeRows[{routeWindowIndex, 0}];
+                        for (size_t r = 0; r < rows.size(); ++r) {
+                            if (std::abs((rows[r].depthBefore + rows[r].height) - runDepth) < 1e-12) {
+                                rowIndex = r;
+                                break;
+                            }
+                        }
+                        continuationBand[bandKey] = {routeEdgeY, runDepth, wireOuterHeight, rowIndex};
                     }
                 }
 
