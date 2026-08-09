@@ -217,6 +217,11 @@ class Coil : public MAS::Coil {
         // function of settled state. align_blocked_layer_turns spreads against the element-wise
         // max of both maps.
         std::map<std::string, std::pair<double, double>> _uLandingDepthPerLayer;
+        // ABT #616 (Alf, 2026-08-09): the edge (top/bottom) each winding's ENTRANCE terminal
+        // row was allocated on in the previous blocking iteration. The winding's first
+        // section/layer starts winding FROM that edge, so the entrance connects to the turn
+        // adjacent to its own row (stage-2's arrival-edge rule extended to terminals).
+        std::map<std::string, bool> _terminalEntranceAtTop;
         // ABT #430: the room each layer ACTUALLY surrendered to those leads, in metres along its turn
         // axis, as applied by wind_by_rectangular_layers (blocked slots * the layer's own wire, after
         // the one-slot-minimum cap). The layer's extent — and so its filling factor — already excludes

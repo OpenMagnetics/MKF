@@ -1074,6 +1074,21 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 const Turn& connectingTurn = source.at(key);
                 double turnY = connectingTurn.get_coordinates()[1];
                 bool atTop = (turnY >= windowCenterY);
+                if (entrance && parallel == 0 && connectingTurn.get_layer()) {
+                    // Feed the entrance edge back into the next wind's direction choice
+                    // (ABT #616): the winding starts at the edge its own terminal row uses.
+                    // OVERLAPPING layers only — a contiguous layer's rows run along X and a
+                    // y-half signal is noise.
+                    auto layersForEdge = get_layers_description().value();
+                    for (const auto& l : layersForEdge) {
+                        if (l.get_name() == connectingTurn.get_layer().value()) {
+                            if (l.get_orientation() == WindingOrientation::OVERLAPPING) {
+                                _terminalEntranceAtTop[windingName] = atTop;
+                            }
+                            break;
+                        }
+                    }
+                }
                 auto [crossedCount, crossedSignature] = crossedLayerCountAndSignature(connectingTurn);
                 allEmissions.push_back({connectingTurn, parallel, atTop, crossedSignature,
                                         crossedCount, 0,
@@ -1935,6 +1950,25 @@ void Coil::align_blocked_layer_turns() {
         auto layerCoordinates = layer.get_coordinates();
         layerCoordinates[turnAxis] = roundFloat((stations.front() + stations.back()) / 2, 9);
         layer.set_coordinates(std::vector<double>{layerCoordinates[0], layerCoordinates[1], 0});
+        // ABT #616, OVERLAPPING layers only: track the re-spread turns' envelope in the layer
+        // rect (and rescale the area-ratio filling factor with the extent), so the mid-loop
+        // fit gates and the crossing measurement see the geometry the turns actually occupy.
+        // CONTIGUOUS layers keep their partition dims untouched: their width difference IS the
+        // record of the room surrendered to leads (ABT #449's measurement relies on it).
+        if (turnAxis == 1) {
+            const double newExtent =
+                roundFloat(std::abs(stations.back() - stations.front()) + wirePitch, 9);
+            const double oldExtent = layer.get_dimensions()[turnAxis];
+            if (newExtent > 0 && std::abs(newExtent - oldExtent) > 1e-12) {
+                auto layerDimensions = layer.get_dimensions();
+                layerDimensions[turnAxis] = newExtent;
+                layer.set_dimensions(layerDimensions);
+                if (layer.get_filling_factor()) {
+                    layer.set_filling_factor(
+                        roundFloat(layer.get_filling_factor().value() * oldExtent / newExtent, 6));
+                }
+            }
+        }
     }
     set_layers_description(layers);
     set_turns_description(turns);
@@ -2293,6 +2327,17 @@ void Coil::apply_connection_reserved_space() {
             // slightly exceed what the leads need, and negative leftover space is meaningless.
             reservedNotYetMadeRoomFor = std::max(reserved - surrendered->second, 0.0);
         }
+        // ABT #616: a layer with CONTINUOUS blocked depths applied was aligned off the rows and
+        // compacted to its turn envelope — the leads' room already lies wholly outside its
+        // extent, so any further charge counts that room twice (delimit's envelope ff is ~1.0
+        // for a full layer, and the double charge pushed it past the fitting threshold).
+        if (layer.get_orientation() == WindingOrientation::OVERLAPPING) {
+            auto blockedDepths = _connectionBlockedDepthPerLayer.find(layer.get_name());
+            if (blockedDepths != _connectionBlockedDepthPerLayer.end()
+                && (blockedDepths->second.first > 1e-12 || blockedDepths->second.second > 1e-12)) {
+                reservedNotYetMadeRoomFor = 0.0;
+            }
+        }
         // Add the leads' own share of the layer to the turns' share — the same shape as the section's
         // factor below (filling factor + reserved area / section area). Since the filling factor is an
         // area ratio, the leads' share is (reserved * layerAxisExtent) / (turnAxisExtent *
@@ -2572,6 +2617,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             _connectionBlockedDepthPerLayer.clear();
             _connectionBlockedRoomPerLayer.clear();
             _uLandingDepthPerLayer.clear();
+            _terminalEntranceAtTop.clear();
 
             // Special case: toroid with one physical turn whose wire OD
             // exceeds the inner-hole radius. The wire cannot be wound on
@@ -2647,9 +2693,38 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         // spill one extra layer per section; window-sized windings converge in a handful,
         // and the post-loop check below turns genuine divergence into a loud error.
         const size_t maximumBlockingIterations = 16;
+        size_t directionRegimeResets = 0;
         for (size_t blockingIteration = 0; blockingIteration < maximumBlockingIterations; ++blockingIteration) {
+            std::map<std::string, bool> entranceEdgesBefore = _terminalEntranceAtTop;
             std::map<std::string, std::pair<double, double>> freshDepths;
             auto freshBlocked = compute_connection_blocked_slots_per_layer(&freshDepths);
+            // ABT #616: the entrance-edge feedback flips a winding's direction, which relays
+            // every one of its rows to the other edge — the monotone accumulation must NOT
+            // union rows of two different direction regimes (measured: an 18-turn U design
+            // accumulated 6-of-6 blocked slots from the superposition). On a regime change,
+            // restart the accumulation and re-measure the new-direction geometry.
+            if (_terminalEntranceAtTop != entranceEdgesBefore && directionRegimeResets < 2) {
+                directionRegimeResets++;
+                _connectionBlockedSlotsPerLayer.clear();
+                _connectionBlockedDepthPerLayer.clear();
+                _uLandingDepthPerLayer.clear();
+                _applyConnectionBlocking = true;
+                wind_by_sections(proportionPerWinding, pattern, repetitions);
+                redistribute_section_turns_for_blocking();
+                wind_by_layers();
+                if (!get_layers_description()) {
+                    break;
+                }
+                wind_by_turns();
+                if (!get_turns_description()) {
+                    break;
+                }
+                if (delimitAndCompact) {
+                    delimit_and_compact();
+                }
+                align_blocked_layer_turns();
+                continue;
+            }
             // Accumulate the blocked slots MONOTONICALLY (element-wise max) instead of replacing them.
             // Freeing the outermost layer's exit slot spills a turn into a new outer layer, which then
             // makes the previous layer's top look unblocked — so a plain replace flip-flops between an
@@ -2748,7 +2823,15 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         // anywhere, adopt the fresh values and re-wind once. If the relaxed layout re-introduces
         // residual blocking (the layout genuinely needed the conservative reservation), restore
         // the maps and re-wind back — deterministic, one extra pass, never a collision.
-        {
+        // Repeated relax ROUNDS (ABT #616): one round settles into SOME self-consistent
+        // state, but a state built with stale-fat maps verifies against those same fat maps
+        // — wasteful yet 'holding'. Each new round re-measures the settled geometry; while
+        // the fresh need is strictly smaller anywhere, adopt it and settle again. Bounded,
+        // monotone in the applied maps across rounds, keeps the last state that held.
+        for (size_t relaxRound = 0; relaxRound < 3; ++relaxRound) {
+            if (std::getenv("MKF_BLOCKING_DIAG")) {
+                std::cerr << "[relax] round=" << relaxRound << "\n";
+            }
             std::map<std::string, std::pair<double, double>> freshDepths;
             auto freshBlocked = compute_connection_blocked_slots_per_layer(&freshDepths);
             bool overReserved = false;
@@ -2775,7 +2858,10 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             if (std::getenv("MKF_BLOCKING_DIAG")) {
                 std::cerr << "[relax] overReserved=" << overReserved << "\n";
             }
-            if (overReserved) {
+            if (!overReserved) {
+                break;   // nothing left to reclaim: the settled state is tight
+            }
+            {
                 auto backupSlots = _connectionBlockedSlotsPerLayer;
                 auto backupDepths = _connectionBlockedDepthPerLayer;
                 auto backupLanding = _uLandingDepthPerLayer;
@@ -2795,18 +2881,49 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                 _connectionBlockedDepthPerLayer = freshDepths;
                 _uLandingDepthPerLayer = compute_u_landing_extra_depths();
                 rewindOnce();
-                bool relaxedHolds = bool(get_turns_description());
-                if (relaxedHolds) {
-                    auto relaxedResidual = compute_connection_blocked_slots_per_layer();
+                // ABT #616: a single-shot relax fell back WHOLESALE whenever the relaxed
+                // layout re-introduced any residual — 26_psps then shipped the conservative
+                // degenerate layout (single-turn layers, 2-turn layers where 3 fit). Instead,
+                // re-run the fixpoint FROM THE FRESH SEED: merge each pass's residual into
+                // the applied maps (monotone from fresh, not from the old conservative state)
+                // and re-wind, a bounded number of times. Fall back only if it never settles.
+                bool relaxedHolds = false;
+                const size_t maximumRelaxPasses = 4;
+                for (size_t relaxPass = 0; relaxPass < maximumRelaxPasses; ++relaxPass) {
+                    if (!get_turns_description()) {
+                        break;   // relaxed layout failed to wind at all
+                    }
+                    std::map<std::string, std::pair<double, double>> residDepths;
+                    auto relaxedResidual = compute_connection_blocked_slots_per_layer(&residDepths);
+                    bool settled = true;
                     for (const auto& [layerName, edges] : relaxedResidual) {
                         auto applied = _connectionBlockedSlotsPerLayer.find(layerName);
                         uint64_t appliedTop = applied == _connectionBlockedSlotsPerLayer.end() ? 0 : applied->second.first;
                         uint64_t appliedBottom = applied == _connectionBlockedSlotsPerLayer.end() ? 0 : applied->second.second;
                         if (edges.first > appliedTop || edges.second > appliedBottom) {
-                            relaxedHolds = false;
+                            settled = false;
                             break;
                         }
                     }
+                    if (settled) {
+                        relaxedHolds = true;
+                        break;
+                    }
+                    if (relaxPass + 1 == maximumRelaxPasses) {
+                        break;   // budget spent still growing: fall back below
+                    }
+                    for (const auto& [layerName, edges] : relaxedResidual) {
+                        auto& applied = _connectionBlockedSlotsPerLayer[layerName];
+                        applied.first = std::max(applied.first, edges.first);
+                        applied.second = std::max(applied.second, edges.second);
+                    }
+                    for (const auto& [layerName, depths] : residDepths) {
+                        auto& applied = _connectionBlockedDepthPerLayer[layerName];
+                        applied.first = std::max(applied.first, depths.first);
+                        applied.second = std::max(applied.second, depths.second);
+                    }
+                    _uLandingDepthPerLayer = compute_u_landing_extra_depths();
+                    rewindOnce();
                 }
                 if (std::getenv("MKF_BLOCKING_DIAG")) {
                     std::cerr << "[relax] relaxedHolds=" << relaxedHolds << "\n";
@@ -2816,6 +2933,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                     _connectionBlockedDepthPerLayer = backupDepths;
                     _uLandingDepthPerLayer = backupLanding;
                     rewindOnce();
+                    break;   // this round could not tighten: keep the last state that held
                 }
             }
         }
@@ -2827,6 +2945,10 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             for (const auto& [layerName, edges] : residual) {
                 const auto& accumulated = _connectionBlockedSlotsPerLayer[layerName];
                 if (edges.first > accumulated.first || edges.second > accumulated.second) {
+                    if (std::getenv("MKF_BLOCKING_DIAG"))
+                        std::cerr << "[fixpoint-fail] layer " << layerName << " needs {"
+                                  << edges.first << "," << edges.second << "} applied {"
+                                  << accumulated.first << "," << accumulated.second << "}\n";
                     throw CoilException(
                         ErrorCode::COIL_WINDING_ERROR,
                         "Real winding turn blocking did not converge for layer '" + layerName +
@@ -3595,12 +3717,63 @@ bool Coil::are_sections_and_layers_fitting() {
 
     for (auto& section: sections) {
         if (roundFloat(section.get_filling_factor().value(), 6) > 1 || roundFloat(overlapping_filling_factor(section), 6) > 1 || roundFloat(contiguous_filling_factor(section), 6) > 1) {
+            if (std::getenv("MKF_BLOCKING_DIAG"))
+                std::cerr << "[fit] section " << section.get_name() << " ff="
+                          << section.get_filling_factor().value() << " ovl="
+                          << overlapping_filling_factor(section) << " cont="
+                          << contiguous_filling_factor(section) << "\n";
             windTurns = false;
         }
     }
     for (auto& layer: layers) {
         if (roundFloat(layer.get_filling_factor().value(), 6) > 1) {
+            if (std::getenv("MKF_BLOCKING_DIAG"))
+                std::cerr << "[fit] layer " << layer.get_name() << " ff="
+                          << layer.get_filling_factor().value() << " dims=("
+                          << layer.get_dimensions()[0] * 1e3 << "x"
+                          << layer.get_dimensions()[1] * 1e3 << ")\n";
             windTurns = false;
+        }
+    }
+
+    // ABT #616: nothing above compares against the WINDOW — real-winding blocking can grow a
+    // section's layer count until its layers walk radially past the winding window edge, and
+    // the coil still reported "fits" (26_psps U: Secondary section 1 reached x=12.13 in a
+    // window ending at 10.42 — 1.7 mm of silently overflowing copper). Every conduction
+    // layer must lie inside the window envelope.
+    {
+        auto bobbin = resolve_bobbin();
+        if (bobbin.get_winding_window_shape() == WindingWindowShape::RECTANGULAR &&
+            bobbin.get_processed_description()) {
+            const auto& ww = bobbin.get_processed_description()->get_winding_windows()[0];
+            if (ww.get_coordinates() && ww.get_width() && ww.get_height()) {
+                const double x0 = (*ww.get_coordinates())[0] - *ww.get_width() / 2;
+                const double x1 = (*ww.get_coordinates())[0] + *ww.get_width() / 2;
+                const double y0 = (*ww.get_coordinates())[1] - *ww.get_height() / 2;
+                const double y1 = (*ww.get_coordinates())[1] + *ww.get_height() / 2;
+                // Measured on the TURNS (the actual copper): the layer rects go stale by a
+                // few um once align_blocked_layer_turns re-spreads the turns, and a stale rect
+                // must not fail a coil whose copper sits exactly at the window edge.
+                const double tol = 1e-9;
+                if (get_turns_description()) {
+                    auto wires = get_wires();
+                    auto turnsForEnvelope = get_turns_description().value();
+                    for (const auto& turn : turnsForEnvelope) {
+                        size_t windingIndex = get_winding_index_by_name(turn.get_winding());
+                        const double hw = wires[windingIndex].get_maximum_outer_width() / 2;
+                        const double hh = wires[windingIndex].get_maximum_outer_height() / 2;
+                        const auto& c = turn.get_coordinates();
+                        if (c[0] - hw < x0 - tol || c[0] + hw > x1 + tol ||
+                            c[1] - hh < y0 - tol || c[1] + hh > y1 + tol) {
+                            if (std::getenv("MKF_BLOCKING_DIAG"))
+                                std::cerr << "[fit] turn " << turn.get_name() << " at ("
+                                          << c[0] << "," << c[1] << ") outside window\n";
+                            windTurns = false;
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -7046,6 +7219,33 @@ bool Coil::wind_by_rectangular_layers() {
                     auto blocked = blockedSlotsForLayer(builtLayers);
                     uint64_t blockedSlots = std::min<uint64_t>(blocked.first + blocked.second, maximumNumberPhysicalTurnsPerLayer - 1);
                     uint64_t capacity = maximumNumberPhysicalTurnsPerLayer - blockedSlots;
+                    if (realWindingBlocking && !toroidalConnectionCorridor) {
+                        // ABT #616 (Alf, 26_psps: "3 turns should fit in layer 2 3 and 4"): the
+                        // slot currency CEILs each edge's run depth to whole turn slots, so a
+                        // 25 um insulation overhang on a two-row stack (0.885 mm) costs a whole
+                        // third slot and a layer that continuously fits 3 turns is filled with 2.
+                        // The placement (align_blocked_layer_turns) already lets turns hug the
+                        // runs at their CONTINUOUS depth — size the capacity the same way. The
+                        // U-landing overlay stays uncharged (placement-only, per the N_layer+1
+                        // retraction).
+                        const std::string layerKey = sections[sectionIndex].get_name() +
+                                                     " layer " + std::to_string(builtLayers);
+                        std::pair<double, double> depths{0.0, 0.0};
+                        auto foundDepth = _connectionBlockedDepthPerLayer.find(layerKey);
+                        if (foundDepth != _connectionBlockedDepthPerLayer.end()) {
+                            depths = foundDepth->second;
+                        }
+                        const double extent = layersStackAlongWidth
+                            ? sections[sectionIndex].get_dimensions()[1]
+                            : sections[sectionIndex].get_dimensions()[0];
+                        const double freeBand = extent - depths.first - depths.second;
+                        if (freeBand > 0.0 && wireTurnAxisSize > 0.0) {
+                            uint64_t continuousCapacity =
+                                uint64_t(std::floor(freeBand / wireTurnAxisSize + 1e-9));
+                            capacity = std::max(capacity, continuousCapacity);
+                            capacity = std::min<uint64_t>(capacity, maximumNumberPhysicalTurnsPerLayer);
+                        }
+                    }
                     if (toroidalConnectionCorridor) {
                         // Deeper rings hold fewer turns (same wire, smaller radius) and, past the
                         // first ring, surrender the connection corridor's slots.
@@ -7077,6 +7277,17 @@ bool Coil::wind_by_rectangular_layers() {
                     builtLayers++;
                 }
                 numberLayers = realPerLayerTurns.size();
+                if (std::getenv("MKF_BLOCKING_DIAG")) {
+                    std::cerr << "[fill] " << sections[sectionIndex].get_name() << " turns="
+                              << physicalTurnsInSection << " perLayer={";
+                    for (auto t : realPerLayerTurns) std::cerr << t << ",";
+                    std::cerr << "} blocked={";
+                    for (size_t li = 0; li < realPerLayerTurns.size(); ++li) {
+                        auto b = blockedSlotsForLayer(li);
+                        std::cerr << b.first << "+" << b.second << ",";
+                    }
+                    std::cerr << "} maxPerLayer=" << maximumNumberPhysicalTurnsPerLayer << "\n";
+                }
             }
 
             // ABT #229 root-cause fix: an N-filar winding laid CONSECUTIVE_PARALLELS holds its K
@@ -7949,11 +8160,23 @@ bool Coil::wind_by_rectangular_turns() {
             //     so the receiving section starts at its TOPMOST turn and winds the other way (top to
             //     bottom per layer, dragbacks returning bottom to top), inverting again per hop.
             bool startFromTop = false;
+            // ABT #616: under real winding, the alternation chain is BASED at the edge the
+            // winding's entrance terminal row occupies (recorded by the previous blocking
+            // iteration) — the first section/layer starts adjacent to its own connection,
+            // and the U/Z alternation inverts from there.
+            bool entranceBase = false;
+            if (settings.get_coil_use_real_winding_geometry()
+                && layer.get_orientation() == WindingOrientation::OVERLAPPING) {
+                auto foundEdge = _terminalEntranceAtTop.find(windingNameForOrder);
+                if (foundEdge != _terminalEntranceAtTop.end()) {
+                    entranceBase = foundEdge->second;
+                }
+            }
             if (get_winding_order(layer.get_section().value()) == WindingOrder::U) {
-                startFromTop = (windingLayerOrdinal % 2 == 1);
+                startFromTop = entranceBase != (windingLayerOrdinal % 2 == 1);
             }
             else if (settings.get_coil_use_real_winding_geometry()) {
-                startFromTop = (windingSectionOrdinal[windingNameForOrder] % 2 == 1);
+                startFromTop = entranceBase != (windingSectionOrdinal[windingNameForOrder] % 2 == 1);
             }
             if (!startFromTop) {
                 currentTurnCenterWidth = roundFloat(currentTurnCenterWidth + (int64_t(physicalTurnsInLayer) - 1) * currentTurnWidthIncrement, 9);
@@ -9653,6 +9876,25 @@ bool Coil::delimit_and_compact_rectangular_window() {
                                                                    layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
                         layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
                                                                    currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                        // ABT #616: the dims above are the exact turn envelope, so the stored
+                        // filling factor (copper / PARTITION-time extent) is stale the moment the
+                        // envelope differs — a 3-turn layer partitioned at 1.08 mm but wound to a
+                        // 1.29 mm envelope read ff=1.19 and failed the fit gates while its copper
+                        // exactly filled its rect. Refresh the ratio along the layer's turn axis
+                        // from the same envelope just measured.
+                        if (layers[i].get_type() == ElectricalType::CONDUCTION && !turnsInLayer.empty()) {
+                            size_t ffAxis = (layers[i].get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+                            double copperAlongAxis = 0;
+                            for (auto& turn : turnsInLayer) {
+                                copperAlongAxis += turn.get_dimensions().value()[ffAxis];
+                            }
+                            double envelope = (ffAxis == 1)
+                                ? currentLayerMaximumHeight - currentLayerMinimumHeight
+                                : currentLayerMaximumWidth - currentLayerMinimumWidth;
+                            if (envelope > 0) {
+                                layers[i].set_filling_factor(roundFloat(copperAlongAxis / envelope, 6));
+                            }
+                        }
                     }
                     if (i + 1 < layers.size()) {
                         layerCoordinates = layers[i + 1].get_coordinates();
