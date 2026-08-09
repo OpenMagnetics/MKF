@@ -4781,8 +4781,15 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
     // --- Terminal leads (Alf, 2026-08-10): each winding/parallel's entrance and exit ------
     // ribbon, in the XY markers' terminal magenta so the visual language carries over. The lead
     // attaches at its connecting turn's ride-displaced crossing on the winding's face, stubs
-    // to its drawn edge row when MKF drew one, and runs outward past the winding's deepest
-    // copper (the drawn run's border reach, depth-mapped).
+    // to its drawn edge row when MKF drew one, and runs outward to the COMMON TIP PLANE.
+    //
+    // The tip plane is measured on the DISPLACED depths, exactly as the 3D builder computes
+    // leadTipRadius: an attach point sitting on a deep dragback ride stack is further out
+    // than MKF's 2D radial border (the drawn run's far edge), so deriving the reach from
+    // that border alone made the lead run BACKWARD, inward across its own winding's turns
+    // (Alf 2026-08-10 on 25_psps: the Secondary exit ran 17.31 -> 15.6 mm). This is the same
+    // defect the 3D path had before maxRide entered leadTipRadius; measuring the plane from
+    // the deepest displaced copper is the one rule that cannot invert.
     {
         // Terminal magenta — the SAME colour the XY view's .connection_terminal markers use
         // (yellow is the margin's, Alf 2026-08-10).
@@ -4802,6 +4809,23 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
             path->add_child<SVG::Title>(label);
         };
         auto spaces = coil.get_connection_reserved_spaces();
+        double tipZ = 0.0;
+        double widestOd = 0.0;
+        for (const auto& turn : turns) {
+            const double od = wireOdAlongDepth(coil.get_winding_index_by_name(turn.get_winding()));
+            widestOd = std::max(widestOd, od);
+            const double zPos = turn.get_coordinates()[0] + zoff;
+            for (int probeSide : {0, 1}) {
+                tipZ = std::max(tipZ, zPos + rideFor(zPos, probeSide));
+            }
+        }
+        for (const auto& sp : spaces) {
+            if (sp.isTerminal && sp.dimensions.size() >= 2 && sp.coordinates.size() >= 2
+                && sp.dimensions[0] >= sp.dimensions[1]) {
+                tipZ = std::max(tipZ, sp.coordinates[0] + sp.dimensions[0] / 2 + zoff);
+            }
+        }
+        tipZ += 2 * widestOd;
         for (auto& [key, ct] : conductorTurns) {
             const int side = sideOfWinding(key.first);
             const double sign = (side == 0) ? -1.0 : 1.0;
@@ -4816,7 +4840,6 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
                 // horizontal (run) markers only; its y is the edge row, its far x edge the
                 // border reach. Fall back to a straight-out run at the turn's own row.
                 double edgeY = yTurn;
-                double reachZ = zAttachAbs;
                 for (const auto& sp : spaces) {
                     if (!sp.isTerminal || sp.winding != key.first || sp.parallel != key.second
                         || !sp.layer.empty()) {
@@ -4829,18 +4852,23 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
                     const double x0 = sp.coordinates[0] - sp.dimensions[0] / 2;
                     const double x1 = sp.coordinates[0] + sp.dimensions[0] / 2;
                     const double attachX = attach->get_coordinates()[0];
+                    (void)x1;
                     if (attachX < x0 - od || attachX > x1 + od) {
                         continue;
                     }
                     edgeY = sp.coordinates[1];
-                    reachZ = std::max(reachZ, x1 + zoff);
                 }
+                // A stub shorter than half a wire lies inside the run's own body (the same
+                // absorption rule the 3D lead builder uses): drop it AND its row, so the run
+                // stays level with the turn instead of picking up a sub-wire slope.
                 std::vector<std::pair<double, double>> points;
+                const bool hasStub = std::abs(edgeY - yTurn) > od / 2;
+                const double runY = hasStub ? edgeY : yTurn;
                 points.push_back({zAttach, yTurn});
-                if (std::abs(edgeY - yTurn) > od / 2) {
-                    points.push_back({zAttach, edgeY});
+                if (hasStub) {
+                    points.push_back({zAttach, runY});
                 }
-                points.push_back({sign * (reachZ + 2 * od), edgeY});
+                points.push_back({sign * tipZ, runY});
                 paintTerminalPath(points, od,
                                   key.first + " parallel " + std::to_string(key.second) +
                                       (entrance ? " entrance" : " exit"));
