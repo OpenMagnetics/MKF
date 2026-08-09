@@ -4565,4 +4565,215 @@ void Painter::paint_curve(Curve2D curve2D, bool logScale) {
     paint_waveform(curve2D.get_y_points(), std::make_optional(curve2D.get_x_points()));
 }
 
+
+void Painter::paint_magnetic(Magnetic magnetic, PainterProjection projection) {
+    if (projection == PainterProjection::XY) {
+        paint_core(magnetic);
+        paint_bobbin(magnetic);
+        paint_coil_turns(magnetic);
+        paint_coil_connections(magnetic);
+        return;
+    }
+    paint_yz_projection(magnetic);
+}
+
+// CONNECTION-FACE (YZ) projection — ABT #617 (Alf, 2026-08-10). Horizontal axis: depth z,
+// vertical: axial y. Painted WITHOUT symmetry: a turn appears TWICE (its -z and +z face
+// crossings), each at zPos + the DRAGBACK RIDE displacement of that space side, and every
+// dragback descent is drawn as a vertical copper lane at its own displaced depth — the same
+// model the 3D ConductorBuilder realizes:
+//   zPos(turn)   = turnX + (bobbinColumnHalfDepth - bobbinColumnHalfWidth)   [the crossing face]
+//   ride(z,side) = sum of the ride levels at or inside z on that side; one level per DISTINCT
+//                  return destination depth (merged within half a wire), one OD tall each.
+//   A return = consecutive same-conductor turns at different depths, EXCEPT the tangential
+//   single-turn-layer continuation (intra-section, source turn alone in its layer), which
+//   reserves nothing. Inter-section returns route at MKF's own drawn band row instead of a
+//   plain descent, so they are drawn as stub-run-stub at the band height.
+// Side convention: isolationSide PRIMARY faces -z; every other side faces +z.
+void Painter::paint_yz_projection(Magnetic magnetic) {
+    Core core = magnetic.get_core();
+    Coil coil = magnetic.get_coil();
+    if (core.get_type() != CoreType::TWO_PIECE_SET) {
+        throw std::runtime_error("Painter: YZ projection is implemented for two-piece-set cores only");
+    }
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("Winding turns not created");
+    }
+    auto bobbin = coil.resolve_bobbin();
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        throw std::runtime_error("Painter: YZ projection is implemented for rectangular winding windows only");
+    }
+    auto bobbinPd = bobbin.get_processed_description().value();
+    const double halfD = bobbinPd.get_column_depth();
+    const double halfW = bobbinPd.get_column_width().value_or(0.0);
+    if (halfD <= 0 || halfW <= 0) {
+        throw std::runtime_error("Painter: YZ projection needs the bobbin column half depth and half width");
+    }
+    const double zoff = halfD - halfW;
+    auto wirePerWinding = coil.get_wires();
+    auto turns = coil.get_turns_description().value();
+
+    // --- Ride levels, mirroring the 3D builder's pre-scan -------------------------------
+    auto sideOfWinding = [&](const std::string& windingName) -> int {
+        auto windingIndex = coil.get_winding_index_by_name(windingName);
+        return coil.get_functional_description()[windingIndex].get_isolation_side() == IsolationSide::PRIMARY ? 0 : 1;
+    };
+    auto wireOdAlongDepth = [&](size_t windingIndex) {
+        auto wire = wirePerWinding[windingIndex];
+        const double od = wire.get_maximum_outer_width();
+        if (od > 0) {
+            return od;
+        }
+        throw std::runtime_error("Painter: YZ projection needs the wire outer width");
+    };
+    std::map<std::string, int> turnsInLayer;
+    for (const auto& turn : turns) {
+        if (turn.get_layer()) {
+            turnsInLayer[turn.get_layer().value()]++;
+        }
+    }
+    struct YzReturn {
+        double srcZ, dstZ, srcY, dstY, od;
+        int side;
+        bool interSection;
+        std::string label;
+    };
+    std::vector<YzReturn> yzReturns;
+    std::vector<std::pair<double, double>> rideLevels[2];   // {dstZ, od} per space side
+    std::map<std::pair<std::string, int64_t>, std::vector<const Turn*>> conductorTurns;
+    for (const auto& turn : turns) {
+        conductorTurns[{turn.get_winding(), turn.get_parallel()}].push_back(&turn);
+    }
+    for (auto& [key, ct] : conductorTurns) {
+        const int side = sideOfWinding(key.first);
+        const double od = wireOdAlongDepth(coil.get_winding_index_by_name(key.first));
+        for (size_t i = 0; i + 1 < ct.size(); ++i) {
+            const double srcZ = ct[i]->get_coordinates()[0] + zoff;
+            const double dstZ = ct[i + 1]->get_coordinates()[0] + zoff;
+            if (std::abs(dstZ - srcZ) <= 1e-12) {
+                continue;
+            }
+            const bool interSection = ct[i]->get_section() != ct[i + 1]->get_section();
+            const bool sourceAlone = ct[i]->get_layer()
+                && turnsInLayer[ct[i]->get_layer().value()] == 1;
+            if (!interSection && sourceAlone) {
+                continue;   // tangential single-turn-layer continuation: no lane, no level
+            }
+            yzReturns.push_back({srcZ, dstZ, ct[i]->get_coordinates()[1],
+                                 ct[i + 1]->get_coordinates()[1], od, side, interSection,
+                                 ct[i]->get_name() + " return"});
+            auto& levels = rideLevels[side];
+            bool merged = false;
+            for (auto& lv : levels) {
+                if (std::abs(lv.first - dstZ) <= 0.5 * od) {
+                    lv.second = std::max(lv.second, od);
+                    merged = true;
+                    break;
+                }
+            }
+            if (!merged) {
+                levels.push_back({dstZ, od});
+            }
+        }
+    }
+    std::sort(rideLevels[0].begin(), rideLevels[0].end());
+    std::sort(rideLevels[1].begin(), rideLevels[1].end());
+    auto rideFor = [&](double zPos, int side) {
+        double ride = 0.0;
+        for (const auto& lv : rideLevels[side]) {
+            if (lv.first <= zPos + 0.5 * lv.second) {
+                ride += lv.second;
+            }
+        }
+        return ride;
+    };
+
+    // --- Core + bobbin silhouettes at the x = 0 cut -------------------------------------
+    auto shapes = _root.add_child<SVG::Group>();
+    const auto processedDescription = core.get_processed_description().value();
+    const double coreDepth = processedDescription.get_depth();
+    const double coreHeight = processedDescription.get_height();
+    const auto mainColumn = core.get_columns()[0];
+    const double windowHeight = mainColumn.get_height();
+    const double plateThickness = (coreHeight - windowHeight) / 2;
+    paint_rectangle(0, windowHeight / 2 + plateThickness / 2, coreDepth, plateThickness, "ferrite", shapes);
+    paint_rectangle(0, -windowHeight / 2 - plateThickness / 2, coreDepth, plateThickness, "ferrite", shapes);
+    paint_rectangle(0, 0, mainColumn.get_depth(), windowHeight, "ferrite", shapes);
+    {
+        const auto& windingWindow = bobbinPd.get_winding_windows()[0];
+        const double windowWidth = windingWindow.get_width().value();
+        const double bobbinWindowHeight = windingWindow.get_height().value();
+        const double flangeHalfDepth = halfD + windowWidth;
+        const double wallThickness = (windowHeight - bobbinWindowHeight) / 2;
+        if (wallThickness > 1e-9) {
+            paint_rectangle(0, bobbinWindowHeight / 2 + wallThickness / 2, 2 * flangeHalfDepth,
+                            wallThickness, "bobbin", shapes);
+            paint_rectangle(0, -bobbinWindowHeight / 2 - wallThickness / 2, 2 * flangeHalfDepth,
+                            wallThickness, "bobbin", shapes);
+        }
+        const double tubeThickness = halfD - mainColumn.get_depth() / 2;
+        if (tubeThickness > 1e-9) {
+            paint_rectangle(+(halfD - tubeThickness / 2), 0, tubeThickness, bobbinWindowHeight,
+                            "bobbin", shapes);
+            paint_rectangle(-(halfD - tubeThickness / 2), 0, tubeThickness, bobbinWindowHeight,
+                            "bobbin", shapes);
+        }
+    }
+
+    // --- Dragback lanes and band hops (under the turns, like layers) --------------------
+    for (const auto& r : yzReturns) {
+        const double sign = (r.side == 0) ? -1.0 : 1.0;
+        std::string laneClass = "copper_translucent";
+        if (!r.interSection) {
+            // Plain descent: vertical lane on the destination face, displaced by the levels
+            // INSIDE it (its own level's room is the lane itself: destRide - od).
+            const double laneZ = r.dstZ + rideFor(r.dstZ, r.side) - r.od;
+            const double y0 = std::min(r.srcY, r.dstY);
+            const double y1 = std::max(r.srcY, r.dstY);
+            paint_rectangle(sign * laneZ, (y0 + y1) / 2, r.od, (y1 - y0) + r.od, laneClass,
+                            shapes, 0, {0, 0}, r.label);
+        }
+        else {
+            // Band-routed inter-section hop: stub up from the source turn, run at the band
+            // row over the intervening sections, stub down to the receiving turn. The band
+            // row is one wire outside the deeper of the two endpoint faces' ride stacks —
+            // drawn at the source/destination turn rows' outer edge (the MKF band markers
+            // carry the exact row; the projection uses the endpoint turns directly).
+            const double zA = r.srcZ + rideFor(r.srcZ, r.side);
+            const double zB = r.dstZ + rideFor(r.dstZ, r.side);
+            const double bandY = (std::abs(r.srcY) > std::abs(r.dstY) ? r.srcY : r.dstY);
+            paint_rectangle(sign * zA, (r.srcY + bandY) / 2, r.od,
+                            std::abs(bandY - r.srcY) + r.od, laneClass, shapes, 0, {0, 0},
+                            r.label + " stub");
+            paint_rectangle(sign * (zA + zB) / 2, bandY, std::abs(zB - zA) + r.od, r.od,
+                            laneClass, shapes, 0, {0, 0}, r.label + " run");
+            paint_rectangle(sign * zB, (r.dstY + bandY) / 2, r.od,
+                            std::abs(bandY - r.dstY) + r.od, laneClass, shapes, 0, {0, 0},
+                            r.label + " stub");
+        }
+    }
+
+    // --- Turn crossings: BOTH faces, each with its own side's ride displacement ---------
+    for (const auto& turn : turns) {
+        const auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        const auto& wire = wirePerWinding[windingIndex];
+        const double zPos = turn.get_coordinates()[0] + zoff;
+        const double y = turn.get_coordinates()[1];
+        const double zFrontAbs = zPos + rideFor(zPos, 0);
+        const double zBackAbs = zPos + rideFor(zPos, 1);
+        for (double z : {-zFrontAbs, +zBackAbs}) {
+            if (wire.get_type() == WireType::ROUND) {
+                paint_round_wire(z, y, wire, turn.get_name());
+            }
+            else if (wire.get_type() == WireType::LITZ) {
+                paint_litz_wire(z, y, wire, turn.get_name());
+            }
+            else {
+                paint_rectangular_wire(z, y, wire, 0, {0, 0}, turn.get_name());
+            }
+        }
+    }
+    _root.autoscale();
+}
+
 } // namespace OpenMagnetics

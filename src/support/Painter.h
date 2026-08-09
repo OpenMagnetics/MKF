@@ -22,6 +22,17 @@ enum class ColorPalette {
     GRAYSCALE       // Black to white
 };
 
+// Which plane a whole-magnetic drawing projects (ABT #617, Alf 2026-08-10):
+//   XY - the classic winding-window cross-section (radial x, axial y), symmetric half.
+//   YZ - the CONNECTION-FACE view (depth z horizontal, axial y vertical), drawn WITHOUT
+//        symmetry: both +-z faces are painted (they genuinely differ - the dragback
+//        descents displace one face's crossings), and every dragback lane is drawn as a
+//        vertical copper run at its ride-displaced depth, mirroring the 3D realization.
+enum class PainterProjection {
+    XY,
+    YZ,
+};
+
 enum class ElectricFieldVisualizationModel {
     LEGACY,       // Original convex-hull area + band-proportion approach
     SDF_PHYSICS   // SDF Voronoi decomposition + bipolar/plate energy density
@@ -409,6 +420,7 @@ class Painter : public PainterInterface {
     // canvas height / layout family / toroid radius from the core when present,
     // and from the coil's bobbin winding window otherwise.
     bool prepare_coil_canvas(Magnetic& magnetic);
+    void paint_yz_projection(Magnetic magnetic);
     double get_toroidal_initial_radius(Magnetic& magnetic);
 
     void set_image_size(Wire wire);
@@ -461,6 +473,10 @@ class Painter : public PainterInterface {
     void export_png() {
         throw std::runtime_error("Not implemented in basic painter");
     }
+    // Draw the whole magnetic (core + bobbin + turns + connections) in one call, in the
+    // requested projection. XY is the classic recipe; YZ is the connection-face view (no
+    // symmetry, dragbacks as displaced lanes) - see PainterProjection.
+    void paint_magnetic(Magnetic magnetic, PainterProjection projection = PainterProjection::XY);
     void paint_core(Magnetic magnetic);
     void paint_bobbin(Magnetic magnetic);
     void paint_coil_sections(Magnetic magnetic);
