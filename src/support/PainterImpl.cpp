@@ -4779,20 +4779,21 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
     }
 
     // --- Terminal leads (Alf, 2026-08-10): each winding/parallel's entrance and exit ------
-    // ribbon, in the margin colour so the XY view's visual language carries over. The lead
+    // ribbon, in the XY markers' terminal magenta so the visual language carries over. The lead
     // attaches at its connecting turn's ride-displaced crossing on the winding's face, stubs
     // to its drawn edge row when MKF drew one, and runs outward past the winding's deepest
     // copper (the drawn run's border reach, depth-mapped).
     {
-        auto marginColor = std::regex_replace(std::string(settings.get_painter_color_margin()),
-                                              std::regex("0x"), "#");
+        // Terminal magenta — the SAME colour the XY view's .connection_terminal markers use
+        // (yellow is the margin's, Alf 2026-08-10).
+        const std::string terminalColor = "#FF00FF";
         auto paintTerminalPath = [&](const std::vector<std::pair<double, double>>& points,
                                      double od, const std::string& label) {
             auto path = shapes->add_child<SVG::Path>();
             for (const auto& [px, py] : points) {
                 path->line_to(px * _scale, -py * _scale);
             }
-            path->set_attr("stroke", marginColor);
+            path->set_attr("stroke", terminalColor);
             path->set_attr("stroke-width", od * _scale);
             path->set_attr("fill", "none");
             path->set_attr("opacity", 0.8);
