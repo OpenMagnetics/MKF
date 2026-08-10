@@ -1543,6 +1543,28 @@ void Core::process_data() {
         shape_data.set_name(std::get<std::string>(get_functional_description().get_shape()));
         get_mutable_functional_description().set_shape(shape_data);
     }
+    else {
+        // The shape can also arrive as a full CoreShape object that merely REFERENCES the
+        // standard catalog by name (type: "standard", family, name) instead of carrying its
+        // own dimensions -- MAS's core/shape.json does not require "dimensions", so this is
+        // just the object-shaped equivalent of the bare-string case above. ABT #626: this
+        // branch used to be skipped for that case (get_shape() already holds a CoreShape, not
+        // a std::string), so CorePiece::factory() below received a CoreShape with no
+        // "dimensions" at all, and every per-family builder's
+        // `get_shape().get_dimensions().value()` threw "bad optional access" for every
+        // standard-by-name shape reference, 100% of the time. Resolve it from the database
+        // the same way, keyed by name.
+        auto& shape = std::get<CoreShape>(get_functional_description().get_shape());
+        if (shape.get_type() == FunctionalDescriptionType::STANDARD && !shape.get_dimensions()) {
+            if (!shape.get_name()) {
+                throw std::runtime_error("Standard core shape is missing its dimensions and has no name to look it up by in the database");
+            }
+            auto shapeName = shape.get_name().value();
+            auto shape_data = find_core_shape_by_name(shapeName);
+            shape_data.set_name(shapeName);
+            get_mutable_functional_description().set_shape(shape_data);
+        }
+    }
 
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
     // long loading operatings)

@@ -1867,6 +1867,48 @@ TEST_CASE("Missing_Core_Hermes", "[constructive-model][core][functional-descript
     CHECK(effectiveParameters.get_effective_volume() > 0);
 }
 
+TEST_CASE("Test_Core_Standard_Shape_Reference_By_Object", "[constructive-model][core][functional-description][bug][smoke-test]") {
+    // ABT #626: a core whose shape is a *reference* to the standard catalog given as a full
+    // object ({"type": "standard", "family": <fam>, "name": <catalog name>}, no "dimensions" --
+    // legal per core/shape.json, which does not require "dimensions") used to throw "bad
+    // optional access" for EVERY family/name, 100% reproduction. Root cause: Core::process_data()
+    // only resolved the database lookup when get_shape() held a bare std::string; when it held a
+    // CoreShape object instead (this form), the lookup was skipped entirely and
+    // CorePiece::factory() received a CoreShape with no "dimensions" map at all, so every
+    // per-family builder's `get_shape().get_dimensions().value()` dereferenced a disengaged
+    // optional. This mirrors the exact repro reported against PyOM's
+    // calculate_core_processed_description (Core(json, false, false, false) +
+    // core.process_data()).
+    std::vector<std::pair<std::string, std::string>> familyAndName = {
+        {"pq", "PQ 26/25"},
+        {"etd", "ETD 29"},
+        {"rm", "RM 8"},
+        {"e", "E 25/13/7"},
+        {"ec", "EC 35"},
+        {"pq", "PQ27.3/18"},
+    };
+
+    for (auto& [family, name] : familyAndName) {
+        DYNAMIC_SECTION("Standard shape reference: " << family << " / " << name) {
+            json shapeJson = {{"type", "standard"}, {"family", family}, {"name", name}};
+            json coreJson;
+            coreJson["name"] = "t";
+            coreJson["functionalDescription"] = {
+                {"type", "pieceAndPlate"}, {"material", "3C95"}, {"shape", shapeJson},
+                {"gapping", json::array()}, {"numberStacks", 1}};
+
+            Core core(coreJson, false, false, false);
+            REQUIRE_NOTHROW(core.process_data());
+
+            REQUIRE(core.get_processed_description());
+            auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+            CHECK(effectiveParameters.get_effective_area() > 0);
+            CHECK(effectiveParameters.get_effective_length() > 0);
+            CHECK(effectiveParameters.get_effective_volume() > 0);
+        }
+    }
+}
+
 TEST_CASE("Test_Core_Initial_Permeability", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
