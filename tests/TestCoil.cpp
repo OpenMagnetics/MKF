@@ -13815,3 +13815,34 @@ TEST_CASE("Test_ABT620_MasAutocomplete_Applies_Declared_Insulation_Margin", "[co
     REQUIRE(foundNonzeroMargin);
     settings.reset();
 }
+
+// ABT #623: split off from ABT #620 (ask 2). 22_margin_tape_forward and
+// 24_margin_interleaved_flyback, once their declared insulation reaches the winder
+// (ABT #620), produce a layout calculate_filling_factor() reports as fitting
+// (windingFits=1) -- yet Coil::wind()'s own are_sections_and_layers_fitting() verdict
+// disagreed. Root-caused and fixed under ABT #624 (commit 84752f26): a dangling
+// reference in the ABT #616 turn-envelope check silently no-opped it, and packed
+// layers could move copper past the section rect wind_by_sections() gave them without
+// anything updating that rect, so the section's own filling factor read >1 even when
+// the copper fit. Both checks must agree once a design's own summary metric says it fits.
+TEST_CASE("Test_ABT623_FitVerdict_Agrees_With_FillingFactor", "[constructive-model][coil][bug]") {
+    for (std::string fixture : {"22_margin_tape_forward_e4218_3c95.json", "24_margin_interleaved_flyback_pq3230_3c94.json"}) {
+        settings.reset();
+        clear_databases();
+        namespace fs = std::filesystem;
+        auto examplesDir = fs::path{std::source_location::current().file_name()}.parent_path()
+                               .append("..").append("MAS").append("examples");
+        auto mas = OpenMagneticsTesting::mas_loader((examplesDir / fixture).string());
+        auto autocompleted = OpenMagnetics::mas_autocomplete(mas, false);
+        auto& coil = autocompleted.get_mutable_magnetic().get_mutable_coil();
+        REQUIRE(coil.get_turns_description());
+
+        auto fillingFactor = coil.calculate_filling_factor();
+        bool fits = coil.are_sections_and_layers_fitting();
+        // The reported symptom: calculate_filling_factor() said windingFits=1 while
+        // are_sections_and_layers_fitting() (wind()'s own verdict) said false.
+        REQUIRE(fillingFactor.windingFits);
+        REQUIRE(fits);
+    }
+    settings.reset();
+}
