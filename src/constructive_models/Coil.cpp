@@ -10646,6 +10646,17 @@ void Coil::try_rewind() {
         return;
     }
 
+    // The reallocation attempt below calls wind_by_sections(), which unconditionally
+    // clears sections/layers/turns descriptions before rebuilding them, and its own
+    // final re-wind is gated on the new layout actually fitting (unless
+    // coilWindEvenIfNotFit is set). If the reallocation does not fix the fit, that
+    // gate never fires and turns_description is left unset -- silently discarding
+    // the layout just placed above, even though it is a valid (if marginally tight)
+    // fallback. Snapshot it so it can be restored when the reallocation is no better.
+    auto fallbackSectionsDescription = get_sections_description();
+    auto fallbackLayersDescription = get_layers_description();
+    auto fallbackTurnsDescription = get_turns_description();
+
     bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
     bool delimitAndCompact = settings.get_coil_delimit_and_compact();
 
@@ -10854,6 +10865,11 @@ void Coil::try_rewind() {
     wind_by_layers();
 
     if (!get_layers_description()) {
+        if (fallbackTurnsDescription) {
+            set_sections_description(fallbackSectionsDescription);
+            set_layers_description(fallbackLayersDescription);
+            set_turns_description(fallbackTurnsDescription);
+        }
         return;
     }
     // set_turns_description(std::nullopt);
@@ -10862,6 +10878,13 @@ void Coil::try_rewind() {
         if (delimitAndCompact) {
             delimit_and_compact();
         }
+    }
+    else if (fallbackTurnsDescription) {
+        // The reallocated layout is no better than the fallback -- keep the
+        // fallback's turns rather than leaving turns_description unset (ABT #621).
+        set_sections_description(fallbackSectionsDescription);
+        set_layers_description(fallbackLayersDescription);
+        set_turns_description(fallbackTurnsDescription);
     }
 }
 
