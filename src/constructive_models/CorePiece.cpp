@@ -1983,6 +1983,92 @@ class CorePieceUi : public CorePieceU {
     }
 };
 
+// An E-PIECE-AND-PLATE core (ABT #625): an E-shaped piece closed by a flat I plate rather than by a
+// mirrored second E-half. This is NOT the two-leg piece_and_plate_shape_constants above: E's own
+// single-piece formula (CorePieceE::get_shape_constants) treats the piece as TWO parallel,
+// geometrically-identical sub-loops sharing a half-width centre post (areas carry a x2 factor,
+// lengths use the piece's own D once per leg -- see that method's comments), and implicitly assumes
+// the loop closes at the leg tips with zero extra length -- exactly right when mirrored by an
+// identical E-half (TWO_PIECE_SET doubles le/Ve externally in Core.cpp) but wrong for a flat plate:
+// the plate is itself a second closing element, of its OWN thickness B2, at the leg tips -- it is
+// NOT another D-tall leg. So: keep the piece's own leg terms (D height, once each, not doubled) and
+// its own yoke term (thickness B-D), and ADD a second "yoke" of thickness B2 standing in for the
+// plate, with its own pair of corner terms to the same legs.
+//
+// VALIDATED against the Magnetics 2022 Ferrite Catalog (p.32-35, planar E/I dimensions and magnetic
+// data), which publishes the E-piece-ALONE (mirrored-pair) le/Ae under the E-code row and the E+I
+// ASSEMBLY's le/Ae under the mated I-code row (same convention as the U/I validation above -- "an I
+// bar has no closed magnetic path of its own"):
+//     E 40/8/10 (0_44008EC, A=40.65 B=8.51 C=10.7 D=4.06 E=30.45 F=10.15): CorePieceE's own formula
+//         doubled (TWO_PIECE_SET) gives le=51.4mm/Ae=100.9mm2 vs published 51.9/101.
+//     I 40/4/10 (0_44008IC, B2=4.45, symmetric plate/yoke): this method gives le=43.3mm/Ae=99.6mm2
+//         vs published 43.8/99.5.
+//     I 43/4/28 (0_44308IC, B2=4.1 vs the piece's own yoke B-D=4.32 -- an ASYMMETRIC plate/yoke
+//         case): this method gives le=47.9mm/Ae=235mm2 vs published 48.6/227.
+static std::tuple<double, double, double> e_piece_and_plate_shape_constants(
+        double legHeight, double yokeSpan, double depth,
+        double outerLegWidth, double halfPostWidth,
+        double pieceYokeThickness, double plateThickness) {
+    double areaOuterLeg = 2 * depth * outerLegWidth;
+    double areaPost = 2 * depth * halfPostWidth;
+    double areaPieceYoke = 2 * depth * pieceYokeThickness;
+    double areaPlateYoke = 2 * depth * plateThickness;
+
+    std::vector<double> lengths;
+    std::vector<double> areas;
+    lengths.push_back(legHeight);  areas.push_back(areaOuterLeg);
+    lengths.push_back(legHeight);  areas.push_back(areaPost);
+    lengths.push_back(yokeSpan);   areas.push_back(areaPieceYoke);
+    lengths.push_back(yokeSpan);   areas.push_back(areaPlateYoke);
+    const double quarterCircle = std::numbers::pi / 8;
+    lengths.push_back(quarterCircle * (outerLegWidth + pieceYokeThickness));
+    areas.push_back((areaOuterLeg + areaPieceYoke) / 2);
+    lengths.push_back(quarterCircle * (halfPostWidth + pieceYokeThickness));
+    areas.push_back((areaPost + areaPieceYoke) / 2);
+    lengths.push_back(quarterCircle * (outerLegWidth + plateThickness));
+    areas.push_back((areaOuterLeg + areaPlateYoke) / 2);
+    lengths.push_back(quarterCircle * (halfPostWidth + plateThickness));
+    areas.push_back((areaPost + areaPlateYoke) / 2);
+
+    double c1 = 0, c2 = 0;
+    for (size_t i = 0; i < lengths.size(); ++i) {
+        c1 += lengths[i] / areas[i];
+        c2 += lengths[i] / pow(areas[i], 2);
+    }
+    return {c1, c2, *min_element(areas.begin(), areas.end())};
+}
+
+class CorePieceEi : public CorePieceE {
+  public:
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        // The assembled height is the E piece plus the flat plate closing it.
+        set_height(dimensions["B"] + dimensions["B2"]);
+        set_depth(dimensions["C"]);
+    }
+    // process_columns() and process_winding_window() are inherited unmodified from CorePieceE: a
+    // flat plate has no legs of its own, so the column height and window height stay the single
+    // piece's own D, exactly like CorePieceUi inherits CorePieceU's (see CoreType::PIECE_AND_PLATE
+    // in Core.cpp -- "the column height and the winding window stay those of the single piece").
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double pieceYokeThickness = dimensions["B"] - dimensions["D"];
+        double depth = dimensions["C"];
+        double halfPostWidth = dimensions["F"] / 2;
+        double outerLegWidth = (dimensions["A"] - dimensions["E"]) / 2;
+        double yokeSpan = (dimensions["E"] - dimensions["F"]) / 2;
+        return e_piece_and_plate_shape_constants(dimensions["D"], yokeSpan, depth, outerLegWidth,
+                                                 halfPostWidth, pieceYokeThickness, dimensions["B2"]);
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        return {pow(c1, 2) / c2, c1 / c2, minimumArea};
+    }
+};
+
 
 // DRUM (bobbin / dumbbell) core: a round centre post between two flange discs, wound in the
 // groove; the magnetic circuit CLOSES THROUGH THE SURROUNDING AIR (magneticCircuit = open,
@@ -2554,6 +2640,7 @@ bool CorePiece::is_family_supported(CoreShapeFamily family) {
         case CoreShapeFamily::C:
         case CoreShapeFamily::EER:
         case CoreShapeFamily::UI:
+        case CoreShapeFamily::EI:
         case CoreShapeFamily::DRUM:
         case CoreShapeFamily::DRUM_RING:
         case CoreShapeFamily::DRUM_SEMISHIELDED:
@@ -2752,6 +2839,12 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
         if (process) piece->process();
         return piece;
     }
+    else if (family == CoreShapeFamily::EI) {
+        auto piece = std::make_shared<CorePieceEi>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
     else if (family == CoreShapeFamily::DRUM) {
         auto piece = std::make_shared<CorePieceDrum>();
         piece->set_shape(shape);
@@ -2808,7 +2901,7 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     }
     else
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown shape family: " + to_string(family) + " for shape '" + shape.get_name().value_or("<unnamed>") + "', available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
-                                 "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UI, UR, UT, T, C, EER, EF, EPC, EPQ, EPW, EPT, LEP, PQI}");
+                                 "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UI, EI, UR, UT, T, C, EER, EF, EPC, EPQ, EPW, EPT, LEP, PQI}");
 }
 
 // ============================================================================

@@ -75,8 +75,8 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     // Declared in CoreShapeFamily but with no CorePiece geometry: these must stay unsupported
     // so load_core_shapes keeps skipping them instead of half-building a core.
     // DRUM moved off this list (ABT #331): it has a geometry class and an open-core model.
-    for (auto family : {CoreShapeFamily::ROD, CoreShapeFamily::BLOCK,
-                        CoreShapeFamily::EI, CoreShapeFamily::H}) {
+    // EI moved off this list (ABT #625): it has a geometry class now too, see below.
+    for (auto family : {CoreShapeFamily::ROD, CoreShapeFamily::BLOCK, CoreShapeFamily::H}) {
         REQUIRE_FALSE(CorePiece::is_family_supported(family));
     }
 
@@ -105,6 +105,79 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     // geometry validates against TDK's published planar data to 0.3%.
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::PQI));
     CHECK_NOTHROW(find_core_shape_by_name(std::string("PQI 16/7.8")));
+
+    // EI is supported too (ABT #625): an E piece closed by a flat I plate rather than a mirrored
+    // second E-half. No catalogue entries ship yet (see Test_ABT625_Ei_Matches_Published_Data for
+    // the geometry validation against a real vendor datasheet), so only the family-level guard is
+    // checked here -- there is no find_core_shape_by_name(...) to exercise.
+    REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::EI));
+}
+
+// ABT #625: MAS lists "ei" as a legal CoreShapeFamily (an E piece closed by a flat I plate, same
+// pattern as UI/PQI above) but MKF's CorePiece factory did not implement it, throwing "Unknown shape
+// family: ei" for every EI core. Added CorePieceEi (CorePiece.cpp), validated here against the
+// Magnetics 2022 Ferrite Catalog (p.32-35, planar E/I dimensions and magnetic data), which publishes
+// the E-piece-ALONE (mirrored-pair) le/Ae under the E-code row and the E+I ASSEMBLY's le/Ae under the
+// mated I-code row.
+TEST_CASE("Test_ABT625_Ei_Matches_Published_Data", "[constructive-model][core][bug]") {
+    settings.reset();
+    clear_databases();
+
+    // E 40/8/10 (0_44008EC) alone: CorePieceE's own (single-piece) formula doubled for the
+    // TWO_PIECE_SET mirrored pair matches the E-code row's published le=51.9mm / Ae=101mm2.
+    {
+        json eShape = json::parse(R"({"family":"e","type":"custom","name":"E 40/8/10 test",
+            "dimensions":{"A":{"nominal":0.04065},"B":{"nominal":0.00851},"C":{"nominal":0.0107},
+                          "D":{"nominal":0.00406},"E":{"nominal":0.03045},"F":{"nominal":0.01015}}})");
+        auto piece = CorePiece::factory(eShape, true);
+        auto [le, ae, minArea] = piece->get_shape_constants_iec63182();
+        CHECK_THAT(le * 2000, Catch::Matchers::WithinRel(51.9, 0.02));
+        CHECK_THAT(ae * 1e6, Catch::Matchers::WithinRel(101.0, 0.01));
+    }
+    // I 40/4/10 (0_44008IC): the same E piece mated with a B2=4.45mm plate (symmetric: equal to the
+    // piece's own yoke thickness B-D=4.45mm). Published le=43.8mm / Ae=99.5mm2.
+    {
+        json eiShape = json::parse(R"({"family":"ei","type":"custom","name":"EI 40/8/10 test",
+            "dimensions":{"A":{"nominal":0.04065},"B":{"nominal":0.00851},"B2":{"nominal":0.00445},
+                          "C":{"nominal":0.0107},"D":{"nominal":0.00406},"E":{"nominal":0.03045},
+                          "F":{"nominal":0.01015}}})");
+        auto piece = CorePiece::factory(eiShape, true);
+        auto [le, ae, minArea] = piece->get_shape_constants_iec63182();
+        CHECK_THAT(le * 1000, Catch::Matchers::WithinRel(43.8, 0.02));
+        CHECK_THAT(ae * 1e6, Catch::Matchers::WithinRel(99.5, 0.01));
+    }
+    // I 43/4/28 (0_44308IC): B2=4.1mm vs the piece's own yoke B-D=4.32mm -- an ASYMMETRIC
+    // plate/yoke case. Published le=48.6mm / Ae=227mm2.
+    {
+        json eiShape2 = json::parse(R"({"family":"ei","type":"custom","name":"EI 43/8/28 test",
+            "dimensions":{"A":{"nominal":0.0432},"B":{"nominal":0.00851},"B2":{"nominal":0.0041},
+                          "C":{"nominal":0.0279},"D":{"nominal":0.00419},"E":{"nominal":0.0344},
+                          "F":{"nominal":0.00813}}})");
+        auto piece = CorePiece::factory(eiShape2, true);
+        auto [le, ae, minArea] = piece->get_shape_constants_iec63182();
+        CHECK_THAT(le * 1000, Catch::Matchers::WithinRel(48.6, 0.02));
+        CHECK_THAT(ae * 1e6, Catch::Matchers::WithinRel(227.0, 0.04));
+    }
+    settings.reset();
+}
+
+// Regression for the ticket's exact repro: a pieceAndPlate core built from a custom "ei" shape must
+// process end to end (not just at the CorePiece::factory level) and produce sane effective parameters.
+TEST_CASE("Test_ABT625_PieceAndPlate_Core_Processes", "[constructive-model][core][bug]") {
+    settings.reset();
+    clear_databases();
+
+    json coreJson = json::parse(R"({"name":"test","functionalDescription":{"type":"pieceAndPlate",
+        "material":"3C95","gapping":[],"numberStacks":1,
+        "shape":{"type":"custom","family":"ei","name":"test ei",
+            "dimensions":{"A":{"nominal":0.02},"B":{"nominal":0.01},"B2":{"nominal":0.003},
+                          "C":{"nominal":0.008},"D":{"nominal":0.005},"E":{"nominal":0.015},
+                          "F":{"nominal":0.006}}}}})");
+
+    Core core(coreJson);
+    REQUIRE(core.get_effective_area() > 0);
+    REQUIRE(core.get_effective_length() > 0);
+    settings.reset();
 }
 
 TEST_CASE("Test_Catalog_Impossible_Toroid_Is_Rejected", "[catalog][smoke-test]") {
