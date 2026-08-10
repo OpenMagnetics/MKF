@@ -708,23 +708,39 @@ CoreMaterial find_core_material_by_name(std::string name) {
     }
 }
 
-CoreShape find_core_shape_by_name(std::string name) {
+// ABT #631: the non-throwing half of find_core_shape_by_name. A catalogue scan that
+// legitimately expects some entries not to resolve (the bobbin catalogue carries rows
+// pointing at shape families MAS does not ship) must not use an exception to say so:
+// wherever the engine is built with exception CATCHING disabled — the Emscripten default,
+// and how MVB++'s WASM module is compiled — the surrounding catch is deleted and the
+// throw escapes to the caller instead of skipping one row. Ask, don't throw-and-catch.
+std::optional<CoreShape> try_find_core_shape_by_name(std::string name) {
     if (coreShapeDatabase.empty()) {
         load_core_shapes();
     }
     if (coreShapeDatabase.count(name)) {
         return coreShapeDatabase[name];
     }
-    else {
-        for (const auto& [key, value] : coreShapeDatabase) {
-            std::string dbName = key;
-            dbName.erase(remove(dbName.begin(), dbName.end(), ' '), dbName.end());
-            if (name == dbName) {
-                return value;
-            }
+    for (const auto& [key, value] : coreShapeDatabase) {
+        std::string dbName = key;
+        dbName.erase(remove(dbName.begin(), dbName.end(), ' '), dbName.end());
+        if (name == dbName) {
+            return value;
         }
+    }
+    return std::nullopt;
+}
+
+bool core_shape_exists(std::string name) {
+    return try_find_core_shape_by_name(name).has_value();
+}
+
+CoreShape find_core_shape_by_name(std::string name) {
+    auto coreShape = try_find_core_shape_by_name(name);
+    if (!coreShape) {
         throw CoreShapeNotFoundException(name);
     }
+    return coreShape.value();
 }
 
 std::vector<std::string> get_core_material_names(std::optional<std::string> manufacturer) {

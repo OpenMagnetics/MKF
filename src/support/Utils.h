@@ -135,6 +135,12 @@ bool check_requirement(DimensionWithTolerance requirement, double value);
 Core find_core_by_name(std::string name);
 CoreMaterial find_core_material_by_name(std::string name);
 CoreShape find_core_shape_by_name(std::string name);
+// Non-throwing lookup / existence check (ABT #631). Use these instead of
+// find_core_shape_by_name-in-a-try when a miss is an expected outcome of a catalogue
+// scan: a try/catch is compiled away wherever exception catching is disabled (the
+// Emscripten default), and the throw then escapes the scan instead of skipping a row.
+std::optional<CoreShape> try_find_core_shape_by_name(std::string name);
+bool core_shape_exists(std::string name);
 Wire find_wire_by_name(std::string name);
 Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt, bool obfuscate=true);
 Bobbin find_bobbin_by_name(std::string name);

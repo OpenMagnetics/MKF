@@ -334,11 +334,49 @@ void load_interpolators() {
         minBobbinWallThickness = std::numeric_limits<double>::infinity();
         minBobbinColumnThickness = std::numeric_limits<double>::infinity();
 
+        // ABT #631: rows this scan cannot use, reported once at the end instead of
+        // vanishing into a bare `continue` — 34 of MAS's 504 bobbins point at core
+        // shapes MAS does not ship (10 "EI …", 24 "M …"), and nobody knew because the
+        // skip was silent.
+        std::vector<std::string> unusableBobbins;
+
         for (auto& datum : bobbinDatabase) {
+            // ABT #631: these skips must NOT be spelled as throw-and-catch. Wherever the
+            // engine is compiled with exception catching disabled — the Emscripten
+            // default, and how MVB++'s WASM module builds MKF (not one of its 92 objects
+            // carries a __cxa_begin_catch) — the catch below is deleted and the first
+            // unresolvable row escapes this loop, taking down every design whose bobbin
+            // or shape is given by NAME in the browser. Ask whether the row is usable.
+            if (!datum.second.get_functional_description()) {
+                unusableBobbins.push_back(datum.first + " (no functionalDescription)");
+                continue;
+            }
+            auto coreShapeName = datum.second.get_functional_description()->get_shape();
+            auto coreShapeOrNone = try_find_core_shape_by_name(coreShapeName);
+            if (!coreShapeOrNone) {
+                unusableBobbins.push_back(datum.first + " -> core shape '" + coreShapeName + "' is not in the shape database");
+                continue;
+            }
+            if (!datum.second.get_processed_description() ||
+                datum.second.get_processed_description()->get_winding_windows().empty()) {
+                unusableBobbins.push_back(datum.first + " (no processed winding window)");
+                continue;
+            }
+            auto bobbinWindingWindow = datum.second.get_processed_description()->get_winding_windows()[0];
+            if (!bobbinWindingWindow.get_area() || !bobbinWindingWindow.get_width() || !bobbinWindingWindow.get_height()) {
+                unusableBobbins.push_back(datum.first + " (winding window has no area/width/height)");
+                continue;
+            }
             try {
-                auto coreShapeName = datum.second.get_functional_description()->get_shape();
-                auto coreShape = find_core_shape_by_name(coreShapeName);
+                auto coreShape = coreShapeOrNone.value();
                 auto corePiece = CorePiece::factory(coreShape);
+                auto coreWindingWindow = corePiece->get_winding_window();
+                if (!coreWindingWindow.get_area() || !coreWindingWindow.get_width() || !coreWindingWindow.get_height()) {
+                    // Same reason as the checks above: a bad_optional_access here would be a
+                    // throw where a skip is meant, and would escape in an exceptionless build.
+                    unusableBobbins.push_back(datum.first + " -> core shape '" + coreShapeName + "' has no processed winding window");
+                    continue;
+                }
 
                 auto bobbinWindingWindowArea = datum.second.get_processed_description()->get_winding_windows()[0].get_area().value();
                 auto coreShapeWindingWindowArea = corePiece->get_winding_window().get_area().value() * 2; // Because if we are using a bobbin we have a two piece set
@@ -379,9 +417,21 @@ void load_interpolators() {
             }
             catch (const std::exception &e)
             {
-                (void)e; // Suppress unused variable warning
+                // Backstop for the one step left that can still only report failure by
+                // throwing (CorePiece::factory, for a family it does not implement).
+                unusableBobbins.push_back(datum.first + " (" + std::string(e.what()) + ")");
                 continue;
             }
+        }
+
+        if (!unusableBobbins.empty()) {
+            std::string entry = std::to_string(unusableBobbins.size()) + " of " +
+                                std::to_string(bobbinDatabase.size()) +
+                                " catalogue bobbins could not be used to fit the bobbin interpolators:";
+            for (const auto& unusableBobbin : unusableBobbins) {
+                entry += "\n  - " + unusableBobbin;
+            }
+            logEntry(entry, "Bobbin", 1);
         }
 
         {
@@ -820,6 +870,18 @@ WindingWindowShape Bobbin::get_winding_window_shape(size_t windingWindowIndex) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
     }
     if (!get_processed_description()) {
+        // ABT #631: find_bobbin_by_name returns a bobbin with NEITHER description for the
+        // documented placeholder names ("basic"/"Basic"/"Dummy"/"None"), and Coil::resolve_bobbin
+        // hands that straight to callers. Dereferencing the disengaged optional here is undefined
+        // behaviour, not an exception: it reads whatever the returned-by-value optional's storage
+        // happens to contain as a std::string. Say what is actually wrong instead.
+        if (!get_functional_description()) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Bobbin has neither a processedDescription nor a functionalDescription: it is an "
+                "unresolved placeholder ('basic'/'Dummy'/'None') and must be resolved against the "
+                "core (magnetic_autocomplete, or Bobbin::create_quick_bobbin) before its winding "
+                "window can be queried.");
+        }
         auto coreShapeName = get_functional_description()->get_shape();
         auto coreShape = find_core_shape_by_name(coreShapeName);
         if (coreShape.get_family() == CoreShapeFamily::T) {

@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
+#include <thread>
 #include <vector>
 using json = nlohmann::json;
 #include <typeinfo>
@@ -244,6 +245,85 @@ TEST_CASE("Create_Bobbin_With_Thickness", "[constructive-model][bobbin][smoke-te
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, wallThickness, columnThickness);
         REQUIRE_THAT(wallThickness, Catch::Matchers::WithinAbs(bobbin.get_processed_description().value().get_wall_thickness(), max_error * wallThickness));
         REQUIRE_THAT(columnThickness, Catch::Matchers::WithinAbs(bobbin.get_processed_description().value().get_column_thickness(), max_error * columnThickness));
+    }
+}
+
+// ABT #631: a bobbin catalogue row that points at a core shape MAS does not ship (34 of
+// the 504 shipped bobbins do: 10 "EI …", 24 "M …") must be SKIPPED by the interpolator
+// fit, and the skip must not be spelled as throw-and-catch. Wherever MKF is compiled with
+// exception catching disabled — the Emscripten default, and how MVB++'s WASM module builds
+// it — a catch handler is deleted outright, so a throw-and-catch skip becomes a fatal error
+// that escapes to the caller: in the browser the first such row ("Bobbin EI 101/50") took
+// down every design whose bobbin or core shape was given by NAME. The load must also SAY
+// what it dropped; a bare `continue` is how 34 dangling references went unnoticed.
+TEST_CASE("Unresolvable bobbin catalogue rows are skipped without throwing (ABT #631)",
+          "[constructive-model][bobbin][abt631]") {
+    SECTION("core shape lookup can be asked instead of thrown at") {
+        CHECK(OpenMagnetics::core_shape_exists("ETD 49/25/16"));
+        CHECK(OpenMagnetics::try_find_core_shape_by_name("ETD 49/25/16").has_value());
+        // The name the browser build died on. It is a real bobbin's shape reference and
+        // NOT a shape MAS ships; asking must answer "no", not throw.
+        CHECK_FALSE(OpenMagnetics::core_shape_exists("EI 101/50"));
+        CHECK_FALSE(OpenMagnetics::try_find_core_shape_by_name("EI 101/50").has_value());
+        CHECK_THROWS_AS(OpenMagnetics::find_core_shape_by_name("EI 101/50"), OpenMagnetics::CoreException);
+    }
+
+    SECTION("the shipped catalogue still carries the dangling references it always did") {
+        auto bobbin = OpenMagnetics::find_bobbin_by_name("Bobbin EI 101/50");
+        REQUIRE(bobbin.get_functional_description());
+        CHECK(bobbin.get_functional_description()->get_shape() == "EI 101/50");
+        CHECK_FALSE(OpenMagnetics::core_shape_exists(bobbin.get_functional_description()->get_shape()));
+    }
+
+    SECTION("an injected dangling row is skipped, reported, and does not break the fit") {
+        // Poison the shared catalogue with a row pointing at a shape that cannot exist,
+        // then fit the interpolators from scratch. The interpolators are thread_local
+        // (ABT #113), so a FRESH thread is what guarantees a real fit here: this thread's
+        // splines are already warm from the tests above and would not be refitted.
+        auto poison = OpenMagnetics::find_bobbin_by_name("Bobbin ETD 49");
+        auto functionalDescription = poison.get_functional_description().value();
+        functionalDescription.set_shape("Shape That Does Not Exist 631");
+        poison.set_functional_description(functionalDescription);
+        const std::string poisonName = "Bobbin ABT631 Poison";
+        OpenMagnetics::bobbinDatabase[poisonName] = poison;
+        OpenMagnetics::read_log();  // drain, so the assertions below see only this fit
+
+        double fillingFactor = 0;
+        std::string threadError;
+        std::thread fitter([&] {
+            try {
+                fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0.01, 0.01);
+            }
+            catch (const std::exception& e) {
+                threadError = e.what();
+            }
+        });
+        fitter.join();
+        OpenMagnetics::bobbinDatabase.erase(poisonName);
+
+        // The whole point: one unresolvable row must not take the fit down with it.
+        INFO("fit threw: " << threadError);
+        CHECK(threadError.empty());
+        CHECK(fillingFactor > 0);
+
+        auto log = OpenMagnetics::read_log();
+        // The skip is visible and names the row and the reason, so a dangling reference
+        // can be found and fixed instead of silently shrinking the fit sample.
+        CHECK(log.find(poisonName) != std::string::npos);
+        CHECK(log.find("Shape That Does Not Exist 631") != std::string::npos);
+    }
+
+    SECTION("an unresolved placeholder bobbin says so instead of reading uninitialised memory") {
+        // find_bobbin_by_name returns a bobbin with NEITHER description for the documented
+        // placeholder names, and Coil::resolve_bobbin hands that straight to callers. This
+        // used to dereference the disengaged functionalDescription optional — undefined
+        // behaviour that read whatever the returned-by-value optional's storage held.
+        for (const auto& placeholder : {"basic", "Basic", "Dummy", "None"}) {
+            auto bobbin = OpenMagnetics::find_bobbin_by_name(placeholder);
+            REQUIRE_FALSE(bobbin.get_processed_description());
+            REQUIRE_FALSE(bobbin.get_functional_description());
+            CHECK_THROWS_AS(bobbin.get_winding_window_shape(), OpenMagnetics::InvalidInputException);
+        }
     }
 }
 
