@@ -939,6 +939,17 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
 
     double numberTurnsPrimary = coil.get_functional_description()[0].get_number_turns();
     double desiredMagnetizingInductance = resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance());
+
+    // ABT #635: a caller may hand us a Core built from a bare functionalDescription (no
+    // processedDescription yet) -- that is a legal MAS core and every neighbouring entry point
+    // accepts it. Dereferencing the optional unconditionally turned that into an opaque
+    // "bad optional access" for the whole API. Process it here instead, exactly as
+    // calculate_core_maximum_magnetic_energy() and friends already do. `core` is taken BY VALUE,
+    // so processing it is local to this call and cannot surprise the caller.
+    if (!core.get_processed_description()) {
+        core.process_data();
+        core.process_gap();
+    }
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     OpenMagnetics::InitialPermeability initialPermeability;
     size_t timeout = 10;

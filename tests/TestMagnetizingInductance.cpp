@@ -1723,3 +1723,54 @@ TEST_CASE("Test_Drum_Semishielded_Inductance", "[physical-model][magnetizing-ind
         buildCore(glueCoating("No Such Glue")), numberTurns, 25));  // unknown shell material
     settings.reset();
 }
+
+TEST_CASE("Test_ABT635_Gapping_From_Inductance_Without_ProcessedDescription",
+          "[physical-model][magnetizing-inductance][bug]") {
+    // ABT #635: calculate_gapping_from_number_turns_and_inductance() dereferenced
+    // core.get_processed_description() unconditionally, so a Core built from a bare (and perfectly
+    // legal) functionalDescription -- no processedDescription -- failed with an opaque
+    // "bad optional access" instead of being processed. Every neighbouring entry point accepts
+    // that same core, so the API was inconsistent as well as unhelpful.
+    settings.reset();
+    clear_databases();
+
+    // identical core TWICE: once with only a functionalDescription, once pre-processed.
+    const std::string coreJson = R"({"name": "abt635", "functionalDescription": {
+        "type": "twoPieceSet", "material": "3C95",
+        "shape": {"type": "custom", "family": "pq", "name": "abt635 pq",
+                  "dimensions": {"A": 0.0273, "B": 0.009, "C": 0.019, "D": 0.0057,
+                                 "E": 0.0225, "F": 0.012, "G": 0.0155}},
+        "gapping": [], "numberStacks": 1}})";
+
+    Core bare = json::parse(coreJson);
+    Core processed = json::parse(coreJson);
+    processed.process_data();
+    processed.process_gap();
+
+    OpenMagnetics::Coil coil = json::parse(R"({"bobbin": "Dummy", "functionalDescription": [
+        {"name": "PRI", "numberTurns": 10, "numberParallels": 1, "isolationSide": "primary",
+         "wire": "Round 21.0 - Heavy Build"}]})");
+    OpenMagnetics::Inputs inputs = json::parse(R"({"designRequirements": {
+        "name": "abt635", "magnetizingInductance": {"nominal": 3.3e-06}, "turnsRatios": []},
+        "operatingPoints": []})");
+
+    MagnetizingInductance model(Defaults().reluctanceModelDefault);
+    GappingType gappingType = magic_enum::enum_cast<GappingType>("GROUND").value();
+
+    // the ticket's exact repro: this used to throw
+    std::vector<CoreGap> fromBare;
+    REQUIRE_NOTHROW(fromBare = model.calculate_gapping_from_number_turns_and_inductance(
+        bare, coil, &inputs, gappingType, 6));
+    REQUIRE(fromBare.size() > 0);
+    REQUIRE(fromBare[0].get_length() > 0);
+
+    // and it must agree with the pre-processed core -- processing internally must not change the
+    // answer, only remove the need for the caller to have done it.
+    auto fromProcessed = model.calculate_gapping_from_number_turns_and_inductance(
+        processed, coil, &inputs, gappingType, 6);
+    REQUIRE(fromProcessed.size() == fromBare.size());
+    CHECK_THAT(fromBare[0].get_length(),
+               Catch::Matchers::WithinRel(fromProcessed[0].get_length(), 1e-9));
+
+    settings.reset();
+}
