@@ -13769,3 +13769,49 @@ TEST_CASE("Test_Spread_Preview_Svg", "[constructive-model][coil][svg-preview]") 
     }
     settings.reset();
 }
+
+// ABT #620: a MAS file that carries only functionalDescription + bobbin (no
+// sectionsDescription — the common case for a design saved before winding, e.g. the
+// shipped "22_margin_tape_forward" / "24_margin_interleaved_flyback" examples) gets
+// rewound by magnetic_autocomplete for painter/3D/simulation. Coil::wind() only applies
+// the design's declared insulation standard (calculate_insulation) when _inputs is set
+// on the coil; without it, it silently falls back to calculate_mechanical_insulation()
+// — a single bare mechanical layer, ZERO margin — even when the design declares
+// reinforced insulation. mas_autocomplete has the Inputs available (mas.get_inputs())
+// but was not threading it into magnetic_autocomplete before this fix.
+TEST_CASE("Test_ABT620_MasAutocomplete_Applies_Declared_Insulation_Margin", "[constructive-model][coil][bug]") {
+    settings.reset();
+    clear_databases();
+    namespace fs = std::filesystem;
+    auto examplesDir = fs::path{std::source_location::current().file_name()}.parent_path()
+                           .append("..").append("MAS").append("examples");
+    auto mas = OpenMagneticsTesting::mas_loader((examplesDir / "22_margin_tape_forward_e4218_3c95.json").string());
+
+    REQUIRE(mas.get_inputs().get_design_requirements().get_insulation());
+    REQUIRE(mas.get_inputs().get_design_requirements().get_insulation()->get_insulation_type() == IsolationClass::REINFORCED);
+    // The fixture itself must carry no sectionsDescription — otherwise wind() is never
+    // reached here and this test would not exercise the reported path at all.
+    REQUIRE_FALSE(mas.get_magnetic().get_coil().get_sections_description());
+
+    auto autocompleted = OpenMagnetics::mas_autocomplete(mas, false);
+    auto& coil = autocompleted.get_mutable_magnetic().get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_sections_description());
+
+    auto sections = coil.get_sections_description().value();
+    bool foundNonzeroMargin = false;
+    for (auto& section : sections) {
+        if (!section.get_margin()) {
+            continue;
+        }
+        auto margin = std::get<std::vector<double>>(section.get_margin().value());
+        if (margin[0] > 1e-6 || margin[1] > 1e-6) {
+            foundNonzeroMargin = true;
+        }
+    }
+    // The reported symptom was margin = [0, 0] on every conduction section (single 25 um
+    // mechanical layer, no standard applied). A reinforced-insulation design must place a
+    // real margin somewhere in the coil once its own declared requirements are honoured.
+    REQUIRE(foundNonzeroMargin);
+    settings.reset();
+}

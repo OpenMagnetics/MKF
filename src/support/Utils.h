@@ -254,7 +254,14 @@ double amplitude_to_decibels(double amplitude);
 
 std::string fix_filename(std::string filename);
 Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic = std::nullopt, json configuration = {});
-Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration = {});
+// inputs, when provided, carries the design's declared insulation/environmental
+// requirements into the coil BEFORE it winds (ABT #620): without it, wind() has no
+// way to know an insulation standard applies and falls back to
+// calculate_mechanical_insulation() — a bare single mechanical layer, zero margin —
+// even for a design that declares reinforced insulation. Every caller that has an
+// Inputs available (mas_autocomplete, any consumer re-winding a functionalDescription-
+// only file for painter/3D/simulation) should pass it through.
+Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration = {}, std::optional<Inputs> inputs = std::nullopt);
 Mas mas_autocomplete(Mas mas, bool simulate = true, json configuration = {});
 
 std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, std::map<std::string, bool> filterConfiguration);

@@ -2427,7 +2427,11 @@ OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation 
 
 Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
 
-    auto magnetic = magnetic_autocomplete(mas.get_magnetic(), configuration);
+    // ABT #620: thread the design's own requirements into the coil so a re-wind here
+    // (the common case for a file that only carries functionalDescription + bobbin)
+    // honours the declared insulation standard instead of falling back to bare
+    // mechanical spacing.
+    auto magnetic = magnetic_autocomplete(mas.get_magnetic(), configuration, mas.get_inputs());
     mas.set_magnetic(magnetic);
     auto inputs = inputs_autocomplete(mas.get_inputs(), mas.get_magnetic(), configuration);
     mas.set_inputs(inputs);
@@ -2557,7 +2561,7 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
     return inputs;
 }
 
-Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
+Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optional<Inputs> inputs) {
     // Core
     auto shape = magnetic.get_mutable_core().resolve_shape();
 
@@ -2755,6 +2759,15 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
     }
 
     if (!magnetic.get_mutable_coil().get_turns_description()) {
+        // ABT #620: without this, wind() below has no design requirements to check
+        // and falls back to calculate_mechanical_insulation() (0 margin, a single
+        // bare mechanical layer) even when the design declares an insulation
+        // standard — a file that carries only functionalDescription + bobbin (no
+        // sectionsDescription) re-wound here for painter/3D/simulation otherwise
+        // silently loses its declared creepage/clearance/DTI requirements.
+        if (inputs) {
+            magnetic.get_mutable_coil().set_inputs(inputs.value());
+        }
         if (configuration.contains("interleavingLevel")) {
             uint8_t interleavingLevel = configuration["interleavingLevel"];
             magnetic.get_mutable_coil().set_interleaving_level(interleavingLevel);
