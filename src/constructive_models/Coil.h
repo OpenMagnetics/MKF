@@ -371,6 +371,8 @@ class Coil : public MAS::Coil {
         void try_rewind();
         void clear();
         bool are_sections_and_layers_fitting();
+        // ABT #624: every turn's copper inside the winding window (final wind verdict only).
+        bool are_turns_inside_winding_window();
 
         const BobbinDataOrNameUnion & get_bobbin() const { return bobbin; }
         BobbinDataOrNameUnion & get_mutable_bobbin() { return bobbin; }

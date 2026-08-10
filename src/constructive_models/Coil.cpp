@@ -1942,6 +1942,33 @@ void Coil::align_blocked_layer_turns() {
                                                     int64_t(numberTurnsInLayer),
                                                     bundleSize);
         }
+        // ABT #624 (Alf, 26_psps: "why is the turn placed so high when it has space below?").
+        // The reserved band is a SOFT constraint — it keeps turns clear of connection rows —
+        // while the winding window is HARD. When a layer's copper does not fit the span left
+        // by its reservations (26_e3216: the U-landing depth was capped against 34 turns and
+        // the layer ended up with 35), the fence-post spread centres the copper on the span
+        // and the surplus leaves the window at BOTH ends. Give back reservation instead:
+        // slide the whole layer along its axis until its copper is inside the window. If it
+        // cannot fit even then, leave it — are_turns_inside_winding_window() will refuse the
+        // wind rather than let it ship. Single-window coils only: this frame is window 0's.
+        const bool singleWindingWindow =
+            bobbin.get_processed_description()->get_winding_windows().size() == 1;
+        if (!stations.empty() && singleWindingWindow) {
+            const double lowEdge = stations.front() - wirePitch / 2;
+            const double highEdge = stations.back() + wirePitch / 2;
+            double shift = 0.0;
+            if (highEdge > windowHighSide + 1e-12) {
+                shift = windowHighSide - highEdge;
+            }
+            if (lowEdge + shift < windowLowSide - 1e-12) {
+                shift = windowLowSide - lowEdge;   // clamping down would push it out the bottom
+            }
+            if (std::abs(shift) > 1e-12 && (highEdge - lowEdge) <= (windowHighSide - windowLowSide) + 1e-12) {
+                for (auto& station : stations) {
+                    station = roundFloat(station + shift, 9);
+                }
+            }
+        }
         for (size_t k = 0; k < numberTurnsInLayer && k < stations.size(); ++k) {
             auto coords = turns[layerTurns[k]].get_coordinates();
             coords[turnAxis] = stations[k];
@@ -1972,6 +1999,131 @@ void Coil::align_blocked_layer_turns() {
     }
     set_layers_description(layers);
     set_turns_description(turns);
+
+    // A section must contain its layers (ABT #616/#624). Packing a layer against its
+    // unblocked edge moves copper past the rect the partition gave the section, and
+    // delimit_and_compact cannot repair it — it runs BEFORE this pass and re-centres what
+    // this pass deliberately offsets. Grow each section along the turn axis to cover its own
+    // conduction layers, so the rects keep describing the geometry that is really there
+    // (without it the section filling factors read over 1 on every design whose layers were
+    // packed: 06, 11, 19, 23, 24 all reported "does not fit" while their copper fitted).
+    if (get_sections_description()) {
+        auto sections = get_sections_description().value();
+        bool sectionsChanged = false;
+        for (auto& section : sections) {
+            if (section.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            double low = std::numeric_limits<double>::max();
+            double high = std::numeric_limits<double>::lowest();
+            size_t axis = 1;
+            bool any = false;
+            for (const auto& layer : layers) {
+                if (layer.get_type() != ElectricalType::CONDUCTION || !layer.get_section()
+                    || layer.get_section().value() != section.get_name()) {
+                    continue;
+                }
+                axis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+                low = std::min(low, layer.get_coordinates()[axis] - layer.get_dimensions()[axis] / 2);
+                high = std::max(high, layer.get_coordinates()[axis] + layer.get_dimensions()[axis] / 2);
+                any = true;
+            }
+            if (!any) {
+                continue;
+            }
+            const double currentLow = section.get_coordinates()[axis] - section.get_dimensions()[axis] / 2;
+            const double currentHigh = section.get_coordinates()[axis] + section.get_dimensions()[axis] / 2;
+            const double newLow = std::min(currentLow, low);
+            const double newHigh = std::max(currentHigh, high);
+            if (newLow < currentLow - 1e-12 || newHigh > currentHigh + 1e-12) {
+                auto coordinates = section.get_coordinates();
+                auto dimensions = section.get_dimensions();
+                const double oldExtent = dimensions[axis];
+                coordinates[axis] = roundFloat((newLow + newHigh) / 2, 9);
+                dimensions[axis] = roundFloat(newHigh - newLow, 9);
+                section.set_coordinates(coordinates);
+                section.set_dimensions(dimensions);
+                if (section.get_filling_factor() && dimensions[axis] > 0) {
+                    section.set_filling_factor(roundFloat(
+                        section.get_filling_factor().value() * oldExtent / dimensions[axis], 6));
+                }
+                sectionsChanged = true;
+            }
+        }
+        if (sectionsChanged) {
+            set_sections_description(sections);
+        }
+    }
+}
+
+// ABT #624: is every turn's copper inside the winding window? Reported as part of the wind's
+// FINAL verdict only — deliberately NOT inside are_sections_and_layers_fitting(), which the
+// fixpoint consults mid-loop: rejecting a transient state there sends the winder down
+// try_rewind() and it settles on a layout whose terminal routes cross copper (measured on
+// 13_current_sense, which then violates the ABT #577 clearance contract). The trajectory must
+// stay exactly as it was; what changes is that a coil whose copper ends up outside its window
+// no longer reports success.
+bool Coil::are_turns_inside_winding_window() {
+    if (!get_turns_description()) {
+        return true;
+    }
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return true;   // round windows block angularly (ABT #187), not by this envelope
+    }
+    // MAS getters return BY VALUE: binding a reference through
+    // get_processed_description()->get_winding_windows()[0] dangles into a destroyed temporary,
+    // which is exactly how the first version of this check silently read garbage and never
+    // fired at all. Copy first.
+    auto processedDescription = bobbin.get_processed_description();
+    if (!processedDescription || processedDescription->get_winding_windows().empty()) {
+        return true;
+    }
+    // MULTI-COLUMN: a coil can have several winding windows and a turn belongs to whichever
+    // one its group was wound in (apply_group_window_sides mirrors them into place), so the
+    // test is "inside ANY window", never "inside window 0".
+    auto windingWindows = processedDescription->get_winding_windows();
+    struct WindowBox { double x0, x1, y0, y1; };
+    std::vector<WindowBox> boxes;
+    for (const auto& windingWindow : windingWindows) {
+        if (!windingWindow.get_coordinates() || !windingWindow.get_width() || !windingWindow.get_height()) {
+            continue;
+        }
+        boxes.push_back({(*windingWindow.get_coordinates())[0] - *windingWindow.get_width() / 2,
+                         (*windingWindow.get_coordinates())[0] + *windingWindow.get_width() / 2,
+                         (*windingWindow.get_coordinates())[1] - *windingWindow.get_height() / 2,
+                         (*windingWindow.get_coordinates())[1] + *windingWindow.get_height() / 2});
+    }
+    if (boxes.empty()) {
+        return true;
+    }
+    const double tolerance = 1e-9;
+    auto wires = get_wires();
+    auto turnsToCheck = get_turns_description().value();
+    for (const auto& turn : turnsToCheck) {
+        const size_t windingIndex = get_winding_index_by_name(turn.get_winding());
+        const double halfWidth = wires[windingIndex].get_maximum_outer_width() / 2;
+        const double halfHeight = wires[windingIndex].get_maximum_outer_height() / 2;
+        const auto& coordinates = turn.get_coordinates();
+        bool insideAny = false;
+        for (const auto& box : boxes) {
+            if (coordinates[0] - halfWidth >= box.x0 - tolerance &&
+                coordinates[0] + halfWidth <= box.x1 + tolerance &&
+                coordinates[1] - halfHeight >= box.y0 - tolerance &&
+                coordinates[1] + halfHeight <= box.y1 + tolerance) {
+                insideAny = true;
+                break;
+            }
+        }
+        if (!insideAny) {
+            if (std::getenv("MKF_BLOCKING_DIAG")) {
+                std::cerr << "[window] turn " << turn.get_name() << " at (" << coordinates[0]
+                          << "," << coordinates[1] << ") lies outside every winding window\n";
+            }
+            return false;
+        }
+    }
+    return true;
 }
 
 std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
@@ -3014,6 +3166,13 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             // the only place the outer return crossings are normally generated.
             generate_toroidal_additional_coordinates();
         }
+    }
+    // ABT #624: a wind that leaves copper outside the winding window has not succeeded, however
+    // well its filling factors read — nothing else in this function compares the turns against
+    // the window at all, which is how 26_psps shipped a turn 0.163 mm past the edge (and, in 3D,
+    // inside the bobbin flange).
+    if (result && !are_turns_inside_winding_window()) {
+        result = false;
     }
     return result;
 }
