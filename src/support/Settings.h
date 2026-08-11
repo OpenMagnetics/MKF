@@ -354,6 +354,15 @@ class Settings
         std::string get_painter_color_text() const;
         void set_painter_color_text(std::string value);
 
+        // ABT #647: the non-throwing half of get_painter_cci_coordinates_path().
+        // The CCI coordinate directory is OPTIONAL — strand counts up to 1000 use
+        // the build-time embedded coordinates and never need it — so a caller that
+        // merely REPORTS the settings (a get_settings() dump, a UI, a serializer)
+        // must be able to ask "is one resolvable?" without an exception. Returns
+        // nullopt when nothing resolves. Same rule as try_find_core_shape_by_name
+        // (ABT #631): ask, don't throw-and-catch. Consumers that genuinely require
+        // the catalog keep calling get_painter_cci_coordinates_path(), which throws.
+        std::optional<std::string> try_get_painter_cci_coordinates_path() const;
         std::string get_painter_cci_coordinates_path() const;
         void set_painter_cci_coordinates_path(std::string value);
 

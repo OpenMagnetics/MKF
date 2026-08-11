@@ -513,7 +513,7 @@ namespace OpenMagnetics {
         _painterColorText = value;
     }
 
-    std::string Settings::get_painter_cci_coordinates_path() const {
+    std::optional<std::string> Settings::try_get_painter_cci_coordinates_path() const {
         // Resolution order (first hit wins). Note the painter itself no longer
         // reads coordinate FILES for N <= 1000 strands — those are embedded at
         // build time (CciCoordinatesData) — so this path only matters to
@@ -557,12 +557,22 @@ namespace OpenMagnetics {
         if (std::filesystem::is_directory(cwdCandidate)) {
             return withTrailingSeparator(std::filesystem::absolute(cwdCandidate).string());
         }
-        // 5) Loudly refuse to guess.
-        throw std::runtime_error(
-            "CCI coordinates directory not found. Set it explicitly with "
-            "set_painter_cci_coordinates_path(), export MKF_CCI_COORDINATES_PATH, or run "
-            "from a directory containing cci_coords/coordinates/. (Strand counts up to "
-            "1000 use build-time embedded coordinates and do not need this path.)");
+        // 5) Nothing resolved. The caller decides whether that is fatal:
+        //    get_painter_cci_coordinates_path() throws, this one reports absence.
+        return std::nullopt;
+    }
+
+    std::string Settings::get_painter_cci_coordinates_path() const {
+        auto path = try_get_painter_cci_coordinates_path();
+        if (!path) {
+            // Loudly refuse to guess — for consumers that genuinely need the catalog.
+            throw std::runtime_error(
+                "CCI coordinates directory not found. Set it explicitly with "
+                "set_painter_cci_coordinates_path(), export MKF_CCI_COORDINATES_PATH, or run "
+                "from a directory containing cci_coords/coordinates/. (Strand counts up to "
+                "1000 use build-time embedded coordinates and do not need this path.)");
+        }
+        return path.value();
     }
     void Settings::set_painter_cci_coordinates_path(std::string value) {
         _painterCciCoordinatesPath = value;
