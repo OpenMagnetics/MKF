@@ -3916,7 +3916,19 @@ bool Coil::are_sections_and_layers_fitting() {
         auto bobbin = resolve_bobbin();
         if (bobbin.get_winding_window_shape() == WindingWindowShape::RECTANGULAR &&
             bobbin.get_processed_description()) {
-            const auto& ww = bobbin.get_processed_description()->get_winding_windows()[0];
+            // ABT #650: the generated getter returns the processed description BY VALUE and
+            // get_winding_windows() hands out a reference INTO that temporary, so binding the
+            // window to `...get_processed_description()->get_winding_windows()[0]` left it
+            // dangling the instant the full-expression ended. Natively the freed bytes still
+            // read back right; under Emscripten the block is recycled and the window's
+            // coordinates came back as (0,0) — the window jumped to the core axis and this
+            // check failed on the FIRST turn of every concentric design, silently dropping
+            // real-winding blocking in the browser. Keep the description alive by name.
+            const auto processedDescription = bobbin.get_processed_description().value();
+            if (processedDescription.get_winding_windows().empty()) {
+                return windTurns;
+            }
+            const auto& ww = processedDescription.get_winding_windows()[0];
             if (ww.get_coordinates() && ww.get_width() && ww.get_height()) {
                 const double x0 = (*ww.get_coordinates())[0] - *ww.get_width() / 2;
                 const double x1 = (*ww.get_coordinates())[0] + *ww.get_width() / 2;

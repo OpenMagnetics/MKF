@@ -4662,4 +4662,64 @@ namespace {
         settings.reset();
     }
 
+    // mas_autocomplete is what the web calls, so real winding has to survive THAT entry point,
+    // not just magnetic_autocomplete (what the audit above calls). ABT #650: the window-envelope
+    // check read the winding window through a dangling reference, so it failed on the first turn
+    // and wind() dropped connection blocking — the layers came back at full window height and,
+    // before the warning below existed, said nothing about it.
+    TEST_CASE("Test_ABT646_Rewind_Through_Mas_Autocomplete", "[support][abt646][abt650][masautocomplete]") {
+        std::ifstream json_file(std::filesystem::path{std::source_location::current().file_name()}
+                                    .parent_path()
+                                    .append("testData")
+                                    .append("abt646_e16_litz_2layer_leadcollision.json")
+                                    .string());
+        REQUIRE(json_file.good());
+        auto masJson = json::parse(json_file);
+
+        std::vector<double> shortestLayerHeight;
+        for (bool realWinding : {false, true}) {
+            settings.reset();
+            settings.set_coil_use_real_winding_geometry(realWinding);
+            OpenMagnetics::read_log();   // register the capture sink + raise to WARNING
+            OpenMagnetics::Mas mas(masJson);
+            auto out = OpenMagnetics::mas_autocomplete(mas, false, json{});
+            auto log = OpenMagnetics::read_log();
+
+            auto outMagnetic = out.get_mutable_magnetic();
+            auto coil = outMagnetic.get_mutable_coil();
+            auto bobbinOut = coil.resolve_bobbin();
+            auto processedDescription = bobbinOut.get_processed_description().value();
+            auto ww = processedDescription.get_winding_windows()[0];
+            // The window the coil comes back with is the one the fit check must have used.
+            REQUIRE(ww.get_coordinates());
+            CHECK_THAT(ww.get_coordinates().value()[0], Catch::Matchers::WithinAbs(0.0045, 1e-9));
+            double windowHeight = ww.get_height().value();
+
+            REQUIRE(coil.get_layers_description());
+            double shortest = windowHeight;
+            auto layersOut = coil.get_layers_description().value();
+            for (const auto& layer : layersOut) {
+                if (layer.get_type() != MAS::ElectricalType::CONDUCTION) continue;
+                shortest = std::min(shortest, layer.get_dimensions()[1]);
+            }
+            shortestLayerHeight.push_back(shortest);
+
+            // Requested real winding must either be APPLIED or refused out loud — never dropped
+            // in silence, which is how ABT #650 stayed invisible for a day.
+            if (realWinding) {
+                INFO(log);
+                CHECK(log.find("connection blocking was NOT applied") == std::string::npos);
+                // A corridor is reserved: at least one conduction layer is shorter than the window.
+                CHECK(shortest < windowHeight - 1e-6);
+            }
+            else {
+                // Nothing is blocked with the flag off: every layer spans the full window height.
+                CHECK_THAT(shortest, Catch::Matchers::WithinAbs(windowHeight, 1e-5));
+            }
+        }
+        // And the two settings must actually differ — otherwise the flag is doing nothing.
+        CHECK(shortestLayerHeight[1] < shortestLayerHeight[0]);
+        settings.reset();
+    }
+
 }  // namespace

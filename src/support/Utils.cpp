@@ -271,7 +271,11 @@ void load_cores(std::optional<std::string> fileToLoad) {
                 }
                 double shortestColumn = std::numeric_limits<double>::max();
                 if (loadedCore.get_processed_description()) {
-                    for (const auto& column : loadedCore.get_processed_description()->get_columns()) {
+                    // ABT #650: the generated getter returns the description BY VALUE, so the
+                    // columns are a reference into a temporary. Only C++23's P2718 extends it
+                    // in a range-for — don't make correctness hinge on the toolchain having it.
+                    const auto coreProcessedDescription = loadedCore.get_processed_description().value();
+                    for (const auto& column : coreProcessedDescription.get_columns()) {
                         shortestColumn = std::min(shortestColumn, column.get_height());
                     }
                 }
