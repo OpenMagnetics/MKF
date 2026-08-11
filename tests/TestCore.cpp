@@ -2800,3 +2800,115 @@ TEST_CASE("Test_Core_Json_Conversion_Migrates_Legacy_Shape_Family", "[core][migr
     CHECK(message.find("E 18/4/10") != std::string::npos);
     settings.reset();
 }
+
+TEST_CASE("ABT644_Short_Gapping_List_Pads_With_Residual_Not_By_Repeating_Last",
+          "[constructive-model][core][gapping]") {
+    // A gapping list SHORTER than the column count used to be padded by repeating its LAST entry,
+    // type included. One {subtractive, L} on a three-column core therefore became a subtractive gap
+    // of length L in EVERY column -- a core ground on all three legs. The lateral gaps then sat in
+    // parallel with the central one, so the reluctance was far too high and the core came back
+    // 1.7-1.8x less inductive than the caller asked for, silently.
+    //
+    // The contract is that the gaps given map onto the columns in order (central column first) and
+    // every remaining column gets a RESIDUAL gap. That is also exactly how all 2139 gapped cores in
+    // the catalogue are written: [subtractive, residual, residual].
+    auto constants = Constants();
+
+    for (auto shapeName : {std::string("PQ 26/25"), std::string("E 42/21/20"),
+                           std::string("ETD 29/16/10"), std::string("RM 10")}) {
+        json coreJson;
+        coreJson["name"] = "gapping test " + shapeName;
+        coreJson["functionalDescription"] = json();
+        coreJson["functionalDescription"]["type"] = "two-piece set";
+        coreJson["functionalDescription"]["material"] = "3C95";
+        coreJson["functionalDescription"]["shape"] = shapeName;
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        coreJson["functionalDescription"]["gapping"] = json::array({
+            json{{"type", "subtractive"}, {"length", 0.0005}}});
+
+        OpenMagnetics::Core core(coreJson);
+        auto gapping = core.get_functional_description().get_gapping();
+        auto columns = core.get_processed_description().value().get_columns();
+
+        UNSCOPED_INFO("shape: " << shapeName);
+        // one gap per column, however many columns the shape has
+        REQUIRE(gapping.size() == columns.size());
+        REQUIRE(columns.size() > 1);
+
+        // the stated gap lands on the central column...
+        CHECK(columns[0].get_type() == ColumnType::CENTRAL);
+        CHECK(gapping[0].get_type() == GapType::SUBTRACTIVE);
+        CHECK_THAT(gapping[0].get_length(),
+                   Catch::Matchers::WithinRel(0.0005, 1e-9));
+
+        // ...and every other column gets a residual gap, NOT a copy of the subtractive one
+        for (size_t i = 1; i < gapping.size(); ++i) {
+            UNSCOPED_INFO("column index: " << i);
+            CHECK(gapping[i].get_type() == GapType::RESIDUAL);
+            CHECK_THAT(gapping[i].get_length(),
+                       Catch::Matchers::WithinRel(constants.residualGap, 1e-9));
+        }
+    }
+}
+
+TEST_CASE("ABT644_Short_Gapping_List_Matches_The_Explicit_Spelling",
+          "[constructive-model][core][gapping]") {
+    // The one-entry form must be equivalent to spelling the residual gaps out by hand -- that
+    // equivalence is the whole point, and it is what the bug broke. Checked on the derived gap
+    // geometry, not just the lengths, and against the resulting magnetising inductance.
+    auto build = [](json gapping) {
+        json coreJson;
+        coreJson["name"] = "gapping equivalence";
+        coreJson["functionalDescription"] = json();
+        coreJson["functionalDescription"]["type"] = "two-piece set";
+        coreJson["functionalDescription"]["material"] = "3C95";
+        coreJson["functionalDescription"]["shape"] = "PQ 26/25";
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        coreJson["functionalDescription"]["gapping"] = gapping;
+        return OpenMagnetics::Core(coreJson);
+    };
+
+    auto implicitCore = build(json::array({json{{"type", "subtractive"}, {"length", 0.0005}}}));
+    auto explicitCore = build(json::array({
+        json{{"type", "subtractive"}, {"length", 0.0005}},
+        json{{"type", "residual"}, {"length", Constants().residualGap}},
+        json{{"type", "residual"}, {"length", Constants().residualGap}}}));
+
+    auto a = implicitCore.get_functional_description().get_gapping();
+    auto b = explicitCore.get_functional_description().get_gapping();
+    REQUIRE(a.size() == b.size());
+    for (size_t i = 0; i < a.size(); ++i) {
+        UNSCOPED_INFO("gap index: " << i);
+        CHECK(a[i].get_type() == b[i].get_type());
+        CHECK_THAT(a[i].get_length(), Catch::Matchers::WithinRel(b[i].get_length(), 1e-9));
+        CHECK_THAT(a[i].get_area().value(),
+                   Catch::Matchers::WithinRel(b[i].get_area().value(), 1e-9));
+        // NOT bit-identical, and the reason is a separate, pre-existing inconsistency worth
+        // recording: the two spellings land in DIFFERENT branches of distribute_and_process_gap.
+        // The short-list branch (fixed here) sets distance_closest_normal_surface to
+        // height/2 - length/2; the equal-count branch sets it to height/2, ignoring the residual
+        // gap's own length. On PQ 26/25 that is 0.0080475 vs 0.0080500 -- the short-list branch is
+        // the more correct of the two. The discrepancy is bounded by half a residual gap, so that
+        // is the tolerance asserted here rather than exact equality. See ABT #644.
+        CHECK_THAT(a[i].get_distance_closest_normal_surface().value(),
+                   Catch::Matchers::WithinAbs(b[i].get_distance_closest_normal_surface().value(),
+                                              Constants().residualGap));
+    }
+
+    // And the inductance must agree. Before the fix the implicit form read ~0.59x the explicit one
+    // on this shape, which is the error that made this visible in the first place.
+    auto coil = OpenMagneticsTesting::get_quick_coil(
+        std::vector<int64_t>({10}), std::vector<int64_t>({1}), "PQ 26/25");
+    MagnetizingInductance magnetizingInductance;
+    auto implicitInductance = magnetizingInductance
+        .calculate_inductance_from_number_turns_and_gapping(implicitCore, coil)
+        .get_magnetizing_inductance().get_nominal().value();
+    auto explicitInductance = magnetizingInductance
+        .calculate_inductance_from_number_turns_and_gapping(explicitCore, coil)
+        .get_magnetizing_inductance().get_nominal().value();
+    // 1e-6 relative, not exact: the 2.5 um difference in distance_closest_normal_surface noted
+    // above feeds the fringing factor and moves L by ~3e-9 relative. That is six orders of
+    // magnitude tighter than the 1.7-1.8x error this test exists to catch.
+    UNSCOPED_INFO("implicit: " << implicitInductance << "  explicit: " << explicitInductance);
+    CHECK_THAT(implicitInductance, Catch::Matchers::WithinRel(explicitInductance, 1e-6));
+}

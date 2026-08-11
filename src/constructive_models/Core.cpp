@@ -809,22 +809,38 @@ bool Core::distribute_and_process_gap() {
         }
     }
     else if (numberNonResidualGaps + numberResidualGaps < numberColumns) {
+        // FEWER GAPS THAN COLUMNS. The gaps given map onto the columns in order -- the central
+        // column is index 0 -- and every column left over gets a RESIDUAL gap.
+        //
+        // ABT #644: this used to pad the short list by repeating its LAST entry, type included, so
+        // a single {subtractive, L} on a three-column core was ground into all three legs. The
+        // lateral gaps then sat in parallel with the central one, and the core came back 1.7-1.8x
+        // less inductive than the caller asked for (measured on PQ 26/25, E 42/21/20, ETD 29/16/10
+        // and RM 10). It was silent, because the gapping produced is a perfectly well-formed MAS
+        // object. It also made [subtractive] indistinguishable from three explicit subtractive
+        // gaps, which left "grind the centre leg only" -- the overwhelmingly common construction,
+        // and what all 2139 gapped cores in the catalogue actually are -- impossible to express
+        // with a single entry.
         for (size_t i = 0; i < columns.size(); ++i) {
-            size_t gapIndex = i;
-            if (i >= gapping.size()) {
-                gapIndex = gapping.size() - 1;
-            }
             CoreGap gap;
-            gap.set_type(gapping[gapIndex].get_type());
-            gap.set_length(gapping[gapIndex].get_length());
+            double gapLength;
+            if (i < gapping.size()) {
+                gap.set_type(gapping[i].get_type());
+                gapLength = gapping[i].get_length();
+            }
+            else {
+                gap.set_type(GapType::RESIDUAL);
+                gapLength = constants.residualGap;
+            }
+            gap.set_length(gapLength);
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
-            if (columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2 < 0) {
+            if (columns[i].get_height() / 2 - gapLength / 2 < 0) {
                 return false;
                 // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
-            gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2);
+            gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapLength / 2);
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(columns[i].get_area());
             gap.set_section_dimensions(std::vector<double>({columns[i].get_width(), columns[i].get_depth()}));
