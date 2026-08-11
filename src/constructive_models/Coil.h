@@ -696,6 +696,10 @@ class Coil : public MAS::Coil {
 
         std::vector<size_t> extract_stack_up(std::vector<Section> sections);
         bool is_planar();
+        // ABT #650: what last failed are_sections_and_layers_fitting(), so a coil that silently
+        // loses real-winding blocking can say WHY instead of just not doing it. Diagnostic text
+        // only — never a control input.
+        std::string _lastFitFailure;
         std::vector<Turn> get_turns_touching_bobbin_column();
         std::vector<Turn> get_turns_touching_bobbin_walls();
         std::vector<Turn> get_turns_touching_bobbin_column(std::vector<Turn> turns);

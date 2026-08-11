@@ -2832,6 +2832,18 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     // space reserved by connection leads is layered on afterwards (filling factors, Painter, losses)
     // so it never changes whether the ideal winding fit.
     bool result = are_sections_and_layers_fitting() && bool(get_turns_description());
+    // ABT #650: asking for real winding and silently not getting it is the worst outcome — the
+    // caller receives a layout with none of the connection corridors reserved and nothing says so.
+    // Real winding is applied only when the IDEAL wind fits (see below); when it does not, say it
+    // out loud, and name what failed the fit so the reason is one log line away rather than a day
+    // of bisecting.
+    if (settings.get_coil_use_real_winding_geometry() && !result) {
+        logEntry("Real winding was requested but connection blocking was NOT applied: the ideal "
+                 "wind does not fit"
+                 + std::string(get_turns_description() ? "" : " (no turns were produced)")
+                 + (_lastFitFailure.empty() ? std::string() : " — " + _lastFitFailure),
+                 "Coil", 1);
+    }
     if (result && settings.get_coil_use_real_winding_geometry()) {
         // Turn blocking is GLOBAL to the winding window: a connection lead routes through the whole
         // window and removes a turn slot from every conduction layer it crosses, regardless of which
@@ -3924,9 +3936,13 @@ bool Coil::are_sections_and_layers_fitting() {
                         const auto& c = turn.get_coordinates();
                         if (c[0] - hw < x0 - tol || c[0] + hw > x1 + tol ||
                             c[1] - hh < y0 - tol || c[1] + hh > y1 + tol) {
-                            if (std::getenv("MKF_BLOCKING_DIAG"))
-                                std::cerr << "[fit] turn " << turn.get_name() << " at ("
-                                          << c[0] << "," << c[1] << ") outside window\n";
+                            // Logged, not just cerr'd: getenv/cerr is unreachable from a WASM
+                            // consumer, and this is the check that decides whether real-winding
+                            // blocking runs at all (ABT #650).
+                            _lastFitFailure = turn.get_name() + " at (" + std::to_string(c[0]) + ","
+                                            + std::to_string(c[1]) + ") outside window x["
+                                            + std::to_string(x0) + "," + std::to_string(x1) + "] y["
+                                            + std::to_string(y0) + "," + std::to_string(y1) + "]";
                             windTurns = false;
                             break;
                         }
