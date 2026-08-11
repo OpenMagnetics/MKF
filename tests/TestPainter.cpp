@@ -4556,4 +4556,41 @@ namespace {
         settings.reset();
     }
 
+    // ABT #646 — paint the design whose real winding cannot be routed, in BOTH projections,
+    // so the conflict can be seen rather than only read in an exception. paint_magnetic is
+    // the only entry point that draws the CONNECTIONS (inter-layer links, dragbacks and the
+    // terminal leads): XY adds paint_coil_connections on top of core+bobbin+turns, YZ is the
+    // connection-face projection where the leads are seen end-on.
+    //
+    // Painted with real-winding blocking ON, because that is the layout that collides: MKF
+    // reserves the lead and dragback corridors only when the flag is set, so painting without
+    // it would draw a different coil from the one MVB++ refuses to route.
+    TEST_CASE("Test_Painter_ABT646_Lead_Dragback_Collision_XY_YZ",
+              "[support][painter][abt646]") {
+        std::ifstream json_file(std::filesystem::path{std::source_location::current().file_name()}
+                                    .parent_path()
+                                    .append("testData")
+                                    .append("abt646_e16_litz_2layer_leadcollision.json")
+                                    .string());
+        REQUIRE(json_file.good());
+        auto masJson = json::parse(json_file);
+
+        settings.set_coil_use_real_winding_geometry(true);
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(
+            OpenMagnetics::Magnetic(masJson["magnetic"]), json{});
+
+        for (auto [projection, suffix] : {std::pair{PainterProjection::XY, std::string("XY")},
+                                          std::pair{PainterProjection::YZ, std::string("YZ")}}) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_ABT646_leadcollision_" + suffix + ".svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            painter.paint_magnetic(magnetic, projection);
+            painter.export_svg();
+            REQUIRE(std::filesystem::exists(outFile));
+            REQUIRE(std::filesystem::file_size(outFile) > 1000);
+        }
+        settings.reset();
+    }
+
 }  // namespace
