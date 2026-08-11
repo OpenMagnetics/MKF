@@ -2774,7 +2774,31 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
         magnetic.get_mutable_coil().set_core_columns(magnetic.get_mutable_core().get_processed_description()->get_columns());
     }
 
-    if (!magnetic.get_mutable_coil().get_turns_description()) {
+    // ABT #646: real winding is a LAYOUT setting, not a drawing one — wind() reserves the
+    // slots the connection leads route through and shortens every layer they cross. A coil
+    // that arrives already wound was laid out WITHOUT those corridors, and this function used
+    // to keep it verbatim, so switching real winding on changed nothing: the stored layout
+    // still put a turn in the corridor, and everything downstream (the Painter's connection
+    // views, MVB++'s conductor router) worked from geometry that had never reserved anything.
+    // Measured on a 12-turn 2-layer litz design: as stored, layer 1 spans the full 10.2 mm
+    // window and turn 6 sits EXACTLY on the input connection's reserved rectangle (100%
+    // penetration); re-wound with the flag on, layer 1 is one wire slot shorter at the bottom
+    // (9.345 mm) and the turns clear the corridor. Downstream, that stale layout is what made
+    // the entrance lead and a dragback coincident and unroutable.
+    //
+    // So re-wind when real winding is asked for. This CHANGES turn coordinates for a coil that
+    // already had them — deliberately: with the flag on, a layout that ignores the corridors is
+    // not the design being asked for.
+    //
+    // NOT for planar: real winding (leads, blocking, connection routing) is not implemented for
+    // PCB constructions and MKF refuses it at the machinery that would engage — wind(), the
+    // connection-resistance path. There are no lead corridors to reserve on a planar layout, so
+    // re-winding one would buy nothing and would turn the refusal into a hard failure of
+    // autocomplete itself, i.e. a global display setting would stop every planar design from
+    // rendering at all. The gates that own the ruling still fire wherever routing is attempted.
+    const bool rewindForRealWinding = settings.get_coil_use_real_winding_geometry()
+                                   && !magnetic.get_mutable_coil().is_planar();
+    if (!magnetic.get_mutable_coil().get_turns_description() || rewindForRealWinding) {
         // ABT #620: without this, wind() below has no design requirements to check
         // and falls back to calculate_mechanical_insulation() (0 margin, a single
         // bare mechanical layer) even when the design declares an insulation

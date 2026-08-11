@@ -4593,4 +4593,73 @@ namespace {
         settings.reset();
     }
 
+    // ABT #646 diagnosis: the reserved rectangles the input/terminal connections claim, next to
+    // where the turns actually landed. If a turn overlaps a rectangle its own winding reserved,
+    // the layer did not respect the blocked corridor — which is exactly what makes the entrance
+    // lead and a dragback share a line downstream in MVB++.
+    TEST_CASE("Test_Painter_ABT646_Reserved_Space_Audit", "[support][painter][abt646][audit]") {
+        std::ifstream json_file(std::filesystem::path{std::source_location::current().file_name()}
+                                    .parent_path()
+                                    .append("testData")
+                                    .append(std::getenv("ABT646_UNWOUND")
+                                                ? "abt646_e16_litz_2layer_leadcollision_unwound.json"
+                                                : "abt646_e16_litz_2layer_leadcollision.json")
+                                    .string());
+        REQUIRE(json_file.good());
+        auto masJson = json::parse(json_file);
+
+        settings.set_coil_use_real_winding_geometry(true);
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(
+            OpenMagnetics::Magnetic(masJson["magnetic"]), json{});
+        auto coil = magnetic.get_mutable_coil();
+
+        auto reserved = coil.get_connection_reserved_spaces();
+        std::cout << "\n=== reserved spaces (" << reserved.size() << ") ===\n";
+        for (const auto& r : reserved) {
+            std::cout << "  section='" << r.section << "' layer='" << r.layer << "' winding='"
+                      << r.winding << "' parallel=" << r.parallel
+                      << "  centre=(" << r.coordinates[0] << ", " << r.coordinates[1] << ")"
+                      << "  dims=(" << r.dimensions[0] << " x " << r.dimensions[1] << ")"
+                      << "  x:[" << (r.coordinates[0] - r.dimensions[0] / 2) << ", "
+                      << (r.coordinates[0] + r.dimensions[0] / 2) << "]"
+                      << "  y:[" << (r.coordinates[1] - r.dimensions[1] / 2) << ", "
+                      << (r.coordinates[1] + r.dimensions[1] / 2) << "]\n";
+        }
+
+        auto layers = coil.get_layers_description().value();
+        std::cout << "\n=== conduction layers ===\n";
+        for (const auto& l : layers) {
+            if (l.get_type() != MAS::ElectricalType::CONDUCTION) continue;
+            auto c = l.get_coordinates();
+            auto d = l.get_dimensions();
+            std::cout << "  '" << l.get_name() << "'  centre=(" << c[0] << ", " << c[1] << ")"
+                      << "  dims=(" << d[0] << " x " << d[1] << ")"
+                      << "  y:[" << (c[1] - d[1] / 2) << ", " << (c[1] + d[1] / 2) << "]\n";
+        }
+
+        auto turns = coil.get_turns_description().value();
+        std::cout << "\n=== turns vs reserved ===\n";
+        size_t violations = 0;
+        for (const auto& t : turns) {
+            auto c = t.get_coordinates();
+            auto d = t.get_dimensions().value();
+            for (const auto& r : reserved) {
+                const double dx = std::abs(c[0] - r.coordinates[0]) - (d[0] + r.dimensions[0]) / 2;
+                const double dy = std::abs(c[1] - r.coordinates[1]) - (d[1] + r.dimensions[1]) / 2;
+                if (dx < 0 && dy < 0) {
+                    ++violations;
+                    std::cout << "  OVERLAP: turn '" << t.get_name() << "' layer='"
+                              << t.get_layer().value_or("?") << "' centre=(" << c[0] << ", " << c[1]
+                              << ") dims=(" << d[0] << " x " << d[1] << ")  vs reserved layer='"
+                              << r.layer << "' parallel=" << r.parallel << " centre=("
+                              << r.coordinates[0] << ", " << r.coordinates[1] << ") dims=("
+                              << r.dimensions[0] << " x " << r.dimensions[1] << ")"
+                              << "  penetration=(" << -dx << ", " << -dy << ") m\n";
+                }
+            }
+        }
+        std::cout << "=== " << violations << " turn/reserved overlaps ===\n" << std::endl;
+        settings.reset();
+    }
+
 }  // namespace
