@@ -15,6 +15,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -2883,16 +2884,26 @@ TEST_CASE("ABT644_Short_Gapping_List_Matches_The_Explicit_Spelling",
         CHECK_THAT(a[i].get_length(), Catch::Matchers::WithinRel(b[i].get_length(), 1e-9));
         CHECK_THAT(a[i].get_area().value(),
                    Catch::Matchers::WithinRel(b[i].get_area().value(), 1e-9));
-        // NOT bit-identical, and the reason is a separate, pre-existing inconsistency worth
-        // recording: the two spellings land in DIFFERENT branches of distribute_and_process_gap.
-        // The short-list branch (fixed here) sets distance_closest_normal_surface to
-        // height/2 - length/2; the equal-count branch sets it to height/2, ignoring the residual
-        // gap's own length. On PQ 26/25 that is 0.0080475 vs 0.0080500 -- the short-list branch is
-        // the more correct of the two. The discrepancy is bounded by half a residual gap, so that
-        // is the tolerance asserted here rather than exact equality. See ABT #644.
+        // Exact now. These two spellings land in different branches of
+        // distribute_and_process_gap, and the branches used to disagree here: one subtracted half
+        // the residual gap's length, the other ignored it (0.0080475 vs 0.0080500 on PQ 26/25).
+        // Both now use (columnHeight - gapLength)/2, which is what the quantity means. ABT #644.
         CHECK_THAT(a[i].get_distance_closest_normal_surface().value(),
-                   Catch::Matchers::WithinAbs(b[i].get_distance_closest_normal_surface().value(),
-                                              Constants().residualGap));
+                   Catch::Matchers::WithinRel(b[i].get_distance_closest_normal_surface().value(),
+                                              1e-9));
+        // Column placement (x, z) must match. The AXIAL position (y) deliberately is NOT asserted
+        // equal here: the two spellings reach different placement paths, and those paths disagree
+        // by half a gap -- the implicit form centres a lone gap on the mating plane, the explicit
+        // one puts it half a gap above, on the "one half is ground" convention. Two existing tests
+        // pin the two opposite answers (TestCore.cpp:1533 wants != 0,
+        // Test_Core_Functional_Description_Web_1 wants == 0), so picking one is a convention call
+        // with consequences for the geometrical description's machining flags. Reported on
+        // ABT #644 rather than silently decided here.
+        for (size_t axis : {0, 2}) {
+            UNSCOPED_INFO("axis: " << axis);
+            CHECK_THAT(a[i].get_coordinates().value()[axis],
+                       Catch::Matchers::WithinAbs(b[i].get_coordinates().value()[axis], 1e-12));
+        }
     }
 
     // And the inductance must agree. Before the fix the implicit form read ~0.59x the explicit one
@@ -2906,9 +2917,112 @@ TEST_CASE("ABT644_Short_Gapping_List_Matches_The_Explicit_Spelling",
     auto explicitInductance = magnetizingInductance
         .calculate_inductance_from_number_turns_and_gapping(explicitCore, coil)
         .get_magnetizing_inductance().get_nominal().value();
-    // 1e-6 relative, not exact: the 2.5 um difference in distance_closest_normal_surface noted
-    // above feeds the fringing factor and moves L by ~3e-9 relative. That is six orders of
-    // magnitude tighter than the 1.7-1.8x error this test exists to catch.
     UNSCOPED_INFO("implicit: " << implicitInductance << "  explicit: " << explicitInductance);
-    CHECK_THAT(implicitInductance, Catch::Matchers::WithinRel(explicitInductance, 1e-6));
+    CHECK_THAT(implicitInductance, Catch::Matchers::WithinRel(explicitInductance, 1e-9));
+}
+
+TEST_CASE("ABT644_Gap_Type_Decides_Where_The_Gap_Goes", "[constructive-model][core][gapping]") {
+    // The gapping array is a vocabulary, and TYPE -- not position, not count -- decides which
+    // column a gap lands on. The factory helpers define it:
+    //     create_ground_gapping(L, n)         1 SUBTRACTIVE + (n-1) RESIDUAL
+    //     create_distributed_gapping(L, N, n) N SUBTRACTIVE + (n-1) RESIDUAL
+    //     create_spacer_gapping(L, n)         n ADDITIVE
+    // So SUBTRACTIVE is always ground out of the CENTRAL column -- several of them are one
+    // distributed gap spaced down that column, never one gap per leg -- while ADDITIVE is a shim
+    // between the halves and therefore separates EVERY column.
+    auto constants = Constants();
+    const double L = 0.0005;
+
+    auto build = [](json gapping) {
+        json coreJson;
+        coreJson["name"] = "gap vocabulary";
+        coreJson["functionalDescription"] = json();
+        coreJson["functionalDescription"]["type"] = "two-piece set";
+        coreJson["functionalDescription"]["material"] = "3C95";
+        coreJson["functionalDescription"]["shape"] = "PQ 26/25";
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        coreJson["functionalDescription"]["gapping"] = gapping;
+        return OpenMagnetics::Core(coreJson);
+    };
+    auto sub = [&](double l) { return json{{"type", "subtractive"}, {"length", l}}; };
+    auto add = [&](double l) { return json{{"type", "additive"}, {"length", l}}; };
+    auto res = [&]() { return json{{"type", "residual"}, {"length", constants.residualGap}}; };
+
+    auto countOfType = [](std::vector<CoreGap> const& g, GapType t) {
+        size_t n = 0;
+        for (auto const& x : g) if (x.get_type() == t) ++n;
+        return n;
+    };
+
+    SECTION("three subtractive gaps are a DISTRIBUTED gap in the central column, not one per leg") {
+        auto gapping = build(json::array({sub(L), sub(L), sub(L)}))
+                           .get_functional_description().get_gapping();
+        // three in the centre plus a residual on each of the two return columns
+        REQUIRE(gapping.size() == 5);
+        CHECK(countOfType(gapping, GapType::SUBTRACTIVE) == 3);
+        CHECK(countOfType(gapping, GapType::RESIDUAL) == 2);
+        // all three subtractive gaps share the central column's x, and are spread in y
+        std::vector<double> heights;
+        for (auto const& g : gapping) {
+            if (g.get_type() != GapType::SUBTRACTIVE) continue;
+            CHECK_THAT(g.get_coordinates().value()[0], Catch::Matchers::WithinAbs(0.0, 1e-12));
+            heights.push_back(g.get_coordinates().value()[1]);
+        }
+        REQUIRE(heights.size() == 3);
+        std::sort(heights.begin(), heights.end());
+        CHECK(heights[0] < heights[1]);
+        CHECK(heights[1] < heights[2]);
+        CHECK_THAT(heights[1], Catch::Matchers::WithinAbs(0.0, 1e-12));
+
+        // and it must agree with the hand-built form, which is what callers use today
+        auto explicitForm = build(json::array({sub(L), sub(L), sub(L), res(), res()}))
+                                .get_functional_description().get_gapping();
+        REQUIRE(explicitForm.size() == gapping.size());
+        for (size_t i = 0; i < gapping.size(); ++i) {
+            UNSCOPED_INFO("gap index: " << i);
+            CHECK(gapping[i].get_type() == explicitForm[i].get_type());
+            CHECK_THAT(gapping[i].get_length(),
+                       Catch::Matchers::WithinRel(explicitForm[i].get_length(), 1e-9));
+            for (size_t axis = 0; axis < 3; ++axis) {
+                CHECK_THAT(gapping[i].get_coordinates().value()[axis],
+                           Catch::Matchers::WithinAbs(
+                               explicitForm[i].get_coordinates().value()[axis], 1e-12));
+            }
+        }
+    }
+
+    SECTION("a spacer separates EVERY column, however few additive gaps are given") {
+        // one additive gap is still a shim between the halves: all three columns are pushed apart
+        auto shortForm = build(json::array({add(L)}))
+                             .get_functional_description().get_gapping();
+        auto fullForm = build(json::array({add(L), add(L), add(L)}))
+                            .get_functional_description().get_gapping();
+        REQUIRE(shortForm.size() == 3);
+        REQUIRE(fullForm.size() == 3);
+        CHECK(countOfType(shortForm, GapType::ADDITIVE) == 3);
+        CHECK(countOfType(fullForm, GapType::ADDITIVE) == 3);
+        CHECK(countOfType(shortForm, GapType::RESIDUAL) == 0);
+        for (size_t i = 0; i < shortForm.size(); ++i) {
+            UNSCOPED_INFO("gap index: " << i);
+            CHECK(shortForm[i].get_type() == fullForm[i].get_type());
+            CHECK_THAT(shortForm[i].get_length(),
+                       Catch::Matchers::WithinRel(fullForm[i].get_length(), 1e-9));
+        }
+    }
+
+    SECTION("one subtractive gap is a ground gap: centre only, residual on the laterals") {
+        auto gapping = build(json::array({sub(L)})).get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 3);
+        CHECK(countOfType(gapping, GapType::SUBTRACTIVE) == 1);
+        CHECK(countOfType(gapping, GapType::RESIDUAL) == 2);
+        CHECK(gapping[0].get_type() == GapType::SUBTRACTIVE);
+        CHECK_THAT(gapping[0].get_coordinates().value()[0], Catch::Matchers::WithinAbs(0.0, 1e-12));
+    }
+
+    SECTION("an all-residual list stays one residual gap per column") {
+        auto gapping = build(json::array({res(), res(), res()}))
+                           .get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 3);
+        CHECK(countOfType(gapping, GapType::RESIDUAL) == 3);
+    }
 }

@@ -761,6 +761,15 @@ bool Core::distribute_and_process_gap() {
     double coreChunkSizePlusGap = 0;
     auto nonResidualGaps = find_gaps_by_type(GapType::SUBTRACTIVE);
     auto additiveGaps = find_gaps_by_type(GapType::ADDITIVE);
+    // SUBTRACTIVE and ADDITIVE are both "non residual" but they mean opposite things about WHERE
+    // the gap lives, so the two counts are kept apart as well as summed. SUBTRACTIVE is material
+    // ground off the CENTRAL column -- several of them are one distributed gap down that column,
+    // never one gap per leg -- while ADDITIVE is a spacer shimmed between the halves, which by
+    // construction separates EVERY column equally. The factory helpers below spell out the same
+    // vocabulary: create_ground_gapping is 1 subtractive + residuals, create_distributed_gapping
+    // is N subtractive + residuals, create_spacer_gapping is one additive PER COLUMN.
+    int numberSubtractiveGaps = nonResidualGaps.size();
+    int numberAdditiveGaps = additiveGaps.size();
     nonResidualGaps.insert(nonResidualGaps.end(), additiveGaps.begin(), additiveGaps.end());
     auto residualGaps = find_gaps_by_type(GapType::RESIDUAL);
     int numberNonResidualGaps = nonResidualGaps.size();
@@ -808,46 +817,52 @@ bool Core::distribute_and_process_gap() {
             newGapping.push_back(gap);
         }
     }
-    else if (numberNonResidualGaps + numberResidualGaps < numberColumns) {
-        // FEWER GAPS THAN COLUMNS. The gaps given map onto the columns in order -- the central
-        // column is index 0 -- and every column left over gets a RESIDUAL gap.
+    else if (numberNonResidualGaps + numberResidualGaps < numberColumns && numberSubtractiveGaps == 0) {
+        // FEWER GAPS THAN COLUMNS, AND NONE OF THEM SUBTRACTIVE. Only spacers and residual gaps
+        // reach here, and for those replicating the last entry across the remaining columns is the
+        // right thing: an ADDITIVE gap is a shim between the core halves, so it separates every
+        // column by the same amount, and a short residual list just means "the rest mate too".
         //
-        // ABT #644: this used to pad the short list by repeating its LAST entry, type included, so
-        // a single {subtractive, L} on a three-column core was ground into all three legs. The
-        // lateral gaps then sat in parallel with the central one, and the core came back 1.7-1.8x
-        // less inductive than the caller asked for (measured on PQ 26/25, E 42/21/20, ETD 29/16/10
-        // and RM 10). It was silent, because the gapping produced is a perfectly well-formed MAS
-        // object. It also made [subtractive] indistinguishable from three explicit subtractive
-        // gaps, which left "grind the centre leg only" -- the overwhelmingly common construction,
-        // and what all 2139 gapped cores in the catalogue actually are -- impossible to express
-        // with a single entry.
+        // ABT #644: the `numberSubtractiveGaps == 0` guard is the fix. Without it a single
+        // {subtractive, L} on a three-column core was replicated into all three legs, so the
+        // lateral gaps sat in parallel with the central one and the core came back 1.7-1.8x less
+        // inductive than the caller asked for (PQ 26/25, E 42/21/20, ETD 29/16/10, RM 10) --
+        // silently, since the gapping produced is a well-formed MAS object. Subtractive gaps now
+        // fall through to the distributed branch below, which puts them where they belong: down
+        // the central column, with residual gaps generated for the return columns. That is exactly
+        // what create_ground_gapping() and create_distributed_gapping() build by hand.
         for (size_t i = 0; i < columns.size(); ++i) {
+            size_t gapIndex = i;
+            if (i >= gapping.size()) {
+                gapIndex = gapping.size() - 1;
+            }
             CoreGap gap;
-            double gapLength;
-            if (i < gapping.size()) {
-                gap.set_type(gapping[i].get_type());
-                gapLength = gapping[i].get_length();
-            }
-            else {
-                gap.set_type(GapType::RESIDUAL);
-                gapLength = constants.residualGap;
-            }
-            gap.set_length(gapLength);
+            gap.set_type(gapping[gapIndex].get_type());
+            gap.set_length(gapping[gapIndex].get_length());
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
-            if (columns[i].get_height() / 2 - gapLength / 2 < 0) {
+            if (columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2 < 0) {
                 return false;
                 // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
-            gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapLength / 2);
+            gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2);
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(columns[i].get_area());
             gap.set_section_dimensions(std::vector<double>({columns[i].get_width(), columns[i].get_depth()}));
             newGapping.push_back(gap);
         }
     }
-    else if ((numberResidualGaps == numberColumns || numberNonResidualGaps == numberColumns) &&
+    // ONE GAP PER COLUMN, laid out positionally. Legitimate for an all-residual core (an ungapped
+    // two-piece set) and for a SPACER, where one additive gap per column is precisely what
+    // create_spacer_gapping() emits.
+    //
+    // ABT #644: this used to test numberNonResidualGaps, which lumps SUBTRACTIVE in with ADDITIVE,
+    // so [subtractive, subtractive, subtractive] was laid out as one ground gap per leg. Three
+    // subtractive gaps mean a DISTRIBUTED gap -- three gaps spaced down the central column, with
+    // residual gaps on the laterals, i.e. what create_distributed_gapping() builds. Testing the
+    // additive count instead sends the subtractive case to the distributed branch below.
+    else if ((numberResidualGaps == numberColumns || numberAdditiveGaps == numberColumns) &&
              (numberGaps == numberColumns)) {
         for (size_t i = 0; i < columns.size(); ++i) {
             CoreGap gap;
@@ -882,7 +897,28 @@ bool Core::distribute_and_process_gap() {
             returnColumns = lateralColumns;
         }
 
-        if (numberGaps == numberColumns) {
+        // ONE non-residual gap is a ground gap: the centre leg of one half is machined back, so the
+        // gap opens off the mating plane and its centre sits half a gap above it. MORE than one is
+        // a distributed gap and the gaps are spread evenly down the column instead.
+        //
+        // ABT #644: `numberGaps == numberColumns` alone is only a proxy for "one gap", and it
+        // stopped being one once three subtractive gaps started arriving here. On a three-column
+        // core [subtractive x3] took the single-ground-gap placement and came out at
+        // y = 0.25/4.275/8.3 mm instead of the distributed -4.025/0/+4.025 mm. Requiring exactly
+        // one non-residual gap as well keeps every previously-correct case on its existing path
+        // and sends only the genuinely distributed one to the branch below.
+        if (numberGaps == numberColumns && nonResidualGaps.size() == 1) {
+            // NOTE (ABT #644, deliberately NOT changed here): this places the gap half a gap ABOVE
+            // the mating plane -- the convention that a subtractive gap is ground out of ONE half,
+            // which TestCore's E_19_8_5_Geometrical_Description depends on when it asserts that
+            // only half-set [0] carries machining. It does not agree with the distributed branch
+            // below, which centres a lone gap at 0, nor with the distance_closest_normal_surface
+            // computed on the next line (height/2 - length/2 is the distance for a CENTRED gap;
+            // for one at +length/2 it would be height/2 - length). Two existing tests pin the two
+            // opposite answers -- TestCore.cpp:1533 requires coordinates[1] != 0, while
+            // Test_Core_Functional_Description_Web_1 requires it == 0 -- so unifying them is a
+            // convention decision with knock-on effects on the geometrical description and the
+            // FreeCAD builder, not a local cleanup. Left as found and reported.
             if (windingColumn.get_height() > nonResidualGaps[0].get_length()) {
                 centralColumnGapsHeightOffset = roundFloat(nonResidualGaps[0].get_length() / 2);
             }
@@ -951,12 +987,20 @@ bool Core::distribute_and_process_gap() {
                 gap.set_length(residualGaps[i].get_length());
                 gap.set_coordinates(returnColumns[i].get_coordinates());
                 gap.set_shape(returnColumns[i].get_shape());
-                if (returnColumns[i].get_height() / 2 < 0) {
+                // ABT #644: this used to be height/2, ignoring the residual gap's OWN length, while
+                // the sibling branch just above (which generates the residual gaps rather than
+                // taking them from the caller) correctly used height/2 - length/2. The same core
+                // therefore reported two different distance_closest_normal_surface values depending
+                // on whether its residual gaps were spelled out or inferred -- 0.0080500 vs
+                // 0.0080475 on PQ 26/25, half a residual gap apart. The distance from the gap to
+                // the closest normal surface is (columnHeight - gapLength)/2 by definition, so the
+                // subtracting form is the correct one and both branches now use it.
+                if (returnColumns[i].get_height() / 2 - residualGaps[i].get_length() / 2 < 0) {
                     return false;
                     // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
 
                 }
-                gap.set_distance_closest_normal_surface(returnColumns[i].get_height() / 2);
+                gap.set_distance_closest_normal_surface(returnColumns[i].get_height() / 2 - residualGaps[i].get_length() / 2);
                 gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
                 gap.set_area(returnColumns[i].get_area());
                 gap.set_section_dimensions(std::vector<double>({returnColumns[i].get_width(), returnColumns[i].get_depth()}));
