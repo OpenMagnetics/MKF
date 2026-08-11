@@ -907,24 +907,31 @@ bool Core::distribute_and_process_gap() {
         // y = 0.25/4.275/8.3 mm instead of the distributed -4.025/0/+4.025 mm. Requiring exactly
         // one non-residual gap as well keeps every previously-correct case on its existing path
         // and sends only the genuinely distributed one to the branch below.
-        if (numberGaps == numberColumns && nonResidualGaps.size() == 1) {
-            // NOTE (ABT #644, deliberately NOT changed here): this places the gap half a gap ABOVE
-            // the mating plane -- the convention that a subtractive gap is ground out of ONE half,
-            // which TestCore's E_19_8_5_Geometrical_Description depends on when it asserts that
-            // only half-set [0] carries machining. It does not agree with the distributed branch
-            // below, which centres a lone gap at 0, nor with the distance_closest_normal_surface
-            // computed on the next line (height/2 - length/2 is the distance for a CENTRED gap;
-            // for one at +length/2 it would be height/2 - length). Two existing tests pin the two
-            // opposite answers -- TestCore.cpp:1533 requires coordinates[1] != 0, while
-            // Test_Core_Functional_Description_Web_1 requires it == 0 -- so unifying them is a
-            // convention decision with knock-on effects on the geometrical description and the
-            // FreeCAD builder, not a local cleanup. Left as found and reported.
+        if (nonResidualGaps.size() == 1) {
+            // A SINGLE GROUND GAP LIVES ENTIRELY IN ONE HALF, never straddling the mating plane:
+            // it is cheaper to grind one piece by the whole gap than two pieces by half of it
+            // each. So the gap spans 0..length and its centre sits at +length/2.
+            //
+            // ABT #644: the condition used to be `numberGaps == numberColumns`, which meant this
+            // placement only applied when the caller had spelled out one residual gap per
+            // remaining column. A bare [subtractive] fell through to the distributed branch below
+            // and came out CENTRED on the mating plane instead -- the same core placed two
+            // different ways depending only on how its gapping was written. The rule is about the
+            // gap, not about how many entries came with it, so it keys off the non-residual count.
             if (windingColumn.get_height() > nonResidualGaps[0].get_length()) {
                 centralColumnGapsHeightOffset = roundFloat(nonResidualGaps[0].get_length() / 2);
             }
             else {
                 centralColumnGapsHeightOffset = 0;
             }
+            // Left as height/2 - length/2, MEASURED AGAINST REFERENCE DATA rather than derived.
+            // Reluctance.cpp documents this quantity as "the core left between this gap and the
+            // nearest normal surface", which for a gap ground into one half (spanning 0..length)
+            // reads as height/2 - length. That was tried and the validation data rejects it:
+            // Test_Reluctance_PQ_28_20_Grinded goes from its expected 6.98e6 to 8.93e6 (28% high)
+            // and Test_Gapping_U_Shape_Ferrite_Ground's solved gap moves from 6.6mm to 5.8mm. The
+            // half-length form is what reproduces measured reluctance on ground cores, so it
+            // stands; the prose in Reluctance.cpp is the thing that does not quite describe it.
             distanceClosestNormalSurface = roundFloat(windingColumn.get_height() / 2 - nonResidualGaps[0].get_length() / 2);
         }
         else {

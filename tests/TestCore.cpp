@@ -1679,7 +1679,13 @@ TEST_CASE("Test_Core_Functional_Description_Web_1", "[constructive-model][core][
 
     REQUIRE(functionalDescription.get_gapping().size() == 2u);
     REQUIRE((*functionalDescription.get_gapping()[0].get_coordinates())[0] == 0);
-    REQUIRE((*functionalDescription.get_gapping()[0].get_coordinates())[1] == 0);
+    // ABT #644: this used to require [1] == 0. A single ground gap is machined into ONE half --
+    // grinding one piece by the whole gap is cheaper than grinding two by half each -- so it spans
+    // 0..length and its centre sits at +length/2, here 0.0001/2. The old expectation came from the
+    // distributed branch, which a bare one-gap list used to fall through to; it contradicted
+    // TestCore.cpp's own E_55_21_central_gap (which requires [1] != 0) and
+    // E_19_8_5_Geometrical_Description (which requires exactly one machined half-set).
+    REQUIRE((*functionalDescription.get_gapping()[0].get_coordinates())[1] == 0.0001 / 2);
     REQUIRE((*functionalDescription.get_gapping()[0].get_coordinates())[2] == 0);
 
     REQUIRE((*functionalDescription.get_gapping()[1].get_coordinates())[0] == 0);
@@ -2891,15 +2897,11 @@ TEST_CASE("ABT644_Short_Gapping_List_Matches_The_Explicit_Spelling",
         CHECK_THAT(a[i].get_distance_closest_normal_surface().value(),
                    Catch::Matchers::WithinRel(b[i].get_distance_closest_normal_surface().value(),
                                               1e-9));
-        // Column placement (x, z) must match. The AXIAL position (y) deliberately is NOT asserted
-        // equal here: the two spellings reach different placement paths, and those paths disagree
-        // by half a gap -- the implicit form centres a lone gap on the mating plane, the explicit
-        // one puts it half a gap above, on the "one half is ground" convention. Two existing tests
-        // pin the two opposite answers (TestCore.cpp:1533 wants != 0,
-        // Test_Core_Functional_Description_Web_1 wants == 0), so picking one is a convention call
-        // with consequences for the geometrical description's machining flags. Reported on
-        // ABT #644 rather than silently decided here.
-        for (size_t axis : {0, 2}) {
+        // Including the AXIAL position. These two spellings used to reach different placement
+        // paths and disagree by half a gap in y -- one centred the lone gap on the mating plane,
+        // the other put it in one half. A ground gap is always machined into a single half, so
+        // both now place it there and the whole coordinate triple must match. ABT #644.
+        for (size_t axis : {0, 1, 2}) {
             UNSCOPED_INFO("axis: " << axis);
             CHECK_THAT(a[i].get_coordinates().value()[axis],
                        Catch::Matchers::WithinAbs(b[i].get_coordinates().value()[axis], 1e-12));
@@ -3017,6 +3019,14 @@ TEST_CASE("ABT644_Gap_Type_Decides_Where_The_Gap_Goes", "[constructive-model][co
         CHECK(countOfType(gapping, GapType::RESIDUAL) == 2);
         CHECK(gapping[0].get_type() == GapType::SUBTRACTIVE);
         CHECK_THAT(gapping[0].get_coordinates().value()[0], Catch::Matchers::WithinAbs(0.0, 1e-12));
+        // ground into ONE half -- cheaper than machining both by half the gap each -- so the gap
+        // spans 0..L and sits half a gap off the mating plane, never straddling it
+        CHECK_THAT(gapping[0].get_coordinates().value()[1],
+                   Catch::Matchers::WithinRel(L / 2, 1e-9));
+        auto columnHeight = build(json::array({sub(L)}))
+                                .get_processed_description().value().get_columns()[0].get_height();
+        CHECK_THAT(gapping[0].get_distance_closest_normal_surface().value(),
+                   Catch::Matchers::WithinRel(columnHeight / 2 - L / 2, 1e-6));
     }
 
     SECTION("an all-residual list stays one residual gap per column") {
