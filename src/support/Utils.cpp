@@ -376,7 +376,12 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
                 coreShapeFamiliesInDatabase.push_back(coreShape.get_family());
             }
             coreShapeDatabase[jf["name"]] = coreShape;
-            if (withAliases) {
+            // `aliases` is optional in the MAS schema and 648 of the 1562 current shapes omit it.
+            // jf is a CONST json&, so operator[] on an absent key is undefined behaviour rather
+            // than a null insert — nlohmann only asserts, and Release builds compile that assert
+            // out, leaving an end() dereference that reads garbage (seen as
+            // "type must be string, but is number") or segfaults outright.
+            if (withAliases && jf.contains("aliases")) {
                 for (auto& alias : jf["aliases"]) {
                     coreShapeDatabase[alias] = coreShape;
                 }
