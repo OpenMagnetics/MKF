@@ -3912,7 +3912,14 @@ bool Coil::are_sections_and_layers_fitting() {
     // the coil still reported "fits" (26_psps U: Secondary section 1 reached x=12.13 in a
     // window ending at 10.42 — 1.7 mm of silently overflowing copper). Every conduction
     // layer must lie inside the window envelope.
-    {
+    //
+    // Wound coils only (ABT #675): planar does not support real winding yet, so there is no
+    // blocking here to grow anything past the window and this check guards nothing — while it
+    // does reject PCB layouts whose outer turns sit past the window edge, which took the planar
+    // coil adviser to zero candidates for dense designs the moment the window was read
+    // correctly (ABT #650). When planar gains real winding, this needs a planar-aware envelope
+    // (the board is not the window), not a straight re-enable.
+    if (!is_planar()) {
         auto bobbin = resolve_bobbin();
         if (bobbin.get_winding_window_shape() == WindingWindowShape::RECTANGULAR &&
             bobbin.get_processed_description()) {
