@@ -2747,8 +2747,30 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     _currentPattern = pattern;
     _currentRepetitions = repetitions;
 
+    // ABT #676: margin tape is PERSISTED on the sections but was only ever read back from the
+    // transient _marginsPerSection, which a caller arriving with an already-wound coil does not
+    // have. Every consumer that re-winds — MVB++'s internal autocomplete behind the 3D view and
+    // the STEP export, PyOpenMagnetics, anything round-tripping a MAS — therefore dropped the
+    // margins and wound the copper over the tape, which is why the 3D ignored a margin the 2D
+    // drew correctly. The wound coil already carries the answer; read it back rather than
+    // require it to be handed in again.
+    if (_marginsPerSection.empty() && get_sections_description()) {
+        auto sectionsWithMargins = get_sections_description().value();
+        std::vector<std::vector<double>> recoveredMargins;
+        recoveredMargins.reserve(sectionsWithMargins.size());
+        bool anyMargin = false;
+        for (const auto& sectionWithMargin : sectionsWithMargins) {
+            auto margin = resolve_margin(sectionWithMargin);
+            anyMargin = anyMargin || margin[0] > 0 || margin[1] > 0;
+            recoveredMargins.push_back(margin);
+        }
+        if (anyMargin) {
+            _marginsPerSection = recoveredMargins;
+        }
+    }
+
     if (bobbinName != "Dummy") {
-        bool wind = true;                
+        bool wind = true;
         for (auto& winding : get_mutable_functional_description()) {
             if (std::holds_alternative<std::string>(winding.get_wire())) {
                 std::string wireName = std::get<std::string>(winding.get_wire());

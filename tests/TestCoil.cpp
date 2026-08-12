@@ -13540,6 +13540,55 @@ TEST_CASE("Test_Spread_Is_Fence_Post_And_Keeps_Bundles_Together", "[constructive
 // winding window — so the copper (and the section and terminal leads that follow it) walked into
 // the margin band while the painter kept drawing the margin. Checked with the flag off and on:
 // the ideal wind always respected the margin, only the blocked one did not.
+// ABT #676, second half: the margin has to survive a RE-wind. It is persisted on the sections,
+// but the winder only ever read it from the transient _marginsPerSection — so every consumer that
+// re-winds an already-wound coil (MVB++'s internal autocomplete behind the 3D view and the STEP
+// export, PyOpenMagnetics, anything round-tripping a MAS) wound the copper straight over the tape.
+// That is why the 3D ignored a margin the 2D drew correctly.
+TEST_CASE("Test_Abt676_Margin_Survives_A_Rewind", "[constructive-model][coil][real-geometry][abt676]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_allow_margin_tape(true);
+    const double topMargin = 0.003;
+
+    auto examplesDir = std::filesystem::path{__FILE__}.parent_path().append("..").append("MAS").append("examples");
+    auto mas = OpenMagneticsTesting::mas_loader((examplesDir / "01_simple_inductor_etd34_n87.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto sourceCoil = magnetic.get_mutable_coil();
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(sourceCoil.resolve_bobbin());
+    coil.set_functional_description(sourceCoil.get_functional_description());
+    coil.preload_margins({{topMargin, 0.0}});
+    coil.wind();
+
+    auto bobbin = coil.resolve_bobbin();
+    auto processedDescription = bobbin.get_processed_description().value();
+    auto windingWindow = processedDescription.get_winding_windows()[0];
+    double marginInnerFace = windingWindow.get_coordinates().value()[1]
+                           + windingWindow.get_height().value() / 2 - topMargin;
+
+    // Round-trip through JSON exactly as a consumer receives it, then wind again WITHOUT
+    // preloading anything: the coil itself must be enough.
+    json coilJson;
+    to_json(coilJson, coil);
+    OpenMagnetics::Coil reloaded(coilJson, false);
+    reloaded.wind();
+
+    REQUIRE(reloaded.get_sections_description());
+    auto sections = reloaded.get_sections_description().value();
+    CHECK_THAT(reloaded.resolve_margin(sections[0])[0], Catch::Matchers::WithinAbs(topMargin, 1e-12));
+
+    REQUIRE(reloaded.get_turns_description());
+    auto turns = reloaded.get_turns_description().value();
+    double highestTurn = std::numeric_limits<double>::lowest();
+    for (const auto& turn : turns) {
+        highestTurn = std::max(highestTurn, turn.get_coordinates()[1] + turn.get_dimensions().value()[1] / 2);
+    }
+    INFO("highest turn after the re-wind " << highestTurn << " against " << marginInnerFace);
+    CHECK(highestTurn <= marginInnerFace + 1e-9);
+    settings.reset();
+}
+
 TEST_CASE("Test_Abt676_Real_Winding_Keeps_Turns_Out_Of_The_Margin", "[constructive-model][coil][real-geometry][abt676]") {
     const bool realWinding = GENERATE(false, true);
     settings.reset();
