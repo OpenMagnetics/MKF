@@ -183,7 +183,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
         // We recompute all gaps in case some is missing coordinates
         for (const auto& gap : gapping) {
             if (!gap.get_coordinates()) {
-                core.process_gap();
+                core.process_gap_or_throw();
                 gapping = core.get_functional_description().get_gapping();
                 break;
             }

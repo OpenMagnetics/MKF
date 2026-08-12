@@ -93,7 +93,7 @@ ReluctanceNetwork::ReluctanceNetwork(Core core, double ungappedCoreReluctance, s
     }
     for (auto& gap : gapping) {
         if (!gap.get_coordinates()) {
-            _core.process_gap();
+            _core.process_gap_or_throw();
             gapping = _core.get_functional_description().get_gapping();
             break;
         }

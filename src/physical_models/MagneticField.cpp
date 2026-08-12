@@ -286,7 +286,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         core.process_data();
     }
     if (!core.is_gap_processed()) {
-        core.process_gap();
+        core.process_gap_or_throw();
     }
     magnetic.set_core(core);
     auto gapping = core.get_functional_description().get_gapping();

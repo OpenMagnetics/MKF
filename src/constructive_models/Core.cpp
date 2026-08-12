@@ -752,6 +752,11 @@ void Core::set_gap_length(double gapLength) {
     distribute_and_process_gap();
 }
 
+bool Core::fail_gap_processing(const std::string& message) {
+    _lastGapProcessingFailure = message;
+    return false;
+}
+
 bool Core::distribute_and_process_gap() {
     auto constants = Constants();
     std::vector<CoreGap> newGapping;
@@ -806,7 +811,10 @@ bool Core::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
-                return false;
+                return fail_gap_processing(
+                    "the default residual gap (" + std::to_string(constants.residualGap) +
+                    " m) does not fit column of index " + std::to_string(i) +
+                    " (column height " + std::to_string(columns[i].get_height()) + " m)");
                 // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
@@ -842,7 +850,10 @@ bool Core::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2 < 0) {
-                return false;
+                return fail_gap_processing(
+                    "gap of length " + std::to_string(gapping[gapIndex].get_length()) +
+                    " m does not fit column of index " + std::to_string(i) +
+                    " (column height " + std::to_string(columns[i].get_height()) + " m)");
                 // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
@@ -871,7 +882,10 @@ bool Core::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - gapping[i].get_length() / 2 < 0) {
-                return false;
+                return fail_gap_processing(
+                    "gap of length " + std::to_string(gapping[i].get_length()) +
+                    " m does not fit column of index " + std::to_string(i) +
+                    " (column height " + std::to_string(columns[i].get_height()) + " m)");
                 // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
@@ -949,7 +963,10 @@ bool Core::distribute_and_process_gap() {
                                       windingColumn.get_coordinates()[2]}));
             gap.set_shape(windingColumn.get_shape());
             if (distanceClosestNormalSurface < 0) {
-                return false;
+                return fail_gap_processing(
+                    "gap of length " + std::to_string(nonResidualGaps[i].get_length()) +
+                    " m does not fit the winding column (column height " +
+                    std::to_string(windingColumn.get_height()) + " m)");
                 // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
 
             }
@@ -976,7 +993,10 @@ bool Core::distribute_and_process_gap() {
                 gap.set_coordinates(returnColumns[i].get_coordinates());
                 gap.set_shape(returnColumns[i].get_shape());
                 if (returnColumns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
-                    return false;
+                    return fail_gap_processing(
+                        "the default residual gap (" + std::to_string(constants.residualGap) +
+                        " m) does not fit return column of index " + std::to_string(i) +
+                        " (column height " + std::to_string(returnColumns[i].get_height()) + " m)");
                     // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
 
                 }
@@ -1003,7 +1023,10 @@ bool Core::distribute_and_process_gap() {
                 // the closest normal surface is (columnHeight - gapLength)/2 by definition, so the
                 // subtracting form is the correct one and both branches now use it.
                 if (returnColumns[i].get_height() / 2 - residualGaps[i].get_length() / 2 < 0) {
-                    return false;
+                    return fail_gap_processing(
+                        "residual gap of length " + std::to_string(residualGaps[i].get_length()) +
+                        " m does not fit return column of index " + std::to_string(i) +
+                        " (column height " + std::to_string(returnColumns[i].get_height()) + " m)");
                     // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
 
                 }
@@ -1252,7 +1275,11 @@ bool Core::process_gap() {
             gap.set_coordinates(gapping[i].get_coordinates());
             gap.set_shape(columns[columnIndex].get_shape());
             if (roundFloat(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2) < 0) {
-                return false;
+                return fail_gap_processing(
+                    "gap of length " + std::to_string(gapping[i].get_length()) +
+                    " m at its supplied coordinates does not fit column of index " +
+                    std::to_string(columnIndex) + " (column height " +
+                    std::to_string(columns[columnIndex].get_height()) + " m)");
                 // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
 
             }
@@ -1266,6 +1293,14 @@ bool Core::process_gap() {
 
     get_mutable_functional_description().set_gapping(newGapping);
     return true;
+}
+
+void Core::process_gap_or_throw() {
+    _lastGapProcessingFailure.reset();
+    if (!process_gap()) {
+        throw GapException(_lastGapProcessingFailure.value_or(
+            "core gapping does not fit its columns"));
+    }
 }
 
 // The write-back below memoizes the resolved record into the functional description. For a

@@ -31,6 +31,16 @@ class Core : public MAS::MagneticCore {
     mutable std::optional<CoreMaterial> _cachedResolvedMaterial;
     mutable std::optional<CoreShape>    _cachedResolvedShape;
 
+    // Set at the exact point process_gap()/distribute_and_process_gap() detect a gap that
+    // does not fit its column, right before they return false to the adviser-facing bool
+    // API (ABT #680: that bool is intentionally load-bearing for CoreAdviser's candidate
+    // sweep, which synthesises and discards non-fitting gap lengths as a matter of course —
+    // see the comment on the json constructor). process_gap_or_throw() turns this message
+    // into a GapException for every OTHER caller, which is asking about one specific core
+    // it expects to already be valid, not sweeping a search space.
+    std::optional<std::string> _lastGapProcessingFailure;
+    bool fail_gap_processing(const std::string& message);
+
   public:
     Core(json j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true);
     Core(const MagneticCore core);
@@ -49,6 +59,13 @@ class Core : public MAS::MagneticCore {
     bool is_gapping_misaligned();
     bool is_gap_processed();
     bool process_gap();
+    // Same derivation as process_gap(), but for callers that are handed one specific core
+    // and expect its gapping to already be physically valid (a reluctance/field calculation,
+    // the public calculate_core_gapping() binding, ...) rather than sweeping candidate gap
+    // lengths. Throws GapException naming the gap and the column it does not fit, instead of
+    // handing back a schema-invalid gap (all derived fields null) for the caller to trip over
+    // later with an unrelated-looking error (ABT #680).
+    void process_gap_or_throw();
     bool distribute_and_process_gap();
     void set_gap_length(double gapLength);
     void process_data();
