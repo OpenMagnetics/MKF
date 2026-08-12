@@ -13095,8 +13095,11 @@ TEST_CASE("Test_Real_Geometry_Wind_Survives_Transient_Unfit", "[constructive-mod
     auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
     auto& coil = magnetic.get_mutable_coil();
     REQUIRE(coil.get_turns_description());
-    // 1-turn primary + 100-turn secondary + one real-winding crossing per conductor.
-    CHECK(coil.get_turns_description().value().size() == size_t(1 + 100 + 2));
+    // 1-turn primary + 80-turn secondary + one real-winding crossing per conductor.
+    // The secondary was 100 turns until ABT #673: 100 x 0.1125 mm OD never fit the ER 9.5/5
+    // window (17 per layer where 16 go), so the example was corrected to the 80 turns it can
+    // actually hold. The count here follows the design, not the other way round.
+    CHECK(coil.get_turns_description().value().size() == size_t(1 + 80 + 2));
     settings.reset();
 }
 
@@ -13532,6 +13535,58 @@ TEST_CASE("Test_Spread_Is_Fence_Post_And_Keeps_Bundles_Together", "[constructive
 // realization; this pins the 2D geometry that gate measures, so a regression cannot ship unseen.
 // Baselines on the fixed layout (2026-08-07): 06 +0.034, 13 +0.0125, 14 +0.055, 23 +0.034,
 // 24 +0.057 mm — and the 38.6 mm full-window exit vertical of 14_dab is gone.
+// ABT #676: margin tape is reserved space in the GEOMETRY, not just in the drawing. Real-winding
+// blocking re-aligns the turns of every blocked layer, and it used to spread them against the raw
+// winding window — so the copper (and the section and terminal leads that follow it) walked into
+// the margin band while the painter kept drawing the margin. Checked with the flag off and on:
+// the ideal wind always respected the margin, only the blocked one did not.
+TEST_CASE("Test_Abt676_Real_Winding_Keeps_Turns_Out_Of_The_Margin", "[constructive-model][coil][real-geometry][abt676]") {
+    const bool realWinding = GENERATE(false, true);
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(realWinding);
+    settings.set_coil_allow_margin_tape(true);
+    const double topMargin = 0.003;
+
+    auto examplesDir = std::filesystem::path{__FILE__}.parent_path().append("..").append("MAS").append("examples");
+    auto mas = OpenMagneticsTesting::mas_loader((examplesDir / "01_simple_inductor_etd34_n87.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    // Margins reach the winder preloaded on a fresh coil, exactly as the web path builds it.
+    auto sourceCoil = magnetic.get_mutable_coil();
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(sourceCoil.resolve_bobbin());
+    coil.set_functional_description(sourceCoil.get_functional_description());
+    coil.preload_margins({{topMargin, 0.0}});
+    coil.wind();
+
+    auto bobbin = coil.resolve_bobbin();
+    auto processedDescription = bobbin.get_processed_description().value();
+    auto windingWindow = processedDescription.get_winding_windows()[0];
+    double windowTop = windingWindow.get_coordinates().value()[1] + windingWindow.get_height().value() / 2;
+    double marginInnerFace = windowTop - topMargin;
+
+    REQUIRE(coil.get_turns_description());
+    auto turns = coil.get_turns_description().value();
+    double highestTurn = std::numeric_limits<double>::lowest();
+    for (const auto& turn : turns) {
+        highestTurn = std::max(highestTurn, turn.get_coordinates()[1] + turn.get_dimensions().value()[1] / 2);
+    }
+    INFO("realWinding=" << realWinding << " highest turn " << highestTurn
+         << " against the margin's inner face " << marginInnerFace);
+    CHECK(highestTurn <= marginInnerFace + 1e-9);
+
+    // The layers the turns live in must clear it too, or the next re-wind walks back in.
+    REQUIRE(coil.get_layers_description());
+    auto layers = coil.get_layers_description().value();
+    for (const auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        INFO("layer " << layer.get_name());
+        CHECK(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 <= marginInnerFace + 1e-9);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Abt577_Terminal_Routes_Clear_Winding_Copper", "[constructive-model][coil][real-geometry][abt577]") {
     std::vector<std::string> exampleFiles = {
         "06_llc_xfmr_eq4128_3c97.json",

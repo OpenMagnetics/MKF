@@ -1853,6 +1853,11 @@ void Coil::align_blocked_layer_turns() {
     auto wires = get_wires();
     auto layers = get_layers_description().value();
     auto turns = get_turns_description().value();
+    // Held by name: the margin each layer must stay clear of belongs to its own section.
+    std::vector<Section> sectionsForMargins;
+    if (get_sections_description()) {
+        sectionsForMargins = get_sections_description().value();
+    }
 
     for (auto& layer : layers) {
         if (layer.get_type() != ElectricalType::CONDUCTION) {
@@ -1861,6 +1866,21 @@ void Coil::align_blocked_layer_turns() {
         size_t turnAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
         double windowHighSide = windowCenterPerAxis[turnAxis] + windowHalfSizePerAxis[turnAxis];
         double windowLowSide = windowCenterPerAxis[turnAxis] - windowHalfSizePerAxis[turnAxis];
+        // ABT #676: margin tape is not free space. Spreading against the raw window put the
+        // re-aligned turns straight into the margin band, and the layout that followed carried the
+        // section — and its terminal leads — in with them, while the painter went on drawing a
+        // margin the geometry had stopped honouring. The band this layer may use is the window
+        // inset by ITS OWN section's margin. margin[0] is "top or left", so it insets the HIGH
+        // side on the turn (y) axis and the LOW side on the layer (x) axis; margin[1] mirrors it.
+        for (const auto& marginSection : sectionsForMargins) {
+            if (!layer.get_section() || marginSection.get_name() != layer.get_section().value()) {
+                continue;
+            }
+            auto sectionMargin = resolve_margin(marginSection);
+            windowHighSide -= (turnAxis == 1) ? sectionMargin[0] : sectionMargin[1];
+            windowLowSide += (turnAxis == 1) ? sectionMargin[1] : sectionMargin[0];
+            break;
+        }
         // Reposition this layer's turns to leave exactly the blocked slots free at each edge: spread the
         // turns evenly across the UNBLOCKED band [windowBottom + blockedBottom slots, windowTop −
         // blockedTop slots]. Even spacing packs a full layer (step == wire height) and spreads a partial
