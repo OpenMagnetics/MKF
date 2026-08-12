@@ -13545,6 +13545,65 @@ TEST_CASE("Test_Spread_Is_Fence_Post_And_Keeps_Bundles_Together", "[constructive
 // re-winds an already-wound coil (MVB++'s internal autocomplete behind the 3D view and the STEP
 // export, PyOpenMagnetics, anything round-tripping a MAS) wound the copper straight over the tape.
 // That is why the 3D ignored a margin the 2D drew correctly.
+// ABT #682: U order and margin tape each worked alone and failed together. With a margin the
+// window band shrinks, the U landing reservation at the top no longer leaves room, and the
+// fence-post spread centred the copper — eating into the reservation at BOTH ends, which put the
+// layer's last turn exactly on the entrance lead's row at the bottom. The 2D drew it; the 3D
+// conductor builder refused it as a collision, so the user got a core and bobbin with no copper.
+// Every conduction turn must stay clear of the lead row its own layer reserved.
+TEST_CASE("Test_Abt682_U_Order_With_Margin_Keeps_The_Lead_Row_Clear", "[constructive-model][coil][real-geometry][abt682]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_allow_margin_tape(true);
+    const double topMargin = 0.003;
+
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    auto mas = OpenMagneticsTesting::mas_loader((dataDir / "abt646_e16_litz_2layer_leadcollision.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto sourceCoil = magnetic.get_mutable_coil();
+    auto bobbin = sourceCoil.resolve_bobbin();
+    auto processedDescription = bobbin.get_processed_description().value();
+    auto windingWindows = processedDescription.get_winding_windows();
+    windingWindows[0].set_winding_order(MAS::WindingOrder::U);
+    processedDescription.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processedDescription);
+
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(bobbin);
+    coil.set_functional_description(sourceCoil.get_functional_description());
+    coil.preload_margins({{topMargin, 0.0}});
+    coil.wind();
+
+    REQUIRE(coil.get_turns_description());
+    auto turns = coil.get_turns_description().value();
+    auto wires = coil.get_wires();
+    auto bobbinOut = coil.resolve_bobbin();
+    auto processedOut = bobbinOut.get_processed_description().value();
+    auto windowOut = processedOut.get_winding_windows()[0];
+    double windowBottom = windowOut.get_coordinates().value()[1] - windowOut.get_height().value() / 2;
+    double wireHeight = wires[0].get_maximum_outer_height();
+    // The entrance lead runs along the bottom edge and CROSSES every layer outboard of the one it
+    // attaches to, so those layers must leave that row free. The attach layer (the innermost, which
+    // owns the lead's own turn) is exempt: a lead ends ON its turn by construction.
+    std::string innermostLayer = turns[0].get_layer().value();
+    double worstOverlap = 0;
+    std::string worstDescription;
+    for (const auto& turn : turns) {
+        if (!turn.get_layer() || turn.get_layer().value() == innermostLayer) {
+            continue;
+        }
+        double turnBottom = turn.get_coordinates()[1] - wireHeight / 2;
+        double intrusion = (windowBottom + wireHeight) - turnBottom;
+        if (intrusion > worstOverlap) {
+            worstOverlap = intrusion;
+            worstDescription = turn.get_name() + " at y=" + std::to_string(turn.get_coordinates()[1]);
+        }
+    }
+    INFO("deepest intrusion into the bottom lead row " << worstOverlap * 1000 << " mm (" << worstDescription << ")");
+    CHECK(worstOverlap < 1e-9);
+    settings.reset();
+}
+
 TEST_CASE("Test_Abt676_Margin_Survives_A_Rewind", "[constructive-model][coil][real-geometry][abt676]") {
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);

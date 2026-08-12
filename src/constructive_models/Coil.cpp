@@ -1977,7 +1977,20 @@ void Coil::align_blocked_layer_turns() {
             const double lowEdge = stations.front() - wirePitch / 2;
             const double highEdge = stations.back() + wirePitch / 2;
             double shift = 0.0;
-            if (highEdge > windowHighSide + 1e-12) {
+            // ABT #682: when the copper does not fit the span its reservations leave, the
+            // fence-post spread centres it — which eats into BOTH reservations at once. Surrender
+            // the DEEPER one and keep the shallower intact instead: the shallow depth is typically
+            // a terminal lead ROW, real copper routed along that edge, while the deep one is a
+            // landing/placement band with no conductor in it. Centring put a U layer's last turn
+            // exactly on the entrance lead's row (E16, 3 mm margin: turn 12 at -4.67 mm, the lead
+            // at -4.67 mm), which the 3D conductor builder refused as a collision — U alone and
+            // margin alone both built, only the two together failed. Same "pack against the
+            // less-blocked edge" rule the lone-bundle branch above already follows.
+            if ((highEdge - lowEdge) > (spanHigh - spanLow) + 1e-12) {
+                shift = (blockedDepths.second <= blockedDepths.first) ? (spanLow - lowEdge)
+                                                                     : (spanHigh - highEdge);
+            }
+            if (highEdge + shift > windowHighSide + 1e-12) {
                 shift = windowHighSide - highEdge;
             }
             if (lowEdge + shift < windowLowSide - 1e-12) {
