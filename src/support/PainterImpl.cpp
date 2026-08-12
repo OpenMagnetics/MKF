@@ -240,7 +240,13 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire,
                 double internalYCoordinate = conductingDiameter / 2 * (*cciCoords)[i].second;
 
                 if (advancedMode) {
-                    Painter::paint_round_wire(xCoordinate + internalXCoordinate, -(yCoordinate + internalYCoordinate), strand);
+                    // The strand sits at the TURN's centre plus the packing offset. Negating the
+                    // whole y mirrored every strand about the coil axis, so a turn at +16 mm had
+                    // its copper drawn at -16 mm: the upper turns came out as empty outlines and
+                    // their strands piled onto the lower ones (only invisible in the single-wire
+                    // preview, where the turn is at y=0 and the two agree). Same expression as
+                    // the simple branch below.
+                    Painter::paint_round_wire(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strand);
                 }
                 else {
                     paint_circle(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strandOuterDiameter / 2, "copper", shapes, 360, 0, {0, 0}, label);
@@ -257,7 +263,8 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire,
                 double internalYCoordinate = currentRadius * sin(currentAngle / 180 * std::numbers::pi);
 
                 if (advancedMode) {
-                    Painter::paint_round_wire(xCoordinate + internalXCoordinate, -(yCoordinate + internalYCoordinate), strand);
+                    // Same mirrored-y bug as the cci branch above.
+                    Painter::paint_round_wire(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strand);
                 }
                 else {
                     paint_circle(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strandOuterDiameter / 2, "copper", shapes, 360, 0, {0, 0}, label);
