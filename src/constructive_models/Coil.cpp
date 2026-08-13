@@ -1719,23 +1719,32 @@ std::map<std::string, std::pair<double, double>> Coil::compute_u_landing_extra_d
                 accumulated = accumulatedIt->second;
             }
             auto& edges = extraDepths[landing.get_name()];
+            // ABT #683 (Alf): "in U windings the second layer starts just after the first layer,
+            // that is the point of U winding, so we just need to connect to it horizontally". The
+            // landing layer's END STATION therefore sits AT the arrival, not one wire past it:
+            // under the SPREAD alignment real winding forces on every layer that station is half
+            // an OD inside the span, so the span boundary is arrival -/+ OD/2 and the depth
+            // reaches DOWN to it.
+            //
+            // ONE CONDUCTOR ONLY. With parallels wound side by side, landing level puts every
+            // parallel's link at the station its neighbour departs from and the landing
+            // revolutions overlap — which is exactly what the ABT #608 descent was introduced to
+            // stop, and what "multi-layer multi-parallel builds collision-free" guards (8t x 2p:
+            // the two links converged to 0.822 mm against a 0.9 mm envelope). A single conductor
+            // has nothing to overlap, so it lands level; parallels keep the descent until the
+            // landing stations can be placed per PARALLEL rather than per layer.
+            const bool landsLevel = numberParallels == 1;
             if (landsAtHighSide) {
-                // ABT #683 (Alf): "in U windings the second layer starts just after the first
-                // layer, that is the point of U winding, so we just need to connect to it
-                // horizontally". The landing layer's END STATION must therefore sit AT the
-                // arrival, not one wire past it. Under the SPREAD alignment real winding forces
-                // on every layer, that station sits half an OD inside the span, so the span
-                // boundary is arrival + OD/2 and the depth reaches DOWN to it — the previous
-                // "+ OD/2" reserved a whole extra turn slot and left the landing layer hanging a
-                // wire below the turn it connects to.
-                double ideal = windowHigh - arrivalY - wireOD / 2;
+                double ideal = landsLevel ? windowHigh - arrivalY - wireOD / 2
+                                          : windowHigh - arrivalY + wireOD / 2;
                 double maxAllowed = (windowHigh - windowLow) - accumulated.second - copperNeeded;
                 double depth = std::max(accumulated.first, std::min(ideal, maxAllowed));
                 edges.first = std::max(edges.first, roundFloat(depth, 9));
             }
             else {
-                // Mirror of the high side: reach down to the arrival station, not past it.
-                double ideal = arrivalY - windowLow - wireOD / 2;
+                // Mirror of the high side.
+                double ideal = landsLevel ? arrivalY - windowLow - wireOD / 2
+                                          : arrivalY - windowLow + wireOD / 2;
                 double maxAllowed = (windowHigh - windowLow) - accumulated.first - copperNeeded;
                 double depth = std::max(accumulated.second, std::min(ideal, maxAllowed));
                 edges.second = std::max(edges.second, roundFloat(depth, 9));
