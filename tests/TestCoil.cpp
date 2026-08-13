@@ -13551,6 +13551,70 @@ TEST_CASE("Test_Spread_Is_Fence_Post_And_Keeps_Bundles_Together", "[constructive
 // layer's last turn exactly on the entrance lead's row at the bottom. The 2D drew it; the 3D
 // conductor builder refused it as a collision, so the user got a core and bobbin with no copper.
 // Every conduction turn must stay clear of the lead row its own layer reserved.
+// ABT #683 (Alf): "in U windings the second layer starts just after the first layer, that is the
+// point of U winding, so we just need to connect to it horizontally... when using real winding all
+// layers MUST use SPREAD turns, so that the first turn of the second layer is at the same height as
+// the last turn of the previous layer". The U landing used to reserve one wire OD PAST the arrival,
+// so the landing layer hung a full turn below the turn it connects to and the link was a diagonal
+// drop rather than a horizontal step — and the reservation was measured from the raw window, which
+// counted the section's margin a second time on top of that.
+TEST_CASE("Test_Abt683_U_Layers_Connect_Level", "[constructive-model][coil][real-geometry][abt683]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_allow_margin_tape(true);
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    auto mas = OpenMagneticsTesting::mas_loader((dataDir / "abt683_u_order_margin_e16.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto& coil = magnetic.get_mutable_coil();
+    coil.wind();
+
+    REQUIRE(coil.get_layers_description());
+    REQUIRE(coil.get_turns_description());
+    auto layers = coil.get_layers_description().value();
+    auto turns = coil.get_turns_description().value();
+
+    // Layers in ELECTRICAL order, each with its turns in wound order.
+    std::vector<std::vector<const Turn*>> turnsPerLayer;
+    std::vector<std::string> layerOrder;
+    for (const auto& turn : turns) {
+        if (!turn.get_layer()) {
+            continue;
+        }
+        auto found = std::find(layerOrder.begin(), layerOrder.end(), turn.get_layer().value());
+        if (found == layerOrder.end()) {
+            layerOrder.push_back(turn.get_layer().value());
+            turnsPerLayer.push_back({});
+            found = layerOrder.end() - 1;
+        }
+        turnsPerLayer[size_t(found - layerOrder.begin())].push_back(&turn);
+    }
+    REQUIRE(turnsPerLayer.size() >= 2);
+    REQUIRE(coil.get_winding_order(layers[0].get_section().value()) == WindingOrder::U);
+
+    double wireOuterHeight = coil.get_wires()[0].get_maximum_outer_height();
+    for (size_t layerIndex = 0; layerIndex + 1 < turnsPerLayer.size(); ++layerIndex) {
+        double arrival = turnsPerLayer[layerIndex].back()->get_coordinates()[1];
+        double landing = turnsPerLayer[layerIndex + 1].front()->get_coordinates()[1];
+        INFO("layer " << layerIndex << " leaves at " << arrival * 1000
+             << " mm and layer " << layerIndex + 1 << " starts at " << landing * 1000 << " mm");
+        // Horizontal step: the two turns the link joins sit at the SAME height, so the connection
+        // is a radial hop between neighbours. A tolerance well under one wire keeps this honest
+        // without pinning the exact spread arithmetic.
+        CHECK(std::abs(landing - arrival) < wireOuterHeight / 4);
+    }
+
+    // ...and that only holds because every layer is SPREAD: a packed layer would end short of the
+    // band edge and the next one could not meet it.
+    for (const auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        INFO(layer.get_name());
+        CHECK(layer.get_turns_alignment() == CoilAlignment::SPREAD);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Abt682_U_Order_With_Margin_Keeps_The_Lead_Row_Clear", "[constructive-model][coil][real-geometry][abt682]") {
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);

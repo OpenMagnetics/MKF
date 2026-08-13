@@ -1617,6 +1617,14 @@ std::map<std::string, std::pair<double, double>> Coil::compute_u_landing_extra_d
     auto wires = get_wires();
     auto layers = get_layers_description().value();
     auto turns = get_turns_description().value();
+    // ABT #683: the margin the landing layer's own section reserves, held by name.
+    std::map<std::string, std::vector<double>> marginBySection;
+    if (get_sections_description()) {
+        auto sectionsForMargin = get_sections_description().value();
+        for (const auto& section : sectionsForMargin) {
+            marginBySection[section.get_name()] = resolve_margin(section);
+        }
+    }
 
     // Layers in ELECTRICAL order (the order their turns are first wound), with each layer's turns.
     std::map<std::string, size_t> layerElectricalOrder;
@@ -1693,6 +1701,17 @@ std::map<std::string, std::pair<double, double>> Coil::compute_u_landing_extra_d
             // below the depth already accumulated (lead rows keep their reservation).
             double windowHigh = windowCenterPerAxis[turnAxis] + windowHalfSizePerAxis[turnAxis];
             double windowLow = windowCenterPerAxis[turnAxis] - windowHalfSizePerAxis[turnAxis];
+            // ABT #683: measured from the band the turns may actually use, which is the window
+            // INSET BY THE SECTION'S MARGIN (ABT #676) — align_blocked_layer_turns subtracts these
+            // depths from that same inset band, so taking them from the raw window counted the
+            // margin twice and pushed the landing a whole margin further in.
+            {
+                auto marginIt = marginBySection.find(landing.get_section().value());
+                if (marginIt != marginBySection.end()) {
+                    windowHigh -= (turnAxis == 1) ? marginIt->second[0] : marginIt->second[1];
+                    windowLow += (turnAxis == 1) ? marginIt->second[1] : marginIt->second[0];
+                }
+            }
             double copperNeeded = double(turnsByLayer.at(landing.get_name()).size()) * wireOD;
             std::pair<double, double> accumulated{0.0, 0.0};
             auto accumulatedIt = _connectionBlockedDepthPerLayer.find(landing.get_name());
@@ -1701,13 +1720,22 @@ std::map<std::string, std::pair<double, double>> Coil::compute_u_landing_extra_d
             }
             auto& edges = extraDepths[landing.get_name()];
             if (landsAtHighSide) {
-                double ideal = windowHigh - arrivalY + wireOD / 2;
+                // ABT #683 (Alf): "in U windings the second layer starts just after the first
+                // layer, that is the point of U winding, so we just need to connect to it
+                // horizontally". The landing layer's END STATION must therefore sit AT the
+                // arrival, not one wire past it. Under the SPREAD alignment real winding forces
+                // on every layer, that station sits half an OD inside the span, so the span
+                // boundary is arrival + OD/2 and the depth reaches DOWN to it — the previous
+                // "+ OD/2" reserved a whole extra turn slot and left the landing layer hanging a
+                // wire below the turn it connects to.
+                double ideal = windowHigh - arrivalY - wireOD / 2;
                 double maxAllowed = (windowHigh - windowLow) - accumulated.second - copperNeeded;
                 double depth = std::max(accumulated.first, std::min(ideal, maxAllowed));
                 edges.first = std::max(edges.first, roundFloat(depth, 9));
             }
             else {
-                double ideal = arrivalY - windowLow + wireOD / 2;
+                // Mirror of the high side: reach down to the arrival station, not past it.
+                double ideal = arrivalY - windowLow - wireOD / 2;
                 double maxAllowed = (windowHigh - windowLow) - accumulated.first - copperNeeded;
                 double depth = std::max(accumulated.second, std::min(ideal, maxAllowed));
                 edges.second = std::max(edges.second, roundFloat(depth, 9));
