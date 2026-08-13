@@ -13615,6 +13615,65 @@ TEST_CASE("Test_Abt683_U_Layers_Connect_Level", "[constructive-model][coil][real
     settings.reset();
 }
 
+// ABT #684 (Alf, from the 2D view): "the connection is going through the margin in the bottom".
+// Margin tape is reserved for TAPE — and that applies to the leads, not just the turns. The
+// terminal edge rows were stacked from the WINDOW edge, so with a margin the lead ran inside the
+// band the tape occupies. The turns were already correct (ABT #676), which is what made the
+// picture so clear: copper stopped at the tape and the magenta lead crossed it.
+TEST_CASE("Test_Abt684_Terminal_Leads_Stay_Out_Of_The_Margin", "[constructive-model][coil][real-geometry][abt684]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_allow_margin_tape(true);
+    // Asymmetric on purpose: a single margin would not catch a row measured from the wrong edge.
+    const double topMargin = 0.003;
+    const double bottomMargin = 0.002;
+
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    auto mas = OpenMagneticsTesting::mas_loader((dataDir / "abt646_e16_litz_2layer_leadcollision.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto sourceCoil = magnetic.get_mutable_coil();
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(sourceCoil.resolve_bobbin());
+    coil.set_functional_description(sourceCoil.get_functional_description());
+    coil.preload_margins({{topMargin, bottomMargin}});
+    coil.wind();
+
+    auto bobbinOut = coil.resolve_bobbin();
+    auto processedDescription = bobbinOut.get_processed_description().value();
+    auto windingWindow = processedDescription.get_winding_windows()[0];
+    double windowTop = windingWindow.get_coordinates().value()[1] + windingWindow.get_height().value() / 2;
+    double windowBottom = windingWindow.get_coordinates().value()[1] - windingWindow.get_height().value() / 2;
+    const double usableTop = windowTop - topMargin;
+    const double usableBottom = windowBottom + bottomMargin;
+
+    size_t terminals = 0;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (!space.isTerminal) {
+            continue;
+        }
+        ++terminals;
+        double low = space.coordinates[1] - space.dimensions[1] / 2;
+        double high = space.coordinates[1] + space.dimensions[1] / 2;
+        INFO("terminal of " << space.winding << " at y [" << low << "," << high << "] against usable ["
+             << usableBottom << "," << usableTop << "]");
+        CHECK(high <= usableTop + 1e-9);
+        CHECK(low >= usableBottom - 1e-9);
+    }
+    REQUIRE(terminals > 0);
+
+    // And the turns still respect it (ABT #676) — the lead inset must not have moved the copper.
+    auto turns = coil.get_turns_description().value();
+    auto wires = coil.get_wires();
+    for (const auto& turn : turns) {
+        size_t windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        double half = wires[windingIndex].get_maximum_outer_height() / 2;
+        INFO(turn.get_name());
+        CHECK(turn.get_coordinates()[1] + half <= usableTop + 1e-9);
+        CHECK(turn.get_coordinates()[1] - half >= usableBottom - 1e-9);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Abt682_U_Order_With_Margin_Keeps_The_Lead_Row_Clear", "[constructive-model][coil][real-geometry][abt682]") {
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);

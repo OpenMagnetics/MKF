@@ -798,6 +798,31 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         auto found = windowIndexBySection.find(sectionName);
         return found == windowIndexBySection.end() ? 0 : found->second;
     };
+    // ABT #684: margin tape is reserved for TAPE. A terminal lead or an edge continuation runs
+    // ALONG the window edge, so measuring its row from the window put the copper inside the
+    // margin band — visible in the 2D as the magenta lead crossing the yellow tape. A run along
+    // an edge crosses the whole window radially, so it must clear the LARGEST margin on that edge
+    // in that window. margin[0]/margin[1] are the section's "top or left"/"bottom or right",
+    // which follow the turn axis of the virtual frame used here.
+    std::map<size_t, double> topMarginPerWindow;
+    std::map<size_t, double> bottomMarginPerWindow;
+    if (sectionsDescription) {
+        for (const auto& marginSection : sectionsDescription.value()) {
+            if (marginSection.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            auto sectionMargin = resolve_margin(marginSection);
+            size_t windowIndex = windowIndexOf(marginSection.get_name());
+            topMarginPerWindow[windowIndex] = std::max(topMarginPerWindow[windowIndex], sectionMargin[0]);
+            bottomMarginPerWindow[windowIndex] = std::max(bottomMarginPerWindow[windowIndex], sectionMargin[1]);
+        }
+    }
+    auto edgeBaseY = [&](size_t windowIndex, bool atTop) -> double {
+        const auto& margins = atTop ? topMarginPerWindow : bottomMarginPerWindow;
+        auto found = margins.find(windowIndex);
+        double margin = found == margins.end() ? 0.0 : found->second;
+        return atTop ? windowTopY - margin : windowBottomY + margin;
+    };
     // ABT #615: edge rows are SHARED by runs whose RADIAL SPANS don't overlap (Alf, 2026-08-09:
     // the primary's inter-section run covers the secondary's section and vice versa — disjoint
     // spans, ONE row, "which can then be reused by the inter section connection in secondary").
@@ -849,8 +874,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             target = &rows.back();
         }
         target->spans.push_back({spanLo, spanHi});
-        double edgeY = atTop ? roundFloat(windowTopY - target->depthBefore - wireHeight / 2, 9)
-                             : roundFloat(windowBottomY + target->depthBefore + wireHeight / 2, 9);
+        // Rows stack inward from the margin's inner face, not from the window edge.
+        double rowBaseY = edgeBaseY(windowIndex, atTop);
+        double edgeY = atTop ? roundFloat(rowBaseY - target->depthBefore - wireHeight / 2, 9)
+                             : roundFloat(rowBaseY + target->depthBefore + wireHeight / 2, 9);
         return {edgeY, target->depthBefore + wireHeight};
     };
 
@@ -1092,7 +1119,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 auto [crossedCount, crossedSignature] = crossedLayerCountAndSignature(connectingTurn);
                 allEmissions.push_back({connectingTurn, parallel, atTop, crossedSignature,
                                         crossedCount, 0,
-                                        atTop ? windowTopY - turnY : turnY - windowBottomY,
+                                        atTop ? edgeBaseY(windowIndexOf(connectingTurn.get_section().value_or("")), true) - turnY
+                                              : turnY - edgeBaseY(windowIndexOf(connectingTurn.get_section().value_or("")), false),
                                         windingName, wireOuterWidth, wireOuterHeight});
             }
         }
@@ -1210,8 +1238,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 // receiving section starts on the same edge, so both stubs stay short.
                 const bool routeAtTop =
                     exitTurn.get_coordinates()[1] >= windowCenterTurnAxis;
-                double routeEdgeY = roundFloat(routeAtTop ? windowTopY - wireOuterHeight / 2
-                                                          : windowBottomY + wireOuterHeight / 2, 9);
+                // An edge continuation is copper too: same margin inset as the terminal rows.
+                double routeBaseY = edgeBaseY(windowIndexOf(exitTurn.get_section().value_or("")), routeAtTop);
+                double routeEdgeY = roundFloat(routeAtTop ? routeBaseY - wireOuterHeight / 2
+                                                          : routeBaseY + wireOuterHeight / 2, 9);
                 double runDepth = 0;
                 if (routesAlongEdge) {
                     // ABT #615, Alf 2026-08-09: the band claims ONLY the radial span its runs
