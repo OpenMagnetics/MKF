@@ -13674,6 +13674,53 @@ TEST_CASE("Test_Abt684_Terminal_Leads_Stay_Out_Of_The_Margin", "[constructive-mo
     settings.reset();
 }
 
+// ABT #674: real winding winds one extra STATION per parallel — a wire making N turns crosses the
+// window plane N+1 times, and MVB++ builds the copper as the wraps BETWEEN stations (drop the
+// station and it builds one wrap fewer: 82 primitives against 87). The station is therefore not a
+// turn and carries no wrap, so it must contribute no LENGTH: every consumer that sums turn lengths
+// — WindingOhmicLosses computes DC resistance exactly that way — counted one turn too many, ~5% on
+// a 20-turn winding.
+TEST_CASE("Test_Abt674_Crossing_Station_Adds_No_Length", "[constructive-model][coil][real-geometry][abt674]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto examplesDir = std::filesystem::path{__FILE__}.parent_path().append("..").append("MAS").append("examples");
+    auto mas = OpenMagneticsTesting::mas_loader((examplesDir / "17_cllc_xfmr_e5528_3c92a.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto& coil = magnetic.get_mutable_coil();
+
+    REQUIRE(coil.get_turns_description());
+    auto turns = coil.get_turns_description().value();
+    for (const auto& winding : coil.get_functional_description()) {
+        int64_t declared = winding.get_number_turns() * winding.get_number_parallels();
+        std::vector<const Turn*> windingTurns;
+        for (const auto& turn : turns) {
+            if (turn.get_winding() == winding.get_name()) {
+                windingTurns.push_back(&turn);
+            }
+        }
+        INFO(winding.get_name() << ": " << windingTurns.size() << " stations for " << declared << " turns");
+        // One extra station per parallel — the beginning crossing of each wire.
+        CHECK(int64_t(windingTurns.size()) == declared + winding.get_number_parallels());
+
+        // ...and it carries no length, so the sum is the conductor's real length: N wraps.
+        size_t zeroLength = 0;
+        double total = 0;
+        for (const auto* turn : windingTurns) {
+            total += turn->get_length();
+            if (turn->get_length() == 0) {
+                ++zeroLength;
+            }
+        }
+        CHECK(int64_t(zeroLength) == winding.get_number_parallels());
+        double meanWrap = total / double(declared);
+        INFO("total " << total << " m over " << declared << " wraps, mean " << meanWrap);
+        CHECK(total > 0);
+        // The sum must be N wraps, not N+1: no station's length may be counted twice over.
+        CHECK(total <= meanWrap * double(declared) + 1e-9);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Abt682_U_Order_With_Margin_Keeps_The_Lead_Row_Clear", "[constructive-model][coil][real-geometry][abt682]") {
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);

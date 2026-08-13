@@ -2844,6 +2844,26 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                 for (auto& winding : coil.get_mutable_functional_description()) {
                     winding.set_number_turns(winding.get_number_turns() - 1);
                 }
+                // ABT #674: the extra crossing is a STATION, not a turn. Each parallel's first
+                // station is where its wire begins; the copper is the WRAP between consecutive
+                // stations, so N turns need N+1 stations and every wrap's length belongs to the
+                // station it ENDS at. Leaving a full turn's length on the beginning crossing made
+                // every consumer that sums turn lengths count one turn too many —
+                // WindingOhmicLosses computes DC resistance exactly that way, so it came out ~5%
+                // high on a 20-turn winding (1/N) whenever real winding was on. The station stays
+                // (MVB++ builds one wrap FEWER without it: measured 82 wrap primitives against
+                // 87); only its length goes, which is what makes the sum the conductor's real
+                // length.
+                if (coil.get_turns_description()) {
+                    auto crossingTurns = coil.get_turns_description().value();
+                    std::set<std::pair<std::string, int64_t>> firstSeen;
+                    for (auto& crossingTurn : crossingTurns) {
+                        if (firstSeen.insert({crossingTurn.get_winding(), crossingTurn.get_parallel()}).second) {
+                            crossingTurn.set_length(0);
+                        }
+                    }
+                    coil.set_turns_description(crossingTurns);
+                }
             }
         }
     } realWindingCrossingBump(*this);
