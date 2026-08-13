@@ -216,6 +216,28 @@ public:
         size_t destinationIndex,
         double frequency);
 
+    /**
+     * @brief ABT #396: the ONE place that decides magnetizing coupling for a magnetic
+     * whose windings may not all share the main column. Returns the per-column
+     * reluctance network's magnetizing inductance matrix when any winding sits off the
+     * main column, and nullopt when they all share it (in which case the rank-1
+     * sqrt(Lm_i*Lm_j)/turns-ratio closed form used by calculate_mutual_inductance,
+     * calculate_self_inductance and every other consumer -- including
+     * ExtendedCantilever::calculate_inductance_matrix, ABT #227.5 -- is already exact and
+     * not worth paying the field solve for). Every consumer that assembles a coupling or
+     * inductance matrix must call this rather than assuming rank-1 coupling, so a magnetic
+     * cannot report two different couplings depending on which entry point was asked.
+     *
+     * @param magnetic The magnetic component (core + coil).
+     * @param magnetizingOutput Output of calculate_inductance_from_number_turns_and_gapping,
+     * supplying the ungapped core reluctance and per-gap reluctances the network needs.
+     * @return The magnetizing inductance matrix, or nullopt when every winding is on the
+     * main column and the caller's closed form already applies.
+     */
+    static std::optional<std::vector<std::vector<double>>> magnetizing_coupling_matrix(
+        Magnetic& magnetic,
+        const MagnetizingInductanceOutput& magnetizingOutput);
+
 private:
     /**
      * @brief Calculate magnetizing inductance for the primary winding.

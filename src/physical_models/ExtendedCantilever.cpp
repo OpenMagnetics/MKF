@@ -1,6 +1,7 @@
 #include "physical_models/ExtendedCantilever.h"
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/Inductance.h"
 #include "support/Exceptions.h"
 
 #include <cmath>
@@ -59,23 +60,84 @@ std::vector<std::vector<double>> invert_matrix(const std::vector<std::vector<dou
     return inverse;
 }
 
-// Full inductance matrix L = M + Λ, referred to winding 0:
-//   M_jk = L11 · n_j · n_k   (rank-1 ideal magnetizing coupling)
-//   Λ                         (leakage matrix from the energy method)
-// With the real leakage matrix added, L is only mildly conditioned (~L11/leakage) and
-// inverts cleanly — unlike the leakage-free ideal matrix, which is singular.
+// Full inductance matrix L = M + Λ, referred to winding 0, where M is the magnetizing-
+// coupling matrix and Λ is the leakage matrix from the energy method. With the real
+// leakage matrix added, L is only mildly conditioned (~L11/leakage) and inverts cleanly
+// — unlike the leakage-free ideal matrix, which is singular.
 std::vector<std::vector<double>> assemble_inductance_matrix(
     const std::vector<std::vector<double>>& leakageMatrix,
-    double magnetizingInductance,
-    const std::vector<double>& turnsRatios) {
-    size_t numberWindings = turnsRatios.size();
+    const std::vector<std::vector<double>>& magnetizingMatrix) {
+    size_t numberWindings = magnetizingMatrix.size();
     std::vector<std::vector<double>> inductanceMatrix(numberWindings, std::vector<double>(numberWindings, 0.0));
     for (size_t j = 0; j < numberWindings; ++j) {
         for (size_t k = 0; k < numberWindings; ++k) {
-            inductanceMatrix[j][k] = magnetizingInductance * turnsRatios[j] * turnsRatios[k] + leakageMatrix[j][k];
+            inductanceMatrix[j][k] = magnetizingMatrix[j][k] + leakageMatrix[j][k];
         }
     }
     return inductanceMatrix;
+}
+
+// Rank-1 ideal magnetizing coupling: M_jk = L11 · n_j · n_k. Exact when every winding
+// shares the main column (a single magnetizing flux links all of them); ABT #227.5's
+// build_magnetizing_matrix substitutes the reluctance network's real matrix instead
+// when they do not.
+std::vector<std::vector<double>> rank1_magnetizing_matrix(
+    double magnetizingInductance, const std::vector<double>& turnsRatios) {
+    size_t numberWindings = turnsRatios.size();
+    std::vector<std::vector<double>> magnetizingMatrix(numberWindings, std::vector<double>(numberWindings, 0.0));
+    for (size_t j = 0; j < numberWindings; ++j) {
+        for (size_t k = 0; k < numberWindings; ++k) {
+            magnetizingMatrix[j][k] = magnetizingInductance * turnsRatios[j] * turnsRatios[k];
+        }
+    }
+    return magnetizingMatrix;
+}
+
+// ABT #227.5: a winding on a lateral column does not couple as a rank-1 ideal
+// transformer -- it only links the share of magnetizing flux that returns through ITS
+// leg (ABT #396). Ask the SAME reluctance-network coupling decision every other
+// consumer uses (Inductance::magnetizing_coupling_matrix) instead of assuming rank-1
+// coupling independently here, or this model (and every simulator export built from
+// it: LTspice, NL5, Simba) would report a different coupling than
+// Inductance::calculate_mutual_inductance for the same magnetic.
+std::vector<std::vector<double>> build_magnetizing_matrix(
+    Magnetic& magnetic,
+    const MagnetizingInductanceOutput& magnetizingOutput,
+    double magnetizingInductance,
+    const std::vector<double>& turnsRatios) {
+    if (auto networkMatrix = Inductance::magnetizing_coupling_matrix(magnetic, magnetizingOutput)) {
+        return *networkMatrix;
+    }
+    return rank1_magnetizing_matrix(magnetizingInductance, turnsRatios);
+}
+
+// Effective leakage inductances from the inverse of the assembled inductance matrix
+// (paper eq. 4): l_jk = −1 / (n_j · n_k · b_jk), j ≠ k.
+ExtendedCantileverModel build_from_inductance_matrix(
+    const std::vector<std::vector<double>>& inductanceMatrix,
+    double magnetizingInductance,
+    const std::vector<double>& turnsRatios) {
+    size_t numberWindings = turnsRatios.size();
+    auto inverseInductanceMatrix = invert_matrix(inductanceMatrix);
+
+    ExtendedCantileverModel model;
+    model.magnetizingInductance = magnetizingInductance;
+    model.turnsRatios = turnsRatios;
+    model.effectiveLeakageInductances.assign(numberWindings, std::vector<double>(numberWindings, 0.0));
+    for (size_t j = 0; j < numberWindings; ++j) {
+        for (size_t k = 0; k < numberWindings; ++k) {
+            if (j == k) {
+                continue;
+            }
+            double denominator = turnsRatios[j] * turnsRatios[k] * inverseInductanceMatrix[j][k];
+            if (denominator == 0.0) {
+                throw InvalidInputException(ErrorCode::CALCULATION_ERROR,
+                    "Cannot build extended-cantilever model: degenerate inverse-inductance coupling between windings");
+            }
+            model.effectiveLeakageInductances[j][k] = -1.0 / denominator;
+        }
+    }
+    return model;
 }
 
 } // anonymous namespace
@@ -99,31 +161,12 @@ ExtendedCantileverModel ExtendedCantilever::build_from_leakage_matrix(
             "Cannot build extended-cantilever model: magnetizing inductance must be positive");
     }
 
-    auto inductanceMatrix = assemble_inductance_matrix(leakageMatrix, magnetizingInductance, turnsRatios);
-
-    auto inverseInductanceMatrix = invert_matrix(inductanceMatrix);
-
-    // Effective leakage inductances from the inverse inductance matrix (paper eq. 4):
-    //   l_jk = −1 / (n_j · n_k · b_jk),  j ≠ k
-    ExtendedCantileverModel model;
-    model.magnetizingInductance = magnetizingInductance;
-    model.turnsRatios = turnsRatios;
-    model.effectiveLeakageInductances.assign(numberWindings, std::vector<double>(numberWindings, 0.0));
-    for (size_t j = 0; j < numberWindings; ++j) {
-        for (size_t k = 0; k < numberWindings; ++k) {
-            if (j == k) {
-                continue;
-            }
-            double denominator = turnsRatios[j] * turnsRatios[k] * inverseInductanceMatrix[j][k];
-            if (denominator == 0.0) {
-                throw InvalidInputException(ErrorCode::CALCULATION_ERROR,
-                    "Cannot build extended-cantilever model: degenerate inverse-inductance coupling between windings");
-            }
-            model.effectiveLeakageInductances[j][k] = -1.0 / denominator;
-        }
-    }
-
-    return model;
+    // Pure-math entry point: no Magnetic to consult the reluctance network with, so this
+    // is rank-1 coupling by construction -- exact when the caller's scalar Lm/turns
+    // ratios already describe a main-column (or single-flux-path) design.
+    auto magnetizingMatrix = rank1_magnetizing_matrix(magnetizingInductance, turnsRatios);
+    auto inductanceMatrix = assemble_inductance_matrix(leakageMatrix, magnetizingMatrix);
+    return build_from_inductance_matrix(inductanceMatrix, magnetizingInductance, turnsRatios);
 }
 
 double ExtendedCantilever::inverse_inductance_diagonal(const ExtendedCantileverModel& model, size_t windingIndex) {
@@ -163,10 +206,17 @@ ExtendedCantileverModel ExtendedCantilever::calculate(Magnetic magnetic, double 
     }
 
     auto leakageMatrix = LeakageInductance().calculate_leakage_inductance_matrix(magnetic, frequency);
+    if (leakageMatrix.size() != numberWindings) {
+        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS,
+            "Cannot build extended-cantilever model: leakage matrix size does not match number of windings");
+    }
 
-    double magnetizingInductance = MagnetizingInductance()
-        .calculate_inductance_from_number_turns_and_gapping(magnetic)
-        .get_magnetizing_inductance().get_nominal().value();
+    auto magnetizingOutput = MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic);
+    double magnetizingInductance = magnetizingOutput.get_magnetizing_inductance().get_nominal().value();
+    if (magnetizingInductance <= 0.0) {
+        throw InvalidInputException(ErrorCode::CALCULATION_ERROR,
+            "Cannot build extended-cantilever model: magnetizing inductance must be positive");
+    }
 
     // Turns ratios referred to winding 0 (n[0] = 1).
     double referenceTurns = functionalDescription[0].get_number_turns();
@@ -175,7 +225,10 @@ ExtendedCantileverModel ExtendedCantilever::calculate(Magnetic magnetic, double 
         turnsRatios[windingIndex] = functionalDescription[windingIndex].get_number_turns() / referenceTurns;
     }
 
-    return build_from_leakage_matrix(leakageMatrix, magnetizingInductance, turnsRatios);
+    // ABT #227.5: rank-1 coupling only when every winding shares the main column.
+    auto magnetizingMatrix = build_magnetizing_matrix(magnetic, magnetizingOutput, magnetizingInductance, turnsRatios);
+    auto inductanceMatrix = assemble_inductance_matrix(leakageMatrix, magnetizingMatrix);
+    return build_from_inductance_matrix(inductanceMatrix, magnetizingInductance, turnsRatios);
 }
 
 std::vector<std::vector<double>> ExtendedCantilever::calculate_inductance_matrix(Magnetic magnetic, double frequency) {
@@ -187,9 +240,8 @@ std::vector<std::vector<double>> ExtendedCantilever::calculate_inductance_matrix
     }
 
     auto leakageMatrix = LeakageInductance().calculate_leakage_inductance_matrix(magnetic, frequency);
-    double magnetizingInductance = MagnetizingInductance()
-        .calculate_inductance_from_number_turns_and_gapping(magnetic)
-        .get_magnetizing_inductance().get_nominal().value();
+    auto magnetizingOutput = MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic);
+    double magnetizingInductance = magnetizingOutput.get_magnetizing_inductance().get_nominal().value();
 
     double referenceTurns = functionalDescription[0].get_number_turns();
     std::vector<double> turnsRatios(numberWindings);
@@ -197,7 +249,9 @@ std::vector<std::vector<double>> ExtendedCantilever::calculate_inductance_matrix
         turnsRatios[windingIndex] = functionalDescription[windingIndex].get_number_turns() / referenceTurns;
     }
 
-    return assemble_inductance_matrix(leakageMatrix, magnetizingInductance, turnsRatios);
+    // ABT #227.5: rank-1 coupling only when every winding shares the main column.
+    auto magnetizingMatrix = build_magnetizing_matrix(magnetic, magnetizingOutput, magnetizingInductance, turnsRatios);
+    return assemble_inductance_matrix(leakageMatrix, magnetizingMatrix);
 }
 
 } // namespace OpenMagnetics

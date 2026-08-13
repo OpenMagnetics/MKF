@@ -197,26 +197,77 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         auto wire = coil.resolve_wire(windingIndex);
         double wireLength = turn.get_length();
 
-        std::vector<ComplexField> fields;
+        // ABT #227.2: a turn with a genuine second plane crossing (CoilMesher samples the
+        // field at BOTH crossings for these -- see CoilMesherCenterModel::generate_mesh_
+        // induced_turn) sits in a materially different proximity environment at each: the
+        // in-window half and the out-of-core/other-window half of a lateral multi-column
+        // turn. Classify each solved field point by which crossing coordinate it matches
+        // -- NOT by label or turn_length, since not every MagneticFieldStrengthModel
+        // implementation propagates those onto its ComplexFieldPoint output, while every
+        // one of them propagates `point` (the field's own location, load-bearing for the
+        // model itself) -- and weight each crossing's per-meter loss by its own length
+        // share instead of billing the whole loop length at one crossing's density. If no
+        // point actually matches the secondary coordinate (single-crossing turns, and any
+        // wire/model combination that does not emit a second sample), every point stays
+        // "primary" and primaryLength stays the full wireLength: byte-identical to the
+        // pre-fix behavior.
+        bool turnHasSecondCrossing = turn.get_additional_coordinates().has_value() &&
+            !turn.get_additional_coordinates().value().empty() &&
+            turn.get_additional_coordinates().value()[0].size() >= 2;
+        std::vector<double> secondaryCoordinates;
+        if (turnHasSecondCrossing) {
+            secondaryCoordinates = turn.get_additional_coordinates().value()[0];
+        }
+
+        std::vector<ComplexField> primaryFields;
+        std::vector<ComplexField> secondaryFields;
+        bool hasSecondaryCrossing = false;
+
         for (auto& fieldPerHarmonic : windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()) {
-            std::vector<ComplexFieldPoint> data;
+            std::vector<ComplexFieldPoint> primaryData;
+            std::vector<ComplexFieldPoint> secondaryData;
             for (auto& fieldPoint : fieldPerHarmonic.get_data()) {
                 if (!fieldPoint.get_turn_index()) {
                     throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Missing turn index in field point");
                 }
-                if (fieldPoint.get_turn_index().value() == int(turnIndex)) {
-                    data.push_back(fieldPoint);
+                if (fieldPoint.get_turn_index().value() != int(turnIndex)) {
+                    continue;
+                }
+                bool isSecondaryPoint = turnHasSecondCrossing && fieldPoint.get_point().size() >= 2 &&
+                    std::hypot(fieldPoint.get_point()[0] - secondaryCoordinates[0],
+                               fieldPoint.get_point()[1] - secondaryCoordinates[1]) < 1e-9;
+                if (isSecondaryPoint) {
+                    secondaryData.push_back(fieldPoint);
+                    hasSecondaryCrossing = true;
+                }
+                else {
+                    primaryData.push_back(fieldPoint);
                 }
             }
-            
-            ComplexField complexField;
-            complexField.set_data(data);
-            complexField.set_frequency(fieldPerHarmonic.get_frequency());
-            fields.push_back(complexField);
+
+            ComplexField primaryComplexField;
+            primaryComplexField.set_data(primaryData);
+            primaryComplexField.set_frequency(fieldPerHarmonic.get_frequency());
+            primaryFields.push_back(primaryComplexField);
+
+            ComplexField secondaryComplexField;
+            secondaryComplexField.set_data(secondaryData);
+            secondaryComplexField.set_frequency(fieldPerHarmonic.get_frequency());
+            secondaryFields.push_back(secondaryComplexField);
         }
 
-        auto lossesPerHarmonicThisTurn = calculate_proximity_effect_losses_per_meter(wire, temperature, fields, modelOverride).second;
+        double primaryLength = hasSecondaryCrossing ? wireLength / 2 : wireLength;
+        double secondaryLength = hasSecondaryCrossing ? wireLength / 2 : 0;
 
+        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, modelOverride).second;
+        std::vector<std::pair<double, double>> secondaryLossesPerHarmonic;
+        if (hasSecondaryCrossing) {
+            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, modelOverride).second;
+            if (secondaryLossesPerHarmonic.size() != primaryLossesPerHarmonic.size()) {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                    "Primary and secondary crossing harmonics do not match for turn " + std::to_string(turnIndex));
+            }
+        }
 
         LossElementPerHarmonic proximityEffectLossesThisTurn;
         auto model = get_model(coil.get_wire_type(windingIndex), modelOverride);
@@ -225,15 +276,24 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         proximityEffectLossesThisTurn.get_mutable_harmonic_frequencies().push_back(0);
         proximityEffectLossesThisTurn.get_mutable_losses_per_harmonic().push_back(0);
 
-        for (auto& lossesThisHarmonic : lossesPerHarmonicThisTurn) {
-            if (std::isnan(lossesThisHarmonic.first)) {
+        for (size_t harmonicIndex = 0; harmonicIndex < primaryLossesPerHarmonic.size(); ++harmonicIndex) {
+            auto& primaryThisHarmonic = primaryLossesPerHarmonic[harmonicIndex];
+            if (std::isnan(primaryThisHarmonic.first)) {
                 throw NaNResultException("NaN found in proximity effect losses");
             }
-            proximityEffectLossesThisTurn.get_mutable_harmonic_frequencies().push_back(lossesThisHarmonic.second);
-            proximityEffectLossesThisTurn.get_mutable_losses_per_harmonic().push_back(lossesThisHarmonic.first * wireLength);
+            double lossThisHarmonic = primaryThisHarmonic.first * primaryLength;
+            if (hasSecondaryCrossing) {
+                auto& secondaryThisHarmonic = secondaryLossesPerHarmonic[harmonicIndex];
+                if (std::isnan(secondaryThisHarmonic.first)) {
+                    throw NaNResultException("NaN found in proximity effect losses");
+                }
+                lossThisHarmonic += secondaryThisHarmonic.first * secondaryLength;
+            }
 
-            totalProximityEffectLosses += lossesThisHarmonic.first * wireLength;
+            proximityEffectLossesThisTurn.get_mutable_harmonic_frequencies().push_back(primaryThisHarmonic.second);
+            proximityEffectLossesThisTurn.get_mutable_losses_per_harmonic().push_back(lossThisHarmonic);
 
+            totalProximityEffectLosses += lossThisHarmonic;
         }
 
         windingLossesPerTurn[turnIndex].set_proximity_effect_losses(proximityEffectLossesThisTurn);

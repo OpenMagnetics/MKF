@@ -65,21 +65,12 @@ double Inductance::calculate_leakage_inductance(
     return leakageOutput.get_leakage_inductance_per_winding()[0].get_nominal().value();
 }
 
-// ABT #396: the ONE place that decides magnetizing coupling. Returns the per-column
-// reluctance network's magnetizing inductance matrix when any winding sits off the main
-// column, and nullopt when they all share it — in which case the network reproduces the
-// rank-1 sqrt(Lm_i*Lm_j) values exactly (pinned by
-// ReluctanceNetwork_MainPlacement_ReproducesLumpedModel), so the caller's closed form is
-// already right and the field solve is not worth paying for.
-//
-// This used to live only inside calculate_inductance_matrix. calculate_mutual_inductance
-// had its own answer — an unconditional sqrt(Lm_source * Lm_dest), i.e. k = 1 by
-// construction — so the same magnetic reported two different couplings depending on which
-// entry point you asked. On a 3-column E 42 with the primary on the centre leg and the
-// secondary on an outer leg, calculate_coupling_coefficient said 0.999 where the matrix
-// said 0.624; the latter is the real flux divider, since the secondary only links the
-// share of primary flux that returns through ITS leg.
-static std::optional<std::vector<std::vector<double>>> magnetizing_coupling_matrix(
+// ABT #396: see the declaration in Inductance.h for the full rationale. On a 3-column
+// E 42 with the primary on the centre leg and the secondary on an outer leg,
+// calculate_coupling_coefficient said 0.999 where the matrix said 0.624 before this was
+// unified; the latter is the real flux divider, since the secondary only links the share
+// of primary flux that returns through ITS leg.
+std::optional<std::vector<std::vector<double>>> Inductance::magnetizing_coupling_matrix(
     Magnetic& magnetic,
     const MagnetizingInductanceOutput& magnetizingOutput) {
 

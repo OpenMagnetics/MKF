@@ -44,7 +44,11 @@ class CoilMesherModel {
   public:
     std::string method_name = "Default";
     virtual std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, Wire wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, Core core) = 0;
-    virtual std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, Wire wire, std::optional<size_t> turnIndex = std::nullopt) = 0;
+    // core: optional, needed only to tell a genuinely lateral-column crossing (rectangular
+    // multi-column winding, ABT #227.2) apart from a toroidal turn's own outer-return
+    // crossing, which already gets dedicated Kelvin-image handling on the inducing side and
+    // must not also pick up a second induced-side sample here.
+    virtual std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, Wire wire, std::optional<size_t> turnIndex = std::nullopt, std::optional<Core> core = std::nullopt) = 0;
     static std::shared_ptr<CoilMesherModel> factory(CoilMesherModels modelName);
 
 };
@@ -52,14 +56,14 @@ class CoilMesherModel {
 class CoilMesherCenterModel : public CoilMesherModel {
   public:
     std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, [[maybe_unused]]Wire wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, Core core);
-    std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, [[maybe_unused]]Wire wire, std::optional<size_t> turnIndex = std::nullopt);
+    std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, [[maybe_unused]]Wire wire, std::optional<size_t> turnIndex = std::nullopt, std::optional<Core> core = std::nullopt);
 };
 
 // // Based on Improved Analytical Calculation of High Frequency Winding Losses in Planar Inductors by Xiaohui Wang
 // // https://sci-hub.wf/10.1109/ECCE.2018.8558397
 class CoilMesherWangModel : public CoilMesherModel {
   public:
-    std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, [[maybe_unused]]Wire wire, std::optional<size_t> turnIndex = std::nullopt);
+    std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, [[maybe_unused]]Wire wire, std::optional<size_t> turnIndex = std::nullopt, [[maybe_unused]]std::optional<Core> core = std::nullopt);
     std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, [[maybe_unused]]Wire wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, [[maybe_unused]]Core core);
 };
 

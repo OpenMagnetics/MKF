@@ -5343,6 +5343,49 @@ void Coil::split_shared_window_groups(std::vector<Group>& groups, const std::vec
         return;
     }
 
+    // ABT #228.4: two (or more) lateral-wound groups sharing a region with NO main-wound
+    // group present are not handled below -- the split only fires when
+    // anyMainWound && anyLateralWound, so two lateral groups whose regions genuinely
+    // overlap (same coordinates/dimensions) would otherwise fall through untouched and
+    // silently wind into the same physical space. Rather than guess an even N-way split
+    // for a configuration no fixture yet exercises, fail loudly: the caller needs an
+    // explicit placement (or a real N-way split, once a use case defines what it should
+    // look like) instead of overlapping copper it cannot see.
+    if (!anyMainWound) {
+        std::vector<size_t> woundGroupIndexes;
+        for (size_t i = 0; i < groups.size(); ++i) {
+            if (!groups[i].get_partial_windings().empty()) {
+                woundGroupIndexes.push_back(i);
+            }
+        }
+        for (size_t a = 0; a < woundGroupIndexes.size(); ++a) {
+            for (size_t b = a + 1; b < woundGroupIndexes.size(); ++b) {
+                auto& groupA = groups[woundGroupIndexes[a]];
+                auto& groupB = groups[woundGroupIndexes[b]];
+                auto coordinatesA = groupA.get_coordinates();
+                auto coordinatesB = groupB.get_coordinates();
+                auto dimensionsA = groupA.get_dimensions();
+                auto dimensionsB = groupB.get_dimensions();
+                bool sameRegion = coordinatesA.size() >= 2 && coordinatesB.size() >= 2 &&
+                    std::abs(coordinatesA[0] - coordinatesB[0]) < 1e-9 &&
+                    std::abs(coordinatesA[1] - coordinatesB[1]) < 1e-9 &&
+                    std::abs(dimensionsA[0] - dimensionsB[0]) < 1e-9 &&
+                    std::abs(dimensionsA[1] - dimensionsB[1]) < 1e-9;
+                if (sameRegion) {
+                    throw NotImplementedException(
+                        "Groups " + groupA.get_name() + " and " + groupB.get_name() +
+                        " are both lateral-wound and share the same winding-window region "
+                        "with no main-wound group to split against: N-way region sharing "
+                        "between lateral-only groups is not implemented yet");
+                }
+            }
+        }
+        // No two lateral-wound groups actually overlap (the common case: each lateral
+        // leg has its own, non-shared window) -- fall through to the per-group loop
+        // below, which still trims each lateral group's own column-wall thickness even
+        // though anyMainWound is false and the coreWindowMidline branch will not fire.
+    }
+
     // The lateral bobbin's column wall sits between the leg's face and the winding
     // space (mirroring the main bobbin's wall against the main column), so every
     // lateral-wound group gives up one columnThickness at its leg. Under sharing,

@@ -2,6 +2,7 @@
 #include "support/Exceptions.h"
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 namespace OpenMagnetics {
 
@@ -128,6 +129,29 @@ static std::optional<int64_t> resolve_window_from_sections(const OpenMagnetics::
     return std::nullopt;
 }
 
+// ABT #227.4: every distinct winding window a winding's CONDUCTION sections reference,
+// not just the first (resolve_window_from_sections above stops at the first match,
+// which is right for the common case -- one winding, one window -- but hides a winding
+// interleaved across two windows behind whichever section happens to be listed first).
+static std::set<int64_t> resolve_distinct_windows_from_sections(const OpenMagnetics::Coil& coil, const std::string& windingName) {
+    std::set<int64_t> distinctWindows;
+    auto sectionsDescription = coil.get_sections_description();
+    if (!sectionsDescription) {
+        return distinctWindows;
+    }
+    for (const auto& section : sectionsDescription.value()) {
+        if (section.get_type() != ElectricalType::CONDUCTION || !section.get_winding_window()) {
+            continue;
+        }
+        for (const auto& partialWinding : section.get_partial_windings()) {
+            if (partialWinding.get_winding() == windingName) {
+                distinctWindows.insert(section.get_winding_window().value());
+            }
+        }
+    }
+    return distinctWindows;
+}
+
 std::vector<size_t> ReluctanceNetwork::resolve_winding_column_indexes(Magnetic magnetic) {
     auto core = magnetic.get_core();
     if (!core.get_processed_description()) {
@@ -156,7 +180,31 @@ std::vector<size_t> ReluctanceNetwork::resolve_winding_column_indexes(Magnetic m
                                             std::to_string(windowIndex.value()) + " but the core has " +
                                             std::to_string(windingWindows.size()) + " winding windows");
         }
-        columnIndexPerWinding.push_back(core.get_winding_window_column_index(static_cast<size_t>(windowIndex.value())));
+        size_t resolvedColumnIndex = core.get_winding_window_column_index(static_cast<size_t>(windowIndex.value()));
+
+        // ABT #227.4: this model injects a winding's WHOLE turns*current MMF into the
+        // ONE column resolved above -- it cannot represent a winding interleaved across
+        // two columns (some of its layers wound in the main window, others in a lateral
+        // one). That is reachable today: assign_windings_to_columns() does not stop the
+        // same winding index from appearing in more than one column's list. Detect it
+        // and fail loudly rather than silently attribute the whole winding's MMF to
+        // whichever section the winder happened to list first.
+        auto distinctWindows = resolve_distinct_windows_from_sections(magnetic.get_coil(), winding.get_name());
+        for (auto distinctWindow : distinctWindows) {
+            if (distinctWindow < 0 || static_cast<size_t>(distinctWindow) >= windingWindows.size()) {
+                continue;
+            }
+            size_t otherColumnIndex = core.get_winding_window_column_index(static_cast<size_t>(distinctWindow));
+            if (otherColumnIndex != resolvedColumnIndex) {
+                throw NotImplementedException(
+                    "Winding " + winding.get_name() + " has sections in more than one column (window " +
+                    std::to_string(windowIndex.value()) + " and window " + std::to_string(distinctWindow) +
+                    "): the reluctance network attributes a winding's whole MMF to a single column and "
+                    "cannot yet represent one winding interleaved across columns");
+            }
+        }
+
+        columnIndexPerWinding.push_back(resolvedColumnIndex);
     }
     return columnIndexPerWinding;
 }

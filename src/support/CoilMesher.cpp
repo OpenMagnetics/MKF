@@ -506,7 +506,7 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, Ope
         }
         auto harmonics = excitationCurrent->get_harmonics().value();
 
-        auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_induced_turn(turn, wire, turnIndex);
+        auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_induced_turn(turn, wire, turnIndex, magnetic.get_core());
 
         for (auto harmonicIndex : commonHarmonicIndexes) {
             for (auto& fieldPoint : fieldPoints) {
@@ -764,23 +764,52 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
     return fieldPoints;
 }
 
-std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(Turn turn, [[maybe_unused]] Wire wire, std::optional<size_t> turnIndex) {
+std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(Turn turn, [[maybe_unused]] Wire wire, std::optional<size_t> turnIndex, std::optional<Core> core) {
     std::vector<FieldPoint> fieldPoints;
+
+    // ABT #227.2: a turn with a genuine second plane crossing (additional_coordinates --
+    // the out-of-core return half of a rectangular multi-column lateral turn) sees a
+    // materially different proximity field at each crossing. Sampling only the primary
+    // crossing and billing the WHOLE turn length (both halves) at that single density
+    // overestimates the out-of-core half's loss. Sample both crossings here and let
+    // WindingProximityEffectLosses weight each by its own length share instead.
+    // Toroidal turns are excluded: their outer-return crossing already gets dedicated
+    // Kelvin-image handling on the inducing side (see generate_mesh_inducing_turn below)
+    // and this induced-side split would double-touch behavior that many toroidal
+    // characterisation tests already pin.
+    bool isLateralMultiColumnCrossing = core && core->get_shape_family() != CoreShapeFamily::T &&
+        turn.get_additional_coordinates() && !turn.get_additional_coordinates().value().empty() &&
+        turn.get_additional_coordinates().value()[0].size() >= 2;
+
     FieldPoint fieldPoint;
-
     fieldPoint.set_point(turn.get_coordinates());
-
     fieldPoint.set_value(0);
     if (turnIndex) {
         fieldPoint.set_turn_index(turnIndex.value());
     }
     fieldPoint.set_label("center");
+    if (isLateralMultiColumnCrossing) {
+        fieldPoint.set_turn_length(turn.get_length() / 2);
+    }
     fieldPoints.push_back(fieldPoint);
+
+    if (isLateralMultiColumnCrossing) {
+        auto additionalCoordinates = turn.get_additional_coordinates().value()[0];
+        FieldPoint secondaryFieldPoint;
+        secondaryFieldPoint.set_point(std::vector<double>{additionalCoordinates[0], additionalCoordinates[1]});
+        secondaryFieldPoint.set_value(0);
+        if (turnIndex) {
+            secondaryFieldPoint.set_turn_index(turnIndex.value());
+        }
+        secondaryFieldPoint.set_label("center_secondary");
+        secondaryFieldPoint.set_turn_length(turn.get_length() / 2);
+        fieldPoints.push_back(secondaryFieldPoint);
+    }
 
     return fieldPoints;
 }
 
-std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn turn, Wire wire, std::optional<size_t> turnIndex) {
+std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn turn, Wire wire, std::optional<size_t> turnIndex, [[maybe_unused]] std::optional<Core> core) {
     std::vector<FieldPoint> fieldPoints;
     FieldPoint fieldPoint;
     fieldPoint.set_value(0);

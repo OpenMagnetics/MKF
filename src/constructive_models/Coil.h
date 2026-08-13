@@ -292,9 +292,6 @@ class Coil : public MAS::Coil {
         // group cannot be resolved (a silent 0 would wind into the wrong
         // window).
         size_t find_window_index_for_group(const std::string& groupName) const;
-        // Winding window a section is placed in: the section's explicit
-        // windingWindow reference when present, else its group's, else 0.
-        size_t resolve_section_winding_window_index(const Section& section) const;
         // Region sharing: when main-column and lateral-column windings coexist, the
         // main winding's annulus occupies the inner side of every window region and
         // each lateral winding the outer side of its own — halve and anchor each
@@ -320,6 +317,12 @@ class Coil : public MAS::Coil {
         void apply_group_window_sides(bool inverse = false);
 
     public:
+        // Winding window a section is placed in: the section's explicit
+        // windingWindow reference when present, else its group's, else 0. Public:
+        // non-member consumers that place per-window geometry against a section
+        // (e.g. the painter framing a margin rectangle, ABT #227.7) need this same
+        // resolution, not just Coil's own internal winding/placement machinery.
+        size_t resolve_section_winding_window_index(const Section& section) const;
         // Distribute windings across the bobbin's winding windows. Creates one
         // Group per winding window in the bobbin and assigns windings to
         // groups per the provided indices. The outer vector size MUST equal

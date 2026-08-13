@@ -1195,6 +1195,11 @@ void Painter::paint_two_piece_set_margin(Magnetic magnetic) {
     auto sections = magnetic.get_coil().get_sections_description().value();
     for (size_t i = 0; i < sections.size(); ++i){
         if (sections[i].get_margin()) {
+            // ABT #227.7: a lateral-window section's margin must be framed against ITS
+            // OWN window, not window 0's -- otherwise the margin rectangle for a
+            // multi-column lateral winding is drawn using the main column's window
+            // frame, in the wrong location entirely.
+            size_t sectionWindowIndex = magnetic.get_mutable_coil().resolve_section_winding_window_index(sections[i]);
             auto margins = Coil::resolve_margin(sections[i]);
             if (margins[0] > 0) {
                 auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
@@ -1203,9 +1208,9 @@ void Painter::paint_two_piece_set_margin(Magnetic magnetic) {
                 if (bobbinProcessedDescription.get_coordinates()) {
                     bobbinCoordinates = bobbinProcessedDescription.get_coordinates().value();
                 }
-                auto windingWindowDimensions = bobbin.get_winding_window_dimensions();
-                auto windingWindowCoordinates = bobbin.get_winding_window_coordinates();
-                auto sectionsOrientation = bobbin.get_winding_window_sections_orientation();
+                auto windingWindowDimensions = bobbin.get_winding_window_dimensions(sectionWindowIndex);
+                auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(sectionWindowIndex);
+                auto sectionsOrientation = bobbin.get_winding_window_sections_orientation(sectionWindowIndex);
                 double xCoordinate;
                 double yCoordinate;
                 double marginWidth;
@@ -1232,9 +1237,9 @@ void Painter::paint_two_piece_set_margin(Magnetic magnetic) {
                     bobbinCoordinates = bobbinProcessedDescription.get_coordinates().value();
                 }
                 auto margins = Coil::resolve_margin(sections[i]);
-                auto windingWindowDimensions = bobbin.get_winding_window_dimensions();
-                auto windingWindowCoordinates = bobbin.get_winding_window_coordinates();
-                auto sectionsOrientation = bobbin.get_winding_window_sections_orientation();
+                auto windingWindowDimensions = bobbin.get_winding_window_dimensions(sectionWindowIndex);
+                auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(sectionWindowIndex);
+                auto sectionsOrientation = bobbin.get_winding_window_sections_orientation(sectionWindowIndex);
                 std::vector<std::vector<double>> marginPoints = {};
                 double xCoordinate;
                 double yCoordinate;
