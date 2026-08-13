@@ -1973,8 +1973,45 @@ void Coil::align_blocked_layer_turns() {
         size_t numberTurnsInLayer = layerTurns.size();
         int64_t bundleSize = get_layer_bundle_size(layer);
         int64_t numberBundles = (int64_t(numberTurnsInLayer) + bundleSize - 1) / bundleSize;
+        // ABT #683 (Alf): a U layer that is NOT full must be packed CONTIGUOUSLY from the end
+        // the wire arrives at — never fence-post spread across the band. Spreading a partial
+        // landing layer parks its bundles at BOTH ends with a hole in the middle, and the
+        // conductor then has to fly across that hole: on the 8t x 2p fixture layer 2's two
+        // bundles sat at -2.10/-1.14 and 3.06/4.02, a 4.2 mm axial jump that MVB++ reads —
+        // correctly — as a Z-style return, lays a dragback for, and makes every layer outside it
+        // ride over with a bump. A U winding has no dragbacks and needs no bumps: the turns must
+        // sit as close in the turn axis as the layers are in the layer axis. A FULL layer is
+        // unaffected (spread with no slack IS packed).
+        bool packFromArrival = false;
+        bool arrivalAtHighSide = false;
+        if (layer.get_section() && get_winding_order(layer.get_section().value()) == WindingOrder::U) {
+            auto landingIt = _uLandingDepthPerLayer.find(layer.get_name());
+            if (landingIt != _uLandingDepthPerLayer.end()) {
+                if (landingIt->second.first > 1e-12) {
+                    packFromArrival = true;
+                    arrivalAtHighSide = true;
+                }
+                else if (landingIt->second.second > 1e-12) {
+                    packFromArrival = true;
+                    arrivalAtHighSide = false;
+                }
+            }
+        }
         std::vector<double> stations;
-        if (numberBundles == 1) {
+        if (packFromArrival) {
+            double firstCentre = arrivalAtHighSide ? spanHigh - wirePitch / 2
+                                                   : spanLow + wirePitch / 2;
+            double step = arrivalAtHighSide ? -wirePitch : wirePitch;
+            for (size_t k = 0; k < numberTurnsInLayer; ++k) {
+                stations.push_back(roundFloat(firstCentre + double(k) * step, 9));
+            }
+            // The assignment below walks layerTurns sorted along the axis, so hand it ascending
+            // stations; packing from the high side produces them in descending order.
+            if (arrivalAtHighSide) {
+                std::reverse(stations.begin(), stations.end());
+            }
+        }
+        else if (numberBundles == 1) {
             // A lone bundle has no fence-post meaning (no gaps to distribute), and centring it
             // strands it mid-window between the run stacks. Pack it against the LESS-blocked edge
             // instead — directly under the shallower run stack (on 23_llc: right below the primary's
@@ -6779,8 +6816,43 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
 
     auto groups = get_groups_description().value();
     std::vector<std::vector<double>> remainingParallelsProportion;
+    // Multi-column winding (rectangular sibling's rationale applies here unchanged, ABT
+    // #227.6): each group is wound with only the subset of the pattern that belongs to
+    // its own windings. Without this, a POLAR winding window with more than one group
+    // (create_default_groups emits one per toroidal winding window) fed the FULL global
+    // pattern/proportionPerWinding into every group's get_ordered_sections call, so a
+    // group ended up trying to place windings that do not belong to it.
+    bool multiGroup = groups.size() > 1;
 
     for (auto group : groups) {
+        std::vector<size_t> groupPattern = pattern;
+        std::vector<double> groupProportionPerWinding = proportionPerWinding;
+        if (multiGroup) {
+            std::set<size_t> groupWindingIndexes;
+            for (auto& groupPartialWinding : group.get_partial_windings()) {
+                groupWindingIndexes.insert(get_winding_index_by_name(groupPartialWinding.get_winding()));
+            }
+            if (groupWindingIndexes.empty()) {
+                continue;
+            }
+            groupPattern.clear();
+            for (auto windingIndex : pattern) {
+                if (groupWindingIndexes.contains(windingIndex)) {
+                    groupPattern.push_back(windingIndex);
+                }
+            }
+            if (groupPattern.empty()) {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                    "Group " + group.get_name() + " has windings but none of them appear in the winding pattern");
+            }
+            double groupProportionSum = 0;
+            for (auto windingIndex : groupWindingIndexes) {
+                groupProportionSum += proportionPerWinding[windingIndex];
+            }
+            for (auto windingIndex : groupWindingIndexes) {
+                groupProportionPerWinding[windingIndex] = proportionPerWinding[windingIndex] / groupProportionSum;
+            }
+        }
 
         auto bobbin = resolve_bobbin();
         auto bobbinProcessedDescription = bobbin.get_processed_description().value();
@@ -6798,7 +6870,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
             spaceForSections = availableAngle;
         }
 
-        auto orderedSections = get_ordered_sections(spaceForSections, proportionPerWinding, pattern, repetitions);
+        auto orderedSections = get_ordered_sections(spaceForSections, groupProportionPerWinding, groupPattern, repetitions);
 
         if (windingOrientation == WindingOrientation::CONTIGUOUS) {
             remove_insulation_if_margin_is_enough(orderedSections);
