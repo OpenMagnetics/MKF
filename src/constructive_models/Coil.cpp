@@ -378,6 +378,10 @@ void Coil::reset_insulation() {
 }
 
 size_t Coil::get_interleaving_level() const {
+    return _interleavingLevel;
+}
+
+size_t Coil::get_current_repetitions() const {
     return _currentRepetitions;
 }
 
@@ -425,7 +429,17 @@ WindingOrientation Coil::get_winding_orientation() {
     }
 }
 
-WindingOrientation Coil::get_layers_orientation() const {
+WindingOrientation Coil::get_layers_orientation(std::optional<std::string> sectionName) const {
+    // Mirror get_turns_alignment: honour the per-section override map. Until 2026-08 the
+    // per-section set_layers_orientation overload wrote _layersOrientationPerSection but
+    // nothing ever read it, so the override (exposed in PyOM and the web winding studio)
+    // was a silent no-op.
+    if (sectionName) {
+        auto it = _layersOrientationPerSection.find(sectionName.value());
+        if (it != _layersOrientationPerSection.end()) {
+            return it->second;
+        }
+    }
     return _layersOrientation;
 }
 
@@ -2849,11 +2863,10 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                 // stations, so N turns need N+1 stations and every wrap's length belongs to the
                 // station it ENDS at. Leaving a full turn's length on the beginning crossing made
                 // every consumer that sums turn lengths count one turn too many —
-                // WindingOhmicLosses computes DC resistance exactly that way, so it came out ~5%
-                // high on a 20-turn winding (1/N) whenever real winding was on. The station stays
-                // (MVB++ builds one wrap FEWER without it: measured 82 wrap primitives against
-                // 87); only its length goes, which is what makes the sum the conductor's real
-                // length.
+                // WindingOhmicLosses does exactly that, so DC resistance came out ~5% high on a
+                // 20-turn winding (1/N) whenever real winding was on. The station stays (MVB++
+                // builds one wrap fewer without it: measured 82 wrap primitives against 87); only
+                // its length goes, which is what makes the sum the conductor's real length.
                 if (coil.get_turns_description()) {
                     auto crossingTurns = coil.get_turns_description().value();
                     std::set<std::pair<std::string, int64_t>> firstSeen;
@@ -4153,7 +4166,7 @@ bool Coil::are_sections_and_layers_fitting() {
     return windTurns;
 }
 
-double Coil::overlapping_filling_factor(Section section) {
+double Coil::overlapping_filling_factor(const Section& section) {
     auto bobbin = resolve_bobbin();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     auto layers = get_layers_by_section(section.get_name());
@@ -4186,7 +4199,7 @@ double Coil::overlapping_filling_factor(Section section) {
     }
 }
 
-double Coil::contiguous_filling_factor(Section section) {
+double Coil::contiguous_filling_factor(const Section& section) {
     auto bobbin = resolve_bobbin();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     auto layers = get_layers_by_section(section.get_name());
@@ -4648,7 +4661,6 @@ bool Coil::calculate_mechanical_insulation() {
                 layer.set_insulation_material(static_cast<MAS::InsulationMaterial>(defaultInsulationMaterial));
                 _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
             }
-            // _insulationInterSectionsLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
 
             Section section;
             section.set_name("temp");
@@ -4814,7 +4826,6 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 layer.set_insulation_material(static_cast<MAS::InsulationMaterial>(chosenInsulationMaterial));
                 _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
             }
-            // _insulationInterSectionsLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
 
             Section section;
             section.set_name("temp");
@@ -5130,7 +5141,7 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
     return get_number_layers_needed_and_number_physical_turns(section.get_coordinates()[0] - section.get_dimensions()[0] / 2, section.get_dimensions()[1], wire, physicalTurnsInSection, windingWindowRadius, blockedSlotsPerLayer);
 }
 
-void Coil::apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation, size_t sectionIndexOffset) {
+void Coil::apply_margin_tape(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t sectionIndexOffset) {
     if (_marginsPerSection.size() < sectionIndexOffset + orderedSectionsWithInsulation.size()) {
         // Resize (not replace) so preloaded margins are preserved, matching equalize_margins
         _marginsPerSection.resize(sectionIndexOffset + orderedSectionsWithInsulation.size(), {0, 0});
@@ -5158,17 +5169,25 @@ void Coil::apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<siz
                 auto windingIndex = orderedSectionsWithInsulation[sectionIndex].second.first;
                 auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 2].second.first;
                 auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, windingIndex};
-                auto coilSectionInterface = _coilSectionInterfaces[windingsMapKey];
-                _marginsPerSection[marginIndex][0] =  std::max(_marginsPerSection[marginIndex][0], coilSectionInterface.get_total_margin_tape_distance() / 2);
-                _marginsPerSection[marginIndex][1] =  std::max(_marginsPerSection[marginIndex][1], coilSectionInterface.get_total_margin_tape_distance() / 2);
-                _marginsPerSection[marginIndex - 2][0] =  std::max(_marginsPerSection[marginIndex - 2][0], coilSectionInterface.get_total_margin_tape_distance() / 2);
-                _marginsPerSection[marginIndex - 2][1] =  std::max(_marginsPerSection[marginIndex - 2][1], coilSectionInterface.get_total_margin_tape_distance() / 2);
+                // No interface recorded for this pair means no margin-tape requirement (the
+                // custom-insulation path fills _insulationSections without interfaces). Skip
+                // instead of operator[]-defaulting, which used to insert a junk entry whose
+                // layerPurpose is uninitialized.
+                auto coilSectionInterfaceIt = _coilSectionInterfaces.find(windingsMapKey);
+                if (coilSectionInterfaceIt == _coilSectionInterfaces.end()) {
+                    continue;
+                }
+                double halfMarginTapeDistance = coilSectionInterfaceIt->second.get_total_margin_tape_distance() / 2;
+                _marginsPerSection[marginIndex][0] =  std::max(_marginsPerSection[marginIndex][0], halfMarginTapeDistance);
+                _marginsPerSection[marginIndex][1] =  std::max(_marginsPerSection[marginIndex][1], halfMarginTapeDistance);
+                _marginsPerSection[marginIndex - 2][0] =  std::max(_marginsPerSection[marginIndex - 2][0], halfMarginTapeDistance);
+                _marginsPerSection[marginIndex - 2][1] =  std::max(_marginsPerSection[marginIndex - 2][1], halfMarginTapeDistance);
             }
         }
     }
 }
 
-void Coil::equalize_margins(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation) {
+void Coil::equalize_margins(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t sectionIndexOffset) {
     auto bobbin = resolve_bobbin();
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
@@ -5177,8 +5196,8 @@ void Coil::equalize_margins(std::vector<std::pair<ElectricalType, std::pair<size
     // lazily by wind_by_*; equalize_margins can be reached on paths where it
     // was never grown to the section count (e.g. PSFB / multi-section bridge
     // topologies). Reading past the end here used to SEGV in CoilAdviser.
-    if (_marginsPerSection.size() < orderedSectionsWithInsulation.size()) {
-        _marginsPerSection.resize(orderedSectionsWithInsulation.size(), {0, 0});
+    if (_marginsPerSection.size() < sectionIndexOffset + orderedSectionsWithInsulation.size()) {
+        _marginsPerSection.resize(sectionIndexOffset + orderedSectionsWithInsulation.size(), {0, 0});
     }
 
     for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
@@ -5198,16 +5217,12 @@ void Coil::equalize_margins(std::vector<std::pair<ElectricalType, std::pair<size
                     indexForMarginRightSection = 0;
                 }
 
-                auto windingIndex = orderedSectionsWithInsulation[indexForMarginLeftSection].second.first;
-                auto previousWindingIndex = orderedSectionsWithInsulation[indexForMarginRightSection].second.first;
-                auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, windingIndex};
-                auto coilSectionInterface = _coilSectionInterfaces[windingsMapKey];
-                double totalMargin = _marginsPerSection[indexForMarginLeftSection][1] + _marginsPerSection[indexForMarginRightSection][0];
+                double totalMargin = _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][1] + _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][0];
                 double leftAvailableSpace = orderedSectionsWithInsulation[indexForMarginLeftSection].second.second;
                 double rightAvailableSpace = orderedSectionsWithInsulation[indexForMarginRightSection].second.second;
                 double totalAvailableSpace = leftAvailableSpace + rightAvailableSpace;
-                _marginsPerSection[indexForMarginLeftSection][1] = leftAvailableSpace / totalAvailableSpace * totalMargin;
-                _marginsPerSection[indexForMarginRightSection][0] = rightAvailableSpace / totalAvailableSpace * totalMargin;
+                _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][1] = leftAvailableSpace / totalAvailableSpace * totalMargin;
+                _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][0] = rightAvailableSpace / totalAvailableSpace * totalMargin;
             }
         }
     }
@@ -6621,7 +6636,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 double currentSectionWidth = 0;
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
                     currentSectionWidth = spaceForSection;
-                    // currentSectionHeight = availableHeight - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1];
+                    // currentSectionHeight = availableHeight - _marginsPerSection[marginIndex][0] - _marginsPerSection[marginIndex][1];
                     currentSectionHeight = availableHeight;
 
                     if (currentSectionCenterWidth == DBL_MAX) {
@@ -6658,11 +6673,6 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 uint64_t physicalTurnsThisSection = parallelsProportions.first;
 
                 partialWinding.set_parallels_proportion(sectionParallelsProportion);
-                if (get_functional_description()[windingIndex].get_wound_with()) {
-                    if (get_functional_description()[windingIndex].get_wound_with()->size() > 0) {
-
-                    }
-                }
 
                 section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
                 section.set_partial_windings(std::vector<PartialWinding>{partialWinding});  // TODO: support more than one winding per section?
@@ -6672,7 +6682,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 }
                 section.set_type(ElectricalType::CONDUCTION);
                 section.set_margin(_marginsPerSection[marginIndex]);
-                section.set_layers_orientation(_layersOrientation);
+                section.set_layers_orientation(get_layers_orientation(section.get_name()));
                 section.set_coordinate_system(CoordinateSystem::CARTESIAN);
                 
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
@@ -6780,7 +6790,6 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
 
                 auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, nextWindingIndex};
                 if (!_insulationSections.contains(windingsMapKey)) {
-                    log(_insulationSectionsLog[windingsMapKey]);
                     continue;
                 }
 
@@ -6803,7 +6812,6 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 }
 
                 sectionsDescription.push_back(insulationSection);
-                log(_insulationSectionsLog[windingsMapKey]);
 
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
                     currentSectionCenterWidth += insulationSection.get_dimensions()[0];
@@ -6829,7 +6837,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
     return true;
 }
 
-void Coil::remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, double>> orderedSections) {
+void Coil::remove_insulation_if_margin_is_enough(const std::vector<std::pair<size_t, double>>& orderedSections) {
     auto bobbin = resolve_bobbin();
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
@@ -6876,8 +6884,13 @@ void Coil::remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, d
         auto windingsMapKey = std::pair<size_t, size_t>{leftWindingIndex, rightWindingIndex};
         double totalMargin = 0;
         if (_insulationSections.contains(windingsMapKey)) {
-            auto coilSectionInterface = _coilSectionInterfaces[windingsMapKey];
-            totalMargin = coilSectionInterface.get_total_margin_tape_distance();
+            // find, not operator[]: the custom-insulation path fills _insulationSections
+            // without interfaces, and operator[] here used to insert a junk default
+            // interface (uninitialized layerPurpose) as a side effect.
+            auto coilSectionInterfaceIt = _coilSectionInterfaces.find(windingsMapKey);
+            if (coilSectionInterfaceIt != _coilSectionInterfaces.end()) {
+                totalMargin = coilSectionInterfaceIt->second.get_total_margin_tape_distance();
+            }
         }
 
         if (_marginsPerSection.size() != 0) {
@@ -6909,6 +6922,13 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
 
     auto groups = get_groups_description().value();
     std::vector<std::vector<double>> remainingParallelsProportion;
+    // Filled ONCE at function scope, like the rectangular sibling: it is indexed by global
+    // winding index, and until 2026-08 each group iteration appended a fresh set of
+    // entries, so on a multi-group toroid the second group kept consuming the first
+    // group's already-decremented rows while the appended tail was never validated.
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        remainingParallelsProportion.push_back(std::vector<double>(get_number_parallels(windingIndex), 1));
+    }
     // Multi-column winding (rectangular sibling's rationale applies here unchanged, ABT
     // #227.6): each group is wound with only the subset of the pattern that belongs to
     // its own windings. Without this, a POLAR winding window with more than one group
@@ -6916,12 +6936,16 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     // pattern/proportionPerWinding into every group's get_ordered_sections call, so a
     // group ended up trying to place windings that do not belong to it.
     bool multiGroup = groups.size() > 1;
+    // Margins are indexed flat across ALL groups in winding order (rectangular sibling's
+    // convention); without the offset the second group's apply_margin_tape re-indexed
+    // from 0 and clobbered the first group's margins.
+    size_t marginSectionOffset = 0;
 
     for (auto group : groups) {
         std::vector<size_t> groupPattern = pattern;
         std::vector<double> groupProportionPerWinding = proportionPerWinding;
+        std::set<size_t> groupWindingIndexes;
         if (multiGroup) {
-            std::set<size_t> groupWindingIndexes;
             for (auto& groupPartialWinding : group.get_partial_windings()) {
                 groupWindingIndexes.insert(get_winding_index_by_name(groupPartialWinding.get_winding()));
             }
@@ -6986,6 +7010,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
         // rewind of toroidal center-tapped coils.
         for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
             if (numberSectionsPerWinding[wIdx] != 0) continue;
+            if (multiGroup && !groupWindingIndexes.contains(wIdx)) continue;
             const auto& wwOpt = get_functional_description()[wIdx].get_wound_with();
             if (!wwOpt || wwOpt->empty()) continue;
             for (const auto& partnerName : wwOpt.value()) {
@@ -7005,6 +7030,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
         if (!_virtualizationMap.empty()) {
             for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
                 if (numberSectionsPerWinding[wIdx] != 0) continue;
+                if (multiGroup && !groupWindingIndexes.contains(wIdx)) continue;
                 for (const auto& [virtualIdx, members] : _virtualizationMap) {
                     if (std::find(members.begin(), members.end(), wIdx) == members.end()) continue;
                     for (auto pIdx : members) {
@@ -7017,18 +7043,26 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 }
             }
         }
-        auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
-       
-        auto wirePerWinding = get_wires();
-        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-            remainingParallelsProportion.push_back(std::vector<double>(get_number_parallels(windingIndex), 1));
+        if (multiGroup) {
+            // Windings belonging to other groups have zero sections here; give them a
+            // placeholder slot count so the style chooser's zero-slot guard doesn't
+            // fire. Their style entry is never read: only this group's windings appear
+            // in this group's ordered sections. (Rectangular sibling's block.)
+            for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
+                if (!groupWindingIndexes.contains(wIdx) && numberSectionsPerWinding[wIdx] == 0) {
+                    numberSectionsPerWinding[wIdx] = 1;
+                }
+            }
         }
+        auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
+
+        auto wirePerWinding = get_wires();
         double currentSectionCenterAngle = DBL_MAX;
         double currentSectionCenterRadialHeight = DBL_MAX;
 
-        apply_margin_tape(orderedSectionsWithInsulation);
+        apply_margin_tape(orderedSectionsWithInsulation, marginSectionOffset);
         if (settings.get_coil_equalize_margins()) {
-            equalize_margins(orderedSectionsWithInsulation);
+            equalize_margins(orderedSectionsWithInsulation, marginSectionOffset);
         }
 
         std::vector<double> currentSectionRadialHeights;
@@ -7059,6 +7093,8 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
 
         size_t conductingSectionIndex = 0;
         for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
+            // Margins are indexed flat across ALL groups in winding order.
+            size_t marginIndex = marginSectionOffset + sectionIndex;
             if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
                 auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
                 auto windingIndex = sectionInfo.first;
@@ -7119,7 +7155,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
 
                 // We correct the radial height to exactly what we need, so afterwards we can calculate exactly how many turns we need
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                    auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight, blockedSlotsPointer);
+                    auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[marginIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight, blockedSlotsPointer);
                     numberLayers = aux.first;
                     currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
 
@@ -7141,8 +7177,8 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                         if (lastLayerMaximumRadius < 0) {
                             break;
                         }
-                        marginAngle0 = wound_distance_to_angle(_marginsPerSection[sectionIndex][0], lastLayerMaximumRadius);
-                        marginAngle1 = wound_distance_to_angle(_marginsPerSection[sectionIndex][1], lastLayerMaximumRadius);
+                        marginAngle0 = wound_distance_to_angle(_marginsPerSection[marginIndex][0], lastLayerMaximumRadius);
+                        marginAngle1 = wound_distance_to_angle(_marginsPerSection[marginIndex][1], lastLayerMaximumRadius);
                     }                
                     currentSectionAngle -= marginAngle0 + marginAngle1;
                 }
@@ -7160,13 +7196,13 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 section.set_partial_windings(std::vector<PartialWinding>{partialWinding});  // TODO: support more than one winding per section?
                 section.set_type(ElectricalType::CONDUCTION);
                 section.set_group(group.get_name());
-                section.set_margin(_marginsPerSection[sectionIndex]);
-                section.set_layers_orientation(_layersOrientation);
+                section.set_margin(_marginsPerSection[marginIndex]);
+                section.set_layers_orientation(get_layers_orientation(section.get_name()));
                 section.set_coordinate_system(CoordinateSystem::POLAR);
                 
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
                     section.set_dimensions(std::vector<double>{currentSectionRadialHeight, currentSectionAngle});
-                    section.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + currentSectionRadialHeight / 2 + _marginsPerSection[sectionIndex][0], currentSectionCenterAngle, 0});
+                    section.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + currentSectionRadialHeight / 2 + _marginsPerSection[marginIndex][0], currentSectionCenterAngle, 0});
                 }
                 else {
                     section.set_dimensions(std::vector<double>{currentSectionRadialHeight, currentSectionAngle});
@@ -7205,7 +7241,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 }
 
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                    currentSectionCenterRadialHeight += currentSectionRadialHeight + _marginsPerSection[sectionIndex][0] + _marginsPerSection[sectionIndex][1];
+                    currentSectionCenterRadialHeight += currentSectionRadialHeight + _marginsPerSection[marginIndex][0] + _marginsPerSection[marginIndex][1];
                 }
                 else {
                     currentSectionCenterAngle += currentSectionAngle + marginAngle0 + marginAngle1;
@@ -7230,7 +7266,6 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
 
                 auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, nextWindingIndex};
                 if (!_insulationSections.contains(windingsMapKey)) {
-                    log(_insulationSectionsLog[windingsMapKey]);
                     continue;
                 }
 
@@ -7250,7 +7285,6 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 }
 
                 sectionsDescription.push_back(insulationSection);
-                log(_insulationSectionsLog[windingsMapKey]);
 
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
                     currentSectionCenterRadialHeight += insulationSection.get_dimensions()[0];
@@ -7260,6 +7294,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 }
             }
         }
+        marginSectionOffset += orderedSectionsWithInsulation.size();
     }
 
 
@@ -7984,7 +8019,6 @@ bool Coil::wind_by_rectangular_layers() {
 
             auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
             if (!_insulationInterSectionsLayers.contains(windingsMapKey)) {
-                log(_insulationInterSectionsLayersLog[windingsMapKey]);
                 continue;
             }
             auto insulationLayers = _insulationInterSectionsLayers[windingsMapKey];
@@ -8299,7 +8333,6 @@ bool Coil::wind_by_round_layers() {
 
             auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
             if (!_insulationInterSectionsLayers.contains(windingsMapKey)) {
-                log(_insulationInterSectionsLayersLog[windingsMapKey]);
                 continue;
             }
 
@@ -9352,17 +9385,16 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
     return true;
 }
 
-std::vector<std::pair<double, std::vector<double>>> Coil::get_collision_distances(std::vector<double> turnCoordinates, std::vector<std::vector<double>> placedTurnsCoordinates, double wireHeight) {
+std::vector<std::pair<double, std::vector<double>>> Coil::get_collision_distances(const std::vector<double>& turnCoordinates, const std::vector<std::vector<double>>& placedTurnsCoordinates, double wireHeight) {
     std::vector<std::pair<double, std::vector<double>>> collisions;
     auto turnCartesianCoordinates = polar_to_cartesian(turnCoordinates);
-    for (auto placedTurnCoordinates : placedTurnsCoordinates) {
+    for (const auto& placedTurnCoordinates : placedTurnsCoordinates) {
         auto placedTurnCartesianCoordinates = polar_to_cartesian(placedTurnCoordinates);
         double distance = sqrt(pow(turnCartesianCoordinates[0] - placedTurnCartesianCoordinates[0], 2) + pow(turnCartesianCoordinates[1] - placedTurnCartesianCoordinates[1], 2));
         // Use a small tolerance to account for floating point precision
         if (distance < wireHeight - 1e-9) {
             double collisionDistance = wireHeight - distance;
-            auto placedCoordinates = placedTurnCoordinates;
-            collisions.push_back({collisionDistance, placedCoordinates});
+            collisions.push_back({collisionDistance, placedTurnCoordinates});
         }
 
         if (collisions.size() == 2) {
@@ -10130,9 +10162,9 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                                 throw std::invalid_argument("currentCoilWidthRight cannot be less than 0: " + std::to_string(currentCoilWidthRight));
                             }
                             currentCoilWidth = std::max(currentCoilWidth, currentCoilWidthLeft);
-                            if (currentCoilWidthRight >= 0) {
-                                currentCoilWidth = std::min(currentCoilWidth, currentCoilWidthRight);
-                            }
+                            // The >= 0 re-check that used to wrap this min was unreachable:
+                            // the throw above already rejected negative values.
+                            currentCoilWidth = std::min(currentCoilWidth, currentCoilWidthRight);
                             break;
                         }
                         break;
@@ -10713,14 +10745,6 @@ bool Coil::delimit_and_compact_round_window() {
                     // }
                     double layerAngle = turnDimensionAngle * turnsInLayer.size();
                     double layerCenterAngle = 0;
-                    // double marginAngle0 = 0;
-                    // double marginAngle1 = 0;
-
-                    // if (section.get_type() == ElectricalType::CONDUCTION) {
-                    //     double lastLayerMaximumRadius = windingWindowsRadius - (section.get_coordinates()[0] + section.get_dimensions()[0] / 2);
-                    //     marginAngle0 = wound_distance_to_angle(resolve_margin(section)[0], lastLayerMaximumRadius);
-                    //     marginAngle1 = wound_distance_to_angle(resolve_margin(section)[1], lastLayerMaximumRadius);
-                    // }
 
                     switch (layers[i].get_turns_alignment().value()) {
                         case CoilAlignment::INNER_OR_TOP:
@@ -10888,9 +10912,7 @@ bool Coil::delimit_and_compact_round_window() {
                     }
                 }
                 }
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-            }
-            else {
+            if (windingOrientation != WindingOrientation::OVERLAPPING) {
                 currentCoilAngle += sections[sectionIndex].get_dimensions()[1] / 2 + paddingAmongSectionAngle + marginAngle1;
             }
         }
@@ -11045,14 +11067,16 @@ Bobbin Coil::resolve_bobbin() {
         if (std::get<std::string>(bobbinDataOrNameUnion) == "Dummy")
             throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Bobbin is dummy");
 
-        auto bobbin = find_bobbin_by_name(std::get<std::string>(bobbinDataOrNameUnion));
-        _bobbin = bobbin;
-        return bobbin;
+        _bobbin = find_bobbin_by_name(std::get<std::string>(bobbinDataOrNameUnion));
     }
     else {
         _bobbin = Bobbin(std::get<Bobbin>(bobbinDataOrNameUnion));
-        return _bobbin;
     }
+    // The cache flag was never set, so every one of the ~57 call sites (several inside
+    // per-section loops) re-ran the name lookup and copied the Bobbin. set_bobbin
+    // invalidates; get_mutable_bobbin has no callers, so no mutation path bypasses this.
+    _bobbin_resolved = true;
+    return _bobbin;
 }
 
 size_t Coil::convert_conduction_section_index_to_global(size_t conductionSectionIndex) {
@@ -11212,8 +11236,6 @@ void Coil::try_rewind() {
         extraSpaceNeededThisSection = std::max(extraSpaceNeededThisSection, (sectionFillingFactor - 1) * sectionRestrictiveDimension);
         if (extraSpaceNeededThisSection < 0 || std::isnan(extraSpaceNeededThisSection)) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "extraSpaceNeededThisSection cannot be negative or nan: " + std::to_string(extraSpaceNeededThisSection));
-        }
-        if (section.get_type() == ElectricalType::CONDUCTION) {
         }
         extraSpaceNeededPerSection.push_back(extraSpaceNeededThisSection);
         totalExtraSpaceNeeded += extraSpaceNeededThisSection;
@@ -12154,14 +12176,14 @@ std::vector<double> Coil::resolve_margin(size_t sectionIndex) {
     return resolve_margin(sections[sectionIndex]);
 }
 
-std::vector<double> Coil::resolve_margin(Section section) {
+std::vector<double> Coil::resolve_margin(const Section& section) {
     if (!section.get_margin()) {
         return {0.0, 0.0};
     }
     return resolve_margin(section.get_margin().value());
 }
 
-std::vector<double> Coil::resolve_margin(Margin marginVariant) {
+std::vector<double> Coil::resolve_margin(const Margin& marginVariant) {
     if (std::holds_alternative<std::vector<double>>(marginVariant)) {
         auto margin = std::get<std::vector<double>>(marginVariant);
         return margin;
@@ -12183,19 +12205,20 @@ MarginInfo Coil::resolve_margin_info(size_t sectionIndex) {
     return resolve_margin_info(sections[sectionIndex]);
 }
 
-MarginInfo Coil::resolve_margin_info(Section section) {
+MarginInfo Coil::resolve_margin_info(const Section& section) {
     if (!section.get_margin()) {
         MarginInfo marginInfo;
         marginInfo.set_top_or_left_width(0);
         marginInfo.set_bottom_or_right_width(0);
         marginInfo.set_number_layers(0);
-        section.set_margin(marginInfo);
+        // (The set_margin back onto the section that used to sit here only ever
+        // mutated a discarded by-value copy.)
         return marginInfo;
     }
     return resolve_margin_info(section.get_margin().value());
 }
 
-MarginInfo Coil::resolve_margin_info(Margin marginVariant) {
+MarginInfo Coil::resolve_margin_info(const Margin& marginVariant) {
     if (std::holds_alternative<std::vector<double>>(marginVariant)) {
         MarginInfo marginInfo;
         auto margin = std::get<std::vector<double>>(marginVariant);
@@ -12204,9 +12227,7 @@ MarginInfo Coil::resolve_margin_info(Margin marginVariant) {
         return marginInfo;
     }
     else {
-        std::vector<double> margin;
-        auto marginInfo = std::get<MarginInfo>(marginVariant);
-        return marginInfo;
+        return std::get<MarginInfo>(marginVariant);
     }
 }
 

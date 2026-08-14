@@ -13674,6 +13674,63 @@ TEST_CASE("Test_Abt684_Terminal_Leads_Stay_Out_Of_The_Margin", "[constructive-mo
     settings.reset();
 }
 
+// get_interleaving_level used to return the repetitions of the LAST wind (_currentRepetitions),
+// so before any wind it read 1 no matter what was requested, and after set_interleaving_level
+// it kept returning the stale wound value — MagneticAdviser's level-1 retry and CoilAdviser's
+// WireAdviser call both consumed the wrong number. The wound value is now get_current_repetitions.
+TEST_CASE("Test_Get_Interleaving_Level_Reflects_Setter", "[constructive-model][coil]") {
+    OpenMagnetics::Coil coil;
+    coil.set_interleaving_level(3);
+    CHECK(coil.get_interleaving_level() == 3);
+    CHECK(coil.get_current_repetitions() == 1);
+}
+
+// The per-section set_layers_orientation overload (exposed in PyOM and the web winding studio)
+// wrote _layersOrientationPerSection, but nothing ever read the map: sections always got the
+// global orientation, making the override a silent no-op.
+TEST_CASE("Test_Per_Section_Layers_Orientation_Override_Is_Honored", "[constructive-model][coil]") {
+    settings.reset();
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    auto mas = OpenMagneticsTesting::mas_loader((dataDir / "abt646_e16_litz_2layer_leadcollision.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto sourceCoil = magnetic.get_mutable_coil();
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(sourceCoil.resolve_bobbin());
+    coil.set_functional_description(sourceCoil.get_functional_description());
+    coil.wind();
+
+    std::string targetName;
+    WindingOrientation baseOrientation = WindingOrientation::OVERLAPPING;
+    auto sectionsBefore = coil.get_sections_description().value();
+    for (const auto& section : sectionsBefore) {
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            targetName = section.get_name();
+            baseOrientation = section.get_layers_orientation();
+            break;
+        }
+    }
+    REQUIRE(!targetName.empty());
+    auto flippedOrientation = baseOrientation == WindingOrientation::OVERLAPPING ? WindingOrientation::CONTIGUOUS
+                                                                                 : WindingOrientation::OVERLAPPING;
+    coil.set_layers_orientation(flippedOrientation, targetName);
+    coil.wind();
+
+    bool foundTarget = false;
+    auto sectionsAfter = coil.get_sections_description().value();
+    for (const auto& section : sectionsAfter) {
+        if (section.get_name() == targetName) {
+            foundTarget = true;
+            CHECK(section.get_layers_orientation() == flippedOrientation);
+        }
+        else if (section.get_type() == ElectricalType::CONDUCTION) {
+            // Sections without an override keep the global orientation.
+            CHECK(section.get_layers_orientation() == baseOrientation);
+        }
+    }
+    REQUIRE(foundTarget);
+    settings.reset();
+}
+
 // ABT #674: real winding winds one extra STATION per parallel — a wire making N turns crosses the
 // window plane N+1 times, and MVB++ builds the copper as the wraps BETWEEN stations (drop the
 // station and it builds one wrap fewer: 82 primitives against 87). The station is therefore not a

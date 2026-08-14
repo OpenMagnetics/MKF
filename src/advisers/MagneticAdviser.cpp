@@ -412,7 +412,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
             bool wound = mas.get_magnetic().get_coil().get_turns_description()
                          && !mas.get_magnetic().get_coil().get_turns_description()->empty();
             if (!wound && numberWindingsFast > 1
-                && magnetic.get_coil().get_interleaving_level() != 1) {
+                && magnetic.get_coil().get_current_repetitions() != 1) {
                 magnetic.get_mutable_coil().set_interleaving_level(1);
                 mas = coreAdviser.post_process_core(magnetic, inputs);
                 wound = mas.get_magnetic().get_coil().get_turns_description()

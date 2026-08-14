@@ -179,12 +179,9 @@ class Coil : public MAS::Coil {
         std::map<std::pair<size_t, size_t>, std::vector<Layer>> _insulationInterSectionsLayers;
         std::map<size_t, Layer> _insulationInterLayers;
         std::map<std::pair<size_t, size_t>, CoilSectionInterface> _coilSectionInterfaces;
-        std::map<std::pair<size_t, size_t>, std::string> _insulationSectionsLog;
-        std::map<std::pair<size_t, size_t>, std::string> _insulationInterSectionsLayersLog;
         std::map<std::string, size_t> _windingIndexByName;
         std::map<std::string, size_t> _turnIndexByName;
         std::map<std::string, Turn> _turnByName;
-        std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> _sectionInfoWithInsulation;
         std::vector<std::vector<double>> _marginsPerSection;
         size_t _interleavingLevel = 1;
         WindingOrientation _windingOrientation = WindingOrientation::OVERLAPPING;
@@ -379,7 +376,7 @@ class Coil : public MAS::Coil {
 
         const BobbinDataOrNameUnion & get_bobbin() const { return bobbin; }
         BobbinDataOrNameUnion & get_mutable_bobbin() { return bobbin; }
-        void set_bobbin(const BobbinDataOrNameUnion & value) { this->bobbin = value; }
+        void set_bobbin(const BobbinDataOrNameUnion & value) { this->bobbin = value; _bobbin_resolved = false; }
 
         const std::optional<std::vector<BobbinDataOrNameUnion>> & get_per_column_bobbins() const { return perColumnBobbins; }
         void set_per_column_bobbins(const std::optional<std::vector<BobbinDataOrNameUnion>> & value) { this->perColumnBobbins = value; }
@@ -410,14 +407,15 @@ class Coil : public MAS::Coil {
         std::optional<WindingStyle> get_winding_style_override(size_t windingIndex) const;
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
-        void remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, double>> orderedSections);
-        void equalize_margins(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation);
+        void remove_insulation_if_margin_is_enough(const std::vector<std::pair<size_t, double>>& orderedSections);
+        // sectionIndexOffset: same flat-across-groups margin indexing as apply_margin_tape.
+        void equalize_margins(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t sectionIndexOffset = 0);
 
         std::vector<double> get_proportion_per_winding_based_on_wires();
         // sectionIndexOffset: flat offset of this group's first ordered section in
         // _marginsPerSection (margins are indexed flat across all groups in winding
         // order; single-group coils pass 0).
-        void apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation, size_t sectionIndexOffset = 0);
+        void apply_margin_tape(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t sectionIndexOffset = 0);
         std::vector<double> get_aligned_section_dimensions_rectangular_window(size_t sectionIndex);
         std::vector<double> get_aligned_section_dimensions_round_window(size_t sectionIndex);
         size_t convert_conduction_section_index_to_global(size_t conductionSectionIndex);
@@ -427,7 +425,7 @@ class Coil : public MAS::Coil {
         static std::vector<double> polar_to_cartesian(std::vector<double> value, double radialHeight);
         void convert_turns_to_cartesian_coordinates();
         void convert_turns_to_polar_coordinates();
-        std::vector<std::pair<double, std::vector<double>>> get_collision_distances(std::vector<double> turnCoordinates, std::vector<std::vector<double>> placedTurnsCoordinates, double wireHeight);
+        std::vector<std::pair<double, std::vector<double>>> get_collision_distances(const std::vector<double>& turnCoordinates, const std::vector<std::vector<double>>& placedTurnsCoordinates, double wireHeight);
 
         // Custom-rectangle re-flow (winding studio): re-run layers+turns INSIDE the
         // current section rectangles, without recomputing the sections and without
@@ -461,13 +459,16 @@ class Coil : public MAS::Coil {
         void reset_margins_per_section();
         void reset_insulation();
         size_t get_interleaving_level() const;
+        // Repetitions actually used by the LAST wind (was returned by get_interleaving_level
+        // until 2026-08: that getter now reflects set_interleaving_level as its name promises).
+        size_t get_current_repetitions() const;
         void set_winding_orientation(WindingOrientation windingOrientation);
         void set_layers_orientation(WindingOrientation layersOrientation, std::optional<std::string> sectionName = std::nullopt);
         void set_turns_alignment(CoilAlignment turnsAlignment, std::optional<std::string> sectionName = std::nullopt);
         void set_section_alignment(CoilAlignment sectionAlignment);
 
         WindingOrientation get_winding_orientation();
-        WindingOrientation get_layers_orientation() const;
+        WindingOrientation get_layers_orientation(std::optional<std::string> sectionName = std::nullopt) const;
         CoilAlignment get_turns_alignment(std::optional<std::string> sectionName = std::nullopt) const;
         CoilAlignment get_section_alignment();
 
@@ -593,15 +594,15 @@ class Coil : public MAS::Coil {
         Wire resolve_wire(size_t windingIndex);
         static Wire resolve_wire(Winding winding);
         std::vector<double> resolve_margin(size_t sectionIndex);
-        static std::vector<double> resolve_margin(Section section);
-        static std::vector<double> resolve_margin(Margin marginVariant);
+        static std::vector<double> resolve_margin(const Section& section);
+        static std::vector<double> resolve_margin(const Margin& marginVariant);
         MarginInfo resolve_margin_info(size_t sectionIndex);
-        static MarginInfo resolve_margin_info(Section section);
-        static MarginInfo resolve_margin_info(Margin marginVariant);
+        static MarginInfo resolve_margin_info(const Section& section);
+        static MarginInfo resolve_margin_info(const Margin& marginVariant);
 
-        double overlapping_filling_factor(Section section);
+        double overlapping_filling_factor(const Section& section);
 
-        double contiguous_filling_factor(Section section);
+        double contiguous_filling_factor(const Section& section);
 
         /**
          * @brief Fill factors of a wound coil, plus whether it actually fits.

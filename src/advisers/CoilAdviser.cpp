@@ -1141,7 +1141,7 @@ namespace OpenMagnetics {
                                                                      sections[sectionIndex],
                                                                      maximumCurrent,
                                                                      maximumTemperature,
-                                                                     coil.get_interleaving_level(),
+                                                                     coil.get_current_repetitions(),
                                                                      maximumNumberWires);
 
                 if (wiresWithScoring.size() != 0) {
