@@ -250,6 +250,24 @@ class BobbinTDataProcessor : public BobbinDataProcessor{
 
 std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin) {
 
+    // ABT #763: same undefined behaviour ABT #631 removed from get_winding_window_shape,
+    // still live here. get_functional_description() returns the optional BY VALUE; when it
+    // is disengaged, `->get_family()` reads the optional's *uninitialised* storage as a
+    // BobbinFamily. That is not an exception, it is UB: the byte that comes back is
+    // whatever the stack happened to hold, so the same input decides its own fate at
+    // runtime. Observed on PyOpenMagnetics 1.7.0 with a bobbin json that carries no
+    // functionalDescription (e.g. a caller passing json.dumps(row) — a json *string* —
+    // instead of the object): most runs land on a value matching no enumerator and report
+    // the misleading "Unknown bobbin family"; some land on E/ER and go on to read the
+    // equally uninitialised dimensions map, yielding either a SEGFAULT or a silent
+    // 0.0 x 0.0 winding window. Ask the question before dereferencing.
+    if (!bobbin.get_functional_description()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin has no functionalDescription, so its family is unknown and it cannot be "
+            "processed. A bobbin to be processed must be a json OBJECT carrying "
+            "functionalDescription.family and functionalDescription.dimensions.");
+    }
+
     auto family = bobbin.get_functional_description()->get_family();
     if (family == BobbinFamily::E) {
         return std::make_shared<BobbinEDataProcessor>();
@@ -290,7 +308,9 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
         return std::make_shared<BobbinEDataProcessor>();
     }
     else
-        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Unknown bobbin family, available options are: {E, EC, EFD, EL, EP, ER, ETD, P, PM, PQ, RM, T, U}");
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Unknown bobbin family (enumerator value " + std::to_string(static_cast<int>(family)) +
+            "), available options are: {E, EC, EFD, EL, EP, ER, ETD, P, PM, PQ, RM, T, U}");
 }
 
 void load_interpolators() {
@@ -898,8 +918,55 @@ WindingWindowShape Bobbin::get_winding_window_shape(size_t windingWindowIndex) {
 }
 
 void Bobbin::process_data() {
+    // ABT #763: guard before the factory too. factory() takes its Bobbin BY VALUE, so a
+    // guard there protects its own copy only if it is reached; this is the public entry
+    // point every binding calls, and it must not be able to hand a description-less bobbin
+    // any further down.
+    if (!get_functional_description()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin has no functionalDescription, so there is nothing to process. "
+            "process_data expects a bobbin json OBJECT with functionalDescription.family and "
+            "functionalDescription.dimensions; a json string, an array, a number or an empty "
+            "object all arrive here as an empty bobbin.");
+    }
+
     auto processor = BobbinDataProcessor::factory(*this);
-    set_processed_description((*processor).process_data(*this));
+    auto processedDescription = (*processor).process_data(*this);
+
+    // ABT #763 / ABT #634: a processed bobbin whose winding window has no area, or an area
+    // of zero, is never a valid answer — it is the signature of a family whose processor
+    // read dimension keys the bobbin does not declare (flatten_dimensions returns 0 for a
+    // missing key without complaining; that is exactly how the 10 "Bobbin EI …" rows
+    // declaring family "etd" while carrying the E dimension set processed to zero area,
+    // silently, for as long as they did). Refuse to return a plausible zero.
+    if (processedDescription.get_winding_windows().empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Processing bobbin '" + (get_name() ? get_name().value() : std::string("<unnamed>")) +
+            "' produced no winding window at all.");
+    }
+    auto windingWindow = processedDescription.get_winding_windows()[0];
+    if (!windingWindow.get_area() || !(windingWindow.get_area().value() > 0)) {
+        // get_functional_description() returns the optional BY VALUE; holding the
+        // description in a named local is what keeps the dimensions map alive while it is
+        // iterated (binding the range-for to `...->get_dimensions()` directly walks a map
+        // owned by a temporary that is already gone — gcc's -Wdangling-pointer catches it).
+        auto functionalDescription = get_functional_description().value();
+        std::string declaredDimensions;
+        for (const auto& [key, _] : functionalDescription.get_dimensions()) {
+            if (!declaredDimensions.empty()) {
+                declaredDimensions += ", ";
+            }
+            declaredDimensions += key;
+        }
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Processing bobbin '" + (get_name() ? get_name().value() : std::string("<unnamed>")) +
+            "' as family '" + to_string(functionalDescription.get_family()) +
+            "' produced a winding window of zero area. The family's processor did not find the "
+            "dimensions it reads; the bobbin declares {" + declaredDimensions + "}. Either the "
+            "declared family does not match the declared dimension set, or a dimension is missing.");
+    }
+
+    set_processed_description(processedDescription);
 }
 
 bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t windingWindowIndex) {

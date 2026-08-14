@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -324,6 +325,122 @@ TEST_CASE("Unresolvable bobbin catalogue rows are skipped without throwing (ABT 
             REQUIRE_FALSE(bobbin.get_functional_description());
             CHECK_THROWS_AS(bobbin.get_winding_window_shape(), OpenMagnetics::InvalidInputException);
         }
+    }
+}
+
+// ABT #763: Bobbin::process_data() used to be non-deterministic on a bobbin json that
+// carries no functionalDescription. BobbinDataProcessor::factory dereferenced the
+// disengaged optional (`get_functional_description()->get_family()`), reading the
+// optional's UNINITIALISED storage as a BobbinFamily: undefined behaviour whose outcome is
+// decided by whatever the stack happened to hold. Through PyOpenMagnetics 1.7.0 the same
+// unmodified catalogue row therefore threw the misleading "Unknown bobbin family" on 14 of
+// 15 fresh processes, SEGFAULTED on others (reproducible on demand by padding the
+// environment, which shifts the stack), and on the surviving run returned a
+// 0.0 x 0.0 m winding window — a plausible zero, which is worse than the throw.
+//
+// The stack-scribbling below is what makes this catch the bug IN-PROCESS: a tight loop
+// would otherwise keep re-reading the same benign leftover bytes and the UB would hide.
+[[gnu::noinline]] void scribble_stack() {
+    volatile unsigned char pattern[16384];
+    for (size_t index = 0; index < sizeof(pattern); ++index) {
+        pattern[index] = static_cast<unsigned char>(0xA5u + (index % 251u));
+    }
+}
+
+TEST_CASE("process_data on a bobbin with no functionalDescription throws, deterministically (ABT #763)",
+          "[constructive-model][bobbin][abt763]") {
+    // Every one of these arrives at Bobbin(json) as an empty bobbin: get_stack_optional
+    // finds nothing, so both descriptions stay disengaged. The first is the exact mistake
+    // that surfaced this — a caller passing json.dumps(row), i.e. a json *string*, where a
+    // json object is expected.
+    const std::vector<json> notBobbinObjects = {
+        json("{\"name\": \"Bobbin EER 48L horizontal 20-pin (Norwe N0037-186)\"}"),
+        json::object(),
+        json::array(),
+        json(42),
+        json({{"name", "no functional description here"}}),
+    };
+
+    SECTION("the refusal is stable across many stack states, and never returns a zero window") {
+        for (const auto& notABobbin : notBobbinObjects) {
+            for (int attempt = 0; attempt < 200; ++attempt) {
+                scribble_stack();
+                OpenMagnetics::Bobbin bobbin(notABobbin);
+                REQUIRE_FALSE(bobbin.get_functional_description());
+                // Pre-fix this threw "Unknown bobbin family" (most attempts), crashed, or
+                // silently returned a 0 x 0 window. The message is the assertion: it is what
+                // distinguishes "I read garbage" from "I know what is wrong with your input".
+                CHECK_THROWS_WITH(bobbin.process_data(),
+                                  Catch::Matchers::ContainsSubstring("no functionalDescription"));
+                CHECK_THROWS_AS(bobbin.process_data(), OpenMagnetics::InvalidInputException);
+                // Nothing may have been written: no plausible zero left behind.
+                CHECK_FALSE(bobbin.get_processed_description());
+            }
+        }
+    }
+
+    SECTION("BobbinDataProcessor::factory refuses it too, not only the process_data wrapper") {
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            scribble_stack();
+            OpenMagnetics::Bobbin bobbin(json::object());
+            CHECK_THROWS_WITH(OpenMagnetics::BobbinDataProcessor::factory(bobbin),
+                              Catch::Matchers::ContainsSubstring("no functionalDescription"));
+        }
+    }
+
+    SECTION("a real catalogue row processes to the SAME non-zero window on every evaluation") {
+        // The determinism half: 200 fresh evaluations of one unmodified MAS row, each with a
+        // freshly poisoned stack underneath, must agree bit for bit and must not be zero.
+        auto reference = OpenMagnetics::find_bobbin_by_name("Bobbin ETD 49");
+        REQUIRE(reference.get_functional_description());
+        MAS::Bobbin referenceBase = reference;
+        json referenceJson;
+        to_json(referenceJson, referenceBase);
+        referenceJson.erase("processedDescription");
+
+        std::optional<double> firstWidth;
+        std::optional<double> firstHeight;
+        std::optional<double> firstArea;
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            scribble_stack();
+            OpenMagnetics::Bobbin bobbin(referenceJson);
+            REQUIRE(bobbin.get_processed_description());
+            auto windingWindows = bobbin.get_processed_description()->get_winding_windows();
+            REQUIRE(windingWindows.size() == 1);
+            REQUIRE(windingWindows[0].get_width());
+            REQUIRE(windingWindows[0].get_height());
+            REQUIRE(windingWindows[0].get_area());
+            double width = windingWindows[0].get_width().value();
+            double height = windingWindows[0].get_height().value();
+            double area = windingWindows[0].get_area().value();
+            CHECK(width > 0);
+            CHECK(height > 0);
+            CHECK(area > 0);
+            if (!firstWidth) {
+                firstWidth = width;
+                firstHeight = height;
+                firstArea = area;
+            }
+            INFO("attempt " << attempt);
+            CHECK(width == firstWidth.value());
+            CHECK(height == firstHeight.value());
+            CHECK(area == firstArea.value());
+        }
+    }
+
+    SECTION("a family whose processor finds none of its dimensions is an error, not a zero window") {
+        // ABT #634's silent-zero mechanism, now loud: the E dimension set {e,f,s1,s2,l2}
+        // read by the ETD processor, which asks for {d1,d2,d3,h1,h2}. flatten_dimensions
+        // returns 0 for every missing key without complaining, so this used to produce a
+        // perfectly plausible 0 x 0 winding window.
+        auto eBobbin = OpenMagnetics::find_bobbin_by_name("Bobbin E13/4");
+        REQUIRE(eBobbin.get_functional_description());
+        REQUIRE(eBobbin.get_functional_description()->get_family() == BobbinFamily::E);
+        auto functionalDescription = eBobbin.get_functional_description().value();
+        functionalDescription.set_family(BobbinFamily::ETD);
+        eBobbin.set_functional_description(functionalDescription);
+        CHECK_THROWS_WITH(eBobbin.process_data(),
+                          Catch::Matchers::ContainsSubstring("zero area"));
     }
 }
 
