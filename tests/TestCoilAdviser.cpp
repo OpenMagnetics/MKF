@@ -610,6 +610,10 @@ TEST_CASE("Test_CoilAdviser_Insulation_No_Margin", "[adviser][coil-adviser][smok
 
 TEST_CASE("Test_CoilAdviser_Insulation_Margin", "[adviser][coil-adviser][margin][smoke-test]") {
     // OpenMagnetics::set_log_verbosity(2);
+    // ABT #721: this test pins the historical 50/50 tape split (margin == creepage/2 per
+    // section); margin equalization (default-on) re-splits it by section space — disable
+    // to keep the pinned contract.
+    settings.set_coil_equalize_margins(false);
     auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
     std::vector<double> turnsRatios;
     int64_t numberStacks = 1;

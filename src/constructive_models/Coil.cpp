@@ -5227,6 +5227,32 @@ void Coil::equalize_margins(const std::vector<std::pair<ElectricalType, std::pai
         _marginsPerSection.resize(sectionIndexOffset + orderedSectionsWithInsulation.size(), {0, 0});
     }
 
+    // ABT #721: what "equalizing" means depends on the window's geometry.
+    //
+    //   ROUND (toroid): adjacent sections are angular SECTORS, so the left sector's END
+    //   margin ([1]) and the right sector's START margin ([0]) are collinear along the
+    //   angle and face each other directly across the insulation — THEY form the
+    //   inter-winding gap, and the pair is redistributed proportionally to each sector's
+    //   allotted space. The window closes on itself at 0°, so the last sector's partner
+    //   wraps to the first (across the trailing insulation add_insulation_to_sections
+    //   appends for exactly this reason).
+    //
+    //   RECTANGULAR: margins do NOT sit between the sections — they sit on the SAME two
+    //   window edges of every section (top/bottom for overlapping, left/right for
+    //   contiguous), and the creepage path between two adjacent windings runs over each
+    //   edge as (left section's edge margin + insulation + right section's edge margin).
+    //   So the redistribution pairs SAME-index margins — left[0] with right[0], left[1]
+    //   with right[1] — conserving each edge's path total while splitting it by section
+    //   space. And there is NO wrap: the window ends at the bobbin walls, the last and
+    //   first sections are not neighbours. (The pre-#721 wrap pairing applied to
+    //   rectangular would have redistributed the two window-wall margins between
+    //   non-adjacent sections.)
+    //
+    // Preloaded margins are redistributed like tape-derived ones: the setting's contract
+    // is "the coil may re-split inter-winding margins by section size"; callers that
+    // need their exact preloaded values disable coilEqualizeMargins.
+    bool windowWraps = bobbin.get_winding_window_shape() == WindingWindowShape::ROUND;
+
     for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
         if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
             if (!_coilSectionInterfaces.empty()) {
@@ -5234,22 +5260,47 @@ void Coil::equalize_margins(const std::vector<std::pair<ElectricalType, std::pai
                 size_t indexForMarginLeftSection = sectionIndex;
                 size_t indexForMarginRightSection;
                 // The "right" section is two ahead (conduction → insulation →
-                // conduction). When near the end, wrap to the first section.
+                // conduction). When near the end, wrap to the first section —
+                // but only where the window physically closes on itself.
                 // The original `!= size()-2` test missed the size()-1 case,
                 // letting sectionIndex+2 read past the end.
                 if (sectionIndex + 2 < orderedSectionsWithInsulation.size()) {
                     indexForMarginRightSection = sectionIndex + 2;
                 }
-                else {
+                else if (windowWraps) {
                     indexForMarginRightSection = 0;
                 }
+                else {
+                    continue;   // rectangular window: the last section has no next neighbour
+                }
+                // Rectangular only: redistribute solely across an actual insulation
+                // boundary — wound_with center-tap halves sit adjacent WITHOUT
+                // insulation (same isolation side) and carry no inter-winding tape to
+                // re-split. Toroids keep the historical blind pairing exactly (their
+                // pinned geometry predates this check).
+                if (!windowWraps && sectionIndex + 1 < orderedSectionsWithInsulation.size() &&
+                    orderedSectionsWithInsulation[sectionIndex + 1].first != ElectricalType::INSULATION) {
+                    continue;
+                }
 
-                double totalMargin = _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][1] + _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][0];
                 double leftAvailableSpace = orderedSectionsWithInsulation[indexForMarginLeftSection].second.second;
                 double rightAvailableSpace = orderedSectionsWithInsulation[indexForMarginRightSection].second.second;
                 double totalAvailableSpace = leftAvailableSpace + rightAvailableSpace;
-                _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][1] = leftAvailableSpace / totalAvailableSpace * totalMargin;
-                _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][0] = rightAvailableSpace / totalAvailableSpace * totalMargin;
+                if (totalAvailableSpace <= 0) {
+                    continue;
+                }
+                if (windowWraps) {
+                    double totalMargin = _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][1] + _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][0];
+                    _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][1] = leftAvailableSpace / totalAvailableSpace * totalMargin;
+                    _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][0] = rightAvailableSpace / totalAvailableSpace * totalMargin;
+                }
+                else {
+                    for (size_t edge : {size_t(0), size_t(1)}) {
+                        double totalMargin = _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][edge] + _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][edge];
+                        _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][edge] = leftAvailableSpace / totalAvailableSpace * totalMargin;
+                        _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][edge] = rightAvailableSpace / totalAvailableSpace * totalMargin;
+                    }
+                }
             }
         }
     }
@@ -6650,12 +6701,13 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
         double currentSectionCenterHeight = DBL_MAX;
 
         apply_margin_tape(orderedSectionsWithInsulation, marginSectionOffset);
-        // ABT #721 (measured 2026-08-14, NOT wired in): honouring coilEqualizeMargins here
-        // — one call, mirroring the round winder — redistributes margins on every
-        // rectangular multi-winding coil with margin tape and moves 24 of 54 [margin]
-        // pins (plus their [coil]/[smoke-test] twins). Whether to accept that
-        // re-baseline, scope the setting to toroids, or flip its default is an owner
-        // decision recorded on the ticket.
+        // ABT #721 (owner ruling 2026-08-14): coilEqualizeMargins now applies to
+        // rectangular windows too — with rectangular-aware semantics (same-edge pairing,
+        // no wrap; see equalize_margins). Enabled by default; tests that pin the old
+        // 50/50 geometry disable the setting explicitly.
+        if (settings.get_coil_equalize_margins()) {
+            equalize_margins(orderedSectionsWithInsulation, marginSectionOffset);
+        }
 
         for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
             // Margins are indexed flat across ALL groups in winding order.

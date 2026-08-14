@@ -592,6 +592,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_
     double margin = 0.001;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
     // settings.set_coil_wind_even_if_not_fit(false);
     // settings.set_coil_try_rewind(true);
 
@@ -821,6 +824,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three
     double margin = 0.002;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
     WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
@@ -1054,6 +1060,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Th
     double margin = 0.002;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
     WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
@@ -1287,6 +1296,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Th
     double margin = 0.002;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
     WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
@@ -1504,6 +1516,9 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Thr
     double margin = 0.001;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
     WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
@@ -1715,6 +1730,9 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Thr
     double margin = 0.001;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
     WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
@@ -1926,6 +1944,9 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Th
     double margin = 0.001;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
     WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
@@ -2133,6 +2154,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Th
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -2341,6 +2365,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_D
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -2547,6 +2574,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Thre
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -2759,6 +2789,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Thre
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -2976,6 +3009,9 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_D
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -3183,6 +3219,9 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Diff
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -3390,6 +3429,9 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Diff
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -3603,6 +3645,9 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Dif
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -3820,6 +3865,9 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Thre
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -4024,6 +4072,9 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_D
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -4231,6 +4282,9 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_D
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -4444,6 +4498,9 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -4661,6 +4718,9 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Thre
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -4868,6 +4928,9 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_D
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -5075,6 +5138,9 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_D
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -5288,6 +5354,9 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_
     double margin = 0.0005;
     
     settings.set_coil_fill_sections_with_margin_tape(false);
+    // ABT #721: this test pins exact hand-set per-section margins; margin equalization
+    // (default-on) would proportionally re-split them — disable to keep the pinned geometry.
+    settings.set_coil_equalize_margins(false);
 
     WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
     WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
@@ -13837,6 +13906,87 @@ TEST_CASE("Test_Abt725_Per_Section_Orientation_Override_Layers_Stay_Inside_Envel
         }
     }
     REQUIRE(checkedAnyLayer);
+    settings.reset();
+}
+
+// ABT #721: margin equalization on RECTANGULAR windows (owner ruling 2026-08-14).
+// Rectangular semantics: adjacent sections carry tape on the SAME two window edges, so
+// equalization pairs same-index margins (left[0] with right[0], left[1] with right[1]),
+// conserving each edge's creepage-path total while splitting it proportionally to each
+// section's allotted space. Two windings -> one pair: clean assertions.
+TEST_CASE("Test_Abt721_Equalize_Margins_Rectangular_Proportional_Split", "[constructive-model][coil][margin][abt721]") {
+    settings.reset();   // coilEqualizeMargins defaults to true — the feature under test
+    std::vector<int64_t> numberTurns = {34, 10};   // deliberately asymmetric section spaces
+    std::vector<int64_t> numberParallels = {1, 1};
+    const double margin = 0.001;
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    REQUIRE(coil.get_sections_description_conduction().size() == 2);
+
+    // Hand section 0 a margin on both edges; the re-wind's equalization shares each
+    // edge's total with section 1 proportionally to the sections' widths (OVERLAPPING:
+    // margins live on the height, so widths ARE the allotted spaces).
+    coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+
+    auto conductionSections = coil.get_sections_description_conduction();
+    auto margin0 = OpenMagnetics::Coil::resolve_margin(conductionSections[0]);
+    auto margin1 = OpenMagnetics::Coil::resolve_margin(conductionSections[1]);
+
+    // The split basis is each section's ALLOTTED space, which for equal wires is the
+    // winding's share of turn area — i.e. its turn count. (Post-wind section widths
+    // drift slightly from the allotment via insulation subtraction, so they are NOT the
+    // basis; 1e-5 absorbs the wire-area rounding in the allotment itself.)
+    double expectedShare0 = margin * 34.0 / (34.0 + 10.0);
+    for (size_t edge : {size_t(0), size_t(1)}) {
+        INFO("edge " << edge);
+        // Conservation: each edge's creepage-path total is exactly what was handed in.
+        CHECK_THAT(margin0[edge] + margin1[edge], Catch::Matchers::WithinAbs(margin, 1e-9));
+        // Proportionality: split by allotted space, bigger section carries more tape.
+        CHECK_THAT(margin0[edge], Catch::Matchers::WithinAbs(expectedShare0, 1e-5));
+        CHECK(margin0[edge] > margin1[edge]);
+        CHECK(margin1[edge] > 0);
+    }
+    OpenMagneticsTesting::check_turns_description(coil);
+    settings.reset();
+}
+
+// ABT #721: a rectangular window does NOT wrap — the last and first sections meet the
+// bobbin walls, not each other. Handing a margin only to the LAST of three sections must
+// redistribute it with its real neighbour (the middle section) and leave the FIRST
+// section's margins exactly zero; the pre-#721 wrap pairing would have leaked a share of
+// the last section's margin onto the first.
+TEST_CASE("Test_Abt721_Equalize_Margins_Rectangular_No_Wraparound", "[constructive-model][coil][margin][abt721]") {
+    settings.reset();
+    std::vector<int64_t> numberTurns = {34, 25, 10};
+    std::vector<int64_t> numberParallels = {1, 1, 1};
+    const double margin = 0.001;
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    REQUIRE(coil.get_sections_description_conduction().size() == 3);
+
+    coil.add_margin_to_section_by_index(2, std::vector<double>{margin, margin});
+
+    auto conductionSections = coil.get_sections_description_conduction();
+    auto margin0 = OpenMagnetics::Coil::resolve_margin(conductionSections[0]);
+    auto margin1 = OpenMagnetics::Coil::resolve_margin(conductionSections[1]);
+    auto margin2 = OpenMagnetics::Coil::resolve_margin(conductionSections[2]);
+
+    // Allotted-space basis, as in the proportional-split test: same wire, so the
+    // middle/last pair splits by their turn counts 25:10.
+    double expectedShare1 = margin * 25.0 / (25.0 + 10.0);
+    for (size_t edge : {size_t(0), size_t(1)}) {
+        INFO("edge " << edge);
+        // No wrap: the first section shares no boundary with the last.
+        CHECK(margin0[edge] == 0.0);
+        // The real neighbour pair conserves and splits the handed-in margin.
+        CHECK_THAT(margin1[edge] + margin2[edge], Catch::Matchers::WithinAbs(margin, 1e-9));
+        CHECK_THAT(margin1[edge], Catch::Matchers::WithinAbs(expectedShare1, 1e-5));
+    }
+    OpenMagneticsTesting::check_turns_description(coil);
     settings.reset();
 }
 
