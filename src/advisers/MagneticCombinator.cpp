@@ -120,7 +120,7 @@ std::pair<std::map<std::string, MagneticCombinator::WindingCombination>, std::ve
     auto combinations = calculate_coil_combinations(coil, (inputs.get_design_requirements().get_turns_ratios().size() + 1));
     std::vector<OpenMagnetics::Magnetic> virtualMagnetics;
     magnetic.get_mutable_core().process_data();
-    magnetic.get_mutable_core().process_gap();
+    magnetic.get_mutable_core().process_gap_or_throw();
 
     std::map<std::string, MagneticCombinator::WindingCombination> usedCombinations;
 

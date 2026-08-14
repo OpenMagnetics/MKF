@@ -2629,7 +2629,7 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
 
     if (!magnetic.get_core().get_processed_description()) {
         magnetic.get_mutable_core().process_data();
-        magnetic.get_mutable_core().process_gap();
+        magnetic.get_mutable_core().process_gap_or_throw();
     }
 
     if (!magnetic.get_core().get_geometrical_description()) {
@@ -3260,7 +3260,7 @@ std::vector<MAS::CoreGap> extract_core_gapping(OpenMagnetics::Core ungappedCore,
     if (ungappedCore.get_shape_family() != CoreShapeFamily::T) {
         auto gapping =  magnetizingInductanceModel.calculate_gapping_from_number_turns_and_inductance(ungappedCore, coil, &inputs, OpenMagnetics::GappingType::GROUND);
         ungappedCore.get_mutable_functional_description().set_gapping(gapping);
-        ungappedCore.process_gap();
+        ungappedCore.process_gap_or_throw();
     }
 
     return ungappedCore.get_functional_description().get_gapping();

@@ -587,7 +587,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_c
                 if (!_onlyReferenceMaterial || referenceMaterialName == core.get_material_name()) {
                     if (!core.get_processed_description()) {
                         core.process_data();
-                        core.process_gap();
+                        core.process_gap_or_throw();
                     }
                     if (!useMaximumDimensions || core.fits(maximumDimensions, false)) {
                         cores.push_back({core, 0.0});
@@ -599,7 +599,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_c
 
     if (!referenceCore.get_processed_description()) {
         referenceCore.process_data();
-        referenceCore.process_gap();
+        referenceCore.process_gap_or_throw();
     }
 
     double limit = 0;

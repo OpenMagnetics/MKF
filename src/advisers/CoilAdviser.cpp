@@ -568,7 +568,7 @@ namespace OpenMagnetics {
             auto& lateralCore = lateralMas.get_mutable_magnetic().get_mutable_core();
             lateralCore.set_processed_description(std::nullopt);
             lateralCore.process_data();
-            lateralCore.process_gap();
+            lateralCore.process_gap_or_throw();
             auto lateralWindingWindows = lateralCore.get_winding_windows();
             std::optional<size_t> lateralWindowIndex;
             for (size_t windowIndex = 1; windowIndex < lateralWindingWindows.size(); ++windowIndex) {

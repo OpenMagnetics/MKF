@@ -256,7 +256,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     // NEVER legitimately empty for this family (single- or dual-material), so self-heal
     // unconditionally here — process_gap() is idempotent and a no-op if already derived.
     if (core.get_shape_family() == CoreShapeFamily::DRUM_RING && core.get_functional_description().get_gapping().empty()) {
-        core.process_gap();
+        core.process_gap_or_throw();
     }
 
     // Semi-shielded drums (ABT #362): mixed-material sectioned reluctance, drum mu + glue mu.
@@ -827,7 +827,7 @@ double MagnetizingInductance::calculate_gap_from_saturation_constraint(Core core
             gapping.push_back(lateralGap);
         }
         testCore.get_mutable_functional_description().set_gapping(gapping);
-        testCore.process_gap();
+        testCore.process_gap_or_throw();
         
         // Calculate total reluctance manually (classic formula)
         // Core reluctance: R_core = l_e / (μ₀ * μ_r * A_e), using the MATERIAL's
@@ -878,7 +878,7 @@ Core get_core_with_ground_gapping(Core core, double gapLength) {
         gapping.push_back(basicLateralGap);
     }
     core.get_mutable_functional_description().set_gapping(gapping);
-    core.process_gap();
+    core.process_gap_or_throw();
     return core;
 }
 
@@ -898,7 +898,7 @@ Core get_core_with_distributed_gapping(Core core, double gapLength, size_t numbe
         gapping.push_back(basicLateralGap);
     }
     core.get_mutable_functional_description().set_gapping(gapping);
-    core.process_gap();
+    core.process_gap_or_throw();
     return core;
 }
 
@@ -915,7 +915,7 @@ Core get_core_with_spacer_gapping(Core core, double gapLength) {
         gapping.push_back(basicLateralGap);
     }
     core.get_mutable_functional_description().set_gapping(gapping);
-    core.process_gap();
+    core.process_gap_or_throw();
     return core;
 }
 
@@ -948,7 +948,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     // so processing it is local to this call and cannot surprise the caller.
     if (!core.get_processed_description()) {
         core.process_data();
-        core.process_gap();
+        core.process_gap_or_throw();
     }
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     OpenMagnetics::InitialPermeability initialPermeability;
@@ -1284,7 +1284,7 @@ std::pair<double, double> MagnetizingInductance::calculate_optimal_gap_and_turns
     // Step 7: Refine turns with actual gap (accounts for fringing via reluctance model)
     Core gappedCore = tempCore;
     gappedCore.set_ground_gapping(gapLength);
-    gappedCore.process_gap();
+    gappedCore.process_gap_or_throw();
     
     double finalTurns = calculate_turns_for_gap(gappedCore, targetInductance, temperature, frequency);
     
