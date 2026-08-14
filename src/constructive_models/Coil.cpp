@@ -566,6 +566,12 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
             }
         }
     }
+    // Ring -> owning winding, for the entrance-corridor emission (ABT #723): the input
+    // connection's corridor applies to its OWN winding's rings only.
+    std::map<std::string, std::string> windingByRingName;
+    for (const auto& layer : allLayers) {
+        windingByRingName[layer.get_name()] = layer.get_partial_windings()[0].get_winding();
+    }
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         auto windingName = coil.get_functional_description()[windingIndex].get_name();
         double wireOuterWidth = wires[windingIndex].get_maximum_outer_width();
@@ -588,13 +594,52 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
         }
         double radialBorder = std::min(uncappedBorder, boreRadius);
 
-        auto addTerminalLead = [&](const Turn& connectingTurn, int64_t parallel) {
+        auto addTerminalLead = [&](const Turn& connectingTurn, int64_t parallel, bool isEntrance) {
             auto c = connectingTurn.get_coordinates();
             double radius = std::hypot(c[0], c[1]);
+            double angle = std::atan2(c[1], c[0]);
+
+            // ABT #723 (owner ruling, Alf 2026-08-14): the INPUT internal terminal connection
+            // owns its angular corridor through the WHOLE winding depth — its below-core
+            // vertical rises at this azimuth past every deeper ring, and those rings'
+            // below-core returns must clear it, so no turn may sit in that angle on ANY ring
+            // of this winding. The outward loop below only marks rings the drawn radial run
+            // crosses (and the wall-adjacent entrance crosses none); emit the corridor marker
+            // on each ring INWARD of the entrance too. align_blocked_ring_turns then
+            // displaces those rings' stations out of the corridor (or reports capacity
+            // deficits for the blocking re-wind), and the final strict sweep finds clear
+            // return azimuths. Emitted before the radial-run guard: the entrance lead often
+            // has no drawable radial run at all.
+            if (isEntrance && radius > 1e-9) {
+                for (const auto& [ringName, ringRadius] : ringRadiusByLayer) {
+                    if (connectingTurn.get_layer() && connectingTurn.get_layer().value() == ringName) {
+                        continue;   // its own ring: the entrance turn IS the connection here
+                    }
+                    auto ringWindingIt = windingByRingName.find(ringName);
+                    if (ringWindingIt == windingByRingName.end() || ringWindingIt->second != windingName) {
+                        continue;   // the corridor lives in this winding's own sector
+                    }
+                    if (ringRadius >= radius - wireOuterWidth / 2) {
+                        continue;   // not inward of the entrance turn
+                    }
+                    ConnectionReservedSpace corridor;
+                    corridor.coordinateSystem = CoordinateSystem::POLAR;
+                    corridor.isTerminal = true;
+                    corridor.winding = windingName;
+                    corridor.parallel = parallel;
+                    corridor.section = connectingTurn.get_section().value_or("");
+                    corridor.layer = ringName;
+                    corridor.coordinates = {roundFloat(ringRadius * std::cos(angle), 9), roundFloat(ringRadius * std::sin(angle), 9)};
+                    corridor.dimensions = {roundFloat(wireOuterWidth, 9), roundFloat(wireOuterHeight, 9)};
+                    corridor.routedLength = 0;  // space-only: the vertical's copper is billed by the terminal lead itself
+                    corridor.rotation = roundFloat(angle * 180.0 / std::numbers::pi, 6);
+                    spaces.push_back(corridor);
+                }
+            }
+
             if (radius <= 1e-9 || radialBorder <= radius) {
                 return;
             }
-            double angle = std::atan2(c[1], c[0]);
             // ABT #230: the NEAR edge is the wire envelope, not the crossing centreline. The
             // concentric path already spans [turnX - w/2, borderX + w/2]; taking the centreline here
             // reserved only half the wire at the connecting turn, so the two conventions disagreed.
@@ -647,10 +692,10 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
         for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
             auto key = std::make_pair(windingName, parallel);
             if (entranceTurn.count(key)) {
-                addTerminalLead(entranceTurn.at(key), parallel);
+                addTerminalLead(entranceTurn.at(key), parallel, true);
             }
             if (exitTurn.count(key)) {
-                addTerminalLead(exitTurn.at(key), parallel);
+                addTerminalLead(exitTurn.at(key), parallel, false);
             }
         }
 
@@ -2309,8 +2354,23 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
 
     // Displacement-only fixpoint: re-spreading a ring moves its end turns, which moves the leads
     // attached to them (spaces are recomputed from the turns each pass), which moves the corridors
-    // on the rings THOSE leads cross. Converges in a couple of passes for realistic windings.
-    const size_t maximumIterations = 8;
+    // on the rings THOSE leads cross. Converges in a couple of passes for realistic windings —
+    // but the ABT #723 sector cases chase sub-degree lead movements (a re-spread ring moves its
+    // own exit lead's corridor onto a neighbouring turn), so give the chase more budget: extra
+    // iterations only run while intrusions persist.
+    const size_t maximumIterations = 24;
+    // ABT #723: a ring that needs re-spreading over and over is not converging by
+    // displacement — its free arc is arithmetically sufficient but no stable discrete
+    // arrangement realizes it against the moving lead corridors (the bifilar full-circle
+    // limit cycle). After a few re-spreads, escalate it to a capacity deficit of one slot:
+    // the blocking re-wind spills a turn to the next ring, which genuinely frees arc and
+    // terminates the cycle.
+    std::map<std::string, size_t> respreadCountPerRing;
+    // Owner ruling (ABT #723, option "spill"): a ring that keeps needing re-spreads is
+    // over-full under the no-turn-in-corridor rule; escalate to a capacity deficit so a
+    // turn spills inward. The structural consequence (an extra ring adds one inter-ring
+    // crossing per parallel) is accepted and the affected pins updated.
+    const size_t maximumRespreadsPerRing = 4;
     for (size_t iteration = 0; iteration < maximumIterations; ++iteration) {
         auto turns = get_turns_description().value();
         auto spaces = get_connection_reserved_spaces();
@@ -2406,12 +2466,27 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
                 continue;
             }
             anyIntrusion = true;
+            if (respreadCountPerRing[ringName] >= maximumRespreadsPerRing) {
+                // Escalate the limit cycle to capacity (see the counter's comment above).
+                ringDeficitSlots[ringName] = std::max<uint64_t>(ringDeficitSlots[ringName], 1);
+                continue;
+            }
 
-            // The ring's angular territory: its occupied arc. Full-circle rings (overlapping
-            // windings) use the whole circle cyclically; sector rings (contiguous) are re-spread
-            // strictly WITHIN their arc, extended by half a pitch per side but CLAMPED so a placed
-            // turn centre always keeps at least a full pitch from any OTHER ring's turn at the same
-            // radius (the neighbouring sector's boundary turns).
+            // The ring's angular territory. Full-circle rings (overlapping windings) use the
+            // whole circle cyclically. Sector rings (contiguous windings) use the space the
+            // sector actually OWNS: the occupied arc extended outward until one full pitch
+            // short of the nearest FOREIGN turn at the same radius on each side (the
+            // neighbouring sector's boundary turns), capped at half the circle per side.
+            //
+            // ABT #723: the extension used to be capped at half a pitch per side, which made
+            // the deficit measure SELF-REFERENTIAL — a blocking re-wind spills turns, the
+            // occupied arc shrinks with them, the free space shrinks in proportion, and the
+            // same corridor deficit re-fires forever (the observed 2-cycle oscillation
+            // ratcheting blocked slots up to the iteration cap). With the territory bounded
+            // by the real neighbours instead, spilled turns genuinely free arc and the
+            // fixpoint converges. A ring with NO angular neighbour (sole sector at this
+            // depth, e.g. a spilled third ring) extends until the neighbour clamp or the
+            // half-circle cap, which the corridor sweep then prunes.
             bool fullCircle = true;
             double sectionSpan = 360;
             double territoryStart = 0;
@@ -2421,8 +2496,9 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
                 double rawSpan = ringOccupiedArc.at(ringName).second.second;
                 double rawEnd = normalizeAngle(rawStart + rawSpan);
                 double wireRadialWidth = wires[ringWindingIndex].get_maximum_outer_width();
-                double marginStart = turnPitchAngle / 2;
-                double marginEnd = turnPitchAngle / 2;
+                double maximumExtension = std::max(turnPitchAngle / 2, (360.0 - rawSpan) / 2);
+                double marginStart = maximumExtension;
+                double marginEnd = maximumExtension;
                 for (size_t t = 0; t < turns.size(); ++t) {
                     if (turns[t].get_layer() && turns[t].get_layer().value() == ringName) {
                         continue;
@@ -2443,6 +2519,80 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
                 }
                 territoryStart = normalizeAngle(rawStart - marginStart);
                 sectionSpan = rawSpan + marginStart + marginEnd;
+            }
+
+            // ABT #723: MINIMAL NUDGE first. The full even re-spread below moves every turn of
+            // the ring — including the lead-attached END turns, whose corridors then land on
+            // OTHER rings' turns, and the displacement ping-pongs (an observed 24-iteration
+            // limit cycle on the bifilar overlapping case). Nudging only the INTRUDING turns to
+            // the nearest clear corridor edge leaves the leads where they are, so the corridor
+            // set stays fixed and the pass converges. Only when a nudge cannot fit (no clear
+            // edge with a full pitch to every same-ring neighbour inside the territory) does
+            // the ring fall back to the even re-spread / capacity-deficit machinery.
+            {
+                auto moveTurnToAngle = [&](size_t t, double newAngleDegrees) {
+                    double turnRadius = std::hypot(turns[t].get_coordinates()[0], turns[t].get_coordinates()[1]);
+                    double newAngleRadians = newAngleDegrees / 180.0 * std::numbers::pi;
+                    turns[t].set_coordinates(std::vector<double>{
+                        roundFloat(turnRadius * std::cos(newAngleRadians), 9),
+                        roundFloat(turnRadius * std::sin(newAngleRadians), 9), 0});
+                    if (turns[t].get_additional_coordinates()) {
+                        auto additionalCoordinates = turns[t].get_additional_coordinates().value();
+                        for (auto& additional : additionalCoordinates) {
+                            double additionalRadius = std::hypot(additional[0], additional[1]);
+                            additional = {roundFloat(additionalRadius * std::cos(newAngleRadians), 9),
+                                          roundFloat(additionalRadius * std::sin(newAngleRadians), 9)};
+                        }
+                        turns[t].set_additional_coordinates(additionalCoordinates);
+                    }
+                };
+                auto insideTerritory = [&](double angle) {
+                    if (fullCircle) {
+                        return true;
+                    }
+                    return normalizeAngle(angle - territoryStart) <= sectionSpan + 1e-9;
+                };
+                bool nudgedAll = true;
+                for (size_t t : turnIdxs) {
+                    double turnAngle = normalizeAngle(std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) * 180.0 / std::numbers::pi);
+                    const auto* corridor = insideCorridor(turnAngle);
+                    if (corridor == nullptr) {
+                        continue;
+                    }
+                    double lowerEdge = normalizeAngle(corridor->first - corridor->second - 1e-6);
+                    double upperEdge = normalizeAngle(corridor->first + corridor->second + 1e-6);
+                    bool lowerCloser = std::abs(angularDifference(turnAngle, lowerEdge)) <= std::abs(angularDifference(turnAngle, upperEdge));
+                    bool placed = false;
+                    for (double candidate : {lowerCloser ? lowerEdge : upperEdge, lowerCloser ? upperEdge : lowerEdge}) {
+                        if (!insideTerritory(candidate) || insideCorridor(candidate) != nullptr) {
+                            continue;
+                        }
+                        bool clearOfNeighbours = true;
+                        for (size_t other : turnIdxs) {
+                            if (other == t) {
+                                continue;
+                            }
+                            double otherAngle = normalizeAngle(std::atan2(turns[other].get_coordinates()[1], turns[other].get_coordinates()[0]) * 180.0 / std::numbers::pi);
+                            if (std::abs(angularDifference(candidate, otherAngle)) < turnPitchAngle - 1e-9) {
+                                clearOfNeighbours = false;
+                                break;
+                            }
+                        }
+                        if (clearOfNeighbours) {
+                            moveTurnToAngle(t, candidate);
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (!placed) {
+                        nudgedAll = false;
+                        break;
+                    }
+                }
+                if (nudgedAll) {
+                    anyDisplacement = true;
+                    continue;   // ring settled by nudges alone; leads untouched
+                }
             }
 
             // Free angular space = territory minus the corridors (union measured by sweeping — the
@@ -2542,10 +2692,16 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
                 }
             }
             anyDisplacement = true;
+            respreadCountPerRing[ringName]++;
         }
 
         if (anyDisplacement) {
             set_turns_description(turns);
+        }
+        if (std::getenv("MKF_BLOCKING_DIAG")) {
+            std::cerr << "[align] iter " << iteration << " rings=" << corridorsPerRing.size()
+                      << " intrusion=" << anyIntrusion << " displaced=" << anyDisplacement
+                      << " deficits=" << ringDeficitSlots.size() << "\n";
         }
         if (!anyIntrusion || !anyDisplacement) {
             break;  // clean, or stuck on capacity (deficits reported to the caller) — either way stop
@@ -3354,6 +3510,13 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                     _connectionBlockedSlotsPerLayer[ringName].first += deficitSlots;
                     changed = true;
                 }
+                if (std::getenv("MKF_BLOCKING_DIAG")) {
+                    std::cerr << "[torfix] iter " << blockingIteration << " deficits={";
+                    for (const auto& [ringName, deficitSlots] : ringDeficits) {
+                        std::cerr << ringName << ":" << deficitSlots << ",";
+                    }
+                    std::cerr << "} changed=" << changed << "\n";
+                }
                 if (!changed) {
                     break;
                 }
@@ -3369,6 +3532,39 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                         delimit_and_compact();
                     }
                 }
+            }
+            // Owner ruling (ABT #723): the input terminal's internal connection OWNS its angular
+            // corridor — no turn may sit there — and it is the displacement above
+            // (align_blocked_ring_turns) that enforces it. The outer-return crossings, however,
+            // were placed BEFORE displacement (tolerantly: the pre-blocking pass falls back
+            // instead of throwing, because the corridor machinery had not run yet). Regenerate
+            // them now on the FINAL displaced stations with the STRICT connection-aware sweep —
+            // a failure here is a genuine corridor blockage, not a sequencing artifact.
+            //
+            // The regen MOVES the outer crossings, and the lead corridors derive from them, so
+            // the corridors the displacement validated are stale after it: run one more
+            // displacement pass against the regenerated leads, and — if it moved anything —
+            // regenerate once more so crossings and corridors leave this function consistent.
+            if (get_turns_description()) {
+                bool applyConnectionBlockingBackup = _applyConnectionBlocking;
+                _applyConnectionBlocking = true;   // strict sweep: no pre-blocking fallback
+                generate_toroidal_additional_coordinates();
+                auto turnsBeforeSettle = get_turns_description();
+                align_blocked_ring_turns();
+                bool settleMoved = false;
+                if (get_turns_description() && turnsBeforeSettle) {
+                    const auto& before = turnsBeforeSettle.value();
+                    const auto after = get_turns_description().value();
+                    settleMoved = before.size() != after.size();
+                    for (size_t t = 0; !settleMoved && t < after.size(); ++t) {
+                        settleMoved = std::abs(before[t].get_coordinates()[0] - after[t].get_coordinates()[0]) > 1e-9 ||
+                                      std::abs(before[t].get_coordinates()[1] - after[t].get_coordinates()[1]) > 1e-9;
+                    }
+                }
+                if (settleMoved) {
+                    generate_toroidal_additional_coordinates();
+                }
+                _applyConnectionBlocking = applyConnectionBlockingBackup;
             }
             result = are_sections_and_layers_fitting() && bool(get_turns_description());
         }
@@ -7228,12 +7424,25 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 // ABT #187: real-winding angular blocking — size the section for the ring capacities
                 // AFTER the blocked slots are removed, so spilled turns get their radial space. The
                 // section name is assigned below with this same deterministic convention.
+                //
+                // ABT #723: include the STATIC input-connection corridor for rings after the first
+                // under the same gate as wind_by_round_layers and the wind_by_round_turns placement
+                // shift — all three must agree or the section is sized for fewer rings than the
+                // layer split later produces and the wind fails with no turns (the escalated-spill
+                // U-order re-wind hit exactly that).
                 std::vector<int64_t> blockedSlotsPerLayerIndex;
-                if (settings.get_coil_use_real_winding_geometry() && _applyConnectionBlocking) {
+                if (settings.get_coil_use_real_winding_geometry()) {
                     std::string futureSectionName = get_name(windingIndex) + " section " + std::to_string(currentSectionPerWinding[windingIndex]);
+                    int64_t inputCorridorSlots = int64_t(get_number_parallels(windingIndex)) + 1;
                     for (size_t k = 0; k < 64; ++k) {
-                        auto found = _connectionBlockedSlotsPerLayer.find(futureSectionName + " layer " + std::to_string(k));
-                        blockedSlotsPerLayerIndex.push_back(found != _connectionBlockedSlotsPerLayer.end() ? int64_t(found->second.first) : 0);
+                        int64_t slots = (k >= 1) ? inputCorridorSlots : 0;
+                        if (_applyConnectionBlocking) {
+                            auto found = _connectionBlockedSlotsPerLayer.find(futureSectionName + " layer " + std::to_string(k));
+                            if (found != _connectionBlockedSlotsPerLayer.end()) {
+                                slots += int64_t(found->second.first);
+                            }
+                        }
+                        blockedSlotsPerLayerIndex.push_back(slots);
                     }
                 }
                 const std::vector<int64_t>* blockedSlotsPointer = blockedSlotsPerLayerIndex.empty() ? nullptr : &blockedSlotsPerLayerIndex;
@@ -8225,11 +8434,27 @@ bool Coil::wind_by_round_layers() {
 
             // ABT #187: real-winding angular blocking — leads crossing a ring reserve turn slots on
             // it, so the ring capacity computation subtracts them (turns spill to deeper rings).
+            //
+            // ABT #723: ALSO charge, from the very FIRST wind, the input-connection corridor that
+            // wind_by_round_turns unconditionally shaves off every ring after the first
+            // ((parallels + 1) x wireAngle at the section-start edge). The placement-side shift
+            // has always applied whenever real winding is on, but this capacity charge only
+            // existed in an unreachable branch of wind_by_rectangular_layers — so deeper rings
+            // were handed turn counts sized for the FULL span and packed straight back through
+            // the shaved corridor (the section-contiguous 2-ring toroid's turn 29 conflict).
+            // Placement and capacity must share one gate or the turns overflow the shifted span.
             std::vector<int64_t> blockedSlotsPerLayerIndex;
-            if (settings.get_coil_use_real_winding_geometry() && _applyConnectionBlocking) {
+            if (settings.get_coil_use_real_winding_geometry()) {
+                int64_t inputCorridorSlots = int64_t(get_number_parallels(windingIndex)) + 1;
                 for (size_t k = 0; k < 64; ++k) {
-                    auto found = _connectionBlockedSlotsPerLayer.find(sections[sectionIndex].get_name() + " layer " + std::to_string(k));
-                    blockedSlotsPerLayerIndex.push_back(found != _connectionBlockedSlotsPerLayer.end() ? int64_t(found->second.first) : 0);
+                    int64_t slots = (k >= 1) ? inputCorridorSlots : 0;
+                    if (_applyConnectionBlocking) {
+                        auto found = _connectionBlockedSlotsPerLayer.find(sections[sectionIndex].get_name() + " layer " + std::to_string(k));
+                        if (found != _connectionBlockedSlotsPerLayer.end()) {
+                            slots += int64_t(found->second.first);
+                        }
+                    }
+                    blockedSlotsPerLayerIndex.push_back(slots);
                 }
             }
             const std::vector<int64_t>* blockedSlotsPointer = blockedSlotsPerLayerIndex.empty() ? nullptr : &blockedSlotsPerLayerIndex;
