@@ -365,7 +365,13 @@ void Coil::set_inputs(Inputs inputs) {
 
 void Coil::set_interleaving_level(uint8_t interleavingLevel) {
     _interleavingLevel = interleavingLevel;
-    _marginsPerSection = std::vector<std::vector<double>>(interleavingLevel, {0, 0});
+    // Clear, don't seed: a level change invalidates any per-section margins (the winders
+    // resize lazily), but seeding {0,0} entries here left the vector NON-empty, which
+    // (a) defeated the ABT #676 margin-recovery gate `_marginsPerSection.empty()` in
+    // wind() — set_interleaving_level-then-rewind silently dropped persisted margins —
+    // and (b) made a subsequent preload_margins() append AFTER the seeded entries,
+    // landing every preloaded pair at the wrong index.
+    _marginsPerSection.clear();
 }
 
 void Coil::reset_margins_per_section() {
