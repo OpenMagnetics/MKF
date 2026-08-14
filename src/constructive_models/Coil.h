@@ -631,7 +631,6 @@ class Coil : public MAS::Coil {
 
         FillingFactorsOutput calculate_filling_factor(size_t groupIndex = 0);
 
-        static Bobbin resolve_bobbin(Coil coil);
         Bobbin resolve_bobbin();
 
         void preload_margins(std::vector<std::vector<double>> marginPairs);

@@ -13778,6 +13778,68 @@ TEST_CASE("Test_Abt674_Crossing_Station_Adds_No_Length", "[constructive-model][c
     settings.reset();
 }
 
+// ABT #725: the per-section layers-orientation override is honored where the section record
+// is written, but section sizing and insulation still read the global orientation — so an
+// overridden section COULD get layers stacked along an axis its envelope was not sized for.
+// This pins the geometric consequence, not just the recorded enum: every conduction layer of
+// the overridden section must stay inside the section rectangle (and the window).
+TEST_CASE("Test_Abt725_Per_Section_Orientation_Override_Layers_Stay_Inside_Envelope", "[constructive-model][coil][abt725]") {
+    settings.reset();
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    auto mas = OpenMagneticsTesting::mas_loader((dataDir / "abt646_e16_litz_2layer_leadcollision.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto sourceCoil = magnetic.get_mutable_coil();
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(sourceCoil.resolve_bobbin());
+    coil.set_functional_description(sourceCoil.get_functional_description());
+    coil.wind();
+
+    std::string targetName;
+    WindingOrientation baseOrientation = WindingOrientation::OVERLAPPING;
+    auto sectionsBefore = coil.get_sections_description().value();
+    for (const auto& section : sectionsBefore) {
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            targetName = section.get_name();
+            baseOrientation = section.get_layers_orientation();
+            break;
+        }
+    }
+    REQUIRE(!targetName.empty());
+    auto flippedOrientation = baseOrientation == WindingOrientation::OVERLAPPING ? WindingOrientation::CONTIGUOUS
+                                                                                 : WindingOrientation::OVERLAPPING;
+    coil.set_layers_orientation(flippedOrientation, targetName);
+    coil.wind();
+
+    auto sectionsAfter = coil.get_sections_description().value();
+    auto layersAfter = coil.get_layers_description().value();
+    const double tol = 1e-9;
+    bool checkedAnyLayer = false;
+    for (const auto& section : sectionsAfter) {
+        if (section.get_name() != targetName) {
+            continue;
+        }
+        const double sx0 = section.get_coordinates()[0] - section.get_dimensions()[0] / 2;
+        const double sx1 = section.get_coordinates()[0] + section.get_dimensions()[0] / 2;
+        const double sy0 = section.get_coordinates()[1] - section.get_dimensions()[1] / 2;
+        const double sy1 = section.get_coordinates()[1] + section.get_dimensions()[1] / 2;
+        for (const auto& layer : layersAfter) {
+            if (!layer.get_section() || layer.get_section().value() != targetName ||
+                layer.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            checkedAnyLayer = true;
+            INFO(layer.get_name() << " in " << targetName << " (flipped to "
+                 << (flippedOrientation == WindingOrientation::CONTIGUOUS ? "CONTIGUOUS" : "OVERLAPPING") << ")");
+            CHECK(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 >= sx0 - tol);
+            CHECK(layer.get_coordinates()[0] + layer.get_dimensions()[0] / 2 <= sx1 + tol);
+            CHECK(layer.get_coordinates()[1] - layer.get_dimensions()[1] / 2 >= sy0 - tol);
+            CHECK(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 <= sy1 + tol);
+        }
+    }
+    REQUIRE(checkedAnyLayer);
+    settings.reset();
+}
+
 TEST_CASE("Test_Abt682_U_Order_With_Margin_Keeps_The_Lead_Row_Clear", "[constructive-model][coil][real-geometry][abt682]") {
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);

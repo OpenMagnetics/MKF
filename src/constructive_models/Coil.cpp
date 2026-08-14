@@ -2835,7 +2835,7 @@ bool Coil::wind(std::vector<size_t> pattern, size_t repetitions){
 
 std::vector<size_t> Coil::extract_stack_up(std::vector<Section> sections) {
     std::vector<size_t> stackUp;
-    for (auto section : sections) {
+    for (const auto& section : sections) {
         size_t windingIndex = get_winding_index_by_name(section.get_partial_windings()[0].get_winding());
         stackUp.push_back(windingIndex);
     }
@@ -3949,7 +3949,7 @@ Turn Coil::get_turn_by_name(std::string name){
         }
         auto turns = get_turns_description().value();
         bool found = false;
-        for (auto turn : turns) {
+        for (const auto& turn : turns) {
             if (turn.get_name() == name) {
                 _turnByName[name] = turn;
                 found = true;
@@ -4293,7 +4293,7 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
     double contiguousDimension = 0;
     double overlappingDimension = 0;
 
-    for (auto section : sections) {
+    for (const auto& section : sections) {
         if (windingOrientation == WindingOrientation::OVERLAPPING) {
             if (section.get_type() == ElectricalType::CONDUCTION) {
                 contiguousDimension = std::max(contiguousDimension, section.get_dimensions()[1]);
@@ -4309,7 +4309,7 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
         }
     }
 
-    for (auto section : sections) {
+    for (const auto& section : sections) {
         if (section.get_margin()) {
             double marginWidth = resolve_margin(section)[0] + resolve_margin(section)[1];
             if (bobbinWindingWindowShape != WindingWindowShape::RECTANGULAR) {
@@ -4332,7 +4332,7 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
         }
     }
 
-    for (auto layer : layers) {
+    for (const auto& layer : layers) {
         // Track the true maximum, not just overflows: this value is reported now, and a
         // healthy coil should show its real headroom (e.g. 0.49) rather than a placeholder 0.
         if (layer.get_filling_factor()) {
@@ -4340,7 +4340,7 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
         }
         if (layer.get_type() == ElectricalType::CONDUCTION) {
             auto turns = get_turns_by_layer(layer.get_name());
-            for (auto turn : turns) {
+            for (const auto& turn : turns) {
                 area += turn.get_dimensions().value()[0] * turn.get_dimensions().value()[1];
             }
         }
@@ -6245,7 +6245,7 @@ void Coil::devirtualize_sections_description() {
     }
     std::vector<Section> newSectionsDescription;
     auto sections = get_sections_description().value();
-    for (auto section : sections) {
+    for (const auto& section : sections) {
         auto newSection = devirtualize_section(section);
         newSectionsDescription.push_back(newSection);
     }
@@ -6265,7 +6265,7 @@ void Coil::devirtualize_layers_description() {
     }
     std::vector<Layer> newLayersDescription;
     auto layers = get_layers_description().value();
-    for (auto layer : layers) {
+    for (const auto& layer : layers) {
         auto newLayer = devirtualize_layer(layer);
         newLayersDescription.push_back(newLayer);
     }
@@ -6350,7 +6350,7 @@ void Coil::devirtualize_turns_description() {
 std::vector<Section> Coil::virtualize_sections_description() {
     std::vector<Section> newSectionsDescription;
     auto sections = get_sections_description().value();
-    for (auto section : sections) {
+    for (const auto& section : sections) {
         auto newSection = virtualize_section(section);
         newSectionsDescription.push_back(newSection);
     }
@@ -6360,7 +6360,7 @@ std::vector<Section> Coil::virtualize_sections_description() {
 std::vector<Layer> Coil::virtualize_layers_description() {
     std::vector<Layer> newLayersDescription;
     auto layers = get_layers_description().value();
-    for (auto layer : layers) {
+    for (const auto& layer : layers) {
         auto newLayer = virtualize_layer(layer);
         newLayersDescription.push_back(newLayer);
     }
@@ -6650,6 +6650,12 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
         double currentSectionCenterHeight = DBL_MAX;
 
         apply_margin_tape(orderedSectionsWithInsulation, marginSectionOffset);
+        // ABT #721 (measured 2026-08-14, NOT wired in): honouring coilEqualizeMargins here
+        // — one call, mirroring the round winder — redistributes margins on every
+        // rectangular multi-winding coil with margin tape and moves 24 of 54 [margin]
+        // pins (plus their [coil]/[smoke-test] twins). Whether to accept that
+        // re-baseline, scope the setting to toroids, or flip its default is an owner
+        // decision recorded on the ticket.
 
         for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
             // Margins are indexed flat across ALL groups in winding order.
@@ -8411,7 +8417,7 @@ bool Coil::wind_by_planar_layers() {
 
     auto sections = get_sections_description().value();
 
-    for (auto section : sections) {
+    for (const auto& section : sections) {
         Layer layer;
         layer.set_partial_windings(section.get_partial_windings());
         layer.set_section(section.get_name());
@@ -9784,6 +9790,23 @@ bool Coil::wind_toroidal_additional_turns() {
                                     }
                                 }
                             }
+                            if (bestRadius == std::numeric_limits<double>::max() &&
+                                realWindingPlacement && !_applyConnectionBlocking) {
+                                // ABT #723: this sweep also runs at the end of the IDEAL
+                                // (pre-blocking) wind, where the ABT #187 corridor
+                                // reservations that would clear these runs have not been
+                                // derived yet — they are derived FROM this wind by the
+                                // blocking fixpoint that follows. Throwing here killed the
+                                // pipeline before its own repair step could run (the
+                                // section-contiguous 2-ring toroid: ring 1 fills back into
+                                // the connection corridor on the ideal pass). Take the
+                                // classic fixed-azimuth tangency rest for this intermediate
+                                // pass; the corridor-blocked re-wind redoes the sweep with
+                                // the stations moved off the corridor, and a failure THERE
+                                // still throws below.
+                                bestRadius = restAt(thetaDeg);
+                                bestAzimuth = thetaDeg;
+                            }
                             if (bestRadius == std::numeric_limits<double>::max()) {
                                 std::string stationMap = "; section stations (layer:angle):";
                                 for (const auto& sectionTurn : turnsInSection) {
@@ -11016,7 +11039,7 @@ std::vector<double> Coil::get_wires_length() const {
     for (auto winding : get_functional_description()) {
         auto turns = get_turns_by_winding(winding.get_name());
         double wireLength = 0;
-        for (auto turn : turns) {
+        for (const auto& turn : turns) {
             wireLength += turn.get_length();
         }
         wiresLength.push_back(wireLength);
@@ -11044,10 +11067,6 @@ std::string Coil::get_wire_name(Winding winding) {
 
 std::string Coil::get_wire_name(size_t windingIndex) {
     return get_wire_name(get_functional_description()[windingIndex]);
-}
-
-Bobbin Coil::resolve_bobbin(Coil coil) {
-    return coil.resolve_bobbin();
 }
 
 Bobbin Coil::merge_per_column_bobbins(const std::vector<BobbinDataOrNameUnion> & perColumnBobbins) {
@@ -11203,7 +11222,7 @@ void Coil::try_rewind() {
         auto layers = get_layers_by_section(section.get_name());
         if (sectionOrientation == WindingOrientation::OVERLAPPING) {
             if (section.get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                for (auto layer : layers) {
+                for (const auto& layer : layers) {
                     double layerRestrictiveDimension = layer.get_dimensions()[0];
                     double layerFillingFactor = layer.get_filling_factor().value();
                     layersRestrictiveDimension += layerRestrictiveDimension;
@@ -11215,7 +11234,7 @@ void Coil::try_rewind() {
             if (section.get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
                 double layerRestrictiveDimension = 0;
                 double layerFillingFactor = 0;
-                for (auto layer : layers) {
+                for (const auto& layer : layers) {
                     layerRestrictiveDimension = std::max(layerRestrictiveDimension, layer.get_dimensions()[0]);
                     layerFillingFactor = std::max(layerFillingFactor, layer.get_filling_factor().value());
                 }
@@ -11228,7 +11247,7 @@ void Coil::try_rewind() {
             if (section.get_layers_orientation() == WindingOrientation::OVERLAPPING) {
                 double layerRestrictiveDimension = 0;
                 double layerFillingFactor = 0;
-                for (auto layer : layers) {
+                for (const auto& layer : layers) {
                     layerRestrictiveDimension = std::max(layerRestrictiveDimension, layer.get_dimensions()[1]);
                     layerFillingFactor = std::max(layerFillingFactor, layer.get_filling_factor().value());
                 }
@@ -11238,7 +11257,7 @@ void Coil::try_rewind() {
                 windingWindowRemainingRestrictiveDimension -= layerRestrictiveDimension;
             }
             if (section.get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-                for (auto layer : layers) {
+                for (const auto& layer : layers) {
                     double layerRestrictiveDimension = layer.get_dimensions()[1];
                     double layerFillingFactor = layer.get_filling_factor().value();
                     layersRestrictiveDimension += layerRestrictiveDimension;
@@ -11456,7 +11475,7 @@ std::vector<Section> Coil::get_sections_description_conduction() const {
         throw CoilNotProcessedException("Not wound by sections");
     }
     std::vector<Section> sections = get_sections_description().value();
-    for (auto section : sections) {
+    for (const auto& section : sections) {
         if (section.get_type() == ElectricalType::CONDUCTION) {
             sectionsConduction.push_back(section);
         }
@@ -11471,7 +11490,7 @@ std::vector<Layer> Coil::get_layers_description_conduction() const {
         throw CoilNotProcessedException("Not wound by layers");
     }
     std::vector<Layer> layers = get_layers_description().value();
-    for (auto layer : layers) {
+    for (const auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION) {
             layersConduction.push_back(layer);
         }
@@ -11486,7 +11505,7 @@ std::vector<Section> Coil::get_sections_description_insulation() const {
         throw CoilNotProcessedException("Not wound by sections");
     }
     std::vector<Section> sections = get_sections_description().value();
-    for (auto section : sections) {
+    for (const auto& section : sections) {
         if (section.get_type() == ElectricalType::INSULATION) {
             sectionsInsulation.push_back(section);
         }
@@ -11501,7 +11520,7 @@ std::vector<Layer> Coil::get_layers_description_insulation() const {
         throw CoilNotProcessedException("Not wound by layers");
     }
     std::vector<Layer> layers = get_layers_description().value();
-    for (auto layer : layers) {
+    for (const auto& layer : layers) {
         if (layer.get_type() == ElectricalType::INSULATION) {
             layersInsulation.push_back(layer);
         }
@@ -11566,7 +11585,7 @@ double Coil::get_insulation_section_thickness(Coil coil, std::string sectionName
 
     double thickness = 0;
 
-    for (auto layer : layers) {
+    for (const auto& layer : layers) {
         thickness += coil.get_insulation_layer_thickness(layer);
     }
 
