@@ -240,6 +240,11 @@ std::vector<std::vector<double>> ExtendedCantilever::calculate_inductance_matrix
     }
 
     auto leakageMatrix = LeakageInductance().calculate_leakage_inductance_matrix(magnetic, frequency);
+    if (leakageMatrix.size() != numberWindings) {
+        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS,
+            "Cannot build extended-cantilever model: leakage matrix size does not match number of windings");
+    }
+
     auto magnetizingOutput = MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic);
     double magnetizingInductance = magnetizingOutput.get_magnetizing_inductance().get_nominal().value();
 
