@@ -376,6 +376,10 @@ void Coil::set_interleaving_level(uint8_t interleavingLevel) {
 
 void Coil::reset_margins_per_section() {
     _marginsPerSection.clear();
+    // See _marginsExplicitlyCleared in Coil.h (ABT #724): without this, wind()'s ABT #676
+    // recovery resurrected the persisted section margins and an explicit reset could never
+    // actually clear them.
+    _marginsExplicitlyCleared = true;
 }
 
 void Coil::reset_insulation() {
@@ -2910,7 +2914,16 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     // margins and wound the copper over the tape, which is why the 3D ignored a margin the 2D
     // drew correctly. The wound coil already carries the answer; read it back rather than
     // require it to be handed in again.
-    if (_marginsPerSection.empty() && get_sections_description()) {
+    //
+    // ABT #724 hardening: an EXPLICIT reset_margins_per_section() means "the next wind is
+    // margin-free" (CoilAdviser candidate sweeps rely on it) — the empty vector it leaves
+    // behind must not be taken as "nothing was handed in, recover the old ones", or margins
+    // could never actually be cleared. And when margin tape is disallowed outright, there is
+    // nothing legitimate to recover. (The remaining #724 defect — positional index-matching
+    // of recovered margins against a re-layout with a different pattern/repetitions — is
+    // solved structurally by the #720 re-key.)
+    if (_marginsPerSection.empty() && !_marginsExplicitlyCleared &&
+        settings.get_coil_allow_margin_tape() && get_sections_description()) {
         auto sectionsWithMargins = get_sections_description().value();
         std::vector<std::vector<double>> recoveredMargins;
         recoveredMargins.reserve(sectionsWithMargins.size());
@@ -4133,6 +4146,14 @@ bool Coil::are_sections_and_layers_fitting() {
             if (processedDescription.get_winding_windows().empty()) {
                 return windTurns;
             }
+            // NOTE (ABT #730, attempted 2026-08-14 and REVERTED): resolving each turn's own
+            // winding window through its section and testing against that window's real
+            // envelope broke 12 multi-column tests, because this check runs BEFORE
+            // apply_group_window_sides mirrors lateral groups to negative x — lateral turns
+            // still sit in the +x window-local frame here, where window 0's envelope is
+            // (for the symmetric windows every current core has) exactly the right box.
+            // A real per-window check needs frame awareness; it belongs in the ABT #720
+            // winder refactor where per-group frames are explicit.
             const auto& ww = processedDescription.get_winding_windows()[0];
             if (ww.get_coordinates() && ww.get_width() && ww.get_height()) {
                 const double x0 = (*ww.get_coordinates())[0] - *ww.get_width() / 2;
@@ -11368,6 +11389,8 @@ void Coil::try_rewind() {
 }
 
 void Coil::preload_margins(std::vector<std::vector<double>> marginPairs) {
+    // Explicit margins re-arm the ABT #676 recovery for later winds (ABT #724).
+    _marginsExplicitlyCleared = false;
     for (auto margins : marginPairs) {
         _marginsPerSection.push_back(margins);
         // Add an extra one for the insulation layer
@@ -11379,6 +11402,8 @@ void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<doubl
     if (!get_sections_description()) {
         throw CoilNotProcessedException("In Add Margin to Section: Section description empty, wind coil first");
     }
+    // Explicit margins re-arm the ABT #676 recovery for later winds (ABT #724).
+    _marginsExplicitlyCleared = false;
     if (margins.size() != 2) {
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Margin vector must have two elements");
     }
