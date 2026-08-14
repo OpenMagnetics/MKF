@@ -211,12 +211,15 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         // wire/model combination that does not emit a second sample), every point stays
         // "primary" and primaryLength stays the full wireLength: byte-identical to the
         // pre-fix behavior.
-        bool turnHasSecondCrossing = turn.get_additional_coordinates().has_value() &&
-            !turn.get_additional_coordinates().value().empty() &&
-            turn.get_additional_coordinates().value()[0].size() >= 2;
+        // Bind once: the MAS getter returns the nested vectors BY VALUE (repo memory:
+        // never chain .value() calls off it), and it used to be called four times here.
+        const auto additionalCoordinatesOpt = turn.get_additional_coordinates();
+        bool turnHasSecondCrossing = additionalCoordinatesOpt.has_value() &&
+            !additionalCoordinatesOpt->empty() &&
+            (*additionalCoordinatesOpt)[0].size() >= 2;
         std::vector<double> secondaryCoordinates;
         if (turnHasSecondCrossing) {
-            secondaryCoordinates = turn.get_additional_coordinates().value()[0];
+            secondaryCoordinates = (*additionalCoordinatesOpt)[0];
         }
 
         std::vector<ComplexField> primaryFields;
@@ -233,9 +236,18 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
                 if (fieldPoint.get_turn_index().value() != int(turnIndex)) {
                     continue;
                 }
+                // Nearest-crossing classification. The CenterModel emits the secondary
+                // sample exactly AT the secondary coordinate, but the WangModel (ABT
+                // #227.2 parity) emits a whole surface cluster OFFSET around each
+                // crossing, so an exact-match test would file its secondary points under
+                // the primary crossing. Comparing the distance to each crossing centre
+                // classifies both models' points correctly and is byte-identical for the
+                // exact-match case (distance 0 beats anything).
                 bool isSecondaryPoint = turnHasSecondCrossing && fieldPoint.get_point().size() >= 2 &&
                     std::hypot(fieldPoint.get_point()[0] - secondaryCoordinates[0],
-                               fieldPoint.get_point()[1] - secondaryCoordinates[1]) < 1e-9;
+                               fieldPoint.get_point()[1] - secondaryCoordinates[1]) <
+                    std::hypot(fieldPoint.get_point()[0] - turn.get_coordinates()[0],
+                               fieldPoint.get_point()[1] - turn.get_coordinates()[1]);
                 if (isSecondaryPoint) {
                     secondaryData.push_back(fieldPoint);
                     hasSecondaryCrossing = true;
@@ -250,10 +262,15 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             primaryComplexField.set_frequency(fieldPerHarmonic.get_frequency());
             primaryFields.push_back(primaryComplexField);
 
-            ComplexField secondaryComplexField;
-            secondaryComplexField.set_data(secondaryData);
-            secondaryComplexField.set_frequency(fieldPerHarmonic.get_frequency());
-            secondaryFields.push_back(secondaryComplexField);
+            // Only assembled when this turn can actually have secondary points — the
+            // common single-crossing case used to build an empty ComplexField per
+            // harmonic for nothing.
+            if (turnHasSecondCrossing) {
+                ComplexField secondaryComplexField;
+                secondaryComplexField.set_data(secondaryData);
+                secondaryComplexField.set_frequency(fieldPerHarmonic.get_frequency());
+                secondaryFields.push_back(secondaryComplexField);
+            }
         }
 
         double primaryLength = hasSecondaryCrossing ? wireLength / 2 : wireLength;
