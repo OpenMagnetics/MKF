@@ -92,6 +92,26 @@ OpenMagnetics::Magnetic make_reference_magnetic() {
     return m;
 }
 
+// The same magnetic with its coil explicitly UNWOUND, for the tests that pin the
+// loud-failure contract: a filter needing turns/layers must THROW, never score
+// silently (the 2026-05-20 "eliminate silent fallbacks" pass).
+//
+// Those tests used to lean on make_reference_magnetic() failing to wind — wind()
+// above could not lay this design out when they were written, so the filters threw
+// by accident. The winder lays it out now, so the throw stopped happening: six
+// characterisation tests went red AND the contract they guard stopped being
+// exercised at all. Unwinding on purpose restores it and makes the tests
+// independent of whether any given design happens to fit.
+//
+// NOT for the tests whose contract is "wound but not delimited/compacted"
+// (AREA_WITH_PARALLELS) or "wound, but the inputs lack a spec"
+// (CORE_MINIMUM_IMPEDANCE) — those need the WOUND reference and still pass.
+OpenMagnetics::Magnetic make_unwound_reference_magnetic() {
+    auto m = make_reference_magnetic();
+    m.get_mutable_coil().unwind();
+    return m;
+}
+
 OpenMagnetics::Inputs make_reference_inputs() {
     OpenMagneticsTesting::QuickInputsConfig cfg;
     cfg.frequency = 100000;
@@ -405,7 +425,7 @@ TEST_CASE("MagneticFilter VOLUME snapshot",
     // bounding volume. Our reference magnetic doesn't have a fully processed
     // turns_description so it throws — Phase 1 should keep this loud.
     settings.reset();
-    auto magnetic = make_reference_magnetic();
+    auto magnetic = make_unwound_reference_magnetic();
     auto inputs = make_reference_inputs();
     auto filter = MagneticFilter::factory(MagneticFilters::VOLUME, inputs);
     REQUIRE_THROWS_AS(filter->evaluate_magnetic(&magnetic, &inputs),
@@ -415,7 +435,7 @@ TEST_CASE("MagneticFilter VOLUME snapshot",
 TEST_CASE("MagneticFilter AREA snapshot",
           "[magnetic-filter][characterisation][heavy][area]") {
     settings.reset();
-    auto magnetic = make_reference_magnetic();
+    auto magnetic = make_unwound_reference_magnetic();
     auto inputs = make_reference_inputs();
     auto filter = MagneticFilter::factory(MagneticFilters::AREA, inputs);
     REQUIRE_THROWS_AS(filter->evaluate_magnetic(&magnetic, &inputs),
@@ -425,7 +445,7 @@ TEST_CASE("MagneticFilter AREA snapshot",
 TEST_CASE("MagneticFilter HEIGHT snapshot",
           "[magnetic-filter][characterisation][heavy][height]") {
     settings.reset();
-    auto magnetic = make_reference_magnetic();
+    auto magnetic = make_unwound_reference_magnetic();
     auto inputs = make_reference_inputs();
     auto filter = MagneticFilter::factory(MagneticFilters::HEIGHT, inputs);
     REQUIRE_THROWS_AS(filter->evaluate_magnetic(&magnetic, &inputs),
@@ -441,7 +461,7 @@ TEST_CASE("MagneticFilter LOSSES_TIMES_VOLUME snapshot",
           "[magnetic-filter][characterisation][heavy][losses-times-volume]") {
     // Same precondition as VOLUME — wound + delimited coil required.
     settings.reset();
-    auto magnetic = make_reference_magnetic();
+    auto magnetic = make_unwound_reference_magnetic();
     auto inputs = make_reference_inputs();
     auto filter = MagneticFilter::factory(MagneticFilters::LOSSES_TIMES_VOLUME, inputs);
     REQUIRE_THROWS_AS(filter->evaluate_magnetic(&magnetic, &inputs),
@@ -451,7 +471,7 @@ TEST_CASE("MagneticFilter LOSSES_TIMES_VOLUME snapshot",
 TEST_CASE("MagneticFilter VOLUME_TIMES_TEMPERATURE_RISE snapshot",
           "[magnetic-filter][characterisation][heavy][volume-times-temperature-rise]") {
     settings.reset();
-    auto magnetic = make_reference_magnetic();
+    auto magnetic = make_unwound_reference_magnetic();
     auto inputs = make_reference_inputs();
     auto filter = MagneticFilter::factory(MagneticFilters::VOLUME_TIMES_TEMPERATURE_RISE, inputs);
     REQUIRE_THROWS_AS(filter->evaluate_magnetic(&magnetic, &inputs),
@@ -461,7 +481,7 @@ TEST_CASE("MagneticFilter VOLUME_TIMES_TEMPERATURE_RISE snapshot",
 TEST_CASE("MagneticFilter LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE snapshot",
           "[magnetic-filter][characterisation][heavy][losses-times-volume-times-temperature-rise]") {
     settings.reset();
-    auto magnetic = make_reference_magnetic();
+    auto magnetic = make_unwound_reference_magnetic();
     auto inputs = make_reference_inputs();
     auto filter = MagneticFilter::factory(
         MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, inputs);
@@ -486,7 +506,7 @@ TEST_CASE("MagneticFilter LEAKAGE_INDUCTANCE throws on missing turns description
     // model throws CoilNotProcessedException — that exception must now
     // propagate instead of being swallowed and rewritten as DBL_MAX.
     settings.reset();
-    auto magnetic = make_reference_magnetic();
+    auto magnetic = make_unwound_reference_magnetic();
     auto inputs = make_reference_inputs();
     auto filter = MagneticFilter::factory(MagneticFilters::LEAKAGE_INDUCTANCE, inputs);
     REQUIRE_THROWS_AS(filter->evaluate_magnetic(&magnetic, &inputs),
