@@ -225,6 +225,26 @@ class Coil : public MAS::Coil {
         // function of settled state. align_blocked_layer_turns spreads against the element-wise
         // max of both maps.
         std::map<std::string, std::pair<double, double>> _uLandingDepthPerLayer;
+        // ABT #685: the EDGE a U layer's wire arrives at, recorded separately from the depth above.
+        // The depth alone cannot carry it: a landing level with a turn that already sits at the
+        // window edge needs a depth of exactly ZERO, and "no depth on either side" is
+        // indistinguishable from "not a landing at all" — which dropped that layer back to the
+        // fence-post spread, opened bundle gaps the arriving wire then had to dive through, and
+        // put a parallel's descent 0.81 mm from its sibling's link.
+        std::map<std::string, bool> _uLandingAtHighSidePerLayer;
+        // ABT #685 (Alf, 2026-08-15): conductors whose LAST turn is a STEEP EXIT LANDING — "when a
+        // turn is the last one of the section and must go out [at the far side], they must reach
+        // the other side in one full pitch". The last turn's station is placed at the FAR edge of
+        // its layer's band, so the 3D revolution spirals the whole height in one turn and the exit
+        // leaves right there — no full-height vertical, no level ring blocking every azimuth.
+        // Set by align_blocked_layer_turns, read by the terminal-lead emission (the exit edge is
+        // then simply the station's own, nearest edge). Cleared with the other blocking state.
+        std::set<std::pair<std::string, int64_t>> _steepExitLandingByConductor;
+        // ABT #685: the same landing depth BEFORE the pigeonhole cap. The capped value cannot size
+        // the layer's capacity — the cap is computed from the turn count that the capacity decides,
+        // so charging it is circular and converges on the over-filled layer it was meant to
+        // prevent. The ideal is what the geometry actually requires.
+        std::map<std::string, std::pair<double, double>> _uLandingIdealDepthPerLayer;
         // ABT #616 (Alf, 2026-08-09): the edge (top/bottom) each winding's ENTRANCE terminal
         // row was allocated on in the previous blocking iteration. The winding's first
         // section/layer starts winding FROM that edge, so the entrance connects to the turn

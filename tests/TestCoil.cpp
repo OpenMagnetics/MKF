@@ -11224,8 +11224,13 @@ static int coincident_connection_runs(OpenMagnetics::Coil& coil) {
         for (size_t j = i + 1; j < runs.size(); ++j) {
             const auto* a = runs[i];
             const auto* b = runs[j];
-            if (a->winding == b->winding && a->parallel == b->parallel) {
-                continue;  // segments of the SAME conductor may touch (stub-to-run corners)
+            if (a->winding == b->winding) {
+                // ABT #685 (Alf, superseding the per-conductor rows this helper was written
+                // against): a winding's parallels SHARE one terminal row and separate in ANGLE
+                // (MVB++'s fan), so coincident 2D rectangles within one winding are the model —
+                // the same doctrine the #615 continuation-band exemption above already applies.
+                // Distinct WINDINGS still demand distinct rows: nothing separates them in 3D.
+                continue;
             }
             double overlapX = (a->dimensions[0] + b->dimensions[0]) / 2 - std::abs(a->coordinates[0] - b->coordinates[0]);
             double overlapY = (a->dimensions[1] + b->dimensions[1]) / 2 - std::abs(a->coordinates[1] - b->coordinates[1]);
@@ -12094,10 +12099,22 @@ static OpenMagnetics::Coil contiguous_rectangular_wire_coil(int64_t turns, int64
 }
 
 static std::map<std::string, int> markers_per_layer(OpenMagnetics::Coil& coil) {
+    // ABT #685: a winding's parallels share one terminal row, so their squeeze markers are
+    // COINCIDENT rectangles — one physical row. Count distinct rectangles, mirroring
+    // apply_connection_reserved_space's charge (the slope these tests measure is fill per
+    // PHYSICAL crossing, and a duplicate marker is not a crossing).
     std::map<std::string, int> markers;
+    std::set<std::tuple<std::string, double, double, double, double>> seen;
     for (const auto& space : coil.get_connection_reserved_spaces()) {
         if (!space.layer.empty()) {
-            markers[space.layer]++;
+            auto key = std::make_tuple(space.layer,
+                                       roundFloat(space.coordinates[0], 9),
+                                       roundFloat(space.coordinates[1], 9),
+                                       roundFloat(space.dimensions[0], 9),
+                                       roundFloat(space.dimensions[1], 9));
+            if (seen.insert(key).second) {
+                markers[space.layer]++;
+            }
         }
     }
     return markers;
@@ -13975,6 +13992,155 @@ TEST_CASE("Test_Abt674_Crossing_Station_Adds_No_Length", "[constructive-model][c
     settings.reset();
 }
 
+TEST_CASE("Test_Abt685_Parallels_Share_One_Terminal_Row", "[constructive-model][coil][real-geometry][abt685]") {
+    // ABT #685 (Alf, on an 8t x 2p E16): "parallels are still using one OD of height block in the
+    // terminal connection per parallel, when it should be one, and spread in angle" — and, after
+    // the first attempt was reverted, "I insist ... they can start in the angle their terminal is".
+    // A winding's parallels leave TOGETHER: ONE row of wire height for the whole bundle, the leads
+    // separated azimuthally by MVB++'s fan, and the parallel whose first turn sits higher climbing
+    // a vertical stub at its own angle. Stacking a row per parallel spent a whole wire of window
+    // height on every extra conductor.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    auto mas = OpenMagneticsTesting::mas_loader((dataDir / "abt646_e16_litz_2layer_leadcollision.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto sourceCoil = magnetic.get_mutable_coil();
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(sourceCoil.resolve_bobbin());
+    auto windings = sourceCoil.get_functional_description();
+    windings[0].set_number_turns(8);
+    windings[0].set_number_parallels(2);
+    coil.set_functional_description(windings);
+    REQUIRE(coil.wind());
+
+    // The RUNS (radial: wider than tall) are the rows; the tall, narrow markers are the vertical
+    // stubs that carry a parallel from the shared row up to its own first turn — one per parallel
+    // except the one whose turn sits at the row, exactly as the design intends.
+    std::map<double, std::set<int64_t>> parallelsPerRow;
+    size_t verticalStubs = 0;
+    for (const auto& reservedSpace : coil.get_connection_reserved_spaces()) {
+        if (!reservedSpace.isTerminal || !reservedSpace.layer.empty()) {
+            continue;
+        }
+        if (reservedSpace.dimensions[0] <= reservedSpace.dimensions[1]) {
+            ++verticalStubs;
+            continue;
+        }
+        parallelsPerRow[roundFloat(reservedSpace.coordinates[1], 6)].insert(reservedSpace.parallel);
+    }
+    REQUIRE(!parallelsPerRow.empty());
+    // The ENTRANCE edge is the one the winding starts from, and it is the expensive one: those
+    // leads run inward THROUGH the outer layers, so every extra row costs a turn slot in each of
+    // them. (The exits leave from the outermost layer and cross nothing, so their runs are free
+    // and stay at their own turns' heights.) On the entrance edge the bundle shares ONE row.
+    const auto turns = coil.get_turns_description().value();
+    REQUIRE(!turns.empty());
+    const bool entranceAtTop = turns.front().get_coordinates()[1] > 0;
+    size_t entranceRows = 0;
+    for (const auto& [rowY, parallelsOnRow] : parallelsPerRow) {
+        if ((rowY > 0) != entranceAtTop) {
+            continue;
+        }
+        ++entranceRows;
+        INFO("entrance row at y = " << rowY * 1000 << " mm holds " << parallelsOnRow.size()
+                                    << " of the winding's 2 parallels");
+        CHECK(parallelsOnRow.size() == 2);
+    }
+    CHECK(entranceRows == 1);
+    INFO(verticalStubs << " vertical stubs carry parallels from their shared row to their turns");
+    CHECK(verticalStubs > 0);
+    settings.reset();
+}
+
+TEST_CASE("Test_Abt685_U_Parallels_Keep_Their_Lane", "[constructive-model][coil][real-geometry][abt685]") {
+    // The same 8t x 2p design in U order: the parallels must keep their spatial order in every
+    // layer (wires wound side by side turn around together, they do not swap places), and each
+    // must land LEVEL with its OWN last turn. Landing level used to be single-conductor-only
+    // exactly because the bundle flipped over at the turnaround and the links crossed.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    auto mas = OpenMagneticsTesting::mas_loader((dataDir / "abt646_e16_litz_2layer_leadcollision.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto sourceCoil = magnetic.get_mutable_coil();
+    auto bobbin = sourceCoil.resolve_bobbin();
+    auto processedDescription = bobbin.get_processed_description().value();
+    auto windingWindows = processedDescription.get_winding_windows();
+    windingWindows[0].set_winding_order(MAS::WindingOrder::U);
+    processedDescription.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processedDescription);
+
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(bobbin);
+    auto windings = sourceCoil.get_functional_description();
+    windings[0].set_number_turns(8);
+    windings[0].set_number_parallels(2);
+    coil.set_functional_description(windings);
+    REQUIRE(coil.wind());
+
+    const auto turns = coil.get_turns_description().value();
+    std::map<std::string, std::vector<size_t>> turnsPerLayer;
+    std::vector<std::string> layerOrder;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        const auto layerName = turns[turnIndex].get_layer().value();
+        if (!turnsPerLayer.count(layerName)) {
+            layerOrder.push_back(layerName);
+        }
+        turnsPerLayer[layerName].push_back(turnIndex);
+    }
+    REQUIRE(layerOrder.size() >= 2);
+
+    // Lane check: in every layer, the topmost turn belongs to the same parallel.
+    std::optional<int64_t> topParallel;
+    for (const auto& layerName : layerOrder) {
+        auto indices = turnsPerLayer[layerName];
+        std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+            return turns[a].get_coordinates()[1] > turns[b].get_coordinates()[1];
+        });
+        if (indices.size() < 2) {
+            continue;
+        }
+        if (!topParallel) {
+            topParallel = turns[indices.front()].get_parallel();
+            continue;
+        }
+        INFO("layer " << layerName << " is topped by parallel "
+                      << turns[indices.front()].get_parallel());
+        CHECK(turns[indices.front()].get_parallel() == topParallel.value());
+    }
+
+    // Landing lane and pitch, per parallel: each parallel lands EXACTLY its layer's own pitch below
+    // its OWN last turn — K wire ODs for K parallels, because that is what every revolution of a
+    // K-filar layer advances. Landing any less puts the landing ramp out of phase with the layer it
+    // joins and the sibling, ramping the full pitch, crosses it. What this pins is that the wire
+    // lands in its own lane at the layer's own gradient, not on the station its sibling departs
+    // from (the flipped bundle) nor half way down it (the one-OD landing).
+    const double wireHeight = coil.get_wires()[0].get_maximum_outer_height();
+    for (int64_t parallelIndex = 0; parallelIndex < 2; ++parallelIndex) {
+        std::optional<double> lastInFirstLayer;
+        std::optional<double> firstInSecondLayer;
+        for (const auto& turn : turns) {
+            if (turn.get_parallel() != parallelIndex) {
+                continue;
+            }
+            if (turn.get_layer().value() == layerOrder[0]) {
+                lastInFirstLayer = turn.get_coordinates()[1];
+            }
+            else if (turn.get_layer().value() == layerOrder[1] && !firstInSecondLayer) {
+                firstInSecondLayer = turn.get_coordinates()[1];
+            }
+        }
+        REQUIRE(lastInFirstLayer);
+        REQUIRE(firstInSecondLayer);
+        INFO("parallel " << parallelIndex << " leaves layer 0 at " << lastInFirstLayer.value() * 1000
+                         << " mm and lands at " << firstInSecondLayer.value() * 1000 << " mm");
+        CHECK(std::abs(firstInSecondLayer.value() - lastInFirstLayer.value()) ==
+              Catch::Approx(2 * wireHeight).margin(1e-6));
+    }
+    settings.reset();
+}
+
 // ABT #728: the crossing station must be identified by its EXPLICIT wind-order marker — the
 // turn named "turn 0" of each (winding, parallel) — not by first-seen vector order, which
 // zeroes a mid-winding wrap the moment any post-wind pass reorders the description.
@@ -14464,6 +14630,14 @@ TEST_CASE("Test_Abt577_Terminal_Routes_Clear_Winding_Copper", "[constructive-mod
             double endBX = space.coordinates[0] + axisX * halfRun;
             double endBY = space.coordinates[1] + axisY * halfRun;
             for (auto& turn : turns) {
+                // ABT #685 (Alf): a winding's parallels share ONE terminal row, their leads
+                // separated in ANGLE — so a lead's 2D rectangle passing its OWN winding's sibling
+                // turns is the design (the vertical stub climbs at its own azimuth, and helical
+                // turns clear it there). The #577 contract this sweep enforces is about crossing
+                // OTHER windings' copper, which no azimuth can fix in-plane.
+                if (turn.get_winding() == space.winding) {
+                    continue;
+                }
                 double turnX = turn.get_coordinates()[0];
                 double turnY = turn.get_coordinates()[1];
                 auto turnWindingIndex = coil.get_winding_index_by_name(turn.get_winding());

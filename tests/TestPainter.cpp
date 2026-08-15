@@ -4723,3 +4723,46 @@ namespace {
     }
 
 }  // namespace
+namespace {
+    TEST_CASE("Test_Abt685_Shared_Terminal_Row_Svg", "[support][painter][abt685]") {
+        // ABT #685: the 8t x 2p E16 with the winding's parallels sharing ONE terminal row. The
+        // connection overlay is what to look at — one row for the bundle, plus the vertical stub
+        // that lifts the second parallel to its own first turn.
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+        auto mas = OpenMagneticsTesting::mas_loader(
+            (dataDir / "abt646_e16_litz_2layer_leadcollision.json").string());
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        auto sourceCoil = magnetic.get_mutable_coil();
+        OpenMagnetics::Coil coil;
+        coil.set_bobbin(sourceCoil.resolve_bobbin());
+        auto windings = sourceCoil.get_functional_description();
+        windings[0].set_number_turns(8);
+        windings[0].set_number_parallels(2);
+        coil.set_functional_description(windings);
+        REQUIRE(coil.wind());
+        magnetic.set_coil(coil);
+        if (std::getenv("MKF_BLOCKING_DIAG"))
+        for (const auto& space : coil.get_connection_reserved_spaces()) {
+            std::cerr << "[space] " << (space.isTerminal ? "TERM " : "trans")
+                      << " w=" << space.winding << " p=" << space.parallel
+                      << " layer='" << space.layer << "'"
+                      << " at (" << space.coordinates[0] * 1e3 << "," << space.coordinates[1] * 1e3
+                      << ") dims=(" << space.dimensions[0] * 1e3 << "x" << space.dimensions[1] * 1e3
+                      << ") rot=" << space.rotation << "\n";
+        }
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Abt685_Shared_Terminal_Row.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.paint_coil_connections(magnetic);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        settings.reset();
+    }
+}
