@@ -14387,6 +14387,147 @@ TEST_CASE("Test_Abt721_Equalize_Margins_Rectangular_Proportional_Split", "[const
     settings.reset();
 }
 
+// ABT #613: on a LOW-PROFILE window (EL 25/4.3: 2.80 mm, ~6.5 slots of Round 0.4) the U order
+// used to COLLAPSE the section after the first intervening crossing — Primary section 1 kept
+// ~2 of 6.5 slots (height 0.86-1.09 mm) and sprawled into 8-13 single/two-turn layers
+// (overlapping factor up to 2.06) while the Z twin wound clean. Fixed by the ABT #616 fixpoint
+// honesty work and finished by ABT #780's shared terminal rows (one row per winding side
+// instead of one per parallel, so the lead cascade stops eating the shallow window). This pins
+// the ticket's own acceptance shape: every conduction section keeps a healthy share of the
+// window and no section sprawls into degenerate layers.
+TEST_CASE("Test_Abt613_U_LowProfile_Sections_Do_Not_Collapse", "[constructive-model][coil][real-geometry][abt613]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    // The fixture carries only 'magnetic' (no inputs), so build the magnetic directly.
+    std::ifstream fixtureFile((dataDir / "abt613_psps_el2543_U.json").string());
+    json fixtureJson = json::parse(fixtureFile);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(fixtureJson["magnetic"]));
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+
+    auto bobbin = coil.resolve_bobbin();
+    const double windowHeight =
+        bobbin.get_processed_description().value().get_winding_windows()[0].get_height().value();
+    const auto sections = coil.get_sections_description_conduction();
+    REQUIRE(sections.size() == 4);   // PSPS: pattern {0,1} x 2
+
+    const auto layers = coil.get_layers_description().value();
+    const auto turns = coil.get_turns_description().value();
+    for (const auto& section : sections) {
+        size_t conductionLayers = 0;
+        size_t minimumTurnsOnALayer = std::numeric_limits<size_t>::max();
+        for (const auto& layer : layers) {
+            if (layer.get_type() != ElectricalType::CONDUCTION || !layer.get_section() ||
+                layer.get_section().value() != section.get_name()) {
+                continue;
+            }
+            ++conductionLayers;
+            size_t turnsOnLayer = 0;
+            for (const auto& turn : turns) {
+                if (turn.get_layer() && turn.get_layer().value() == layer.get_name()) {
+                    ++turnsOnLayer;
+                }
+            }
+            minimumTurnsOnALayer = std::min(minimumTurnsOnALayer, turnsOnLayer);
+        }
+        INFO(section.get_name() << " height " << section.get_dimensions()[1] * 1e3 << " mm of "
+             << windowHeight * 1e3 << " mm window, " << conductionLayers
+             << " conduction layers, thinnest layer " << minimumTurnsOnALayer << " turns");
+        // The ticket's collapse: ~2 of 6.5 slots (< 40% of the window). Healthy sections keep
+        // a real share — the pre-fix failure sat at 31-39%, the fixed layouts at 54%+.
+        CHECK(section.get_dimensions()[1] > windowHeight * 0.5);
+        // ...and do not sprawl: the failing state was 8-13 layers with SINGLE-turn layers
+        // (a 2-turn remainder layer on a 12-turn section is a legitimate tail).
+        REQUIRE(conductionLayers > 0);
+        CHECK(conductionLayers <= 4);
+        CHECK(minimumTurnsOnALayer >= 2);
+    }
+    settings.reset();
+}
+
+// ABT #611: OpenMagnetics::Winding shadows MAS::CoilFunctionalDescription::wire (the derived
+// member holds the richer OpenMagnetics::Wire) and OpenMagnetics::Coil shadows MAS::Coil::bobbin
+// the same way. Serializing through the BASE — the natural way to emit schema-clean MAS json —
+// used to see only the defaults: wire 'Dummy' (a file that re-winds with a 12.5 um dummy wire)
+// and an empty bobbin. The setters now keep the base members in sync.
+TEST_CASE("Test_Abt611_Base_Serialization_Sees_Resolved_Wire_And_Bobbin", "[constructive-model][coil][abt611]") {
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({10}, {1}, "PQ 28/20", 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    REQUIRE(coil.get_turns_description());
+
+    const auto windings = coil.get_functional_description();
+    REQUIRE(!windings.empty());
+    json windingJson;
+    MAS::to_json(windingJson, static_cast<const MAS::CoilFunctionalDescription&>(windings[0]));
+    INFO("base-serialized wire: " << windingJson.at("wire").dump().substr(0, 120));
+    if (windingJson.at("wire").is_string()) {
+        CHECK(windingJson.at("wire").get<std::string>() != "Dummy");
+    }
+    else {
+        // The resolved Wire object made it through the base.
+        CHECK(windingJson.at("wire").is_object());
+        CHECK(windingJson.at("wire").contains("type"));
+    }
+
+    json coilJson;
+    MAS::to_json(coilJson, static_cast<const MAS::Coil&>(coil));
+    INFO("base-serialized bobbin: " << coilJson.at("bobbin").dump().substr(0, 120));
+    if (coilJson.at("bobbin").is_string()) {
+        CHECK(coilJson.at("bobbin").get<std::string>() != "Dummy");
+    }
+    else {
+        CHECK(coilJson.at("bobbin").is_object());
+        CHECK(coilJson.at("bobbin").contains("processedDescription"));
+    }
+    settings.reset();
+}
+
+// ABT #724 (owner ruling, Alf 2026-08-15): margins recovered from a previous wind FOLLOW THE
+// WINDING. A consumer that arrives with only the wound description (the MVB++/PyOM round-trip)
+// and re-winds with a DIFFERENT layout — here repetitions 1 -> 2 — must see every conduction
+// section carry ITS OWN winding's margin, not whatever sat at that ordinal in the old layout
+// (positionally, the new layout's second half got {0,0} and P1/S1 wound into the creepage band).
+TEST_CASE("Test_Abt724_Recovered_Margins_Follow_The_Winding", "[constructive-model][coil][margin][abt724]") {
+    settings.reset();
+    settings.set_coil_equalize_margins(false);
+    settings.set_coil_allow_margin_tape(true);
+    std::vector<int64_t> numberTurns = {34, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    const std::vector<double> primaryMargin{0.0004, 0.0003};
+    const std::vector<double> secondaryMargin{0.0002, 0.0001};
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    REQUIRE(coil.get_sections_description_conduction().size() == 2);
+    coil.add_margin_to_section_by_index(0, primaryMargin);
+    coil.add_margin_to_section_by_index(1, secondaryMargin);
+
+    // The round-trip: a fresh Coil handed only the wound description.
+    OpenMagnetics::Coil recoveredCoil;
+    recoveredCoil.set_bobbin(coil.resolve_bobbin());
+    recoveredCoil.set_functional_description(coil.get_functional_description());
+    recoveredCoil.set_sections_description(coil.get_sections_description());
+    REQUIRE(recoveredCoil.wind({0.5, 0.5}, {0, 1}, 2));
+
+    const auto conductionSections = recoveredCoil.get_sections_description_conduction();
+    REQUIRE(conductionSections.size() == 4);   // interleaved: P0 S0 P1 S1
+    const std::string primaryName = coil.get_functional_description()[0].get_name();
+    for (const auto& section : conductionSections) {
+        auto margin = OpenMagnetics::Coil::resolve_margin(section);
+        const auto& expected = section.get_partial_windings()[0].get_winding() == primaryName
+                                   ? primaryMargin
+                                   : secondaryMargin;
+        INFO(section.get_name() << " margin {" << margin[0] << "," << margin[1] << "}");
+        CHECK_THAT(margin[0], Catch::Matchers::WithinRel(expected[0], 1e-9));
+        CHECK_THAT(margin[1], Catch::Matchers::WithinRel(expected[1], 1e-9));
+    }
+    settings.reset();
+}
+
 // ABT #721: a rectangular window does NOT wrap — the last and first sections meet the
 // bobbin walls, not each other. Handing a margin only to the LAST of three sections must
 // redistribute it with its real neighbour (the middle section) and leave the FIRST

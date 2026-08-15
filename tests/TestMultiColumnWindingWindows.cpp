@@ -407,6 +407,66 @@ TEST_CASE("MultiColumnWinding_CustomSectionRect_RepacksAndSurvivesRewind", "[con
     check_custom_layout();
 }
 
+// ABT #730: a turn is judged against ITS OWN winding window's envelope. Every core in the
+// corpus has windows with identical extents, which is what hid the old window-0-only test —
+// so this fixture makes one: the RIGHT lateral window is shifted UP by a quarter height. A
+// secondary wound into it (top-aligned) legitimately fills the shifted box, with its top
+// copper ABOVE window 0's top edge; the window-0-only check refused exactly this fitting
+// design (windTurns=false, silently dropping real-winding blocking for it — the ABT #650
+// degradation class).
+TEST_CASE("MultiColumnWinding_AsymmetricWindow_FitsAgainstItsOwnEnvelope", "[constructive-model][coil][multi-column][abt730]") {
+    auto& settings = Settings::GetInstance();
+    settings.set_core_per_column_winding_windows(true);
+    auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
+    auto quickBobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+    auto columns = core.get_processed_description()->get_columns();
+    auto quickWindows = quickBobbin.get_processed_description()->get_winding_windows();
+    REQUIRE(quickWindows.size() == 3);
+
+    // Window 1 sits at +x (no mirror in play); shift it up by a quarter of its height.
+    auto shiftedWindow = quickWindows[1];
+    const double shift = shiftedWindow.get_height().value() * 0.25;
+    auto shiftedCoordinates = shiftedWindow.get_coordinates().value();
+    shiftedCoordinates[1] += shift;
+    shiftedWindow.set_coordinates(shiftedCoordinates);
+    auto processedDescription = quickBobbin.get_processed_description().value();
+    processedDescription.set_winding_windows({quickWindows[0], shiftedWindow, quickWindows[2]});
+    quickBobbin.set_processed_description(processedDescription);
+
+    json bobbinJson;
+    to_json(bobbinJson, quickBobbin);
+    json coilJson;
+    coilJson["bobbin"] = bobbinJson;
+    coilJson["functionalDescription"] = json::array();
+    coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
+                                                     {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+    coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                     {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+    OpenMagnetics::Coil coil(coilJson, false);
+    coil.get_mutable_functional_description()[1].set_winding_window(1);
+    coil.set_core_columns(columns);
+    coil.set_turns_alignment(CoilAlignment::INNER_OR_TOP);
+    REQUIRE(coil.wind());
+    CHECK(coil.are_sections_and_layers_fitting());
+
+    // The fixture must actually bite: the secondary's top copper sits above window 0's top,
+    // so the old window-0-only envelope would have refused this wind.
+    const double window0Top = quickWindows[0].get_coordinates().value()[1] + quickWindows[0].get_height().value() / 2;
+    const auto turns = coil.get_turns_description().value();
+    auto wires = coil.get_wires();
+    double secondaryTopCopper = std::numeric_limits<double>::lowest();
+    for (const auto& turn : turns) {
+        if (turn.get_winding() != "Secondary") {
+            continue;
+        }
+        const double halfHeight = wires[1].get_maximum_outer_height() / 2;
+        secondaryTopCopper = std::max(secondaryTopCopper, turn.get_coordinates()[1] + halfHeight);
+    }
+    INFO("secondary top copper " << secondaryTopCopper * 1e3 << " mm vs window-0 top " << window0Top * 1e3 << " mm");
+    CHECK(secondaryTopCopper > window0Top + 1e-6);
+    settings.reset();
+}
+
 // Per-column bobbin ARRAY (MAS coil.bobbin array form): a catalog-style centre
 // bobbin plus an ad-hoc lateral bobbin — two BOM items. The boundary must
 // merge them into one effective multi-window bobbin for winding while
