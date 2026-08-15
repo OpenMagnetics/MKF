@@ -948,11 +948,45 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             bottomMarginPerWindow[windowIndex] = std::max(bottomMarginPerWindow[windowIndex], virtualBottomMargin);
         }
     }
+    // ABT #726 (remainder): every window's edge rows measure from that window's OWN turn-axis
+    // extent — the single windowTopY/windowBottomY pair belongs to window 0 and mis-based every
+    // other window's margins. Frame-aware like are_sections_and_layers_fitting (ABT #730): when
+    // the turn axis is the real x (contiguous transpose) a lateral window's center mirrors to +x
+    // until apply_group_window_sides has run. (Materialized by value: the processed description
+    // getter returns a temporary — the ABT #650 dangling class.)
+    std::map<size_t, std::pair<double, double>> windowEdgeExtremes;  // window -> {top, bottom} on the turn axis
+    {
+        const auto windowsForEdges = bobbin.get_processed_description().value().get_winding_windows();
+        for (size_t windowForEdgesIndex = 0; windowForEdgesIndex < windowsForEdges.size(); ++windowForEdgesIndex) {
+            const auto& windowForEdges = windowsForEdges[windowForEdgesIndex];
+            if (!(windowForEdges.get_coordinates() && windowForEdges.get_width() && windowForEdges.get_height())) {
+                continue;
+            }
+            double centerTurnAxis = (*windowForEdges.get_coordinates())[1];
+            double sizeTurnAxis = *windowForEdges.get_height();
+            if (layersAreContiguous) {
+                centerTurnAxis = (*windowForEdges.get_coordinates())[0];
+                if (!_groupWindowSidesApplied) {
+                    centerTurnAxis = std::abs(centerTurnAxis);
+                }
+                sizeTurnAxis = *windowForEdges.get_width();
+            }
+            windowEdgeExtremes[windowForEdgesIndex] = {centerTurnAxis + sizeTurnAxis / 2,
+                                                       centerTurnAxis - sizeTurnAxis / 2};
+        }
+    }
     auto edgeBaseY = [&](size_t windowIndex, bool atTop) -> double {
         const auto& margins = atTop ? topMarginPerWindow : bottomMarginPerWindow;
         auto found = margins.find(windowIndex);
         double margin = found == margins.end() ? 0.0 : found->second;
-        return atTop ? windowTopY - margin : windowBottomY + margin;
+        double top = windowTopY;
+        double bottom = windowBottomY;
+        auto extremes = windowEdgeExtremes.find(windowIndex);
+        if (extremes != windowEdgeExtremes.end()) {
+            top = extremes->second.first;
+            bottom = extremes->second.second;
+        }
+        return atTop ? top - margin : bottom + margin;
     };
     // ABT #615: edge rows are SHARED by runs whose RADIAL SPANS don't overlap (Alf, 2026-08-09:
     // the primary's inter-section run covers the secondary's section and vice versa — disjoint
