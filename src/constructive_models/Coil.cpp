@@ -6803,6 +6803,167 @@ std::vector<double> Coil::virtualize_proportion_per_winding(std::vector<double> 
     return newProportionPerWinding;
 }
 
+Coil::SectionGroupPlan Coil::plan_section_group(Group group, const std::vector<double>& proportionPerWinding,
+                                                const std::vector<size_t>& pattern, size_t repetitions,
+                                                bool multiGroup, WindingWindowShape windowShape,
+                                                size_t conductionSectionOffset) {
+    SectionGroupPlan plan;
+    std::vector<size_t> groupPattern = pattern;
+    std::vector<double> groupProportionPerWinding = proportionPerWinding;
+    if (multiGroup) {
+        for (auto& groupPartialWinding : group.get_partial_windings()) {
+            plan.groupWindingIndexes.insert(get_winding_index_by_name(groupPartialWinding.get_winding()));
+        }
+        if (plan.groupWindingIndexes.empty()) {
+            plan.skip = true;
+            plan.group = group;
+            return plan;
+        }
+        groupPattern.clear();
+        for (auto windingIndex : pattern) {
+            if (plan.groupWindingIndexes.contains(windingIndex)) {
+                groupPattern.push_back(windingIndex);
+            }
+        }
+        if (groupPattern.empty()) {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                "Group " + group.get_name() + " has windings but none of them appear in the winding pattern");
+        }
+        // The group's windings share this group's full window space.
+        double groupProportionSum = 0;
+        for (auto windingIndex : plan.groupWindingIndexes) {
+            groupProportionSum += proportionPerWinding[windingIndex];
+        }
+        for (auto windingIndex : plan.groupWindingIndexes) {
+            groupProportionPerWinding[windingIndex] = proportionPerWinding[windingIndex] / groupProportionSum;
+        }
+        if (windowShape == WindingWindowShape::RECTANGULAR) {
+            plan.groupWindowIndex = find_window_index_for_group(group.get_name());
+            // Wind in the +x window-local frame; mirrored back afterwards.
+            if (group.get_coordinates()[0] < 0) {
+                auto groupCoordinates = group.get_coordinates();
+                groupCoordinates[0] = -groupCoordinates[0];
+                group.set_coordinates(groupCoordinates);
+            }
+        }
+    }
+    plan.group = group;
+
+    // The section-stacking axis: rectangular groups carry a per-group orientation,
+    // toroidal groups follow the coil-global winding orientation.
+    double spaceForSections = 0;
+    if (windowShape == WindingWindowShape::RECTANGULAR) {
+        auto windingOrientation = group.get_sections_orientation();
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            spaceForSections = group.get_dimensions()[0];
+        }
+        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+            spaceForSections = group.get_dimensions()[1];
+        }
+    }
+    else {
+        auto windingOrientation = get_winding_orientation();
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            spaceForSections = group.get_dimensions()[0];
+        }
+        else {
+            spaceForSections = group.get_dimensions()[1];
+        }
+    }
+
+    auto orderedSections = get_ordered_sections(spaceForSections, groupProportionPerWinding, groupPattern, repetitions);
+
+    if (windowShape != WindingWindowShape::RECTANGULAR && get_winding_orientation() == WindingOrientation::CONTIGUOUS) {
+        remove_insulation_if_margin_is_enough(orderedSections, conductionSectionOffset);
+    }
+
+    plan.orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
+
+    size_t numberWindings = get_functional_description().size();
+    plan.numberSectionsPerWinding = std::vector<size_t>(numberWindings, 0);
+    for (const auto& orderedSection : plan.orderedSectionsWithInsulation) {
+        if (orderedSection.first == ElectricalType::CONDUCTION) {
+            plan.numberSectionsPerWinding[orderedSection.second.first]++;
+        }
+    }
+
+    // wound_with grouping (e.g. AHB / Push-Pull / forward-derived center-tap
+    // halves "Sec a" + "Sec b"): the partner winding shares the
+    // representative's section, so the pattern legitimately omits its
+    // index — leaving its slot count at zero, which then trips
+    // wind_by_consecutive_turns's "Number of slots cannot be less than 1"
+    // guard. Inherit the representative's slot count for grouped windings
+    // so the wire-layout planner sees the same section count its sibling
+    // has. Without this, every Path-B-Load → re-wind cycle on a
+    // center-tapped magnetic throws an exception.
+    for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
+        if (plan.numberSectionsPerWinding[wIdx] != 0) continue;
+        if (multiGroup && !plan.groupWindingIndexes.contains(wIdx)) continue;
+        const auto& wwOpt = get_functional_description()[wIdx].get_wound_with();
+        if (!wwOpt || wwOpt->empty()) continue;
+        for (const auto& partnerName : wwOpt.value()) {
+            bool found = false;
+            for (size_t pIdx = 0; pIdx < numberWindings; ++pIdx) {
+                if (get_functional_description()[pIdx].get_name() == partnerName &&
+                    plan.numberSectionsPerWinding[pIdx] > 0) {
+                    plan.numberSectionsPerWinding[wIdx] = plan.numberSectionsPerWinding[pIdx];
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+    }
+
+    // Fallback inheritance via _virtualizationMap. When a magnetic comes
+    // in via the MagneticAdviser auto-wind path (AHB/Push-Pull CT),
+    // `wound_with` is sometimes empty even though the coil's virtual map
+    // already groups the center-tap halves under the same virtual index.
+    // In that case, inherit the slot count from any sibling within the
+    // same virtual group that has nonzero sections.
+    if (!_virtualizationMap.empty()) {
+        for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
+            if (plan.numberSectionsPerWinding[wIdx] != 0) continue;
+            if (multiGroup && !plan.groupWindingIndexes.contains(wIdx)) continue;
+            for (const auto& [virtualIdx, members] : _virtualizationMap) {
+                if (std::find(members.begin(), members.end(), wIdx) == members.end()) continue;
+                for (auto pIdx : members) {
+                    if (pIdx < numberWindings && plan.numberSectionsPerWinding[pIdx] > 0) {
+                        plan.numberSectionsPerWinding[wIdx] = plan.numberSectionsPerWinding[pIdx];
+                        break;
+                    }
+                }
+                if (plan.numberSectionsPerWinding[wIdx] != 0) break;
+            }
+        }
+    }
+
+    if (multiGroup) {
+        // Windings belonging to other groups have zero sections here; give them a
+        // placeholder slot count so the style chooser's zero-slot guard doesn't
+        // fire. Their style entry is never read: only this group's windings appear
+        // in this group's ordered sections.
+        for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
+            if (!plan.groupWindingIndexes.contains(wIdx) && plan.numberSectionsPerWinding[wIdx] == 0) {
+                plan.numberSectionsPerWinding[wIdx] = 1;
+            }
+        }
+    }
+
+    plan.windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), plan.numberSectionsPerWinding);
+
+    apply_margin_tape(plan.orderedSectionsWithInsulation, conductionSectionOffset);
+    // ABT #721 (owner ruling 2026-08-14): coilEqualizeMargins applies to rectangular
+    // windows too — with rectangular-aware semantics (same-edge pairing, no wrap; see
+    // equalize_margins). Enabled by default; tests that pin the old 50/50 geometry
+    // disable the setting explicitly.
+    if (settings.get_coil_equalize_margins()) {
+        equalize_margins(plan.orderedSectionsWithInsulation, conductionSectionOffset);
+    }
+
+    return plan;
+}
+
 bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     set_sections_description(std::nullopt);
     std::vector<Section> sectionsDescription;
@@ -6825,147 +6986,29 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
     // wound order. This offset counts the conduction sections of the groups already wound.
     size_t conductionSectionOffset = 0;
 
-    for (auto group : groups) {
-        std::vector<size_t> groupPattern = pattern;
-        std::vector<double> groupProportionPerWinding = proportionPerWinding;
-        std::set<size_t> groupWindingIndexes;
-        std::optional<size_t> groupWindowIndex;
-        if (multiGroup) {
-            for (auto& groupPartialWinding : group.get_partial_windings()) {
-                groupWindingIndexes.insert(get_winding_index_by_name(groupPartialWinding.get_winding()));
-            }
-            if (groupWindingIndexes.empty()) {
-                continue;
-            }
-            groupPattern.clear();
-            for (auto windingIndex : pattern) {
-                if (groupWindingIndexes.contains(windingIndex)) {
-                    groupPattern.push_back(windingIndex);
-                }
-            }
-            if (groupPattern.empty()) {
-                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
-                    "Group " + group.get_name() + " has windings but none of them appear in the winding pattern");
-            }
-            // The group's windings share this group's full window space.
-            double groupProportionSum = 0;
-            for (auto windingIndex : groupWindingIndexes) {
-                groupProportionSum += proportionPerWinding[windingIndex];
-            }
-            for (auto windingIndex : groupWindingIndexes) {
-                groupProportionPerWinding[windingIndex] = proportionPerWinding[windingIndex] / groupProportionSum;
-            }
-            groupWindowIndex = find_window_index_for_group(group.get_name());
-            // Wind in the +x window-local frame; mirrored back afterwards.
-            if (group.get_coordinates()[0] < 0) {
-                auto groupCoordinates = group.get_coordinates();
-                groupCoordinates[0] = -groupCoordinates[0];
-                group.set_coordinates(groupCoordinates);
-            }
+    for (auto& groupEntry : groups) {
+        // ABT #720: shared orchestration (pattern subsetting, proportion renormalization,
+        // ordered sections + insulation, slot inheritance, winding styles, margin
+        // application) lives in plan_section_group — one copy for both winders.
+        auto plan = plan_section_group(groupEntry, proportionPerWinding, pattern, repetitions, multiGroup,
+                                       WindingWindowShape::RECTANGULAR, conductionSectionOffset);
+        if (plan.skip) {
+            continue;
         }
+        auto group = plan.group;
+        const auto& orderedSectionsWithInsulation = plan.orderedSectionsWithInsulation;
+        const auto& numberSectionsPerWinding = plan.numberSectionsPerWinding;
+        const auto& windByConsecutiveTurns = plan.windByConsecutiveTurns;
+        std::optional<size_t> groupWindowIndex = plan.groupWindowIndex;
+        auto currentSectionPerWinding = std::vector<size_t>(get_functional_description().size(), 0);
 
         double availableWidth = group.get_dimensions()[0];
         double availableHeight = group.get_dimensions()[1];
-        double spaceForSections = 0;
         auto windingOrientation = group.get_sections_orientation();
-
-        if (windingOrientation == WindingOrientation::OVERLAPPING) {
-            spaceForSections = availableWidth;
-        }
-        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
-            spaceForSections = availableHeight;
-        }
-
-        auto orderedSections = get_ordered_sections(spaceForSections, groupProportionPerWinding, groupPattern, repetitions);
-
-        auto orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
-
-        double numberWindings = get_functional_description().size();
-        auto numberSectionsPerWinding = std::vector<size_t>(numberWindings, 0);
-        auto currentSectionPerWinding = std::vector<size_t>(numberWindings, 0);
-        for (auto orderedSection : orderedSectionsWithInsulation) {
-            if (orderedSection.first == ElectricalType::CONDUCTION) {
-                auto windingIndex = orderedSection.second.first;
-                numberSectionsPerWinding[windingIndex]++;
-            }
-        }
-
-        // wound_with grouping (e.g. AHB / Push-Pull / forward-derived center-tap
-        // halves "Sec a" + "Sec b"): the partner winding shares the
-        // representative's section, so the pattern legitimately omits its
-        // index — leaving its slot count at zero, which then trips
-        // wind_by_consecutive_turns's "Number of slots cannot be less than 1"
-        // guard. Inherit the representative's slot count for grouped windings
-        // so the wire-layout planner sees the same section count its sibling
-        // has. Without this, every Path-B-Load → re-wind cycle on a
-        // center-tapped magnetic throws an exception.
-        for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
-            if (numberSectionsPerWinding[wIdx] != 0) continue;
-            if (multiGroup && !groupWindingIndexes.contains(wIdx)) continue;
-            const auto& wwOpt = get_functional_description()[wIdx].get_wound_with();
-            if (!wwOpt || wwOpt->empty()) continue;
-            for (const auto& partnerName : wwOpt.value()) {
-                bool found = false;
-                for (size_t pIdx = 0; pIdx < numberWindings; ++pIdx) {
-                    if (get_functional_description()[pIdx].get_name() == partnerName &&
-                        numberSectionsPerWinding[pIdx] > 0) {
-                        numberSectionsPerWinding[wIdx] = numberSectionsPerWinding[pIdx];
-                        found = true;
-                        break;
-                    }
-                }
-                if (found) break;
-            }
-        }
-
-        // Fallback inheritance via _virtualizationMap. When a magnetic comes
-        // in via the MagneticAdviser auto-wind path (AHB/Push-Pull CT),
-        // `wound_with` is sometimes empty even though the coil's virtual map
-        // already groups the center-tap halves under the same virtual index.
-        // In that case, inherit the slot count from any sibling within the
-        // same virtual group that has nonzero sections.
-        if (!_virtualizationMap.empty()) {
-            for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
-                if (numberSectionsPerWinding[wIdx] != 0) continue;
-                if (multiGroup && !groupWindingIndexes.contains(wIdx)) continue;
-                for (const auto& [virtualIdx, members] : _virtualizationMap) {
-                    if (std::find(members.begin(), members.end(), wIdx) == members.end()) continue;
-                    for (auto pIdx : members) {
-                        if (pIdx < numberWindings && numberSectionsPerWinding[pIdx] > 0) {
-                            numberSectionsPerWinding[wIdx] = numberSectionsPerWinding[pIdx];
-                            break;
-                        }
-                    }
-                    if (numberSectionsPerWinding[wIdx] != 0) break;
-                }
-            }
-        }
-
-        if (multiGroup) {
-            // Windings belonging to other groups have zero sections here; give them a
-            // placeholder slot count so the style chooser's zero-slot guard doesn't
-            // fire. Their style entry is never read: only this group's windings appear
-            // in this group's ordered sections.
-            for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
-                if (!groupWindingIndexes.contains(wIdx) && numberSectionsPerWinding[wIdx] == 0) {
-                    numberSectionsPerWinding[wIdx] = 1;
-                }
-            }
-        }
-        auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
 
         auto wirePerWinding = get_wires();
         double currentSectionCenterWidth = DBL_MAX;
         double currentSectionCenterHeight = DBL_MAX;
-
-        apply_margin_tape(orderedSectionsWithInsulation, conductionSectionOffset);
-        // ABT #721 (owner ruling 2026-08-14): coilEqualizeMargins now applies to
-        // rectangular windows too — with rectangular-aware semantics (same-edge pairing,
-        // no wrap; see equalize_margins). Enabled by default; tests that pin the old
-        // 50/50 geometry disable the setting explicitly.
-        if (settings.get_coil_equalize_margins()) {
-            equalize_margins(orderedSectionsWithInsulation, conductionSectionOffset);
-        }
 
         // Margins are keyed by conduction ordinal, flat across ALL groups in wound order.
         size_t conductionOrdinal = conductionSectionOffset;
@@ -7272,129 +7315,26 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     // apply_margin_tape re-indexed from 0 and clobbered the first group's margins.
     size_t conductionSectionOffset = 0;
 
-    for (auto group : groups) {
-        std::vector<size_t> groupPattern = pattern;
-        std::vector<double> groupProportionPerWinding = proportionPerWinding;
-        std::set<size_t> groupWindingIndexes;
-        if (multiGroup) {
-            for (auto& groupPartialWinding : group.get_partial_windings()) {
-                groupWindingIndexes.insert(get_winding_index_by_name(groupPartialWinding.get_winding()));
-            }
-            if (groupWindingIndexes.empty()) {
-                continue;
-            }
-            groupPattern.clear();
-            for (auto windingIndex : pattern) {
-                if (groupWindingIndexes.contains(windingIndex)) {
-                    groupPattern.push_back(windingIndex);
-                }
-            }
-            if (groupPattern.empty()) {
-                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
-                    "Group " + group.get_name() + " has windings but none of them appear in the winding pattern");
-            }
-            double groupProportionSum = 0;
-            for (auto windingIndex : groupWindingIndexes) {
-                groupProportionSum += proportionPerWinding[windingIndex];
-            }
-            for (auto windingIndex : groupWindingIndexes) {
-                groupProportionPerWinding[windingIndex] = proportionPerWinding[windingIndex] / groupProportionSum;
-            }
+    for (auto& groupEntry : groups) {
+        // ABT #720: shared orchestration — see plan_section_group.
+        auto plan = plan_section_group(groupEntry, proportionPerWinding, pattern, repetitions, multiGroup,
+                                       WindingWindowShape::ROUND, conductionSectionOffset);
+        if (plan.skip) {
+            continue;
         }
+        auto group = plan.group;
+        const auto& orderedSectionsWithInsulation = plan.orderedSectionsWithInsulation;
+        const auto& numberSectionsPerWinding = plan.numberSectionsPerWinding;
+        const auto& windByConsecutiveTurns = plan.windByConsecutiveTurns;
+        auto currentSectionPerWinding = std::vector<size_t>(get_functional_description().size(), 0);
 
-        auto bobbin = resolve_bobbin();
-        auto bobbinProcessedDescription = bobbin.get_processed_description().value();
-        auto windingWindows = bobbinProcessedDescription.get_winding_windows();
         double availableRadialHeight = group.get_dimensions()[0];
         double availableAngle = group.get_dimensions()[1];
-
-        double spaceForSections = 0;
         auto windingOrientation = get_winding_orientation();
-
-        if (windingOrientation == WindingOrientation::OVERLAPPING) {
-            spaceForSections = availableRadialHeight;
-        }
-        else {
-            spaceForSections = availableAngle;
-        }
-
-        auto orderedSections = get_ordered_sections(spaceForSections, groupProportionPerWinding, groupPattern, repetitions);
-
-        if (windingOrientation == WindingOrientation::CONTIGUOUS) {
-            remove_insulation_if_margin_is_enough(orderedSections, conductionSectionOffset);
-        }
-        auto orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
-
-        double numberWindings = get_functional_description().size();
-        auto numberSectionsPerWinding = std::vector<size_t>(numberWindings, 0);
-        auto currentSectionPerWinding = std::vector<size_t>(numberWindings, 0);
-        for (auto orderedSection : orderedSectionsWithInsulation) {
-            if (orderedSection.first == ElectricalType::CONDUCTION) {
-                auto windingIndex = orderedSection.second.first;
-                numberSectionsPerWinding[windingIndex]++;
-            }
-        }
-        // wound_with grouping (see rectangular sibling for full rationale):
-        // center-tap partner winding shares its representative's section, so
-        // the pattern omits its index — inherit the representative's count to
-        // avoid the "Number of slots cannot be less than 1" throw on Path-B
-        // rewind of toroidal center-tapped coils.
-        for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
-            if (numberSectionsPerWinding[wIdx] != 0) continue;
-            if (multiGroup && !groupWindingIndexes.contains(wIdx)) continue;
-            const auto& wwOpt = get_functional_description()[wIdx].get_wound_with();
-            if (!wwOpt || wwOpt->empty()) continue;
-            for (const auto& partnerName : wwOpt.value()) {
-                bool found = false;
-                for (size_t pIdx = 0; pIdx < numberWindings; ++pIdx) {
-                    if (get_functional_description()[pIdx].get_name() == partnerName &&
-                        numberSectionsPerWinding[pIdx] > 0) {
-                        numberSectionsPerWinding[wIdx] = numberSectionsPerWinding[pIdx];
-                        found = true;
-                        break;
-                    }
-                }
-                if (found) break;
-            }
-        }
-        // Fallback inheritance via _virtualizationMap (see rectangular sibling).
-        if (!_virtualizationMap.empty()) {
-            for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
-                if (numberSectionsPerWinding[wIdx] != 0) continue;
-                if (multiGroup && !groupWindingIndexes.contains(wIdx)) continue;
-                for (const auto& [virtualIdx, members] : _virtualizationMap) {
-                    if (std::find(members.begin(), members.end(), wIdx) == members.end()) continue;
-                    for (auto pIdx : members) {
-                        if (pIdx < numberWindings && numberSectionsPerWinding[pIdx] > 0) {
-                            numberSectionsPerWinding[wIdx] = numberSectionsPerWinding[pIdx];
-                            break;
-                        }
-                    }
-                    if (numberSectionsPerWinding[wIdx] != 0) break;
-                }
-            }
-        }
-        if (multiGroup) {
-            // Windings belonging to other groups have zero sections here; give them a
-            // placeholder slot count so the style chooser's zero-slot guard doesn't
-            // fire. Their style entry is never read: only this group's windings appear
-            // in this group's ordered sections. (Rectangular sibling's block.)
-            for (size_t wIdx = 0; wIdx < numberWindings; ++wIdx) {
-                if (!groupWindingIndexes.contains(wIdx) && numberSectionsPerWinding[wIdx] == 0) {
-                    numberSectionsPerWinding[wIdx] = 1;
-                }
-            }
-        }
-        auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
 
         auto wirePerWinding = get_wires();
         double currentSectionCenterAngle = DBL_MAX;
         double currentSectionCenterRadialHeight = DBL_MAX;
-
-        apply_margin_tape(orderedSectionsWithInsulation, conductionSectionOffset);
-        if (settings.get_coil_equalize_margins()) {
-            equalize_margins(orderedSectionsWithInsulation, conductionSectionOffset);
-        }
 
         std::vector<double> currentSectionRadialHeights;
         std::vector<double> currentSectionAngles;

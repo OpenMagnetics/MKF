@@ -10,6 +10,7 @@
 
 #include <MAS.hpp>
 #include <vector>
+#include <set>
 #include <optional>
 #include "support/Exceptions.h"
 
@@ -269,6 +270,25 @@ class Coil : public MAS::Coil {
         std::optional<std::vector<BobbinDataOrNameUnion>> perColumnBobbins;
         std::vector<Winding> functional_description;
 
+        // ABT #720: shared per-group orchestration for wind_by_rectangular_sections /
+        // wind_by_round_sections — pattern subsetting, proportion renormalization, ordered
+        // sections + insulation, wound_with/virtualization slot inheritance, winding styles,
+        // and margin application (keyed by conduction ordinal). The winders keep only the
+        // shape-specific geometry emission; this is the one copy of the orchestration to
+        // keep right (it had drifted between the two ~80% copy-paste siblings repeatedly).
+        struct SectionGroupPlan {
+            Group group;                              // +x window-local frame for rectangular multi-column
+            std::optional<size_t> groupWindowIndex;   // rectangular multi-column only
+            std::set<size_t> groupWindingIndexes;
+            std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation;
+            std::vector<size_t> numberSectionsPerWinding;
+            std::vector<WindingStyle> windByConsecutiveTurns;
+            bool skip = false;                        // multi-group group without windings
+        };
+        SectionGroupPlan plan_section_group(Group group, const std::vector<double>& proportionPerWinding,
+                                            const std::vector<size_t>& pattern, size_t repetitions,
+                                            bool multiGroup, WindingWindowShape windowShape,
+                                            size_t conductionSectionOffset);
         bool wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_rectangular_layers();
