@@ -3011,6 +3011,13 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     struct RealWindingCrossingBump {
         Coil& coil;
         bool active = false;
+        // ABT #728: the destructor's station-zeroing may only touch turns produced by THIS
+        // wind. wind() clears turns_description before arming the bump and flips this flag at
+        // that clear — so when a wind fails before producing turns, a PREVIOUS wind's intact
+        // turns are never mis-zeroed (DC resistance silently shrank by one turn per parallel).
+        // Deliberately NOT gated on the wind's fitting result: with windEvenIfNotFit the
+        // caller consumes the not-fitting turns and still needs the station carrying no length.
+        bool turnsAreFresh = false;
         explicit RealWindingCrossingBump(Coil& c) : coil(c) {}
         void arm() {
             if (active || !settings.get_coil_use_real_winding_geometry()) return;
@@ -3033,11 +3040,17 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                 // 20-turn winding (1/N) whenever real winding was on. The station stays (MVB++
                 // builds one wrap fewer without it: measured 82 wrap primitives against 87); only
                 // its length goes, which is what makes the sum the conductor's real length.
-                if (coil.get_turns_description()) {
+                if (turnsAreFresh && coil.get_turns_description()) {
                     auto crossingTurns = coil.get_turns_description().value();
-                    std::set<std::pair<std::string, int64_t>> firstSeen;
+                    // ABT #728: the station is tagged EXPLICITLY — the winders name every turn
+                    // "<winding> parallel <p> turn <k>" with k the per-parallel wind-order
+                    // counter, so each parallel's beginning crossing is exactly its "turn 0".
+                    // First-seen vector order is not a marker: any post-wind pass that reorders
+                    // the description would zero a mid-winding wrap instead.
                     for (auto& crossingTurn : crossingTurns) {
-                        if (firstSeen.insert({crossingTurn.get_winding(), crossingTurn.get_parallel()}).second) {
+                        if (crossingTurn.get_name() == crossingTurn.get_winding() + " parallel "
+                                                          + std::to_string(crossingTurn.get_parallel())
+                                                          + " turn 0") {
                             crossingTurn.set_length(0);
                         }
                     }
@@ -3129,6 +3142,9 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             set_sections_description(std::nullopt);
             set_layers_description(std::nullopt);
             set_turns_description(std::nullopt);
+            // ABT #728: from this point every turn in the description was produced by this
+            // wind, so the crossing-bump destructor may zero its stations.
+            realWindingCrossingBump.turnsAreFresh = true;
             // Start every wind from the ideal geometry: real-winding turn blocking, if any, is
             // re-derived and re-applied below only when the real-geometry setting is on.
             _applyConnectionBlocking = false;

@@ -13847,6 +13847,80 @@ TEST_CASE("Test_Abt674_Crossing_Station_Adds_No_Length", "[constructive-model][c
     settings.reset();
 }
 
+// ABT #728: the crossing station must be identified by its EXPLICIT wind-order marker — the
+// turn named "turn 0" of each (winding, parallel) — not by first-seen vector order, which
+// zeroes a mid-winding wrap the moment any post-wind pass reorders the description.
+TEST_CASE("Test_Abt728_Crossing_Station_Is_The_Turn0_Marker", "[constructive-model][coil][real-geometry][abt728]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto examplesDir = std::filesystem::path{__FILE__}.parent_path().append("..").append("MAS").append("examples");
+    auto mas = OpenMagneticsTesting::mas_loader((examplesDir / "17_cllc_xfmr_e5528_3c92a.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto& coil = magnetic.get_mutable_coil();
+
+    REQUIRE(coil.get_turns_description());
+    const auto turns = coil.get_turns_description().value();
+    for (const auto& turn : turns) {
+        bool isStation = turn.get_name() == turn.get_winding() + " parallel "
+                                                + std::to_string(turn.get_parallel()) + " turn 0";
+        INFO(turn.get_name() << " length " << turn.get_length());
+        if (isStation) {
+            CHECK(turn.get_length() == 0);
+        }
+        else {
+            CHECK(turn.get_length() > 0);
+        }
+    }
+    settings.reset();
+}
+
+// ABT #728: the station-zeroing is gated on the turns being THIS wind's output, not on the
+// wind FITTING — with windEvenIfNotFit the caller consumes the not-fitting layout and its
+// stations must still carry no length (a naive success-gate would re-inflate DC resistance
+// by 1/N on exactly those flows). And a wind that fails without producing turns must leave
+// nothing behind for the destructor to corrupt.
+TEST_CASE("Test_Abt728_Not_Fitting_Wind_Still_Zeroes_Its_Own_Stations", "[constructive-model][coil][real-geometry][abt728]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_wind_even_if_not_fit(true);
+    settings.set_coil_try_rewind(false);
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    auto mas = OpenMagneticsTesting::mas_loader((dataDir / "abt646_e16_litz_2layer_leadcollision.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto sourceCoil = magnetic.get_mutable_coil();
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(sourceCoil.resolve_bobbin());
+    auto functionalDescription = sourceCoil.get_functional_description();
+    // Blow the design far past the window so the ideal wind cannot fit.
+    for (auto& winding : functionalDescription) {
+        winding.set_number_turns(winding.get_number_turns() * 8);
+    }
+    coil.set_functional_description(functionalDescription);
+    bool wound = coil.wind();
+    CHECK_FALSE(wound);
+    REQUIRE(coil.get_turns_description());
+    const auto turns = coil.get_turns_description().value();
+    size_t stations = 0;
+    for (const auto& turn : turns) {
+        bool isStation = turn.get_name() == turn.get_winding() + " parallel "
+                                                + std::to_string(turn.get_parallel()) + " turn 0";
+        INFO(turn.get_name() << " length " << turn.get_length());
+        if (isStation) {
+            ++stations;
+            CHECK(turn.get_length() == 0);
+        }
+        else {
+            CHECK(turn.get_length() > 0);
+        }
+    }
+    size_t declaredParallels = 0;
+    for (const auto& winding : coil.get_functional_description()) {
+        declaredParallels += winding.get_number_parallels();
+    }
+    CHECK(stations == declaredParallels);
+    settings.reset();
+}
+
 // ABT #725: the per-section layers-orientation override is honored where the section record
 // is written, but section sizing and insulation still read the global orientation — so an
 // overridden section COULD get layers stacked along an axis its envelope was not sized for.
