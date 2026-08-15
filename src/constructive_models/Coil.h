@@ -30,7 +30,20 @@ class Winding : public MAS::CoilFunctionalDescription {
     public:
         const WireDataOrNameUnion & get_wire() const { return wire; }
         WireDataOrNameUnion & get_mutable_wire() { return wire; }
-        void set_wire(const WireDataOrNameUnion & value) { this->wire = value; }
+        // ABT #611: this member SHADOWS MAS::CoilFunctionalDescription::wire (it holds the
+        // richer OpenMagnetics::Wire), and serializing through the base is the natural way to
+        // emit schema-clean MAS json — so the base member is kept in sync on every write, or
+        // base to_json silently emits the 'Dummy' placeholder and the file re-winds with a
+        // 12.5 um dummy wire (the 25/26 PSPS delivery's hair-thin 298-turn winding).
+        void set_wire(const WireDataOrNameUnion & value) {
+            this->wire = value;
+            if (std::holds_alternative<std::string>(value)) {
+                MAS::CoilFunctionalDescription::set_wire(std::get<std::string>(value));
+            }
+            else {
+                MAS::CoilFunctionalDescription::set_wire(static_cast<MAS::Wire>(std::get<Wire>(value)));
+            }
+        }
 
         void set_isolation_side_from_index(size_t windingIndex);
         Winding(const MAS::CoilFunctionalDescription& winding) {
@@ -433,7 +446,18 @@ class Coil : public MAS::Coil {
 
         const BobbinDataOrNameUnion & get_bobbin() const { return bobbin; }
         BobbinDataOrNameUnion & get_mutable_bobbin() { return bobbin; }
-        void set_bobbin(const BobbinDataOrNameUnion & value) { this->bobbin = value; _bobbin_resolved = false; }
+        // ABT #611 (same shadow class as Winding::wire): keep the MAS::Coil base's bobbin in
+        // sync, or base-class to_json emits the default in place of the resolved bobbin.
+        void set_bobbin(const BobbinDataOrNameUnion & value) {
+            this->bobbin = value;
+            _bobbin_resolved = false;
+            if (std::holds_alternative<std::string>(value)) {
+                MAS::Coil::set_bobbin(std::get<std::string>(value));
+            }
+            else {
+                MAS::Coil::set_bobbin(static_cast<MAS::Bobbin>(std::get<Bobbin>(value)));
+            }
+        }
 
         const std::optional<std::vector<BobbinDataOrNameUnion>> & get_per_column_bobbins() const { return perColumnBobbins; }
         void set_per_column_bobbins(const std::optional<std::vector<BobbinDataOrNameUnion>> & value) { this->perColumnBobbins = value; }
