@@ -188,6 +188,13 @@ class Coil : public MAS::Coil {
         // sections carry no margin entry. Section::margin on the wound sections is the
         // persisted truth; this vector is the transient winding-time input.
         std::vector<std::vector<double>> _marginsPerSection;
+        // ABT #724 (owner ruling): margins recovered from a previous wind FOLLOW THE WINDING.
+        // Which winding each recovered ordinal belonged to, and each winding's merged
+        // {topOrLeft, bottomOrRight}; plan_section_group re-maps mismatched ordinals when the
+        // re-wind changes the layout. Cleared whenever explicit margins arrive
+        // (preload_margins / add_margin_to_section_by_index / reset_margins_per_section).
+        std::vector<std::string> _recoveredMarginWindings;
+        std::map<std::string, std::vector<double>> _recoveredMarginPerWinding;
         // ABT #724: reset_margins_per_section() means "the next wind is margin-free"; the
         // empty vector alone cannot express that, because wind()'s ABT #676 recovery treats
         // empty as "recover the persisted margins from the sections". Re-armed to false when

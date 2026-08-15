@@ -426,10 +426,14 @@ void Coil::set_interleaving_level(uint8_t interleavingLevel) {
     // and (b) made a subsequent preload_margins() append AFTER the seeded entries,
     // landing every preloaded pair at the wrong index.
     _marginsPerSection.clear();
+    _recoveredMarginWindings.clear();
+    _recoveredMarginPerWinding.clear();
 }
 
 void Coil::reset_margins_per_section() {
     _marginsPerSection.clear();
+    _recoveredMarginWindings.clear();
+    _recoveredMarginPerWinding.clear();
     // See _marginsExplicitlyCleared in Coil.h (ABT #724): without this, wind()'s ABT #676
     // recovery resurrected the persisted section margins and an explicit reset could never
     // actually clear them.
@@ -3538,13 +3542,19 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     // margin-free" (CoilAdviser candidate sweeps rely on it) — the empty vector it leaves
     // behind must not be taken as "nothing was handed in, recover the old ones", or margins
     // could never actually be cleared. And when margin tape is disallowed outright, there is
-    // nothing legitimate to recover. (The remaining #724 defect — positional index-matching
-    // of recovered margins against a re-layout with a different pattern/repetitions — is
-    // solved structurally by the #720 re-key.)
+    // nothing legitimate to recover.
+    //
+    // ABT #724 (owner ruling, Alf 2026-08-15): recovered margins FOLLOW THE WINDING. The
+    // recovery records which winding each conduction ordinal belonged to and each winding's
+    // merged margin; when the re-wind lays the sections out differently (pattern or
+    // repetitions changed), plan_section_group re-maps the ordinals so every section gets ITS
+    // OWN winding's margin instead of whatever sat at that position in the previous layout.
     if (_marginsPerSection.empty() && !_marginsExplicitlyCleared &&
         settings.get_coil_allow_margin_tape() && get_sections_description()) {
         auto sectionsWithMargins = get_sections_description().value();
         std::vector<std::vector<double>> recoveredMargins;
+        std::vector<std::string> recoveredWindings;
+        std::map<std::string, std::vector<double>> recoveredPerWinding;
         recoveredMargins.reserve(sectionsWithMargins.size());
         bool anyMargin = false;
         // ABT #720: _marginsPerSection is keyed by CONDUCTION-section ordinal — recover one
@@ -3556,9 +3566,26 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             auto margin = resolve_margin(sectionWithMargin);
             anyMargin = anyMargin || margin[0] > 0 || margin[1] > 0;
             recoveredMargins.push_back(margin);
+            std::string windingOfSection = sectionWithMargin.get_partial_windings().empty()
+                                               ? std::string()
+                                               : sectionWithMargin.get_partial_windings()[0].get_winding();
+            recoveredWindings.push_back(windingOfSection);
+            // A winding wound over several sections keeps the LARGEST margin it carried on
+            // each edge — the conservative merge when the new layout has a different section
+            // count for it.
+            auto& merged = recoveredPerWinding[windingOfSection];
+            if (merged.empty()) {
+                merged = margin;
+            }
+            else {
+                merged[0] = std::max(merged[0], margin[0]);
+                merged[1] = std::max(merged[1], margin[1]);
+            }
         }
         if (anyMargin) {
             _marginsPerSection = recoveredMargins;
+            _recoveredMarginWindings = recoveredWindings;
+            _recoveredMarginPerWinding = recoveredPerWinding;
         }
     }
 
@@ -7434,6 +7461,37 @@ Coil::SectionGroupPlan Coil::plan_section_group(Group group, const std::vector<d
     }
 
     plan.windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), plan.numberSectionsPerWinding);
+
+    // ABT #724 (owner ruling): margins recovered from a previous wind follow the WINDING.
+    // Before the tape floors are applied, walk this group's upcoming conduction ordinals: an
+    // ordinal whose recorded winding matches keeps its exact per-section value (same-layout
+    // re-winds are bit-identical); a mismatch — the re-wind changed pattern/repetitions — takes
+    // the winding's own merged margin. The record is then updated to the new layout, so the
+    // blocking loop's repeated re-winds see a match and the remap is idempotent (tape floors
+    // max()ed onto the entries in between are preserved).
+    if (!_recoveredMarginWindings.empty()) {
+        size_t remapOrdinal = conductionSectionOffset;
+        for (const auto& orderedSection : plan.orderedSectionsWithInsulation) {
+            if (orderedSection.first != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            const std::string& windingName = get_name(orderedSection.second.first);
+            if (remapOrdinal >= _recoveredMarginWindings.size() ||
+                _recoveredMarginWindings[remapOrdinal] != windingName) {
+                if (_marginsPerSection.size() <= remapOrdinal) {
+                    _marginsPerSection.resize(remapOrdinal + 1, {0, 0});
+                }
+                if (_recoveredMarginWindings.size() <= remapOrdinal) {
+                    _recoveredMarginWindings.resize(remapOrdinal + 1);
+                }
+                auto found = _recoveredMarginPerWinding.find(windingName);
+                _marginsPerSection[remapOrdinal] =
+                    found != _recoveredMarginPerWinding.end() ? found->second : std::vector<double>{0, 0};
+                _recoveredMarginWindings[remapOrdinal] = windingName;
+            }
+            ++remapOrdinal;
+        }
+    }
 
     apply_margin_tape(plan.orderedSectionsWithInsulation, conductionSectionOffset);
     // ABT #721 (owner ruling 2026-08-14): coilEqualizeMargins applies to rectangular
@@ -12092,8 +12150,11 @@ void Coil::try_rewind() {
 }
 
 void Coil::preload_margins(std::vector<std::vector<double>> marginPairs) {
-    // Explicit margins re-arm the ABT #676 recovery for later winds (ABT #724).
+    // Explicit margins re-arm the ABT #676 recovery for later winds (ABT #724) and
+    // supersede any winding-keyed recovery record.
     _marginsExplicitlyCleared = false;
+    _recoveredMarginWindings.clear();
+    _recoveredMarginPerWinding.clear();
     // ABT #720: _marginsPerSection is keyed by CONDUCTION-section ordinal — one entry per
     // conduction section, in wound order across all groups. (The old flat interleaved keying
     // forced a duplicated entry here "for the insulation layer", which broke the moment two
@@ -12107,8 +12168,11 @@ void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<doubl
     if (!get_sections_description()) {
         throw CoilNotProcessedException("In Add Margin to Section: Section description empty, wind coil first");
     }
-    // Explicit margins re-arm the ABT #676 recovery for later winds (ABT #724).
+    // Explicit margins re-arm the ABT #676 recovery for later winds (ABT #724) and
+    // supersede any winding-keyed recovery record.
     _marginsExplicitlyCleared = false;
+    _recoveredMarginWindings.clear();
+    _recoveredMarginPerWinding.clear();
     if (margins.size() != 2) {
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Margin vector must have two elements");
     }
