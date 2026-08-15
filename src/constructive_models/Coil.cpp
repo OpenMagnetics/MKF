@@ -8275,32 +8275,43 @@ bool Coil::wind_by_rectangular_layers() {
                 }
 
                 if (_insulationInterLayers.contains(windingIndex)) {
-     
+
                     auto insulationLayer = _insulationInterLayers[windingIndex];
+                    // ABT #725: the template stores its THICKNESS in the dims slot named by its
+                    // OWN orientation (stamped from the global at set_interlayer_insulation
+                    // time). Reading the slot chosen by this section's — possibly overridden —
+                    // orientation read the full window dimension as "thickness" whenever the two
+                    // disagreed: a window-sized insulation sheet inserted inside the section.
+                    double insulationThickness = insulationLayer.get_orientation() == WindingOrientation::CONTIGUOUS
+                                                     ? insulationLayer.get_dimensions()[1]
+                                                     : insulationLayer.get_dimensions()[0];
                     if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-                        currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - insulationLayer.get_dimensions()[1] / 2, 9);
+                        currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - insulationThickness / 2, 9);
                     }
                     else {
-                        currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + insulationLayer.get_dimensions()[0] / 2, 9);
+                        currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + insulationThickness / 2, 9);
                     }
 
                     insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
                     insulationLayer.set_section(sections[sectionIndex].get_name());
                     insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
                     insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+                    // The inserted sheet lives in this section: its orientation and dims follow
+                    // the section's layers orientation, not the template's global one.
+                    insulationLayer.set_orientation(sections[sectionIndex].get_layers_orientation());
                     if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-                        insulationLayer.set_dimensions(std::vector<double>{layerWidth, insulationLayer.get_dimensions()[1]});
+                        insulationLayer.set_dimensions(std::vector<double>{layerWidth, insulationThickness});
                     }
                     else {
-                        insulationLayer.set_dimensions(std::vector<double>{insulationLayer.get_dimensions()[0], layerHeight});
+                        insulationLayer.set_dimensions(std::vector<double>{insulationThickness, layerHeight});
                     }
                     layers.push_back(insulationLayer);
 
                     if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-                        currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - insulationLayer.get_dimensions()[1] / 2, 9);
+                        currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - insulationThickness / 2, 9);
                     }
                     else {
-                        currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + insulationLayer.get_dimensions()[0] / 2, 9);
+                        currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + insulationThickness / 2, 9);
                     }
 
                 }

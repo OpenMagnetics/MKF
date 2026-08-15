@@ -14050,6 +14050,73 @@ TEST_CASE("Test_Abt725_Per_Section_Orientation_Override_Layers_Stay_Inside_Envel
     settings.reset();
 }
 
+// ABT #725 (remainder): the interlayer-insulation template stores its thickness in the dims slot
+// named by the GLOBAL orientation at set_interlayer_insulation time. The winder's insertion
+// branches on the section's (possibly overridden) orientation — reading the mismatched slot took
+// the full window dimension as "thickness", inserting a window-sized insulation sheet inside the
+// overridden section. The sheet must carry the template thickness and the section's orientation,
+// and the section's layers must stay inside the window.
+TEST_CASE("Test_Abt725_Interlayer_Insulation_Follows_Section_Orientation_Override", "[constructive-model][coil][abt725]") {
+    settings.reset();
+    const double interlayerThickness = 0.0001;
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    auto mas = OpenMagneticsTesting::mas_loader((dataDir / "abt646_e16_litz_2layer_leadcollision.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto sourceCoil = magnetic.get_mutable_coil();
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(sourceCoil.resolve_bobbin());
+    coil.set_functional_description(sourceCoil.get_functional_description());
+    coil.set_interlayer_insulation(interlayerThickness, std::nullopt, std::nullopt, false);
+    coil.wind();
+
+    std::string targetName;
+    WindingOrientation baseOrientation = WindingOrientation::OVERLAPPING;
+    auto sectionsBefore = coil.get_sections_description().value();
+    for (const auto& section : sectionsBefore) {
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            targetName = section.get_name();
+            baseOrientation = section.get_layers_orientation();
+            break;
+        }
+    }
+    REQUIRE(!targetName.empty());
+    auto flippedOrientation = baseOrientation == WindingOrientation::OVERLAPPING ? WindingOrientation::CONTIGUOUS
+                                                                                 : WindingOrientation::OVERLAPPING;
+    coil.set_layers_orientation(flippedOrientation, targetName);
+    coil.wind();
+
+    auto bobbinOut = coil.resolve_bobbin();
+    auto windingWindow = bobbinOut.get_processed_description().value().get_winding_windows()[0];
+    const double windowLeft = windingWindow.get_coordinates().value()[0] - windingWindow.get_width().value() / 2;
+    const double windowRight = windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2;
+    const double windowBottom = windingWindow.get_coordinates().value()[1] - windingWindow.get_height().value() / 2;
+    const double windowTop = windingWindow.get_coordinates().value()[1] + windingWindow.get_height().value() / 2;
+    const double tol = 1e-9;
+
+    const auto layersAfter = coil.get_layers_description().value();
+    size_t insulationInTarget = 0;
+    for (const auto& layer : layersAfter) {
+        if (!layer.get_section() || layer.get_section().value() != targetName) {
+            continue;
+        }
+        INFO(layer.get_name() << " " << layer.get_dimensions()[0] << "x" << layer.get_dimensions()[1]);
+        if (layer.get_type() == ElectricalType::INSULATION) {
+            ++insulationInTarget;
+            CHECK(layer.get_orientation() == flippedOrientation);
+            double thickness = flippedOrientation == WindingOrientation::CONTIGUOUS ? layer.get_dimensions()[1]
+                                                                                    : layer.get_dimensions()[0];
+            CHECK_THAT(thickness, Catch::Matchers::WithinRel(interlayerThickness, 1e-9));
+        }
+        // Conduction and insulation alike: nothing in the overridden section may leave the window.
+        CHECK(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 >= windowLeft - tol);
+        CHECK(layer.get_coordinates()[0] + layer.get_dimensions()[0] / 2 <= windowRight + tol);
+        CHECK(layer.get_coordinates()[1] - layer.get_dimensions()[1] / 2 >= windowBottom - tol);
+        CHECK(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 <= windowTop + tol);
+    }
+    REQUIRE(insulationInTarget > 0);
+    settings.reset();
+}
+
 // ABT #721: margin equalization on RECTANGULAR windows (owner ruling 2026-08-14).
 // Rectangular semantics: adjacent sections carry tape on the SAME two window edges, so
 // equalization pairs same-index margins (left[0] with right[0], left[1] with right[1]),
