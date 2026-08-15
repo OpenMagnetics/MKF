@@ -59,6 +59,10 @@ class Core : public MAS::MagneticCore {
     bool is_gapping_misaligned();
     bool is_gap_processed();
     bool process_gap();
+    // The reason the last process_gap()/distribute_and_process_gap() returned false
+    // (e.g. "gap ... does not fit the winding column ..."), for adviser-side logging
+    // when a candidate is rejected as gap-infeasible (ABT #774).
+    std::optional<std::string> get_last_gap_processing_failure() const { return _lastGapProcessingFailure; }
     // Same derivation as process_gap(), but for callers that are handed one specific core
     // and expect its gapping to already be physically valid (a reluctance/field calculation,
     // the public calculate_core_gapping() binding, ...) rather than sweeping candidate gap

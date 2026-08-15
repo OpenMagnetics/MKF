@@ -196,7 +196,13 @@ double CoreAdviser::calculate_core_losses_for_gap(double gap, Inputs inputs, Cor
     // falls back to the SIMPLE gap strategy with an explicit logEntry on
     // failure (named fallback, not a hidden default).
     core.set_ground_gapping(gap);
-    core.process_gap();
+    if (!core.process_gap()) {
+        // ABT #774: an unprocessable gap must not flow into the losses model as if it were
+        // real. Throwing routes it through the optimizer's documented failure contract —
+        // the caller catches and falls back to the SIMPLE gap strategy.
+        throw GapException(core.get_last_gap_processing_failure().value_or(
+            "gap does not fit the winding column"));
+    }
 
     auto coreLossesModel = CoreLossesModel::factory(
         std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
@@ -311,6 +317,7 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
         return;
     }
 
+    std::vector<size_t> gapInfeasibleIndexes;
     for (size_t i = 0; i < magneticsWithScoring->size(); ++i) {
         Core core = (*magneticsWithScoring)[i].first.get_core();
 
@@ -326,8 +333,22 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
             core.process_data();
         }
 
-        // Calculate gapping constraints
-        auto constraints = calculate_gapping_constraints(inputs, core);
+        // Calculate gapping constraints. ABT #774: the sizing itself can already prove the
+        // candidate infeasible — calculate_gap_from_saturation_constraint processes the
+        // solved gap and throws GapException when it cannot fit the column (a 0.44 m gap on
+        // a 9 mm column, for a tiny core asked to store flyback energy). That is a verdict
+        // on THIS candidate, not an engine error: reject it and keep sweeping.
+        GappingConstraints constraints;
+        try {
+            constraints = calculate_gapping_constraints(inputs, core);
+        }
+        catch (const GapException& e) {
+            logEntry("Rejecting core '" + core.get_name().value_or("?")
+                     + "': gap-infeasible while sizing: " + std::string(e.what()),
+                     "CoreAdviser", 2);
+            gapInfeasibleIndexes.push_back(i);
+            continue;
+        }
 
         logEntry("Gap: core=" + core.get_name().value_or("?")
                  + " minGap=" + std::to_string(constraints.minGap)
@@ -338,7 +359,18 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
 
         // Apply the optimal gap
         core.set_ground_gapping(constraints.optimalGap);
-        core.process_gap();
+        // ABT #774: a candidate whose required gap does not fit its own column is simply
+        // INFEASIBLE — reject it here with the rest of the filter stage instead of leaving
+        // an unprocessed gap on the candidate for a downstream calculation to trip over
+        // (process_gap_or_throw escaping from the inductance filter aborted whole Heaviside
+        // design sweeps: one bad candidate cost every good one behind it).
+        if (!core.process_gap()) {
+            logEntry("Rejecting core '" + core.get_name().value_or("?") + "': "
+                     + core.get_last_gap_processing_failure().value_or("gap does not fit the winding column"),
+                     "CoreAdviser", 2);
+            gapInfeasibleIndexes.push_back(i);
+            continue;
+        }
 
         // Update name with gap info (avoid duplicates)
         std::stringstream ss;
@@ -360,6 +392,10 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
         }
 
         (*magneticsWithScoring)[i].first.set_core(core);
+    }
+    // ABT #774: drop the gap-infeasible candidates (reverse order keeps indexes valid).
+    for (auto it = gapInfeasibleIndexes.rbegin(); it != gapInfeasibleIndexes.rend(); ++it) {
+        magneticsWithScoring->erase(magneticsWithScoring->begin() + *it);
     }
 }
 

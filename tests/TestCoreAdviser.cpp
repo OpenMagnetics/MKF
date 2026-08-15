@@ -3099,4 +3099,38 @@ TEST_CASE("Test_CoreAdviser_PFC_Boost_Inductor_StandardCores", "[core-adviser][a
     settings.reset();
 }
 
+// ABT #774 (from Heaviside): a candidate whose required gap exceeds its own winding column is
+// simply INFEASIBLE — it must be rejected by the gapping stage like any other filter reject.
+// It used to sail on with an UNPROCESSED gap (process_gap()'s false was ignored), and the
+// first downstream calculation that called process_gap_or_throw aborted the entire advise
+// with GAP_INVALID_DIMENSIONS: one bad candidate cost every good one behind it.
+TEST_CASE("Test_Abt774_Gap_Infeasible_Candidate_Is_Rejected_Not_Thrown", "[adviser][core-adviser][abt774]") {
+    settings.reset();
+    OpenMagnetics::Inputs inputs;
+    // Flyback-class energy storage at a brutal peak current: the energy/saturation gap a
+    // tiny E 13 core would need is orders of magnitude longer than its winding column.
+    prepare_test_parameters(60, 25, 100000, {}, 100e-6, inputs);
+    inputs.get_mutable_design_requirements().set_topology(MAS::Topology::FLYBACK_CONVERTER);
+
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.0001);
+    auto core = OpenMagneticsTesting::get_quick_core("E 13/7/4", gapping, 1, "3C97");
+
+    std::vector<std::pair<OpenMagnetics::Magnetic, double>> magneticsWithScoring;
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(OpenMagnetics::Coil());
+    magneticsWithScoring.push_back({magnetic, 1.0});
+
+    CoreAdviser coreAdviser;
+    // The contract under test: no throw, and no candidate left carrying an unprocessed gap.
+    REQUIRE_NOTHROW(coreAdviser.add_gapping_standard_cores(&magneticsWithScoring, inputs));
+    for (auto& [candidate, scoring] : magneticsWithScoring) {
+        INFO("surviving candidate " << candidate.get_core().get_name().value_or("?"));
+        CHECK(candidate.get_mutable_core().is_gap_processed());
+    }
+    // This particular candidate is infeasible and must be gone.
+    CHECK(magneticsWithScoring.empty());
+    settings.reset();
+}
+
 }  // namespace
