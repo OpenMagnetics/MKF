@@ -871,8 +871,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
     // ALONG the window edge, so measuring its row from the window put the copper inside the
     // margin band — visible in the 2D as the magenta lead crossing the yellow tape. A run along
     // an edge crosses the whole window radially, so it must clear the LARGEST margin on that edge
-    // in that window. margin[0]/margin[1] are the section's "top or left"/"bottom or right",
-    // which follow the turn axis of the virtual frame used here.
+    // in that window. margin[0]/margin[1] are the section's "top or left"/"bottom or right".
+    // ABT #726: in the virtual frame "top" is the HIGH turn-axis side. For OVERLAPPING layers the
+    // turn axis is the real y, so margin[0] ("top") insets the high side; for CONTIGUOUS layers
+    // the frame is the x<->y transpose — the virtual high side is the real RIGHT, which margin[1]
+    // ("bottom or right") owns. align_blocked_layer_turns insets with exactly this convention
+    // (high -= margin[turnAxis == 1 ? 0 : 1]); mapping margin[0] to the virtual top
+    // unconditionally re-created the #684 lead-through-tape defect on the contiguous path: rows
+    // inset on the tape-free side, stacked through the tape on the other.
     std::map<size_t, double> topMarginPerWindow;
     std::map<size_t, double> bottomMarginPerWindow;
     if (sectionsDescription) {
@@ -882,8 +888,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             }
             auto sectionMargin = resolve_margin(marginSection);
             size_t windowIndex = windowIndexOf(marginSection.get_name());
-            topMarginPerWindow[windowIndex] = std::max(topMarginPerWindow[windowIndex], sectionMargin[0]);
-            bottomMarginPerWindow[windowIndex] = std::max(bottomMarginPerWindow[windowIndex], sectionMargin[1]);
+            double virtualTopMargin = layersAreContiguous ? sectionMargin[1] : sectionMargin[0];
+            double virtualBottomMargin = layersAreContiguous ? sectionMargin[0] : sectionMargin[1];
+            topMarginPerWindow[windowIndex] = std::max(topMarginPerWindow[windowIndex], virtualTopMargin);
+            bottomMarginPerWindow[windowIndex] = std::max(bottomMarginPerWindow[windowIndex], virtualBottomMargin);
         }
     }
     auto edgeBaseY = [&](size_t windowIndex, bool atTop) -> double {

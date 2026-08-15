@@ -13743,6 +13743,73 @@ TEST_CASE("Test_Abt684_Terminal_Leads_Stay_Out_Of_The_Margin", "[constructive-mo
     settings.reset();
 }
 
+// ABT #726: the same #684 contract on the CONTIGUOUS (transposed) path. Contiguous layers run
+// their turns along x, so margin[0] ("top or left") owns the LEFT window edge and margin[1] the
+// RIGHT — align_blocked_layer_turns already insets with that convention. The reserved-space row
+// allocator mapped margin[0] to the virtual-frame top unconditionally, which on this path is the
+// real RIGHT: with asymmetric tape the lead rows were inset on the tape-FREE side and stacked
+// straight through the tape on the other.
+TEST_CASE("Test_Abt726_Contiguous_Terminal_Leads_Stay_Out_Of_The_Margin", "[constructive-model][coil][real-geometry][abt726]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_allow_margin_tape(true);
+    // Asymmetric on purpose: a symmetric margin cannot catch a row measured from the wrong edge.
+    // Contiguous margins live on the WIDTH axis of the window.
+    const double leftMargin = 0.0006;   // margin[0]: "top or left" — LEFT for contiguous layers
+    const double rightMargin = 0.0003;  // margin[1]: "bottom or right" — RIGHT
+
+    // Same fixture as Test_Real_Geometry_Rectangular_Contiguous: 12 turns x 2 parallels on
+    // PQ 28/20, sections and layers both contiguous. Rebuilt UNWOUND (the quick-coil constructor
+    // winds, which sizes _marginsPerSection and would push the preloaded margins past index 0).
+    std::vector<int64_t> numberTurns = {12};
+    std::vector<int64_t> numberParallels = {2};
+    auto sourceCoil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", 1,
+        WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS);
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(sourceCoil.resolve_bobbin());
+    coil.set_functional_description(sourceCoil.get_functional_description());
+    coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
+    coil.set_layers_orientation(WindingOrientation::CONTIGUOUS);
+    coil.preload_margins({{leftMargin, rightMargin}});
+    coil.wind();
+    REQUIRE(coil.get_turns_description());
+
+    // The contract only means something if the wind actually produced contiguous conduction layers.
+    bool anyContiguousConductionLayer = false;
+    const auto layersForOrientationCheck = coil.get_layers_description().value();
+    for (const auto& layer : layersForOrientationCheck) {
+        if (layer.get_type() == ElectricalType::CONDUCTION
+            && layer.get_orientation() == WindingOrientation::CONTIGUOUS) {
+            anyContiguousConductionLayer = true;
+        }
+    }
+    REQUIRE(anyContiguousConductionLayer);
+
+    auto bobbinOut = coil.resolve_bobbin();
+    auto processedDescription = bobbinOut.get_processed_description().value();
+    auto windingWindow = processedDescription.get_winding_windows()[0];
+    double windowRight = windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2;
+    double windowLeft = windingWindow.get_coordinates().value()[0] - windingWindow.get_width().value() / 2;
+    const double usableRight = windowRight - rightMargin;
+    const double usableLeft = windowLeft + leftMargin;
+
+    size_t terminals = 0;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (!space.isTerminal) {
+            continue;
+        }
+        ++terminals;
+        double low = space.coordinates[0] - space.dimensions[0] / 2;
+        double high = space.coordinates[0] + space.dimensions[0] / 2;
+        INFO("terminal of " << space.winding << " at x [" << low << "," << high << "] against usable ["
+             << usableLeft << "," << usableRight << "]");
+        CHECK(high <= usableRight + 1e-9);
+        CHECK(low >= usableLeft - 1e-9);
+    }
+    REQUIRE(terminals > 0);
+    settings.reset();
+}
+
 // get_interleaving_level used to return the repetitions of the LAST wind (_currentRepetitions),
 // so before any wind it read 1 no matter what was requested, and after set_interleaving_level
 // it kept returning the stale wound value — MagneticAdviser's level-1 retry and CoilAdviser's
