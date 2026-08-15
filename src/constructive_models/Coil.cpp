@@ -4371,44 +4371,78 @@ bool Coil::are_sections_and_layers_fitting() {
             if (processedDescription.get_winding_windows().empty()) {
                 return windTurns;
             }
-            // NOTE (ABT #730, attempted 2026-08-14 and REVERTED): resolving each turn's own
-            // winding window through its section and testing against that window's real
-            // envelope broke 12 multi-column tests, because this check runs BEFORE
-            // apply_group_window_sides mirrors lateral groups to negative x — lateral turns
-            // still sit in the +x window-local frame here, where window 0's envelope is
-            // (for the symmetric windows every current core has) exactly the right box.
-            // A real per-window check needs frame awareness; it belongs in the ABT #720
-            // winder refactor where per-group frames are explicit.
-            const auto& ww = processedDescription.get_winding_windows()[0];
-            if (ww.get_coordinates() && ww.get_width() && ww.get_height()) {
-                const double x0 = (*ww.get_coordinates())[0] - *ww.get_width() / 2;
-                const double x1 = (*ww.get_coordinates())[0] + *ww.get_width() / 2;
-                const double y0 = (*ww.get_coordinates())[1] - *ww.get_height() / 2;
-                const double y1 = (*ww.get_coordinates())[1] + *ww.get_height() / 2;
-                // Measured on the TURNS (the actual copper): the layer rects go stale by a
-                // few um once align_blocked_layer_turns re-spreads the turns, and a stale rect
-                // must not fail a coil whose copper sits exactly at the window edge.
-                const double tol = 1e-9;
-                if (get_turns_description()) {
-                    auto wires = get_wires();
-                    auto turnsForEnvelope = get_turns_description().value();
-                    for (const auto& turn : turnsForEnvelope) {
-                        size_t windingIndex = get_winding_index_by_name(turn.get_winding());
-                        const double hw = wires[windingIndex].get_maximum_outer_width() / 2;
-                        const double hh = wires[windingIndex].get_maximum_outer_height() / 2;
-                        const auto& c = turn.get_coordinates();
-                        if (c[0] - hw < x0 - tol || c[0] + hw > x1 + tol ||
-                            c[1] - hh < y0 - tol || c[1] + hh > y1 + tol) {
-                            // Logged, not just cerr'd: getenv/cerr is unreachable from a WASM
-                            // consumer, and this is the check that decides whether real-winding
-                            // blocking runs at all (ABT #650).
-                            _lastFitFailure = turn.get_name() + " at (" + std::to_string(c[0]) + ","
-                                            + std::to_string(c[1]) + ") outside window x["
-                                            + std::to_string(x0) + "," + std::to_string(x1) + "] y["
-                                            + std::to_string(y0) + "," + std::to_string(y1) + "]";
-                            windTurns = false;
-                            break;
+            // ABT #730: each turn is tested against ITS OWN winding window's envelope,
+            // resolved through its section — a lateral group in window 1+ has a different
+            // x-range than window 0, and testing everything against window 0 either refused
+            // designs that fit or silently dropped real-winding blocking for them.
+            //
+            // Frame awareness (the 2026-08-14 attempt broke without it): this check runs
+            // BEFORE apply_group_window_sides mirrors lateral groups to negative x, where
+            // turns still sit in the +x window-local frame — there the envelope is the
+            // window MIRRORED to +x (|x-center|). After the mirror (flag set), turns and
+            // windows are both in the real frame. Every caller is a wind-time path, so the
+            // flag is accurate for the coordinates being tested.
+            const auto& windingWindowsForEnvelope = processedDescription.get_winding_windows();
+            auto envelopeForWindow = [&](size_t windowIndex) -> std::optional<std::array<double, 4>> {
+                if (windowIndex >= windingWindowsForEnvelope.size()) {
+                    // Stale/foreign window index on a section: keep the historical window-0
+                    // behaviour rather than rejecting the whole coil on bookkeeping.
+                    windowIndex = 0;
+                }
+                const auto& ww = windingWindowsForEnvelope[windowIndex];
+                if (!(ww.get_coordinates() && ww.get_width() && ww.get_height())) {
+                    return std::nullopt;
+                }
+                double xCenter = (*ww.get_coordinates())[0];
+                if (!_groupWindowSidesApplied) {
+                    xCenter = std::abs(xCenter);
+                }
+                return std::array<double, 4>{xCenter - *ww.get_width() / 2,
+                                             xCenter + *ww.get_width() / 2,
+                                             (*ww.get_coordinates())[1] - *ww.get_height() / 2,
+                                             (*ww.get_coordinates())[1] + *ww.get_height() / 2};
+            };
+            std::map<std::string, size_t> windowIndexBySectionName;
+            for (const auto& sectionForWindow : sections) {
+                windowIndexBySectionName[sectionForWindow.get_name()] =
+                    resolve_section_winding_window_index(sectionForWindow);
+            }
+            // Measured on the TURNS (the actual copper): the layer rects go stale by a
+            // few um once align_blocked_layer_turns re-spreads the turns, and a stale rect
+            // must not fail a coil whose copper sits exactly at the window edge.
+            const double tol = 1e-9;
+            if (get_turns_description()) {
+                auto wires = get_wires();
+                auto turnsForEnvelope = get_turns_description().value();
+                for (const auto& turn : turnsForEnvelope) {
+                    size_t windowIndex = 0;
+                    if (turn.get_section()) {
+                        auto foundWindow = windowIndexBySectionName.find(turn.get_section().value());
+                        if (foundWindow != windowIndexBySectionName.end()) {
+                            windowIndex = foundWindow->second;
                         }
+                    }
+                    auto envelope = envelopeForWindow(windowIndex);
+                    if (!envelope) {
+                        continue;
+                    }
+                    const auto& [x0, x1, y0, y1] = envelope.value();
+                    size_t windingIndex = get_winding_index_by_name(turn.get_winding());
+                    const double hw = wires[windingIndex].get_maximum_outer_width() / 2;
+                    const double hh = wires[windingIndex].get_maximum_outer_height() / 2;
+                    const auto& c = turn.get_coordinates();
+                    if (c[0] - hw < x0 - tol || c[0] + hw > x1 + tol ||
+                        c[1] - hh < y0 - tol || c[1] + hh > y1 + tol) {
+                        // Logged, not just cerr'd: getenv/cerr is unreachable from a WASM
+                        // consumer, and this is the check that decides whether real-winding
+                        // blocking runs at all (ABT #650).
+                        _lastFitFailure = turn.get_name() + " at (" + std::to_string(c[0]) + ","
+                                        + std::to_string(c[1]) + ") outside window "
+                                        + std::to_string(windowIndex) + " x["
+                                        + std::to_string(x0) + "," + std::to_string(x1) + "] y["
+                                        + std::to_string(y0) + "," + std::to_string(y1) + "]";
+                        windTurns = false;
+                        break;
                     }
                 }
             }
