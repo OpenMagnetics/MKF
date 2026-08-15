@@ -9054,6 +9054,67 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin", 
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
+// ABT #720: margins on a MULTI-GROUP toroid. _marginsPerSection is keyed by conduction-section
+// ordinal flat across groups; under the old flat interleaved keying (with preload_margins'
+// duplicated entries) the second group read the FIRST group's margin rows, so its sections
+// carried the wrong margins. One winding per group makes the expected mapping unambiguous.
+TEST_CASE("Test_Abt720_MultiGroup_Toroidal_Margins_Keyed_Per_Group", "[constructive-model][coil][round-winding-window][margin][abt720]") {
+    settings.reset();
+    settings.set_coil_equalize_margins(false);
+    std::vector<int64_t> numberTurns = {20, 15};
+    std::vector<int64_t> numberParallels = {1, 1};
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "T 20/10/7", 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING);
+
+    // Two explicit groups, one winding each, sharing the toroidal window's angle in halves.
+    auto bobbin = coil.resolve_bobbin();
+    auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
+    std::vector<Group> groups;
+    for (size_t windingIndex = 0; windingIndex < 2; ++windingIndex) {
+        Group group;
+        group.set_name("Group " + std::to_string(windingIndex));
+        group.set_winding_window(0);
+        group.set_coordinates({windingWindow.get_coordinates().value()[0], windingWindow.get_coordinates().value()[1]});
+        group.set_dimensions(std::vector<double>{windingWindow.get_radial_height().value(),
+                                                 windingWindow.get_angle().value() / 2});
+        group.set_coordinate_system(CoordinateSystem::POLAR);
+        group.set_sections_orientation(WindingOrientation::OVERLAPPING);
+        group.set_type(WiringTechnology::WOUND);
+        PartialWinding partialWinding;
+        partialWinding.set_winding(coil.get_functional_description()[windingIndex].get_name());
+        partialWinding.set_parallels_proportion(std::vector<double>(1, 1));
+        group.set_partial_windings({partialWinding});
+        groups.push_back(group);
+    }
+    coil.set_groups_description(groups);
+
+    const std::vector<double> firstMargin{0.0002, 0.0003};
+    const std::vector<double> secondMargin{0.0005, 0.0007};
+    coil.reset_margins_per_section();
+    coil.preload_margins({firstMargin, secondMargin});
+    coil.wind_by_sections();
+
+    REQUIRE(coil.get_sections_description());
+    const auto sections = coil.get_sections_description().value();
+    size_t checkedSections = 0;
+    for (const auto& section : sections) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        auto margin = coil.resolve_margin(section);
+        const auto& expected = section.get_partial_windings()[0].get_winding() ==
+                                       coil.get_functional_description()[0].get_name()
+                                   ? firstMargin
+                                   : secondMargin;
+        INFO(section.get_name() << " margin {" << margin[0] << "," << margin[1] << "}");
+        CHECK_THAT(margin[0], Catch::Matchers::WithinRel(expected[0], 1e-9));
+        CHECK_THAT(margin[1], Catch::Matchers::WithinRel(expected[1], 1e-9));
+        ++checkedSections;
+    }
+    CHECK(checkedSections == 2);
+    settings.reset();
+}
+
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
     settings.set_coil_equalize_margins(false);
     clear_databases();

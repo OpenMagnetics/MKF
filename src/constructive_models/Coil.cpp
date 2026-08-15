@@ -3105,7 +3105,12 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         std::vector<std::vector<double>> recoveredMargins;
         recoveredMargins.reserve(sectionsWithMargins.size());
         bool anyMargin = false;
+        // ABT #720: _marginsPerSection is keyed by CONDUCTION-section ordinal — recover one
+        // entry per persisted conduction section, in wound order.
         for (const auto& sectionWithMargin : sectionsWithMargins) {
+            if (sectionWithMargin.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
             auto margin = resolve_margin(sectionWithMargin);
             anyMargin = anyMargin || margin[0] > 0 || margin[1] > 0;
             recoveredMargins.push_back(margin);
@@ -5388,63 +5393,86 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
     return get_number_layers_needed_and_number_physical_turns(section.get_coordinates()[0] - section.get_dimensions()[0] / 2, section.get_dimensions()[1], wire, physicalTurnsInSection, windingWindowRadius, blockedSlotsPerLayer);
 }
 
-void Coil::apply_margin_tape(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t sectionIndexOffset) {
-    if (_marginsPerSection.size() < sectionIndexOffset + orderedSectionsWithInsulation.size()) {
+void Coil::apply_margin_tape(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t conductionSectionOffset) {
+    // ABT #720: _marginsPerSection is keyed by CONDUCTION-section ordinal (flat across groups,
+    // in wound order). conductionSectionOffset is the number of conduction sections already
+    // wound by previous groups.
+    size_t conductionCount = 0;
+    for (const auto& orderedSection : orderedSectionsWithInsulation) {
+        if (orderedSection.first == ElectricalType::CONDUCTION) {
+            ++conductionCount;
+        }
+    }
+    if (_marginsPerSection.size() < conductionSectionOffset + conductionCount) {
         // Resize (not replace) so preloaded margins are preserved, matching equalize_margins
-        _marginsPerSection.resize(sectionIndexOffset + orderedSectionsWithInsulation.size(), {0, 0});
+        _marginsPerSection.resize(conductionSectionOffset + conductionCount, {0, 0});
     }
 
+    size_t conductionOrdinal = conductionSectionOffset;
     for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
-        size_t marginIndex = sectionIndexOffset + sectionIndex;
-        if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
-            if (sectionIndex > 0 && !_coilSectionInterfaces.empty()) {
+        if (orderedSectionsWithInsulation[sectionIndex].first != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        size_t marginIndex = conductionOrdinal++;
+        if (sectionIndex > 0 && !_coilSectionInterfaces.empty()) {
 
-                if (orderedSectionsWithInsulation[sectionIndex - 1].first != ElectricalType::INSULATION) {
-                    // Adjacent conduction sections are allowed when the pair
-                    // belongs to the same isolation side (no insulation was
-                    // inserted by add_insulation_to_sections) — this happens
-                    // for wound_with-grouped center-tap halves, and for
-                    // wires within the same winding side generally.
-                    auto leftIdx = orderedSectionsWithInsulation[sectionIndex].second.first;
-                    auto rightIdxPrev = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
-                    auto pairKey = std::pair<size_t, size_t>{rightIdxPrev, leftIdx};
-                    if (!_insulationSections.contains(pairKey)) {
-                        continue;
-                    }
-                    throw InvalidInputException("There cannot be two sections without insulation in between");
-                }
-                auto windingIndex = orderedSectionsWithInsulation[sectionIndex].second.first;
-                auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 2].second.first;
-                auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, windingIndex};
-                // No interface recorded for this pair means no margin-tape requirement (the
-                // custom-insulation path fills _insulationSections without interfaces). Skip
-                // instead of operator[]-defaulting, which used to insert a junk entry whose
-                // layerPurpose is uninitialized.
-                auto coilSectionInterfaceIt = _coilSectionInterfaces.find(windingsMapKey);
-                if (coilSectionInterfaceIt == _coilSectionInterfaces.end()) {
+            if (orderedSectionsWithInsulation[sectionIndex - 1].first != ElectricalType::INSULATION) {
+                // Adjacent conduction sections are allowed when the pair
+                // belongs to the same isolation side (no insulation was
+                // inserted by add_insulation_to_sections) — this happens
+                // for wound_with-grouped center-tap halves, and for
+                // wires within the same winding side generally.
+                auto leftIdx = orderedSectionsWithInsulation[sectionIndex].second.first;
+                auto rightIdxPrev = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
+                auto pairKey = std::pair<size_t, size_t>{rightIdxPrev, leftIdx};
+                if (!_insulationSections.contains(pairKey)) {
                     continue;
                 }
-                double halfMarginTapeDistance = coilSectionInterfaceIt->second.get_total_margin_tape_distance() / 2;
-                _marginsPerSection[marginIndex][0] =  std::max(_marginsPerSection[marginIndex][0], halfMarginTapeDistance);
-                _marginsPerSection[marginIndex][1] =  std::max(_marginsPerSection[marginIndex][1], halfMarginTapeDistance);
-                _marginsPerSection[marginIndex - 2][0] =  std::max(_marginsPerSection[marginIndex - 2][0], halfMarginTapeDistance);
-                _marginsPerSection[marginIndex - 2][1] =  std::max(_marginsPerSection[marginIndex - 2][1], halfMarginTapeDistance);
+                throw InvalidInputException("There cannot be two sections without insulation in between");
             }
+            auto windingIndex = orderedSectionsWithInsulation[sectionIndex].second.first;
+            auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 2].second.first;
+            auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, windingIndex};
+            // No interface recorded for this pair means no margin-tape requirement (the
+            // custom-insulation path fills _insulationSections without interfaces). Skip
+            // instead of operator[]-defaulting, which used to insert a junk entry whose
+            // layerPurpose is uninitialized.
+            auto coilSectionInterfaceIt = _coilSectionInterfaces.find(windingsMapKey);
+            if (coilSectionInterfaceIt == _coilSectionInterfaces.end()) {
+                continue;
+            }
+            double halfMarginTapeDistance = coilSectionInterfaceIt->second.get_total_margin_tape_distance() / 2;
+            // This conduction section and the PREVIOUS conduction section (across the
+            // insulation between them) both get the tape floor.
+            _marginsPerSection[marginIndex][0] =  std::max(_marginsPerSection[marginIndex][0], halfMarginTapeDistance);
+            _marginsPerSection[marginIndex][1] =  std::max(_marginsPerSection[marginIndex][1], halfMarginTapeDistance);
+            _marginsPerSection[marginIndex - 1][0] =  std::max(_marginsPerSection[marginIndex - 1][0], halfMarginTapeDistance);
+            _marginsPerSection[marginIndex - 1][1] =  std::max(_marginsPerSection[marginIndex - 1][1], halfMarginTapeDistance);
         }
     }
 }
 
-void Coil::equalize_margins(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t sectionIndexOffset) {
+void Coil::equalize_margins(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t conductionSectionOffset) {
     auto bobbin = resolve_bobbin();
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
 
+    // ABT #720: margins are keyed by CONDUCTION-section ordinal. Map each ordered entry to
+    // its ordinal once; the ordered list is still walked for the available-space lookups.
+    std::vector<std::optional<size_t>> ordinalByOrderedIndex(orderedSectionsWithInsulation.size(), std::nullopt);
+    size_t conductionCount = 0;
+    for (size_t index = 0; index < orderedSectionsWithInsulation.size(); ++index) {
+        if (orderedSectionsWithInsulation[index].first == ElectricalType::CONDUCTION) {
+            ordinalByOrderedIndex[index] = conductionSectionOffset + conductionCount;
+            ++conductionCount;
+        }
+    }
     // Mirror apply_margin_tape's sizing guard: _marginsPerSection is sized
     // lazily by wind_by_*; equalize_margins can be reached on paths where it
     // was never grown to the section count (e.g. PSFB / multi-section bridge
     // topologies). Reading past the end here used to SEGV in CoilAdviser.
-    if (_marginsPerSection.size() < sectionIndexOffset + orderedSectionsWithInsulation.size()) {
-        _marginsPerSection.resize(sectionIndexOffset + orderedSectionsWithInsulation.size(), {0, 0});
+    if (_marginsPerSection.size() < conductionSectionOffset + conductionCount) {
+        _marginsPerSection.resize(conductionSectionOffset + conductionCount, {0, 0});
     }
 
     // ABT #721: what "equalizing" means depends on the window's geometry.
@@ -5509,16 +5537,24 @@ void Coil::equalize_margins(const std::vector<std::pair<ElectricalType, std::pai
                 if (totalAvailableSpace <= 0) {
                     continue;
                 }
+                // ABT #720: the partner entries must both be conduction sections to have
+                // margins at all (the +2 step assumed strict alternation; an insulation
+                // entry landing there used to read/write a junk margin row).
+                if (!ordinalByOrderedIndex[indexForMarginLeftSection] || !ordinalByOrderedIndex[indexForMarginRightSection]) {
+                    continue;
+                }
+                size_t leftOrdinal = ordinalByOrderedIndex[indexForMarginLeftSection].value();
+                size_t rightOrdinal = ordinalByOrderedIndex[indexForMarginRightSection].value();
                 if (windowWraps) {
-                    double totalMargin = _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][1] + _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][0];
-                    _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][1] = leftAvailableSpace / totalAvailableSpace * totalMargin;
-                    _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][0] = rightAvailableSpace / totalAvailableSpace * totalMargin;
+                    double totalMargin = _marginsPerSection[leftOrdinal][1] + _marginsPerSection[rightOrdinal][0];
+                    _marginsPerSection[leftOrdinal][1] = leftAvailableSpace / totalAvailableSpace * totalMargin;
+                    _marginsPerSection[rightOrdinal][0] = rightAvailableSpace / totalAvailableSpace * totalMargin;
                 }
                 else {
                     for (size_t edge : {size_t(0), size_t(1)}) {
-                        double totalMargin = _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][edge] + _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][edge];
-                        _marginsPerSection[sectionIndexOffset + indexForMarginLeftSection][edge] = leftAvailableSpace / totalAvailableSpace * totalMargin;
-                        _marginsPerSection[sectionIndexOffset + indexForMarginRightSection][edge] = rightAvailableSpace / totalAvailableSpace * totalMargin;
+                        double totalMargin = _marginsPerSection[leftOrdinal][edge] + _marginsPerSection[rightOrdinal][edge];
+                        _marginsPerSection[leftOrdinal][edge] = leftAvailableSpace / totalAvailableSpace * totalMargin;
+                        _marginsPerSection[rightOrdinal][edge] = rightAvailableSpace / totalAvailableSpace * totalMargin;
                     }
                 }
             }
@@ -6785,7 +6821,9 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
     // the main column (apply_group_window_sides mirrors negative-x windows at the end
     // of wind()). Single-group coils keep the exact historical inputs.
     bool multiGroup = groups.size() > 1;
-    size_t marginSectionOffset = 0;
+    // ABT #720: margins are keyed by CONDUCTION-section ordinal, flat across groups in
+    // wound order. This offset counts the conduction sections of the groups already wound.
+    size_t conductionSectionOffset = 0;
 
     for (auto group : groups) {
         std::vector<size_t> groupPattern = pattern;
@@ -6920,19 +6958,20 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
         double currentSectionCenterWidth = DBL_MAX;
         double currentSectionCenterHeight = DBL_MAX;
 
-        apply_margin_tape(orderedSectionsWithInsulation, marginSectionOffset);
+        apply_margin_tape(orderedSectionsWithInsulation, conductionSectionOffset);
         // ABT #721 (owner ruling 2026-08-14): coilEqualizeMargins now applies to
         // rectangular windows too — with rectangular-aware semantics (same-edge pairing,
         // no wrap; see equalize_margins). Enabled by default; tests that pin the old
         // 50/50 geometry disable the setting explicitly.
         if (settings.get_coil_equalize_margins()) {
-            equalize_margins(orderedSectionsWithInsulation, marginSectionOffset);
+            equalize_margins(orderedSectionsWithInsulation, conductionSectionOffset);
         }
 
+        // Margins are keyed by conduction ordinal, flat across ALL groups in wound order.
+        size_t conductionOrdinal = conductionSectionOffset;
         for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
-            // Margins are indexed flat across ALL groups in winding order.
-            size_t marginIndex = marginSectionOffset + sectionIndex;
             if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
+                size_t marginIndex = conductionOrdinal++;
                 auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
                 auto windingIndex = sectionInfo.first;
                 auto spaceForSection = sectionInfo.second;
@@ -7127,7 +7166,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
 
             }
         }
-        marginSectionOffset += orderedSectionsWithInsulation.size();
+        conductionSectionOffset = conductionOrdinal;
     }
 
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -7142,47 +7181,34 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
     return true;
 }
 
-void Coil::remove_insulation_if_margin_is_enough(const std::vector<std::pair<size_t, double>>& orderedSections) {
+void Coil::remove_insulation_if_margin_is_enough(const std::vector<std::pair<size_t, double>>& orderedSections, size_t conductionSectionOffset) {
     auto bobbin = resolve_bobbin();
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
     double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
 
-    size_t multiplier;
-    if (_marginsPerSection.size() > orderedSections.size()) {
-        multiplier = 2;
-    }
-    else {
-        multiplier = 1;
+    // ABT #720: _marginsPerSection is keyed by CONDUCTION-section ordinal, and orderedSections
+    // here is conduction-only — the index IS the group-local ordinal, offset by the previous
+    // groups' conduction count. (The old flat keying forced a runtime "multiplier" inference of
+    // this function's own indexing, and the missing offset made every group after the first
+    // read the first group's margin rows.)
+    if (_marginsPerSection.size() < conductionSectionOffset + orderedSections.size()) {
+        _marginsPerSection.resize(conductionSectionOffset + orderedSections.size(), {0, 0});
     }
 
     for (size_t sectionIndex = 0; sectionIndex < orderedSections.size(); ++sectionIndex) {
-        size_t indexForMarginLeftSection = sectionIndex * multiplier;
-        size_t indexForMarginRightSection;
-        if (sectionIndex + 1 != orderedSections.size()) {
-            indexForMarginRightSection = (sectionIndex + 1) * multiplier;
-        }
-        else {
-            indexForMarginRightSection = 0;
-        }
-        while (indexForMarginLeftSection >= _marginsPerSection.size() || indexForMarginRightSection >= _marginsPerSection.size()) {
-            _marginsPerSection.push_back({0, 0});
-        }
-    }    
-
-    for (size_t sectionIndex = 0; sectionIndex < orderedSections.size(); ++sectionIndex) {
-        size_t indexForMarginLeftSection = sectionIndex * multiplier;
-        // size_t indexForMarginLeftSection = sectionIndex;
+        size_t indexForMarginLeftSection = conductionSectionOffset + sectionIndex;
         size_t indexForMarginRightSection;
         size_t leftWindingIndex = orderedSections[sectionIndex].first;
         size_t rightWindingIndex;
         if (sectionIndex + 1 != orderedSections.size()) {
-            indexForMarginRightSection = (sectionIndex + 1) * multiplier;
-            // indexForMarginRightSection = sectionIndex + 1;
+            indexForMarginRightSection = conductionSectionOffset + sectionIndex + 1;
             rightWindingIndex = orderedSections[sectionIndex + 1].first;
         }
         else {
-            indexForMarginRightSection = 0;
+            // The toroidal window closes on itself: the last section's neighbour wraps to
+            // this group's first.
+            indexForMarginRightSection = conductionSectionOffset;
             rightWindingIndex = orderedSections[0].first;
         }
 
@@ -7241,10 +7267,10 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     // pattern/proportionPerWinding into every group's get_ordered_sections call, so a
     // group ended up trying to place windings that do not belong to it.
     bool multiGroup = groups.size() > 1;
-    // Margins are indexed flat across ALL groups in winding order (rectangular sibling's
-    // convention); without the offset the second group's apply_margin_tape re-indexed
-    // from 0 and clobbered the first group's margins.
-    size_t marginSectionOffset = 0;
+    // ABT #720: margins are keyed by CONDUCTION-section ordinal, flat across ALL groups in
+    // wound order (rectangular sibling's convention); without the offset the second group's
+    // apply_margin_tape re-indexed from 0 and clobbered the first group's margins.
+    size_t conductionSectionOffset = 0;
 
     for (auto group : groups) {
         std::vector<size_t> groupPattern = pattern;
@@ -7295,7 +7321,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
         auto orderedSections = get_ordered_sections(spaceForSections, groupProportionPerWinding, groupPattern, repetitions);
 
         if (windingOrientation == WindingOrientation::CONTIGUOUS) {
-            remove_insulation_if_margin_is_enough(orderedSections);
+            remove_insulation_if_margin_is_enough(orderedSections, conductionSectionOffset);
         }
         auto orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
 
@@ -7365,9 +7391,9 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
         double currentSectionCenterAngle = DBL_MAX;
         double currentSectionCenterRadialHeight = DBL_MAX;
 
-        apply_margin_tape(orderedSectionsWithInsulation, marginSectionOffset);
+        apply_margin_tape(orderedSectionsWithInsulation, conductionSectionOffset);
         if (settings.get_coil_equalize_margins()) {
-            equalize_margins(orderedSectionsWithInsulation, marginSectionOffset);
+            equalize_margins(orderedSectionsWithInsulation, conductionSectionOffset);
         }
 
         std::vector<double> currentSectionRadialHeights;
@@ -7398,8 +7424,8 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
 
         size_t conductingSectionIndex = 0;
         for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
-            // Margins are indexed flat across ALL groups in winding order.
-            size_t marginIndex = marginSectionOffset + sectionIndex;
+            // ABT #720: margins are keyed by conduction ordinal, flat across ALL groups.
+            size_t marginIndex = conductionSectionOffset + conductingSectionIndex;
             if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
                 auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
                 auto windingIndex = sectionInfo.first;
@@ -7612,7 +7638,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 }
             }
         }
-        marginSectionOffset += orderedSectionsWithInsulation.size();
+        conductionSectionOffset += conductingSectionIndex;
     }
 
 
@@ -11722,9 +11748,11 @@ void Coil::try_rewind() {
 void Coil::preload_margins(std::vector<std::vector<double>> marginPairs) {
     // Explicit margins re-arm the ABT #676 recovery for later winds (ABT #724).
     _marginsExplicitlyCleared = false;
+    // ABT #720: _marginsPerSection is keyed by CONDUCTION-section ordinal — one entry per
+    // conduction section, in wound order across all groups. (The old flat interleaved keying
+    // forced a duplicated entry here "for the insulation layer", which broke the moment two
+    // conduction sections sat adjacent without insulation.)
     for (auto margins : marginPairs) {
-        _marginsPerSection.push_back(margins);
-        // Add an extra one for the insulation layer
         _marginsPerSection.push_back(margins);
     }
 }
@@ -11740,25 +11768,32 @@ void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<doubl
     }
     auto sections = get_sections_description().value();
     auto globalSectionIndex = convert_conduction_section_index_to_global(sectionIndex);
-    // _marginsPerSection is only sized through set_interleaving_level() / wind_by_sections().
-    // When a Coil is reconstructed from JSON (e.g. via the Coil(json, bool) constructor used by
-    // the PyOpenMagnetics bindings and any caller that round-trips sectionsDescription through JSON),
-    // _marginsPerSection is empty even though sectionsDescription is populated, which made
-    // the indexed assignment below segfault. Grow the vector to match the existing sections
-    // and seed any uninitialized entries from the section's own margin, falling back to {0, 0}.
-    if (_marginsPerSection.size() < sections.size()) {
+    // ABT #720: _marginsPerSection is keyed by CONDUCTION-section ordinal, which is exactly the
+    // sectionIndex this method takes. It is only sized through the winders; when a Coil is
+    // reconstructed from JSON (e.g. via the Coil(json, bool) constructor used by the
+    // PyOpenMagnetics bindings and any caller that round-trips sectionsDescription through
+    // JSON), it is empty even though sectionsDescription is populated, which made the indexed
+    // assignment below segfault. Grow to the conduction-section count and seed any
+    // uninitialized entries from the persisted sections' own margins, falling back to {0, 0}.
+    std::vector<size_t> conductionGlobalIndexes;
+    for (size_t i = 0; i < sections.size(); ++i) {
+        if (sections[i].get_type() == ElectricalType::CONDUCTION) {
+            conductionGlobalIndexes.push_back(i);
+        }
+    }
+    if (_marginsPerSection.size() < conductionGlobalIndexes.size()) {
         size_t previousSize = _marginsPerSection.size();
-        _marginsPerSection.resize(sections.size(), {0, 0});
-        for (size_t i = previousSize; i < sections.size(); ++i) {
-            auto existingMargin = sections[i].get_margin();
+        _marginsPerSection.resize(conductionGlobalIndexes.size(), {0, 0});
+        for (size_t ordinal = previousSize; ordinal < conductionGlobalIndexes.size(); ++ordinal) {
+            auto existingMargin = sections[conductionGlobalIndexes[ordinal]].get_margin();
             if (existingMargin) {
                 if (std::holds_alternative<std::vector<double>>(existingMargin.value())) {
-                    _marginsPerSection[i] = std::get<std::vector<double>>(existingMargin.value());
+                    _marginsPerSection[ordinal] = std::get<std::vector<double>>(existingMargin.value());
                 }
             }
         }
     }
-    _marginsPerSection[globalSectionIndex] = margins;
+    _marginsPerSection[sectionIndex] = margins;
     sections[globalSectionIndex].set_margin(margins);
 
     set_sections_description(sections);

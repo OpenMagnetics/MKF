@@ -182,6 +182,10 @@ class Coil : public MAS::Coil {
         std::map<std::string, size_t> _windingIndexByName;
         std::map<std::string, size_t> _turnIndexByName;
         std::map<std::string, Turn> _turnByName;
+        // ABT #720: keyed by CONDUCTION-section ordinal — one {topOrLeft, bottomOrRight}
+        // entry per conduction section, in wound order flat across all groups. Insulation
+        // sections carry no margin entry. Section::margin on the wound sections is the
+        // persisted truth; this vector is the transient winding-time input.
         std::vector<std::vector<double>> _marginsPerSection;
         // ABT #724: reset_margins_per_section() means "the next wind is margin-free"; the
         // empty vector alone cannot express that, because wind()'s ABT #676 recovery treats
@@ -413,15 +417,15 @@ class Coil : public MAS::Coil {
         std::optional<WindingStyle> get_winding_style_override(size_t windingIndex) const;
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
-        void remove_insulation_if_margin_is_enough(const std::vector<std::pair<size_t, double>>& orderedSections);
-        // sectionIndexOffset: same flat-across-groups margin indexing as apply_margin_tape.
-        void equalize_margins(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t sectionIndexOffset = 0);
+        void remove_insulation_if_margin_is_enough(const std::vector<std::pair<size_t, double>>& orderedSections, size_t conductionSectionOffset);
+        // conductionSectionOffset: same conduction-ordinal margin keying as apply_margin_tape.
+        void equalize_margins(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t conductionSectionOffset = 0);
 
         std::vector<double> get_proportion_per_winding_based_on_wires();
-        // sectionIndexOffset: flat offset of this group's first ordered section in
-        // _marginsPerSection (margins are indexed flat across all groups in winding
-        // order; single-group coils pass 0).
-        void apply_margin_tape(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t sectionIndexOffset = 0);
+        // conductionSectionOffset: number of conduction sections wound by previous groups
+        // (_marginsPerSection is keyed by conduction ordinal flat across all groups;
+        // single-group coils pass 0).
+        void apply_margin_tape(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t conductionSectionOffset = 0);
         std::vector<double> get_aligned_section_dimensions_rectangular_window(size_t sectionIndex);
         std::vector<double> get_aligned_section_dimensions_round_window(size_t sectionIndex);
         size_t convert_conduction_section_index_to_global(size_t conductionSectionIndex);
