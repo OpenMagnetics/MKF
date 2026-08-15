@@ -8394,20 +8394,11 @@ bool Coil::wind_by_rectangular_layers() {
                 && !sections[sectionIndex].get_number_layers()
                 && maximumNumberPhysicalTurnsPerLayer > 1
                 && maximumNumberPhysicalTurnsPerLayer >= uint64_t(numberParallels);
-            // INPUT-CONNECTION ANGULAR BLOCKER (toroids, Alf's rule -- the round-window analog of
-            // the height reserved for connections on concentric windings): the connection enters
-            // at the section's start extreme on the FIRST ring, so every SUBSEQUENT ring
-            // surrenders the angular slots the connection's parallels occupy on that edge, and
-            // -- since a deeper ring's circumference shrinks -- its capacity is measured at ITS
-            // OWN radius, not the bore rim's (the uniform rim capacity is what let outer rings
-            // overhang the first ring on both edges). The spread placement applies the matching
-            // angular shift (wind_by_round_turns).
-            auto resolvedBobbinForCorridor = resolve_bobbin();
-            bool toroidalConnectionCorridor = settings.get_coil_use_real_winding_geometry()
-                && resolvedBobbinForCorridor.get_winding_window_shape() == WindingWindowShape::ROUND
-                && !sections[sectionIndex].get_number_layers()
-                && maximumNumberPhysicalTurnsPerLayer > 1
-                && maximumNumberPhysicalTurnsPerLayer >= uint64_t(numberParallels);
+            // ABT #720 cleanup: the toroidal input-connection corridor capacity (ABT #187)
+            // used to live HERE gated on a ROUND window shape — unreachable, since
+            // wind_by_layers only dispatches rectangular windows to this function. The live
+            // corridor capacity is in wind_by_round_layers / wind_by_round_sections /
+            // wind_by_round_turns (ABT #723).
             double wireTurnAxisSize = layersStackAlongWidth
                 ? wirePerWinding[windingIndex].get_maximum_outer_height()
                 : wirePerWinding[windingIndex].get_maximum_outer_width();
@@ -8420,14 +8411,14 @@ bool Coil::wind_by_rectangular_layers() {
                 return found->second;
             };
             std::vector<uint64_t> realPerLayerTurns;
-            if (realWindingBlocking || toroidalConnectionCorridor) {
+            if (realWindingBlocking) {
                 uint64_t remainingTurns = physicalTurnsInSection;
                 size_t builtLayers = 0;
                 while (remainingTurns > 0) {
                     auto blocked = blockedSlotsForLayer(builtLayers);
                     uint64_t blockedSlots = std::min<uint64_t>(blocked.first + blocked.second, maximumNumberPhysicalTurnsPerLayer - 1);
                     uint64_t capacity = maximumNumberPhysicalTurnsPerLayer - blockedSlots;
-                    if (realWindingBlocking && !toroidalConnectionCorridor) {
+                    if (realWindingBlocking) {
                         // ABT #616 (Alf, 26_psps: "3 turns should fit in layer 2 3 and 4"): the
                         // slot currency CEILs each edge's run depth to whole turn slots, so a
                         // 25 um insulation overhang on a two-row stack (0.885 mm) costs a whole
@@ -8475,7 +8466,7 @@ bool Coil::wind_by_rectangular_layers() {
                                 // depths, and a section rect that reads wider than the window let
                                 // one turn too many in — the layer then filled to a hair over 1.0
                                 // and the wind was refused as not fitting.
-                                const auto windowsForLanding = resolvedBobbinForCorridor
+                                const auto windowsForLanding = resolve_bobbin()
                                     .get_processed_description().value().get_winding_windows();
                                 double turnAxisExtent = extent;
                                 if (!windowsForLanding.empty()) {
@@ -8504,24 +8495,6 @@ bool Coil::wind_by_rectangular_layers() {
                                               << "} -> capacity=" << capacity << "\n";
                                 }
                             }
-                        }
-                    }
-                    if (toroidalConnectionCorridor) {
-                        // Deeper rings hold fewer turns (same wire, smaller radius) and, past the
-                        // first ring, surrender the connection corridor's slots.
-                        auto windingWindowsForCapacity = resolvedBobbinForCorridor.get_processed_description().value().get_winding_windows();
-                        double boreRadius = windingWindowsForCapacity[0].get_radial_height().value();
-                        double ringRadiusFirst = boreRadius - wireTurnAxisSize / 2;
-                        double ringRadiusThis = boreRadius - (double(builtLayers) + 0.5) * wireTurnAxisSize;
-                        if (ringRadiusThis <= 0) {
-                            break;   // past the toroid centre: nothing more fits
-                        }
-                        uint64_t radiusCapacity = uint64_t(std::floor(
-                            double(maximumNumberPhysicalTurnsPerLayer) * ringRadiusThis / ringRadiusFirst));
-                        capacity = std::min(capacity, radiusCapacity);
-                        if (builtLayers >= 1) {
-                            uint64_t corridorSlots = uint64_t(numberParallels) + 2;
-                            capacity = capacity > corridorSlots ? capacity - corridorSlots : 0;
                         }
                     }
                     // Side-by-side parallels: hold an equal number of turns of every parallel, so the
@@ -8629,14 +8602,14 @@ bool Coil::wind_by_rectangular_layers() {
             // long-standing path). For a bifilar/N-filar winding we KEEP CONSECUTIVE_PARALLELS so the
             // parallels are laid side by side (better current sharing / proximity) and the forced count
             // is split evenly across them — forcing TURNS here would change the electrical layout.
-            if ((realWindingBlocking || toroidalConnectionCorridor) && numberParallels == 1) {
+            if (realWindingBlocking && numberParallels == 1) {
                 windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
             }
 
             for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
                 Layer layer;
 
-                auto parallelsProportions = (realWindingBlocking || toroidalConnectionCorridor)
+                auto parallelsProportions = realWindingBlocking
                     ? get_parallels_proportions(layerIndex, numberLayers, get_number_turns(windingIndex), get_number_parallels(windingIndex),
                                                 remainingParallelsProportionInSection, windByConsecutiveTurns, totalParallelsProportionInSection,
                                                 1.0, double(realPerLayerTurns[layerIndex]))
