@@ -11655,6 +11655,38 @@ static void check_overlapping_layers_not_double_charged(OpenMagnetics::Coil& coi
     CHECK(crossed > 0);  // the fixture must actually have leads crossing an overlapping layer
 }
 
+// ABT #685 (Alf, 2026-08-17): REAL WINDING PLACES ONE CROSSING PER LAYER ENTERED. A wire making
+// N turns over L layers crosses the winding-window plane N + L times, not N + 1: each layer's
+// helix begins on the plane and ends on it, and the connector joining two layers links the END
+// crossing of one to the START crossing of the next AT DIFFERENT RADII -- two distinct wire
+// sections that nothing merges. True of a U turnaround and a Z dragback alike, since neither
+// encircles the column and so neither consumes a turn.
+//
+// These helpers state that RULE rather than a number, reading L back from the layout, so a test
+// keeps meaning what it says when a design's layer count changes.
+static size_t layers_of_conductor(OpenMagnetics::Coil& coil, const std::string& windingName,
+                                  int64_t parallel) {
+    const auto wound = coil.get_turns_description().value();
+    std::set<std::string> layers;
+    for (const auto& turn : wound) {
+        if (turn.get_winding() == windingName && turn.get_parallel() == parallel && turn.get_layer()) {
+            layers.insert(turn.get_layer().value());
+        }
+    }
+    return std::max<size_t>(layers.size(), 1);
+}
+// Stations a whole winding must show: sum over its parallels of (its turns + the layers it spans).
+static size_t expected_stations(OpenMagnetics::Coil& coil, const std::string& windingName,
+                                int64_t declaredTurnsPerParallel) {
+    const auto windingIndex = coil.get_winding_index_by_name(windingName);
+    const int64_t parallels = coil.get_functional_description()[windingIndex].get_number_parallels();
+    size_t expected = 0;
+    for (int64_t parallel = 0; parallel < parallels; ++parallel) {
+        expected += size_t(declaredTurnsPerParallel) + layers_of_conductor(coil, windingName, parallel);
+    }
+    return expected;
+}
+
 TEST_CASE("Test_Real_Geometry_Multifilar_N_Filar", "[constructive-model][coil][real-geometry]") {
     // N-filar (bifilar/trifilar/4-filar): each parallel is its own physical conductor with its own
     // entrance/exit terminal leads and its own inter-layer continuation, wound side by side. For
@@ -11669,7 +11701,7 @@ TEST_CASE("Test_Real_Geometry_Multifilar_N_Filar", "[constructive-model][coil][r
         INFO("K=" << K << " Z");
         REQUIRE(coil.get_turns_description());
         // Real winding: N turns cross the window plane N+1 times, one extra slot per parallel.
-        CHECK(coil.get_turns_description().value().size() == size_t((18 + 1) * K));
+        CHECK(coil.get_turns_description().value().size() == expected_stations(coil, "winding 0", 18));
         CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == int(K));
         CHECK(layers_balanced_across_parallels(coil, "winding 0", K));
         CHECK(real_geometry_collisions(coil) == 0);
@@ -11712,7 +11744,8 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
 
     REQUIRE(coil.get_turns_description());
     // Real winding: one extra crossing per parallel ((20+1)*2 + (20+1)*1).
-    CHECK(coil.get_turns_description().value().size() == size_t((20 + 1) * 2 + (20 + 1) * 1));
+    CHECK(coil.get_turns_description().value().size() ==
+          expected_stations(coil, "winding 0", 20) + expected_stations(coil, "winding 1", 20));
     CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
     CHECK(layers_balanced_across_parallels(coil, "winding 0", 2));
     CHECK(layers_balanced_across_parallels(coil, "winding 1", 1));
@@ -12001,7 +12034,7 @@ TEST_CASE("Test_Real_Geometry_Rectangular_Contiguous", "[constructive-model][coi
 
     REQUIRE(coil.get_turns_description());
     // Real winding: one extra crossing per parallel ((12+1)*2).
-    CHECK(coil.get_turns_description().value().size() == size_t((12 + 1) * 2));
+    CHECK(coil.get_turns_description().value().size() == expected_stations(coil, "winding 0", 12));
     // The transposed model must produce connection leads for the contiguous winding.
     CHECK(!coil.get_connection_reserved_spaces().empty());
     CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
@@ -12931,7 +12964,7 @@ TEST_CASE("Test_Real_Geometry_Toroidal", "[constructive-model][coil][real-geomet
         INFO("overlapping " << tag);
         REQUIRE(coil.get_turns_description());
         // Real winding: one extra crossing per parallel ((40+1)*2).
-        CHECK(coil.get_turns_description().value().size() == size_t((40 + 1) * 2));
+        CHECK(coil.get_turns_description().value().size() == expected_stations(coil, "winding 0", 40));
         CHECK(toroidal_turn_overlaps(coil) == 0);
         CHECK(!coil.get_connection_reserved_spaces().empty());
         CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);
@@ -13246,7 +13279,10 @@ TEST_CASE("Test_Real_Geometry_Wind_Survives_Transient_Unfit", "[constructive-mod
     // The secondary was 100 turns until ABT #673: 100 x 0.1125 mm OD never fit the ER 9.5/5
     // window (17 per layer where 16 go), so the example was corrected to the 80 turns it can
     // actually hold. The count here follows the design, not the other way round.
-    CHECK(coil.get_turns_description().value().size() == size_t(1 + 80 + 2));
+    // ABT #685: one crossing per LAYER entered, so the count follows the layout's layers.
+    CHECK(coil.get_turns_description().value().size() ==
+          expected_stations(coil, coil.get_functional_description()[0].get_name(), 1) +
+          expected_stations(coil, coil.get_functional_description()[1].get_name(), 80));
     settings.reset();
 }
 
@@ -13970,8 +14006,9 @@ TEST_CASE("Test_Abt674_Crossing_Station_Adds_No_Length", "[constructive-model][c
             }
         }
         INFO(winding.get_name() << ": " << windingTurns.size() << " stations for " << declared << " turns");
-        // One extra station per parallel — the beginning crossing of each wire.
-        CHECK(int64_t(windingTurns.size()) == declared + winding.get_number_parallels());
+        // One station per LAYER entered, per parallel (ABT #685).
+        CHECK(windingTurns.size() ==
+              expected_stations(coil, winding.get_name(), winding.get_number_turns()));
 
         // ...and it carries no length, so the sum is the conductor's real length: N wraps.
         size_t zeroLength = 0;
@@ -13982,7 +14019,13 @@ TEST_CASE("Test_Abt674_Crossing_Station_Adds_No_Length", "[constructive-model][c
                 ++zeroLength;
             }
         }
-        CHECK(int64_t(zeroLength) == winding.get_number_parallels());
+        // ...one per (layer, parallel): every layer's OPENING crossing carries no wrap, its
+        // copper being the connector, whose length the connection markers charge explicitly.
+        size_t expectedZero = 0;
+        for (int64_t parallel = 0; parallel < winding.get_number_parallels(); ++parallel) {
+            expectedZero += layers_of_conductor(coil, winding.get_name(), parallel);
+        }
+        CHECK(zeroLength == expectedZero);
         double meanWrap = total / double(declared);
         INFO("total " << total << " m over " << declared << " wraps, mean " << meanWrap);
         CHECK(total > 0);
@@ -14154,9 +14197,16 @@ TEST_CASE("Test_Abt728_Crossing_Station_Is_The_Turn0_Marker", "[constructive-mod
 
     REQUIRE(coil.get_turns_description());
     const auto turns = coil.get_turns_description().value();
+    // ABT #685: a length-free STATION is the opening crossing of each (layer, parallel) — the
+    // wire enters every layer on the plane, and the copper before that point is the connector,
+    // charged on the connection markers instead.
+    std::set<std::pair<std::string, int64_t>> openedLayers;
     for (const auto& turn : turns) {
-        bool isStation = turn.get_name() == turn.get_winding() + " parallel "
-                                                + std::to_string(turn.get_parallel()) + " turn 0";
+        const bool isStation =
+            turn.get_layer()
+                ? openedLayers.insert({turn.get_layer().value(), turn.get_parallel()}).second
+                : turn.get_name() == turn.get_winding() + " parallel "
+                                         + std::to_string(turn.get_parallel()) + " turn 0";
         INFO(turn.get_name() << " length " << turn.get_length());
         if (isStation) {
             CHECK(turn.get_length() == 0);
@@ -14195,9 +14245,13 @@ TEST_CASE("Test_Abt728_Not_Fitting_Wind_Still_Zeroes_Its_Own_Stations", "[constr
     REQUIRE(coil.get_turns_description());
     const auto turns = coil.get_turns_description().value();
     size_t stations = 0;
+    std::set<std::pair<std::string, int64_t>> openedLayers;
     for (const auto& turn : turns) {
-        bool isStation = turn.get_name() == turn.get_winding() + " parallel "
-                                                + std::to_string(turn.get_parallel()) + " turn 0";
+        const bool isStation =
+            turn.get_layer()
+                ? openedLayers.insert({turn.get_layer().value(), turn.get_parallel()}).second
+                : turn.get_name() == turn.get_winding() + " parallel "
+                                         + std::to_string(turn.get_parallel()) + " turn 0";
         INFO(turn.get_name() << " length " << turn.get_length());
         if (isStation) {
             ++stations;
@@ -14207,11 +14261,15 @@ TEST_CASE("Test_Abt728_Not_Fitting_Wind_Still_Zeroes_Its_Own_Stations", "[constr
             CHECK(turn.get_length() > 0);
         }
     }
-    size_t declaredParallels = 0;
+    // ABT #685: one station per (layer, parallel) -- the opening crossing of every layer the
+    // conductor enters, not one per conductor.
+    size_t expectedStations = 0;
     for (const auto& winding : coil.get_functional_description()) {
-        declaredParallels += winding.get_number_parallels();
+        for (int64_t parallel = 0; parallel < winding.get_number_parallels(); ++parallel) {
+            expectedStations += layers_of_conductor(coil, winding.get_name(), parallel);
+        }
     }
-    CHECK(stations == declaredParallels);
+    CHECK(stations == expectedStations);
     settings.reset();
 }
 
@@ -14440,7 +14498,10 @@ TEST_CASE("Test_Abt613_U_LowProfile_Sections_Do_Not_Collapse", "[constructive-mo
         // ...and do not sprawl: the failing state was 8-13 layers with SINGLE-turn layers
         // (a 2-turn remainder layer on a 12-turn section is a legitimate tail).
         REQUIRE(conductionLayers > 0);
-        CHECK(conductionLayers <= 4);
+        // ABT #685 raised this from 4: every layer now also holds its own opening crossing,
+        // so a section of the same turns legitimately needs one more layer. The point of the
+        // check is that it does not SPRAWL (the ticket's failure was 8-13), not the exact bound.
+        CHECK(conductionLayers <= 5);
         CHECK(minimumTurnsOnALayer >= 2);
     }
     settings.reset();

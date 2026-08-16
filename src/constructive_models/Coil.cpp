@@ -3711,6 +3711,24 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     struct RealWindingCrossingBump {
         Coil& coil;
         bool active = false;
+        // ABT #685 (Alf, 2026-08-17): ONE EXTRA CROSSING PER LAYER, not per winding. A wire
+        // that makes N turns spread over L layers crosses the winding-window plane N + L
+        // times, not N + 1: each layer's helix begins on the plane and ends on it, and the
+        // connector between two layers joins the END crossing of one to the START crossing of
+        // the next AT DIFFERENT RADII, so those are two distinct wire sections in the
+        // cross-section and nothing merges them. True of a U turnaround and a Z dragback
+        // alike, because neither encircles the column — both sweep ~0 degrees of azimuth and
+        // so consume no turn.
+        //
+        // Counting only N + 1 therefore forces one transition per extra layer to ABSORB a
+        // revolution, and the winding physically delivers N - (L - 1) turns. Measured on the
+        // pushpull's Secondary 1 (4 turns over 2 layers): the built conductor swept 1058.9
+        // degrees, i.e. 2.94 turns instead of 4.
+        //
+        // L is not known before winding — it is what the layout decides — so the extra is
+        // raised to the observed layer count and the wind re-run, monotonically, inside the
+        // same fixpoint the turn blocking already iterates on.
+        std::vector<size_t> extraPerWinding;
         // ABT #728: the destructor's station-zeroing may only touch turns produced by THIS
         // wind. wind() clears turns_description before arming the bump and flips this flag at
         // that clear — so when a wind fails before producing turns, a PREVIOUS wind's intact
@@ -3721,15 +3739,68 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         explicit RealWindingCrossingBump(Coil& c) : coil(c) {}
         void arm() {
             if (active || !settings.get_coil_use_real_winding_geometry()) return;
+            extraPerWinding.assign(coil.get_functional_description().size(), 1);
             for (auto& winding : coil.get_mutable_functional_description()) {
                 winding.set_number_turns(winding.get_number_turns() + 1);
             }
             active = true;
         }
+        // Raise winding `windingIndex` to `layers` extra crossings. Monotone: the extra never
+        // shrinks, which is what makes the enclosing fixpoint converge (the same argument the
+        // blocked-slot accumulation relies on). Returns true when it actually moved.
+        bool raise(size_t windingIndex, size_t layers) {
+            if (!active || windingIndex >= extraPerWinding.size()) return false;
+            if (layers <= extraPerWinding[windingIndex]) return false;
+            auto& windings = coil.get_mutable_functional_description();
+            windings[windingIndex].set_number_turns(
+                windings[windingIndex].get_number_turns() +
+                int64_t(layers - extraPerWinding[windingIndex]));
+            extraPerWinding[windingIndex] = layers;
+            return true;
+        }
+        // Roll the extra back to `snapshot`. Needed when a re-wind AFTER a raise fails to produce
+        // a layout: the turns then still come from the previous extra, and leaving numberTurns
+        // inflated would make the destructor subtract more turns than were ever added — the
+        // winding would come out one turn SHORT of what the caller declared.
+        void lowerTo(const std::vector<size_t>& snapshot) {
+            if (!active || snapshot.size() != extraPerWinding.size()) return;
+            auto& windings = coil.get_mutable_functional_description();
+            for (size_t windingIndex = 0; windingIndex < extraPerWinding.size(); ++windingIndex) {
+                if (extraPerWinding[windingIndex] <= snapshot[windingIndex]) continue;
+                windings[windingIndex].set_number_turns(
+                    windings[windingIndex].get_number_turns() -
+                    int64_t(extraPerWinding[windingIndex] - snapshot[windingIndex]));
+                extraPerWinding[windingIndex] = snapshot[windingIndex];
+            }
+        }
+        // The layer count each winding's parallels actually occupy, from the wound layout: the
+        // most layers any one parallel of that winding spans. Per PARALLEL, because every
+        // parallel is its own conductor and each of them enters every layer it uses.
+        std::vector<size_t> observedLayersPerWinding() const {
+            std::vector<size_t> observed(coil.get_functional_description().size(), 1);
+            if (!coil.get_turns_description()) return observed;
+            const auto wound = coil.get_turns_description().value();
+            std::map<std::pair<std::string, int64_t>, std::set<std::string>> layersOf;
+            for (const auto& turn : wound) {
+                if (turn.get_layer()) {
+                    layersOf[{turn.get_winding(), turn.get_parallel()}].insert(turn.get_layer().value());
+                }
+            }
+            for (const auto& [key, layers] : layersOf) {
+                const auto windingIndex = coil.get_winding_index_by_name(key.first);
+                if (windingIndex < observed.size()) {
+                    observed[windingIndex] = std::max(observed[windingIndex], layers.size());
+                }
+            }
+            return observed;
+        }
         ~RealWindingCrossingBump() {
             if (active) {
-                for (auto& winding : coil.get_mutable_functional_description()) {
-                    winding.set_number_turns(winding.get_number_turns() - 1);
+                auto& windings = coil.get_mutable_functional_description();
+                for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+                    windings[windingIndex].set_number_turns(
+                        windings[windingIndex].get_number_turns() -
+                        int64_t(extraPerWinding[windingIndex]));
                 }
                 // ABT #674: the extra crossing is a STATION, not a turn. Each parallel's first
                 // station is where its wire begins; the copper is the WRAP between consecutive
@@ -3742,13 +3813,27 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                 // its length goes, which is what makes the sum the conductor's real length.
                 if (turnsAreFresh && coil.get_turns_description()) {
                     auto crossingTurns = coil.get_turns_description().value();
-                    // ABT #728: the station is tagged EXPLICITLY — the winders name every turn
-                    // "<winding> parallel <p> turn <k>" with k the per-parallel wind-order
-                    // counter, so each parallel's beginning crossing is exactly its "turn 0".
-                    // First-seen vector order is not a marker: any post-wind pass that reorders
-                    // the description would zero a mid-winding wrap instead.
+                    // ABT #685: with one extra crossing PER LAYER, the length-free stations are
+                    // the FIRST TURN OF EACH (layer, parallel), not just each parallel's turn 0.
+                    // The copper between two layers is the connector, and that length is charged
+                    // explicitly on the connection markers (ConnectionReservedSpace::routedLength)
+                    // — leaving a full turn's length on a layer's opening crossing would count it
+                    // twice, exactly the ABT #674 error that made DC resistance read ~5% high.
+                    std::set<std::pair<std::string, int64_t>> layerParallelSeen;
                     for (auto& crossingTurn : crossingTurns) {
-                        if (crossingTurn.get_name() == crossingTurn.get_winding() + " parallel "
+                        if (!crossingTurn.get_layer()) continue;
+                        const auto key = std::make_pair(crossingTurn.get_layer().value(),
+                                                        crossingTurn.get_parallel());
+                        if (layerParallelSeen.insert(key).second) {
+                            crossingTurn.set_length(0);
+                        }
+                    }
+                    // A conductor whose turns carry no layer (no layer description) still has
+                    // its opening crossing: fall back to the ABT #728 name tag, where the wind
+                    // order counter makes each parallel's beginning exactly its "turn 0".
+                    for (auto& crossingTurn : crossingTurns) {
+                        if (!crossingTurn.get_layer() &&
+                            crossingTurn.get_name() == crossingTurn.get_winding() + " parallel "
                                                           + std::to_string(crossingTurn.get_parallel())
                                                           + " turn 0") {
                             crossingTurn.set_length(0);
@@ -3968,13 +4053,78 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         // sections grow by extra layers to fit. Added layers shift radial positions (changing which
         // leads cross what), so iterate to a fixpoint. Entirely gated behind the real-winding flag —
         // ideal winding never enters this loop, so its geometry is unchanged.
+        // ABT #685 (Alf, 2026-08-17): converge the CROSSING COUNT before the blocking loop.
+        // The bump arms at one extra crossing per winding; the true need is one per LAYER, and
+        // the layer count is what the layout decides — so wind, look at how many layers each
+        // winding's parallels actually spanned, raise to that, and wind again. Monotone, so it
+        // converges: with c usable slots per layer the fixpoint is L = N / (c - 1), which is
+        // finite for any layer holding more than its own opening crossing.
+        //
+        // It gets its OWN loop rather than sharing the blocking fixpoint's: every raise there
+        // spent one of the 16 blocking iterations, and 13_current_sense (a 20-layer secondary)
+        // ran out and threw "turn blocking did not converge".
+        {
+            const size_t maximumCrossingIterations = 8;
+            for (size_t crossingIteration = 0; crossingIteration < maximumCrossingIterations;
+                 ++crossingIteration) {
+                const auto observedLayers = realWindingCrossingBump.observedLayersPerWinding();
+                const auto before = realWindingCrossingBump.extraPerWinding;
+                bool raised = false;
+                for (size_t windingIndex = 0; windingIndex < observedLayers.size(); ++windingIndex) {
+                    raised |= realWindingCrossingBump.raise(windingIndex, observedLayers[windingIndex]);
+                }
+                if (!raised) {
+                    break;
+                }
+                logEntry("Real winding: one extra crossing per layer -- re-winding", "Coil", 2);
+                wind_by_sections(proportionPerWinding, pattern, repetitions);
+                wind_by_layers();
+                if (!get_layers_description()) {
+                    realWindingCrossingBump.lowerTo(before);
+                    break;
+                }
+                wind_by_turns();
+                if (!get_turns_description()) {
+                    realWindingCrossingBump.lowerTo(before);
+                    break;
+                }
+                if (delimitAndCompact) {
+                    delimit_and_compact();
+                }
+            }
+        }
         logEntry("Applying real winding geometry (global turn blocking)", "Coil", 2);
         // Upper bound: each iteration can at most add one blocked slot per layer edge and
         // spill one extra layer per section; window-sized windings converge in a handful,
         // and the post-loop check below turns genuine divergence into a loud error.
-        const size_t maximumBlockingIterations = 16;
+        // ABT #685: raised from 16 — a crossing raise inside the loop spends an iteration, and
+        // a deep multi-layer winding can need several before the layer count settles.
+        const size_t maximumBlockingIterations = 24;
         size_t directionRegimeResets = 0;
         for (size_t blockingIteration = 0; blockingIteration < maximumBlockingIterations; ++blockingIteration) {
+            // ABT #685: blocking can spill a layer, and a new layer needs its own opening
+            // crossing — so the raise has to be re-checked here too, not only before the loop.
+            // It is monotone and bounded by the layer count, so it cannot cycle; the iteration
+            // budget below is sized to absorb it.
+            {
+                const auto observedLayers = realWindingCrossingBump.observedLayersPerWinding();
+                const auto before = realWindingCrossingBump.extraPerWinding;
+                bool raised = false;
+                for (size_t windingIndex = 0; windingIndex < observedLayers.size(); ++windingIndex) {
+                    raised |= realWindingCrossingBump.raise(windingIndex, observedLayers[windingIndex]);
+                }
+                if (raised) {
+                    wind_by_sections(proportionPerWinding, pattern, repetitions);
+                    redistribute_section_turns_for_blocking();
+                    wind_by_layers();
+                    if (!get_layers_description()) { realWindingCrossingBump.lowerTo(before); break; }
+                    wind_by_turns();
+                    if (!get_turns_description()) { realWindingCrossingBump.lowerTo(before); break; }
+                    if (delimitAndCompact) delimit_and_compact();
+                    align_blocked_layer_turns();
+                    continue;
+                }
+            }
             std::map<std::string, bool> entranceEdgesBefore = _terminalEntranceAtTop;
             std::map<std::string, std::pair<double, double>> freshDepths;
             auto freshBlocked = compute_connection_blocked_slots_per_layer(&freshDepths);
