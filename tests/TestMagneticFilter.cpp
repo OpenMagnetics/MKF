@@ -12,7 +12,7 @@
 //
 // SHAPE OF EACH TEST
 //   - Build a fixed reference Magnetic (inductor-style: E 35 / 3C97, 40+20 turns,
-//     Round 2.00 - Grade 1 wire, ungapped).
+//     Round 1.00 - Grade 1 wire, ungapped — a design that FITS its window, ABT #785).
 //   - Build a fixed reference Inputs (100 kHz triangular, 100 µH, 25 °C, ±√3 A).
 //   - factory() the filter (where allowed).
 //   - evaluate_magnetic(...) once.
@@ -77,13 +77,29 @@ constexpr double kRelTol = 1e-4;
 // A single deterministic Magnetic + Inputs pair used by all behaviour tests.
 // Keeping it tiny + ungapped keeps filter evaluation fast and avoids dragging
 // random external state into the snapshot.
+//
+// THE WIRE MUST KEEP THE DESIGN WINDABLE (ABT #785). The original fixture used
+// Round 2.00 - Grade 1 (outer 2.074 mm) in E 35's 7.5 x 25 mm window, which holds
+// floor(25/2.074) = 12 turns per layer and floor(7.5/2.074) = 3 layers — about 36
+// turns against the 60 this fixture asks for. are_sections_and_layers_fitting()
+// returned FALSE and wind() emitted a layout that cannot exist: winding 0 as a
+// SINGLE layer 2.074 x 82.96 mm, 3.3x taller than the window containing it
+// (section filling factor 1.84). Every layout-sensitive snapshot was therefore
+// pinned to whatever an over-stuffed winder happened to emit, which is why
+// DIMENSIONS / COST / AREA_NO_PARALLELS drifted with no code change anyone would
+// call a regression, and why nine more sat inert at {false, 0.0}.
+//
+// Round 1.00 - Grade 1 (outer 1.062 mm) gives 23 turns per layer x 7 layers = 161
+// turns of capacity for 60, so the coil genuinely fits and the filters measure a
+// real winding. If you change the wire or the turn counts again, CHECK
+// are_sections_and_layers_fitting() before re-harvesting anything.
 OpenMagnetics::Magnetic make_reference_magnetic() {
     OpenMagneticsTesting::QuickMagneticConfig cfg;
     cfg.numberTurns = {40, 20};
     cfg.numberParallels = {1, 1};
     cfg.coreShapeName = "E 35";
     cfg.coreMaterialName = "3C97";
-    cfg.wireNames = {"Round 2.00 - Grade 1", "Round 2.00 - Grade 1"};
+    cfg.wireNames = {"Round 1.00 - Grade 1", "Round 1.00 - Grade 1"};
     cfg.numberStacks = 1;
     auto m = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
     // Wind the coil so filters that iterate turns/layers/sections (VOLUME, AREA,
@@ -161,6 +177,34 @@ struct Snapshot {
 const std::map<std::string, Snapshot> kSnapshots = {
     // Baselines captured 2026-05-19 against E 35 / 3C97 / 40+20 turns /
     // Round 2.00 - Grade 1 wire, 100 kHz triangular, ±√3 A, 25 °C.
+    //
+    // RE-HARVESTED 2026-08-17 (ABT #785) after the fixture wire went
+    // Round 2.00 → Round 1.00 - Grade 1, because the old design did not fit its
+    // winding window and every layout-sensitive entry was characterising an
+    // impossible layout (see the note on make_reference_magnetic()). Only four
+    // entries moved, and the direction is reassuring: the coil now lays up as
+    // 3 conduction layers + 2 insulation layers, which is exactly the stack the
+    // 2026-05-19 harvest saw — COST comes back to its ORIGINAL 7.0 on its own.
+    //   DIMENSIONS         2.7616400000000005e-05 → 2.0178200000000003e-05
+    //   COST               6.0 (drifted) → 7.0 (original value restored)
+    //   AREA_NO_PARALLELS  valid true → false  (a real filter bug, see below)
+    //   TEMPERATURE        27.158311798960909 → 28.050433964481037
+    // TEMPERATURE rises because the thinner wire has more DC resistance; the
+    // core-only entries (AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST,
+    // MAGNETIZING_INDUCTANCE, SATURATION) are unmoved, as they should be.
+    //
+    // The two that moved to a NON-ZERO value are hand-derivable, so they are not
+    // merely "whatever the code emitted" (the June 2026 review's trap). The layup
+    // is 40 turns -> 2 layers, 20 turns -> 1 layer, plus 2 x 25 um insulation:
+    //   COST       = numberLayers + sum(wire relative cost) = 5 + (1 + 1)      = 7
+    //   DIMENSIONS = W x H x max(coreDepth, column0Depth + 2 x sum(layerWidths))
+    //              = 0.035 x 0.035 x (0.010 + 2 x (3 x 1.062 + 2 x 0.025) mm)
+    //              = 0.001225 x 0.016472                        = 2.017820e-05
+    //
+    // NOT fixed by the fixture change: the nine entries pinned at {false, 0.0}
+    // below are dead for their own reasons (no DcResistance on the wound coil,
+    // empty vectors, etc.), not because the reference could not be wound. Making
+    // the design windable did not revive any of them.
     // ---------------------------------------------------------------
     {"AREA_PRODUCT",                                    {true,  1.8374733304713626e-08}},
     // ENERGY_STORED / TEMPERATURE / SATURATION refreshed 2026-06-16 (ABT #10).
@@ -185,8 +229,16 @@ const std::map<std::string, Snapshot> kSnapshots = {
     // (MagneticFilter.cpp:1070–1071). Score is 0 here because earlier
     // model rejects → the double-call cannot be observed at this fixture.
     {"LOSSES_NO_PROXIMITY",                             {false, 0.0}},
-    {"DIMENSIONS",                                      {true,  2.7616400000000005e-05}},
-    {"AREA_NO_PARALLELS",                               {true,  0.0}},
+    {"DIMENSIONS",                                      {true,  2.0178200000000003e-05}},
+    // LOCKS BUG (ABT #787): MagneticFilterAreaNoParallels compares
+    // `wire.get_maximum_outer_width() < section.get_dimensions()[0]` — STRICTLY.
+    // A section holding exactly one layer is compacted to exactly one wire width,
+    // so the comparison is an exact float equality and the winding is rejected.
+    // Here winding 1 (20 turns, one 1.062 mm layer) trips it, so the filter says
+    // false for a coil that fits with room to spare. Not fixture-dependent: any
+    // single-layer section hits it. Locked as {false, 0.0}; when #787 lands this
+    // flips back to {true, 0.0} and that is the signal, not a regression.
+    {"AREA_NO_PARALLELS",                               {false, 0.0}},
     {"EFFECTIVE_RESISTANCE",                            {false, 0.0}},
     {"PROXIMITY_FACTOR",                                {false, 0.0}},
     {"TURNS_RATIOS",                                    {true,  0.0}},
@@ -205,7 +257,7 @@ const std::map<std::string, Snapshot> kSnapshots = {
     // LEAKAGE_INDUCTANCE no longer returns DBL_MAX sentinel — the error path
     // is now a throws-contract test below (see TEST_CASE "LEAKAGE_INDUCTANCE
     // throws on missing turns description"). No snapshot entry needed.
-    {"TEMPERATURE",                                     {true,  27.158311798960909}},  // 2026-06-16 ABT #10: -1.4 % from reclassified B recompute
+    {"TEMPERATURE",                                     {true,  28.050433964481037}},  // 2026-08-17 ABT #785: +3.3 % — Round 1.00 has more DC resistance than Round 2.00
     {"TURN_COUNT",                                      {true,  2.1000000000000001}},
     // FRINGING_FACTOR returns score=1.0 on every non-crashing path
     // (MagneticFilter.cpp:2079, 2082, 2089, 2092). After fix A the factory
@@ -274,6 +326,24 @@ std::vector<Core> load_test_cores(size_t limit = std::numeric_limits<size_t>::ma
 //   [characterisation][heavy]        always (heavy: excluded from smoke runs)
 //   [<filter-name-lowercased>]       so a specific filter can be re-run alone
 //
+
+// ABT #785: the snapshots below are only meaningful if the reference coil is a winding that can
+// physically exist. It was not for three years (Round 2.00 in E 35 needed ~60 turns of capacity
+// and had ~36), and the whole table silently characterised an over-stuffed layout. Guard it, so a
+// future fixture edit fails HERE with an obvious reason rather than as a drifting snapshot.
+TEST_CASE("MagneticFilter reference fixture is windable (ABT #785)",
+          "[magnetic-filter][characterisation][fixture]") {
+    settings.reset();
+    auto magnetic = make_reference_magnetic();
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_sections_description());
+    REQUIRE(coil.get_layers_description());
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_turns_description().value().size() == 60);
+    INFO("the reference design must fit its winding window — see the wire note on "
+         "make_reference_magnetic()");
+    REQUIRE(coil.are_sections_and_layers_fitting());
+}
 
 TEST_CASE("MagneticFilter AREA_PRODUCT snapshot",
           "[magnetic-filter][characterisation][heavy][area-product]") {

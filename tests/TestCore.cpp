@@ -818,10 +818,19 @@ TEST_CASE("RM_7LP", "[constructive-model][core][processed-description][smoke-tes
     REQUIRE(std::get<CoreMaterial>(core.get_mutable_functional_description().get_mutable_material())
               .get_mutable_volumetric_losses()["default"]
               .size() > 0);
-    REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_effective_area(), Catch::Matchers::WithinAbs(0.000040 * numberStacks, 0.000040 * numberStacks * 0.2));
+    // ABT #783: these four were harvested in 2022, when "RM 7LP" was only an ALIAS pointing at
+    // RM 7/10 — the WITH-centre-hole part. They were therefore RM 7's figures (Ae 40 mm2,
+    // Ve 1190 mm3, Amin 32.3 mm2), and Amin went red the moment MAS 92a2af8 dropped the wrong LP
+    // aliases and gave RM 7LP its own record. TDK rm_7.pdf, ordering code B65819P, header
+    // "Without center hole", publishes for the LP set:
+    //     le = 23.5 mm, Ae = 45.3 mm2, Amin = 39.6 mm2, Ve = 1060 mm3
+    // MKF computes le 24.40 (+3.8 %), Ae 43.70 (-3.5 %), Amin 39.592 (-0.02 %), Ve 1066 (+0.6 %).
+    // H is absent from the record BY DESIGN (no centre hole), so d4 = 0 is correct, not a
+    // fallback; the subtype-2 branch of CorePieceRm never reads C, so its absence is inert.
+    REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_effective_area(), Catch::Matchers::WithinAbs(0.0000453 * numberStacks, 0.0000453 * numberStacks * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_effective_length(), Catch::Matchers::WithinAbs(0.0235, 0.0235 * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_effective_volume(), Catch::Matchers::WithinAbs(0.000001190 * numberStacks, 0.000001190 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_minimum_area(), Catch::Matchers::WithinAbs(0.0000323 * numberStacks, 0.0000323 * numberStacks * 0.2));
+    REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_effective_volume(), Catch::Matchers::WithinAbs(0.000001060 * numberStacks, 0.000001060 * numberStacks * 0.2));
+    REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_minimum_area(), Catch::Matchers::WithinAbs(0.0000396 * numberStacks, 0.0000396 * numberStacks * 0.2));
     REQUIRE_THAT(*(core.get_processed_description()->get_winding_windows()[0].get_height()), Catch::Matchers::WithinAbs(0.0047, 0.0047 * 0.2));
     REQUIRE_THAT(*(core.get_processed_description()->get_winding_windows()[0].get_width()), Catch::Matchers::WithinAbs(0.00375, 0.00375 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_width(), Catch::Matchers::WithinAbs(0.00725, 0.00725 * 0.2));

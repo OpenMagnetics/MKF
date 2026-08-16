@@ -1919,7 +1919,15 @@ TEST_CASE("Test_Ki_3C95_Steinmetz", "[physical-model][core-losses][igse-core-los
     auto coreLossesIGSEModel = CoreLossesIGSEModel();
 
     auto ki = coreLossesIGSEModel.get_ki(steinmetzDatum);
-    double expectedKi = 0.0635;
+    // ABT #648: was 0.0635. get_ki reads k and ignores ct, so this pin tracks 3C95's k alone —
+    // and MAS 4b9a743 rescaled k WITHOUT changing any prediction. That refit normalised the
+    // temperature polynomial to ct(25 C) = 1 and folded the old ct(25 C) = 1.38437 into k
+    // (1.3984475 -> 1.9359667, alpha and beta untouched). Checked against MAS's 60 measured 3C95
+    // points: old and new agree to 5 significant figures (100 kHz/100 mT/25 C: 65066.9 vs
+    // 65065.3 W/m3). So 0.0635 * 1.38437 = 0.0879, purely a change of parameterisation.
+    // End-to-end iGSE is unaffected — get_core_volumetric_losses applies the ct on top, and the
+    // 1.384 cancels.
+    double expectedKi = 0.0879;
 
     REQUIRE_THAT(ki, Catch::Matchers::WithinAbs(expectedKi, expectedKi * 0.1));
 }
@@ -2568,7 +2576,17 @@ TEST_CASE("Test_Core_Losses_Rosano_Forward", "[physical-model][core-losses][smok
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
     auto calculatedCoreLosses = coreLosses.get_core_losses();
-    double expectedLosses = 0.51;
+    // ABT #648: was 0.51 W, which encoded MAS's OLD 3F3 Steinmetz fit. That fit was badly wrong —
+    // against MAS's 82 measured 3F3 points it ran 56.3 % mean |rel err| (median 20.5 %) and
+    // returned 223 kW/m3 at the datasheet's own 100 kHz/100 mT/100 C point, where the Ferroxcube
+    // 3F3 MDS specifies <= 80. The refit (MAS 23d5d2c, 200 kHz range k 1.028 -> 2.030,
+    // beta 2.40 -> 2.6242) scores 7.6 % / 4.1 % and returns 76.6 kW/m3 there, plus 139 against the
+    // MDS's second point (<= 150 at 400 kHz/50 mT/100 C). At THIS test's condition the measured
+    // curve reads 92595 W/m3 at 71.6 mT and 210851 at 98.2 mT, i.e. ~121900 log-interpolated to
+    // the fixture's B = 79.58 mT; the new model gives 118800 sinusoidal (-2.6 %), the old ~141600.
+    // NOTE the +/-10 % band below is tighter than what the fixture actually controls: the B
+    // assertion allows +/-10 % and Pv goes as B^2.62, i.e. +/-27 %.
+    double expectedLosses = 0.438;
     auto maximumError = 0.1;
 
     // Updated for 617dc492: magnetizing current is now bipolar-centered for AC
@@ -2860,6 +2878,14 @@ TEST_CASE("Test_Core_Losses_DMEGC_DMR51W", "[physical-model][core-losses][bug][s
 
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto calculatedCoreLosses = coreLossesModel->get_core_losses(core, excitation, temperature).get_core_losses();
+    // ABT #648 / #786 — THIS PIN IS CORRECT AND THIS TEST IS EXPECTED TO FAIL. DO NOT RE-PIN IT.
+    // DMEGC published a measured point at exactly this condition (700 kHz, 50 mT, 25 C):
+    // Pv = 61679.9 W/m3, which over this fixture's Ve = 4.470181e-6 m3 is 0.2757 W. The 0.3 below
+    // is +8.8 % off that measured truth, i.e. very nearly ground truth. MKF currently returns
+    // 0.2182 W — 21 % BELOW the manufacturer's own measurement — because MAS's single
+    // 500 kHz–5 MHz DMR51W Steinmetz range cannot follow the material: measured beta runs ~2.98
+    // at 13–26 mT and ~3.36 at 74–99 mT against a fitted 2.79, and ct is ~2x too weak (measured
+    // Pv triples 25 C -> 100 C; ct(100) = 1.64). Filed as ABT #786 to MAS. The red is the signal.
     double expectedLosses = 0.3;
     auto maximumError = 0.15;
     REQUIRE_THAT(expectedLosses, Catch::Matchers::WithinAbs(calculatedCoreLosses, expectedLosses * maximumError));
