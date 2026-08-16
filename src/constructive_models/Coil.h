@@ -140,6 +140,12 @@ enum class ConnectionKind {
     U_ADJACENT,          // serpentine turnaround: both connected turns sit at the SAME axial edge
     U_TANGENTIAL,        // same-section U: one constant-height tangential run, no vertical stub
     Z_DRAGBACK,          // return to the FAR end of the next layer — the classic dragback
+    // ABT #685: the conductor FINISHING, not returning. The last layer holds exactly one turn of
+    // this parallel and it is the conductor's last, so the wire simply crosses the window in one
+    // revolution to land on it — the Turn chunk with a full-height pitch, not a connection. It
+    // lays NO ride: nothing outside it has to bulge over a return that was never laid. True of
+    // both winding orders (Alf: "which is also true for the U winding case").
+    FINAL_LANDING,
     EDGE_CONTINUATION,   // run along the window edge, across the layers it passes over
     LAYER_SQUEEZE        // book-keeping only: the slot a CROSSED layer loses. No copper of its own
 };

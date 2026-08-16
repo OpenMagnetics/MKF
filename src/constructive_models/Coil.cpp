@@ -1695,11 +1695,63 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 double x2 = entryTurn.get_coordinates()[0];
                 double y2 = entryTurn.get_coordinates()[1];
 
+                // ABT #685 FINAL LANDING (Alf, 2026-08-16): "if the turn of the last layer is
+                // the last turn, the connection between the last turn of the previous layer and
+                // the first (and only) turn of the last layer doesn't need a dragback, just a
+                // normal spiral (or bumped) turn whose pitch is the whole layer height ...
+                // without requiring a bump. Which is also true for the U winding case."
+                //
+                // The wire is not returning anywhere: it is finishing. One revolution carries it
+                // across the whole window to the turn it ends on, so the transition IS a turn —
+                // the Turn chunk with a full-height pitch — and not a connection at all. Saying
+                // so here is what stops it reserving a lane: a landing lays no ride, so the
+                // layers outside it do not bulge over a return that was never laid.
+                //
+                // The condition is structural, not a threshold: the destination layer holds
+                // exactly ONE turn of this parallel, and that turn is the conductor's last.
+                const bool destHoldsOneTurn =
+                    firstTurnByLayerParallel.count({windingLayers[i + 1].get_name(), parallel}) &&
+                    lastTurnByLayerParallel.count({windingLayers[i + 1].get_name(), parallel}) &&
+                    firstTurnByLayerParallel.at({windingLayers[i + 1].get_name(), parallel})
+                            .get_name() ==
+                        lastTurnByLayerParallel.at({windingLayers[i + 1].get_name(), parallel})
+                            .get_name();
+                const bool destIsConductorExit =
+                    exitTurnByWindingParallel.count({windingName, parallel}) &&
+                    exitTurnByWindingParallel.at({windingName, parallel}).get_name() ==
+                        entryTurn.get_name();
+                const bool isFinalLanding =
+                    !crossesIntervening && destHoldsOneTurn && destIsConductorExit;
+
                 // ABT #615: the FRONT_YZ face-dragback emission for Z inter-section returns lived
                 // here (ABT #492). Superseded: a return crossing intervening sections now routes
                 // in-window along the edge — same drawn run, squeezes and blocking as the U
                 // interleaved continuation, emitted by the crossesIntervening branch below.
-                if (windingOrder == WindingOrder::Z && !crossesIntervening) {
+                if (isFinalLanding) {
+                    // Drawn as the straight centre-to-centre hop, exactly as the dragback was, so
+                    // the copper length it charges is unchanged; only its KIND differs, and with
+                    // it whether anything has to ride over it.
+                    const double deltaX = x2 - x1;
+                    const double deltaY = y2 - y1;
+                    const double length = std::sqrt(deltaX * deltaX + deltaY * deltaY);
+                    ConnectionReservedSpace landing;
+                    landing.winding = windingName;
+                    landing.parallel = parallel;
+                    landing.section = windingLayers[i].get_section().value_or("");
+                    landing.layer = "";
+                    landing.coordinates = {roundFloat((x1 + x2) / 2, 9), roundFloat((y1 + y2) / 2, 9)};
+                    landing.dimensions = {roundFloat(length, 9), wireOuterHeight};
+                    landing.routedLength = roundFloat(length, 9);
+                    landing.rotation =
+                        roundFloat(std::atan2(deltaY, deltaX) * 180.0 / std::numbers::pi, 6);
+                    landing.kind = ConnectionKind::FINAL_LANDING;
+                    landing.fromTurn = exitTurn.get_name();
+                    landing.toTurn = entryTurn.get_name();
+                    spaces.push_back(landing);
+                    addRoute(windingName, parallel, exitTurn.get_name(), entryTurn.get_name(),
+                             ConnectionKind::FINAL_LANDING, {{x1, y1}, {x2, y2}});
+                }
+                else if (windingOrder == WindingOrder::Z && !crossesIntervening) {
                     // Z between ADJACENT layers: the classic dragback, drawn as the single in-plane
                     // diagonal from one turn straight to the next (a rotated rectangle from centre
                     // to centre). Nothing intervenes, so it displaces and reserves nothing.
