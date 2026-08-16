@@ -125,6 +125,25 @@ enum class RoutePlane {
     FRONT_YZ,
 };
 
+// ABT #685 (Alf, 2026-08-16): WHAT a connection between two electrically-consecutive turns of one
+// conductor physically IS. wind() already decides this — from the winding order (U or Z), from
+// whether the two turns share a layer/section, and from whether the run crosses intervening
+// layers — and then throws the decision away, publishing only rectangles. Every downstream
+// consumer therefore had to GUESS it back from turn coordinates: MVB++'s 3D ConductorBuilder ran
+// an isZReturn() heuristic (median pitch, filar-count thresholds, sign-of-advance rules, each
+// tuned against a design where it had been wrong), and the YZ Painter kept a third copy of the
+// same guess. Publishing the kind here makes MKF the single owner, exactly as the winding
+// geometry itself is (Alf: "MVB++ ALWAYS follows MKF").
+enum class ConnectionKind {
+    TERMINAL_ENTRANCE,   // the conductor's start, routed out to its terminal
+    TERMINAL_EXIT,       // the conductor's end, routed out to its terminal
+    U_ADJACENT,          // serpentine turnaround: both connected turns sit at the SAME axial edge
+    U_TANGENTIAL,        // same-section U: one constant-height tangential run, no vertical stub
+    Z_DRAGBACK,          // return to the FAR end of the next layer — the classic dragback
+    EDGE_CONTINUATION,   // run along the window edge, across the layers it passes over
+    LAYER_SQUEEZE        // book-keeping only: the slot a CROSSED layer loses. No copper of its own
+};
+
 // One rectangle of radial space reserved by a terminal/connection lead crossing a layer boundary,
 // used when real winding geometry is enabled (Settings::get_coil_use_real_winding_geometry). It
 // both feeds the section filling factor and is drawn by the Painter for debugging.
@@ -174,6 +193,54 @@ struct ConnectionReservedSpace {
     // (compute_connection_blocked_slots_per_layer) derives each crossed layer's freed slots from the
     // DEEPEST run crossing it. 0 = not an edge-routed run (radial exits, stubs, Z diagonals).
     double edgeDepth = 0;
+    // ABT #685: the CLASSIFICATION this rectangle belongs to (see ConnectionKind), and the two
+    // turns it connects. Several rectangles make up one route (a stub, an edge run, a second
+    // stub), and they are grouped back into that route by (winding, parallel, fromTurn, toTurn).
+    // A terminal lead names only the turn it attaches to; its other end is the terminal itself.
+    ConnectionKind kind = ConnectionKind::LAYER_SQUEEZE;
+    std::string fromTurn;
+    std::string toTurn;
+};
+
+// ABT #685: one BUMP. A return laid at `radius` makes every turn at or outside that radius on the
+// same face ride `height` further out — the local radial displacement the RoutePlane comment above
+// describes, made explicit so consumers stop re-deriving it. Levels within half a wire merge.
+struct ConnectionRideLevel {
+    int side = 0;        // 0 = the PRIMARY isolation side's face, 1 = every other side's face
+    double radius = 0;   // the lane's destination radius, in the layer-axis coordinate
+    double height = 0;   // how much a wire riding over it is displaced (one wire OD)
+};
+
+// ABT #685: one connection of one conductor, as MKF drew it — the record MVB++ realises in 3D and
+// the painters draw. `waypoints` is the route in the winding-window half-plane, (layer axis, turn
+// axis), in path order from `fromTurn` to `toTurn`; a consumer follows it, it never invents one.
+struct ConnectionRoute {
+    std::string winding;
+    int64_t parallel = -1;
+    std::string fromTurn;
+    std::string toTurn;
+    ConnectionKind kind = ConnectionKind::U_ADJACENT;
+    int side = 0;                                  // which face the out-of-plane part routes on
+    std::vector<std::vector<double>> waypoints;    // {layerAxis, turnAxis} centres, in path order
+    double routedLength = 0;                       // summed copper of the route's segments
+};
+
+// ABT #685: the whole connection layout of a wound coil — every conductor's routes, plus the ride
+// levels those routes impose. ONE computation, shared by the painters and by MVB++'s 3D builder,
+// so the three can no longer disagree about what the winder does.
+struct ConnectionLayout {
+    std::vector<ConnectionRoute> routes;
+    std::vector<ConnectionRideLevel> rideLevels;
+    // Total displacement a turn at `radius` on `side` rides over.
+    double ride_at(double radius, int side) const {
+        double ride = 0;
+        for (const auto& level : rideLevels) {
+            if (level.side == side && level.radius <= radius + 0.5 * level.height) {
+                ride += level.height;
+            }
+        }
+        return ride;
+    }
 };
 
 // The column a section's turns are wound around, in the winding frame (+x side of
@@ -252,6 +319,11 @@ class Coil : public MAS::Coil {
         // fence-post spread, opened bundle gaps the arriving wire then had to dive through, and
         // put a parallel's descent 0.81 mm from its sibling's link.
         std::map<std::string, bool> _uLandingAtHighSidePerLayer;
+        // ABT #685 (Alf, 2026-08-16): whether the LAST wind actually applied real-winding
+        // connection blocking. False when the flag was off OR when the ideal wind did not fit
+        // (the ABT #650 gate declined). Consumers that require blocked geometry — the 3D
+        // ConductorBuilder above all — must ASK instead of discovering it as a collision.
+        bool _realWindingBlockingApplied = false;
         // ABT #685 (Alf, 2026-08-15): conductors whose LAST turn is a STEEP EXIT LANDING — "when a
         // turn is the last one of the section and must go out [at the far side], they must reach
         // the other side in one full pitch". The last turn's station is placed at the FAR edge of
@@ -441,6 +513,8 @@ class Coil : public MAS::Coil {
         void try_rewind();
         void clear();
         bool are_sections_and_layers_fitting();
+        // ABT #685: did the last wind apply real-winding connection blocking? (see the member)
+        bool is_real_winding_blocking_applied() const { return _realWindingBlockingApplied; }
         // ABT #624: every turn's copper inside the winding window (final wind verdict only).
         bool are_turns_inside_winding_window();
 
@@ -561,7 +635,20 @@ class Coil : public MAS::Coil {
         // section). Returns the rectangles of space reserved by terminal/connection leads crossing
         // layer boundaries. Computed from the wound layers; independent of the real-geometry
         // setting so the Painter can also overlay it for debugging.
-        std::vector<ConnectionReservedSpace> get_connection_reserved_spaces();
+        // ABT #685: `routesOut`, when given, also receives the ROUTES — one per (conductor,
+        // transition), with the waypoints recorded AT THE POINT OF DRAWING. Recording them here
+        // rather than reconstructing them from the rectangles is deliberate: a rectangle does not
+        // say which of its axes is the run (a stub of a tall RECTANGULAR wire is shorter than the
+        // wire's own width), which is the same trap routedLength exists to avoid.
+        std::vector<ConnectionReservedSpace> get_connection_reserved_spaces(
+            std::vector<ConnectionRoute>* routesOut = nullptr);
+        // ABT #685: the same connections, GROUPED into one route per (conductor, transition) and
+        // classified (see ConnectionKind), together with the ride levels — the bumps — those
+        // routes impose on the turns outside them. This is the contract MVB++'s 3D builder and
+        // the YZ/XZ painters read; none of them may re-derive a connection's kind, its route or
+        // its bump from turn coordinates. Derived from get_connection_reserved_spaces(), so it
+        // carries MKF's own decision rather than a reconstruction of it.
+        ConnectionLayout get_connection_layout();
         // Adds the reserved-connection area into the affected section filling factors. Called at the
         // end of wind() when Settings::get_coil_use_real_winding_geometry() is true.
         void apply_connection_reserved_space();

@@ -92,6 +92,8 @@ namespace OpenMagnetics {
         _coilEqualizeMargins = true;
         _coilOnlyOneTurnPerLayerInContiguousRectangular = false;
         _coilUseRealWindingGeometry = false;
+        _coilAllowCoatingSquish = false;
+        _coilAllowHorizontalOverflow = false;
         _coilMaximumLayersPlanar = 32;
 
         _useOnlyCoresInStock = true;
@@ -329,6 +331,20 @@ namespace OpenMagnetics {
     }
     void Settings::set_coil_use_real_winding_geometry(bool value) {
         _coilUseRealWindingGeometry = value;
+    }
+
+    bool Settings::get_coil_allow_coating_squish() const {
+        return _coilAllowCoatingSquish;
+    }
+    void Settings::set_coil_allow_coating_squish(bool value) {
+        _coilAllowCoatingSquish = value;
+    }
+
+    bool Settings::get_coil_allow_horizontal_overflow() const {
+        return _coilAllowHorizontalOverflow;
+    }
+    void Settings::set_coil_allow_horizontal_overflow(bool value) {
+        _coilAllowHorizontalOverflow = value;
     }
 
     size_t Settings::get_coil_maximum_layers_planar() const {

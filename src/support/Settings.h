@@ -49,6 +49,19 @@ class Settings
         // ignored. When true, the winder accounts for the space reserved by connection/lead wires
         // (affecting filling factors) and their length is included in the winding losses.
         bool _coilUseRealWindingGeometry = false;
+        // ABT #685 (Alf, 2026-08-16): COATING SQUISH. When true, the sections/layers fit check
+        // tolerates a filling factor up to 1 + 1e-3: the helical stacking pitch (turns tangent
+        // in 3D, ABT #780) is a second-order correction ((K*od/L)^2/2, always well under 0.1%),
+        // so a layer that was EXACTLY full under flat-stack arithmetic now overflows by a few
+        // tens of um — physically absorbed by the wire coating squishing, which every real
+        // winder relies on. Default OFF: fit stays exact unless the caller opts in.
+        bool _coilAllowCoatingSquish = false;
+        // ABT #685 (Alf, 2026-08-16): HORIZONTAL OVERFLOW. When true, the fit check ignores
+        // overflow on the LAYER axis (x for overlapping windings): the winding may bulge
+        // radially past the window edge (real windings do, past the bobbin flange), while the
+        // turn axis (y) stays strict. Lets over-full example designs wind with real-winding
+        // blocking applied instead of silently skipping it. Default OFF.
+        bool _coilAllowHorizontalOverflow = false;
         size_t _coilMaximumLayersPlanar = 32;  // Keep in sync with reset()
 
         bool _useOnlyCoresInStock = true;
@@ -275,6 +288,12 @@ class Settings
 
         bool get_coil_use_real_winding_geometry() const;
         void set_coil_use_real_winding_geometry(bool value);
+
+        bool get_coil_allow_coating_squish() const;
+        void set_coil_allow_coating_squish(bool value);
+
+        bool get_coil_allow_horizontal_overflow() const;
+        void set_coil_allow_horizontal_overflow(bool value);
 
         size_t get_coil_maximum_layers_planar() const;
         void set_coil_maximum_layers_planar(size_t value);

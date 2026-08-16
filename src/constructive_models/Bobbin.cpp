@@ -47,6 +47,12 @@ class BobbinEDataProcessor : public BobbinDataProcessor{
             windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
+            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
+            // column surface half-extent including the bobbin wall, the same convention
+            // create_quick_bobbin uses (core half-width + columnThickness). Every family
+            // processor computed it and threw it away, and paint_bobbin (among others)
+            // then died on the empty optional for every database bobbin.
+            processedDescription.set_column_width(innerEdge);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
             return processedDescription;
         }
@@ -71,6 +77,14 @@ class BobbinRmDataProcessor : public BobbinDataProcessor{
             windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
+            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
+            // column surface half-extent including the bobbin wall, the same convention
+            // create_quick_bobbin uses (core half-width + columnThickness). Every family
+            // processor computed it and threw it away, and paint_bobbin (among others)
+            // then died on the empty optional for every database bobbin.
+            processedDescription.set_column_width(innerEdge);
+            // Round column: the depth equals the width (both are the tube radius).
+            processedDescription.set_column_depth(innerEdge);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
             return processedDescription;
         }
@@ -94,6 +108,14 @@ class BobbinEpDataProcessor : public BobbinDataProcessor{
             windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
+            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
+            // column surface half-extent including the bobbin wall, the same convention
+            // create_quick_bobbin uses (core half-width + columnThickness). Every family
+            // processor computed it and threw it away, and paint_bobbin (among others)
+            // then died on the empty optional for every database bobbin.
+            processedDescription.set_column_width(innerEdge);
+            // Round column: the depth equals the width (both are the tube radius).
+            processedDescription.set_column_depth(innerEdge);
 
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
             return processedDescription;
@@ -121,6 +143,14 @@ class BobbinEtdDataProcessor : public BobbinDataProcessor{
             windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
+            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
+            // column surface half-extent including the bobbin wall, the same convention
+            // create_quick_bobbin uses (core half-width + columnThickness). Every family
+            // processor computed it and threw it away, and paint_bobbin (among others)
+            // then died on the empty optional for every database bobbin.
+            processedDescription.set_column_width(innerEdge);
+            // Round column: the depth equals the width (both are the tube radius).
+            processedDescription.set_column_depth(innerEdge);
 
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
             return processedDescription;
@@ -145,6 +175,14 @@ class BobbinPmDataProcessor : public BobbinDataProcessor{
             windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
+            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
+            // column surface half-extent including the bobbin wall, the same convention
+            // create_quick_bobbin uses (core half-width + columnThickness). Every family
+            // processor computed it and threw it away, and paint_bobbin (among others)
+            // then died on the empty optional for every database bobbin.
+            processedDescription.set_column_width(innerEdge);
+            // Round column: the depth equals the width (both are the tube radius).
+            processedDescription.set_column_depth(innerEdge);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
             return processedDescription;
         }
@@ -169,6 +207,14 @@ class BobbinPqDataProcessor : public BobbinDataProcessor{
             windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
+            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
+            // column surface half-extent including the bobbin wall, the same convention
+            // create_quick_bobbin uses (core half-width + columnThickness). Every family
+            // processor computed it and threw it away, and paint_bobbin (among others)
+            // then died on the empty optional for every database bobbin.
+            processedDescription.set_column_width(innerEdge);
+            // Round column: the depth equals the width (both are the tube radius).
+            processedDescription.set_column_depth(innerEdge);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
             return processedDescription;
         }
@@ -193,6 +239,14 @@ class BobbinEcDataProcessor : public BobbinDataProcessor{
             windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
+            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
+            // column surface half-extent including the bobbin wall, the same convention
+            // create_quick_bobbin uses (core half-width + columnThickness). Every family
+            // processor computed it and threw it away, and paint_bobbin (among others)
+            // then died on the empty optional for every database bobbin.
+            processedDescription.set_column_width(innerEdge);
+            // Round column: the depth equals the width (both are the tube radius).
+            processedDescription.set_column_depth(innerEdge);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
             return processedDescription;
         }
@@ -216,6 +270,12 @@ class BobbinEfdDataProcessor : public BobbinDataProcessor{
             windingWindowElement.set_width(windowWidth);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
+            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
+            // column surface half-extent including the bobbin wall, the same convention
+            // create_quick_bobbin uses (core half-width + columnThickness). Every family
+            // processor computed it and threw it away, and paint_bobbin (among others)
+            // then died on the empty optional for every database bobbin.
+            processedDescription.set_column_width(innerEdge);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
             return processedDescription;
         }

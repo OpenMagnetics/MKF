@@ -464,6 +464,23 @@ void Painter::paint_coil_connections(Magnetic magnetic) {
     // leads. Transparency lets overlapping leads and the turns beneath them stay visible.
     _root.style(".connection_transition").set_attr("opacity", "0.5").set_attr("fill", "#1E88E5");  // blue
     _root.style(".connection_terminal").set_attr("opacity", "0.5").set_attr("fill", "#FF00FF");     // magenta
+    // ABT #685 (Alf, 2026-08-16): when real winding was requested but the ABT #650 gate DECLINED
+    // to apply the blocking (ideal wind does not fit), the markers exist but the turns were never
+    // displaced around them — a normal-looking overlay would masquerade as a real layout (it did:
+    // pushpull's turns sat a full radius inside their "reserved" rows). Paint the markers as RED
+    // DASHED OUTLINES so the declined state is unmistakable at a glance.
+    const bool blockingDeclined = settings.get_coil_use_real_winding_geometry() &&
+                                  !coil.is_real_winding_blocking_applied();
+    if (blockingDeclined) {
+        for (const char* cls : {".connection_transition", ".connection_terminal"}) {
+            _root.style(cls)
+                .set_attr("opacity", "0.85")
+                .set_attr("fill", "none")
+                .set_attr("stroke", "#FF0000")
+                .set_attr("stroke-width", "2")
+                .set_attr("stroke-dasharray", "6,4");
+        }
+    }
     for (const auto& space : reservedSpaces) {
         // Only the centre-to-centre / centre-to-border link entries (no layer) are drawn; the
         // per-layer entries are squeeze-only book-keeping for the filling factor.

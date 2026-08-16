@@ -4766,3 +4766,96 @@ namespace {
         settings.reset();
     }
 }
+
+// TEMPORARY (ABT #685 review): env-driven Painter export for arbitrary MAS examples, with the
+// terminal/connection overlay. MKF_SVG_FIXTURES is a comma-separated list of paths relative to
+// MAS/examples (subdirs allowed, e.g. "complete/pushpull_transformer_complete.json"). Real
+// winding ON — the connections exist only under the blocking layout. Remove before commit.
+namespace {
+    TEST_CASE("Tmp_Abt685_Fixture_Svg", "[tmpsvg]") {
+        const char* list = std::getenv("MKF_SVG_FIXTURES");
+        REQUIRE(list != nullptr);
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        // ABT #685 (Alf, 2026-08-16): both fit relaxations ON for this review test — coating
+        // squish (heals the helical-pitch epsilon, e.g. pushpull's ff=1.00068) and horizontal
+        // overflow (the over-full complete examples wind with blocking applied, bulging
+        // radially, instead of silently skipping the blocking).
+        settings.set_coil_allow_coating_squish(true);
+        settings.set_coil_allow_horizontal_overflow(true);
+        const auto outDir = std::filesystem::path{std::source_location::current().file_name()}
+                                .parent_path().append("..").append("output");
+        const auto examplesDir = std::filesystem::path{std::source_location::current().file_name()}
+                                     .parent_path().append("..").append("MAS").append("examples");
+        std::stringstream ss(list);
+        std::string name;
+        while (std::getline(ss, name, ',')) {
+            std::cerr << "[design] " << name << "\n";
+            try {
+                std::ifstream f((examplesDir / name).string());
+                if (!f.good()) {
+                    std::cerr << "[svg-fail] " << name << ": example file not found\n";
+                    continue;
+                }
+                // The MVB++ recipe (magnetic_autocomplete_safe): Coil(json, false) skips the
+                // ctor-time wind that trips "bad optional access" on the complete examples'
+                // raw Basic bobbins; autocomplete then does the full enrichment itself.
+                auto j = json::parse(f);
+                auto magneticJson = j.contains("magnetic") ? j.at("magnetic") : j;
+                OpenMagnetics::Magnetic om;
+                om.set_core(OpenMagnetics::Core(magneticJson.at("core")));
+                om.set_coil(OpenMagnetics::Coil(magneticJson.at("coil"), false));
+                OpenMagnetics::Magnetic magnetic;
+                try {
+                    magnetic = OpenMagnetics::magnetic_autocomplete(om, json{});
+                } catch (const std::exception& e) {
+                    std::cerr << "[svg-fail] " << name << ": AUTOCOMPLETE: " << e.what() << "\n";
+                    continue;
+                }
+                auto base = std::filesystem::path(name).stem().string();
+                auto outFile = outDir;
+                outFile.append("Tmp_Abt685_" + base + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile);
+                // Staged, each individually caught: export whatever paints, and name the
+                // stage that fails instead of one opaque "bad optional access".
+                auto stage = [&](const char* what, auto&& fn) {
+                    try {
+                        fn();
+                    } catch (const std::exception& e) {
+                        std::cerr << "[svg-stage-fail] " << name << ": " << what << ": "
+                                  << e.what() << "\n";
+                    }
+                };
+                stage("core", [&] { painter.paint_core(magnetic); });
+                stage("bobbin", [&] { painter.paint_bobbin(magnetic); });
+                stage("turns", [&] { painter.paint_coil_turns(magnetic); });
+                stage("connections", [&] { painter.paint_coil_connections(magnetic); });
+                if (std::getenv("MKF_DUMP")) {
+                    if (magnetic.get_coil().get_turns_description()) {
+                        const auto dumpTurns = magnetic.get_coil().get_turns_description().value();
+                        for (const auto& t : dumpTurns) {
+                            std::cerr << "[turn] " << t.get_name() << " ("
+                                      << t.get_coordinates()[0] * 1e3 << ","
+                                      << t.get_coordinates()[1] * 1e3 << ")\n";
+                        }
+                    }
+                    auto dumpCoil = magnetic.get_coil();
+                    for (const auto& sp : dumpCoil.get_connection_reserved_spaces()) {
+                        if (!sp.layer.empty()) continue;
+                        std::cerr << "[space] " << (sp.isTerminal ? "TERM " : "trans") << " w="
+                                  << sp.winding << " p" << sp.parallel << " at ("
+                                  << sp.coordinates[0] * 1e3 << "," << sp.coordinates[1] * 1e3
+                                  << ") dims=(" << sp.dimensions[0] * 1e3 << "x"
+                                  << sp.dimensions[1] * 1e3 << ")\n";
+                    }
+                }
+                painter.export_svg();
+                std::cerr << "[svg] " << outFile.string() << "\n";
+            } catch (const std::exception& e) {
+                std::cerr << "[svg-fail] " << name << ": " << e.what() << "\n";
+            }
+        }
+        settings.reset();
+    }
+}  // namespace

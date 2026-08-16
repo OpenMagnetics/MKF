@@ -690,6 +690,8 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                     corridor.coordinates = {roundFloat(ringRadius * std::cos(angle), 9), roundFloat(ringRadius * std::sin(angle), 9)};
                     corridor.dimensions = {roundFloat(wireOuterWidth, 9), roundFloat(wireOuterHeight, 9)};
                     corridor.routedLength = 0;  // space-only: the vertical's copper is billed by the terminal lead itself
+                    corridor.kind = ConnectionKind::LAYER_SQUEEZE;   // ABT #685: no copper
+                    (isEntrance ? corridor.toTurn : corridor.fromTurn) = connectingTurn.get_name();
                     corridor.rotation = roundFloat(angle * 180.0 / std::numbers::pi, 6);
                     spaces.push_back(corridor);
                 }
@@ -713,6 +715,9 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
             lead.coordinates = {roundFloat(radiusMid * std::cos(angle), 9), roundFloat(radiusMid * std::sin(angle), 9)};
             lead.dimensions = {roundFloat(radialBorder - radiusNear, 9), wireOuterHeight};
             lead.routedLength = roundFloat(radialBorder - radiusNear, 9);  // the radial run itself
+            lead.kind = isEntrance ? ConnectionKind::TERMINAL_ENTRANCE
+                                   : ConnectionKind::TERMINAL_EXIT;
+            (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
             lead.rotation = roundFloat(angle * 180.0 / std::numbers::pi, 6);
             spaces.push_back(lead);
 
@@ -743,6 +748,8 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                 crossing.coordinates = {roundFloat(ringRadius * std::cos(angle), 9), roundFloat(ringRadius * std::sin(angle), 9)};
                 crossing.dimensions = {roundFloat(wireOuterWidth, 9), roundFloat(wireOuterHeight, 9)};
                 crossing.routedLength = 0;  // space-only squeeze: the lead's copper is the drawn radial run
+                crossing.kind = ConnectionKind::LAYER_SQUEEZE;   // ABT #685: no copper
+                (isEntrance ? crossing.toTurn : crossing.fromTurn) = connectingTurn.get_name();
                 crossing.rotation = roundFloat(angle * 180.0 / std::numbers::pi, 6);
                 spaces.push_back(crossing);
             }
@@ -781,6 +788,8 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                 }
                 auto a = lastTurnInLayer.at(exitKey).get_coordinates();
                 auto b = firstTurnInLayer.at(entryKey).get_coordinates();
+                const std::string aTurnName = lastTurnInLayer.at(exitKey).get_name();
+                const std::string bTurnName = firstTurnInLayer.at(entryKey).get_name();
                 double deltaX = b[0] - a[0];
                 double deltaY = b[1] - a[1];
                 double length = std::hypot(deltaX, deltaY);
@@ -795,6 +804,11 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                 link.layer = "";
                 link.coordinates = {roundFloat((a[0] + b[0]) / 2, 9), roundFloat((a[1] + b[1]) / 2, 9)};
                 link.dimensions = {roundFloat(length, 9), wireOuterHeight};
+                // ABT #685: a toroid's inter-ring hop is the radial link between two rings —
+                // the toroidal analogue of the concentric U turnaround (no return run).
+                link.kind = ConnectionKind::U_ADJACENT;
+                link.fromTurn = aTurnName;
+                link.toTurn = bTurnName;
                 link.routedLength = roundFloat(length, 9);  // centre-to-centre inter-ring hop
                 link.rotation = roundFloat(std::atan2(deltaY, deltaX) * 180.0 / std::numbers::pi, 6);
                 spaces.push_back(link);
@@ -804,7 +818,8 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
     return spaces;
 }
 
-std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
+std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
+    std::vector<ConnectionRoute>* routesOut) {
     // Model (first approximation, to be validated): each winding's wire routes through its
     // conduction layers in electrical (wound) order. The lead between two electrically-consecutive
     // layers of the same winding reserves one wire-thick rectangle on every conduction layer it
@@ -818,11 +833,67 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
     }
     auto bobbin = resolve_bobbin();
     if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
+        // ABT #685: the TOROIDAL emitter tags its rectangles with a kind, but does not yet record
+        // routes — its frame is polar and its consumers (the two whole-magnetic painters) are
+        // two-piece-set only. Left empty rather than filled with a cartesian reading of polar
+        // data, which would be wrong in a way nothing downstream could detect.
         return toroidal_connection_reserved_spaces(*this);
     }
     if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
         return spaces;
     }
+    // ABT #685: routes recorded as they are drawn. `addRoute` takes the waypoints in the VIRTUAL
+    // frame (layer axis first) exactly like the rectangles, and the contiguous transpose at the
+    // end of this function maps them back with them.
+    std::vector<ConnectionRoute> routes;
+    auto addRoute = [&](const std::string& windingName, int64_t parallel,
+                        const std::string& fromTurn, const std::string& toTurn,
+                        ConnectionKind kind, std::vector<std::vector<double>> waypoints) {
+        // Drop waypoints that repeat their predecessor: a degenerate stub (the turn already sits
+        // on the edge row) is not a leg, and a zero-length leg has no direction for a consumer to
+        // build a corner from.
+        std::vector<std::vector<double>> kept;
+        for (auto& waypoint : waypoints) {
+            if (kept.empty() || std::hypot(waypoint[0] - kept.back()[0],
+                                           waypoint[1] - kept.back()[1]) > 1e-12) {
+                kept.push_back(waypoint);
+            }
+        }
+        if (kept.size() < 2) {
+            return;
+        }
+        double routed = 0;
+        for (size_t k = 0; k + 1 < kept.size(); ++k) {
+            routed += std::hypot(kept[k + 1][0] - kept[k][0], kept[k + 1][1] - kept[k][1]);
+        }
+        ConnectionRoute route;
+        route.winding = windingName;
+        route.parallel = parallel;
+        route.fromTurn = fromTurn;
+        route.toTurn = toTurn;
+        route.kind = kind;
+        route.side = get_functional_description()[get_winding_index_by_name(windingName)]
+                             .get_isolation_side() == IsolationSide::PRIMARY ? 0 : 1;
+        route.waypoints = std::move(kept);
+        route.routedLength = roundFloat(routed, 9);
+        routes.push_back(std::move(route));
+    };
+    // A terminal route is recorded in ELECTRICAL order: an entrance runs terminal -> turn, an
+    // exit runs turn -> terminal. Callers pass the waypoints turn-first and this reverses them
+    // for entrances, so a consumer can always walk `waypoints` in the direction the current does.
+    auto addTerminalRoute = [&](const std::string& windingName, int64_t parallel,
+                                const Turn& connectingTurn, bool isEntrance, ConnectionKind kind,
+                                std::vector<std::vector<double>> turnFirst) {
+        if (isEntrance) {
+            std::reverse(turnFirst.begin(), turnFirst.end());
+            addRoute(windingName, parallel, "", connectingTurn.get_name(), kind,
+                     std::move(turnFirst));
+        }
+        else {
+            addRoute(windingName, parallel, connectingTurn.get_name(), "", kind,
+                     std::move(turnFirst));
+        }
+    };
     auto wires = get_wires();
     auto allLayersDescription = get_layers_description().value();
     auto turns = get_turns_description().value();
@@ -1172,6 +1243,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         if (windowOuterX <= turnX) {
             return;
         }
+        // ABT #685: every rectangle this lead emits carries the same kind and names the turn it
+        // attaches to, so a consumer can group the stub + edge run back into ONE route.
+        const ConnectionKind terminalKind =
+            isEntrance ? ConnectionKind::TERMINAL_ENTRANCE : ConnectionKind::TERMINAL_EXIT;
         // The layers the lead routes OVER (outward of the connecting turn) to reach the border.
         std::vector<const Layer*> crossedLayers;
         for (const auto& crossed : allLayers) {
@@ -1196,7 +1271,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), roundFloat(turnY, 9)};
             lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
             lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the radial run
+            lead.kind = terminalKind;
+            (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
             spaces.push_back(lead);
+            addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
+                             {{turnX, turnY}, {windowOuterX + wireOuterWidth / 2, turnY}});
             return;
         }
 
@@ -1256,6 +1335,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             }
             space.edgeDepth = runDepth + interWindingInsulation;
             space.routedLength = 0;  // space-only squeeze: the lead's copper is the drawn stub + edge run
+            space.kind = ConnectionKind::LAYER_SQUEEZE;   // ABT #685: no copper, no route
+            (isEntrance ? space.toTurn : space.fromTurn) = connectingTurn.get_name();
             spaces.push_back(space);
         }
         if (std::abs(edgeY - turnY) > wireOuterHeight / 2) {
@@ -1270,6 +1351,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
             stub.coordinates = {turnX, roundFloat((turnY + stubFarEnd) / 2, 9)};
             stub.dimensions = {wireOuterWidth, roundFloat(std::abs(stubFarEnd - turnY), 9)};
             stub.routedLength = roundFloat(std::abs(stubFarEnd - turnY), 9);  // the vertical climb to the edge row
+            stub.kind = terminalKind;
+            (isEntrance ? stub.toTurn : stub.fromTurn) = connectingTurn.get_name();
             spaces.push_back(stub);
         }
         ConnectionReservedSpace lead;
@@ -1282,7 +1365,12 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
         lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
         lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the edge run to the border
         lead.edgeDepth = runDepth;
+        lead.kind = terminalKind;
+        (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
         spaces.push_back(lead);
+        addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
+                         {{turnX, turnY}, {turnX, edgeY},
+                          {windowOuterX + wireOuterWidth / 2, edgeY}});
     };
 
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -1577,6 +1665,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
                         squeeze.routedLength = 0;  // space-only: the copper is the drawn stubs + edge run below
                         squeeze.edgeDepth = runDepth;
+                        squeeze.kind = ConnectionKind::LAYER_SQUEEZE;   // ABT #685: no copper
+                        squeeze.fromTurn = exitTurn.get_name();
+                        squeeze.toTurn = entryTurn.get_name();
                         spaces.push_back(squeeze);
                     }
                 }
@@ -1624,7 +1715,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     diagonal.dimensions = {roundFloat(length, 9), wireOuterHeight};
                     diagonal.routedLength = roundFloat(length, 9);  // centre-to-centre dragback hop
                     diagonal.rotation = roundFloat(std::atan2(deltaY, deltaX) * 180.0 / std::numbers::pi, 6);
+                    // ABT #685: THE decision. This branch is a Z return between adjacent layers —
+                    // the classic dragback — and saying so here is what stops MVB++ guessing it
+                    // back from the turn coordinates.
+                    diagonal.kind = ConnectionKind::Z_DRAGBACK;
+                    diagonal.fromTurn = exitTurn.get_name();
+                    diagonal.toTurn = entryTurn.get_name();
                     spaces.push_back(diagonal);
+                    addRoute(windingName, parallel, exitTurn.get_name(), entryTurn.get_name(),
+                             ConnectionKind::Z_DRAGBACK, {{x1, y1}, {x2, y2}});
                 }
                 else if (crossesIntervening) {
                     // U interleaved continuation: route along the window edge it reserves — a vertical
@@ -1645,6 +1744,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         seg.dimensions = {roundFloat(w, 9), roundFloat(h, 9)};
                         seg.routedLength = roundFloat(copperLength, 9);
                         seg.edgeDepth = depth;
+                        seg.kind = ConnectionKind::EDGE_CONTINUATION;   // ABT #685
+                        seg.fromTurn = exitTurn.get_name();
+                        seg.toTurn = entryTurn.get_name();
                         spaces.push_back(seg);
                     };
                     // Verticals start at the turn CENTRE (y1 / y2), not covering the whole turn, and
@@ -1659,6 +1761,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         double far2 = routeEdgeY + ((routeEdgeY >= y2) ? 1.0 : -1.0) * wireOuterHeight / 2;
                         pushLink(x2, (y2 + far2) / 2, wireOuterWidth, std::abs(far2 - y2), std::abs(far2 - y2));
                     }
+                    // ABT #685: stub up to the band row, run across the intervening layers, stub
+                    // down to the receiving turn — the three pushLink segments as ONE route.
+                    addRoute(windingName, parallel, exitTurn.get_name(), entryTurn.get_name(),
+                             ConnectionKind::EDGE_CONTINUATION,
+                             {{x1, y1}, {x1, routeEdgeY}, {x2, routeEdgeY}, {x2, y2}});
                 }
                 else {
                     // ABT #608 RETRACTED (Alf, 2026-08-08): the U tangential link does NOT cost
@@ -1692,11 +1799,20 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                     // 3D, which builds this link as a constant-height tangential segment.
                     bool needVertical = std::abs(y2 - y1) > 0.5 * wireOuterHeight
                                         && !(windingOrder == WindingOrder::U && sameSection);
+                    // ABT #685: the same-section U link is the TANGENTIAL one — a single
+                    // constant-height run, no stub. Everything else here is the orthogonal
+                    // turnaround. Both are U: the connected turns sit at the same axial end.
+                    const ConnectionKind uKind = (windingOrder == WindingOrder::U && sameSection)
+                                                     ? ConnectionKind::U_TANGENTIAL
+                                                     : ConnectionKind::U_ADJACENT;
                     ConnectionReservedSpace horizontal;
                     horizontal.winding = windingName;
                     horizontal.parallel = parallel;
                     horizontal.section = windingLayers[i].get_section().value_or("");
                     horizontal.layer = "";
+                    horizontal.kind = uKind;
+                    horizontal.fromTurn = exitTurn.get_name();
+                    horizontal.toTurn = entryTurn.get_name();
                     if (needVertical) {
                         double horizontalDirection = (x2 >= x1) ? 1.0 : -1.0;
                         horizontal.coordinates = {roundFloat((x1 + x2) / 2 + horizontalDirection * wireOuterWidth / 4, 9), roundFloat(y1, 9)};
@@ -1717,6 +1833,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         vertical.parallel = parallel;
                         vertical.section = windingLayers[i].get_section().value_or("");
                         vertical.layer = "";
+                        vertical.kind = uKind;
+                        vertical.fromTurn = exitTurn.get_name();
+                        vertical.toTurn = entryTurn.get_name();
                         vertical.coordinates = {roundFloat(x2, 9), roundFloat((y1 + y2) / 2 + verticalDirection * wireOuterHeight / 4, 9)};
                         vertical.dimensions = {wireOuterWidth, roundFloat(std::abs(y2 - y1) - wireOuterHeight / 2, 9)};
                         // The vertical stretch runs along the TURN axis: its copper is its own
@@ -1724,6 +1843,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                         vertical.routedLength = roundFloat(std::abs(y2 - y1) - wireOuterHeight / 2, 9);
                         spaces.push_back(vertical);
                     }
+                    // ABT #685: the turnaround as ONE route — radial stretch to the destination
+                    // layer, then the axial stretch when the two stations differ in height. The
+                    // same-section TANGENTIAL link is horizontal only: its destination height is
+                    // the landing turn's own helix, never a drawn stub (see needVertical).
+                    addRoute(windingName, parallel, exitTurn.get_name(), entryTurn.get_name(),
+                             uKind,
+                             needVertical
+                                 ? std::vector<std::vector<double>>{{x1, y1}, {x2, y1}, {x2, y2}}
+                                 : std::vector<std::vector<double>>{{x1, y1}, {x2, y1}});
                 }
             }
         }
@@ -1762,8 +1890,74 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces() {
                 space.rotation = reflectedRotation;
             }
         }
+        // ABT #685: the routes ran in the same virtual frame, so they reflect the same way. A
+        // waypoint is a point, so the reflection is just the coordinate swap — no rotation
+        // book-keeping, which is the whole reason routes carry points and not rectangles.
+        for (auto& route : routes) {
+            for (auto& waypoint : route.waypoints) {
+                std::swap(waypoint[0], waypoint[1]);
+            }
+        }
+    }
+    if (routesOut != nullptr) {
+        *routesOut = std::move(routes);
     }
     return spaces;
+}
+
+ConnectionLayout Coil::get_connection_layout() {
+    ConnectionLayout layout;
+    get_connection_reserved_spaces(&layout.routes);
+
+    // THE BUMPS (ABT #685). A route that lays a LANE — a return the wire must climb back along —
+    // displaces every turn at or outside its destination radius on the same face, because the lane
+    // occupies that space for the whole wind. Which routes those are is not a threshold on the
+    // turn coordinates: it is the route's KIND. A Z dragback and an edge continuation both lay
+    // one; a U turnaround does not (Alf, ABT #683: "a U turnaround is not a dragback and reserves
+    // no ride"), and neither does the tangential same-section link, which reserves nothing at all.
+    //
+    // This replaces three separate reconstructions of the same fact: MVB++'s isZReturn() (median
+    // pitch, filar-count and sign-of-advance thresholds), the YZ painter's own copy of it, and the
+    // ride accumulation each of them then ran. None of them could be right for a design whose
+    // geometry happened to fall between the thresholds; the kind always is, because wind() set it.
+    auto wires = get_wires();
+    std::map<std::string, double> odByWinding;
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        odByWinding[get_functional_description()[windingIndex].get_name()] =
+            wires[windingIndex].get_maximum_outer_width();
+    }
+    for (const auto& route : layout.routes) {
+        if (route.kind != ConnectionKind::Z_DRAGBACK &&
+            route.kind != ConnectionKind::EDGE_CONTINUATION) {
+            continue;
+        }
+        auto odIt = odByWinding.find(route.winding);
+        if (odIt == odByWinding.end() || odIt->second <= 0) {
+            throw std::runtime_error(
+                "Coil::get_connection_layout: winding '" + route.winding +
+                "' has no outer width, so the ride its return imposes cannot be sized");
+        }
+        // The lane sits at the DESTINATION radius: that is where the wire ends up and where the
+        // run stands for the rest of the wind.
+        const double laneRadius = route.waypoints.back()[0];
+        bool merged = false;
+        for (auto& level : layout.rideLevels) {
+            if (level.side == route.side &&
+                std::abs(level.radius - laneRadius) <= 0.5 * odIt->second) {
+                level.height = std::max(level.height, odIt->second);
+                merged = true;
+                break;
+            }
+        }
+        if (!merged) {
+            layout.rideLevels.push_back({route.side, laneRadius, odIt->second});
+        }
+    }
+    std::sort(layout.rideLevels.begin(), layout.rideLevels.end(),
+              [](const ConnectionRideLevel& a, const ConnectionRideLevel& b) {
+                  return a.side != b.side ? a.side < b.side : a.radius < b.radius;
+              });
+    return layout;
 }
 
 std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_blocked_slots_per_layer(
@@ -3706,6 +3900,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         std::cerr << "[fit] FAILED: " << (_lastFitFailure.empty() ? "(unnamed)" : _lastFitFailure)
                   << " turns=" << bool(get_turns_description()) << "\n";
     }
+    _realWindingBlockingApplied = result && settings.get_coil_use_real_winding_geometry();
     if (settings.get_coil_use_real_winding_geometry() && !result) {
         logEntry("Real winding was requested but connection blocking was NOT applied: the ideal "
                  "wind does not fit"
@@ -4795,8 +4990,25 @@ bool Coil::are_sections_and_layers_fitting() {
     auto sections = get_sections_description().value();
     auto layers = get_layers_description().value();
 
+    // ABT #685 (Alf, 2026-08-16): COATING SQUISH, opt-in. The helical stacking pitch is a
+    // second-order correction that pushes an EXACTLY-full layer a few tens of um over — real
+    // coating squish absorbs it. 1e-3 relative covers the pitch correction with margin while
+    // still rejecting genuinely over-stuffed layers (the failing examples run 1.05-2.56).
+    const double ffLimit = settings.get_coil_allow_coating_squish() ? 1.0 + 1e-3 : 1.0;
+    // ABT #685 (Alf, 2026-08-16): HORIZONTAL OVERFLOW, opt-in. The winding may bulge along
+    // the LAYER axis (radially past the window edge, like a real winding past its bobbin
+    // flange); the TURN axis stays strict. For an OVERLAPPING section the layer axis is x
+    // and the filling factors that measure it are the section-level ones; the per-layer
+    // factor measures the TURN axis and stays enforced.
+    const bool allowHorizontal = settings.get_coil_allow_horizontal_overflow();
+
     for (auto& section: sections) {
-        if (roundFloat(section.get_filling_factor().value(), 6) > 1 || roundFloat(overlapping_filling_factor(section), 6) > 1 || roundFloat(contiguous_filling_factor(section), 6) > 1) {
+        const bool sectionOverflows = allowHorizontal
+            ? false   // section ff measures the layer-stack (horizontal) direction
+            : (roundFloat(section.get_filling_factor().value(), 6) > ffLimit ||
+               roundFloat(overlapping_filling_factor(section), 6) > ffLimit ||
+               roundFloat(contiguous_filling_factor(section), 6) > ffLimit);
+        if (sectionOverflows) {
             if (std::getenv("MKF_BLOCKING_DIAG"))
                 std::cerr << "[fit] section " << section.get_name() << " ff="
                           << section.get_filling_factor().value() << " ovl="
@@ -4806,7 +5018,7 @@ bool Coil::are_sections_and_layers_fitting() {
         }
     }
     for (auto& layer: layers) {
-        if (roundFloat(layer.get_filling_factor().value(), 6) > 1) {
+        if (roundFloat(layer.get_filling_factor().value(), 6) > ffLimit) {
             if (std::getenv("MKF_BLOCKING_DIAG"))
                 std::cerr << std::setprecision(15) << "[fit] layer " << layer.get_name() << " ff="
                           << layer.get_filling_factor().value() << " dims=("
@@ -4904,8 +5116,9 @@ bool Coil::are_sections_and_layers_fitting() {
                     const double hw = wires[windingIndex].get_maximum_outer_width() / 2;
                     const double hh = wires[windingIndex].get_maximum_outer_height() / 2;
                     const auto& c = turn.get_coordinates();
-                    if (c[0] - hw < x0 - tol || c[0] + hw > x1 + tol ||
-                        c[1] - hh < y0 - tol || c[1] + hh > y1 + tol) {
+                    const bool xOut = c[0] - hw < x0 - tol || c[0] + hw > x1 + tol;
+                    const bool yOut = c[1] - hh < y0 - tol || c[1] + hh > y1 + tol;
+                    if ((xOut && !allowHorizontal) || yOut) {
                         // Logged, not just cerr'd: getenv/cerr is unreachable from a WASM
                         // consumer, and this is the check that decides whether real-winding
                         // blocking runs at all (ABT #650).
@@ -8457,7 +8670,16 @@ bool Coil::wind_by_rectangular_layers() {
                 }
                 else {
                     minimumNumberLayerNeeded = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
-                    numberLayers = std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
+                    // ABT #685 (Alf, 2026-08-16): HORIZONTAL OVERFLOW. Capping the layer count to
+                    // what fits the section radially crams the excess turns along the TURN axis
+                    // instead (the complete examples hit per-layer filling factors of 1.6-2.6 and
+                    // turns physically outside the window), which is the axis that must stay
+                    // strict. With the setting on, take as many layers as the turns need: the
+                    // section bulges past the window edge radially — like a real winding past its
+                    // bobbin flange — and the fit check above ignores exactly that axis.
+                    numberLayers = settings.get_coil_allow_horizontal_overflow()
+                        ? minimumNumberLayerNeeded
+                        : std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
                 }
             }
 
