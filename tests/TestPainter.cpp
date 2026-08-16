@@ -4593,6 +4593,63 @@ namespace {
         settings.reset();
     }
 
+    // ABT #685: the TOP-DOWN view, on a design that actually has returns and bumps. This is the
+    // projection Alf asked for to debug the 3D — rings around the column, the lanes through them,
+    // and the ring displacement each lane causes — and it is drawn entirely from
+    // Coil::get_connection_layout(), so it also pins that the layout classifies and rides.
+    TEST_CASE("Test_Painter_XZ_Top_View_Dragbacks_And_Bumps", "[support][painter][abt685]") {
+        // XZ_MAS=<path> points the view at any MAS file, so a design being debugged in 3D can be
+        // looked at from above without a fixture round-trip (same affordance as ABT646_UNWOUND
+        // below). Unset, it draws the pinned two-layer design that has a return and a bump.
+        const char* masOverride = std::getenv("XZ_MAS");
+        std::ifstream json_file(
+            masOverride ? std::filesystem::path(masOverride)
+                        : std::filesystem::path{std::source_location::current().file_name()}
+                              .parent_path()
+                              .append("testData")
+                              .append("abt646_e16_litz_2layer_leadcollision.json"));
+        REQUIRE(json_file.good());
+        auto masJson = json::parse(json_file);
+        if (masJson.contains("magnetic")) {
+            masJson = masJson;
+        }
+
+        settings.set_coil_use_real_winding_geometry(true);
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(
+            OpenMagnetics::Magnetic(masJson["magnetic"]), json{});
+
+        auto coil = magnetic.get_mutable_coil();
+        auto layout = coil.get_connection_layout();
+        // Every route carries a kind and a drawn polyline: nothing downstream may have to guess.
+        REQUIRE_FALSE(layout.routes.empty());
+        for (const auto& route : layout.routes) {
+            INFO("route " << route.winding << " parallel " << route.parallel << " kind "
+                          << int(route.kind));
+            CHECK(route.waypoints.size() >= 2);
+            CHECK(route.routedLength > 0);
+        }
+        // ride_at is monotone outward: a lane displaces everything at or outside it, never less
+        // further out.
+        double previous = 0;
+        for (double r = 0; r < 0.05; r += 0.0005) {
+            const double ride = layout.ride_at(r, 0);
+            CHECK(ride >= previous - 1e-12);
+            previous = ride;
+        }
+
+        auto outFile = outputFilePath;
+        outFile.append(std::string("Test_Painter_XZ_top_view") +
+                       (std::getenv("XZ_NAME") ? std::string("_") + std::getenv("XZ_NAME") : "") +
+                       ".svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_magnetic(magnetic, PainterProjection::XZ);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        REQUIRE(std::filesystem::file_size(outFile) > 1000);
+        settings.reset();
+    }
+
     // ABT #646 diagnosis: the reserved rectangles the input/terminal connections claim, next to
     // where the turns actually landed. If a turn overlaps a rectangle its own winding reserved,
     // the layer did not respect the blocked corridor — which is exactly what makes the entrance

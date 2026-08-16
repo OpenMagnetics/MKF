@@ -4603,6 +4603,9 @@ void Painter::paint_magnetic(Magnetic magnetic, PainterProjection projection) {
         paint_coil_connections(magnetic);
         return;
     }
+    if (projection == PainterProjection::XZ) {
+        return paint_xz_projection(magnetic);
+    }
     paint_yz_projection(magnetic);
 }
 
@@ -4924,6 +4927,211 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
                 paint_rectangular_wire(z, y, wire, 0, {0, 0}, turn.get_name());
             }
         }
+    }
+    _root.autoscale();
+}
+
+// TOP-DOWN (XZ) PROJECTION — ABT #685 (Alf, 2026-08-16: "the projection of the turns ...
+// where we see the dragbacks and bumps ... useful for debug"). Looking ALONG the column axis:
+// horizontal is x, vertical is z. This is the only view that shows the winding the way it is
+// actually laid — as rings around a column, with each return occupying a lane through them and
+// each ring outside a lane BULGING over it. The XY cross-section cannot show a lane at all (it
+// is out of plane) and the YZ face view shows the lanes but flattens the rings, so a bump reads
+// there as a depth offset rather than as what it is.
+//
+// Everything drawn here comes from Coil::get_connection_layout(): the routes, their kinds, and
+// the ride levels. Nothing is re-derived from turn coordinates — that duplication is exactly
+// what the layout exists to end.
+void Painter::paint_xz_projection(Magnetic magnetic) {
+    Core core = magnetic.get_core();
+    Coil coil = magnetic.get_coil();
+    if (core.get_type() != CoreType::TWO_PIECE_SET) {
+        throw std::runtime_error("Painter: XZ projection is implemented for two-piece-set cores only");
+    }
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("Winding turns not created");
+    }
+    auto bobbin = coil.resolve_bobbin();
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        throw std::runtime_error("Painter: XZ projection is implemented for rectangular winding windows only");
+    }
+    auto bobbinPd = bobbin.get_processed_description().value();
+    const double halfD = bobbinPd.get_column_depth();
+    const double halfW = bobbinPd.get_column_width().value_or(0.0);
+    if (halfD <= 0 || halfW <= 0) {
+        throw std::runtime_error("Painter: XZ projection needs the bobbin column half depth and half width");
+    }
+    // The SAME mapping the 3D builder uses: a turn at winding-frame x wraps a racetrack of
+    // half-width x and half-depth x + zoff, so the extra clearance a rectangular column has on
+    // its z faces lands the wire deeper there than on its x faces. zoff is 0 for a round column.
+    const double zoff = halfD - halfW;
+    const auto shape = bobbinPd.get_column_shape();
+    auto turns = coil.get_turns_description().value();
+    auto wirePerWinding = coil.get_wires();
+    const auto layout = coil.get_connection_layout();
+
+    auto sideOfWinding = [&](const std::string& windingName) -> int {
+        auto windingIndex = coil.get_winding_index_by_name(windingName);
+        return coil.get_functional_description()[windingIndex].get_isolation_side()
+                       == IsolationSide::PRIMARY ? 0 : 1;
+    };
+    auto odOfWinding = [&](const std::string& windingName) {
+        auto windingIndex = coil.get_winding_index_by_name(windingName);
+        const double od = wirePerWinding[windingIndex].get_maximum_outer_width();
+        if (od <= 0) {
+            throw std::runtime_error("Painter: XZ projection needs the wire outer width");
+        }
+        return od;
+    };
+
+    auto shapes = _root.add_child<SVG::Group>();
+    auto strokedPath = [&](const std::vector<std::pair<double, double>>& points, double width,
+                           const std::string& colorSetting, double opacity,
+                           const std::string& label, bool closed = false) {
+        if (points.size() < 2) {
+            return;
+        }
+        auto path = shapes->add_child<SVG::Path>();
+        for (const auto& [px, pz] : points) {
+            path->line_to(px * _scale, -pz * _scale);
+        }
+        if (closed) {
+            path->line_to(points.front().first * _scale, -points.front().second * _scale);
+        }
+        path->set_attr("stroke", std::regex_replace(colorSetting, std::regex("0x"), "#"));
+        path->set_attr("stroke-width", width * _scale);
+        path->set_attr("fill", "none");
+        path->set_attr("opacity", opacity);
+        path->set_attr("stroke-linecap", "round");
+        path->set_attr("stroke-linejoin", "round");
+        path->add_child<SVG::Title>(label);
+    };
+    // The ring a turn at radial position `x` follows, sampled. One helper for all three column
+    // shapes: a round column gives a circle, an oblong one a stadium, a rectangular one a
+    // racetrack whose corner radius is how far the wire stands off the column corner.
+    auto ringPoints = [&](double x) {
+        const double ax = x, az = x + zoff;
+        double cornerR = ax;                        // ROUND: the circle IS the corner
+        if (shape == ColumnShape::RECTANGULAR) {
+            cornerR = std::max(0.0, x - halfW);
+        }
+        else if (shape == ColumnShape::OBLONG) {
+            cornerR = std::min(ax, az);
+        }
+        cornerR = std::min(cornerR, std::min(ax, az));
+        const double flatX = ax - cornerR, flatZ = az - cornerR;
+        std::vector<std::pair<double, double>> points;
+        const int perQuarter = 24;
+        // four straights joined by four corner quarters, walked anticlockwise from +x
+        const double cx[4] = {+flatX, -flatX, -flatX, +flatX};
+        const double cz[4] = {+flatZ, +flatZ, -flatZ, -flatZ};
+        for (int q = 0; q < 4; ++q) {
+            for (int k = 0; k <= perQuarter; ++k) {
+                const double a = (q * 90.0 + 90.0 * k / perQuarter) * std::numbers::pi / 180.0;
+                points.push_back({cx[q] + cornerR * std::cos(a), cz[q] + cornerR * std::sin(a)});
+            }
+        }
+        return points;
+    };
+
+    // --- the core, seen from above -------------------------------------------------------
+    {
+        const auto processedDescription = core.get_processed_description().value();
+        const double coreWidth = processedDescription.get_width();
+        const double coreDepth = processedDescription.get_depth();
+        paint_rectangle(0, 0, coreWidth, coreDepth, "ferrite", shapes);
+        // The central column the coil wraps, painted back over the plate so the winding
+        // annulus reads as the free space it is.
+        const auto mainColumn = core.get_columns()[0];
+        if (mainColumn.get_shape() == ColumnShape::ROUND) {
+            paint_circle(0, 0, mainColumn.get_width() / 2, "white", shapes);
+        }
+        else {
+            paint_rectangle(0, 0, mainColumn.get_width(), mainColumn.get_depth(), "white", shapes);
+        }
+    }
+
+    // --- the rings, each displaced by the bumps it rides over -----------------------------
+    // A turn is drawn TWICE, once per face side, because the two faces genuinely differ: a
+    // return laid on one side displaces only that side's copper. This is the same asymmetry the
+    // YZ view paints, seen from the other axis.
+    std::set<std::pair<std::string, double>> ringsDrawn;
+    for (const auto& turn : turns) {
+        const double x = turn.get_coordinates()[0];
+        const int side = sideOfWinding(turn.get_winding());
+        const double od = odOfWinding(turn.get_winding());
+        const double ride = layout.ride_at(x, side);
+        const auto key = std::make_pair(turn.get_winding(), std::round((x + ride) * 1e9) / 1e9);
+        if (!ringsDrawn.insert(key).second) {
+            continue;   // one ring per (winding, displaced radius): turns stack along y
+        }
+        strokedPath(ringPoints(x + ride), od,
+                    std::string(settings.get_painter_color_copper()), ride > 0 ? 0.75 : 0.45,
+                    turn.get_winding() + " ring at r=" + std::to_string((x + ride) * 1000) +
+                        " mm" + (ride > 0 ? " (riding " + std::to_string(ride * 1000) + " mm)" : ""),
+                    /*closed=*/true);
+    }
+
+    // --- the bumps themselves --------------------------------------------------------------
+    // One dashed ring per ride level, at the radius where the lane sits: everything at or
+    // outside it is displaced by its height.
+    for (const auto& level : layout.rideLevels) {
+        auto points = ringPoints(level.radius);
+        auto path = shapes->add_child<SVG::Path>();
+        for (const auto& [px, pz] : points) {
+            path->line_to(px * _scale, -pz * _scale);
+        }
+        path->line_to(points.front().first * _scale, -points.front().second * _scale);
+        path->set_attr("stroke", std::regex_replace(
+            std::string(settings.get_painter_color_lines()), std::regex("0x"), "#"));
+        path->set_attr("stroke-width", 0.15 * level.height * _scale);
+        path->set_attr("stroke-dasharray", std::to_string(0.6 * level.height * _scale) + " " +
+                                           std::to_string(0.6 * level.height * _scale));
+        path->set_attr("fill", "none");
+        path->add_child<SVG::Title>("bump: lane at r=" + std::to_string(level.radius * 1000) +
+                                    " mm displaces everything outside it by " +
+                                    std::to_string(level.height * 1000) + " mm (side " +
+                                    std::to_string(level.side) + ")");
+    }
+
+    // --- the connections, on the connection plane ------------------------------------------
+    // Every route MKF drew is a radial run on the connection plane (-z for the primary side,
+    // +z for the others), so in this view it is a straight line from its inner radius out. They
+    // are spread along x by one wire each so siblings are legible: WHERE round the column each
+    // one finally sits is still the 3D builder's fan, not MKF's — when that allocation moves
+    // here (Alf: the parallels' azimuth should fall out of their pitch) this view will show the
+    // real angles instead of a legend.
+    std::map<std::pair<std::string, int>, int> laneIndex;
+    for (const auto& route : layout.routes) {
+        if (route.waypoints.size() < 2) {
+            continue;
+        }
+        const double od = odOfWinding(route.winding);
+        const double sign = (route.side == 0) ? -1.0 : 1.0;
+        double rInner = route.waypoints.front()[0], rOuter = route.waypoints.front()[0];
+        for (const auto& waypoint : route.waypoints) {
+            rInner = std::min(rInner, waypoint[0]);
+            rOuter = std::max(rOuter, waypoint[0]);
+        }
+        const int slot = laneIndex[{route.winding, route.side}]++;
+        const double xLane = (0.5 + slot) * od;
+        const bool isReturn = route.kind == ConnectionKind::Z_DRAGBACK ||
+                              route.kind == ConnectionKind::EDGE_CONTINUATION;
+        std::string kindName = "connection";
+        switch (route.kind) {
+            case ConnectionKind::Z_DRAGBACK:      kindName = "Z dragback"; break;
+            case ConnectionKind::EDGE_CONTINUATION: kindName = "inter-section run"; break;
+            case ConnectionKind::U_ADJACENT:      kindName = "U turnaround"; break;
+            case ConnectionKind::U_TANGENTIAL:    kindName = "U tangential link"; break;
+            case ConnectionKind::TERMINAL_ENTRANCE: kindName = "entrance terminal"; break;
+            case ConnectionKind::TERMINAL_EXIT:   kindName = "exit terminal"; break;
+            default: break;
+        }
+        strokedPath({{xLane, sign * (rInner + zoff)}, {xLane, sign * (rOuter + zoff)}}, od,
+                    std::string(settings.get_painter_color_copper()), isReturn ? 0.9 : 0.6,
+                    route.winding + " parallel " + std::to_string(route.parallel) + ": " +
+                        kindName + " r=" + std::to_string(rInner * 1000) + ".." +
+                        std::to_string(rOuter * 1000) + " mm");
     }
     _root.autoscale();
 }

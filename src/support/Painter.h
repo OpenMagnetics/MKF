@@ -28,9 +28,15 @@ enum class ColorPalette {
 //        symmetry: both +-z faces are painted (they genuinely differ - the dragback
 //        descents displace one face's crossings), and every dragback lane is drawn as a
 //        vertical copper run at its ride-displaced depth, mirroring the 3D realization.
+//   XZ - the TOP-DOWN view, looking along the column axis (ABT #685). The only projection that
+//        shows the winding as it is laid: rings around the column, each return occupying a lane
+//        through them, and every ring outside a lane BULGING over it. XY cannot show a lane (out
+//        of plane) and YZ flattens the rings, so a bump reads there as a depth offset instead of
+//        as the radial displacement it is. Drawn from Coil::get_connection_layout().
 enum class PainterProjection {
     XY,
     YZ,
+    XZ,
 };
 
 enum class ElectricFieldVisualizationModel {
@@ -421,6 +427,7 @@ class Painter : public PainterInterface {
     // and from the coil's bobbin winding window otherwise.
     bool prepare_coil_canvas(Magnetic& magnetic);
     void paint_yz_projection(Magnetic magnetic);
+    void paint_xz_projection(Magnetic magnetic);
     double get_toroidal_initial_radius(Magnetic& magnetic);
 
     void set_image_size(Wire wire);
