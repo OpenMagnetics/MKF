@@ -57,6 +57,18 @@ std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_
         numberPointsY = size_t(ceil(windingWindowsDimensions[1] / minimumDistanceVerticallyOrAngular));
     }
 
+    // Cap the grid resolution. The spacing above is the smallest turn dimension, so a thin
+    // conductor (e.g. a foil or planar turn) can drive it to a very fine grid (tens of
+    // thousands of points) — and this field solve runs once per winding, so on a large
+    // multi-winding coil it dominates the leakage cost (billions of field-pair evaluations).
+    // The leakage field is smooth on the mm scale of the winding sections, so the energy
+    // integral converges far below that density: capping to 40/dimension (grid spacing on
+    // the order of the historical fixed 25x50 default) changes the leakage energy by ~0.3%
+    // while keeping the field solve tractable in the browser WASM build.
+    constexpr size_t maximumNumberPointsPerDimension = 40;
+    numberPointsX = std::min(numberPointsX, maximumNumberPointsPerDimension);
+    numberPointsY = std::min(numberPointsY, maximumNumberPointsPerDimension);
+
     return {numberPointsX, numberPointsY};
 }
 
