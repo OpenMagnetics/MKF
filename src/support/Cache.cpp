@@ -7,14 +7,29 @@
 
 namespace OpenMagnetics {
 
+// Per-thread derived memo over the shared catalogue storage (ABT #817).
+thread_local std::map<std::string, double> MagneticsCache::_magneticEnergyCache;
+
 
 void MagneticsCache::autocomplete_magnetics() {
+    throw_if_frozen("autocomplete_magnetics");
     for (auto [reference, magnetic] : _cache) {
         _cache[reference] = magnetic_autocomplete(magnetic);
     }
 }
 
+void MagneticsCache::throw_if_frozen(const std::string& operation) {
+    if (databases_frozen()) {
+        throw InvalidInputException(
+            ErrorCode::INVALID_INPUT,
+            "magneticsCache::" + operation + " while the databases are frozen: the catalogue is "
+            "shared between threads, so mutating it inside a parallel region is a data race. "
+            "Load before the parallel region, or unfreeze first (ABT #817).");
+    }
+}
+
 void MagneticsCache::clear() {
+    throw_if_frozen("clear");
     _cache.clear();
     _magneticEnergyCache.clear();
 }

@@ -24,6 +24,28 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
     std::vector<OperatingPoint> simulatedOperatingPoints;
     mas.set_inputs(inputs);
 
+    // Every winding must carry its own excitation (ABT #814). Deeper models
+    // catch SOME of these — winding losses throw "Missing current excitation
+    // for winding 2" once a later winding is unexcited — but a two-winding
+    // magnetic given a single excitation used to run all the way through and
+    // report complete, plausible losses for a component whose second winding
+    // the caller never described. Silent under-specification is worse than a
+    // refusal: the numbers look right and cannot be checked.
+    {
+        size_t numberWindings = magnetic.get_coil().get_functional_description().size();
+        const auto& operatingPoints = mas.get_inputs().get_operating_points();
+        for (size_t index = 0; index < operatingPoints.size(); ++index) {
+            size_t numberExcitations = operatingPoints[index].get_excitations_per_winding().size();
+            if (numberExcitations != numberWindings) {
+                throw InvalidInputException(
+                    ErrorCode::MISSING_DATA,
+                    "Operating point " + std::to_string(index) + " has " +
+                    std::to_string(numberExcitations) + " excitations for a magnetic with " +
+                    std::to_string(numberWindings) + " windings; every winding needs exactly one excitation");
+            }
+        }
+    }
+
     for (auto& operatingPoint : mas.get_mutable_inputs().get_mutable_operating_points()){
         Outputs output;
         InductanceOutput inductanceOutput;

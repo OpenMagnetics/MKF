@@ -115,7 +115,21 @@ inline std::map<std::string, OpenMagnetics::Bobbin> bobbinDatabase;
 inline std::map<std::string, OpenMagnetics::InsulationMaterial> insulationMaterialDatabase;
 inline std::map<std::string, MAS::WireMaterial> wireMaterialDatabase;
 
-inline thread_local OpenMagnetics::MagneticsCache magneticsCache;  // thread_local: see memo-cache note above (ABT #113)
+// The loaded part catalogue. SHARED between threads, under the same contract
+// as the catalogues above: load it before the parallel region (or freeze it
+// with set_databases_frozen(true)), then read from as many threads as you
+// like. It used to be thread_local, which meant every thread that wanted to
+// search had to load its own copy — for the 5130-part Midcom catalogue that is
+// ~1.9 GB and ~20 s each, so a service could only scale by processes, and a
+// request served by the "wrong" threadpool thread saw an empty cache and
+// reported "No magnetics found in cache" (ABT #817). Its per-operating-point
+// energy memo stays thread_local; see MagneticsCache in Cache.h.
+//
+// Advising is still a serialised operation: MagneticAdviser mutates the global
+// `settings` singleton and clears the shared core databases mid-run, so two
+// concurrent advises corrupt each other regardless of this cache. Concurrent
+// SIMULATION and catalogue reads are what this makes safe.
+inline OpenMagnetics::MagneticsCache magneticsCache;
 
 void add_scoring(std::string name, OpenMagnetics::MagneticFilters filter, double scoring);
 void clear_scoring();
