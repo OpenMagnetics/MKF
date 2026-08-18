@@ -8,6 +8,7 @@
 #include "Definitions.h"
 #include "Defaults.h"
 #include <MAS.hpp>
+#include <set>
 
 using namespace MAS;
 
@@ -132,6 +133,17 @@ class MagneticAdviser{
 
         std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;
         std::vector<MagneticFilterOperation> _loadedFilterFlow;
+        /// @brief Candidates that FAILED a non-strictly-required filter, per filter.
+        ///
+        /// A filter that rejects a candidate returns {false, 0.0} — a raw score of
+        /// zero, not a distance. Non-strict scoring keeps that raw value, and with
+        /// `invert` (lower raw = better, the usual setting) zero is the BEST possible
+        /// score, so rejected candidates outranked fitting ones; when every candidate
+        /// was rejected, normalize_scoring's max==min branch handed them all the full
+        /// weight and the filter stopped discriminating entirely. Recording the
+        /// rejections here lets get_scorings() force them to the worst normalized
+        /// value instead, which works for any invert/log configuration (ABT #801).
+        std::map<MagneticFilters, std::set<std::string>> _failedScorings;
         /// @brief Default filter flow for custom magnetic design.
         /// COST and LOSSES use log normalization (spans orders of magnitude).
         /// DIMENSIONS uses linear normalization (intuitive volume comparison).

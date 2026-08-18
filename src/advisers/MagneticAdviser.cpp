@@ -560,6 +560,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
     clear_scoring();
+    _failedScorings.clear();  // stale rejections would mis-rank the next run (ABT #801)
     load_filter_flow(filterFlow, inputs);
     std::vector<Mas> masData;
 
@@ -968,6 +969,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     // normalization. Without this, top scores never reach 1.0 and identical inputs
     // can produce different rankings between runs.
     clear_scoring();
+    _failedScorings.clear();  // stale rejections would mis-rank the next run (ABT #801)
 
     load_filter_flow(filterFlow, catalogueMagneticsWithInputs[0].get_inputs());
     std::vector<MagneticFilterOperation> strictlyRequiredFilterFlow;
@@ -1084,8 +1086,16 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                 // below recurses with `strict=false`, and a non-strict filter that
                 // still rejects everything would recurse forever and stack-overflow.
                 auto [filterValid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
-                (void)filterValid;
                 add_scoring(magnetic.get_reference(), filterEnum, scoring);
+                // A candidate this filter rejected must rank WORST for it, never
+                // best. evaluate_magnetic returns 0.0 on rejection (a sentinel, not
+                // a distance), and with invert=true 0.0 is the top score — so
+                // without this, parts that fail the requirement outrank the parts
+                // that meet it. get_scorings() turns this into the worst normalized
+                // value for the filter (ABT #801).
+                if (!filterValid) {
+                    _failedScorings[filterEnum].insert(magnetic.get_reference());
+                }
             }
             catch (const std::exception& e) {
                 logEntry(std::string("MagneticAdviser: non-strict filter ") + std::string(magic_enum::enum_name(filterEnum)) + " threw, rejecting magnetic: " + e.what(), "MagneticAdviser", 2);
@@ -1339,7 +1349,33 @@ std::map<std::string, std::map<MagneticFilters, double>> MagneticAdviser::get_sc
             }
         }
 
-        auto normalizedScorings = OpenMagnetics::normalize_scoring(aux, magneticFilterOperation);
+        // Candidates this filter rejected are scored separately from the ones it
+        // accepted (ABT #801). Their raw value is the 0.0 rejection sentinel, not
+        // a measurement: left in, `invert` turns it into the BEST score, and it
+        // stretches the min/max range the accepted candidates are normalized
+        // against, flattening them all to nearly the full weight. So normalize
+        // over the accepted candidates only, then give every rejected one 0 —
+        // the worst value a normalized score can take, for any invert/log setting.
+        auto failedIt = _failedScorings.find(filter);
+        auto accepted = aux;
+        if (failedIt != _failedScorings.end()) {
+            for (const auto& name : failedIt->second) {
+                accepted.erase(name);
+            }
+        }
+
+        // Every candidate rejected: there is nothing to rank, and normalizing an
+        // empty map would leave the scores unset. They all score 0.
+        auto normalizedScorings = accepted.empty()
+            ? std::map<std::string, double>{}
+            : OpenMagnetics::normalize_scoring(accepted, magneticFilterOperation);
+
+        if (failedIt != _failedScorings.end()) {
+            for (const auto& name : failedIt->second) {
+                normalizedScorings[name] = 0;
+            }
+        }
+
         for (auto& [name, scoring] : aux) {
             swappedScorings[name][filter] = normalizedScorings[name];
         }
