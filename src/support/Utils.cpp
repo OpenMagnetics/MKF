@@ -176,6 +176,18 @@ std::optional<InductanceFluxCacheEntry> get_cached_inductance_flux(
 }
 
 void add_scoring(std::string name, MagneticFilters filter, double scoring) {
+    // A NaN score is a filter saying "no meaningful score for this candidate"
+    // (it always travels with valid=false, which already rejects the part).
+    // It must NOT be recorded: normalize_scoring throws on NaN, so one
+    // eliminated candidate would poison the scoring report for every VALID
+    // candidate in the run ("scoring cannot be nan in normalize_scoring",
+    // ABT #793) — and only on the first run of a session, because the
+    // filter-level memo caches mask it afterwards, making the adviser's
+    // verdict depend on call history.
+    if (std::isnan(scoring)) {
+        logEntry("add_scoring: skipping NaN score for '" + name + "'", "Utils", 2);
+        return;
+    }
     if (scoring != -1) {
         _scorings[filter][name] = scoring;
     }
