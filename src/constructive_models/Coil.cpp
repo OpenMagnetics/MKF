@@ -98,6 +98,17 @@ static int64_t get_layer_bundle_size(const Layer& layer) {
 // Using the perimeter rather than 2*pi*r keeps this correct for round, oblong and rectangular
 // columns alike (a racetrack turn is inclined over its whole length, not just the round part).
 // Returns `od` unchanged when the geometry makes the correction meaningless or impossible.
+//
+// ABT #685 (Alf, 2026-08-19): the compensated pitch is QUANTISED UPWARD onto the nanometre grid.
+// Every station coordinate is emitted nm-rounded (roundFloat(..., 9) throughout this file), and
+// rounding a compensated spacing to NEAREST hands back up to half a nanometre per station of the
+// very clearance this function bought: on the boost fixture the exact touching pitch of
+// 944.044826 nm became a station spacing of 944.044000 nm, and MVB++'s certified gate exhibited
+// the two coated envelopes 0.83 nm inside each other. Ceiling the pitch at the grid keeps every
+// station ON the nm grid (stations are a shared base plus integer multiples of the pitch, so the
+// per-station round preserves an nm-multiple pitch exactly) while landing the quantisation error
+// on the CLEAR side. The femtometre epsilon only forgives float-representation dust sitting a
+// hair above a grid point, so an already-exact pitch does not grow a spurious nanometre.
 // `realizedAdvance` is the conductor's ACTUAL axial advance per revolution when it is known — the
 // distance between the stations of two consecutive turns of the same conductor. It matters because
 // a SPREAD layer's advance is larger than the packed K*s (fence-post gaps sit between bundles), and
@@ -111,9 +122,12 @@ static double helical_stacking_pitch(double od, int64_t bundleSize, double turnL
     if (od <= 0 || turnLength <= 0 || bundleSize < 1) {
         return od;
     }
+    const auto ceilToNanometreGrid = [](double pitch) {
+        return std::ceil(pitch * 1e9 - 1e-6) / 1e9;
+    };
     if (realizedAdvance > 0) {
         const double tangentRatio = realizedAdvance / turnLength;
-        return od * std::sqrt(1.0 + tangentRatio * tangentRatio);
+        return ceilToNanometreGrid(od * std::sqrt(1.0 + tangentRatio * tangentRatio));
     }
     const double advancePerRevolution = double(bundleSize) * od;
     const double tangentRatio = advancePerRevolution / turnLength;
@@ -121,7 +135,7 @@ static double helical_stacking_pitch(double od, int64_t bundleSize, double turnL
     if (denominator <= 1e-12) {
         return od;   // a pitch approaching the whole perimeter: not a winding this model describes
     }
-    return od / std::sqrt(denominator);
+    return ceilToNanometreGrid(od / std::sqrt(denominator));
 }
 
 // The advance per revolution implied by a set of stations: one conductor's turn to its next, which
