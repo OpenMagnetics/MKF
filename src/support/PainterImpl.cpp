@@ -773,6 +773,141 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
     }
 }
 
+// ABT #685 (Alf, 2026-08-18): "add in the painter for toroidals ... in translucent copper
+// colour the connection between inner and outer crossings, as they would be wound later, with
+// straight segments, not with the curved Z, and drawing the core on top of the ones below it and
+// the crossing on top of the core in the ones that go on top."
+//
+// A toroidal turn is two runs across the core's faces: the wire leaves its INNER station, crosses
+// the TOP face outward to its own outer crossing, comes down the rim, and crosses the BOTTOM face
+// back to the NEXT turn's inner station. Both are straight in this projection -- deliberately not
+// the round-Z the 3D builder may draw, because what is being reviewed here is the path MKF's
+// layout implies, not the fillets that realize it.
+//
+// `below` selects which half, and the caller paints the below-core half BEFORE the core and the
+// above-core half after it, so the drawing stacks the way the wire actually lies.
+void Painter::paint_toroidal_turn_connections(Magnetic magnetic, bool below) {
+    auto core = magnetic.get_mutable_core();
+    if (core.get_shape_family() != CoreShapeFamily::T) {
+        return;   // concentric cores have no face crossings to draw
+    }
+    Coil coil = magnetic.get_coil();
+    if (!coil.get_turns_description()) {
+        return;
+    }
+    auto turns = coil.get_turns_description().value();
+    auto wirePerWinding = coil.get_wires();
+    // The NEXT station of the same conductor, in winding order: that is where the below-core
+    // return lands.
+    std::map<std::pair<std::string, int64_t>, size_t> previousOfConductor;
+    std::map<size_t, size_t> nextTurnIndex;
+    for (size_t i = 0; i < turns.size(); ++i) {
+        auto key = std::make_pair(turns[i].get_winding(), turns[i].get_parallel());
+        auto found = previousOfConductor.find(key);
+        if (found != previousOfConductor.end()) {
+            nextTurnIndex[found->second] = i;
+        }
+        previousOfConductor[key] = i;
+    }
+    auto shapes = _root.add_child<SVG::Group>();
+    const std::string copperColor =
+        std::regex_replace(std::string(settings.get_painter_color_copper()), std::regex("0x"), "#");
+    // TERMINALS. ABT #685 (Alf, 2026-08-18/19): "the pink terminal in all their length, not just
+    // until the core ... outward past the core's outer radius, as the MVB++" and "the input
+    // terminal below the core, the output terminals over the core". So the entrance is drawn in
+    // the below-core pass (the core covers it) and the exit in the over-core pass (it covers the
+    // core), the same stacking the face crossings use. A conductor's FIRST station carries the
+    // input, its LAST the output -- and those stations have no outer crossing of their own.
+    double coreOuterRadius = 0.0;
+    if (magnetic.has_core() && magnetic.get_core().get_processed_description()) {
+        coreOuterRadius = magnetic.get_core().get_processed_description().value().get_width() / 2;
+    }
+    std::map<std::pair<std::string, int64_t>, std::pair<size_t, size_t>> firstLastOfConductor;
+    for (size_t i = 0; i < turns.size(); ++i) {
+        auto key = std::make_pair(turns[i].get_winding(), turns[i].get_parallel());
+        auto found = firstLastOfConductor.find(key);
+        if (found == firstLastOfConductor.end()) {
+            firstLastOfConductor[key] = {i, i};
+        }
+        else {
+            found->second.second = i;
+        }
+    }
+    const std::string terminalColor = "#FF00FF";
+    for (const auto& [key, firstLast] : firstLastOfConductor) {
+        const size_t stationIndex = below ? firstLast.first : firstLast.second;
+        const auto& station = turns[stationIndex];
+        if (station.get_coordinates().size() < 2) {
+            continue;
+        }
+        const double sx = station.get_coordinates()[0], sy = station.get_coordinates()[1];
+        const double stationRadius = std::hypot(sx, sy);
+        if (stationRadius < 1e-12) {
+            continue;
+        }
+        auto windingIndexT = coil.get_winding_index_by_name(station.get_winding());
+        double odT = wirePerWinding[windingIndexT].get_outer_diameter()
+                         ? resolve_dimensional_values(wirePerWinding[windingIndexT].get_outer_diameter().value())
+                         : wirePerWinding[windingIndexT].get_maximum_outer_height();
+        // Radially outward, past the core, by the same two-OD margin the 3D leads clear it with.
+        const double reach = std::max(coreOuterRadius, stationRadius) + 2.0 * odT;
+        const double ux = sx / stationRadius, uy = sy / stationRadius;
+        auto lead = shapes->add_child<SVG::Path>();
+        lead->line_to(sx * _scale, -sy * _scale);
+        lead->line_to(ux * reach * _scale, -uy * reach * _scale);
+        lead->set_attr("stroke", terminalColor);
+        lead->set_attr("stroke-width", odT * _scale);
+        lead->set_attr("fill", "none");
+        lead->set_attr("opacity", 0.8);
+        lead->set_attr("stroke-linecap", "round");
+        lead->add_child<SVG::Title>(station.get_name() +
+                                    (below ? " input terminal (under the core)"
+                                           : " output terminal (over the core)"));
+    }
+    for (size_t i = 0; i < turns.size(); ++i) {
+        if (!turns[i].get_additional_coordinates()) {
+            continue;
+        }
+        auto additionalCoordinates = turns[i].get_additional_coordinates().value();
+        if (additionalCoordinates.empty() || additionalCoordinates[0].size() < 2) {
+            continue;
+        }
+        const double outerX = additionalCoordinates[0][0];
+        const double outerY = additionalCoordinates[0][1];
+        double innerX = 0, innerY = 0;
+        if (below) {
+            auto found = nextTurnIndex.find(i);
+            if (found == nextTurnIndex.end()) {
+                continue;   // last station of its conductor: its return is the exit terminal
+            }
+            innerX = turns[found->second].get_coordinates()[0];
+            innerY = turns[found->second].get_coordinates()[1];
+        }
+        else {
+            innerX = turns[i].get_coordinates()[0];
+            innerY = turns[i].get_coordinates()[1];
+        }
+        auto windingIndex = coil.get_winding_index_by_name(turns[i].get_winding());
+        double od = 0;
+        if (wirePerWinding[windingIndex].get_outer_diameter()) {
+            od = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
+        }
+        else {
+            od = wirePerWinding[windingIndex].get_maximum_outer_height();
+        }
+        auto path = shapes->add_child<SVG::Path>();
+        path->line_to(outerX * _scale, -outerY * _scale);
+        path->line_to(innerX * _scale, -innerY * _scale);
+        path->set_attr("stroke", copperColor);
+        path->set_attr("stroke-width", od * _scale);
+        path->set_attr("fill", "none");
+        path->set_attr("opacity", 0.5);
+        path->set_attr("stroke-linecap", "round");
+        path->add_child<SVG::Title>(turns[i].get_name() +
+                                    (below ? " return (under the core)" : " crossing (over the core)"));
+    }
+}
+
 void Painter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
@@ -4597,9 +4732,13 @@ void Painter::paint_curve(Curve2D curve2D, bool logScale) {
 
 void Painter::paint_magnetic(Magnetic magnetic, PainterProjection projection) {
     if (projection == PainterProjection::XY) {
+        // Toroids: the below-core returns go down FIRST so the core covers them, then the core,
+        // then the turns, then the over-core crossings on top of it all (ABT #685).
+        paint_toroidal_turn_connections(magnetic, /*below=*/true);
         paint_core(magnetic);
         paint_bobbin(magnetic);
         paint_coil_turns(magnetic);
+        paint_toroidal_turn_connections(magnetic, /*below=*/false);
         paint_coil_connections(magnetic);
         return;
     }

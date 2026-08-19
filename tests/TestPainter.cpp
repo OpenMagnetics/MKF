@@ -4610,15 +4610,74 @@ namespace {
                               .append("abt646_e16_litz_2layer_leadcollision.json"));
         REQUIRE(json_file.good());
         auto masJson = json::parse(json_file);
-        if (masJson.contains("magnetic")) {
-            masJson = masJson;
+        // Re-wind from scratch. A MAS that already carries a turnsDescription is painted AS
+        // STORED otherwise, so the view would show whatever wound it last -- not this build.
+        if (masJson.contains("magnetic") && masJson["magnetic"].contains("coil")) {
+            for (const char* derived : {"turnsDescription", "layersDescription",
+                                        "sectionsDescription", "groupsDescription"}) {
+                masJson["magnetic"]["coil"].erase(derived);
+            }
         }
 
         settings.set_coil_use_real_winding_geometry(true);
+        // The over-full example designs only wind WITH blocking applied when the fit is allowed
+        // to absorb the coating squish -- without it the wind declines, the whole real-winding
+        // path is skipped, and the view would show an ideal layout while claiming to show a real
+        // one. Same opt-in MVB++ takes for these fixtures.
+        settings.set_coil_allow_coating_squish(true);
+        settings.set_coil_allow_horizontal_overflow(true);
         auto magnetic = OpenMagnetics::magnetic_autocomplete(
             OpenMagnetics::Magnetic(masJson["magnetic"]), json{});
 
         auto coil = magnetic.get_mutable_coil();
+        REQUIRE(coil.is_real_winding_blocking_applied());
+        {
+            // ABT #685 (Alf, 2026-08-17). Two rules, pinned on the pushpull, whose Secondary 1
+            // winds 4 turns over 3 layers as 2 + 1 + 1.
+            //
+            // 1. Every station is named for the turn BEGINNING there, and the station closing a
+            //    layer is "<last turn>_ending". Layer 0 therefore reads turn 0, turn 1,
+            //    turn 1_ending -- two turns, three circles.
+            // 2. A layer holding a SINGLE turn connects to both neighbours as U whatever the
+            //    section's order: there is nothing to drag back along, so the wire steps radially
+            //    to the next layer and spends the whole pitch in one revolution.
+            const auto wound = coil.get_turns_description().value();
+            std::vector<std::string> secondaryOne;
+            for (const auto& turn : wound) {
+                if (turn.get_winding() == "Secondary 1" && turn.get_parallel() == 0) {
+                    secondaryOne.push_back(turn.get_name());
+                }
+            }
+            const std::string prefix = "Secondary 1 parallel 0 ";
+            // The named expectation is the pushpull's; other fixtures only get the general rules.
+            if (!secondaryOne.empty())
+            CHECK(secondaryOne == std::vector<std::string>{
+                prefix + "turn 0", prefix + "turn 1", prefix + "turn 1_ending",
+                prefix + "turn 2", prefix + "turn 2_ending",
+                prefix + "turn 3", prefix + "turn 3_ending"});
+            // No station may be named for a turn the winding does not have.
+            for (const auto& winding : coil.get_functional_description()) {
+                for (const auto& turn : wound) {
+                    if (turn.get_winding() != winding.get_name()) continue;
+                    const auto at = turn.get_name().rfind(" turn ");
+                    REQUIRE(at != std::string::npos);
+                    std::string index = turn.get_name().substr(at + 6);
+                    const auto suffix = index.find("_ending");
+                    if (suffix != std::string::npos) index = index.substr(0, suffix);
+                    INFO(turn.get_name());
+                    CHECK(std::stoll(index) < winding.get_number_turns());
+                }
+            }
+            for (const auto& route : coil.get_connection_layout().routes) {
+                if (secondaryOne.empty()) break;
+                if (route.winding != "Secondary 1" || route.parallel != 0) continue;
+                if (route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE ||
+                    route.kind == OpenMagnetics::ConnectionKind::TERMINAL_EXIT) continue;
+                INFO(route.fromTurn << " -> " << route.toTurn << " kind " << int(route.kind));
+                CHECK((route.kind == OpenMagnetics::ConnectionKind::U_ADJACENT ||
+                       route.kind == OpenMagnetics::ConnectionKind::U_TANGENTIAL));
+            }
+        }
         auto layout = coil.get_connection_layout();
         // Every route carries a kind and a drawn polyline: nothing downstream may have to guess.
         REQUIRE_FALSE(layout.routes.empty());
@@ -4637,16 +4696,21 @@ namespace {
             previous = ride;
         }
 
-        auto outFile = outputFilePath;
-        outFile.append(std::string("Test_Painter_XZ_top_view") +
-                       (std::getenv("XZ_NAME") ? std::string("_") + std::getenv("XZ_NAME") : "") +
-                       ".svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile);
-        painter.paint_magnetic(magnetic, PainterProjection::XZ);
-        painter.export_svg();
-        REQUIRE(std::filesystem::exists(outFile));
-        REQUIRE(std::filesystem::file_size(outFile) > 1000);
+        // Paint every projection: the cross-section is what a reviewer reads first, the top view
+        // is where the lanes and bumps live.
+        const std::string tag = std::getenv("XZ_NAME") ? std::string("_") + std::getenv("XZ_NAME") : "";
+        for (auto [projection, suffix] : {std::pair{PainterProjection::XY, std::string("_XY")},
+                                          std::pair{PainterProjection::YZ, std::string("_YZ")},
+                                          std::pair{PainterProjection::XZ, std::string("_XZ")}}) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter" + tag + suffix + ".svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            painter.paint_magnetic(magnetic, projection);
+            painter.export_svg();
+            REQUIRE(std::filesystem::exists(outFile));
+            REQUIRE(std::filesystem::file_size(outFile) > 1000);
+        }
         settings.reset();
     }
 
@@ -4913,6 +4977,46 @@ namespace {
                 std::cerr << "[svg-fail] " << name << ": " << e.what() << "\n";
             }
         }
+        settings.reset();
+    }
+    // TEMPORARY (ABT #685): repaint Alf's buck-inductor toroid with the new outer-crossing
+    // placement so the anchored crossings can be looked at. Writes straight to the path he asked
+    // for. Remove once reviewed.
+    TEST_CASE("Test_Tmp_Buck_Toroid_Repaint", "[tmp-buck]") {
+        clear_databases();
+        std::ifstream json_file("/home/alf/OpenMagnetics/MVB++/tests/mas_complete_fixtures/"
+                                "buck_inductor_complete.json");
+        REQUIRE(json_file.good());
+        auto masJson = json::parse(json_file);
+        // ABT #685 (Alf, 2026-08-18): "I want to test the 2 layers, make it 10 turns". The
+        // fixture's 8 turns x 3 parallels fit one bore ring now that the phantom stations are
+        // gone; 10 x 3 forces a second ring, which is what exercises the ring transition.
+        masJson["magnetic"]["coil"]["functionalDescription"][0]["numberTurns"] = 10;
+        settings.set_coil_use_real_winding_geometry(true);
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(
+            OpenMagnetics::Magnetic(masJson["magnetic"]), json{});
+        {
+            const auto turnsDesc = magnetic.get_mutable_coil().get_turns_description().value();
+            std::map<std::pair<std::string, int64_t>, size_t> stations;
+            size_t withCrossing = 0;
+            for (const auto& t : turnsDesc) {
+                ++stations[{t.get_winding(), t.get_parallel()}];
+                if (t.get_additional_coordinates()) ++withCrossing;
+            }
+            for (const auto& [key, n] : stations) {
+                std::cerr << "[count] " << key.first << " p" << key.second << ": " << n
+                          << " inner crossings" << std::endl;
+            }
+            std::cerr << "[count] outer crossings total: " << withCrossing << std::endl;
+        }
+        std::filesystem::path outFile("/home/alf/OpenMagnetics/MVB++/output/mas_sweep/"
+                                      "complete_buck_inductor_complete/"
+                                      "complete_buck_inductor_complete.DIAGNOSTIC.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_magnetic(magnetic, PainterProjection::XY);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
 }  // namespace

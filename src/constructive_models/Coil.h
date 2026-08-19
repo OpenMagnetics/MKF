@@ -655,6 +655,9 @@ class Coil : public MAS::Coil {
         // its bump from turn coordinates. Derived from get_connection_reserved_spaces(), so it
         // carries MKF's own decision rather than a reconstruction of it.
         ConnectionLayout get_connection_layout();
+        // ABT #685: name every station for the turn that BEGINS there, and the station closing a
+        // layer "<last turn>_ending". Real winding only; ideal winding has no closing stations.
+        void name_turns_by_beginning();
         // Adds the reserved-connection area into the affected section filling factors. Called at the
         // end of wind() when Settings::get_coil_use_real_winding_geometry() is true.
         void apply_connection_reserved_space();

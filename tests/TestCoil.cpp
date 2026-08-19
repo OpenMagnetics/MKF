@@ -12354,6 +12354,7 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
     std::map<std::string, size_t> layerElectricalOrder;
     size_t order = 0;
     std::map<std::pair<std::string, int64_t>, Turn> entranceTurn, exitTurn, firstTurnInLayer, lastTurnInLayer;
+    std::map<std::pair<std::string, int64_t>, size_t> stationsInLayer;   // ABT #685
     for (const auto& turn : turns) {
         if (turn.get_layer() && !layerElectricalOrder.count(turn.get_layer().value())) {
             layerElectricalOrder[turn.get_layer().value()] = order++;
@@ -12477,8 +12478,22 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
                     }
                 }
             }
-            WindingOrder windingOrder = coil.get_winding_order(windingLayers[i].get_section().value());
+            const WindingOrder sectionWindingOrder =
+                coil.get_winding_order(windingLayers[i].get_section().value());
             for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
+                // ABT #685: a layer holding a SINGLE turn of this parallel connects as U to both
+                // its neighbours whatever the section's order -- there is nothing to drag back
+                // along. Replayed here because this helper derives the geometry independently;
+                // reading the kind off the markers instead would make the check a tautology.
+                auto realTurnsIn = [&](const std::string& layerName) {
+                    const size_t stations = stationsInLayer.count({layerName, parallel})
+                                                ? stationsInLayer.at({layerName, parallel}) : 0;
+                    return stations >= 2 ? stations - 1 : stations;
+                };
+                const WindingOrder windingOrder =
+                    (realTurnsIn(windingLayers[i].get_name()) <= 1 ||
+                     realTurnsIn(windingLayers[i + 1].get_name()) <= 1)
+                        ? WindingOrder::U : sectionWindingOrder;
                 auto exitKey = std::make_pair(windingLayers[i].get_name(), parallel);
                 auto entryKey = std::make_pair(windingLayers[i + 1].get_name(), parallel);
                 if (!lastTurnInLayer.count(exitKey) || !firstTurnInLayer.count(entryKey)) {
@@ -12508,7 +12523,16 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
                 }
                 else {
                     // U adjacent: orthogonal L (horizontal past the corner, vertical pulled back).
-                    bool needVertical = std::abs(y2 - y1) > wireH / 2;
+                    // ...EXCEPT the same-section U link, which is horizontal ONLY: it is laid as a
+                    // tangential run at constant height, and any residual height difference is the
+                    // destination turn's own helix, not drawn copper. Mirrors the emitter's own
+                    // needVertical guard -- without it this replay charges a stub nobody draws,
+                    // which is exactly what the ABT #685 single-turn-layer rule exposed by turning
+                    // Z returns into same-section U links.
+                    const bool sameSection =
+                        windingLayers[i].get_section() == windingLayers[i + 1].get_section();
+                    bool needVertical = std::abs(y2 - y1) > wireH / 2
+                                        && !(sectionWindingOrder == WindingOrder::U && sameSection);
                     expected[{windingName, parallel}] += needVertical
                         ? std::abs(x2 - x1) + wireW / 2 : std::abs(x2 - x1);
                     if (needVertical) {

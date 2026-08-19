@@ -1166,6 +1166,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     std::map<std::pair<std::string, int64_t>, bool> exitTravelAtTopByWindingParallel;
     std::map<std::pair<std::string, int64_t>, std::string> exitTravelLayerByWindingParallel;
     std::map<std::pair<std::string, int64_t>, double> exitCrossStepDyByWindingParallel;
+    // ABT #685: how many STATIONS each (layer, parallel) holds. A layer with n turns of a
+    // parallel shows n + 1 of them, so <= 2 stations means a single-turn layer.
+    std::map<std::pair<std::string, int64_t>, size_t> stationsByLayerParallel;
     std::map<std::pair<std::string, int64_t>, Turn> firstTurnByLayerParallel;
     std::map<std::pair<std::string, int64_t>, Turn> lastTurnByLayerParallel;
     for (const auto& turn : turns) {
@@ -1198,6 +1201,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 firstTurnByLayerParallel[layerKey] = turn;
             }
             lastTurnByLayerParallel[layerKey] = turn;
+            ++stationsByLayerParallel[layerKey];   // ABT #685: n turns show n + 1 stations
         }
     }
 
@@ -1571,7 +1575,30 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             // next layer naturally sits there; squeeze the crossed layers at the top edge to match.
             // (Squeeze at the WINDOW edge, not the crossed layer's own edge — once the layer is
             // centred/shrunk its edge is where its end turn sits, which would put the slot on a turn.)
-            WindingOrder windingOrder = get_winding_order(windingLayers[i].get_section().value());
+            const WindingOrder sectionWindingOrder =
+                get_winding_order(windingLayers[i].get_section().value());
+            // ABT #685 (Alf, 2026-08-17): "when a layer has only one turn, its connection with the
+            // previous and the next ones is always U winding, independently of whether the section
+            // is Z or U globally."
+            //
+            // A layer holding a single turn of this parallel has nothing to drag back ALONG: the
+            // wire arrives, makes one revolution that spends the whole layer pitch, and leaves.
+            // A Z return there would be a lane laid across a layer the wire crosses exactly once
+            // — reserving a corridor, and a ride-over bump on everything outside it, for a return
+            // that carries no turns. The connection is a plain radial step to the next layer, one
+            // OD outward, which is precisely the U turnaround.
+            //
+            // Counted per PARALLEL, because each parallel is its own conductor: a layer with one
+            // turn of each of four parallels is single-turn for every one of them.
+            auto realTurnsInLayer = [&](const std::string& layerName, int64_t forParallel) {
+                auto found = stationsByLayerParallel.find({layerName, forParallel});
+                const size_t stations = found == stationsByLayerParallel.end() ? 0 : found->second;
+                return stations >= 2 ? stations - 1 : stations;   // n turns show n + 1 stations
+            };
+            auto singleTurnLayerPair = [&](int64_t forParallel) {
+                return realTurnsInLayer(windingLayers[i].get_name(), forParallel) <= 1 ||
+                       realTurnsInLayer(windingLayers[i + 1].get_name(), forParallel) <= 1;
+            };
             // ABT #615 (Alf, 2026-08-09): EVERY inter-section continuation crossing intervening
             // sections routes along the window edge — drawn (blue), row-allocated and BLOCKING the
             // crossed sections — regardless of winding order. The ABT #492 FRONT_YZ face dragback
@@ -1585,6 +1612,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             // Each parallel is its own conductor: it has its own last-turn-of-layer-i and
             // first-turn-of-layer-(i+1), its own crossing squeezes, and its own drawn link.
             for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
+                // ABT #685: the single-turn-layer override, evaluated per conductor (see above).
+                const WindingOrder windingOrder =
+                    singleTurnLayerPair(parallel) ? WindingOrder::U : sectionWindingOrder;
                 auto exitKey = std::make_pair(windingLayers[i].get_name(), parallel);
                 auto entryKey = std::make_pair(windingLayers[i + 1].get_name(), parallel);
                 if (!lastTurnByLayerParallel.count(exitKey) || !firstTurnByLayerParallel.count(entryKey)) {
@@ -3739,6 +3769,32 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         explicit RealWindingCrossingBump(Coil& c) : coil(c) {}
         void arm() {
             if (active || !settings.get_coil_use_real_winding_geometry()) return;
+            // CONCENTRIC CORES ONLY. ABT #685 (Alf, 2026-08-18): "make sure that the N_layer + 1
+            // circles only affect concentric cores, not toroidals. Toroidals must be as I told
+            // you" -- a toroid with 9 turns has 9 inner crossings and 8 outer crossings, each
+            // outer one between two inner ones, and the FIRST and LAST inner crossing carry the
+            // terminals. There is no closing station: the wire's last inner crossing IS where the
+            // exit terminal leaves.
+            //
+            // The extra crossing exists because a concentric layer's wire must come back to its
+            // starting azimuth to close the layer; a toroid's turn closes through the bore and
+            // needs no such station. Arming it here gave the buck inductor 10 stations per
+            // parallel for 8 turns -- two phantom stations, one per layer -- and the outer-crossing
+            // sweep then hunted a corridor for a crossing that should not exist at all, which is
+            // what could not be placed (Primary parallel 2 turn 8 against the terminal verticals).
+            const auto windowShape = coil.resolve_bobbin().get_winding_window_shape();
+            if (std::getenv("MKF_TOROID_DIAG")) {
+                std::cerr << "[bump-arm] winding window shape="
+                          << (windowShape == WindingWindowShape::ROUND ? "ROUND" : "other");
+                for (const auto& w : coil.get_functional_description()) {
+                    std::cerr << " | " << w.get_name() << " turns=" << w.get_number_turns()
+                              << " parallels=" << w.get_number_parallels();
+                }
+                std::cerr << std::endl;
+            }
+            if (windowShape == WindingWindowShape::ROUND) {
+                return;
+            }
             extraPerWinding.assign(coil.get_functional_description().size(), 1);
             for (auto& winding : coil.get_mutable_functional_description()) {
                 winding.set_number_turns(winding.get_number_turns() + 1);
@@ -4492,7 +4548,75 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     if (result && !are_turns_inside_winding_window()) {
         result = false;
     }
+    // Deliberately NOT gated on `result`, for the same reason the crossing bump's station
+    // zeroing is not: a wind that does not FIT still produced turns, the caller may consume them
+    // (windEvenIfNotFit, and the allow-overflow diagnostics), and they must carry the same names
+    // as any other. Gating this on the fit verdict is what left the squished pushpull with raw
+    // sequential names while its layout already had the per-layer crossings.
+    name_turns_by_beginning();
     return result;
+}
+
+// ABT #685 (Alf, 2026-08-17): "the real turn index must be the beginning of the turn, and the
+// extra circle must have a suffix _ending".
+//
+// With one crossing per layer, a layer holding n turns of a parallel shows n + 1 circles in the
+// cross-section. Each circle is where a turn BEGINS, except the last, which is where the layer's
+// final turn ENDS. Naming them that way is the only reading under which the picture and the turn
+// count agree: layer 3 of the pushpull's secondary reads, bottom up, "turn 0", "turn 1",
+// "turn 1_ending" -- two turns, three circles, and no invented third turn.
+//
+// Done as a pass over the finished layout rather than inside the three winders: only here is it
+// known which station closes a layer, and the winders' running counter would otherwise have to
+// look ahead. Ideal winding is untouched -- it places exactly N stations with no endings, so the
+// names stay turn 0..N-1.
+void Coil::name_turns_by_beginning() {
+    if (!settings.get_coil_use_real_winding_geometry() || !get_turns_description()) {
+        return;
+    }
+    auto turns = get_turns_description().value();
+    // Wind order, per conductor, grouped by the layer each station belongs to. Vector order IS
+    // wind order (the winders append), so the grouping only has to preserve it.
+    std::map<std::pair<std::string, int64_t>, std::vector<size_t>> byConductor;
+    for (size_t index = 0; index < turns.size(); ++index) {
+        byConductor[{turns[index].get_winding(), turns[index].get_parallel()}].push_back(index);
+    }
+    for (auto& [conductor, indices] : byConductor) {
+        size_t turnIndex = 0;
+        size_t at = 0;
+        while (at < indices.size()) {
+            // The run of consecutive stations sharing one layer. A station with no layer stands
+            // alone, so it keeps the plain numbering.
+            size_t end = at + 1;
+            if (turns[indices[at]].get_layer()) {
+                while (end < indices.size() && turns[indices[end]].get_layer() &&
+                       turns[indices[end]].get_layer().value() ==
+                           turns[indices[at]].get_layer().value()) {
+                    ++end;
+                }
+            }
+            const size_t stations = end - at;
+            const std::string prefix =
+                conductor.first + " parallel " + std::to_string(conductor.second) + " turn ";
+            for (size_t k = 0; k + 1 < stations; ++k) {
+                turns[indices[at + k]].set_name(prefix + std::to_string(turnIndex + k));
+            }
+            // The closing station: the ENDING of this layer's last turn, not a turn of its own.
+            // A lone station (a layer that somehow holds no turn) has nothing to end, so it takes
+            // the plain index and the counter still advances -- never a name with no turn behind it.
+            if (stations >= 2) {
+                turns[indices[end - 1]].set_name(prefix + std::to_string(turnIndex + stations - 2) +
+                                                 "_ending");
+                turnIndex += stations - 1;
+            }
+            else {
+                turns[indices[end - 1]].set_name(prefix + std::to_string(turnIndex));
+                turnIndex += 1;
+            }
+            at = end;
+        }
+    }
+    set_turns_description(turns);
 }
 
 bool Coil::apply_custom_section_rects() {
@@ -9796,6 +9920,13 @@ bool Coil::wind_by_rectangular_turns() {
     // the layer, and back to top with a dragback" -- and invert again on the next hop).
     std::map<std::string, int64_t> windingSectionOrdinal;
     std::map<std::string, std::string> windingLastSection;
+    // ABT #685 (Alf, 2026-08-17): the edge the winding's previous conduction layer FINISHED on,
+    // and whether that layer held a single turn per parallel. A U turnaround leaves on the side
+    // the previous layer ended, so a layer joined by one must start there -- see the override
+    // below. A layer always finishes at the opposite edge from the one it starts at, whatever its
+    // turn count, so the finished edge is simply !startFromTop.
+    std::map<std::string, bool> windingLastLayerFinishedAtTop;
+    std::map<std::string, bool> windingLastLayerWasSingleTurn;
     std::vector<Turn> turns;
     for (auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION) {
@@ -9998,6 +10129,29 @@ bool Coil::wind_by_rectangular_turns() {
             else if (settings.get_coil_use_real_winding_geometry()) {
                 startFromTop = entranceBase != (windingSectionOrdinal[windingNameForOrder] % 2 == 1);
             }
+            // ABT #685 (Alf, 2026-08-17): a layer holding ONE turn per parallel is joined to its
+            // neighbours by U turnarounds whatever the section's order (there is nothing to drag
+            // back along), and a U turnaround leaves on the side the previous layer FINISHED. So
+            // such a layer must be wound starting from that side, alternating down the stack:
+            // "layer 3 has one turn wound from top to bottom, and the turn ends in bottom, so the
+            // U connection to layer 4 has to be in bottom. Then layer 4 will have one turn from
+            // bottom to top". Without this every layer of a Z section starts at the bottom, and
+            // the second single-turn layer repeats the first instead of mirroring it.
+            //
+            // A layer with one turn per parallel holds TWO stations per parallel: the turn's
+            // beginning and its ending (ABT #685's one crossing per layer).
+            const int64_t parallelsHere = std::max<int64_t>(1, winding.get_number_parallels());
+            const bool singleTurnLayer =
+                int64_t(physicalTurnsInLayer) <= 2 * parallelsHere;
+            const bool joinedByTurnaround =
+                singleTurnLayer || windingLastLayerWasSingleTurn[windingNameForOrder];
+            if (settings.get_coil_use_real_winding_geometry() && joinedByTurnaround &&
+                windingLayerOrdinal > 0 &&
+                layer.get_orientation() == WindingOrientation::OVERLAPPING) {
+                startFromTop = windingLastLayerFinishedAtTop[windingNameForOrder];
+            }
+            windingLastLayerFinishedAtTop[windingNameForOrder] = !startFromTop;
+            windingLastLayerWasSingleTurn[windingNameForOrder] = singleTurnLayer;
             if (!startFromTop) {
                 currentTurnCenterWidth = roundFloat(currentTurnCenterWidth + (int64_t(physicalTurnsInLayer) - 1) * currentTurnWidthIncrement, 9);
                 currentTurnCenterHeight = roundFloat(currentTurnCenterHeight - (int64_t(physicalTurnsInLayer) - 1) * currentTurnHeightIncrement, 9);
@@ -10772,6 +10926,33 @@ bool Coil::wind_toroidal_additional_turns() {
         t.set_additional_coordinates(std::nullopt);
     }
     set_turns_description(turns);
+    // ABT #685 (Alf, 2026-08-18): THE LAST STATION OF A CONDUCTOR HAS NO OUTER CROSSING. "In real
+    // winding, the last inner turn crossing won't have an outer crossing, as it will have the
+    // terminal ... that way, all the outer crossings will always have a previous and next inner
+    // turn, and even the outer crossing of the input turn can be between their inner turn and the
+    // next one."
+    //
+    // The wire is: input terminal -> s0 -> X0 -> s1 -> X1 -> ... -> X(S-2) -> s(S-1) -> output
+    // terminal, where Xk bridges station k to station k+1. So a conductor with S stations has
+    // S - 1 outer crossings, not S. Giving the final station one was wrong twice over: it has no
+    // next station, so no midpoint to sit between, and it is exactly where the exit terminal
+    // ascends -- the sweep then had to dodge its own terminal and on the buck inductor could not
+    // (Primary parallel 2 turn 8: monotonic below, terminal-vertical clearance above).
+    // A single-turn conductor therefore has NO outer crossing at all: input terminal, inner
+    // crossing, output terminal -- a U, as Alf puts it.
+    //
+    // One station per CONDUCTOR, not per layer or section: at a layer's closing station the wire
+    // continues into the next layer's first station, and that connection does cross the outer face.
+    std::set<std::string> lastStationOfConductor;
+    if (settings.get_coil_use_real_winding_geometry()) {
+        std::map<std::pair<std::string, int64_t>, std::string> lastSeen;
+        for (const auto& t : turns) {
+            lastSeen[{t.get_winding(), t.get_parallel()}] = t.get_name();
+        }
+        for (const auto& [key, name] : lastSeen) {
+            lastStationOfConductor.insert(name);
+        }
+    }
     double currentBaseRadialHeight = -bobbinColumnWidth * 2;
     std::vector<std::pair<Layer, double>> maximumAdditionalRadialHeightPerInsulationLayerByIndex;
     auto windingOrientation = get_winding_orientation();
@@ -10846,6 +11027,12 @@ bool Coil::wind_toroidal_additional_turns() {
             // station to the candidate. Both are swept against the connection verticals.
             std::map<std::string, std::pair<double, double>> ownInnerXYByTurn;
             std::map<std::string, std::pair<double, double>> nextInnerXYByTurn;
+            // ABT #685: and the PREVIOUS station, for the last turn of a parallel. It has no next
+            // station to aim between, so without this it keeps its own azimuth while every turn
+            // before it has advanced half a step -- which puts it BEHIND its predecessor's
+            // crossing and the monotonicity guard then rejects every candidate ("NO
+            // outer-crossing azimuth exists for turn Primary parallel 2 turn 8").
+            std::map<std::string, std::pair<double, double>> prevInnerXYByTurn;
             if (settings.get_coil_use_real_winding_geometry()) {
                 const double wwRadialHeight = windingWindows[0].get_radial_height().value();
                 auto stationXY = [&](const Turn& t) {
@@ -10860,6 +11047,7 @@ bool Coil::wind_toroidal_additional_turns() {
                     auto found = previousInParallel.find(key);
                     if (found != previousInParallel.end()) {
                         nextInnerXYByTurn[found->second->get_name()] = stationXY(turn);
+                        prevInnerXYByTurn[turn.get_name()] = stationXY(*found->second);
                     }
                     previousInParallel[key] = &turn;
                 }
@@ -10922,7 +11110,38 @@ bool Coil::wind_toroidal_additional_turns() {
                     }
                     for (auto turn : turnsThisLayer) {
                         auto turnIndex = get_turn_index_by_name(turn.get_name());
+                        if (lastStationOfConductor.count(turn.get_name())) {
+                            continue;   // its connection is the output terminal (see above)
+                        }
                         std::vector<double> additionalCoordinates = {-bobbinColumnWidth * 2 - turn.get_coordinates()[0], turn.get_coordinates()[1]};
+                        // THE OUTER CROSSING SITS BETWEEN THE TWO INNER CROSSINGS IT JOINS.
+                        // ABT #685 (Alf, 2026-08-18): "the outer crossings should be at the middle
+                        // point of the two inner that connect them". The wire leaves its inner
+                        // station, crosses the TOP face outward to here, and crosses the BOTTOM
+                        // face back to the next inner station; putting this crossing at the turn's
+                        // OWN azimuth spends the whole azimuthal advance on one face and makes
+                        // that return a long tangential chord instead of a radial crossing.
+                        //
+                        // Applied HERE, to every crossing, not inside the non-first-layer sweep
+                        // below: that sweep is skipped for the first conduction layer and for
+                        // taped layers, so a single-layer toroid kept every crossing on its own
+                        // azimuth (which is exactly what Alf could see in the SVG). The sweep
+                        // still refines this position for the layers it does handle -- it searches
+                        // around whatever azimuth it is given, so it now compacts around the
+                        // midpoint rather than around the station.
+                        if (settings.get_coil_use_real_winding_geometry()) {
+                            auto ownFound = ownInnerXYByTurn.find(turn.get_name());
+                            auto nextFound = nextInnerXYByTurn.find(turn.get_name());
+                            if (ownFound != ownInnerXYByTurn.end() && nextFound != nextInnerXYByTurn.end()) {
+                                const double ownAz = atan2(ownFound->second.second,
+                                                           ownFound->second.first) * 180 / std::numbers::pi;
+                                const double nextAz = atan2(nextFound->second.second,
+                                                            nextFound->second.first) * 180 / std::numbers::pi;
+                                // Only the half-step OFFSET comes from the wrapped difference: the
+                                // stored azimuth is cumulative and may exceed 360.
+                                additionalCoordinates[1] += std::remainder(nextAz - ownAz, 360.0) / 2;
+                            }
+                        }
 
                         if (!areLayersTaped) {
 
@@ -10972,7 +11191,6 @@ bool Coil::wind_toroidal_additional_turns() {
                             const double leanDegrees = realWindingPlacement
                                 ? (wireHeight / baseRadius) * 180 / std::numbers::pi : 0.0;
                             const double thetaDeg = additionalCoordinates[1];
-
                             // Candidate evaluation. A candidate azimuth yields: the tangency REST
                             // radius on the packing surface, and the FINAL-3D runs it implies --
                             // the top run (own inner station -> candidate) and the below-core
@@ -11009,34 +11227,32 @@ bool Coil::wind_toroidal_additional_turns() {
                             };
                             auto candidateAcceptable = [&](double az, double restRadius) {
                                 if (previousOuterCrossingAzimuth.has_value() && layerWindingDirection != 0.0) {
-                                    double progress = std::remainder(az - previousOuterCrossingAzimuth.value(), 360.0) * layerWindingDirection;
+                                    // COMPARE IN THE UNSHIFTED FRAME. The guard exists to stop
+                                    // crossings being REORDERED against their stations, and every
+                                    // anchored crossing moves forward by the same half-step, so the
+                                    // order is untouched by anchoring. Comparing a shifted
+                                    // candidate against a shifted predecessor is fine; comparing
+                                    // them across frames is not -- it rejected a turn's own classic
+                                    // azimuth because its PREDECESSOR had anchored past it (buck
+                                    // inductor: prevCrossing 385.29 against this turn's 373.42),
+                                    // boxing it between that and the terminal corridor.
+                                    double progress = std::remainder(az - previousOuterCrossingAzimuth.value(),
+                                                                     360.0) * layerWindingDirection;
                                     if (progress <= 1e-9) {
                                         return false;   // reordered crossings: chords would cross in 3D
                                     }
                                 }
-                                double azRad = az / 180 * std::numbers::pi;
-                                double cx = restRadius * cos(azRad), cy = restRadius * sin(azRad);
-                                auto ownInner = ownInnerXYByTurn.find(turn.get_name());
-                                auto nextInner = nextInnerXYByTurn.find(turn.get_name());
-                                for (const auto& vertical : terminalVerticals) {
-                                    double clearance = (wireHeight + vertical.wireOuterDiameter) / 2 - 1e-9;
-                                    if (!vertical.below && vertical.ownTurnName != turn.get_name() &&
-                                        ownInner != ownInnerXYByTurn.end()) {
-                                        // top run vs an EXIT vertical (the exit's own top run IS
-                                        // the connection wire)
-                                        if (segmentPointDistance(ownInner->second.first, ownInner->second.second,
-                                                                 cx, cy, vertical.x, vertical.y) < clearance) {
-                                            return false;
-                                        }
-                                    }
-                                    if (vertical.below && nextInner != nextInnerXYByTurn.end()) {
-                                        // below-core return vs an ENTRANCE vertical
-                                        if (segmentPointDistance(cx, cy, nextInner->second.first, nextInner->second.second,
-                                                                 vertical.x, vertical.y) < clearance) {
-                                            return false;
-                                        }
-                                    }
-                                }
+                                // THE TERMINALS DO NOT GATE THE CROSSINGS. ABT #685 (Alf,
+                                // 2026-08-19): "the terminal will be at a different Z coordinate
+                                // and there won't be any crossing". A terminal leaves its station
+                                // axially, at its own height, and the station it leaves from has
+                                // no outer crossing of its own -- so a face crossing and a
+                                // terminal never occupy the same copper. Rejecting candidates
+                                // against them only starved the sweep: on the buck inductor the
+                                // three parallels' exits sit 19.7 deg apart, which leaves no
+                                // midpoint corridor at all for the turns that feed them, and turn
+                                // 8 of parallel 2 could not be placed anywhere.
+                                (void)restRadius;
                                 return true;
                             };
 
@@ -11046,8 +11262,19 @@ bool Coil::wind_toroidal_additional_turns() {
                                 bestRadius = restAt(thetaDeg);
                             }
                             else {
-                                // Phase 1: the physical lean window (deepest nest wins, ties to the
-                                // smallest lean).
+                                // Phase 1: START AT THE ANCHOR and step outward, taking the
+                                // NEAREST acceptable azimuth to it -- "find the place that
+                                // prevents collisions from there". The rest radius still comes
+                                // from the packing surface, so the crossing still nests tangent
+                                // to its already-placed neighbours; among candidates the same
+                                // distance either side of the anchor the deeper nest wins. The
+                                // lean stays in the span as the minimum search width, so a turn
+                                // with no next station (the last of its parallel, whose anchor is
+                                // its own azimuth) behaves exactly as before.
+                                // The physical lean window around the crossing's placed
+                                // azimuth -- which is now the MIDPOINT between its two inner
+                                // stations. Deepest nest wins, ties to the smallest lean: that is
+                                // what compacts the crossings into one ring against the core.
                                 const int leanSteps = 81;
                                 for (int leanIndex = 0; leanIndex < leanSteps; ++leanIndex) {
                                     double az = thetaDeg + leanDegrees * (2.0 * leanIndex / (leanSteps - 1) - 1.0);
@@ -11110,6 +11337,27 @@ bool Coil::wind_toroidal_additional_turns() {
                                 bestRadius = restAt(thetaDeg);
                                 bestAzimuth = thetaDeg;
                             }
+                            if (bestRadius == std::numeric_limits<double>::max() &&
+                                std::getenv("MKF_TOROID_DIAG")) {
+                                std::cerr << "[toro-blocked] " << turn.get_name()
+                                          << " placedAz=" << thetaDeg
+                                          << " prevCrossing="
+                                          << (previousOuterCrossingAzimuth
+                                                  ? std::to_string(previousOuterCrossingAzimuth.value())
+                                                  : std::string("none"))
+                                          << " dir=" << layerWindingDirection << std::endl;
+                                for (int probe = 0; probe <= 36; ++probe) {
+                                    const double az = thetaDeg - 20.0 + probe * 40.0 / 36.0;
+                                    const double rr = restAt(az);
+                                    bool mono = true;
+                                    if (previousOuterCrossingAzimuth.has_value() && layerWindingDirection != 0.0) {
+                                        mono = std::remainder(az - previousOuterCrossingAzimuth.value(), 360.0) *
+                                                   layerWindingDirection > 1e-9;
+                                    }
+                                    std::cerr << "   probe az=" << az << " mono=" << mono
+                                              << " ok=" << candidateAcceptable(az, rr) << std::endl;
+                                }
+                            }
                             if (bestRadius == std::numeric_limits<double>::max()) {
                                 std::string stationMap = "; section stations (layer:angle):";
                                 for (const auto& sectionTurn : turnsInSection) {
@@ -11127,6 +11375,13 @@ bool Coil::wind_toroidal_additional_turns() {
                                     "the winding order monotonic -- the inner-station layout leaves the connection "
                                     "corridor blocked (fix the layer spread / turn distribution, not this sweep)" +
                                     stationMap + blockers);
+                            }
+                            if (std::getenv("MKF_TOROID_DIAG")) {
+                                std::cerr << "[toro-cross] " << turn.get_name()
+                                          << " midpointAz=" << thetaDeg
+                                          << " chosen=" << bestAzimuth
+                                          << " (compacted " << (bestAzimuth - thetaDeg) << " deg)"
+                                          << " rest=" << bestRadius << std::endl;
                             }
                             additionalCoordinates[0] = windowRadialHeight - bestRadius;
                             additionalCoordinates[1] = bestAzimuth;

@@ -418,6 +418,9 @@ class Painter : public PainterInterface {
     void paint_toroidal_coil_layers(Magnetic magnetic);
     void paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
     void paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
+    // ABT #685: the straight inner<->outer face crossings, split so the core can be drawn
+    // between the below-core returns and the over-core runs.
+    void paint_toroidal_turn_connections(Magnetic magnetic, bool below);
     void paint_two_piece_set_margin(Magnetic magnetic);
     void paint_toroidal_margin(Magnetic magnetic);
 
