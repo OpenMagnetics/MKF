@@ -2613,24 +2613,25 @@ void Coil::align_blocked_layer_turns() {
         // space it was actually free to reach. The turns may hug the runs exactly — edgeDepth
         // already includes the inter-winding insulation.
         const auto& blockedDepths = effectiveDepths;
-        // ABT #685: re-spread on the SAME pitch the winder used, or this pass silently undoes the
-        // helical correction and puts the turns back at raw-OD spacing (interpenetrating in 3D).
-        // The turn's own length is the perimeter — set by the winder, exact, no frame lookup.
-        if (settings.get_coil_use_real_winding_geometry() && turnAxis == 1 && !layerTurns.empty() &&
+        // ABT #685 / #831: THIS pass produces the FINAL stations, so its pitch must be
+        // consistent with the stations it itself lays -- not with the winder's (the spans differ:
+        // this pass spreads between the blocked depths, so the gaps and hence the conductor's
+        // advance change, and a pitch refined from the INCOMING stations is stale for the layout
+        // it then produces; measured on isolated_buck layer 1 the emitted spacing matched neither
+        // wind's converged pitch and sat 0.55 um inside the touching spacing the emitted slope
+        // needs -- certified 547 nm / 466 nm interpenetrations). The packed closed form is exact
+        // for every CONTIGUOUS branch below (their advance is exactly bundleSize * pitch); the
+        // fence-post SPREAD branch iterates its own nm-grid fixpoint after laying stations.
+        const bool helicalHere =
+            settings.get_coil_use_real_winding_geometry() && turnAxis == 1 &&
+            !layerTurns.empty() &&
             (wires[windingIndex].get_type() == WireType::ROUND ||
-             wires[windingIndex].get_type() == WireType::LITZ)) {
-            const double turnLength = turns[layerTurns.front()].get_length();
-            // The advance is read from where the winder ALREADY put these turns (it applied the
-            // same correction), so this pass re-spreads on the pitch the layer actually has rather
-            // than re-deriving it from the packed guess and shrinking the layer back.
-            std::vector<double> currentStations;
-            for (size_t layerTurn : layerTurns) {
-                currentStations.push_back(turns[layerTurn].get_coordinates()[turnAxis]);
-            }
-            std::sort(currentStations.begin(), currentStations.end());
-            wirePitch = helical_stacking_pitch(
-                wirePitch, get_layer_bundle_size(layer), turnLength,
-                realized_advance_per_revolution(currentStations, get_layer_bundle_size(layer)));
+             wires[windingIndex].get_type() == WireType::LITZ);
+        // The turn's own length is the perimeter — set by the winder, exact, no frame lookup.
+        const double helicalLength = helicalHere ? turns[layerTurns.front()].get_length() : 0.0;
+        if (helicalHere && helicalLength > 0) {
+            wirePitch = helical_stacking_pitch(wirePitch, get_layer_bundle_size(layer),
+                                               helicalLength);
         }
         double spanLow = roundFloat(windowLowSide + blockedDepths.second, 9);
         double spanHigh = roundFloat(windowHighSide - blockedDepths.first, 9);
@@ -2764,11 +2765,35 @@ void Coil::align_blocked_layer_turns() {
             // bundles touching. Spacing the turns uniformly here would silently undo the winder's
             // bundle grouping on exactly the layers that carry connection leads — the real-winding
             // layers this whole routine exists for.
-            stations = compute_spread_turn_stations((spanLow + spanHigh) / 2,
-                                                    spanHigh - spanLow,
-                                                    wirePitch,
-                                                    int64_t(numberTurnsInLayer),
-                                                    bundleSize);
+            // ABT #831: iterated to the nm-grid FIXPOINT with the pitch (see above) — the
+            // fence-post gaps put the conductor's advance well above bundleSize * pitch, and a
+            // pitch computed from any other layout's advance leaves these very stations short.
+            double previousPitch = -1.0;
+            for (int pass = 0; pass < 64; ++pass) {
+                stations = compute_spread_turn_stations((spanLow + spanHigh) / 2,
+                                                        spanHigh - spanLow,
+                                                        wirePitch,
+                                                        int64_t(numberTurnsInLayer),
+                                                        bundleSize);
+                if (!helicalHere || helicalLength <= 0) {
+                    break;
+                }
+                const double advance = realized_advance_per_revolution(stations, bundleSize);
+                if (advance <= 0) {
+                    break;
+                }
+                const double refined = helical_stacking_pitch(
+                    wires[windingIndex].get_maximum_outer_height(), bundleSize, helicalLength,
+                    advance);
+                if (std::abs(refined - wirePitch) < 1e-12) {
+                    break;   // exact fixed point on the nm grid
+                }
+                if (std::abs(refined - previousPitch) < 1e-12 && refined < wirePitch) {
+                    break;   // 2-cycle between adjacent nm values: keep the larger (clear side)
+                }
+                previousPitch = wirePitch;
+                wirePitch = refined;
+            }
         }
         // ABT #624 (Alf, 26_psps: "why is the turn placed so high when it has space below?").
         // The reserved band is a SOFT constraint — it keeps turns clear of connection rows —
