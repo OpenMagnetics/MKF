@@ -10024,27 +10024,50 @@ bool Coil::wind_by_rectangular_turns() {
                                                                     wireHeight,
                                                                     physicalTurnsInLayer,
                                                                     get_layer_bundle_size(layer));
-                        // ABT #685: one refinement pass. A SPREAD layer's fence-post gaps make the
-                        // conductor's real advance larger than the packed K*s the first pitch was
-                        // derived from, so re-derive it from the stations just produced and spread
-                        // again. The correction is ~0.1%, so a single pass converges (the block
-                        // grows by that much, the slack shrinks by the same, and the advance
-                        // barely moves).
-                        if (helicalPitch && !turnStations.empty()) {
-                            const double advance = realized_advance_per_revolution(
-                                turnStations, get_layer_bundle_size(layer));
-                            if (advance > 0 && helicalTurnLength > 0) {
-                                const double refined = helical_stacking_pitch(
+                        // ABT #685: the refinement is a FIXPOINT, iterated to the nm grid
+                        // (2026-08-19; supersedes the single pass). A SPREAD layer's fence-post
+                        // gaps make the conductor's real advance larger than the packed K*s the
+                        // first pitch was derived from, so it is re-derived from the stations the
+                        // pitch itself produces. One pass assumed the advance "barely moves"
+                        // (~0.1%); on a layer whose advance is GAP-dominated -- few turns per
+                        // parallel spread across the window -- the advance moves 30%+ when the
+                        // pitch changes (measured, isolated_buck secondary layer 1: 5.85 ->
+                        // 3.90 mm/rev), and the stale-advance pitch left sibling stations 0.55 um
+                        // inside the touching spacing the emitted slope needs (certified 547 nm /
+                        // 466 nm interpenetrations on isolated_buck / single_switch). The map
+                        // pitch -> stations -> advance -> pitch is monotone contracting here
+                        // (d advance / d pitch = K - N/(B-1) < 0 for gap-dominated layers), and
+                        // helical_stacking_pitch quantises to the nm grid, so the iteration
+                        // reaches an EXACT fixed point in a few passes; a 2-cycle between two
+                        // adjacent nm values takes the larger (the clear side).
+                        if (helicalPitch && !turnStations.empty() && helicalTurnLength > 0) {
+                            double previous = -1.0;
+                            for (int pass = 0; pass < 64; ++pass) {
+                                const double advance = realized_advance_per_revolution(
+                                    turnStations, get_layer_bundle_size(layer));
+                                if (advance <= 0) {
+                                    break;
+                                }
+                                double refined = helical_stacking_pitch(
                                     wirePerWinding[windingIndex].get_maximum_outer_height(),
                                     get_layer_bundle_size(layer), helicalTurnLength, advance);
-                                if (refined > wireHeight) {
-                                    wireHeight = refined;
-                                    totalLayerHeight = roundFloat(physicalTurnsInLayer * wireHeight, 9);
-                                    turnStations = compute_spread_turn_stations(
-                                        layer.get_coordinates()[1], layer.get_dimensions()[1],
-                                        wireHeight, physicalTurnsInLayer,
-                                        get_layer_bundle_size(layer));
+                                if (std::abs(refined - wireHeight) < 1e-12) {
+                                    break;   // exact fixed point on the nm grid
                                 }
+                                if (std::abs(refined - previous) < 1e-12) {
+                                    // 2-cycle between adjacent nm values: the larger pitch is
+                                    // the one that clears both, and it is already laid out.
+                                    if (refined < wireHeight) {
+                                        break;
+                                    }
+                                }
+                                previous = wireHeight;
+                                wireHeight = refined;
+                                totalLayerHeight = roundFloat(physicalTurnsInLayer * wireHeight, 9);
+                                turnStations = compute_spread_turn_stations(
+                                    layer.get_coordinates()[1], layer.get_dimensions()[1],
+                                    wireHeight, physicalTurnsInLayer,
+                                    get_layer_bundle_size(layer));
                             }
                         }
                         std::reverse(turnStations.begin(), turnStations.end());
