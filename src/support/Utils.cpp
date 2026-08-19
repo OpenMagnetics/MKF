@@ -2711,6 +2711,62 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
             wire.set_strand(strand);
         }
 
+        // ABT #823: complete the outer dimensions before the coil is wound. A wire
+        // given inline carries the conductor and its coating but often no outer size,
+        // and its name ("Round 1 - Grade 1") need not exist in the wire database, so
+        // nothing filled them in. wind() below then read the empty optional and the
+        // whole load died with a bare "bad optional access" that named neither the
+        // part, the winding, nor the field — 49 of asgard's 236 common-mode chokes,
+        // and the first one killed the batch.
+        //
+        // The conductor plus its coating IS the outer size, and MKF already computes
+        // it, so derive it here rather than demanding the caller precompute geometry.
+        // If a wire genuinely cannot be completed, fail naming the winding and what
+        // is missing — never an anonymous optional access.
+        auto describe_winding = [&](size_t windingIndex) {
+            std::string windingName = magnetic.get_coil().get_functional_description()[windingIndex].get_name();
+            std::string reference;
+            if (magnetic.get_manufacturer_info() && magnetic.get_manufacturer_info()->get_reference()) {
+                reference = " of magnetic '" + magnetic.get_manufacturer_info()->get_reference().value() + "'";
+            }
+            return "winding " + std::to_string(windingIndex) + " ('" + windingName + "')" + reference;
+        };
+
+        auto as_dimension = [](double value) {
+            DimensionWithTolerance dimensionWithTolerance;
+            dimensionWithTolerance.set_nominal(value);
+            return dimensionWithTolerance;
+        };
+
+        try {
+            switch (wire.get_type()) {
+                case WireType::ROUND:
+                case WireType::LITZ: {
+                    if (!wire.get_outer_diameter()) {
+                        wire.set_outer_diameter(as_dimension(wire.calculate_outer_diameter()));
+                    }
+                    break;
+                }
+                case WireType::RECTANGULAR:
+                case WireType::FOIL:
+                case WireType::PLANAR: {
+                    if (!wire.get_outer_width()) {
+                        wire.set_outer_width(as_dimension(wire.calculate_outer_width()));
+                    }
+                    if (!wire.get_outer_height()) {
+                        wire.set_outer_height(as_dimension(wire.calculate_outer_height()));
+                    }
+                    break;
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                        "Cannot determine the outer dimensions of the wire on " + describe_winding(i) +
+                                        ": the wire gives no outer size and one cannot be derived from its conductor and"
+                                        " coating (" + std::string(e.what()) + ")");
+        }
+
         magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_wire(wire);
     }
 

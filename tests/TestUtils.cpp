@@ -858,4 +858,70 @@ namespace {
         REQUIRE(!autocompletedMagnetic.get_core().get_geometrical_description().value()[1].get_machining());
     }
 
+    TEST_CASE("Test_Mas_Autocomplete_Inline_Wire_Without_Outer_Diameter", "[support][utils][bug][smoke-test]") {
+        // ABT #823: a wire given inline carries its conductor and coating but often no outer
+        // size, and its name ("Round 1 - Grade 1") need not exist in the wire database. The
+        // coil here is not pre-wound, so autocomplete winds it — and wind() used to read the
+        // absent outer diameter straight out of the optional, killing the load with a bare
+        // "bad optional access" that named neither the part, the winding, nor the field.
+        // 49 of the 236 common-mode chokes in asgard's catalogue were exactly this shape, and
+        // because the loader stops at the first bad record, the first one took the batch with it.
+        //
+        // The failing population is precisely "inline wire without an outer size AND coil not
+        // pre-wound": the other 58 inline-wire records arrive already wound, so nothing ever
+        // asks for the outer size. That is why it looked like a bobbin or shape problem.
+        std::string magneticString = R"({"manufacturerInfo": {"name": "Test", "reference": "ABT823_CMC"}, "core": {"functionalDescription": {"type": "toroidal", "material": "3C90", "gapping": [], "numberStacks": 1, "shape": {"name": "T 36.0/23.45/15.0", "family": "t", "type": "custom", "magneticCircuit": "closed", "aliases": [], "dimensions": {"A": {"nominal": 0.036}, "B": {"nominal": 0.02345}, "C": {"nominal": 0.015}}}}}, "coil": {"bobbin": "Basic", "functionalDescription": [{"name": "primary", "numberTurns": 27, "numberParallels": 1, "isolationSide": "primary", "wire": {"type": "round", "name": "Round 1 - Grade 1", "conductingDiameter": {"nominal": 0.001}, "coating": {"type": "enamelled", "grade": 1}, "material": "copper"}}, {"name": "secondary", "numberTurns": 27, "numberParallels": 1, "isolationSide": "secondary", "wire": {"type": "round", "name": "Round 1 - Grade 1", "conductingDiameter": {"nominal": 0.001}, "coating": {"type": "enamelled", "grade": 1}, "material": "copper"}}]}})";
+        json magneticJson = json::parse(magneticString);
+        OpenMagnetics::Magnetic magnetic(magneticJson);
+
+        auto autocompletedMagnetic = magnetic_autocomplete(magnetic);
+
+        // Every winding's wire must come out with an outer size, and it must be the size MKF
+        // itself derives from the conductor and its coating — not a placeholder.
+        for (size_t windingIndex = 0; windingIndex < autocompletedMagnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+            auto wire = autocompletedMagnetic.get_mutable_coil().resolve_wire(windingIndex);
+            REQUIRE(wire.get_outer_diameter());
+            double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
+            double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
+            REQUIRE_THAT(outerDiameter, Catch::Matchers::WithinRel(wire.calculate_outer_diameter(), 1e-9));
+            // Enamel adds thickness: strictly larger than the conductor, and grade 1 on a
+            // 1 mm conductor is 1.062 mm in IEC 60317, so nothing pathological either way.
+            REQUIRE(outerDiameter > conductingDiameter);
+            REQUIRE(outerDiameter < conductingDiameter * 1.2);
+        }
+
+        // And the coil actually winds now, which is the thing that used to throw.
+        REQUIRE(autocompletedMagnetic.get_coil().get_sections_description());
+        REQUIRE(autocompletedMagnetic.get_coil().get_layers_description());
+        REQUIRE(autocompletedMagnetic.get_coil().get_turns_description());
+    }
+
+    TEST_CASE("Test_Mas_Autocomplete_Wire_Outer_Diameter_Underivable_Names_The_Winding", "[support][utils][bug][smoke-test]") {
+        // ABT #823: when the outer size genuinely cannot be derived — here a round wire with
+        // no conductor diameter to derive it from — the failure must say which winding and
+        // why, instead of the anonymous "bad optional access" this used to be.
+        std::string magneticString = R"({"manufacturerInfo": {"name": "Test", "reference": "ABT823_UNDERIVABLE"}, "core": {"functionalDescription": {"type": "toroidal", "material": "3C90", "gapping": [], "numberStacks": 1, "shape": {"name": "T 36.0/23.45/15.0", "family": "t", "type": "custom", "magneticCircuit": "closed", "aliases": [], "dimensions": {"A": {"nominal": 0.036}, "B": {"nominal": 0.02345}, "C": {"nominal": 0.015}}}}}, "coil": {"bobbin": "Basic", "functionalDescription": [{"name": "primary", "numberTurns": 27, "numberParallels": 1, "isolationSide": "primary", "wire": {"type": "round", "coating": {"type": "enamelled", "grade": 1}, "material": "copper"}}]}})";
+        json magneticJson = json::parse(magneticString);
+        OpenMagnetics::Magnetic magnetic(magneticJson);
+
+        bool threw = false;
+        std::string message;
+        try {
+            magnetic_autocomplete(magnetic);
+        }
+        catch (const std::exception& e) {
+            threw = true;
+            message = e.what();
+        }
+
+        REQUIRE(threw);
+        // Names the winding, the part, and what could not be determined. The underlying
+        // cause may still appear in parentheses — that is detail, not the whole message;
+        // what must never happen again is the bare optional access on its own.
+        REQUIRE(message.find("winding 0 ('primary')") != std::string::npos);
+        REQUIRE(message.find("ABT823_UNDERIVABLE") != std::string::npos);
+        REQUIRE(message.find("outer dimensions") != std::string::npos);
+        REQUIRE(message != "bad optional access");
+    }
+
 }  // namespace
