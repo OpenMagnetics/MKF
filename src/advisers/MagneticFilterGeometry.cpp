@@ -102,7 +102,15 @@ std::pair<bool, double> MagneticFilterTurnsRatios::evaluate_magnetic(Magnetic* m
             if (!check_requirement(turnsRatioRequirement, magneticTurnsRatios[i])) {
                 return {false, 0.0};
             }
-            scoring += abs(resolve_dimensional_values(turnsRatioRequirement) - resolve_dimensional_values(magneticTurnsRatios[i]));
+            // std::fabs, not abs: bare abs() resolves to the INTEGER overload
+            // here and truncated the distance, so every candidate closer than
+            // one whole turns-ratio unit scored exactly 0 — which is every
+            // realistic match. The filter then reported one identical value for
+            // every accepted candidate and provided no ranking signal at all,
+            // while two candidates 15.05 and 15.959 away scored the same
+            // (ABT #801). Proven from the outside: the normalized scores were
+            // exactly those of integer distances 1, 14, 15, 24.
+            scoring += std::fabs(resolve_dimensional_values(turnsRatioRequirement) - resolve_dimensional_values(magneticTurnsRatios[i]));
         }
     }
     return {valid, scoring};

@@ -1687,8 +1687,13 @@ double CoreLossesNSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
         else {
             timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
         }
+        // std::fabs, not abs: dB/dt is a double, and bare abs() can resolve to
+        // the integer overload — which truncates the iGSE integrand, and drives
+        // it to exactly zero wherever |dB/dt| < 1 T/s (low frequency, small
+        // ripple). Same defect class as ABT #801, where the truncation was
+        // proven from the outside.
         volumetricLossesSum +=
-            pow(abs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
+            pow(std::fabs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
             timeDifference;
     }
 
