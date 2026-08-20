@@ -211,12 +211,20 @@ void check_top_n(const std::string& label,
 // Under the corrected model the EFD 25/13/9 pair overtakes EP 20 (slot 0 -> 2)
 // and the PQ 20/20 tail compresses; scores shift ~1-2%. All five remain sane
 // small/mid gapped power ferrites for the 100 uH / 100 kHz / 600 Vpp fixture.
+// Refreshed 2026-08-20 (ABT #834, user-approved). NOT physics: the #832/#835/#837
+// winding-loss fixes were reverted in isolation and every value below is byte-identical
+// with and without them (slot-0 score 3.85020807577381152 both ways). Root cause is
+// catalogue growth: 135 MAS data/ commits since the 2026-06-16 refresh (DMEGC d44b2e7
+// 483 cores, CSC 9c9a18f 630, Sinomag 6a97c76, Nicera 25f7961, plus the ABT #745/#754/
+// #756/#764 shape corrections) moved the min-max normalization pool (ABT #398). Same
+// slot-0 core; EP 20/PQ 20/20 3C96 climb past the EFD 3C95, and a second EP 20 gap
+// variant (0.598 mm) displaces the PQ 20/20 3C94 from the tail. Scores -2.4%.
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"EFD 25/13/9 - 3C96 - Gapped 0.43 mm",        3.9433293894745161},
-    {"EFD 25/13/9 - 3C95 - Gapped 0.44 mm",        3.8958356451850529},
-    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.839613686179371},
-    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.8081833338682394},
-    {"PQ 20/20 - 3C94 - Gapped 0.472 mm",          3.8042608085765606},
+    {"EFD 25/13/9 - 3C96 - Gapped 0.43 mm",        3.8502080757738115},
+    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.7771608347344783},
+    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.7642990791044353},
+    {"EFD 25/13/9 - 3C95 - Gapped 0.44 mm",        3.7354355592417958},
+    {"EP 20 - 3C96 - Gapped 0.598 mm",             3.7094997930199556},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
@@ -249,12 +257,18 @@ const std::vector<TopEntry> kTopAvailablePower = {
 // ABT #378 restored in 7f50d4dc. RM 10/ILP keeps slot 0 (score +1.3%); the
 // corrected fringing re-solves the stacked-E gaps, promoting the 2-stack
 // E 19/8/9 over the 3/4-stack variants and admitting RM 10/13.
+// Refreshed 2026-08-20 (ABT #834, user-approved): same root cause and same
+// physics-reverted byte-identity check as kTopAvailablePower above. The 2-stack
+// E 19/8/9 overtakes RM 10/ILP on a 0.15% margin (3.8288 vs 3.8230 — a near-tie
+// reshuffled by the normalization pool, not a re-ranking of substance), RM 10LP
+// enters at slot 2 and the 4-stack E 16/7/5 at slot 3, displacing PQ 27/15 and
+// the 95-material RM 10/ILP from the five.
 const std::vector<TopEntry> kTopStandardPower = {
-    {"98 RM 10/ILP gapped 0.32 mm",                3.914341192939919},
-    {"98 E 19/8/9 2 stacks gapped 0.17 mm",        3.8451474121791862},
-    {"98 PQ 27/15 gapped 0.25 mm",                 3.8416348127966478},
-    {"98 RM 10/13 gapped 0.32 mm",                 3.7389036633664192},
-    {"95 RM 10/ILP gapped 0.32 mm",                3.7379408343271905},
+    {"98 E 19/8/9 2 stacks gapped 0.17 mm",        3.8288484389587505},
+    {"98 RM 10/ILP gapped 0.32 mm",                3.8230493952667546},
+    {"98 RM 10LP gapped 0.32 mm",                  3.7313683903739983},
+    {"98 E 16/7/5 4 stacks gapped 0.09 mm",        3.6953925508982479},
+    {"98 RM 10/13 gapped 0.32 mm",                 3.6220437125629177},
 };
 
 // Refreshed 2026-06-16 (ABT #10) after landing the suppression returns-0 fix

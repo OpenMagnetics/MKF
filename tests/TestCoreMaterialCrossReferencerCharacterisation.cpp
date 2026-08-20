@@ -138,28 +138,41 @@ void check_top_n(const std::string& label,
 // the catalogue moves the normalization, and therefore everyone else's score. That
 // is why an absolute-score snapshot cannot hold still while the catalogue grows;
 // #398 tracks making the score discriminate (or reporting an explicit tie band).
+// Refreshed 2026-08-20 (ABT #834, user-approved): same catalogue-growth normalization
+// shift (135 MAS data/ commits; physics-reverted byte-identity verified — slot-0 score
+// 2.7030235692090656 with AND without the #832 loss fixes). The head coin flip flipped
+// again: DMR95 over ML33D by 0.003% — both materials verified to carry real Steinmetz
+// loss models and initial permeability, so neither wins by missing data. Same five
+// names; TPW30/MBT2 swap. The tie band remains ~0.1% wide; #398 still tracks making
+// the score discriminate instead of pinning a coin flip.
 const std::vector<TopEntry> kTopFerriteDefault = {
-    {"ML33D", 2.7055728521462501},
-    {"DMR95", 2.7037084879826669},
-    {"MBT2",  2.7024195000134421},
-    {"TPW30", 2.7020000843721395},
-    {"P45",   2.7003297492001197},
+    {"DMR95", 2.7030235692090656},
+    {"ML33D", 2.7029322665532569},
+    {"TPW30", 2.7012756176446233},
+    {"MBT2",  2.6999765288775177},
+    {"P45",   2.6996579563546494},
 };
 
+// Refreshed 2026-08-20 (ABT #834): identical five names and order; scores +0.27%
+// from the same normalization shift.
 const std::vector<TopEntry> kTopFerriteOnlyTdk = {
-    {"N95",   2.5564115434401606},
-    {"PEM95", 2.5440513099289062},
-    {"PCL47", 2.4995245071724215},
-    {"PC47",  2.4862793237936112},
-    {"N97",   2.485118691348208},
+    {"N95",   2.5632063030546171},
+    {"PEM95", 2.5509949258323354},
+    {"PCL47", 2.5055538730926847},
+    {"PC47",  2.4923030895288774},
+    {"N97",   2.4920803486041487},
 };
 
+// Refreshed 2026-08-20 (ABT #834, user-approved): same normalization shift. Kool Mµ
+// MAX 40 enters at slot 0 over CSC Sendust 26 on a 0.06% margin (another tie-band
+// head; both carry real 'magnetics' loss models), Kool Mµ MAX 19 climbs to slot 2,
+// and NPH-L 26 leaves the five.
 const std::vector<TopEntry> kTopPowderDefault = {
-    {"CSC Sendust 26", 2.7250690223085345},
-    {"Kool Mµ Hƒ 26",  2.7212624022782093},
-    {"Kool Mµ 26",     2.7211505563536287},
-    {"NPH-L 26",       2.7191529873382989},
-    {"Kool Mµ MAX 19", 2.7171791666466776},
+    {"Kool Mµ MAX 40", 2.7166417605966702},
+    {"CSC Sendust 26", 2.7150314971044129},
+    {"Kool Mµ MAX 19", 2.7046770516050276},
+    {"Kool Mµ Hƒ 26",  2.7034810625383088},
+    {"Kool Mµ 26",     2.7031674272762469},
 };
 
 const std::vector<TopEntry> kTopPowderOnlyMicrometals = {

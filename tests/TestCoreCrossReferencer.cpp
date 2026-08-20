@@ -180,7 +180,17 @@ TEST_CASE("Test_Cross_Reference_Core_Web_0", "[adviser][core-cross-referencer][b
     // reference now matches a same-material ferrite (ETD 44/22/15 - 3C97)
     // rather than a cross-family powder (EQ 42/20/28 - High Flux 26),
     // which is the expected behaviour for a similarity cross-referencer.
-    REQUIRE(crossReferencedCores[0].first.get_name().value() == "ETD 44/22/15 - 3C97 - Gapped 1.000 mm");
+    //
+    // Re-pinned 2026-08-20 (ABT #834): the 2026-08 catalogue batches added Magnetics
+    // ferrite cores, and the winner is now "PQ 40/40 - P - Gapped 0.991 mm" — the SAME
+    // SHAPE as the reference in Magnetics' P material (a MnZn power ferrite, verified in
+    // MAS core_materials: family P, material ferrite, Magnetics) at nearly the same gap
+    // (0.991 vs 1.000 mm). An identical-shape same-family-ferrite match is a strictly
+    // better similarity answer than the previous ETD 44 3C97, and the phase-1 property
+    // this test protects — a ferrite reference must match a ferrite, not a cross-family
+    // powder — still holds. NOT physics: this scenario reproduced identically with the
+    // #832 winding-loss fixes reverted.
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "PQ 40/40 - P - Gapped 0.991 mm");
 
     auto scorings = coreCrossReferencer.get_scorings();
     auto scoredValues = coreCrossReferencer.get_scored_values();

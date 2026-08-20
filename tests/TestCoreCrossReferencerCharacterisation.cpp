@@ -131,12 +131,18 @@ void check_top_n(const std::string& label,
 // these exact numbers both before and after that fix, so they are older drift, not its
 // consequence. Tolerance here is 0.0001%, which no population-normalized score can hold across a
 // growing catalogue — #398 tracks making the score independent of the population.
+// Refreshed 2026-08-20 (ABT #834, user-approved): the same catalogue-growth
+// normalization shift as the CoreAdviser tables (135 MAS data/ commits since the
+// last refresh; physics-reverted byte-identity verified — slot-1 score
+// 2.5615519709070664 with AND without the #832 loss fixes). Slots 0-1 keep their
+// identities with scores +0.35%; the Sinomag E 35 - MS 75 (6a97c76) enters at
+// slot 3, displacing the Edge 75 toroid from the five.
 const std::vector<TopEntry> kTopDefault = {
-    {"EC 35/17/10 - 3C94 - Gapped 1.000 mm",                     3.0915514282810301},
-    {"T 28/14/12 - epoxy coated - Kool Mµ MAX 75 - Ungapped",     2.5525172656259576},
-    {"T 28/14/12 - epoxy coated - Edge 75 - Ungapped",           2.4307611324512171},
-    {"T 27/14.7/14.0 - parylene coated - OE 75 - Ungapped",      2.3441005313212355},
-    {"T 27/14.5/14.6 - parylene coated - Mix 66 - Ungapped",     2.0523275225796986},
+    {"EC 35/17/10 - 3C94 - Gapped 1.000 mm",                     3.0915514269885755},
+    {"T 28/14/12 - epoxy coated - Kool Mµ MAX 75 - Ungapped",     2.5615519709070664},
+    {"T 27/14.7/14.0 - parylene coated - OE 75 - Ungapped",      2.4040047968636729},
+    {"E 35 - MS 75 - Ungapped",                                  2.3430702691969802},
+    {"T 27/14.5/14.6 - parylene coated - Mix 66 - Ungapped",     2.1095915649474666},
 };
 
 // Refreshed 2026-06-16 (ABT #10): identical ordering, scores nudged < 0.3 %
