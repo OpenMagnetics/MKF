@@ -1332,9 +1332,40 @@ static void throw_if_capacitance_is_not_finite(double capacitance, Turn firstTur
 // Deliberately conservative: it also requires a missing coating. Turns whose coated conductors
 // merely overlap slightly through layout approximation are left to the existing non-finite guard,
 // so this cannot start rejecting coils that model fine today.
+// The insulation that actually stands between this turn's copper and its neighbour's.
+//
+// For a LITZ wire that is the STRAND enamel, not the bundle's coating. A litz bundle's
+// own coating describes the SERVING, and no catalogue litz carries a serving thickness
+// (served entries give only `numberLayers`, unserved ones are literally `type: bare`),
+// so reading it reported 0 for every litz wire in the library. The copper is never
+// exposed either way: every strand is individually enamelled, which is exactly what
+// makes an unserved litz bundle safe to wind against its neighbour. Reading the bundle
+// made close-wound litz look like bare metal on bare metal and reported shorted turns
+// on a perfectly valid coil.
+static double turn_to_turn_insulation_thickness(Wire wire) {
+    if (wire.get_type() != WireType::LITZ) {
+        return wire.get_coating_thickness();
+    }
+
+    auto strand = Wire::resolve_strand(wire);
+    if (!strand.get_coating()) {
+        return 0;
+    }
+    if (!std::holds_alternative<InsulationWireCoating>(strand.get_coating().value())) {
+        // A coating given by name would need the (unimplemented) coating database;
+        // report no insulation rather than assume some.
+        return 0;
+    }
+    auto strandCoating = std::get<InsulationWireCoating>(strand.get_coating().value());
+    if (strandCoating.get_type() && strandCoating.get_type().value() == InsulationWireCoatingType::BARE) {
+        return 0;
+    }
+    return Wire::get_coating_thickness(strandCoating);
+}
+
 static void throw_if_turns_are_shorted(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire) {
-    double firstCoatingThickness = firstWire.get_coating_thickness();
-    double secondCoatingThickness = secondWire.get_coating_thickness();
+    double firstCoatingThickness = turn_to_turn_insulation_thickness(firstWire);
+    double secondCoatingThickness = turn_to_turn_insulation_thickness(secondWire);
     if (firstCoatingThickness > 0 && secondCoatingThickness > 0) {
         return;
     }
