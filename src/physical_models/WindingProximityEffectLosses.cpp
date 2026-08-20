@@ -540,10 +540,32 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
         // symmetric window (a signed average silently cancels them).
         turnLosses += c * resistivity / skinDepth * (pow(Hx1, 2) + pow(Hx2, 2)) / 2 * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
     }
+    else if (wire.get_type() == WireType::RECTANGULAR) {
+        // RECTANGULAR (wide dimension c across x, thin dimension h along y).
+        // Same literature slab form as the FOIL branch (Dowell 1966; Lammeraner &
+        // Stafl 1966; ABT #182 arbitration): per-unit-length proximity of a slab in
+        // a tangential field is  P/l = breadth * rho / delta * Ha^2 * G(Delta) --
+        // NO cross-section prefactor. The former c*h prefactor under-predicted by
+        // 1/h resp. 1/c (a 4 x 0.9 mm conductor read ~1000x low: proximity 2e-6 W
+        // against 6e-4 W of skin where OMFEM put R_ac/R_dc at 6.0 vs MKF's 2.3 —
+        // ABT #832, FEM-arbitrated 2026-08-20).
+
+        // Parallel field (Hx along the wide face, from the top/bottom points),
+        // penetrating the thin dimension h.
+        turnLosses += c * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
+        if (widthSamplesHPerpendicular.empty()) {
+            // Perpendicular field (Hy, normal to the wide face): rotated-slab form
+            // from the left/right edge points, penetrating the wide dimension c.
+            // Mean of squares, not square of the mean — the two edges dissipate
+            // independently and their Hy carry opposite signs in a symmetric
+            // window (same rule as the FOIL end term).
+            turnLosses += h * resistivity / skinDepth * (pow(Hy1, 2) + pow(Hy2, 2)) / 2 * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
+        }
+    }
     else {
-    // Wang 1D slab proximity per turn (PLANAR/RECTANGULAR). NOTE: the c*h
+    // Wang 1D slab proximity per turn (PLANAR). NOTE: the c*h
     // prefactor here is dimensionally inconsistent with the slab literature (see
-    // the FOIL branch above and ABT #182) but is entangled with the C=8
+    // the FOIL and RECTANGULAR branches above and ABT #182) but is entangled with the C=8
     // FEM-calibrated width integral below (single-turn planar benchmark, June
     // 2026); correcting it requires re-running the OMFEM planar suite — ABT #139.
     turnLosses += c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));

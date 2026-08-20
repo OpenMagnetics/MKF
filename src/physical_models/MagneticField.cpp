@@ -467,19 +467,39 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                         if (gap.get_coordinates().value()[0] < 0) {
                             continue;
                         }
-                        // Albach's equivalent-current fit is only valid for small
-                        // gapLength / columnDiameter ratios; larger gaps are routed
-                        // through the Roshen conformal model per induced point below
-                        // (deterministic model routing by geometry, not a fallback).
-                        // Only one harmonic can pass the frequency-tolerance gate
-                        // (harmonics are integer multiples), so no dedup is needed.
-                        if (!MagneticFieldStrengthAlbachModel::is_gap_within_validity_range(gap)) {
-                            albachOutOfRangeGaps.push_back(gap);
+                        // ABT #832: only functional (SUBTRACTIVE/ADDITIVE) gaps fringe.
+                        // A RESIDUAL gap is a ground mating surface a few um long; its
+                        // conformal near-field sampled at a surface point mm away is a
+                        // modelling artifact, not physics (same doctrine as the
+                        // width-sample gate below). With residual-gap fringing included
+                        // a 12-turn P-core read R_ac/R_dc 2.63 at 1 MHz where OMFEM
+                        // gives 1.263 -- excluding it lands at 1.25.
+                        if (gap.get_type() != GapType::SUBTRACTIVE && gap.get_type() != GapType::ADDITIVE) {
                             continue;
                         }
-                        auto fieldPoint = fringingModel->get_equivalent_inducing_point_for_gap(gap, magneticFieldStrengthGap);
-
-                        inducingFields[harmonicIndex].get_mutable_data().push_back(fieldPoint);
+                        // ABT #832 (FEM-arbitrated 2026-08-20): the equivalent-current
+                        // construction is NOT used, for two independent reasons.
+                        //  1. Albach's fitted current polynomial (Abb. 9.5) is stated
+                        //     accurate only for xi = lg/(2rc) < 0.2 and its denominator
+                        //     has a pole at xi ~ 0.2755; the old validity gate
+                        //     (denominator > 0) admitted xi up to the pole, where the
+                        //     equivalent current diverges (ETD24, 2 mm gap, xi = 0.253:
+                        //     I_eq = 60x the gap MMF -> R_ac/R_dc 53 vs FEM 1.44 at
+                        //     100 kHz).
+                        //  2. Even inside the fit's validity the construction needs the
+                        //     book's full boundary-value treatment (Sect. 9.1.3: the
+                        //     loop's images in the core) to mean anything; feeding the
+                        //     equivalent point as a bare wire carrying I = H_g*lg/0.25
+                        //     (= 4x the gap MMF at small xi) over-predicts fringing
+                        //     proximity loss 6-9x on an IN-validity gap (ETD24,
+                        //     0.5 mm gap, xi = 0.063, vs OMFEM).
+                        // Until the faithful axisymmetric treatment exists, every gap is
+                        // routed through the Roshen conformal per-point model below --
+                        // the same path the out-of-validity gaps already took -- which
+                        // matches OMFEM within 16-35% on the same geometry.
+                        // Only one harmonic can pass the frequency-tolerance gate
+                        // (harmonics are integer multiples), so no dedup is needed.
+                        albachOutOfRangeGaps.push_back(gap);
                     }
                 }
             }
@@ -599,6 +619,11 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                                 if (gap.get_coordinates().value()[0] < 0) {
                                     continue;
                                 }
+                                // ABT #832: residual (mating-surface) gaps do not contribute
+                                // fringing loss -- see the matching gate in the ALBACH branch.
+                                if (gap.get_type() != GapType::SUBTRACTIVE && gap.get_type() != GapType::ADDITIVE) {
+                                    continue;
+                                }
                                 auto fringingContrib = _fringingEffectModel->get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, inducedFieldPoint);
                                 complexFieldPoint.set_real(complexFieldPoint.get_real() + fringingContrib.get_real());
                                 complexFieldPoint.set_imaginary(complexFieldPoint.get_imaginary() + fringingContrib.get_imaginary());
@@ -675,6 +700,11 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     auto& gapsToProcess = albachRoutedGapsPending ? albachOutOfRangeGaps : gapping;
                     for (auto& gap : gapsToProcess) {
                         if (gap.get_coordinates().value()[0] < 0) {
+                            continue;
+                        }
+                        // ABT #832: residual (mating-surface) gaps do not contribute
+                        // fringing loss -- see the matching gate in the ALBACH branch.
+                        if (gap.get_type() != GapType::SUBTRACTIVE && gap.get_type() != GapType::ADDITIVE) {
                             continue;
                         }
                         auto complexFieldPoint = albachRoutedGapsPending ?
