@@ -52,6 +52,9 @@ MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
     const auto& operatingPoints = inputs.get_operating_points();
     for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
         auto excitation = Inputs::get_primary_excitation(operatingPoints[operatingPointIndex]);
+        require_voltage_and_current_for_power(excitation, operatingPointIndex,
+                                              operatingPoints[operatingPointIndex],
+                                              "sizing the core by area product");
         auto voltageWaveform = excitation.get_voltage().value().get_waveform().value();
         auto currentWaveform = excitation.get_current().value().get_waveform().value();
         double frequency = excitation.get_frequency();

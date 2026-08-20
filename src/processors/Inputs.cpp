@@ -1238,6 +1238,18 @@ std::pair<bool, std::string> Inputs::check_integrity() {
                 excitation.set_current(currentExcitation);
             }
             else {
+                // ABT #825: with no current the current is derived from the voltage — which was
+                // dereferenced unconditionally, twice. An excitation carrying neither (or a voltage
+                // with no waveform) therefore died on an empty optional, and "bad optional access"
+                // named neither the operating point, the winding, nor what was actually needed.
+                if (!excitation.get_voltage() || !excitation.get_voltage()->get_waveform()) {
+                    std::string operatingPointLabel = "operating point " + std::to_string(i) +
+                        (operatingPoints[i].get_name() ? " ('" + operatingPoints[i].get_name().value() + "')" : "");
+                    throw std::invalid_argument(
+                        operatingPointLabel + ", winding " + std::to_string(processedExcitationsPerWinding.size()) +
+                        ": the excitation has no current, so one has to be derived from the voltage — and it has no"
+                        " voltage waveform either. Give the winding a current, or a voltage to derive it from.");
+                }
                 auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
                 auto sampledWaveform = calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
                 bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoints[i], turnsRatiosValues);
@@ -1252,28 +1264,56 @@ std::pair<bool, std::string> Inputs::check_integrity() {
 
     for (size_t i = 0; i < operatingPoints.size(); ++i) {
 
+        // ABT #825: the secondary is synthesised by reflecting the primary, and the primary's
+        // voltage and current were both dereferenced unconditionally. An operating point that
+        // gives a current and no voltage — a perfectly ordinary way to describe an inductor's
+        // winding — therefore died on an empty optional, with "bad optional access" naming
+        // neither the operating point, nor the winding, nor the field. Reflect whatever the
+        // primary actually has, and when it has nothing to reflect, say so.
         if (turnsRatios.size() > operatingPoints[i].get_excitations_per_winding().size() - 1) {
+            std::string operatingPointLabel = "operating point " + std::to_string(i) +
+                (operatingPoints[i].get_name() ? " ('" + operatingPoints[i].get_name().value() + "')" : "");
+
             if (turnsRatios.size() == 1 && operatingPoints[i].get_excitations_per_winding().size() == 1) {
                 // We are missing excitation only for secondary
                 for (size_t turnsRatioIndex = 0; turnsRatioIndex < turnsRatios.size(); ++turnsRatioIndex) {
                     if (turnsRatioIndex >= operatingPoints[i].get_excitations_per_winding().size() - 1) {
                         double turnsRatio = resolve_dimensional_values(turnsRatios[turnsRatioIndex]);
                         auto excitationOfPrimaryWinding = operatingPoints[i].get_excitations_per_winding()[0];
+
+                        if (!excitationOfPrimaryWinding.get_voltage() && !excitationOfPrimaryWinding.get_current()) {
+                            throw std::invalid_argument(
+                                operatingPointLabel + ": the design requirements declare " +
+                                std::to_string(turnsRatios.size() + 1) + " windings but only one excitation was"
+                                " given, so the secondary has to be reflected from the primary — and winding 0"
+                                " has neither a voltage nor a current to reflect. Give winding 0 a voltage or a"
+                                " current, or supply the secondary excitation directly.");
+                        }
+
                         OperatingPointExcitation excitationOfThisWinding(excitationOfPrimaryWinding);
 
-                        excitationOfThisWinding.set_voltage(
-                            reflect_waveform(excitationOfPrimaryWinding.get_voltage().value(), 1 / turnsRatio));
-
-
-                        excitationOfThisWinding.set_current(
-                            reflect_waveform(excitationOfPrimaryWinding.get_current().value(), turnsRatio));
+                        // Reflect only what the primary actually carries. Inventing the other half
+                        // would be making up an operating point nobody asked for.
+                        if (excitationOfPrimaryWinding.get_voltage()) {
+                            excitationOfThisWinding.set_voltage(
+                                reflect_waveform(excitationOfPrimaryWinding.get_voltage().value(), 1 / turnsRatio));
+                        }
+                        if (excitationOfPrimaryWinding.get_current()) {
+                            excitationOfThisWinding.set_current(
+                                reflect_waveform(excitationOfPrimaryWinding.get_current().value(), turnsRatio));
+                        }
                         operatingPoints[i].get_mutable_excitations_per_winding().push_back(excitationOfThisWinding);
                     }
                 }
                 result.second = "Had to create the excitations of some windings based on primary";
             }
             else {
-                throw std::invalid_argument("Missing excitation for more than one secondary. Only one can be guessed");
+                throw std::invalid_argument(
+                    operatingPointLabel + ": the design requirements declare " +
+                    std::to_string(turnsRatios.size() + 1) + " windings but only " +
+                    std::to_string(operatingPoints[i].get_excitations_per_winding().size()) +
+                    " excitation(s) were given. Only a single missing secondary can be reflected from the"
+                    " primary; supply an excitation per winding.");
             }
         }
     }

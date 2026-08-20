@@ -101,3 +101,4 @@ TEST_CASE("Test_CoreAdviser_IsolatedBuck_DefaultWizardInputs_HasResults",
     // The bug: this currently fails with results.size()==0 and an empty log.
     REQUIRE(results.size() > 0);
 }
+

@@ -200,6 +200,38 @@ inline std::map<std::string, std::string> default_loss_filter_models() {
     return models;
 }
 
+// ABT #825: the area filter and the loss-budget threshold both need the time-averaged |v*i| of
+// the primary excitation, so they both need a voltage AND a current. Each dereferenced both
+// optionals unconditionally, so an operating point carrying only a current -- an ordinary way to
+// describe an inductor's winding, and what several catalogue callers actually send -- died on an
+// empty optional. The message was "bad optional access": no operating point, no winding, no field,
+// no hint that a voltage was what was missing. Core sizing genuinely cannot proceed without one,
+// so this still fails -- it just says what it needed.
+inline void require_voltage_and_current_for_power(const OperatingPointExcitation& excitation,
+                                                  size_t operatingPointIndex,
+                                                  const OperatingPoint& operatingPoint,
+                                                  const std::string& consumer) {
+    std::string label = "operating point " + std::to_string(operatingPointIndex) +
+        (operatingPoint.get_name() ? " ('" + operatingPoint.get_name().value() + "')" : "");
+
+    std::string missing;
+    if (!excitation.get_voltage() || !excitation.get_voltage()->get_waveform()) {
+        missing = "a voltage";
+    }
+    if (!excitation.get_current() || !excitation.get_current()->get_waveform()) {
+        missing = missing.empty() ? "a current" : missing + " and a current";
+    }
+    if (missing.empty()) {
+        return;
+    }
+
+    throw std::invalid_argument(
+        label + ", primary winding: " + consumer + " needs the time-averaged |v*i| of the"
+        " excitation, and this one has no " + missing + " waveform. Give the primary winding both a"
+        " voltage and a current excitation.");
+}
+
+
 // Compute the max-over-operating-points of the time-averaged |v·i|
 // "power mean" used to scale the loss-budget threshold. If any
 // operating point has a waveform longer than 2× the configured sampled
@@ -213,6 +245,8 @@ inline double compute_maximum_power_mean_and_maybe_force_steinmetz(
     std::vector<double> powerMeans(operatingPoints.size(), 0);
     for (size_t opi = 0; opi < operatingPoints.size(); ++opi) {
         auto excitation = Inputs::get_primary_excitation(operatingPoints[opi]);
+        require_voltage_and_current_for_power(excitation, opi, operatingPoints[opi],
+                                             "the core-losses budget threshold");
         auto voltageWaveform = excitation.get_voltage().value().get_waveform().value();
         auto currentWaveform = excitation.get_current().value().get_waveform().value();
         double frequency = excitation.get_frequency();

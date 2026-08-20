@@ -980,3 +980,56 @@ TEST_CASE("Catalogue filter flow includes DATASHEET_LIMITS (ABT #19 wiring)",
     }
     CHECK(datasheetLimitsPresent);
 }
+
+TEST_CASE("Processed-only excitation advises without a bad optional access (ABT #825)",
+          "[adviser][magnetic-filter]") {
+    // ABT #825: an excitation given as {label, dutyCycle, offset, peakToPeak} — the ordinary way
+    // to describe one without a waveform — short-circuits calculate_basic_processed_data, which is
+    // the only place processed.peak is derived. So the processed block arrives with an rms, a thd
+    // and harmonics but NO peak, and MagneticEnergy::calculate_required_magnetic_energy read it as
+    // get_peak().value(). Via MagneticFilterEnergyStored that sits on the core adviser's critical
+    // path, so advising ANY design described this way died with "bad optional access", naming
+    // neither the field nor the excitation. A plain inductor with no turns ratio reproduces it.
+    //
+    // Note what is NOT asserted here: that processed.peak gets populated. Filling it in at the
+    // source was the first fix and it was wrong — peak is read behind `if (get_peak())` in half a
+    // dozen filters, and giving it a value where they had learned to expect none changed which
+    // branch they take, emptying the candidate list for a flyback design
+    // (Test_CoreAdviser_Flyback_From_Frontend_Inputs, deterministic across two full-suite runs).
+    // The consumer that needs the number derives it instead, so this pins the BEHAVIOUR — the
+    // energy filter builds — not the representation.
+    json inputsJson = json();
+    inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+    inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+    json excitation = json();
+    excitation["frequency"] = 100000;
+    excitation["current"]["processed"]["dutyCycle"] = 0.5;
+    excitation["current"]["processed"]["label"] = "Triangular";
+    excitation["current"]["processed"]["offset"] = 0;
+    excitation["current"]["processed"]["peakToPeak"] = 10;
+
+    json operatingPoint = json();
+    operatingPoint["name"] = "Nominal";
+    operatingPoint["conditions"]["ambientTemperature"] = 25;
+    operatingPoint["excitationsPerWinding"] = json::array({excitation});
+    inputsJson["operatingPoints"] = json::array({operatingPoint});
+
+    OpenMagnetics::Inputs inputs(inputsJson);
+
+    // The processed block still has no peak — that is the input shape this ticket is about.
+    auto processedCurrent = inputs.get_operating_point(0).get_excitations_per_winding()[0]
+                                  .get_current().value().get_processed().value();
+    CHECK_FALSE(processedCurrent.get_peak());
+    CHECK_THAT(processedCurrent.get_peak_to_peak().value(), Catch::Matchers::WithinRel(10.0, 1e-9));
+
+    // ...and the energy filter builds anyway, deriving the peak it needs from the waveform.
+    REQUIRE_NOTHROW(OpenMagnetics::MagneticFilterEnergyStored(inputs, {}));
+
+    // The derived required energy is E = L*Ipk^2/2 with Ipk ~ 5 A for a 10 A pk-pk triangular
+    // at no offset: 100e-6 * 25 / 2 = 1.25 mJ.
+    OpenMagnetics::MagneticEnergy magneticEnergy;
+    double requiredEnergy = OpenMagnetics::resolve_dimensional_values(
+        magneticEnergy.calculate_required_magnetic_energy(inputs));
+    CHECK_THAT(requiredEnergy, Catch::Matchers::WithinRel(1.25e-3, 0.05));
+}

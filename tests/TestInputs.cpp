@@ -1928,3 +1928,86 @@ TEST_CASE("Test_Inputs_Magnetizing_Inductance_Resolved_Only_Where_Needed", "[pro
     auto processedExcitation = satisfiedInputs.get_operating_points()[0].get_excitations_per_winding()[0];
     CHECK(processedExcitation.get_voltage());  // derived from the current and the inductance
 }
+
+TEST_CASE("Test_Reflected_Secondary_Reflects_Only_What_The_Primary_Has", "[processor][inputs]") {
+    // ABT #825: with one turns ratio the design has two windings, so a lone excitation means the
+    // secondary is reflected from the primary. That reflection dereferenced the primary's voltage
+    // AND current unconditionally, so an operating point giving a current and no voltage — an
+    // ordinary way to describe an inductor's winding — died with a bare "bad optional access"
+    // naming neither the operating point, the winding, nor the field.
+    json inputsJson = json();
+    inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+    inputsJson["designRequirements"]["turnsRatios"] = json::array({json{{"nominal", 0.5}}});
+
+    json excitation = json();
+    excitation["frequency"] = 100000;
+    excitation["current"]["processed"]["dutyCycle"] = 0.5;
+    excitation["current"]["processed"]["label"] = "Triangular";
+    excitation["current"]["processed"]["offset"] = 0;
+    excitation["current"]["processed"]["peakToPeak"] = 10;
+
+    json operatingPoint = json();
+    operatingPoint["name"] = "Nominal";
+    operatingPoint["conditions"]["ambientTemperature"] = 25;
+    operatingPoint["excitationsPerWinding"] = json::array({excitation});
+    inputsJson["operatingPoints"] = json::array({operatingPoint});
+
+    // Current only: the secondary is reflected from the current alone rather than throwing.
+    OpenMagnetics::Inputs inputs(inputsJson);
+    auto excitations = inputs.get_operating_points()[0].get_excitations_per_winding();
+    REQUIRE(excitations.size() == 2);
+    CHECK(excitations[1].get_current());
+
+    // Nothing to reflect at all: still refused, but the message must name the operating point and
+    // say what is missing, never "bad optional access".
+    json emptyExcitationJson = inputsJson;
+    emptyExcitationJson["operatingPoints"][0]["excitationsPerWinding"][0].erase("current");
+    try {
+        OpenMagnetics::Inputs refused(emptyExcitationJson);
+        FAIL("an excitation with neither voltage nor current must be refused");
+    }
+    catch (const std::exception& e) {
+        std::string message(e.what());
+        CHECK(message.find("Nominal") != std::string::npos);
+        CHECK(message != "bad optional access");
+    }
+}
+
+TEST_CASE("Test_Missing_Required_Field_Names_The_Object", "[processor][inputs]") {
+    // ABT #829: a missing required field escaped as nlohmann's own
+    // "[json.exception.out_of_range.403] key 'bobbin' not found", which names the key but not the
+    // object — and "name" is ambiguous across the magnetic, the core, the shape, the bobbin,
+    // manufacturerInfo and every winding. The field IS required (coil.json's anyOf requires it in
+    // every branch); the message simply has to say whose it is.
+    json coilJson = json();
+    coilJson["functionalDescription"] = json::array({json{
+        {"name", "primary"},
+        {"numberTurns", 10},
+        {"numberParallels", 1},
+        {"isolationSide", "primary"},
+        {"wire", "Round 0.5 - Grade 1"}}});
+
+    try {
+        auto coil = coilJson.get<OpenMagnetics::Coil>();
+        FAIL("a coil without a bobbin must be refused");
+    }
+    catch (const std::exception& e) {
+        std::string message(e.what());
+        CHECK(message.find("coil") != std::string::npos);
+        CHECK(message.find("bobbin") != std::string::npos);
+        CHECK(message.find("out_of_range") == std::string::npos);
+    }
+
+    json windingMissingWireJson = coilJson;
+    windingMissingWireJson["bobbin"] = "Dummy";
+    windingMissingWireJson["functionalDescription"][0].erase("wire");
+    try {
+        auto coil = windingMissingWireJson.get<OpenMagnetics::Coil>();
+        FAIL("a winding without a wire must be refused");
+    }
+    catch (const std::exception& e) {
+        std::string message(e.what());
+        CHECK(message.find("winding") != std::string::npos);
+        CHECK(message.find("wire") != std::string::npos);
+    }
+}

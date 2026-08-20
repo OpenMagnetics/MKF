@@ -937,9 +937,22 @@ inline void Coil::set_bobbin_from_json(const json & bobbinJson) {
     }
 }
 
+// ABT #829: a missing required field used to escape as nlohmann's own
+// "[json.exception.out_of_range.403] key 'bobbin' not found". That names the key but not the
+// object, and a key like "name" is ambiguous across the magnetic, the core, the shape, the
+// bobbin, manufacturerInfo and every winding — so a caller loading a catalogue could not tell
+// which record, or even which kind of object, had failed. Say which object is missing what.
+inline const json& required_field(const json& j, const char* key, const char* owner) {
+    auto field = j.find(key);
+    if (field == j.end()) {
+        throw std::invalid_argument(std::string(owner) + " is missing required field '" + key + "'");
+    }
+    return *field;
+}
+
 inline void from_json(const json & j, Coil& x) {
-    x.set_bobbin_from_json(j.at("bobbin"));
-    x.set_functional_description(j.at("functionalDescription").get<std::vector<Winding>>());
+    x.set_bobbin_from_json(required_field(j, "bobbin", "coil"));
+    x.set_functional_description(required_field(j, "functionalDescription", "coil").get<std::vector<Winding>>());
     x.set_layers_description(get_stack_optional<std::vector<Layer>>(j, "layersDescription"));
     x.set_sections_description(get_stack_optional<std::vector<Section>>(j, "sectionsDescription"));
     x.set_turns_description(get_stack_optional<std::vector<Turn>>(j, "turnsDescription"));
@@ -952,11 +965,11 @@ inline void from_json(const json & j, Coil& x) {
 
 inline void from_json(const json & j, Winding& x) {
     x.set_connections(get_stack_optional<std::vector<ConnectionElement>>(j, "connections"));
-    x.set_isolation_side(j.at("isolationSide").get<IsolationSide>());
-    x.set_name(j.at("name").get<std::string>());
-    x.set_number_parallels(j.at("numberParallels").get<int64_t>());
-    x.set_number_turns(j.at("numberTurns").get<int64_t>());
-    x.set_wire(j.at("wire").get<OpenMagnetics::WireDataOrNameUnion>());
+    x.set_isolation_side(required_field(j, "isolationSide", "coil winding").get<IsolationSide>());
+    x.set_name(required_field(j, "name", "coil winding").get<std::string>());
+    x.set_number_parallels(required_field(j, "numberParallels", "coil winding").get<int64_t>());
+    x.set_number_turns(required_field(j, "numberTurns", "coil winding").get<int64_t>());
+    x.set_wire(required_field(j, "wire", "coil winding").get<OpenMagnetics::WireDataOrNameUnion>());
     // Multi-column placement: without this, a winding-level windingWindow set
     // through any JSON boundary (WASM, file load) was silently discarded and
     // the winder placed everything in window 0.

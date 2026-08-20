@@ -167,7 +167,38 @@ DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(Inputs
             excitation.set_magnetizing_current(magnetizingCurrent);
             inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0] = excitation;
         }
-        magnetizingCurrentPeak = std::max(magnetizingCurrentPeak, Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current().value().get_processed().value().get_peak().value());
+        // ABT #825: this used to be three chained .value() calls, and the last one — peak —
+        // is routinely absent. WaveformProcessor derives peak only in
+        // calculate_basic_processed_data, which is skipped whenever the CALLER supplied a
+        // processed block: an excitation given as {label, dutyCycle, offset, peakToPeak}, the
+        // ordinary way to describe one without a waveform, arrives here with an rms, a thd and
+        // harmonics but no peak. Advising any design described that way died with a bare "bad
+        // optional access" that named neither the field nor the excitation.
+        //
+        // Derived here rather than by populating peak for every processed block at the source:
+        // peak is read behind `if (get_peak())` in half a dozen filters, and giving it a value
+        // where they had learned to expect none silently changes which branch they take (it
+        // emptied the candidate list for a flyback design). The narrow fix is for the consumer
+        // that needs the number to work it out.
+        auto primaryExcitation = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex));
+        auto magnetizingCurrent = primaryExcitation.get_magnetizing_current().value();
+        double operatingPointPeak;
+        if (magnetizingCurrent.get_processed() && magnetizingCurrent.get_processed()->get_peak()) {
+            operatingPointPeak = magnetizingCurrent.get_processed()->get_peak().value();
+        }
+        else if (magnetizingCurrent.get_waveform() && !magnetizingCurrent.get_waveform()->get_data().empty()) {
+            const auto& data = magnetizingCurrent.get_waveform()->get_data();
+            operatingPointPeak = std::max(*std::max_element(data.begin(), data.end()),
+                                          -*std::min_element(data.begin(), data.end()));
+        }
+        else {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "operating point " + std::to_string(operatingPointIndex) +
+                ": the required magnetic energy needs the peak magnetizing current, and this"
+                " operating point's magnetizing current has neither a processed peak nor a"
+                " waveform to derive one from.");
+        }
+        magnetizingCurrentPeak = std::max(magnetizingCurrentPeak, operatingPointPeak);
     }
     DimensionWithTolerance magneticEnergyRequirement;
     auto get_energy = [magnetizingCurrentPeak](double magnetizingInductance)
