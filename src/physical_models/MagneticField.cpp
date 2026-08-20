@@ -272,6 +272,31 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     auto& settings = OpenMagnetics::Settings::GetInstance();
     auto includeFringing = settings.get_magnetic_field_include_fringing();
 
+    // ABT #835: DOWELL is a 1-D MMF STAIRCASE, not a 2-D kernel. Its step contribution
+    // (fieldStep = I / windingBreadth, applied whole/half/not-at-all by comparing the
+    // inducing and induced x) carries NO distance dependence at all — so every filament it
+    // is handed counts as a whole extra conductor in the staircase, wherever it sits.
+    //
+    // The inducing mesh, however, expands each turn into a (2M+1)x(2N+1) lattice of
+    // method-of-images filaments, because the 2-D kernels (Lammeraner, Binns-Lawrenson,
+    // Albach) NEED those images to satisfy the high-permeability wall boundary condition.
+    // Feeding them to Dowell is doubly wrong: the axial images sit at the SAME x as their
+    // parent and simply triple every real step, while the inner radial images sit to the
+    // left of every real turn and each add a full step — a constant pedestal that dominated
+    // the result. On the 12-turn P 3.3/2.6 fixture that read H ~16x high at the first layer
+    // and proximity loss 2.27 W against ALBACH/LAMMERANER/BINNS's 0.038 W (~60x, since loss
+    // goes as H^2).
+    //
+    // Dowell's 1-D formulation already embodies the wall boundary condition, so it must see
+    // the REAL conductors only. Suppressing mirroring for this model alone brings it to
+    // 0.0362 W — within 6% of the 2-D models — while leaving them their images (they drop to
+    // 0.0297 W without them, so this cannot be a global change).
+    std::optional<SettingsGuard<int>> dowellMirroringGuard;
+    if (_magneticFieldStrengthModel == MagneticFieldStrengthModels::DOWELL) {
+        dowellMirroringGuard.emplace(settings, &Settings::get_magnetic_field_mirroring_dimension,
+                                     &Settings::set_magnetic_field_mirroring_dimension, 0);
+    }
+
     CoilMesher coilMesher; 
     std::vector<Field> inducingFields;
     auto core = magnetic.get_core();

@@ -55,7 +55,7 @@ double total_losses_with_proximity_model(OpenMagnetics::Magnetic& magnetic, Oper
 
 }  // namespace
 
-TEST_CASE("Test_Proximity_Loss_Models_Disagree_By_Orders_Of_Magnitude_ABT_605", "[physical-model][winding-losses][proximity][model-comparison][bug][!mayfail]") {
+TEST_CASE("Test_Proximity_Loss_Models_Disagree_By_Orders_Of_Magnitude_ABT_605", "[physical-model][winding-losses][proximity][model-comparison][bug]") {
     double temperature = 40;
     double frequency = 100000;
     // A multi-layer round-wire winding: the regime where proximity loss is
@@ -85,23 +85,28 @@ TEST_CASE("Test_Proximity_Loss_Models_Disagree_By_Orders_Of_Magnitude_ABT_605", 
 
     INFO("Dowell=" << dowell << " Ferreira=" << ferreira << " Albach=" << albach);
 
-    // Documents that the bug is REAL and still present: same geometry, same
-    // ohmic/core losses, order-of-magnitude-different totals depending only
-    // on the proximity model. This assertion is expected to hold (i.e. the
-    // spread IS large) until someone fixes the model disagreement — it is
-    // not tagged mayfail because "the bug still reproduces" is the state we
-    // want CI to confirm, not paper over.
     double maxTotal = std::max({dowell, ferreira, albach});
     double minTotal = std::min({dowell, ferreira, albach});
     REQUIRE(minTotal > 0);
-    CHECK(maxTotal / minTotal > 2.0);
 
-    // The TARGET, once someone arbitrates against FEM or measured hardware:
-    // four models on the same physical geometry should not disagree by more
-    // than a sane engineering margin. 2x is deliberately loose — this is not
-    // asserting which model is right, only that they must eventually agree
-    // reasonably closely. Tagged [!mayfail]: expected to fail until ABT #605
-    // is actually resolved. When it starts passing, that is the signal the
-    // fix landed — remove the tag then, don't leave it decoratively mayfail.
+    // ABT #605 RESOLVED (2026-08-20). This case used to assert that the spread WAS large
+    // ("the bug still reproduces"), with the target below tagged [!mayfail]. Both the
+    // reproduce-assertion and the tag are gone, exactly as the original author instructed:
+    // "When it starts passing, that is the signal the fix landed — remove the tag then."
+    //
+    // History of the spread on this fixture: ~10000x when the ticket was filed, 2.87x after
+    // the Kelvin x-pi fix (Dowell 1.236 / Ferreira 0.953 / Albach 0.430), and 1.30x now
+    // (Dowell 1.228 / Ferreira 0.948 / Albach 0.957). What closed it was ABT #837: Albach's
+    // proximity factor carried an extra conductor dimension, returning W where every other
+    // model returns W/m, so it read ~1e-3 of the truth for EVERY wire type. Ferreira itself
+    // is independently verified exact — its Kelvin-function factor reproduces a radial-mode
+    // solve of the cylinder-in-transverse-field problem to 4 digits — so agreement with
+    // Ferreira is agreement with the physics, not merely consensus.
+    //
+    // The residual 1.30x is Dowell's, and it is understood rather than mysterious: Dowell's
+    // equal-area-square reduction of a round wire runs ~2.09x high at low gamma and ~0.60x
+    // low at high gamma against the exact factor (ABT #837 scorecard). 2x remains the band:
+    // it does not assert WHICH model is right, only that models of the same geometry must
+    // agree to an engineering margin.
     CHECK(maxTotal / minTotal < 2.0);
 }

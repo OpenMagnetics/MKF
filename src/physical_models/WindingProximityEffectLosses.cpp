@@ -362,9 +362,24 @@ double WindingProximityEffectLossesRossmanithModel::calculate_proximity_factor(W
         double wireWidth = resolve_dimensional_values(wire.get_conducting_width().value());
         double wireHeight = resolve_dimensional_values(wire.get_conducting_height().value());
 
-        // FEM-validated height*width/delta prefactor — do NOT rewrite to
-        // 2*height/delta (June 2026 planar/foil over-prediction regression, reverted).
-        factor = wireHeight * wireWidth / skinDepth * (sinh(wireWidth / skinDepth) - sin(wireWidth / skinDepth)) / (cosh(wireWidth / skinDepth) + cos(wireWidth / skinDepth));
+        if (wire.get_type() == WireType::PLANAR) {
+            // PLANAR keeps the legacy form: it is entangled with the C=8 FEM-calibrated width
+            // integral in the Wang model and needs the OMFEM planar suite to untangle (ABT #139).
+            factor = wireHeight * wireWidth / skinDepth * (sinh(wireWidth / skinDepth) - sin(wireWidth / skinDepth)) / (cosh(wireWidth / skinDepth) + cos(wireWidth / skinDepth));
+        }
+        else {
+            // RECTANGULAR / FOIL. ABT #837, two errors in one expression:
+            //  1. height*width is a CROSS-SECTION prefactor; the slab form takes the BREADTH
+            //     alone (same defect class as ABT #182 for foil and ABT #832 for rectangular).
+            //  2. the kernel was evaluated at width/delta — the WIDE dimension — when the field
+            //     penetrates the THIN one. For a 4 x 0.9 mm conductor that is the difference
+            //     between G(19) = 1 (saturated) and G(4.3).
+            // The June 2026 revert this comment used to cite (de156755) backed out a fix that
+            // was itself wrong (it carried a spurious factor 2 and broke PLANAR); the correct
+            // slab form has since been FEM-arbitrated twice.
+            const double penetrated = std::min(wireHeight, wireWidth) / skinDepth;
+            factor = wireWidth / skinDepth * (sinh(penetrated) - sin(penetrated)) / (cosh(penetrated) + cos(penetrated));
+        }
     }
     else if (wire.get_type() == WireType::ROUND ) {
         double wireRadius;
@@ -629,10 +644,17 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
 
     // BUG-003 FIX: Normalize nonPlanarHe by the lumped surface-point count
     // (width samples do not contribute to it and must not dilute the average)
-    // FOIL is excluded: its cross components (Hy at the ends, Hx at the faces)
-    // are already covered by the parallel/perpendicular slab terms above
-    // (ABT #182), so routing them through the Ferreira factor double-counts.
-    if (wire.get_type() != WireType::FOIL && nonPlanarHe != 0 && lumpedPointCount > 0) {
+    // FOIL and RECTANGULAR are excluded: their cross components (Hy at the ends,
+    // Hx at the faces) are already covered by the parallel/perpendicular slab terms
+    // above, so routing them through the Ferreira factor double-counts. FOIL got
+    // those two terms in ABT #182; RECTANGULAR got the identical pair in ABT #832,
+    // so the same exclusion now applies to it — it was only harmless before because
+    // the Ferreira rectangular factor was ~1000x too small (see below) and the term
+    // it contributed was indistinguishable from zero. PLANAR still routes through
+    // here: its slab branch keeps the legacy c*h prefactor and the C=8 width
+    // integral, and untangling that needs the OMFEM planar suite (ABT #139).
+    if (wire.get_type() != WireType::FOIL && wire.get_type() != WireType::RECTANGULAR &&
+        nonPlanarHe != 0 && lumpedPointCount > 0) {
         nonPlanarHe /= lumpedPointCount;
         double proximityFactor = WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(wire, frequency, temperature);
         turnLosses += proximityFactor * pow(nonPlanarHe, 2);
@@ -688,11 +710,28 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
         double h = resolve_dimensional_values(wire.get_conducting_height().value());
 
         double xi = std::min(h, w) / skinDepth;
+        double slabKernel = (sinh(xi) - sin(xi)) / (cosh(xi) + cos(xi));
 
-        // FEM-validated planar/foil/rectangular proximity factor (w*xi form).
-        // Do NOT rewrite to 2*max(h,w)/delta: that over-predicts planar/foil
-        // proximity by 1-2 orders of magnitude (June 2026 regression, reverted).
-        factor = w * xi * resistivity * (sinh(xi) - sin(xi)) / (cosh(xi) + cos(xi));
+        if (wire.get_type() == WireType::PLANAR) {
+            // PLANAR keeps the legacy w*xi form. It is dimensionally wrong in the same
+            // way as the branch below, but it is entangled with the C=8 FEM-calibrated
+            // width integral in the Wang model, and correcting it needs the OMFEM planar
+            // suite re-run — ABT #139. Do NOT "fix" this in isolation: the June 2026
+            // attempt (de156755) reverted precisely because the planar case blew up.
+            factor = w * xi * resistivity * slabKernel;
+        }
+        else {
+            // RECTANGULAR / FOIL. ABT #837: the w*xi form carries a CROSS-SECTION
+            // prefactor -- w * (min(h,w)/delta) * rho has units of Ohm*m^2, so multiplied
+            // by H^2 [A^2/m^2] it yields W, not the W/m every caller then multiplies by a
+            // length. The literature slab form (Dowell 1966; Lammeraner & Stafl 1966; the
+            // same arbitration as ABT #182 for foil and ABT #832 for rectangular) is
+            //     P/l = breadth * rho/delta * H^2 * G(t/delta)
+            // i.e. exactly this expression with 1/delta in place of xi. The difference is
+            // a factor min(h,w) -- 0.9 mm on a 4x0.9 mm conductor, so the old factor was
+            // ~1100x LOW and the term it produced read as zero.
+            factor = w * resistivity / skinDepth * slabKernel;
+        }
         if (std::isnan(factor)) {
             throw NaNResultException("NaN found in Ferreira's proximity factor");
         }
@@ -842,9 +881,16 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
         He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
     }
     double He2_rms = He2_sum / data.size();
-    // FEM-validated form with the cross-section factor d — do NOT drop d
-    // (June 2026 planar/foil over-prediction regression, reverted).
-    double turnLosses = c * resistivity * He2_rms * (alpha * d * tanh(alpha * d / 2.0)).real();
+    // ABT #837: the leading `c` is a second length that does not belong. Every other model
+    // here returns W/m — the aggregator multiplies by the turn length — but c * rho * H^2 *
+    // Re[...] has units of W, so this model was under by a factor of one conductor dimension
+    // (~1e-3 for a sub-millimetre wire), i.e. it reported essentially zero for every wire
+    // type INCLUDING round. Without it the low-frequency limit is rho*d^4/(6*delta^4), which
+    // is 1.70x the exact cylinder result pi*rho*d^4/(32*delta^4) — the model's own plate
+    // approximation applied to a round wire, and a documented over-estimate rather than a
+    // silent zero. (The June 2026 revert cited here backed out a fix that also broke PLANAR
+    // for an unrelated reason; see the Rossmanith note above.)
+    double turnLosses = resistivity * He2_rms * (alpha * d * tanh(alpha * d / 2.0)).real();
 
     // Solid round/foil/rect wires carry no explicit number_conductors — default to 1
     // (was an unguarded .value()); litz supplies its strand count.
@@ -925,7 +971,14 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
             ". Use a different proximity model (e.g., WANG or FERREIRA) for high frequencies.");
     }
 
-    factor = 2.0 * std::numbers::pi * resistivity * pow((wireConductingDimension / 2) / skinDepth, 4) / 4;
+    // ABT #837: wireConductingDimension is ALREADY the half-dimension for round/litz (the
+    // radius, set above as diameter/2), so dividing by 2 again here halved it twice and the
+    // fourth power turned that into a factor 1/16 — the model read 16x LOW everywhere inside
+    // its own validity window. With the stray /2 gone this is
+    //     2*pi*rho*(r/delta)^4/4 = pi*rho*d^4/(32*delta^4)
+    // which is EXACTLY the low-frequency limit of the Kelvin-function proximity factor that
+    // Ferreira/Rossmanith evaluate (verified against an independent radial-mode solve).
+    factor = 2.0 * std::numbers::pi * resistivity * pow(wireConductingDimension / skinDepth, 4) / 4;
 
     return factor;
 }
@@ -1188,17 +1241,22 @@ double WindingProximityEffectLossesWojdaModel::calculate_proximity_factor(Wire w
         // R_pe/l = ηh²·μ₀²·ω²·h / (12·ρ·b)  where ηh = h/p ≈ 1 for dense foil
         double h = resolve_dimensional_values(wire.get_conducting_height().value());
         double bw = resolve_dimensional_values(wire.get_conducting_width().value());
-        // Eq. 42 lamination form (b in the DENOMINATOR, per the comment above).
-        // Do NOT move bw to the numerator (June 2026 planar/foil regression, reverted).
-        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3)
-               / (12.0 * resistivity * bw);
+        // ABT #837: the breadth belongs in the NUMERATOR and the constant is 24, not 12.
+        // Dimensions settle it: mu0^2*omega^2*h^3/(rho*bw) is Ohm/m, so multiplied by H^2 it
+        // gives W/m^3 where the aggregator needs W/m — the factor was out by 1/bw^2. The
+        // standard thin-slab low-frequency eddy result, with the PEAK-amplitude convention
+        // MKF uses throughout, is
+        //     P/l = bw * h^3 * mu0^2 * omega^2 * H^2 / (24 * rho)
+        // For a 4 x 0.9 mm conductor the old expression read ~2.7e5x HIGH.
+        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3) * bw
+               / (24.0 * resistivity);
     }
     else if (wt == WireType::RECTANGULAR) {
-        // Same form as foil (Eq. 42/45):
+        // Same form as foil (Eq. 42/45), same ABT #837 correction:
         double h  = resolve_dimensional_values(wire.get_conducting_height().value());
         double bw = resolve_dimensional_values(wire.get_conducting_width().value());
-        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3)
-               / (12.0 * resistivity * bw);
+        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3) * bw
+               / (24.0 * resistivity);
     }
     else if (wt == WireType::ROUND) {
         // Eq. 70: R_pe = ηb²·π²·μ₀²·ω²·Nl²·lT·d² / (576·ρ)
