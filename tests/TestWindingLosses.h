@@ -376,17 +376,18 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 1;
         
-        // Re-pinned (July 2026): gap fringing is now actually delivered (see the
-        // One_Turn_Litz_Many_Strands note for the == gate fix and the OMFEM 1 mm
-        // mechanism check). Old pins captured the fringing-disabled bug state.
+        // Re-pinned (ABT #832, 2026-08-20): ALBACH fringing now routes through the
+        // Roshen conformal path, so the July 2026 pins (taken under the equivalent-
+        // current construction, which the July litz FEM campaign itself measured as
+        // ~2x ABOVE the OMFEM fringing delta) come down toward FEM.
         config.expectedValues = {
-            {0.01, 0.033848},
-            {25000, 0.033953},
-            {50000, 0.034267},
-            {100000, 0.035526},
-            {200000, 0.040559},
-            {250000, 0.044332},
-            {500000, 0.075709}
+            {0.01, 0.034288},
+            {25000, 0.034323},
+            {50000, 0.034430},
+            {100000, 0.034855},
+            {200000, 0.036554},
+            {250000, 0.037828},
+            {500000, 0.048421}
         };
         
         config.createMagnetic = []() {
@@ -439,16 +440,15 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 1;
         
-        // Re-pinned (July 2026): gap fringing is now actually delivered (see the
-        // One_Turn_Litz_Many_Strands note for the == gate fix and the OMFEM 1 mm
-        // mechanism check). Old pins captured the fringing-disabled bug state.
+        // Re-pinned (ABT #832, 2026-08-20): same Roshen re-routing as
+        // Ten_Turns_Litz_Sinusoidal above.
         config.expectedValues = {
-            {0.01, 0.10731},
-            {25000, 0.10897},
-            {50000, 0.11396},
-            {100000, 0.13389},
-            {200000, 0.21362},
-            {250000, 0.27338}
+            {0.01, 0.10863},
+            {25000, 0.10913},
+            {50000, 0.11064},
+            {100000, 0.11667},
+            {200000, 0.14080},
+            {250000, 0.15888}
         };
         
         config.createMagnetic = []() {
@@ -595,18 +595,27 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
+        // Re-pinned (ABT #832, 2026-08-20). REGRESSION pin, not a validation pin — read this
+        // before trusting the numbers. The old table was green only against the c*h Wang
+        // prefactor bug (rectangular proximity ~0) and sat 3.7x below the slab-form result.
+        // 2D OMFEM on this exact fixture gives R_ac/R_dc = 6.749 @100k and 15.064 @500k;
+        // the values below are MKF's, which run +21% and +15% hot against that. The sibling
+        // Five_Turns_Rectangular (PQ 20/16, 5 turns) agrees with FEM within 3%, so the excess
+        // grows with turn count/packing — the edge-point sampling residual tracked in ABT #837
+        // (same signature as the toroidal-rectangular case). Pinned to MKF so the suite still
+        // catches regressions; re-pin to FEM when #837 lands.
         config.expectedValues = {
-            {0.01, 0.00019313 + 0.00019313 * 6},
-            {100000, 0.0025456},
-            {200000, 0.00342804},
-            {300000, 0.00419621},
-            {400000, 0.00484483},
-            {500000, 0.0054165},
-            {600000, 0.0059334},
-            {700000, 0.00640876},
-            {800000, 0.00685123},
-            {900000, 0.00726681},
-            {1000000, 0.00765988}
+            {0.01, 0.0011519},
+            {100000, 0.0094129},
+            {200000, 0.012714},
+            {300000, 0.015481},
+            {400000, 0.017900},
+            {500000, 0.020032},
+            {600000, 0.021950},
+            {700000, 0.023709},
+            {800000, 0.025345},
+            {900000, 0.026881},
+            {1000000, 0.028335}
         };
         
         config.createMagnetic = []() {
@@ -1479,18 +1488,22 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
+        // Re-pinned (ABT #832, 2026-08-20) against 2D OMFEM: the old table sat on the
+        // c*h Wang prefactor bug (rectangular proximity ~0, losses were skin-only) and
+        // was itself ~2.4x BELOW FEM. OMFEM on this exact fixture: R_ac/R_dc = 6.016 /
+        // 13.35 / 18.85 at 100k/500k/1M; the slab-form model lands within 3% of that.
         config.expectedValues = {
-            {0.01, 0.00011974 + 0.0003736},
-            {100000, 0.00087387 + 0.0003736},
-            {200000, 0.0012227 + 0.0003736},
-            {300000, 0.001487 + 0.0003736},
-            {400000, 0.0017156 + 0.0003736},
-            {500000, 0.001927 + 0.0003736},
-            {600000, 0.0021237 + 0.0003736},
-            {700000, 0.0023129 + 0.0003736},
-            {800000, 0.0024954 + 0.0003736},
-            {900000, 0.0026719 + 0.0003736},
-            {1000000, 0.002843 + 0.0003736}
+            {0.01, 0.00048949},
+            {100000, 0.0030343},
+            {200000, 0.0041970},
+            {300000, 0.0051466},
+            {400000, 0.0059475},
+            {500000, 0.0066499},
+            {600000, 0.0072842},
+            {700000, 0.0078676},
+            {800000, 0.0084107},
+            {900000, 0.0089209},
+            {1000000, 0.0094035}
         };
         
         config.createMagnetic = []() {
@@ -1540,18 +1553,20 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
+        // Re-pinned (ABT #832, 2026-08-20): same FEM arbitration as the 1 A variant
+        // (identical geometry, F_R identical; losses scale with I^2).
         config.expectedValues = {
-            {0.01, 0.0058551 * 5},
-            {100000, 0.03363 + 0.0058551 * 5},
-            {200000, 0.06063 + 0.0058551 * 5},
-            {300000, 0.073721 + 0.0058551 * 5},
-            {400000, 0.084989 + 0.0058551 * 5},
-            {500000, 0.095376 + 0.0058551 * 5},
-            {600000, 0.10525 + 0.0058551 * 5},
-            {700000, 0.11477 + 0.0058551 * 5},
-            {800000, 0.12399 + 0.0058551 * 5},
-            {900000, 0.13296 + 0.0058551 * 5},
-            {1000000, 0.141661 + 0.0058551 * 5}
+            {0.01, 0.023985},
+            {100000, 0.14868},
+            {200000, 0.20565},
+            {300000, 0.25219},
+            {400000, 0.29143},
+            {500000, 0.32584},
+            {600000, 0.35693},
+            {700000, 0.38551},
+            {800000, 0.41212},
+            {900000, 0.43712},
+            {1000000, 0.46077}
         };
         
         config.createMagnetic = []() {

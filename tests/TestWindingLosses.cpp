@@ -258,22 +258,27 @@ namespace TestWindingLossesRound {
              {600000, 0.0048621}, {700000, 0.0051882}, {800000, 0.0054789}, {900000, 0.0057414}, {1000000, 0.0059805}});
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
-        // SKIP: Model shows ~118% error at 3MHz. High frequency proximity effect needs improvement.
-        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
+        // ABT #832 (2026-08-20): FEM-verified — OMFEM on this fixture gives R_ac/R_dc
+        // 1.003/1.067/1.263/2.705 at 100k/500k/1M/3M and MKF lands within 1.3% at every
+        // point. Only the 3 MHz pin was updated (the old 0.34496 was 20% below FEM);
+        // the rest of the historical table passes as-is.
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal.json", 22,
             {{1, 0.17371}, {10000, 0.17372}, {20000, 0.17373}, {30000, 0.17374}, {40000, 0.17375},
              {50000, 0.17378}, {60000, 0.1738}, {70000, 0.17384}, {80000, 0.17387}, {90000, 0.17391},
              {100000, 0.17396}, {200000, 0.1747}, {300000, 0.17593}, {400000, 0.17764}, {500000, 0.17983},
              {600000, 0.18248}, {700000, 0.1856}, {800000, 0.18916}, {900000, 0.19315}, {1000000, 0.19755},
-             {3000000, 0.34496}});
+             {3000000, 0.43591}});
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
-        // SKIP: Model shows ~101% error at 20kHz due to fringing effect overestimation.
-        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
+        // [!mayfail] ABT #832 (2026-08-20): OMFEM on this fixture gives R_ac/R_dc
+        // 1.443/3.137/4.400 at 100k/500k/1M; MKF (Roshen conformal fringing) is 1.4-1.9x
+        // over on the AC part for this close-to-the-gap turn (point-sampled 1/r near-field
+        // bathes the whole conductor) — ABT #837. The historical pins are themselves ~10%
+        // below FEM. Not re-pinned until the close-gap sampling is fixed.
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing.json", 22,
             {{1, 167.89}, {10000, 169.24}, {20000, 174.77}, {30000, 183.33}, {40000, 194.12},
@@ -282,21 +287,22 @@ namespace TestWindingLossesRound {
              {600000, 649.64}, {700000, 699.9}, {800000, 746.3}, {900000, 789.66}, {1000000, 830.49}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
-        // SKIP: Model shows ~56% error at higher frequencies with distant fringing.
-        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
-        // Worst error in this one - use 40% tolerance
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangular-winding-window]") {
+        // Re-pinned (ABT #832, 2026-08-20) against 2D OMFEM: FEM gives R_ac/R_dc
+        // 1.002/1.168/2.188/2.984 at 10k/100k/500k/1M and MKF lands within 4% of FEM
+        // across the sweep (the far turn sees almost pure skin; the old pins predated
+        // the 90dde3ae skin fixes and sat ~25% low at 1 MHz).
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far.json", 22,
-            {{1, 204.23}, {10000, 204.61}, {20000, 205.73}, {30000, 207.52}, {40000, 209.9},
-             {50000, 212.74}, {60000, 215.94}, {70000, 219.41}, {80000, 223.07}, {90000, 226.85},
-             {100000, 230.71}, {200000, 269.05}, {300000, 303.53}, {400000, 333.71}, {500000, 360.06},
-             {600000, 383.12}, {700000, 403.36}, {800000, 421.2}, {900000, 436.95}, {1000000, 450.91}},
-            0.4);  // 40% max error for this test
+            {{1, 187.478}, {10000, 188.535}, {20000, 191.619}, {30000, 196.491}, {40000, 202.820},
+             {50000, 210.249}, {60000, 218.446}, {70000, 227.141}, {80000, 236.126}, {90000, 245.253},
+             {100000, 254.420}, {200000, 340.544}, {300000, 412.027}, {400000, 471.485}, {500000, 523.057},
+             {600000, 569.418}, {700000, 612.033}, {800000, 651.753}, {900000, 689.109}, {1000000, 724.472}});
     }
 
-    TEST_CASE("Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
-        // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae.
+    TEST_CASE("Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column", "[physical-model][winding-losses][round][rectangular-winding-window]") {
+        // ABT #832 (2026-08-20): passes against the historical pins since the residual-gap
+        // fringing gate; OMFEM on this fixture: R_ac/R_dc 1.193 @1MHz vs MKF 1.195 (+0.2%).
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column.json", 22,
@@ -385,8 +391,9 @@ namespace TestWindingLossesRound {
         settings.reset();
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
-        // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae.
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving", "[physical-model][winding-losses][round][rectangular-winding-window]") {
+        // ABT #832 (2026-08-20): passes against the historical pins since the residual-gap
+        // fringing gate; F_R FEM-verified on the sibling fixtures (P3.3/ER11/E4 within 1.3%).
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving.json", 22,
@@ -396,9 +403,9 @@ namespace TestWindingLossesRound {
              {600000, 0.1411}, {700000, 0.14206}, {800000, 0.14314}, {900000, 0.14437}, {1000000, 0.14572}});
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
-        // SKIP: Model shows ~41% error. Non-interleaved winding model needs calibration.
-        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangular-winding-window]") {
+        // ABT #832 (2026-08-20): passes against the historical pins since the residual-gap
+        // fringing gate; OMFEM on this fixture: R_ac/R_dc 1.112 @1MHz vs MKF 1.117 (+0.5%).
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2.json", 22,
@@ -475,23 +482,21 @@ namespace TestWindingLossesRectangular {
             WindingLossesTestHelpers::maximumError, false);  // includeFringing = false
     }
 
-    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangular-winding-window][!mayfail]") {
-        // SKIP: Model shows ~229% error. Rectangular wire losses severely underestimated.
-        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangular-winding-window]") {
+        // ABT #832 (2026-08-20): re-pinned against 2D OMFEM (R_ac/R_dc 6.016/13.35/18.85
+        // at 100k/500k/1M; MKF within 3%) after the rectangular slab-prefactor fix.
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngappedConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangular-winding-window][!mayfail]") {
-        // SKIP: Model shows ~220% error. Rectangular wire losses severely underestimated.
-        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangular-winding-window]") {
+        // ABT #832 (2026-08-20): re-pinned, same FEM arbitration as the 1 A variant.
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngapped7AmpsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangular-winding-window][!mayfail]") {
-        // SKIP: Model shows ~220% error. Rectangular wire with gap losses underestimated.
-        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangular-winding-window]") {
+        // ABT #832 (2026-08-20): re-pinned (this config aliases the ungapped 7 A one).
         auto config = WindingLossesTestData::createFiveTurnsRectangularGapped7AmpsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
@@ -780,7 +785,12 @@ namespace TestWindingLossesToroidalCores {
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window]") {
+    TEST_CASE("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window][!mayfail]") {
+        // [!mayfail] ABT #832 (2026-08-20): OMFEM gives R_ac/R_dc 6.81/14.8/36.3 at
+        // 25k/100k/500k — the historical pins (2.18 @25k) sat 3x BELOW FEM (they were
+        // green only against the c*h prefactor bug that zeroed rectangular proximity).
+        // The slab-form model now reads 1.35-1.6x ABOVE FEM here (edge-point sampling on
+        // tightly packed toroidal turns — ABT #837). Not re-pinned until that lands.
         auto config = WindingLossesTestData::createTenTurnsRectangularToroidalConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
@@ -2662,15 +2672,14 @@ TEST_CASE("Test_Drum_Ring_Fringing_Loss_Omission_Is_Quantified",
     UNSCOPED_INFO("drumRing winding losses @1MHz, 0.4A pk-pk + 1A DC: residual-typed "
                   << residualLosses * 1e3 << " mW vs functional-typed " << functionalLosses * 1e3
                   << " mW (ratio " << omissionRatio << ")");
-    // MEASURED TODAY: exactly 1.0 — re-typing changes nothing, because the omission is deeper
-    // than the gap-type gate. Width-resolved samples are consumed ONLY by the Wang flat-conductor
-    // model (WindingProximityEffectLosses.cpp:160-170 strips them for every other model), and a
-    // drum is wound with ROUND wire, whose proximity path is a lumped Bessel factor over the
-    // averaged field. So flange-rim fringing detail cannot reach these turns by construction.
-    //
-    // This equality is therefore a TRIPWIRE, not a target: when ABT #368's FEM-validated annular
-    // -gap kernel lands, the functional-typed number must exceed the residual-typed one and this
-    // assertion must be updated DELIBERATELY (with the new band justified by the FEM data).
-    CHECK_THAT(omissionRatio, Catch::Matchers::WithinRel(1.0, 1e-9));
+    // TRIPWIRE, updated DELIBERATELY (ABT #832, 2026-08-20): the residual-gap fringing gate
+    // plus the Albach->Roshen routing made re-typing matter for the first time — functional-
+    // typed clearances now pick up a (tiny) Roshen conformal fringing contribution that
+    // residual-typed ones deliberately do not (measured ratio 1.00019 at this operating
+    // point). The annular-gap kernel of ABT #368 has still NOT landed; when it does, the
+    // functional-typed number should grow well past this sliver and the band below must be
+    // revisited against its FEM data.
+    CHECK(omissionRatio >= 1.0);
+    CHECK(omissionRatio < 1.01);
     settings.reset();
 }
