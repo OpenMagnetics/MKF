@@ -838,7 +838,7 @@ double WindingSkinEffectLossesFerreiraModel::calculate_turn_losses(Wire wire, do
  * @param currentRms RMS current for resistance calculation
  * @return Turn losses including skin effect [W]
  */
-double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[maybe_unused]] double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
+double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, double currentRms) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double b, a;
 
@@ -849,14 +849,23 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[may
         a = aPrima * b / bPrima;
     }
     else if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
-        b = resolve_conducting_diameter(wire) / 2;
-        a = resolve_conducting_diameter(wire) / 2;
+        // ABT #837: resolve ONCE. These were two separate calls, and they are not guaranteed to
+        // return bit-identical results — a 1-ULP difference made b*b - a*a very slightly NEGATIVE
+        // for a circle, whose eccentricity is exactly zero, so the sqrt below returned -NaN. The
+        // old `(turnLosses > 0) ? turnLosses : 0.0` tail then reported that as ZERO skin loss
+        // (NaN > 0 is false), which is how a round wire silently lost its entire skin term.
+        const double conductingRadius = resolve_conducting_diameter(wire) / 2;
+        b = conductingRadius;
+        a = conductingRadius;
     }
     else {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
-    double c = sqrt(pow(b, 2) - pow(a, 2));
+    // b >= a by construction in BOTH branches above (round: equal; flat: a = b*min/max <= b), so a
+    // negative radicand is representation noise, never physics. Clamping it is not a fallback —
+    // the true value is zero — but letting it reach sqrt() produced a NaN that propagated as loss.
+    double c = sqrt(std::max(0.0, pow(b, 2) - pow(a, 2)));
     auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
@@ -866,7 +875,45 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[may
     // P_skin = Rac * Irms^2 - Rdc * Irms^2 = (Rac - Rdc) * Irms^2
     // Since dcLossTurn = Rdc * Irms^2, and Rac * Irms^2 = acResistance * currentRms^2:
     auto turnLosses = acResistance * pow(currentRms, 2) - dcLossTurn;
-    return (turnLosses > 0) ? turnLosses : 0.0;
+
+    // ABT #837: the old `(turnLosses > 0) ? turnLosses : 0.0` tail also swallowed NaN, because
+    // NaN > 0 is false — so a non-finite input was reported as "no skin loss at all". Name
+    // whichever input is bad instead of propagating it (or, worse, zeroing it).
+    if (!std::isfinite(turnLosses)) {
+        throw NaNResultException(
+            "Lotfi skin-effect model produced a non-finite result at " + std::to_string(frequency) +
+            " Hz: acResistance=" + std::to_string(acResistance) +
+            ", currentRms=" + std::to_string(currentRms) +
+            ", dcLossTurn=" + std::to_string(dcLossTurn) +
+            ", skinDepth=" + std::to_string(skinDepth) +
+            ", b=" + std::to_string(b) + ", a=" + std::to_string(a) +
+            ". This model is the only skin model that consumes currentRms, so a non-finite value "
+            "there is invisible to every other model and was previously reported as zero loss.");
+    }
+
+    // ABT #837: this used to end `return (turnLosses > 0) ? turnLosses : 0.0;`, which silently
+    // reported ZERO skin loss over most of the useful frequency range. Lotfi's expression is a
+    // high-frequency SURFACE-IMPEDANCE form: it has no DC limit (as f -> 0 it tends to 0 instead
+    // of to R_dc), so it only exceeds R_dc above roughly a/delta ~ 2 — about 195 kHz for a
+    // 0.71 mm round wire. Below that the subtraction is negative and the clamp turned the
+    // model's own out-of-range failure into a confident "no skin loss at all", which is both a
+    // silent fallback and the most dangerous possible answer.
+    //
+    // Refuse instead, naming the bound — the same treatment the Lammeraner proximity model gets
+    // for its own (d/delta < 1) validity limit. NOTE the wording: the model-sweep tests classify a
+    // refusal as "declined, not a defect" by matching phrases including "only valid for"
+    // (TestWindingLosses.cpp, ABT #376/#116), so a validity refusal must SAY "only valid for" or
+    // it is counted as a crash. Keep that phrase if you reword this.
+    if (turnLosses <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Lotfi skin-effect model is only valid for high frequencies: it is a surface-impedance "
+            "approximation with no DC limit, and at " + std::to_string(frequency) + " Hz it "
+            "predicts an AC resistance BELOW the DC resistance for this conductor (skin depth " +
+            std::to_string(skinDepth) + " m), so it has no valid answer here. Use a model with a "
+            "correct DC limit (ALBACH, DIMITRAKAKIS, MUEHLETHALER or HOLGUIN evaluate the exact "
+            "Bessel solution).");
+    }
+    return turnLosses;
 }
 
 

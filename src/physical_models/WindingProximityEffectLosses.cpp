@@ -1258,18 +1258,39 @@ double WindingProximityEffectLossesWojdaModel::calculate_proximity_factor(Wire w
         factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3) * bw
                / (24.0 * resistivity);
     }
-    else if (wt == WireType::ROUND) {
+    else if (wt == WireType::ROUND || wt == WireType::LITZ) {
         // Eq. 70: R_pe = ηb²·π²·μ₀²·ω²·Nl²·lT·d² / (576·ρ)
         // Per-conductor per-metre, single layer (Nl=1):
         //   factor = π·μ₀²·ω²·d⁴ / (128·ρ)  (consistent with Sullivan SFD at low
         //   freq, which matches the exact LF cylinder result — π² was π too high)
-        double d = resolve_dimensional_values(wire.get_conducting_diameter().value());
-        factor = std::numbers::pi * std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(d, 4)
-               / (128.0 * resistivity);
+        double d;
+        if (wt == WireType::ROUND) {
+            d = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        }
+        else {
+            auto strand = wire.resolve_strand();
+            d = resolve_dimensional_values(strand.get_conducting_diameter());
+        }
+
+    // ABT #837: the SFD form is a LOW-FREQUENCY asymptote — it grows as omega^2 forever, while
+    // true proximity loss saturates towards sqrt(f) once the field stops penetrating. Outside
+    // d << delta the over-prediction runs away as (r/delta)^3: ~25% at r/delta = 1, but 119x by
+    // r/delta ~ 7.6 (d = 1 mm at 1 MHz), which the model used to report silently. Refuse beyond
+    // the same r/delta <= 1 bound the Lammeraner proximity model uses, and say "only valid for"
+    // so the model sweeps record it as a declined combination rather than a crash
+    // (TestWindingLosses.cpp, ABT #376/#116).
+    {
+        const double skinDepthForBound = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+        const double normalisedRadius = (d / 2) / skinDepthForBound;
+        if (normalisedRadius > 1.0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Wojda proximity model is only valid for low frequencies where the conductor is "
+                "small against the skin depth (radius/skin_depth <= 1); here it is " +
+                std::to_string(normalisedRadius) + ", where this squared-field-derivative form "
+                "over-predicts by roughly (radius/skin_depth)^3. Use FERREIRA or ROSSMANITH, which "
+                "evaluate the exact Kelvin-function factor at any frequency.");
+        }
     }
-    else if (wt == WireType::LITZ) {
-        auto strand = wire.resolve_strand();
-        double d = resolve_dimensional_values(strand.get_conducting_diameter());
         factor = std::numbers::pi * std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(d, 4)
                / (128.0 * resistivity);
     }
@@ -1328,6 +1349,26 @@ double WindingProximityEffectLossesSullivanModel::calculate_proximity_factor(Wir
             "Sullivan SFD model only supports ROUND and LITZ wire");
     }
 
+
+    // ABT #837: the SFD form is a LOW-FREQUENCY asymptote — it grows as omega^2 forever, while
+    // true proximity loss saturates towards sqrt(f) once the field stops penetrating. Outside
+    // d << delta the over-prediction runs away as (r/delta)^3: ~25% at r/delta = 1, but 119x by
+    // r/delta ~ 7.6 (d = 1 mm at 1 MHz), which the model used to report silently. Refuse beyond
+    // the same r/delta <= 1 bound the Lammeraner proximity model uses, and say "only valid for"
+    // so the model sweeps record it as a declined combination rather than a crash
+    // (TestWindingLosses.cpp, ABT #376/#116).
+    {
+        const double skinDepthForBound = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+        const double normalisedRadius = (d / 2) / skinDepthForBound;
+        if (normalisedRadius > 1.0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Sullivan SFD proximity model is only valid for low frequencies where the conductor is "
+                "small against the skin depth (radius/skin_depth <= 1); here it is " +
+                std::to_string(normalisedRadius) + ", where this squared-field-derivative form "
+                "over-predicts by roughly (radius/skin_depth)^3. Use FERREIRA or ROSSMANITH, which "
+                "evaluate the exact Kelvin-function factor at any frequency.");
+        }
+    }
     // Appendix A, Eq. (1): P_inst/l = (π·d⁴)/(128·ρ) · |dB/dt|²
     // For sinusoidal B=μ₀·H·sin(ωt): <|dB/dt|²> = μ₀²·ω²·H²_rms
     // → factor [Ω·m] = π·μ₀²·ω²·d⁴ / (128·ρ)
