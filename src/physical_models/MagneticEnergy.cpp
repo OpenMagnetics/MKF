@@ -187,7 +187,16 @@ DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(Inputs
             operatingPointPeak = magnetizingCurrent.get_processed()->get_peak().value();
         }
         else if (magnetizingCurrent.get_waveform() && !magnetizingCurrent.get_waveform()->get_data().empty()) {
-            const auto& data = magnetizingCurrent.get_waveform()->get_data();
+            // get_waveform() returns std::optional<Waveform> BY VALUE, so
+            // `get_waveform()->get_data()` hands back a reference INTO A TEMPORARY that dies at
+            // the end of that full expression. Binding `const auto& data` to it read freed
+            // memory: undefined behaviour, and it behaved differently per optimisation level —
+            // the peak came out ~3.3e6 A under the suite's -O3 -march=native build (a required
+            // energy of 5.5e8 J, and an `inf` once the garbage was squared) while a -O2
+            // standalone driver of the identical sequence returned the correct 5 A. Bind the
+            // waveform to a named local first (repo memory: mas-optional-value-dangling-ref).
+            const auto magnetizingCurrentWaveform = magnetizingCurrent.get_waveform().value();
+            const auto& data = magnetizingCurrentWaveform.get_data();
             operatingPointPeak = std::max(*std::max_element(data.begin(), data.end()),
                                           -*std::min_element(data.begin(), data.end()));
         }

@@ -1183,6 +1183,16 @@ namespace {
     }
 
     TEST_CASE("Test_Simulator_Web_1", "[processor][magnetic-simulator][bug]") {
+    // ABT #840: the captured payload carried MORE excitations than the magnetic has windings —
+    // op0 held 12 (resp. 6) for a 2-winding magnetic, the surplus being duplicate,
+    // under-specified copies (waveform + a partial processed block, no peak/rms/harmonics),
+    // and in the web_1 case at the WRONG frequency for an operating point named "25kHz".
+    // MKF never read them: every consumer indexes excitationsPerWinding[windingIndex] for
+    // windingIndex < numberWindings, so the surplus was dead weight the old code silently
+    // ignored. The 0d388fa6 guard now refuses it, correctly — an operating point that supplies
+    // an ambiguous number of excitations cannot be simulated without guessing which ones count.
+    // The fixtures are trimmed to the excitations MKF actually consumed, so these repros are
+    // byte-for-byte the same simulation they always were; only the ignored padding is gone.
 
         auto json_path_1095 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_simulator_web_1_1095.json");
         std::ifstream json_file_1095(json_path_1095);
@@ -1200,6 +1210,16 @@ namespace {
     }
 
     TEST_CASE("Test_Simulator_Web_2", "[processor][magnetic-simulator][bug]") {
+    // ABT #840: the captured payload carried MORE excitations than the magnetic has windings —
+    // op0 held 12 (resp. 6) for a 2-winding magnetic, the surplus being duplicate,
+    // under-specified copies (waveform + a partial processed block, no peak/rms/harmonics),
+    // and in the web_1 case at the WRONG frequency for an operating point named "25kHz".
+    // MKF never read them: every consumer indexes excitationsPerWinding[windingIndex] for
+    // windingIndex < numberWindings, so the surplus was dead weight the old code silently
+    // ignored. The 0d388fa6 guard now refuses it, correctly — an operating point that supplies
+    // an ambiguous number of excitations cannot be simulated without guessing which ones count.
+    // The fixtures are trimmed to the excitations MKF actually consumed, so these repros are
+    // byte-for-byte the same simulation they always were; only the ignored padding is gone.
 
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_contiguous.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
