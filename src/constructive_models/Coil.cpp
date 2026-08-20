@@ -2999,6 +2999,179 @@ void Coil::align_blocked_layer_turns() {
             }
         }
     }
+    // LINK-PITCH COMPENSATION (ABT #831/#839). A radial layer link is the steepest run in its
+    // departure layer: it leaves the layer's last station and settles on the ADJACENT layer's
+    // corresponding station, so its tangent is a RESIDUAL between the two layers' grids and can
+    // only be measured here, on the settled layout (measuring it mid-wind reads dragbacks and the
+    // steep final landing as layer transitions and asks for millimetre stations -- tried and
+    // reverted). Parallel siblings' links leave stations one layer pitch apart and descend at
+    // per-lane tangents; two inclined runs at vertical spacing s pass only ~s*cos(alpha) apart,
+    // so a departure spacing compensated for the WRAP's advance (tan 0.03 on 14_dab) is 5.8 um
+    // short against links at tan 0.17. Same law helical_stacking_pitch applies to wraps; the
+    // spacing that funds it here is the DEPARTING BUNDLE's, so only that bundle is widened:
+    // pinned at its window-edge station and spread inward, where the fence-post gap is. Iterated
+    // on the MEASURED link segments (widening the departure spacing also shallows every tangent,
+    // so the fixpoint converges from both sides); layers whose gap below cannot fund the widening
+    // are left alone -- the certified gate keeps the final word.
+    if (settings.get_coil_use_real_winding_geometry() && !std::getenv("MKF_NO_LINK_PITCH")) {
+        auto segDist2 = [](double ax0, double ay0, double ax1, double ay1,
+                           double bx0, double by0, double bx1, double by1) {
+            auto ptSeg = [](double px, double py, double sx0, double sy0, double sx1,
+                            double sy1) {
+                const double vx = sx1 - sx0, vy = sy1 - sy0;
+                const double l2 = vx * vx + vy * vy;
+                double t = l2 > 0.0 ? ((px - sx0) * vx + (py - sy0) * vy) / l2 : 0.0;
+                t = std::clamp(t, 0.0, 1.0);
+                return std::hypot(px - (sx0 + vx * t), py - (sy0 + vy * t));
+            };
+            return std::min(std::min(ptSeg(ax0, ay0, bx0, by0, bx1, by1),
+                                     ptSeg(ax1, ay1, bx0, by0, bx1, by1)),
+                            std::min(ptSeg(bx0, by0, ax0, ay0, ax1, ay1),
+                                     ptSeg(bx1, by1, ax0, ay0, ax1, ay1)));
+        };
+        struct LinkRef {
+            size_t depTurn, arrTurn;   // indices into `turns`
+        };
+        const bool linkDiag = std::getenv("MKF_PITCH_DIAG") != nullptr;
+        for (int pass = 0; pass < 16; ++pass) {
+            // The links, freshly measured from the CURRENT turn coordinates each pass.
+            std::map<std::pair<std::string, std::string>, std::vector<LinkRef>> linksByLayerPair;
+            for (const auto& [conductorKey, sequence] : turnsByConductor) {
+                const size_t windingIndex = get_winding_index_by_name(conductorKey.first);
+                if (wires[windingIndex].get_type() != WireType::ROUND &&
+                    wires[windingIndex].get_type() != WireType::LITZ) {
+                    continue;
+                }
+                const double od = wires[windingIndex].get_maximum_outer_height();
+                const int64_t nParallels = get_number_parallels(windingIndex);
+                for (size_t s2 = 0; s2 + 1 < sequence.size(); ++s2) {
+                    const Turn& a = turns[sequence[s2]];
+                    const Turn& b = turns[sequence[s2 + 1]];
+                    if (sequence[s2 + 1] == sequence.back() && s2 + 2 == sequence.size() &&
+                        b.get_layer() && _steepExitLandingByConductor.count(conductorKey)) {
+                        continue;   // the steep final landing has its own spacing law
+                    }
+                    if (!a.get_layer() || !b.get_layer() ||
+                        a.get_layer().value() == b.get_layer().value()) {
+                        continue;
+                    }
+                    if (a.get_section() != b.get_section()) {
+                        continue;   // inter-section connections are band-routed, not links
+                    }
+                    const double dx = std::abs(b.get_coordinates()[0] - a.get_coordinates()[0]);
+                    const double dy = std::abs(b.get_coordinates()[1] - a.get_coordinates()[1]);
+                    if (dx <= 1e-12 || dy > dx + 2.0 * od * double(std::max<int64_t>(1, nParallels))) {
+                        continue;   // a Z dragback, not a link
+                    }
+                    linksByLayerPair[{a.get_layer().value(), b.get_layer().value()}]
+                        .push_back({sequence[s2], sequence[s2 + 1]});
+                }
+            }
+            bool widened = false;
+            for (auto& [layerPair, links] : linksByLayerPair) {
+                if (links.size() < 2) {
+                    continue;
+                }
+                const size_t windingIndex =
+                    get_winding_index_by_name(turns[links.front().depTurn].get_winding());
+                const double od = wires[windingIndex].get_maximum_outer_height();
+                // Departure layer must be OVERLAPPING (axial stations) -- the spacing being
+                // funded is along y.
+                const Layer* depLayer = nullptr;
+                for (const auto& layer : layers) {
+                    if (layer.get_name() == layerPair.first) {
+                        depLayer = &layer;
+                        break;
+                    }
+                }
+                if (depLayer == nullptr ||
+                    depLayer->get_orientation() != WindingOrientation::OVERLAPPING) {
+                    continue;
+                }
+                std::sort(links.begin(), links.end(), [&](const LinkRef& u, const LinkRef& v) {
+                    return turns[u.depTurn].get_coordinates()[1] <
+                           turns[v.depTurn].get_coordinates()[1];
+                });
+                // Worst sibling-pair deficit against the coated OD, on the drawn diagonals.
+                double worstRatio = 1.0;
+                for (size_t k = 0; k + 1 < links.size(); ++k) {
+                    const auto& ta = turns[links[k].depTurn];
+                    const auto& tb = turns[links[k].arrTurn];
+                    const auto& tc = turns[links[k + 1].depTurn];
+                    const auto& td = turns[links[k + 1].arrTurn];
+                    const double d = segDist2(
+                        ta.get_coordinates()[0], ta.get_coordinates()[1],
+                        tb.get_coordinates()[0], tb.get_coordinates()[1],
+                        tc.get_coordinates()[0], tc.get_coordinates()[1],
+                        td.get_coordinates()[0], td.get_coordinates()[1]);
+                    if (d > 1e-12 && d + 1e-9 < od) {
+                        worstRatio = std::max(worstRatio, od / d);
+                    }
+                }
+                if (worstRatio <= 1.0) {
+                    continue;
+                }
+                // Widen the departing bundle's spacing by the measured deficit, on the nm grid.
+                std::vector<double> stations;
+                for (const auto& lk : links) {
+                    stations.push_back(turns[lk.depTurn].get_coordinates()[1]);
+                }
+                const double spacing = (stations.back() - stations.front()) /
+                                       double(stations.size() - 1);
+                const double newSpacing =
+                    std::ceil(spacing * worstRatio * 1e9 - 1e-6) / 1e9;
+                // Pin the station nearest a window edge; spread the others inward, into the
+                // fence-post gap. Room check: the moved end must keep one layer pitch to the
+                // nearest untouched station of the same layer (or the window edge).
+                const double windowHigh = windowCenterPerAxis[1] + windowHalfSizePerAxis[1];
+                const double windowLow = windowCenterPerAxis[1] - windowHalfSizePerAxis[1];
+                const bool pinTop = (windowHigh - stations.back()) <= (stations.front() - windowLow);
+                const double growth = (newSpacing - spacing) * double(stations.size() - 1);
+                const double movedEnd = pinTop ? stations.front() - growth : stations.back() + growth;
+                double nearestBeyond = pinTop ? windowLow + od / 2 : windowHigh - od / 2;
+                for (const auto& turn : turns) {
+                    if (!turn.get_layer() || turn.get_layer().value() != layerPair.first) {
+                        continue;
+                    }
+                    const double y = turn.get_coordinates()[1];
+                    if (pinTop && y < stations.front() - 1e-12) {
+                        nearestBeyond = std::max(nearestBeyond, y + od);
+                    }
+                    if (!pinTop && y > stations.back() + 1e-12) {
+                        nearestBeyond = std::min(nearestBeyond, y - od);
+                    }
+                }
+                if ((pinTop && movedEnd < nearestBeyond - 1e-12) ||
+                    (!pinTop && movedEnd > nearestBeyond + 1e-12)) {
+                    if (linkDiag) {
+                        std::cerr << "[link-pitch] " << layerPair.first << " -> "
+                                  << layerPair.second << ": needs spacing " << newSpacing
+                                  << " but no room (" << movedEnd << " vs " << nearestBeyond
+                                  << "), leaving to the gate\n";
+                    }
+                    continue;
+                }
+                const double pinned = pinTop ? stations.back() : stations.front();
+                for (size_t k = 0; k < links.size(); ++k) {
+                    auto coords = turns[links[k].depTurn].get_coordinates();
+                    const double steps =
+                        pinTop ? double(links.size() - 1 - k) : double(k);
+                    coords[1] = roundFloat(pinned + (pinTop ? -1.0 : 1.0) * steps * newSpacing, 9);
+                    turns[links[k].depTurn].set_coordinates(coords);
+                }
+                if (linkDiag) {
+                    std::cerr << "[link-pitch] pass=" << pass << " " << layerPair.first << " -> "
+                              << layerPair.second << ": departure spacing " << spacing << " -> "
+                              << newSpacing << " (worst pair " << od / worstRatio << " vs od "
+                              << od << ")\n";
+                }
+                widened = true;
+            }
+            if (!widened) {
+                break;
+            }
+        }
+    }
     set_layers_description(layers);
     set_turns_description(turns);
 
