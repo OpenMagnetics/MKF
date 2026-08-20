@@ -1386,9 +1386,31 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         lead.kind = terminalKind;
         (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
         spaces.push_back(lead);
+        // ABT #830: WHERE THE COPPER IS DRAWN MUST BE WHERE THE ROW RESERVED IT.
+        //
+        // The route is turn -> row -> border, and the stub between the first two is only DRAWN
+        // when it exceeds half a wire (just above). Below that there is no stub rectangle, and no
+        // consumer can build one either -- MVB++ absorbs any waypoint closer than a wire radius
+        // to its neighbour -- so handing over a turn-height start point put the emitted run at
+        // the TURN's height while this lead's reservation, and every row stacked under it, sat at
+        // edgeY. On 24_margin_interleaved_flyback the two disagreed by 5 nm and the Secondary's
+        // row landed exactly that far inside the Primary's lead, on all three of its lead pairs.
+        //
+        // So when the stub is not drawable the route starts AT THE ROW: the run is then exactly
+        // the band that was reserved for it, and the sub-bend offset to the turn is left to the
+        // 3D assembler, which bridges piece endpoints anyway. Nothing moves -- not the row, not
+        // the blocking, not a turn -- only the claim about where this lead's copper lies.
+        const bool stubIsDrawable = std::abs(edgeY - turnY) > wireOuterHeight / 2;
+        std::vector<std::vector<double>> terminalRoute;
+        if (stubIsDrawable) {
+            terminalRoute = {{turnX, turnY}, {turnX, edgeY},
+                             {windowOuterX + wireOuterWidth / 2, edgeY}};
+        }
+        else {
+            terminalRoute = {{turnX, edgeY}, {windowOuterX + wireOuterWidth / 2, edgeY}};
+        }
         addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
-                         {{turnX, turnY}, {turnX, edgeY},
-                          {windowOuterX + wireOuterWidth / 2, edgeY}});
+                         std::move(terminalRoute));
     };
 
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -2736,9 +2758,14 @@ void Coil::align_blocked_layer_turns() {
         else if (packFromArrival) {
             double firstCentre = arrivalAtHighSide ? spanHigh - wirePitch / 2
                                                    : spanLow + wirePitch / 2;
-            double step = arrivalAtHighSide ? -wirePitch : wirePitch;
+            // ABT #830/#831 (D1): step on the nanometre GRID (see the lone-bundle branch below).
+            // Rounding each station on its own gives back up to a nanometre of the very spacing
+            // the pitch was compensated to hold.
+            const double gridStep = (arrivalAtHighSide ? -1.0 : 1.0)
+                                    * (std::ceil(wirePitch * 1e9 - 1e-6) / 1e9);
+            const double firstOnGrid = roundFloat(firstCentre, 9);
             for (size_t k = 0; k < numberTurnsInLayer; ++k) {
-                stations.push_back(roundFloat(firstCentre + double(k) * step, 9));
+                stations.push_back(firstOnGrid + double(k) * gridStep);
             }
             // The assignment below walks layerTurns sorted along the axis, so hand it ascending
             // stations; packing from the high side produces them in descending order.
@@ -2756,8 +2783,18 @@ void Coil::align_blocked_layer_turns() {
             double firstCentre = packAgainstHighSide
                 ? spanHigh - double(numberTurnsInLayer) * wirePitch + wirePitch / 2
                 : spanLow + wirePitch / 2;
+            // ABT #830/#831 (D1): stations are laid CUMULATIVELY on the nanometre grid, not
+            // rounded one by one. Rounding each station independently lets two neighbours round
+            // TOWARDS each other -- up to a nanometre of the spacing the pitch just computed,
+            // which is precisely the sub-nanometre class the certified gate keeps reporting
+            // (0.53 nm on 22_margin_tape's face crossings, 0.30 nm on 24's siblings). The pitch
+            // is ceiled to the grid, so stepping by it from a grid-aligned first station keeps
+            // every station on the grid AND every gap at the full pitch: the compensation the
+            // pitch pays for is not given back by the rounding that follows it.
+            const double gridPitch = std::ceil(wirePitch * 1e9 - 1e-6) / 1e9;
+            const double firstOnGrid = roundFloat(firstCentre, 9);
             for (size_t k = 0; k < numberTurnsInLayer; ++k) {
-                stations.push_back(roundFloat(firstCentre + double(k) * wirePitch, 9));
+                stations.push_back(firstOnGrid + double(k) * gridPitch);
             }
         }
         else {
