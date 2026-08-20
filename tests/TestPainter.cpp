@@ -4895,7 +4895,14 @@ namespace {
 namespace {
     TEST_CASE("Tmp_Abt685_Fixture_Svg", "[tmpsvg]") {
         const char* list = std::getenv("MKF_SVG_FIXTURES");
-        REQUIRE(list != nullptr);
+        // ABT #833: this is a MANUAL export tool, not an assertion about the product — it renders
+        // whatever designs MKF_SVG_FIXTURES names so a human can look at them. With no list there
+        // is nothing to render, and REQUIRE()ing the variable made an unset environment (i.e. every
+        // ordinary suite run) a hard FAILURE, which is why it shows up red in the #833 sweep next
+        // to genuine geometry defects. Skip instead: absent input is "not asked for", not "broken".
+        if (list == nullptr) {
+            SKIP("set MKF_SVG_FIXTURES=<comma-separated MAS/examples paths> to export review SVGs");
+        }
         settings.reset();
         settings.set_coil_use_real_winding_geometry(true);
         // ABT #685 (Alf, 2026-08-16): both fit relaxations ON for this review test — coating

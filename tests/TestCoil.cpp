@@ -12370,6 +12370,15 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
                 firstTurnInLayer[layerKey] = turn;
             }
             lastTurnInLayer[layerKey] = turn;
+            // ABT #833: this counter was DECLARED AND NEVER FILLED. Every lookup below therefore
+            // read 0, realTurnsIn() returned 0, and the ABT #685 "a layer holding a single turn
+            // connects as U" override fired on EVERY layer pair -- which forced every adjacent
+            // -layer Z return down the orthogonal-L branch and left this helper's own Z-diagonal
+            // branch unreachable. The replay then charged |dx| + |dy| where the winder draws the
+            // centre-to-centre dragback hypot(dx, dy), over-counting each dragback by the corner
+            // it does not cut (0.4932 mm on the PQ 28/20 fixture -> the ~2.6% shortfall the whole
+            // ticket was about). Filling it restores the override to the case it was written for.
+            ++stationsInLayer[layerKey];
         }
     }
 
@@ -12503,7 +12512,24 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
                 double y1 = vy(lastTurnInLayer.at(exitKey).get_coordinates());
                 double x2 = vx(firstTurnInLayer.at(entryKey).get_coordinates());
                 double y2 = vy(firstTurnInLayer.at(entryKey).get_coordinates());
-                if (windingOrder == WindingOrder::Z && intervening.empty()) {
+                // ABT #685 FINAL LANDING, replayed (ABT #833): when the destination layer holds
+                // exactly ONE turn of this parallel and that turn is the conductor's LAST, the wire
+                // is not returning anywhere -- it is finishing. One revolution carries it across the
+                // window, so the transition is a spiral turn of full-height pitch, drawn (and
+                // charged) as the straight centre-to-centre hop, exactly as a dragback is. Without
+                // this case the replay billed it as a U turnaround's orthogonal L, which is both a
+                // different path and a different length.
+                const bool destHoldsOneTurn =
+                    firstTurnInLayer.count(entryKey) && lastTurnInLayer.count(entryKey) &&
+                    firstTurnInLayer.at(entryKey).get_name() == lastTurnInLayer.at(entryKey).get_name();
+                const auto conductorKey = std::make_pair(windingName, parallel);
+                const bool destIsConductorExit =
+                    exitTurn.count(conductorKey) &&
+                    exitTurn.at(conductorKey).get_name() == firstTurnInLayer.at(entryKey).get_name();
+                if (intervening.empty() && destHoldsOneTurn && destIsConductorExit) {
+                    expected[{windingName, parallel}] += piece("final-landing", windingName, std::hypot(x2 - x1, y2 - y1));
+                }
+                else if (windingOrder == WindingOrder::Z && intervening.empty()) {
                     expected[{windingName, parallel}] += piece("diagonal", windingName, std::hypot(x2 - x1, y2 - y1));
                 }
                 else if (!intervening.empty()) {
@@ -12531,8 +12557,15 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
                     // Z returns into same-section U links.
                     const bool sameSection =
                         windingLayers[i].get_section() == windingLayers[i + 1].get_section();
+                    // ABT #833: this mirrors the emitter's guard, so it must read the SAME order the
+                    // emitter reads -- the EFFECTIVE one, after the single-turn-layer downgrade
+                    // above. Reading the raw section order here while selecting the branch with the
+                    // effective order made the two disagree exactly when the downgrade fired: the
+                    // emitter laid a same-section U_TANGENTIAL (one constant-height run, the
+                    // residual height being the destination turn's own helix, not drawn copper)
+                    // while this replay charged that run PLUS a vertical stub nobody draws.
                     bool needVertical = std::abs(y2 - y1) > wireH / 2
-                                        && !(sectionWindingOrder == WindingOrder::U && sameSection);
+                                        && !(windingOrder == WindingOrder::U && sameSection);
                     expected[{windingName, parallel}] += needVertical
                         ? std::abs(x2 - x1) + wireW / 2 : std::abs(x2 - x1);
                     if (needVertical) {
@@ -12987,8 +13020,19 @@ TEST_CASE("Test_Real_Geometry_Toroidal", "[constructive-model][coil][real-geomet
         if (order == WindingOrder::U) rewindAs(coil, order);
         INFO("overlapping " << tag);
         REQUIRE(coil.get_turns_description());
-        // Real winding: one extra crossing per parallel ((40+1)*2).
-        CHECK(coil.get_turns_description().value().size() == expected_stations(coil, "winding 0", 40));
+        // ABT #833: a TOROID gets NO closing station, so expected_stations() -- which encodes the
+        // concentric rule "turns + layers spanned" -- must NOT be used here. Alf, ABT #685
+        // 2026-08-18: "make sure that the N_layer + 1 circles only affect concentric cores, not
+        // toroidals"; a toroid with 9 turns has 9 inner crossings and 8 outer ones, the first and
+        // last inner crossing carrying the terminals. The extra concentric station exists because a
+        // concentric layer's wire must come back to its starting azimuth to close the layer; a
+        // toroid's turn closes through the bore and needs no such station. So the count is exactly
+        // turns x parallels. (The previous expectation, and the stale "(40+1)*2" comment it
+        // replaced, both predate that ruling and asserted phantom stations the winder is right not
+        // to place.)
+        const int64_t toroidalParallels =
+            coil.get_functional_description()[coil.get_winding_index_by_name("winding 0")].get_number_parallels();
+        CHECK(coil.get_turns_description().value().size() == size_t(40 * toroidalParallels));
         CHECK(toroidal_turn_overlaps(coil) == 0);
         CHECK(!coil.get_connection_reserved_spaces().empty());
         CHECK(distinct_parallels_with_terminal_leads(coil, "winding 0") == 2);

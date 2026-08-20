@@ -3120,6 +3120,18 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
     // crossing per parallel) is accepted and the affected pins updated.
     const size_t maximumRespreadsPerRing = 4;
     for (size_t iteration = 0; iteration < maximumIterations; ++iteration) {
+        // ABT #833: measured fresh each pass on the CURRENT geometry. This clear used to sit at
+        // the BOTTOM of the loop body, which silently destroyed the last pass's measurement
+        // whenever the loop ended by exhausting `maximumIterations` — so a ring that never
+        // converged returned an EMPTY deficit map, which the caller cannot tell apart from "the
+        // ring is clear". That is how the section-contiguous toroid shipped two turns inside a
+        // terminal corridor while every diagnostic said the wind was clean: align ran all 24
+        // passes reporting intrusion=1 displaced=1 deficits=1, then wiped the evidence on the way
+        // out, and the caller's blocking fixpoint saw "changed=0" and stopped. Clearing HERE is
+        // the same re-measure semantics for every pass that has a successor, and preserves the
+        // final pass's deficits so an unconverged ring escalates to capacity (the ABT #723
+        // "spill" path) instead of being reported as solved.
+        ringDeficitSlots.clear();
         auto turns = get_turns_description().value();
         auto spaces = get_connection_reserved_spaces();
 
@@ -3454,7 +3466,11 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
         if (!anyIntrusion || !anyDisplacement) {
             break;  // clean, or stuck on capacity (deficits reported to the caller) — either way stop
         }
-        ringDeficitSlots.clear();  // re-measured next pass on the displaced geometry
+        // (ABT #833: the re-measure clear moved to the TOP of the body — see the comment there.)
+    }
+    if (std::getenv("MKF_BLOCKING_DIAG") && !ringDeficitSlots.empty()) {
+        std::cerr << "[align] returning " << ringDeficitSlots.size()
+                  << " unresolved ring deficit(s) for the caller to spill\n";
     }
     return ringDeficitSlots;
 }
@@ -4543,19 +4559,40 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                 bool applyConnectionBlockingBackup = _applyConnectionBlocking;
                 _applyConnectionBlocking = true;   // strict sweep: no pre-blocking fallback
                 generate_toroidal_additional_coordinates();
-                auto turnsBeforeSettle = get_turns_description();
-                align_blocked_ring_turns();
-                bool settleMoved = false;
-                if (get_turns_description() && turnsBeforeSettle) {
-                    const auto& before = turnsBeforeSettle.value();
-                    const auto after = get_turns_description().value();
-                    settleMoved = before.size() != after.size();
-                    for (size_t t = 0; !settleMoved && t < after.size(); ++t) {
-                        settleMoved = std::abs(before[t].get_coordinates()[0] - after[t].get_coordinates()[0]) > 1e-9 ||
-                                      std::abs(before[t].get_coordinates()[1] - after[t].get_coordinates()[1]) > 1e-9;
+                // ABT #833: this used to be a FIXED regen -> displace -> regen sequence, which
+                // has an escape hatch: the trailing regen recomputes the outer crossings (and
+                // with them the lead corridors) from the just-moved stations, and NOTHING
+                // validates that result -- so whenever the settle pass moved anything, the coil
+                // left this function with corridors no displacement pass had ever seen. That is
+                // how the section-contiguous toroid shipped two turns sitting inside a terminal
+                // corridor (turns 3 and 4 at -157.7 deg / -151.3 deg against a lead at
+                // -154.9 deg) while align_blocked_ring_turns itself reported the ring clear: it
+                // was clear, against the PREVIOUS generation of corridors.
+                //
+                // Iterate instead, to the same kind of fixpoint the helical-pitch passes use
+                // (ABT #831): displace, and regenerate only if that moved something, until a
+                // displacement pass moves nothing -- at which point the stations and the
+                // corridors derived from them are mutually consistent by construction. Bounded,
+                // because a genuinely over-full ring cannot be solved by displacement at all;
+                // it is the capacity-deficit path above (ABT #723 "spill") that fixes those, and
+                // running out of iterations here must not hang the wind.
+                const size_t maximumSettleIterations = 8;
+                for (size_t settleIteration = 0; settleIteration < maximumSettleIterations; ++settleIteration) {
+                    auto turnsBeforeSettle = get_turns_description();
+                    align_blocked_ring_turns();
+                    bool settleMoved = false;
+                    if (get_turns_description() && turnsBeforeSettle) {
+                        const auto& before = turnsBeforeSettle.value();
+                        const auto after = get_turns_description().value();
+                        settleMoved = before.size() != after.size();
+                        for (size_t t = 0; !settleMoved && t < after.size(); ++t) {
+                            settleMoved = std::abs(before[t].get_coordinates()[0] - after[t].get_coordinates()[0]) > 1e-9 ||
+                                          std::abs(before[t].get_coordinates()[1] - after[t].get_coordinates()[1]) > 1e-9;
+                        }
                     }
-                }
-                if (settleMoved) {
+                    if (!settleMoved) {
+                        break;
+                    }
                     generate_toroidal_additional_coordinates();
                 }
                 _applyConnectionBlocking = applyConnectionBlockingBackup;
