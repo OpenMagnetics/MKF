@@ -171,9 +171,20 @@ static std::vector<double> compute_spread_turn_stations(double axisCenter,
     // which is enough to make the margin-tape arithmetic see the turns as overflowing the section.
     // turnIndex / bundleSize is the number of COMPLETED bundles before this turn, i.e. how many
     // inter-bundle gaps precede it; turns inside a bundle share that count and so stay touching.
+    // ABT #830 (Alf, 2026-08-20: "can you just remove that rounding?"). These positions are
+    // INDEX-BASED -- blockLow + i*wireSize + (i/bundle)*gap -- so they carry no accumulated error
+    // for a rounding to clean up, and rounding each one to the nanometre grid on its own is pure
+    // loss: two neighbours round TOWARDS each other and give back up to a nanometre of the
+    // spacing this function just laid. That is the sub-nanometre class MVB++'s certified gate
+    // reports, where pairs one wire OD apart by construction land 999.999 nm of it (22_margin_tape
+    // 18 pairs at 0.53 nm -> 1 at 0.034; 23_llc 16 -> 9; 11_pushpull 7 -> 4).
+    //
+    // The far-edge drift the rounding was added against came from ACCUMULATING (position += step),
+    // which this loop does not do: i*wireSize is exact to a part in 1e16 at these magnitudes, so
+    // the last station lands on the far edge to within a femtometre.
     for (int64_t turnIndex = 0; turnIndex < numberPhysicalTurns; ++turnIndex) {
         double position = blockLow + wireSize / 2 + double(turnIndex) * wireSize + double(turnIndex / bundleSize) * gap;
-        stations.push_back(roundFloat(position, 9));
+        stations.push_back(position);
     }
     return stations;
 }

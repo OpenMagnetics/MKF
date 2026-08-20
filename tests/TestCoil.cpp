@@ -1045,7 +1045,14 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom", 
     REQUIRE_THAT(sectionDimensionsAfterMarginFill[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill[1], 0.0001));
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth, 0.0001));
     REQUIRE_THAT(marginAfterMarginFill[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill[1], 0.0001));
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+    // ABT #830/#831 (2026-08-20, deliberate): >= instead of >. Removing the per-station
+    // nanometre rounding in compute_spread_turn_stations (owner-approved; the positions are
+    // index-based, so the rounding corrected no accumulated error and only gave back up to a
+    // nanometre of laid spacing) revealed that margin-fill does NOT actually enlarge this
+    // fixture's margin — the strict inequality held by exactly the rounding artifact
+    // (0.002 > 0.002 after removal). The fill must still never SHRINK the margin, which is
+    // what >= pins; asserting growth here would re-pin an artifact.
+    REQUIRE(marginAfterMarginFill[0] >= marginAfterMarginNoFill[0]);
     REQUIRE(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -1174,9 +1181,16 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Th
     REQUIRE_THAT(marginAfterMarginFill_0[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_0[1], 0.0001));
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 0.0001));
     REQUIRE_THAT(marginAfterMarginFill_2[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_2[1], 0.0001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
-    REQUIRE(marginAfterMarginFill_2[0] > marginAfterMarginNoFill_2[0]);
+    // ABT #830/#831 (2026-08-20, deliberate): >= instead of >. Removing the per-station
+    // nanometre rounding in compute_spread_turn_stations (owner-approved; the positions are
+    // index-based, so the rounding corrected no accumulated error and only gave back up to a
+    // nanometre of laid spacing) revealed that margin-fill does NOT actually enlarge this
+    // fixture's margin — the strict inequality held by exactly the rounding artifact
+    // (0.002 > 0.002 after removal). The fill must still never SHRINK the margin, which is
+    // what >= pins; asserting growth here would re-pin an artifact.
+    REQUIRE(marginAfterMarginFill_0[0] >= marginAfterMarginNoFill_0[0]);
+    REQUIRE(marginAfterMarginFill_1[0] >= marginAfterMarginNoFill_1[0]);
+    REQUIRE(marginAfterMarginFill_2[0] >= marginAfterMarginNoFill_2[0]);
     REQUIRE(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE_THAT(sectionDimensionsBeforeMargin_1[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill_1[1], 0.0001));
     REQUIRE_THAT(sectionDimensionsBeforeMargin_2[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill_2[1], 0.0001));
@@ -1281,7 +1295,14 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread", 
     REQUIRE_THAT(sectionDimensionsAfterMarginFill[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill[1], 0.0001));
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth, 0.0001));
     REQUIRE_THAT(marginAfterMarginFill[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill[1], 0.0001));
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+    // ABT #830/#831 (2026-08-20, deliberate): >= instead of >. Removing the per-station
+    // nanometre rounding in compute_spread_turn_stations (owner-approved; the positions are
+    // index-based, so the rounding corrected no accumulated error and only gave back up to a
+    // nanometre of laid spacing) revealed that margin-fill does NOT actually enlarge this
+    // fixture's margin — the strict inequality held by exactly the rounding artifact
+    // (0.002 > 0.002 after removal). The fill must still never SHRINK the margin, which is
+    // what >= pins; asserting growth here would re-pin an artifact.
+    REQUIRE(marginAfterMarginFill[0] >= marginAfterMarginNoFill[0]);
     REQUIRE(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -1410,9 +1431,16 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Th
     REQUIRE_THAT(marginAfterMarginFill_0[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_0[1], 0.0001));
     REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
     REQUIRE_THAT(marginAfterMarginFill_2[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_2[1], 0.0001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
-    REQUIRE(marginAfterMarginFill_2[0] > marginAfterMarginNoFill_2[0]);
+    // ABT #830/#831 (2026-08-20, deliberate): >= instead of >. Removing the per-station
+    // nanometre rounding in compute_spread_turn_stations (owner-approved; the positions are
+    // index-based, so the rounding corrected no accumulated error and only gave back up to a
+    // nanometre of laid spacing) revealed that margin-fill does NOT actually enlarge this
+    // fixture's margin — the strict inequality held by exactly the rounding artifact
+    // (0.002 > 0.002 after removal). The fill must still never SHRINK the margin, which is
+    // what >= pins; asserting growth here would re-pin an artifact.
+    REQUIRE(marginAfterMarginFill_0[0] >= marginAfterMarginNoFill_0[0]);
+    REQUIRE(marginAfterMarginFill_1[0] >= marginAfterMarginNoFill_1[0]);
+    REQUIRE(marginAfterMarginFill_2[0] >= marginAfterMarginNoFill_2[0]);
     REQUIRE(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE_THAT(sectionDimensionsBeforeMargin_1[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill_1[1], 0.0001));
     REQUIRE(sectionDimensionsBeforeMargin_2[1] > sectionDimensionsAfterMarginNoFill_2[1]);
