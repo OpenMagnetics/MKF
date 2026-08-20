@@ -94,6 +94,43 @@ class WindingLossesPeec2D {
     size_t minimumCellsWide = 4;
     size_t maximumCellsWide = 48;
 
+    // ABT #837: 2.5D ANGULAR COVERAGE. The image lattice models a window bounded by
+    // high-permeability material on all four sides — true for a pot core, but an E/PQ/ETD
+    // window is OPEN over most of its azimuth: the winding is a full loop and the core
+    // legs sit behind it only for a fraction f of the revolution. Solving the fully-imaged
+    // problem everywhere over-confines the field for those families. The engine therefore
+    // solves TWICE — with images and in open air — and blends the LOSSES,
+    //     P = f * P_covered + (1 - f) * P_open,
+    // which is the same angular-sector average OMFEM applies for its thermal model (its
+    // [coverage] line reports the same quantity, measured by ray-marching the real 3D
+    // solids: 0.522 for PQ 28/20, 1.000 for the P 3.3/2.6 pot core).
+    //
+    // DEFAULT IS 1.0 (fully imaged) — the blend is available but NOT applied unless a
+    // caller asks for it, because measuring it did not support switching it on:
+    //   rect5 (PQ 20/16, 5 wide rect turns)  0.65 -> 0.73 of FEM   better
+    //   foil beside a 1 mm gap (ETD 34)      0.94 -> 0.80 of FEM   WORSE
+    //   12t round (P 3.3/2.6, coverage 1.0)  unchanged at 1.000
+    // The foil result is the tell. OMFEM routes a round-post core WITH a functional gap to
+    // an AXISYMMETRIC solve (MasMesher.cpp: !hasFunctionalGap && nLateral>=2 -> planar),
+    // i.e. a full solid of revolution — its reference has no open sector at all, so
+    // blending toward open air can only move away from it. And the cases where blending
+    // helped (rect5) are routed to PLANAR CARTESIAN, the very frame PEEC already solves in,
+    // where an "open azimuthal sector" has no meaning either. So the rect5 gain is loss
+    // added in the right direction for the wrong reason. Left in, defaulted off, because
+    // the effect is real for a 3D winding and will matter once a reference exists that
+    // resolves it; it must not be tuned against references that cannot see it.
+    //
+    // std::nullopt = 1.0. Set it explicitly (e.g. to estimate_angular_coverage(core), or to
+    // a measured OMFEM [coverage] value) to enable the blend.
+    std::optional<double> angularCoverage;
+
+    // The geometric estimator, exposed for testing. Sums each lateral column's angular
+    // subtense as seen from the central axis; true pot cores (closed shells) are 1.0 by
+    // definition. It is APPROXIMATE — it reads 0.44 where OMFEM's ray march gives 0.52 on
+    // PQ 28/20 — because MKF's column model records a bounding depth, not the real curved
+    // segment. Prefer an explicit angularCoverage where a measured value exists.
+    static double estimate_angular_coverage(const Core& core);
+
   private:
     Diagnostics _diagnostics;
 };

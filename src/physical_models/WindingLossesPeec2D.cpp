@@ -174,6 +174,36 @@ double couplingCoefficient(const Cell& receiver, double srcX, double srcY, doubl
 
 } // namespace
 
+double WindingLossesPeec2D::estimate_angular_coverage(const Core& core) {
+    auto family = core.get_shape_family();
+    // A true pot core is a closed shell: the winding is covered over the whole revolution
+    // (bar the two small lead slots), which is what OMFEM's ray march reports (1.000 on
+    // P 3.3/2.6). MKF's column model cannot express "annular shell" — it records the same
+    // bounding-box lateral a PQ has — so the family is the honest discriminator here.
+    if (family == CoreShapeFamily::P || family == CoreShapeFamily::PM) {
+        return 1.0;
+    }
+    double covered = 0;
+    // get_columns() returns BY VALUE — bind a named local before iterating, or the
+    // range-for holds a dangling reference to a destroyed temporary (repo memory:
+    // mas-optional-value-dangling-ref; it corrupted the heap here, not merely read
+    // garbage).
+    const auto columns = core.get_columns();
+    for (const auto& column : columns) {
+        if (column.get_type() != ColumnType::LATERAL) {
+            continue;
+        }
+        double xCentre = std::abs(column.get_coordinates()[0]);
+        double innerFace = std::max(1e-9, xCentre - column.get_width() / 2);
+        double tangentialHalf = column.get_depth() / 2;
+        covered += 2 * std::atan2(tangentialHalf, innerFace);
+    }
+    if (covered <= 0) {
+        return 1.0;  // no lateral columns recorded: treat as fully covered rather than guess
+    }
+    return std::clamp(covered / (2 * std::numbers::pi), 0.0, 1.0);
+}
+
 WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint,
                                                           double temperature) {
     auto& settings = Settings::GetInstance();
@@ -473,19 +503,46 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
     const double corePermeability = core.get_initial_permeability(temperature);
     WindowFrame frame = select_window_frame(core, turns[0].get_coordinates()[0]);
 
+    // ABT #837: two inductance matrices — the fully-imaged window and the open-air
+    // (image-free) one. See the angularCoverage comment in the header: the losses of the
+    // two solves are blended by the core's angular coverage, because an E/PQ/ETD winding
+    // is only backed by core over a fraction of its revolution.
+    const double coverage = angularCoverage ? std::clamp(angularCoverage.value(), 0.0, 1.0) : 1.0;
+    const bool needsOpenSolve = coverage < 0.999;
+
     Eigen::MatrixXd inductanceMatrix(numberCells, numberCells);
+    Eigen::MatrixXd inductanceMatrixOpen;
+    if (needsOpenSolve) {
+        inductanceMatrixOpen.resize(numberCells, numberCells);
+    }
     for (size_t i = 0; i < numberCells; ++i) {
         for (size_t j = i; j < numberCells; ++j) {
             double value = couplingCoefficient(cells[i], cells[j].x, cells[j].y, cells[j].w, cells[j].h,
                                                frame, mirroringDimension, corePermeability);
             inductanceMatrix(i, j) = value;
             inductanceMatrix(j, i) = value;
+            if (needsOpenSolve) {
+                double bare = (i == j)
+                    ? -(kMu0 / (2 * std::numbers::pi)) * lnGmdSelf(cells[i].w, cells[i].h)
+                    : -(kMu0 / (2 * std::numbers::pi)) * lnGmdMutual(cells[i], cells[j].x, cells[j].y,
+                                                                     cells[j].w, cells[j].h);
+                inductanceMatrixOpen(i, j) = bare;
+                inductanceMatrixOpen(j, i) = bare;
+            }
         }
     }
     // Gap coupling column per gap: -(mu0/2pi) sum_images w * ln r(cell, gap images).
     Eigen::MatrixXd gapCoupling(numberCells, gapConductors.size());
+    Eigen::MatrixXd gapCouplingOpen(numberCells, gapConductors.size());
     for (size_t g = 0; g < gapConductors.size(); ++g) {
         for (size_t i = 0; i < numberCells; ++i) {
+            if (needsOpenSolve) {
+                Cell gapCell;
+                gapCell.x = gapConductors[g].x; gapCell.y = gapConductors[g].y;
+                gapCell.w = gapConductors[g].length / 2; gapCell.h = gapConductors[g].length;
+                gapCouplingOpen(i, g) = -(kMu0 / (2 * std::numbers::pi)) *
+                    lnGmdMutual(cells[i], gapCell.x, gapCell.y, gapCell.w, gapCell.h);
+            }
             // The MMF source carries the PHYSICAL extent of the gap, not a filament.
             // Kovacevic's replacement assumes the gap is small against the winding
             // distance; a foil 1.6 mm from a 1 mm gap violates that, and a 1 um
@@ -575,44 +632,55 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
         }
         double omega = 2 * std::numbers::pi * frequency;
 
-        system.setZero();
-        for (size_t i = 0; i < numberCells; ++i) {
-            for (size_t j = 0; j < numberCells; ++j) {
-                system(i, j) = std::complex<double>(0, omega * inductanceMatrix(i, j));
-            }
-            system(i, i) += cellResistancePerMetre[i];
-            system(i, numberCells + cells[i].conductorIndex) = 1.0;
-        }
-        for (size_t c = 0; c < numberConductors; ++c) {
-            for (size_t i = cellsBeginPerConductor[c]; i < cellsBeginPerConductor[c + 1]; ++i) {
-                system(numberCells + c, i) = 1.0;
-            }
-        }
-
-        rhs.setZero();
-        // Gap MMF drive (fixed-current fictitious conductors).
         double primaryAmplitude = harmonicsPerWinding[0].get_amplitudes()[harmonicIndex];
-        for (size_t g = 0; g < gapConductors.size(); ++g) {
-            double gapCurrent = gapConductors[g].mmfPerUnitPrimaryCurrent * primaryAmplitude;
-            for (size_t i = 0; i < numberCells; ++i) {
-                rhs(i) -= std::complex<double>(0, omega * gapCoupling(i, g) * gapCurrent);
-            }
-        }
-        // Conductor total currents.
-        for (size_t c = 0; c < numberConductors; ++c) {
-            size_t windingIndex = conductorWinding[c];
-            double amplitude = harmonicsPerWinding[windingIndex].get_amplitudes()[harmonicIndex];
-            rhs(numberCells + c) = currentDirectionPerWinding[windingIndex] * amplitude;
-        }
 
-        Eigen::VectorXcd solution = system.partialPivLu().solve(rhs);
+        // One bordered solve for a given coupling model; returns the per-conductor
+        // per-metre losses.
+        auto solveWith = [&](const Eigen::MatrixXd& L, const Eigen::MatrixXd& gapL) {
+            system.setZero();
+            for (size_t i = 0; i < numberCells; ++i) {
+                for (size_t j = 0; j < numberCells; ++j) {
+                    system(i, j) = std::complex<double>(0, omega * L(i, j));
+                }
+                system(i, i) += cellResistancePerMetre[i];
+                system(i, numberCells + cells[i].conductorIndex) = 1.0;
+            }
+            for (size_t c = 0; c < numberConductors; ++c) {
+                for (size_t i = cellsBeginPerConductor[c]; i < cellsBeginPerConductor[c + 1]; ++i) {
+                    system(numberCells + c, i) = 1.0;
+                }
+            }
+            rhs.setZero();
+            for (size_t g = 0; g < gapConductors.size(); ++g) {
+                double gapCurrent = gapConductors[g].mmfPerUnitPrimaryCurrent * primaryAmplitude;
+                for (size_t i = 0; i < numberCells; ++i) {
+                    rhs(i) -= std::complex<double>(0, omega * gapL(i, g) * gapCurrent);
+                }
+            }
+            for (size_t c = 0; c < numberConductors; ++c) {
+                size_t windingIndex = conductorWinding[c];
+                double amplitude = harmonicsPerWinding[windingIndex].get_amplitudes()[harmonicIndex];
+                rhs(numberCells + c) = currentDirectionPerWinding[windingIndex] * amplitude;
+            }
+            Eigen::VectorXcd solution = system.partialPivLu().solve(rhs);
+            std::vector<double> lossPerConductor(numberConductors, 0.0);
+            for (size_t c = 0; c < numberConductors; ++c) {
+                for (size_t i = cellsBeginPerConductor[c]; i < cellsBeginPerConductor[c + 1]; ++i) {
+                    lossPerConductor[c] += 0.5 * cellResistancePerMetre[i] * std::norm(solution(i));
+                }
+            }
+            return lossPerConductor;
+        };
+
+        std::vector<double> coveredLoss = solveWith(inductanceMatrix, gapCoupling);
+        std::vector<double> openLoss = needsOpenSolve ? solveWith(inductanceMatrixOpen, gapCouplingOpen)
+                                                      : coveredLoss;
 
         // Losses.
         for (size_t c = 0; c < numberConductors; ++c) {
-            double fullLossPerMetre = 0;
-            for (size_t i = cellsBeginPerConductor[c]; i < cellsBeginPerConductor[c + 1]; ++i) {
-                fullLossPerMetre += 0.5 * cellResistancePerMetre[i] * std::norm(solution(i));
-            }
+            // 2.5D angular blend (see the header): each azimuthal sector sees its own 2D
+            // problem — backed by core over the covered fraction, open air elsewhere.
+            double fullLossPerMetre = coverage * coveredLoss[c] + (1 - coverage) * openLoss[c];
             size_t windingIndex = conductorWinding[c];
             double amplitude = harmonicsPerWinding[windingIndex].get_amplitudes()[harmonicIndex];
             double dcEquivalentPerMetre = 0.5 * conductorDcResistancePerMetre[c] * amplitude * amplitude;
