@@ -359,6 +359,9 @@ TEST_CASE("Temperature: T36 Two Windings Schematic Only", "[temperature][round-w
     config.nodePerCoilTurn = true;  // Enable quadrant visualization
     config.plotSchematic = true;
     config.maxIterations = 1;  // Just 1 iteration to build network
+    // ABT #837: this case builds the network to DRAW it and never intends to solve it, so it
+    // opts out of the convergence requirement explicitly rather than reading a diverged number.
+    config.requireConvergence = false;
     config.schematicOutputPath = (getOutputDir() / "thermal_schematic_T36_two_windings_quadrant.svg").string();
     
     // Build thermal circuit and generate schematic (minimal solve)

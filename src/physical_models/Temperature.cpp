@@ -5220,6 +5220,23 @@ ThermalResult Temperature::solveThermalCircuit() {
         }
     }
 
+    // ABT #837: a diverged fixed point must not be reported as a temperature. `converged` was
+    // set faithfully here and then checked by NOTHING in src/ — every production consumer
+    // (MagneticSimulator's core-loss iteration and datasheet builder, Magnetic::
+    // calculate_rated_current's bisection, the adviser's temperature filter) read
+    // maximumTemperature straight out and published or gated on it. A non-convergent solve
+    // returns whatever the last relaxed iterate happened to be, which is not an estimate of
+    // anything. Refuse instead: per the no-fallbacks rule, a loud failure is worth more than a
+    // confident wrong number, and rated currents and datasheet temperature rises are derived
+    // from this value.
+    if (!converged && _config.requireConvergence) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+            "Thermal network did not converge in " + std::to_string(_config.maxIterations) +
+            " iterations (tolerance " + std::to_string(_config.convergenceTolerance) + " K). The "
+            "last iterate is not a temperature estimate and must not be reported. Check the "
+            "operating point's losses and cooling conditions.");
+    }
+
     ThermalResult result;
     result.converged = converged;
     result.iterationsToConverge = iteration;

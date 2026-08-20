@@ -236,6 +236,14 @@ struct TemperatureConfig {
     // Thermal model configuration
     double convergenceTolerance = 0.1;  // Temperature convergence criterion (°C)
     size_t maxIterations = 100;         // Maximum solver iterations
+    // ABT #837: a solve that did not converge returns whatever the last relaxed iterate
+    // happened to be, which is not an estimate of anything — so by default the solver now
+    // REFUSES rather than handing a diverged number to callers that publish it (datasheet
+    // temperature rise, rated currents, the adviser's temperature gate). Set this false ONLY
+    // when you are not asking for a temperature at all: the schematic exporters cap
+    // maxIterations to build the resistance network and draw it, and legitimately never
+    // intend to solve it.
+    bool requireConvergence = true;
     double coreThermalConductivity = 4.0;  // Ferrite thermal conductivity (W/m·K)
     
     // Inter-turn insulation (electrical insulation tape between turns)

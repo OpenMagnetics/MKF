@@ -224,9 +224,18 @@ double ThermalResistance::getMaterialThermalConductivity(const std::string& mate
     if (it != conductivities.end()) {
         return it->second;
     }
-    
-    // Default fallback (generic material)
-    return 1.0;
+
+    // ABT #837: this used to `return 1.0` for ANY unrecognised name — a silent fallback of
+    // exactly the kind the no-fallbacks rule forbids, and a badly chosen one: 1.0 W/(m*K) is
+    // ~5x too conductive for the plastics this path actually sees (PET 0.15, PBT 0.2,
+    // polyamide 0.25), so an unknown insulation material made the part look BETTER cooled
+    // than it is. Nothing downstream could tell the guess from a real datasheet value.
+    // Name the material and refuse instead; the map above is the list of what is known.
+    throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+        "No thermal conductivity for material '" + materialName + "': it is not in the MAS "
+        "material data and not one of the known generic materials. Add its thermal "
+        "conductivity to MAS, or use a material that carries one — a thermal result derived "
+        "from a guessed conductivity is not worth reporting.");
 }
 
 double ThermalResistance::getWireMaterialThermalConductivity(const WireMaterial& wireMaterial, double temperature) {
