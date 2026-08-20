@@ -375,12 +375,18 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
 
     for (auto frequency : frequencies) {
 
-        Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
-        
-        // operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+        // Keep BOTH signals through the rescale. The third argument used to be `true`
+        // (cleanFrequencyDependentFields), which with the default useCurrentAsBase=true
+        // DELETES the voltage and keeps the current — so every point on the curve was
+        // evaluated at the same magnetizing current, hence the same flux density, and
+        // the losses climbed as f^alpha. A real design is voltage-driven: raise the
+        // switching frequency at a fixed applied voltage and B falls as 1/f, so its
+        // core losses go DOWN, not up. The two only ever agreed at the operating
+        // point's own frequency, which is why the graph read tens of watts where the
+        // Core Info panel and the datasheet read a fraction of one (ABT: user report).
+        Inputs::scale_time_to_frequency(operatingPoint, frequency, false);
+
         OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
-        auto voltageExcitation = Inputs::calculate_induced_voltage(excitation, magnetizingInductance);
-        excitation.set_voltage(voltageExcitation);
 
         if (numberWindings == 1 && excitation.get_current()) {
             Inputs::set_current_as_magnetizing_current(&operatingPoint);
@@ -445,8 +451,13 @@ Curve2D Sweeper::sweep_winding_losses_over_frequency(Magnetic magnetic, Operatin
 
     std::vector<double> windingLossesPerFrequency;
     for (auto frequency : frequencies) {
-        Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
-        operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+        // Rescale the time axis and recompute the harmonics the loss model needs, but
+        // do NOT reshape the excitation. process_operating_point() reflects waveforms,
+        // re-derives the magnetizing current and synthesises a voltage; fed an operating
+        // point whose voltage had just been deleted by the rescale, it handed the loss
+        // model different currents from the ones the Winding Losses panel uses, and the
+        // curve sat ~44% above the panel even at the operating point's own frequency.
+        Inputs::scale_time_to_frequency(operatingPoint, frequency, false, true);
 
         auto windingLosses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
 
