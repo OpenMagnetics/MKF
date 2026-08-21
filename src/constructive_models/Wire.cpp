@@ -1502,6 +1502,16 @@ namespace OpenMagnetics {
     double Wire::get_maximum_outer_width() {
         switch (get_type()) {
             case WireType::LITZ:
+                if (get_outer_diameter())
+                    return resolve_dimensional_values(get_outer_diameter().value());
+                else
+                    // NOT get_maximum_conducting_width(): for litz that returns the STRAND
+                    // diameter, so the fallback made a bundle as wide as one of its strands
+                    // and, worse, made outer == conducting so get_coating_thickness() derived
+                    // exactly 0. No catalogue litz sets outerDiameter, so this fired every
+                    // time. calculate_outer_diameter() already knows the real bundle envelope
+                    // (bare/served/insulated, from strand count, grade, layers and standard).
+                    return calculate_outer_diameter(*this);
             case WireType::ROUND:
                 if (get_outer_diameter())
                     return resolve_dimensional_values(get_outer_diameter().value());
@@ -1522,6 +1532,11 @@ namespace OpenMagnetics {
     double Wire::get_maximum_outer_height() {
         switch (get_type()) {
             case WireType::LITZ:
+                if (get_outer_diameter())
+                    return resolve_dimensional_values(get_outer_diameter().value());
+                else
+                    // A litz bundle is round: same envelope as the width. See the note there.
+                    return calculate_outer_diameter(*this);
             case WireType::ROUND:
                 if (get_outer_diameter())
                     return resolve_dimensional_values(get_outer_diameter().value());
@@ -1700,6 +1715,38 @@ namespace OpenMagnetics {
     }
 
     double Wire::get_coating_thickness(Wire wire) {
+        // LITZ: the wire's OWN coating describes the SERVING around the bundle, not the
+        // insulation that separates one conductor from another. Every strand is individually
+        // enamelled, and that enamel is what makes even an unserved bundle safe to wind
+        // against its neighbour — so the strand's coating is the honest answer here.
+        //
+        // Deriving it from the envelope instead would give (bundleOuterDiameter -
+        // strandDiameter) / 2, which is mostly air and neighbouring strands rather than
+        // dielectric. Before the bundle diameter was wired up it was worse still: outer fell
+        // back to the strand diameter, so this returned exactly 0 for every catalogue litz and
+        // close-wound litz was reported as shorted turns.
+        if (wire.get_type() == WireType::LITZ) {
+            auto strand = resolve_strand(wire);
+            auto strandCoating = resolve_coating(strand);
+            if (!strandCoating) {
+                return 0;  // genuinely bare strands: no insulation between conductors
+            }
+            if (strandCoating->get_type() &&
+                strandCoating->get_type().value() == InsulationWireCoatingType::BARE) {
+                return 0;
+            }
+            if (strandCoating->get_thickness()) {
+                return resolve_dimensional_values(strandCoating->get_thickness().value());
+            }
+            // Grade-based enamel: take it from the standard's own table for the strand
+            // diameter rather than the generic 30 um guess further down.
+            auto standard = wire.get_standard().value_or(WireStandard::IEC_60317);
+            auto strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
+            auto grade = require_coating_field(strandCoating->get_grade(), "strand grade");
+            double strandOuterDiameter = get_outer_diameter_round(strandConductingDiameter, grade, standard);
+            return (strandOuterDiameter - strandConductingDiameter) / 2;
+        }
+
         auto coating = resolve_coating(wire);
 
         if (!coating) {

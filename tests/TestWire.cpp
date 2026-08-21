@@ -55,6 +55,52 @@ namespace {
         REQUIRE(conductingDiameter == wireJson["conductingDiameter"]["nominal"]);
     }
 
+    // A litz bundle's own coating describes the SERVING; the insulation that separates one
+    // conductor from another is the STRAND enamel. Reading the bundle used to report exactly
+    // zero for every catalogue litz — no entry carries a serving thickness and none sets an
+    // outerDiameter, so the derived (outer - conducting)/2 collapsed to (strand - strand)/2.
+    // A user hit this as COIL_SHORTED_TURNS on a perfectly valid close-wound litz coil.
+    TEST_CASE("Litz reports the strand enamel as its turn-to-turn insulation", "[constructive-model][wire][litz]") {
+        for (const auto& name : {std::string("Litz 12x0.03 - Grade 1 - Double Served"),
+                                 std::string("Litz 12x0.03 - Grade 1 - Unserved")}) {
+            auto wire = OpenMagnetics::find_wire_by_name(name);
+            auto strandConductingDiameter =
+                resolve_dimensional_values(wire.resolve_strand().get_conducting_diameter());
+
+            INFO("wire: " << name);
+            // The whole point: not zero, and physically sane (a fraction of the strand).
+            REQUIRE(wire.get_coating_thickness() > 0);
+            REQUIRE(wire.get_coating_thickness() < strandConductingDiameter);
+        }
+    }
+
+    // The outer envelope must be the BUNDLE, not one strand. get_maximum_outer_width() used to
+    // fall back to get_maximum_conducting_width(), which for litz returns the strand diameter —
+    // so a 12-strand bundle claimed to be as wide as one of its own strands.
+    TEST_CASE("Litz outer width is the bundle envelope rather than a single strand", "[constructive-model][wire][litz]") {
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 12x0.03 - Grade 1 - Double Served");
+        auto strandConductingDiameter =
+            resolve_dimensional_values(wire.resolve_strand().get_conducting_diameter());
+
+        REQUIRE(wire.get_maximum_outer_width() > strandConductingDiameter);
+        // 12 strands cannot fit inside less than ~sqrt(12) strand diameters.
+        REQUIRE(wire.get_maximum_outer_width() > 3 * strandConductingDiameter);
+        REQUIRE(wire.get_maximum_outer_width() == Catch::Approx(wire.get_maximum_outer_height()));
+    }
+
+    // The guard that catches a REAL fault must survive: strands with no insulation of their own
+    // genuinely leave copper exposed, and close-wound turns of that are shorted.
+    TEST_CASE("Litz with bare strands still reports no insulation", "[constructive-model][wire][litz]") {
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 12x0.03 - Grade 1 - Double Served");
+        auto strand = wire.resolve_strand();
+        InsulationWireCoating bareCoating;
+        bareCoating.set_type(InsulationWireCoatingType::BARE);
+        strand.set_coating(bareCoating);
+        wire.set_strand(strand);
+
+        REQUIRE(wire.get_coating_thickness() == 0);
+    }
+
     TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_1", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(5.4e-05);
         double expectedValue = 0.755;

@@ -1021,6 +1021,39 @@ TEST_CASE("Litz winding stray capacitance smoke test", "[stray-capacitance][litz
     REQUIRE(out.get_maxwell_capacitance_matrix());
 }
 
+// A litz turn's copper is never exposed — every strand is enamelled — so no model should
+// divide by a zero insulation gap. When get_coating_thickness() read the bundle's SERVING
+// instead of the strand enamel it returned zero for any litz without an explicit
+// outerDiameter, and MASSARINI answered inf. ALBACH alone did not catch this.
+TEST_CASE("Litz stray capacitance is finite under every model", "[stray-capacitance][litz]") {
+    settings.reset();
+
+    auto litzWire = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 50);
+    std::vector<int64_t> numberTurns = {8, 8};
+    std::vector<int64_t> numberParallels = {1, 1};
+    auto coil = OpenMagnetics::Coil::create_quick_coil("RM 10/I", numberTurns, numberParallels, {litzWire, litzWire});
+
+    for (auto model : {OpenMagnetics::StrayCapacitanceModels::KOCH,
+                       OpenMagnetics::StrayCapacitanceModels::ALBACH,
+                       OpenMagnetics::StrayCapacitanceModels::DUERDOTH,
+                       OpenMagnetics::StrayCapacitanceModels::MASSARINI}) {
+        INFO("model index: " << static_cast<int>(model));
+        StrayCapacitance strayCapacitance(model);
+        auto output = strayCapacitance.calculate_capacitance(coil);
+        REQUIRE(output.get_maxwell_capacitance_matrix());
+        auto matricesPerFrequency = output.get_maxwell_capacitance_matrix().value();
+        REQUIRE(!matricesPerFrequency.empty());
+        for (const auto& matrixAtFrequency : matricesPerFrequency) {
+            for (const auto& [fromWinding, row] : matrixAtFrequency.get_magnitude()) {
+                for (const auto& [toWinding, capacitance] : row) {
+                    INFO(fromWinding << " -> " << toWinding);
+                    REQUIRE(std::isfinite(resolve_dimensional_values(capacitance)));
+                }
+            }
+        }
+    }
+}
+
 TEST_CASE("Foil winding stray capacitance smoke test", "[stray-capacitance][foil]") {
     settings.reset();
 
