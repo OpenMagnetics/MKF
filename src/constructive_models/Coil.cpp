@@ -4049,6 +4049,31 @@ std::vector<size_t> Coil::extract_stack_up(std::vector<Section> sections) {
 }
 
 bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
+    // ABT #850: a failed wind must not poison the coil. The ABT #676 margin recovery
+    // below loads persisted section margins into TRANSIENT members
+    // (_marginsPerSection and friends) that outlive the wind and survive clearing the
+    // descriptions — so after ONE failed sectioned wind, every later wind silently
+    // re-applied the same infeasible margins and failed too, even margin-free re-winds
+    // on a cleared coil. Restore exactly that recovery state when the wind fails
+    // WITHOUT producing turns. Deliberately narrow: the descriptions are NOT restored —
+    // an unfit wind legitimately leaves its section/layer plan behind (tests and the
+    // windEvenIfNotFit contract read it), and a wind that returns false but yields
+    // turns keeps them.
+    auto marginsSnapshot = _marginsPerSection;
+    auto recoveredWindingsSnapshot = _recoveredMarginWindings;
+    auto recoveredPerWindingSnapshot = _recoveredMarginPerWinding;
+    bool explicitlyClearedSnapshot = _marginsExplicitlyCleared;
+    bool ok = wind_inner(proportionPerWinding, pattern, repetitions);
+    if (!ok && !get_turns_description()) {
+        _marginsPerSection = marginsSnapshot;
+        _recoveredMarginWindings = recoveredWindingsSnapshot;
+        _recoveredMarginPerWinding = recoveredPerWindingSnapshot;
+        _marginsExplicitlyCleared = explicitlyClearedSnapshot;
+    }
+    return ok;
+}
+
+bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     // REAL WINDING: a wire that makes N turns crosses the winding-window plane N+1
     // times — the beginning of the first turn occupies its own physical slot in the
     // cross-section (for 3 turns, 4 wire crossings per parallel appear in the 2D

@@ -513,6 +513,13 @@ class Coil : public MAS::Coil {
         bool unwind();
         bool wind();
         bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
+        // ABT #850: the winding body, wrapped by wind() so that a wind which FAILS and
+        // produces no turns restores every piece of state it mutated (margin-recovery
+        // members, section/layer/turn/group descriptions). Before this, one failed
+        // sectioned wind poisoned the object: the ABT #676 recovery had loaded the
+        // infeasible margins into _marginsPerSection, which survived clearing the
+        // descriptions, so every later wind re-applied them and failed too.
+        bool wind_inner(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(size_t repetitions);
         bool wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance = std::nullopt, std::map<size_t, double> wireToWireDistance = {}, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);

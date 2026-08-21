@@ -15189,3 +15189,36 @@ TEST_CASE("Test_ABT623_FitVerdict_Agrees_With_FillingFactor", "[constructive-mod
     }
     settings.reset();
 }
+
+TEST_CASE("Test_Failed_Wind_Does_Not_Poison_The_Coil", "[coil][wind][smoke-test]") {
+    // ABT #850: one FAILED sectioned wind used to poison the object permanently — the
+    // ABT #676 margin recovery loaded the infeasible margins into _marginsPerSection,
+    // which survived clearing the descriptions, so every later wind re-applied them and
+    // failed too. A wind that fails and produces no turns must leave the coil as it
+    // found it; a margin-free re-wind after clearing the sections must then succeed.
+    //
+    // Fixture: WE choke 744821240 as enriched by asgard — a two-winding toroid whose
+    // sheet-specified 3 mm spacer fits the real cased part but not the modelled bare
+    // bore, the exact catalogue case that exposed the poisoning.
+    auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
+    std::ifstream jsonFile((dataDir / "abt850_infeasible_margins_toroid.json").string());
+    json magneticJson;
+    jsonFile >> magneticJson;
+    OpenMagnetics::Magnetic magnetic(magneticJson);
+    auto coil = magnetic.get_coil();
+    REQUIRE(!coil.get_turns_description());
+
+    bool sectionedWind = coil.wind();
+    CHECK(!sectionedWind);
+    CHECK(!coil.get_turns_description());
+
+    // The poisoning regression: clearing the infeasible sections and re-winding fresh
+    // must succeed. Before the ABT #850 fix this second wind failed as well, because
+    // the recovered margins survived in transient members the clear cannot reach.
+    coil.set_sections_description(std::nullopt);
+    coil.set_layers_description(std::nullopt);
+    bool freshWind = coil.wind();
+    CHECK(freshWind);
+    REQUIRE(coil.get_turns_description());
+    CHECK(coil.get_turns_description()->size() > 0);
+}
