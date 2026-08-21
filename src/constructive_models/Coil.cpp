@@ -9597,6 +9597,23 @@ bool Coil::wind_by_rectangular_layers() {
                 windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers, windingIndex);
             }
 
+            // ABT #849 (Alf's law), THE DISTRIBUTION HALF. Forcing the N-filar ORDER at
+            // placement time is not enough: get_parallels_proportions' CONSECUTIVE_TURNS branch
+            // fills one parallel at a time, so it hands out per-layer splits like [0.5, 0] and
+            // [0.6, 0.04] -- the parallel-major layout itself, one level up. Under real winding
+            // the style is therefore forced here too, where the layers are distributed.
+            //
+            // THE EXCEPTION NEEDS NO SPECIAL CASE. A winding style only decides the ORDER of
+            // parallels WITHIN a slot; when a slot carries turns of a single parallel (Alf's
+            // "one section is a full parallel and another section another parallel"), the two
+            // orders describe the same layout, and that case is carried by
+            // remainingParallelsProportion, not by the style. So forcing N-filar is exactly the
+            // law, with the exception self-evidently preserved.
+            if (settings.get_coil_use_real_winding_geometry() && numberParallels > 1 &&
+                !std::getenv("MKF_NO_NFILAR_LAW")) {
+                windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
+            }
+
             if (windByConsecutiveTurns == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS && maximumNumberPhysicalTurnsPerLayer < get_number_parallels(windingIndex)) {
                 windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
             }
