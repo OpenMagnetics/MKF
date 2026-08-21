@@ -10532,7 +10532,56 @@ bool Coil::wind_by_rectangular_turns() {
             }
 
 
-            if (layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
+            // ABT #849 (Alf, 2026-08-21): REAL WINDING IS ALWAYS N-FILAR. "Real winding is
+            // always N filar, unless one section is a full parallel and another section another
+            // parallel" -- so the ONLY case where parallel-major is legitimate is a layer that
+            // holds a SINGLE parallel, where the two orders are the same layout anyway. Whenever
+            // a layer carries turns of MORE THAN ONE parallel they must interleave, lane by lane.
+            //
+            // Measured on custom_magnetic 37 (E 16/6/5, 22t x 2p interleaved): the final wind gave
+            // Primary section 0 layer 0 style=TURNS with proportions [0.4, 0.4] -- both parallels
+            // in one layer, laid as two BLOCKS (p0 filling y=-3.094..-0.163, p1 +0.163..+3.094).
+            // That is what produced every symptom in the 2D view: an entrance terminal diving from
+            // the top edge to a mid-window first turn, two same-winding section hops leaving from
+            // OPPOSITE ends, and p0's inter-section escape descending 1.58 mm through its own turns
+            // 4..8 -- a hard bare-copper collision MVB++'s gate refuses. Interleaved, each
+            // parallel's first and last turns sit beside its sibling's at the layer's ends, so
+            // every terminal and every section connection reaches an edge without crossing copper.
+            //
+            // Scoped to real winding: the ideal 2D layout is a separate contract and stays
+            // bit-identical. MKF_NO_NFILAR_LAW bisects.
+            bool windConsecutiveTurns =
+                layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+            if (windConsecutiveTurns && settings.get_coil_use_real_winding_geometry() &&
+                !std::getenv("MKF_NO_NFILAR_LAW")) {
+                // The N-filar branch derives its turn count from the FIRST active parallel and
+                // multiplies by the active count, so it is only well defined when those parallels
+                // carry EQUAL proportions -- its own precondition, not a tolerance. Measured: on
+                // this design Primary section 1 layer 0 came out [0.6000, 0.0400], and forcing
+                // N-filar there laid 26 turns into a 20-station layer; the placer refused loudly
+                // ("SPREAD turn stations exhausted"), which is correct. Unevenly split layers ARE
+                // the parallel-major distribution and must be fixed where the proportions are
+                // computed (get_parallels_proportions), not here -- ABT #849.
+                size_t parallelsInThisLayer = 0;
+                double firstActiveProportion = 0.0;
+                bool proportionsEqual = true;
+                for (auto proportion : partialWinding.get_parallels_proportion()) {
+                    if (roundFloat(proportion, 10) <= 0) {
+                        continue;
+                    }
+                    ++parallelsInThisLayer;
+                    if (parallelsInThisLayer == 1) {
+                        firstActiveProportion = proportion;
+                    }
+                    else if (std::abs(proportion - firstActiveProportion) > 1e-9) {
+                        proportionsEqual = false;
+                    }
+                }
+                if (parallelsInThisLayer > 1 && proportionsEqual) {
+                    windConsecutiveTurns = false;   // several equal parallels here -> N-filar
+                }
+            }
+            if (windConsecutiveTurns) {
                 for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
                     int64_t numberTurns = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
                     for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
@@ -10925,7 +10974,56 @@ bool Coil::wind_by_round_turns() {
                 layer.set_winding_style(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
             }
 
-            if (layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
+            // ABT #849 (Alf, 2026-08-21): REAL WINDING IS ALWAYS N-FILAR. "Real winding is
+            // always N filar, unless one section is a full parallel and another section another
+            // parallel" -- so the ONLY case where parallel-major is legitimate is a layer that
+            // holds a SINGLE parallel, where the two orders are the same layout anyway. Whenever
+            // a layer carries turns of MORE THAN ONE parallel they must interleave, lane by lane.
+            //
+            // Measured on custom_magnetic 37 (E 16/6/5, 22t x 2p interleaved): the final wind gave
+            // Primary section 0 layer 0 style=TURNS with proportions [0.4, 0.4] -- both parallels
+            // in one layer, laid as two BLOCKS (p0 filling y=-3.094..-0.163, p1 +0.163..+3.094).
+            // That is what produced every symptom in the 2D view: an entrance terminal diving from
+            // the top edge to a mid-window first turn, two same-winding section hops leaving from
+            // OPPOSITE ends, and p0's inter-section escape descending 1.58 mm through its own turns
+            // 4..8 -- a hard bare-copper collision MVB++'s gate refuses. Interleaved, each
+            // parallel's first and last turns sit beside its sibling's at the layer's ends, so
+            // every terminal and every section connection reaches an edge without crossing copper.
+            //
+            // Scoped to real winding: the ideal 2D layout is a separate contract and stays
+            // bit-identical. MKF_NO_NFILAR_LAW bisects.
+            bool windConsecutiveTurns =
+                layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+            if (windConsecutiveTurns && settings.get_coil_use_real_winding_geometry() &&
+                !std::getenv("MKF_NO_NFILAR_LAW")) {
+                // The N-filar branch derives its turn count from the FIRST active parallel and
+                // multiplies by the active count, so it is only well defined when those parallels
+                // carry EQUAL proportions -- its own precondition, not a tolerance. Measured: on
+                // this design Primary section 1 layer 0 came out [0.6000, 0.0400], and forcing
+                // N-filar there laid 26 turns into a 20-station layer; the placer refused loudly
+                // ("SPREAD turn stations exhausted"), which is correct. Unevenly split layers ARE
+                // the parallel-major distribution and must be fixed where the proportions are
+                // computed (get_parallels_proportions), not here -- ABT #849.
+                size_t parallelsInThisLayer = 0;
+                double firstActiveProportion = 0.0;
+                bool proportionsEqual = true;
+                for (auto proportion : partialWinding.get_parallels_proportion()) {
+                    if (roundFloat(proportion, 10) <= 0) {
+                        continue;
+                    }
+                    ++parallelsInThisLayer;
+                    if (parallelsInThisLayer == 1) {
+                        firstActiveProportion = proportion;
+                    }
+                    else if (std::abs(proportion - firstActiveProportion) > 1e-9) {
+                        proportionsEqual = false;
+                    }
+                }
+                if (parallelsInThisLayer > 1 && proportionsEqual) {
+                    windConsecutiveTurns = false;   // several equal parallels here -> N-filar
+                }
+            }
+            if (windConsecutiveTurns) {
                 for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
                     int64_t numberTurns = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
                     for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
@@ -11128,7 +11226,56 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
                 layer.set_winding_style(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
             }
 
-            if (layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
+            // ABT #849 (Alf, 2026-08-21): REAL WINDING IS ALWAYS N-FILAR. "Real winding is
+            // always N filar, unless one section is a full parallel and another section another
+            // parallel" -- so the ONLY case where parallel-major is legitimate is a layer that
+            // holds a SINGLE parallel, where the two orders are the same layout anyway. Whenever
+            // a layer carries turns of MORE THAN ONE parallel they must interleave, lane by lane.
+            //
+            // Measured on custom_magnetic 37 (E 16/6/5, 22t x 2p interleaved): the final wind gave
+            // Primary section 0 layer 0 style=TURNS with proportions [0.4, 0.4] -- both parallels
+            // in one layer, laid as two BLOCKS (p0 filling y=-3.094..-0.163, p1 +0.163..+3.094).
+            // That is what produced every symptom in the 2D view: an entrance terminal diving from
+            // the top edge to a mid-window first turn, two same-winding section hops leaving from
+            // OPPOSITE ends, and p0's inter-section escape descending 1.58 mm through its own turns
+            // 4..8 -- a hard bare-copper collision MVB++'s gate refuses. Interleaved, each
+            // parallel's first and last turns sit beside its sibling's at the layer's ends, so
+            // every terminal and every section connection reaches an edge without crossing copper.
+            //
+            // Scoped to real winding: the ideal 2D layout is a separate contract and stays
+            // bit-identical. MKF_NO_NFILAR_LAW bisects.
+            bool windConsecutiveTurns =
+                layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+            if (windConsecutiveTurns && settings.get_coil_use_real_winding_geometry() &&
+                !std::getenv("MKF_NO_NFILAR_LAW")) {
+                // The N-filar branch derives its turn count from the FIRST active parallel and
+                // multiplies by the active count, so it is only well defined when those parallels
+                // carry EQUAL proportions -- its own precondition, not a tolerance. Measured: on
+                // this design Primary section 1 layer 0 came out [0.6000, 0.0400], and forcing
+                // N-filar there laid 26 turns into a 20-station layer; the placer refused loudly
+                // ("SPREAD turn stations exhausted"), which is correct. Unevenly split layers ARE
+                // the parallel-major distribution and must be fixed where the proportions are
+                // computed (get_parallels_proportions), not here -- ABT #849.
+                size_t parallelsInThisLayer = 0;
+                double firstActiveProportion = 0.0;
+                bool proportionsEqual = true;
+                for (auto proportion : partialWinding.get_parallels_proportion()) {
+                    if (roundFloat(proportion, 10) <= 0) {
+                        continue;
+                    }
+                    ++parallelsInThisLayer;
+                    if (parallelsInThisLayer == 1) {
+                        firstActiveProportion = proportion;
+                    }
+                    else if (std::abs(proportion - firstActiveProportion) > 1e-9) {
+                        proportionsEqual = false;
+                    }
+                }
+                if (parallelsInThisLayer > 1 && proportionsEqual) {
+                    windConsecutiveTurns = false;   // several equal parallels here -> N-filar
+                }
+            }
+            if (windConsecutiveTurns) {
                 for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
                     int64_t numberTurns = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
                     double totalWidthNeeded = borderToWireDistance * 2 + numberTurns * wireWidth + (numberTurns - 1) * layerTurnsClearance;
