@@ -489,6 +489,39 @@ TEST_CASE("Test_Impedance_Complex_Permeability_No_Extrapolation", "[physical-mod
 }
 
 
+TEST_CASE("Test_Complex_Permeability_Keeps_Falling_Above_The_Anchor", "[physical-model][impedance]") {
+    // ABT #843. get_complex_permeability CLAMPS its interpolation to the tabulated
+    // frequency range, so a table that stopped at 100x the anchor handed back the same
+    // mu' and mu'' for every frequency above it. Nanoperm 80000 anchors at 18.8 kHz, so
+    // everything above 1.88 MHz read as mu' = 19210.6, mu'' = 13647.3 — identical at
+    // 4.33 MHz, 10 MHz, 50 MHz and 100 MHz, while the material's own initial-permeability
+    // table falls to 156 by 25.6 MHz. Downstream that moved a common-mode choke's
+    // modelled self-resonance from ~50 MHz to 4.33 MHz and overstated its peak impedance
+    // 12x.
+    settings.reset();
+    OpenMagnetics::ComplexPermeability complexPermeabilityModel;
+    auto coreMaterial = OpenMagnetics::find_core_material_by_name("Nanoperm 80000");
+
+    std::vector<double> frequencies = {1e6, 4.33e6, 1e7, 2.56e7, 5e7, 1e8};
+    std::vector<double> magnitudes;
+    for (auto frequency : frequencies) {
+        auto [real, imaginary] = complexPermeabilityModel.get_complex_permeability(coreMaterial, frequency);
+        magnitudes.push_back(sqrt(real * real + imaginary * imaginary));
+    }
+
+    // It must keep falling, not freeze: every step strictly below the one before it.
+    for (size_t index = 1; index < magnitudes.size(); ++index) {
+        CHECK(magnitudes[index] < magnitudes[index - 1]);
+    }
+
+    // And it must track the material's own curve, not merely differ. Nanoperm 80000's
+    // table falls 2,378 -> 156 between 1 MHz and 25.6 MHz; |mu| now reads 2,822 -> 184
+    // across the same span (the excess over mu' is mu''), against 30,116 -> 23,565 before.
+    CHECK(magnitudes.back() < 0.1 * magnitudes.front());
+    CHECK(magnitudes[3] < 400.0);   // 25.6 MHz, the material's last tabulated point (156)
+}
+
+
 TEST_CASE("PROBE_CMC622_CM_Curve_Dump", "[probe622]") {
     settings.reset();
     auto testDataPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_redexpert_744834622.json");

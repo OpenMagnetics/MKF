@@ -84,7 +84,48 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
     double oneMinusFg = 1.0 - F_g;
     double materialPermeabilityScale = F_mu * initialPermeability;
 
-    auto normalizedFrequencies = logarithmic_spaced_array(0.01, 100, 40);
+    // Normalized span, and why it reaches so far past the anchor: get_complex_permeability
+    // CLAMPS the interpolation to this table's frequency range, so whatever the last
+    // tabulated point holds is what every higher frequency gets — a constant permeability,
+    // not a falling one. At 0.01..100x the anchor, a material anchored at 18.8 kHz
+    // (Nanoperm 80000) tabulated only 188 Hz..1.88 MHz, and every sweep above 1.88 MHz
+    // read back the same mu' and mu''. That reported 23,565 at 25.6 MHz where the
+    // material's own initial-permeability table says 156 — 151x high — and pushed the
+    // modelled self-resonance of a common-mode choke from ~50 MHz down to 4.33 MHz
+    // (ABT #843). The closed form is defined for any normalized frequency; only the
+    // tabulation was short. Keep the same ~10 points per decade.
+    auto normalizedFrequencies = logarithmic_spaced_array(0.01, 1e5, 70);
+    // Where the material's own initial-permeability curve actually ends. Past that point
+    // the interpolator turns back UP (Nanoperm 80000: 156 at its last point, 25.6 MHz, then
+    // 451 at 50 MHz and 1,057 at 100 MHz), and permeability does not recover after roll-off.
+    // Knowing the real end lets us follow the data up to it and extrapolate beyond it,
+    // instead of guessing from the shape where the data stopped (ABT #843).
+    double lastTabulatedFrequency = 0;
+    double lastTabulatedPermeability = 0;
+    double beyondTheDataLogSlope = 0;
+    {
+        auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
+        if (std::holds_alternative<std::vector<PermeabilityPoint>>(initialPermeabilityData)) {
+            auto points = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
+            std::sort(points.begin(), points.end(), [](const PermeabilityPoint& a, const PermeabilityPoint& b) {
+                return a.get_frequency().value_or(0) < b.get_frequency().value_or(0);
+            });
+            // Take the slope from the material's own LAST TWO points, not from the sampled
+            // grid: near the end the interpolator has already begun to turn, so a slope read
+            // off the samples can come out positive and send the extrapolation back up.
+            if (points.size() >= 2) {
+                const auto& last = points[points.size() - 1];
+                const auto& secondToLast = points[points.size() - 2];
+                if (last.get_frequency() && secondToLast.get_frequency() && last.get_value() > 0 && secondToLast.get_value() > 0 && *last.get_frequency() > *secondToLast.get_frequency()) {
+                    lastTabulatedFrequency = *last.get_frequency();
+                    lastTabulatedPermeability = last.get_value();
+                    beyondTheDataLogSlope = log(last.get_value() / secondToLast.get_value()) / log(*last.get_frequency() / *secondToLast.get_frequency());
+                    // Permeability past roll-off falls; never let the tail climb.
+                    beyondTheDataLogSlope = std::min(beyondTheDataLogSlope, 0.0);
+                }
+            }
+        }
+    }
     std::vector<PermeabilityPoint> real;
     std::vector<PermeabilityPoint> imaginary;
 
@@ -113,6 +154,33 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
         double muCoreImag = (muMatImag * denomReal - muMatReal * denomImag) / denomMagnitudeSquared;
 
         double permeabilityPointFrequency = normalizedFrequency * frequencyFor67Point78Drop;
+
+        // Put mu' back on the material's OWN measured curve. The closed form above supplies
+        // the SHAPE of the loss (the mu''/mu' angle) and the distributed-gap correction, but
+        // its roll-off is the sheet solution's ~1/sqrt(f), while a real nanocrystalline
+        // material falls closer to ~1/f. Left alone it reported 7,375 at 25.6 MHz where
+        // Nanoperm 80000's own initial-permeability table says 156 — still 47x high after
+        // the tabulation range was widened. Rescale both parts by the ratio of the measured
+        // mu'(f) to the modelled one, which pins mu' to the data and carries mu'' along at
+        // the modelled loss angle (ABT #843). Materials without a frequency-dependent table
+        // never reach this function, so there is always a curve to read.
+        double measuredPermeability = InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, permeabilityPointFrequency);
+
+        // Past its last tabulated point the initial-permeability interpolator turns back UP:
+        // Nanoperm 80000 reads 156 at 25.6 MHz (its last point), then 451 at 50 MHz and
+        // 1,057 at 100 MHz. Permeability does not recover after roll-off, so a rise means we
+        // have run off the end of the data, not that the material got more permeable. Carry
+        // on with the last real log-log slope instead of following the rise (ABT #843).
+        if (lastTabulatedFrequency > 0 && permeabilityPointFrequency > lastTabulatedFrequency) {
+            measuredPermeability = lastTabulatedPermeability * pow(permeabilityPointFrequency / lastTabulatedFrequency, beyondTheDataLogSlope);
+        }
+
+        if (measuredPermeability > 0 && muCoreReal > 0) {
+            double scaleToMeasured = measuredPermeability / muCoreReal;
+            muCoreReal *= scaleToMeasured;
+            muCoreImag *= scaleToMeasured;
+        }
+
         PermeabilityPoint realPermeabilityPoint;
         realPermeabilityPoint.set_frequency(permeabilityPointFrequency);
         realPermeabilityPoint.set_value(muCoreReal);
