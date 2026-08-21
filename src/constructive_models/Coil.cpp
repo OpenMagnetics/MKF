@@ -1125,9 +1125,22 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     // Alf's call (2026-08-14): the parallels' first turns START at their terminals' angles, so the
     // stubs are spread over angle rather than stacked over height, and the window keeps the wire
     // the stacking used to spend per conductor.
+    // `attachTurnY` (ABT #844): the connecting turn's station, when the caller is a TERMINAL
+    // lead. When the natural row lands within half a wire of it -- the regime where the stub is
+    // not drawable and the route already claims the row (ABT #830) -- the ROW claims the TURN
+    // instead: its centre is the turn's exact station (unrounded: rounding here would
+    // reintroduce the sub-nm disagreement this exists to remove), and its stack depth deepens
+    // so every row allocated after it stacks from the true copper. Without this the rows sit
+    // flush at the nominal edge while the drawn attach sits 0.2 um (14_dab) / 0.8 um
+    // (13_current_sense) inside, on rows stacked at EXACTLY the coated envelope -- so every
+    // drawn nanometre of the bridge became a certified finding. Snap INWARD only, at row
+    // CREATION only (a shared row keeps its creator's claim; later parallels climb drawable
+    // stubs at their own angles, unchanged).
     auto allocateEdgeRow = [&](size_t windowIndex, bool atTop, double wireHeight,
                                double spanLo, double spanHi,
-                               const std::string& windingName = std::string()) -> std::pair<double, double> {
+                               const std::string& windingName = std::string(),
+                               double attachTurnY =
+                                   std::numeric_limits<double>::quiet_NaN()) -> std::pair<double, double> {
         auto& rows = edgeRows[{windowIndex, atTop ? 0 : 1}];
         EdgeRow* target = nullptr;
         for (auto& row : rows) {
@@ -1161,16 +1174,41 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 break;
             }
         }
+        bool created = false;
         if (target == nullptr) {
             double depthBefore = rows.empty() ? 0.0 : rows.back().depthBefore + rows.back().height;
             rows.push_back({wireHeight, depthBefore, {}, windingName});
             target = &rows.back();
+            created = true;
         }
         target->spans.push_back({spanLo, spanHi});
-        // Rows stack inward from the margin's inner face, not from the window edge.
+        // Rows stack inward from the margin's inner face, not from the window edge. UNROUNDED
+        // (ABT #844, the row twin of b54b7d51's station fix): these are sums of exact heights
+        // from a base -- there is no accumulated error for a rounding to clean up, and rounding
+        // each row on its own gave back up to half a nanometre of the very envelope the stack
+        // just laid: with a snapped row at a half-nm station, the next row's roundFloat landed
+        // 0.5 nm inside the exact envelope, and the certified gate reported exactly 0.500 nm on
+        // six designs at once.
         double rowBaseY = edgeBaseY(windowIndex, atTop);
-        double edgeY = atTop ? roundFloat(rowBaseY - target->depthBefore - wireHeight / 2, 9)
-                             : roundFloat(rowBaseY + target->depthBefore + wireHeight / 2, 9);
+        double edgeY = atTop ? rowBaseY - target->depthBefore - wireHeight / 2
+                             : rowBaseY + target->depthBefore + wireHeight / 2;
+        // Scoped to the FIRST row of its edge stack (depthBefore == 0): the measured defects
+        // (14_dab 0.2 um, 13_current_sense 0.8 um) are both the flush-at-edge row against the
+        // layer grid's residual slack, and a deeper row's snap cascades into real capacity --
+        // on the bifilar-interleaved fixture it walked a terminal reservation 0.48 mm into
+        // another winding's turn.
+        if (created && target->depthBefore == 0.0 && !std::isnan(attachTurnY) &&
+            !std::getenv("MKF_NO_ROW_SNAP")) {
+            const double inward = atTop ? edgeY - attachTurnY : attachTurnY - edgeY;
+            if (inward > 0.0 && inward <= wireHeight / 2) {
+                const double snappedDepth =
+                    (atTop ? rowBaseY - attachTurnY : attachTurnY - rowBaseY) - wireHeight / 2;
+                if (snappedDepth > target->depthBefore) {
+                    target->depthBefore = snappedDepth;
+                }
+                edgeY = attachTurnY;   // exact, unrounded -- the whole point (ABT #844)
+            }
+        }
         return {edgeY, target->depthBefore + wireHeight};
     };
 
@@ -1326,7 +1364,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         auto [edgeY, runDepth] = allocateEdgeRow(windowIndexOf(connectingTurn.get_section().value_or("")),
                                                  turnAtTop, wireOuterHeight,
                                                  turnX - wireOuterWidth / 2, windowOuterX,
-                                                 windingName + (isEntrance ? "/in" : "/out"));
+                                                 windingName + (isEntrance ? "/in" : "/out"),
+                                                 turnY);
         for (const Layer* crossed : crossedLayers) {
             ConnectionReservedSpace space;
             space.isTerminal = true;
