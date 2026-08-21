@@ -116,6 +116,21 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
         capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
     }
 
+    // The magnetizing tank models the COMMON-MODE measurement, which drives every winding
+    // in parallel (that is how Zcm is measured: both winding pairs shorted together on each
+    // side). Each winding then hangs its own self-capacitance across the same terminals, so
+    // the tank capacitance is the SUM over windings — for a common-mode choke with two
+    // equal windings, twice the single-winding value. The windings share one flux, so the
+    // magnetizing inductance is NOT divided. The self-resonant-frequency path
+    // (calculate_self_resonant_frequency) deliberately keeps the single-winding
+    // capacitance: an SRF measurement drives ONE winding with the others open. Verified on
+    // 107 WE common-mode chokes: without this term the LC-governed families resonate a
+    // consistent sqrt(2) high.
+    size_t windingCount = coil.get_functional_description().size();
+    if (windingCount > 1) {
+        capacitance *= static_cast<double>(windingCount);
+    }
+
     return ImpedanceTank{airCoredInductance, capacitance, true};
 }
 
