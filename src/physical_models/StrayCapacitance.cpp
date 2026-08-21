@@ -2165,12 +2165,42 @@ double cas(double n, double ctt, double cts) {
     return value;
 }
 
-double StrayCapacitanceOneLayer::calculate_capacitance(Coil coil) {
+double StrayCapacitanceOneLayer::calculate_capacitance(Coil coil, std::optional<Core> core) {
     // Baed on https://sci-hub.st/https://ieeexplore.ieee.org/document/793378
     double numberTurns = coil.get_functional_description()[0].get_number_turns();
     auto wireRadius = coil.resolve_wire(0).get_maximum_conducting_width() / 2;
-    double distanceTurnsToCore = coil.resolve_bobbin().get_processed_description()->get_column_thickness() + coil.resolve_wire(0).get_maximum_outer_width() / 2;
-    double turnDiameter = 2 * std::numbers::pi * (coil.resolve_bobbin().get_processed_description()->get_column_width().value() + wireRadius);
+    double columnThickness = coil.resolve_bobbin().get_processed_description()->get_column_thickness();
+    double distanceTurnsToCore = columnThickness + coil.resolve_wire(0).get_maximum_outer_width() / 2;
+
+    // ABT #846: capacitance_turn_to_turn / capacitance_turn_to_shield are the textbook
+    // per-unit-length forms (pi*e0/acosh, 2*pi*e0/acosh) times pi*turnDiameter, so the
+    // parameter must be a DIAMETER — the turn length is then pi*D. column_width is the
+    // column RADIUS (Bobbin sets it to coreColumn.width/2 + columnThickness), so the turn
+    // wraps at radius (column_width + wireRadius) and its diameter is twice that. The old
+    // code passed the CIRCUMFERENCE 2*pi*(column_width + wireRadius), making every
+    // capacitance pi times too large (verified against Medhurst's 1947 solenoid data).
+    double turnDiameter = 2 * (coil.resolve_bobbin().get_processed_description()->get_column_width().value() + wireRadius);
+
+    // A toroid's winding window is ROUND; its turn does not circle a round column but wraps
+    // the core CROSS-SECTION — length 2*(radialThickness + height) plus the rounding of the
+    // four corners at radius (columnThickness + wireRadius). The core height never enters
+    // the bobbin's column data, so this needs the core itself (ABT #845/#846).
+    bool toroidal = coil.resolve_bobbin().get_winding_window_shape(0) == WindingWindowShape::ROUND;
+    if (toroidal && numberTurns > 1) {
+        // The toroid model below is only correct with the core's cross-section: the bobbin
+        // column carries no height, so without the core the turn length would silently fall
+        // back to the column-based circle — neither the old behaviour nor the new one.
+        // Require it loudly instead of guessing (the optional default serves non-toroids).
+        if (!core || !core->get_processed_description()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "StrayCapacitanceOneLayer needs the processed core for a toroidal coil: the "
+                "turn wraps the core cross-section (width and height), which the bobbin's "
+                "column data cannot provide. Pass the core, or process its description first.");
+        }
+        auto column = core->get_processed_description()->get_columns().at(0);
+        double turnLength = 2 * (column.get_width() + column.get_depth()) + 2 * std::numbers::pi * (columnThickness + wireRadius);
+        turnDiameter = turnLength / std::numbers::pi;
+    }
     double centerSeparation = coil.resolve_wire(0).get_maximum_outer_width();
     if (coil.get_turns_description()) {
         if (coil.get_turns_description().value().size() > 1) {
@@ -2207,6 +2237,38 @@ double StrayCapacitanceOneLayer::calculate_capacitance(Coil coil) {
 
     double ctt = capacitance_turn_to_turn(turnDiameter, wireRadius, centerSeparation);
     double cts = capacitance_turn_to_shield(turnDiameter, wireRadius, distanceTurnsToCore);
+
+    // ABT #845: the cas/cab ladder models a GROUNDED shield, which screens distant turns and
+    // makes the result converge to the fixed point sqrt(cts*ctt), independent of turn count
+    // above ~15 turns. A magnetic core has no terminal: it is a FLOATING conductor that
+    // settles at the potential where its displacement currents balance (Pasko, Kazimierczuk,
+    // Grzesik, IEEE Trans. EMC 57(2), 2015). For a single-layer toroid with the standard
+    // linear voltage distribution V_k = V*k/(N-1), charge balance puts the core at V/2 and
+    // the stored energies reduce to two closed forms:
+    //   turn-to-turn chain: (N-1) series gaps of V/(N-1) -> C_chain = ctt / (N-1)
+    //   turn-to-core:       (1/2)*cts*Sum((k/(N-1) - 1/2)^2)*V^2 -> C_core ~ N*cts/12
+    // The core term GROWS with N — measured WE common-mode chokes scale as C ~ N^+1.3 while
+    // the grounded ladder scales as N^-0.05, resonating 3x high on many-turn parts and
+    // parking a spurious low resonance on few-turn parts (ABT #845 has the data).
+    //
+    // N=1 deliberately falls through to the ladder below (which reduces to cts): the chain
+    // term ctt/(N-1) is singular at one turn, and a single turn has no turn-to-turn chain
+    // for the floating-core reduction to act on. The model discontinuity at N=2 is known
+    // and intended — do not "fix" the guard to >= 1.
+    if (toroidal && numberTurns > 1) {
+        double capacitance = ctt / (numberTurns - 1) + numberTurns * cts / 12;
+        if (std::isnan(capacitance)) {
+            throw NaNResultException("capacitance cannot be NaN");
+        }
+        // Deliberately NO layers multiplier here (unlike the ladder path below): the
+        // floating-core energy sum already counts every turn once, and on a multi-layer
+        // toroid the outer layers sit FARTHER from the core, weakening — not multiplying —
+        // their coupling. Applying the legacy x-layers heuristic doubled the capacitance of
+        // the 110-turn T12.5/7.5/5 anchor (2 layers) and moved its self-resonance from the
+        // measured ~180 kHz to 130 kHz; without it the single-layer form lands on the pin.
+        return capacitance;
+    }
+
     double C2;
     double casValue = cas(numberTurns, ctt, cts);
 

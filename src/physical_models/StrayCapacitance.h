@@ -164,7 +164,13 @@ class StrayCapacitanceOneLayer{
         StrayCapacitanceOneLayer(){
         };
         virtual ~StrayCapacitanceOneLayer() = default;
-        double calculate_capacitance(Coil coil);
+        // The core is optional for backwards compatibility, but for a TOROID it changes the
+        // physics: the winding wraps the core cross-section (turn length from the core's
+        // column width and depth, not a circle of the radial half-thickness), and the core is
+        // a FLOATING conductor, so the turn-to-core capacitances form an energy-weighted
+        // network that grows with the number of turns instead of the grounded-shield
+        // cas/cab ladder, which converges to a turn-count-independent fixed point (ABT #845).
+        double calculate_capacitance(Coil coil, std::optional<Core> core = std::nullopt);
 
 
 };

@@ -108,7 +108,7 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
     double capacitance;
     auto& settings = Settings::GetInstance();
     if (_fastCapacitance) {
-        capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
+        capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil, core);
     }
     else {
         auto strayCapacitanceModel = settings.get_stray_capacitance_model();
@@ -379,7 +379,7 @@ double Impedance::calculate_self_resonant_frequency(Magnetic magnetic, double te
 double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double temperature) {
     double capacitance;
     if (_fastCapacitance) {
-        capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
+        capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil, core);
     }
     else {
         if (!coil.get_turns_description()) {
