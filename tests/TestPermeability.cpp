@@ -500,7 +500,16 @@ namespace {
         auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
         auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, 1000000);
         REQUIRE(complexPermeabilityValueAt100000.first > complexPermeabilityValueAt10000000.first);
-        REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
+        // mu'' must FALL from 100 kHz to 1 MHz for this material. Its own |mu|(f) table puts
+        // the relaxation knee (|mu| at half the initial 8,000) at ~170 kHz, and for any
+        // relaxation mu'' peaks at the knee: 100 kHz is near that peak, while at 1 MHz |mu|
+        // has fallen to 13% of initial, far past it. A single Debye anchored at 170 kHz gives
+        // mu''(100k)/mu''(1M) ~ 2.6, and Kramers-Kronig from the table's local slopes
+        // (f^-0.47 at 100 kHz, f^-0.87 at 1 MHz) gives ~3,700 vs ~1,040 — falling either way.
+        // The previous pin (mu'' rising across this decade) captured the pre-#843 model,
+        // whose tabulation anchored the knee orders of magnitude too high; it was
+        // characterization of a bug, not physics.
+        REQUIRE(complexPermeabilityValueAt100000.second > complexPermeabilityValueAt10000000.second);
     }
 
     TEST_CASE("Test_Complex_Permeability_XFlux_60", "[physical-model][complex-permeability][smoke-test]") {
