@@ -116,7 +116,32 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
         // entry points hand over unwound coils; wind here or the branch throws
         // "Missing turns description" on 5 of the 107 WE catalogue chokes.
         if (!coil.get_turns_description()) {
+            // A FAILED wind poisons the Coil: after one unsuccessful sectioned wind even a
+            // fresh wind on the same object returns no turns, while the identical fresh
+            // wind on an untouched copy succeeds (ABT #850). Keep a pristine copy so the
+            // retry below starts clean.
+            Coil pristineCoil = coil;
             coil.wind();
+            if (!coil.get_turns_description()) {
+                coil = pristineCoil;
+            }
+        }
+        if (!coil.get_turns_description()) {
+            // The winder can fail SILENTLY (no exception, no turns — ABT #850) when preset
+            // sectional margins don't fit the bare-core window; several WE catalogue chokes
+            // carry sheet-specified 3 mm spacers that fit the real part (wound on its case)
+            // but not the modelled bare bore. The margins measurably do not change the full
+            // model's capacitance (A/B over 107 measured chokes: bit-identical), so rather
+            // than lose the part, retry on a fresh wind without the preset sections — and
+            // only if THAT fails, throw.
+            coil.set_sections_description(std::nullopt);
+            coil.set_layers_description(std::nullopt);
+            coil.wind();
+            if (!coil.get_turns_description()) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Impedance could not wind this coil: the winder returned no turns with the "
+                    "preset sections and none on a fresh wind either (see ABT #850).");
+            }
         }
         // Pass the core: the winding-to-core self term (ABT #848) needs it, and on
         // toroids it IS most of the self-capacitance.
@@ -129,9 +154,9 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
     // side). Each winding then hangs its own self-capacitance across the same terminals, so
     // the tank capacitance is the SUM over windings — for a common-mode choke with two
     // equal windings, twice the single-winding value. The windings share one flux, so the
-    // magnetizing inductance is NOT divided. The self-resonant-frequency path
-    // (calculate_self_resonant_frequency) deliberately keeps the single-winding
-    // capacitance: an SRF measurement drives ONE winding with the others open. Verified on
+    // magnetizing inductance is NOT divided. The self-resonant-frequency full-model path
+    // applies the same factor for a different physical reason: unity coupling mirrors the
+    // driven winding's potential profile onto the open ones (see there). Verified on
     // 107 WE common-mode chokes: without this term the LC-governed families resonate a
     // consistent sqrt(2) high.
     size_t windingCount = coil.get_functional_description().size();
@@ -411,6 +436,14 @@ double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double
         auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core).get_capacitance_among_windings().value();
 
         capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
+        // An SRF measurement drives one winding, but the OTHERS ARE NOT ABSENT: unity
+        // magnetic coupling forces every open winding to mirror the driven winding's
+        // per-turn potential profile (a 1:1 transformer), so each one's turn-to-core
+        // elements charge identically and add in parallel. Multiplying the single-winding
+        // self term by the winding count is that mirror, and it lands both measured SRF
+        // anchors (T12.5/7.5/5 110-turn: 180 kHz; Test_Impedance_0: 1.4 MHz) inside
+        // tolerance where the bare single-winding term sat ~1.7x high (ABT #848).
+        capacitance *= static_cast<double>(coil.get_functional_description().size());
     }
 
     OperatingPoint operatingPoint;

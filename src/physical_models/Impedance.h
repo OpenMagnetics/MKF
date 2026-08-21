@@ -80,12 +80,15 @@ class Impedance {
     protected:
     public:
     // The intended flagship is the FULL energy-based StrayCapacitance model (per-pair
-    // Albach statics, floating-core self term — ABT #848), and the default should flip to
-    // it once #848 closes the remaining gap: with the core term it reaches ~1.7x on the
-    // measured SRF anchors (from ~100x off), but on 107 measured WE common-mode chokes it
-    // still scores 41% frequency-within-2x against 71% for the fast path, and the cased
-    // (nylon) toroids expose physics it does not carry yet. Until then the fast
-    // OneLayer path stays the default so shipped results are the best available.
+    // Albach statics, floating-core self term, mirrored-winding SRF factor — ABT #848).
+    // Controlled A/B on 107 measured WE common-mode chokes, same materials and complex-
+    // permeability model on both arms (2026-08-21): full model 92% peak / 45% frequency
+    // within 2x; fast path 99% / 74%. The whole remaining gap is the cased (nylon)
+    // SC-CMC family, whose measured peaks scale with turn count (genuinely LC-set) at a
+    // capacitance no honest electrostatic element delivers through a 1.25 mm case — the
+    // fast path lands them via its near-contact acosh term, accuracy not yet explained
+    // by physics. Until #848 resolves that, the fast path stays the default so shipped
+    // results are the best available; flip deliberately, with a rescore.
     Impedance(bool fastCapacitance=true) {
         _fastCapacitance = fastCapacitance;
     } 

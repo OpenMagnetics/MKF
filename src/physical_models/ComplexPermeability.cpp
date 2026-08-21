@@ -176,9 +176,36 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
         }
 
         if (measuredPermeability > 0 && muCoreReal > 0) {
-            double scaleToMeasured = measuredPermeability / muCoreReal;
-            muCoreReal *= scaleToMeasured;
-            muCoreImag *= scaleToMeasured;
+            // ABT #847: the sheet solution's loss angle is anchored by resistivity and
+            // dimensions, which for a high-permeability nanocrystalline material lands the
+            // eddy knee orders of magnitude above the real relaxation knee — so mu'' came
+            // out ~38x too small right where the material is relaxing (Nanoperm 8000 at
+            // 100 kHz: model 105, Kramers-Kronig from its own table ~3,700). For a local
+            // power law |mu| ~ f^-n, Kramers-Kronig fixes the loss angle at delta = n*pi/2:
+            // read n from the measured curve itself and take the LARGER of the two angles —
+            // relaxation loss where the table rolls off, sheet eddy loss where it is flat
+            // (a flat table says nothing about eddy loss, which the closed form does).
+            double sheetAngle = std::atan2(std::max(muCoreImag, 0.0), muCoreReal);
+            double localSlope = 0;
+            if (lastTabulatedFrequency > 0 && permeabilityPointFrequency > lastTabulatedFrequency) {
+                localSlope = beyondTheDataLogSlope;
+            }
+            else {
+                constexpr double relativeStep = 1.05;
+                double permeabilityAbove = InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, permeabilityPointFrequency * relativeStep);
+                double permeabilityBelow = InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, permeabilityPointFrequency / relativeStep);
+                if (permeabilityAbove > 0 && permeabilityBelow > 0) {
+                    localSlope = log(permeabilityAbove / permeabilityBelow) / (2 * log(relativeStep));
+                }
+            }
+            // n in [0, 0.95]: negative slopes only (a rising read is interpolator artefact),
+            // capped below 1 so the angle stays short of pi/2 and mu' stays positive.
+            double kramersKronigAngle = std::clamp(-localSlope, 0.0, 0.95) * std::numbers::pi / 2.0;
+            double lossAngle = std::max(sheetAngle, kramersKronigAngle);
+            // The table is the measured |mu|; split it by the loss angle so the impedance
+            // magnitude stays pinned to the data.
+            muCoreReal = measuredPermeability * std::cos(lossAngle);
+            muCoreImag = measuredPermeability * std::sin(lossAngle);
         }
 
         PermeabilityPoint realPermeabilityPoint;
