@@ -1335,7 +1335,12 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             lead.parallel = parallel;
             lead.section = connectingTurn.get_section().value_or("");
             lead.layer = "";
-            lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), roundFloat(turnY, 9)};
+            // The y is UNROUNDED (ABT #844/#839, the third of the family): this rect is the
+            // claim consumers draw the run from, and the turn's station is a half-nm real since
+            // b54b7d51. Rounding it +0.5 nm onto the grid ate the pitch's own ceil margin on
+            // 22_margin_tape -- the drawn run landed 33 pm inside the sibling's rising face
+            // straight, the last certified finding in the whole 40-design corpus.
+            lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), turnY};
             lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
             lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the radial run
             lead.kind = terminalKind;
