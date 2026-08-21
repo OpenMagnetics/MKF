@@ -121,6 +121,18 @@ class StrayCapacitance{
                                                          const std::string& secondWindingName,
                                                          const std::vector<double>& voltagesPerTurn);
 
+        // Energy stored in ONE winding's turn-to-core elements against the floating core
+        // (ABT #848): same per-turn elements and charge-balanced core node as
+        // calculate_through_core_capacitance, but for a single winding driven alone —
+        // the missing HALF of a winding's self-capacitance. The turn-to-turn chain the
+        // energy method already sums shrinks as ctt/(N-1), while this term GROWS with
+        // turn count (each added turn couples to the same core), which is what measured
+        // toroid self-resonances demand. Returns ENERGY (J at the given per-turn
+        // potentials), to be added to the self-pair energy before the 2E/dV^2 reduction.
+        static double calculate_winding_to_core_self_energy(Coil coil, Core core,
+                                                            const std::string& windingName,
+                                                            const std::vector<double>& voltagesPerTurn);
+
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
         // The optional core supplies the through-core inter-winding capacitance for

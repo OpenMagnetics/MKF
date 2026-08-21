@@ -1667,6 +1667,57 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
     return 2.0 * energy / (differentialVoltage * differentialVoltage);
 }
 
+double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core core,
+        const std::string& windingName,
+        const std::vector<double>& voltagesPerTurn) {
+    // One winding against the floating core (ABT #848). Mirrors
+    // calculate_through_core_capacitance exactly — same per-turn elements, same
+    // charge-balanced core node — but over a single winding's turns, all with
+    // positive sign, and returning the ENERGY rather than a terminal-referenced
+    // capacitance: the caller folds it into the self-pair energy sum, which is
+    // already referenced to the winding's own voltage span.
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    auto turns = coil.get_turns_description().value();
+    auto wirePerWinding = coil.get_wires();
+
+    double coreCoatingThickness = core.get_coating_thickness();
+    double coreCoatingRelativePermittivity = 1.0;
+    if (coreCoatingThickness > 0) {
+        coreCoatingRelativePermittivity = core.get_coating_relative_permittivity();
+    }
+
+    std::vector<double> turnCoreCapacitance;
+    std::vector<double> turnPotential;
+    double sumCV = 0;
+    double sumC = 0;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        if (turns[turnIndex].get_winding() != windingName) {
+            continue;
+        }
+        auto wire = wirePerWinding[coil.get_winding_index_by_name(windingName)];
+        double capacitance = calculate_turn_to_core_capacitance(
+            turn_to_core_equivalent_radius(wire), turns[turnIndex].get_length(),
+            wire.get_coating_thickness(), get_wire_insulation_relative_permittivity(wire),
+            0.0 /* air gap: close-wound */,
+            coreCoatingThickness, coreCoatingRelativePermittivity);
+        turnCoreCapacitance.push_back(capacitance);
+        turnPotential.push_back(voltagesPerTurn[turnIndex]);
+        sumCV += capacitance * voltagesPerTurn[turnIndex];
+        sumC += capacitance;
+    }
+    if (sumC <= 0) {
+        return 0;
+    }
+    double corePotential = sumCV / sumC;   // floating node: charge balance
+    double energy = 0;
+    for (size_t k = 0; k < turnCoreCapacitance.size(); ++k) {
+        energy += 0.5 * turnCoreCapacitance[k] * std::pow(turnPotential[k] - corePotential, 2);
+    }
+    return energy;
+}
+
 double StrayCapacitance::calculate_energy_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil) {
     double capacitance = calculate_static_capacitance_between_two_turns(firstTurn, firstWire, secondTurn, secondWire, coil);
     double energy = 0.5 * capacitance * pow(voltageDrop, 2);
@@ -1935,6 +1986,18 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
                         }
                     }
                 }
+                // ABT #848: a winding's self-capacitance is chain PLUS core. The pair sum
+                // above only carries the turn-to-turn chain, which SHRINKS with turn count
+                // (adjacent turns differ by V/(N-1)); the turn-to-core elements against the
+                // floating core GROW with it, and on toroids they dominate — without them
+                // the self term came out ~50-100x low against 107 measured WE chokes
+                // (near-zero for single-layer windings). Same energy method and per-turn
+                // elements as the through-core inter-winding path below.
+                if (firstWindingName == secondWindingName && core) {
+                    energyInBetweenTheseWindings += calculate_winding_to_core_self_energy(
+                        coil, core.value(), firstWindingName, voltagesPerTurn);
+                }
+
                 if (windingAreNotAdjacent) {
                     // No turn of the first winding is adjacent to any turn of the second,
                     // so there is no direct turn-to-turn capacitive path between them (the

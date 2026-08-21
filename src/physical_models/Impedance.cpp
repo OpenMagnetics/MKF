@@ -112,7 +112,15 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
     }
     else {
         auto strayCapacitanceModel = settings.get_stray_capacitance_model();
-        auto capacitanceMatrix = StrayCapacitance(strayCapacitanceModel).calculate_capacitance(coil).get_capacitance_among_windings().value();
+        // The full model needs wound turns (OneLayer above does not), and the sweep
+        // entry points hand over unwound coils; wind here or the branch throws
+        // "Missing turns description" on 5 of the 107 WE catalogue chokes.
+        if (!coil.get_turns_description()) {
+            coil.wind();
+        }
+        // Pass the core: the winding-to-core self term (ABT #848) needs it, and on
+        // toroids it IS most of the self-capacitance.
+        auto capacitanceMatrix = StrayCapacitance(strayCapacitanceModel).calculate_capacitance(coil, core).get_capacitance_among_windings().value();
         capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
     }
 
@@ -400,7 +408,7 @@ double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double
         if (!coil.get_turns_description()) {
             coil.wind();
         }
-        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil).get_capacitance_among_windings().value();
+        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core).get_capacitance_among_windings().value();
 
         capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
     }
