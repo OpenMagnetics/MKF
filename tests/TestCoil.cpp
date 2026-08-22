@@ -12561,17 +12561,19 @@ static std::map<std::pair<std::string, int64_t>, double> expected_connection_len
                     expected[{windingName, parallel}] += piece("diagonal", windingName, std::hypot(x2 - x1, y2 - y1));
                 }
                 else if (!intervening.empty()) {
-                    // ABT #849 (Alf, 2026-08-22): an inter-section continuation is drawn as the
-                    // SINGLE DIAGONAL between the two end turns -- "Secondary turn 5 is lower
-                    // than turn 6, so the connection should change height" -- so its copper is
-                    // the centre-to-centre hop, exactly as a dragback's. The ABT #615 band
-                    // survives as the BLOCKING reservation only: the emitter still allocates its
-                    // edge row (later leads stack against it), so the replay must keep the row
-                    // allocation in step -- it just charges no copper for it.
-                    (void)continuationRow(y1 >= windowCenterTurnAxis, wireH,
-                                          std::min(x1, x2) - wireW / 2,
-                                          std::max(x1, x2) + wireW / 2);
-                    expected[{windingName, parallel}] += piece("diagonal-continuation", windingName, std::hypot(x2 - x1, y2 - y1));
+                    // ABT #615: any inter-section continuation (U or Z) routes in-window along the
+                    // SHARED top-edge band: stubs from both end turns to the band + run across.
+                    // (The FRONT_YZ face-dragback model for Z is superseded.)
+                    double edgeY = continuationRow(y1 >= windowCenterTurnAxis, wireH,
+                                                   std::min(x1, x2) - wireW / 2,
+                                                   std::max(x1, x2) + wireW / 2);
+                    if (std::abs(edgeY - y1) > wireH / 2) {
+                        expected[{windingName, parallel}] += piece("band-stub1", windingName, std::abs(edgeY - y1) + wireH / 2);
+                    }
+                    expected[{windingName, parallel}] += piece("band-run", windingName, std::abs(x2 - x1) + wireW);
+                    if (std::abs(edgeY - y2) > wireH / 2) {
+                        expected[{windingName, parallel}] += piece("band-stub2", windingName, std::abs(edgeY - y2) + wireH / 2);
+                    }
                 }
                 else {
                     // U adjacent: orthogonal L (horizontal past the corner, vertical pulled back).
