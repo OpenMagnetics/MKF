@@ -168,8 +168,13 @@ TEST_CASE("Calculate capacitance among two windings one with 16 and another with
     StrayCapacitance strayCapacitance;
 
     std::map<std::string, std::map<std::string, double>> expectedValues = {
-        {"Primary", {{"Primary", 14.777e-12}, {"Secondary", -6.6715e-12}}},
-        {"Secondary", {{"Primary", -6.6715e-12}, {"Secondary", 12.791e-12}}},
+    // Re-pinned 2026-08-22 for ABT #851: preprocess_data_for_round_wires passed an average
+    // DIAMETER as the conducting radius, which put touching turns nearer contact than they are
+    // and inflated every round-wire pair static ~2x. The old values characterised that bug;
+    // the corrected ones sit next to Biela/Kolar's rule-of-thumb for this fixture (~5-6 pF
+    // equivalent for the 2-layer RM 10/I winding, eq. (6) of their 2008 review).
+        {"Primary", {{"Primary", 7.4086e-12}, {"Secondary", -7.2859e-12}}},
+        {"Secondary", {{"Primary", -7.2859e-12}, {"Secondary", 7.5890e-12}}},
     };
 
     auto maxwellCapacitanceMatrix = strayCapacitance.calculate_capacitance(coil).get_maxwell_capacitance_matrix().value();
@@ -195,9 +200,14 @@ TEST_CASE("Calculate capacitance among three windings each with 8 turns and 1 pa
     StrayCapacitance strayCapacitance;
 
     std::map<std::string, std::map<std::string, double>> expectedValues = {
-        {"Primary", {{"Primary", 15.437e-12}, {"Secondary", -15.115e-12}, {"Tertiary", -0.12966e-12}}},
-        {"Secondary", {{"Primary", -15.115e-12}, {"Secondary", 27.457e-12}, {"Tertiary", -12.21e-12}}},
-        {"Tertiary", {{"Primary", -0.12966e-12}, {"Secondary", -12.21e-12}, {"Tertiary", 12.791e-12}}},
+    // Re-pinned 2026-08-22 for ABT #851: preprocess_data_for_round_wires passed an average
+    // DIAMETER as the conducting radius, which put touching turns nearer contact than they are
+    // and inflated every round-wire pair static ~2x. The old values characterised that bug;
+    // the corrected ones sit next to Biela/Kolar's rule-of-thumb for this fixture (~5-6 pF
+    // equivalent for the 2-layer RM 10/I winding, eq. (6) of their 2008 review).
+        {"Primary", {{"Primary", 6.5037e-12}, {"Secondary", -6.2407e-12}, {"Tertiary", -0.12966e-12}}},
+        {"Secondary", {{"Primary", -6.2407e-12}, {"Secondary", 13.671e-12}, {"Tertiary", -7.1275e-12}}},
+        {"Tertiary", {{"Primary", -0.12966e-12}, {"Secondary", -7.1275e-12}, {"Tertiary", 7.4709e-12}}},
     };
 
     auto maxwellCapacitanceMatrix = strayCapacitance.calculate_capacitance(coil).get_maxwell_capacitance_matrix().value();
@@ -344,7 +354,12 @@ TEST_CASE("Calculate capacitance of an automatic buck produced in OM with three 
     StrayCapacitance strayCapacitance;
 
     std::map<std::string, std::map<std::string, double>> expectedValues = {
-        {"Primary", {{"Primary", 2.6849e-12}}},
+    // Re-pinned 2026-08-22 for ABT #851: preprocess_data_for_round_wires passed an average
+    // DIAMETER as the conducting radius, which put touching turns nearer contact than they are
+    // and inflated every round-wire pair static ~2x. The old values characterised that bug;
+    // the corrected ones sit next to Biela/Kolar's rule-of-thumb for this fixture (~5-6 pF
+    // equivalent for the 2-layer RM 10/I winding, eq. (6) of their 2008 review).
+        {"Primary", {{"Primary", 1.5876e-12}}},
     };
 
     auto maxwellCapacitanceMatrix = strayCapacitance.calculate_capacitance(coil).get_maxwell_capacitance_matrix().value();
@@ -534,8 +549,13 @@ TEST_CASE("Calculate capacitance of a tranformers with low filling factor", "[ph
     StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::ALBACH);
 
     std::map<std::string, std::map<std::string, double>> expectedValues = {
-        {"Primary", {{"Primary", 8.8291e-12}, {"Secondary", -4.2151e-12}}},
-        {"Secondary", {{"Primary", -4.2151e-12}, {"Secondary", 6.6748e-12}}},
+    // Re-pinned 2026-08-22 for ABT #851: preprocess_data_for_round_wires passed an average
+    // DIAMETER as the conducting radius, which put touching turns nearer contact than they are
+    // and inflated every round-wire pair static ~2x. The old values characterised that bug;
+    // the corrected ones sit next to Biela/Kolar's rule-of-thumb for this fixture (~5-6 pF
+    // equivalent for the 2-layer RM 10/I winding, eq. (6) of their 2008 review).
+        {"Primary", {{"Primary", 6.3143e-12}, {"Secondary", -3.5186e-12}}},
+        {"Secondary", {{"Primary", -3.5186e-12}, {"Secondary", 3.8247e-12}}},
     };
 
     auto maxwellCapacitanceMatrix = strayCapacitance.calculate_capacitance(coil).get_maxwell_capacitance_matrix().value();
@@ -574,7 +594,12 @@ TEST_CASE("Calculate capacitance of a one layer inductor", "[physical-model][str
     StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::ALBACH);
 
     std::map<std::string, std::map<std::string, double>> expectedValues = {
-        {"Secondary", {{"Secondary", 0.7e-12}}},
+    // Re-pinned 2026-08-22 for ABT #851: preprocess_data_for_round_wires passed an average
+    // DIAMETER as the conducting radius, which put touching turns nearer contact than they are
+    // and inflated every round-wire pair static ~2x. The old values characterised that bug;
+    // the corrected ones sit next to Biela/Kolar's rule-of-thumb for this fixture (~5-6 pF
+    // equivalent for the 2-layer RM 10/I winding, eq. (6) of their 2008 review).
+        {"Secondary", {{"Secondary", 0.32274e-12}}},
     };
 
     auto maxwellCapacitanceMatrix = strayCapacitance.calculate_capacitance(coil).get_maxwell_capacitance_matrix().value();

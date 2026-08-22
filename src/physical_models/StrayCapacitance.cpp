@@ -789,13 +789,27 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
     
     // Now average the coating thickness (after per-wire computation)
     auto wireCoatingThickness = (wireCoatingThicknessFirstWire + wireCoatingThicknessSecondWire) / 2;
-    auto conductingRadius = (conductingDiameterFirstWire + conductingDiameterSecondWire) / 2;
+    // ABT #851: this is the average conducting RADIUS. It used to be written as
+    // (diameter1 + diameter2) / 2 — the average DIAMETER — and every round-wire pair model
+    // downstream consumed that as the radius, i.e. 2x the real value for equal wires.
+    auto conductingRadius = (conductingDiameterFirstWire + conductingDiameterSecondWire) / 4;
 
     // For toroidal cores, check distance between all coordinate combinations (inner/outer halves)
     auto coords1 = get_all_turn_coordinates(firstTurn);
     auto coords2 = get_all_turn_coordinates(secondTurn);
     
-    double sumDistance = 0;
+    // ABT #851: the separation that sets a turn pair's capacitance is their CLOSEST
+    // APPROACH. A toroidal turn carries inner and outer crossing coordinates, so the
+    // combinations of two ADJACENT turns mix the true near-zero gap (inner-inner) with
+    // across-the-core distances of 10-20 mm (inner-outer). This used to AVERAGE them,
+    // telling every pair model that touching turns sit millimetres apart: the plate-family
+    // statics (Albach/Koch/Duerdoth) collapsed to ~0.07 pF per pair where the near-contact
+    // value is ~3-4 pF, and only Massarini's logarithmic form survived — which is why the
+    // choice of static model appeared to matter enormously on toroids. Adjacency detection
+    // (get_surrounding_turns) already uses the minimum over the same combinations; the
+    // capacitance must see the same geometry it was selected on. Off toroids each turn has
+    // a single coordinate, so min == mean and nothing changes there.
+    double minDistance = std::numeric_limits<double>::max();
     int validDistancesCount = 0;
     for (const auto& c1 : coords1) {
         for (const auto& c2 : coords2) {
@@ -805,14 +819,14 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
             }
             double dist = hypot(c1[0] - c2[0], c1[1] - c2[1]);
             dist -= outerDiameterFirstWire / 2 + outerDiameterSecondWire / 2;
-            sumDistance += dist;
+            minDistance = std::min(minDistance, dist);
             validDistancesCount++;
         }
     }
     
     double distanceBetweenTurns;
     if (validDistancesCount > 0) {
-        distanceBetweenTurns = sumDistance / validDistancesCount;
+        distanceBetweenTurns = minDistance;
     } else {
         // Fallback to single coordinate calculation
         double x1 = firstTurn.get_coordinates()[0];
