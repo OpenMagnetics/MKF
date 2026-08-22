@@ -11,6 +11,8 @@
 #include "support/Utils.h"
 #include "support/Settings.h"
 #include <cmath>
+#include <algorithm>
+#include <complex>
 #include <numbers>
 
 
@@ -167,6 +169,98 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
     return ImpedanceTank{airCoredInductance, capacitance, true};
 }
 
+
+static double interpolate_permittivity_points(const MAS::Permittivity& data, double frequency) {
+    // Log-log interpolation over the tabulated points; a single point is frequency-flat.
+    // Clamps to the table ends: no extrapolation beyond the published data.
+    if (std::holds_alternative<MAS::PermittivityPoint>(data)) {
+        return std::get<MAS::PermittivityPoint>(data).get_value();
+    }
+    auto points = std::get<std::vector<MAS::PermittivityPoint>>(data);
+    std::vector<std::pair<double, double>> table;
+    for (auto& point : points) {
+        if (point.get_frequency() && point.get_value() > 0) {
+            table.push_back({point.get_frequency().value(), point.get_value()});
+        }
+    }
+    if (table.empty()) {
+        return points.empty() ? 0.0 : points[0].get_value();
+    }
+    std::sort(table.begin(), table.end());
+    if (frequency <= table.front().first) return table.front().second;
+    if (frequency >= table.back().first) return table.back().second;
+    for (size_t i = 0; i + 1 < table.size(); ++i) {
+        if (table[i].first <= frequency && frequency <= table[i + 1].first) {
+            double t = std::log(frequency / table[i].first) / std::log(table[i + 1].first / table[i].first);
+            return table[i].second * std::pow(table[i + 1].second / table[i].second, t);
+        }
+    }
+    return table.back().second;
+}
+
+std::complex<double> Impedance::core_dimensional_attenuation(const CoreMaterial& material, double frequency, std::complex<double> complexPermeability, const std::vector<double>& crossSectionDimensions) {
+    // ABT #848. A ferrite core is a lossy dielectric of enormous permittivity (MnZn: eps' ~ 1e5
+    // at 1 MHz, Ferroxcube handbook Table 5) AND a conductor (MAS resistivity, eps'' = 1/(w eps0 rho)),
+    // so the in-material wavelength is millimetres in the MHz band and the flux does not fill the
+    // cross-section uniformly: the effective permeability of a slab of thickness d is
+    // mu * tan(kd/2)/(kd/2) with k = w*sqrt(mu0 mu eps0 eps) (Snelling, Soft Ferrites, dimensional
+    // resonance), complex because both mu and eps are. On a 15 mm MnZn cross-section this is
+    // |factor| ~ 0.4 at 0.5 MHz and ~0.3 at 1 MHz — the simulated impedance of large MnZn chokes
+    // was 2-4x high in exactly that band, which the stray-capacitance models had been blamed for.
+    // The cross-section is solved as a 2D rectangle (exact double-series solution below). No
+    // data -> factor 1: a material without permittivity gets no correction rather than an
+    // invented one.
+    if (!material.get_permittivity() || !material.get_permittivity()->get_complex() || crossSectionDimensions.empty()) {
+        return 1.0;
+    }
+    auto complexPermittivity = material.get_permittivity()->get_complex().value();
+    double epsReal = interpolate_permittivity_points(complexPermittivity.get_real(), frequency);
+    double epsImag = interpolate_permittivity_points(complexPermittivity.get_imaginary(), frequency);
+    if (epsReal <= 0) {
+        return 1.0;
+    }
+    constexpr double vacuumPermeability = 4e-7 * std::numbers::pi;
+    constexpr double vacuumPermittivity = 8.8541878128e-12;
+    double angularFrequency = 2 * std::numbers::pi * frequency;
+    // e^{jwt}: mu = mu' - j mu'', eps = eps' - j eps''
+    std::complex<double> mu(complexPermeability.real(), -complexPermeability.imag());
+    std::complex<double> eps(epsReal, -epsImag);
+    std::complex<double> k = angularFrequency * std::sqrt(vacuumPermeability * mu * vacuumPermittivity * eps);
+    // Average field over the cross-section with H = H0 on the boundary. One dimension (slab):
+    // <H>/H0 = tan(kd/2)/(kd/2). Two dimensions a x b: the exact solution of d2H + k^2 H = 0
+    // expands in a double sine series and gives
+    //   <H>/H0 = 1 + sum_{m,n odd} 64 k^2 / (pi^4 m^2 n^2 (k_mn^2 - k^2)),  k_mn^2 = (m pi/a)^2 + (n pi/b)^2.
+    // This is what a thin toroid needs: the field enters through the two faces a FEW mm apart
+    // (the radial thickness), so the wave never has to cross the 15 mm height — the product of
+    // two slab factors double-counted that and over-attenuated 2-5x (measured on the A05/A07
+    // chokes before this form replaced it). The series converges as 1/(m^2 n^2); 41 odd terms
+    // per axis is ample.
+    std::vector<double> dims;
+    for (double dimension : crossSectionDimensions) {
+        if (dimension > 0) dims.push_back(dimension);
+    }
+    if (dims.empty()) {
+        return 1.0;
+    }
+    std::complex<double> k2 = k * k;
+    if (dims.size() == 1) {
+        std::complex<double> x = k * dims[0] / 2.0;
+        if (std::abs(x) < 1e-6) return 1.0;
+        return std::tan(x) / x;
+    }
+    double a = dims[0], b = dims[1];
+    std::complex<double> sum = 0.0;
+    constexpr int maxOdd = 81;
+    for (int m = 1; m <= maxOdd; m += 2) {
+        for (int n = 1; n <= maxOdd; n += 2) {
+            double kmn2 = std::pow(m * std::numbers::pi / a, 2) + std::pow(n * std::numbers::pi / b, 2);
+            sum += 64.0 * k2 / (std::pow(std::numbers::pi, 4) * m * m * n * n * (kmn2 - k2));
+        }
+    }
+    std::complex<double> factor = 1.0 + sum;
+    return factor;
+}
+
 std::complex<double> Impedance::impedance_from_model(const WidebandImpedanceModel& model, double frequency) {
     auto angularFrequency = 2 * std::numbers::pi * frequency;
 
@@ -177,8 +271,12 @@ std::complex<double> Impedance::impedance_from_model(const WidebandImpedanceMode
     double complexPermeabilityImaginaryPart = 0.0;
     if (model.coreMaterial) {
         auto [muReal, muImag] = OpenMagnetics::ComplexPermeability().get_complex_permeability(model.coreMaterial.value(), frequency);
-        complexPermeabilityRealPart = muReal * model.permeabilityScaling;
-        complexPermeabilityImaginaryPart = muImag * model.permeabilityScaling;
+        // ABT #848: dimensional / eddy-dielectric attenuation across the core cross-section.
+        // Complex multiply in e^{jwt}: (mu' - j mu'') * factor, then read back mu', mu''.
+        auto factor = core_dimensional_attenuation(model.coreMaterial.value(), frequency, std::complex<double>(muReal, muImag), model.coreCrossSectionDimensions);
+        std::complex<double> muEffective = std::complex<double>(muReal, -muImag) * factor;
+        complexPermeabilityRealPart = muEffective.real() * model.permeabilityScaling;
+        complexPermeabilityImaginaryPart = -muEffective.imag() * model.permeabilityScaling;
     }
 
     // The leakage tanks are damped by their winding resistance, which is
@@ -246,6 +344,10 @@ WidebandImpedanceModel Impedance::build_wideband_impedance_model(Magnetic magnet
 
     WidebandImpedanceModel model;
     model.coreMaterial = core.resolve_material();
+    if (core.get_processed_description() && !core.get_processed_description()->get_columns().empty()) {
+        auto column = core.get_processed_description()->get_columns()[0];
+        model.coreCrossSectionDimensions = {column.get_width(), column.get_depth()};
+    }
     model.temperature = temperature;
     model.fast = fast;
 
@@ -329,6 +431,10 @@ WidebandImpedanceModel Impedance::build_common_mode_impedance_model(Magnetic mag
 
     WidebandImpedanceModel model;
     model.coreMaterial = core.resolve_material();
+    if (core.get_processed_description() && !core.get_processed_description()->get_columns().empty()) {
+        auto column = core.get_processed_description()->get_columns()[0];
+        model.coreCrossSectionDimensions = {column.get_width(), column.get_depth()};
+    }
     model.temperature = temperature;
     model.tanks.push_back(build_magnetizing_tank(core, coil));
     return model;
@@ -339,6 +445,10 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
     // first resonance). The wideband sweep adds the leakage tanks on top of this.
     WidebandImpedanceModel model;
     model.coreMaterial = core.resolve_material();
+    if (core.get_processed_description() && !core.get_processed_description()->get_columns().empty()) {
+        auto column = core.get_processed_description()->get_columns()[0];
+        model.coreCrossSectionDimensions = {column.get_width(), column.get_depth()};
+    }
     model.temperature = temperature;
     model.tanks.push_back(build_magnetizing_tank(core, coil));
     return impedance_from_model(model, frequency);
@@ -359,6 +469,10 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
     // scaled by µ(H_dc)/µ(0) to account for permeability rolloff under DC bias.
     WidebandImpedanceModel model;
     model.coreMaterial = coreMaterial;
+    if (core.get_processed_description() && !core.get_processed_description()->get_columns().empty()) {
+        auto column = core.get_processed_description()->get_columns()[0];
+        model.coreCrossSectionDimensions = {column.get_width(), column.get_depth()};
+    }
     model.permeabilityScaling = biasRatio;
     model.temperature = temperature;
     model.tanks.push_back(build_magnetizing_tank(core, coil));

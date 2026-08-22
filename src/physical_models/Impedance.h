@@ -55,6 +55,10 @@ struct ImpedanceTank {
 // evaluated cheaply at each frequency by impedance_from_model().
 struct WidebandImpedanceModel {
     std::optional<CoreMaterial> coreMaterial;   // complex permeability µ(f) for the magnetizing tank
+    // ABT #848: the core's cross-section (column width, depth) for the dimensional / eddy-
+    // dielectric attenuation of the magnetizing permeability. Only acts when the material
+    // carries permittivity data; empty or missing data means no correction, never a guess.
+    std::vector<double> coreCrossSectionDimensions;
     double permeabilityScaling = 1.0;           // DC-bias rolloff factor µ(Hdc)/µ(0)
     std::vector<ImpedanceTank> tanks;           // [0] magnetizing; the rest leakage resonances
     // Per-winding frequency-dependent resistance data, indexed by winding, used to
@@ -94,6 +98,12 @@ class Impedance {
     } 
 
     virtual ~Impedance() = default;
+
+        // ABT #848: complex factor mu_eff/mu for the EM wave crossing the core cross-section,
+        // tan(k d/2)/(k d/2) per dimension (Snelling, Soft Ferrites, dimensional resonance), with
+        // k = w*sqrt(mu0*mu*eps0*eps) from the material's complex permittivity. Returns 1 when the
+        // material has no permittivity data.
+        static std::complex<double> core_dimensional_attenuation(const CoreMaterial& material, double frequency, std::complex<double> complexPermeability, const std::vector<double>& crossSectionDimensions);
 
     std::complex<double> calculate_impedance(Magnetic magnetic, double frequency, double temperature = Defaults().ambientTemperature);
     std::complex<double> calculate_impedance(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);

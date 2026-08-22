@@ -638,3 +638,37 @@ TEST_CASE("Competitor_Cable_Core_Impedance_Export", "[cable-core-export]") {
 }
 
 }  // namespace
+
+TEST_CASE("Test_Core_Dimensional_Attenuation_From_Real_Permittivity", "[physical-model][impedance][smoke-test]") {
+    // ABT #848: a MnZn ferrite core is a lossy dielectric with eps' ~ 1e5 (Ferroxcube handbook
+    // Table 5) and a conductor (resistivity), so across a 15 mm cross-section the wave is
+    // attenuated by 2-4x in the 0.3-1 MHz band. The factor must be ~1 at audio/low-RF, fall to
+    // the 0.2-0.5 range around 1 MHz on 15 mm, and be EXACTLY 1 for a material without
+    // permittivity data (no invented correction).
+    auto a07 = find_core_material_by_name("A07");
+    REQUIRE(a07.get_permittivity());
+    std::vector<double> dims = {0.005, 0.015};  // T25x15x15 cross-section: 5 mm radial, 15 mm high
+    auto mu10k = OpenMagnetics::ComplexPermeability().get_complex_permeability(a07, 1e4);
+    auto f10k = OpenMagnetics::Impedance::core_dimensional_attenuation(a07, 1e4, std::complex<double>(mu10k.first, mu10k.second), dims);
+    CHECK(std::abs(f10k) > 0.97);
+    auto mu1m = OpenMagnetics::ComplexPermeability().get_complex_permeability(a07, 1e6);
+    auto f1m = OpenMagnetics::Impedance::core_dimensional_attenuation(a07, 1e6, std::complex<double>(mu1m.first, mu1m.second), dims);
+    // Physical check: on a 5 x 15 mm section the field enters mainly through the faces 5 mm
+    // apart, and the 15 mm faces only ADD penetration — so the 2D result must be at least the
+    // slab factor of the 5 mm thickness (which ignores the extra faces), well above the slab
+    // factor of the 15 mm thickness, and below 1.
+    auto slab5 = OpenMagnetics::Impedance::core_dimensional_attenuation(a07, 1e6, std::complex<double>(mu1m.first, mu1m.second), {0.005});
+    auto slab15 = OpenMagnetics::Impedance::core_dimensional_attenuation(a07, 1e6, std::complex<double>(mu1m.first, mu1m.second), {0.015});
+    CHECK(std::abs(f1m) >= std::abs(slab5) * 0.98);
+    CHECK(std::abs(f1m) > std::abs(slab15));
+    CHECK(std::abs(f1m) < 1.0);
+    // monotone: stronger attenuation at higher frequency
+    auto mu300k = OpenMagnetics::ComplexPermeability().get_complex_permeability(a07, 3e5);
+    auto f300k = OpenMagnetics::Impedance::core_dimensional_attenuation(a07, 3e5, std::complex<double>(mu300k.first, mu300k.second), dims);
+    CHECK(std::abs(f300k) > std::abs(f1m));
+    // a material WITHOUT permittivity data gets no correction at all
+    auto n87 = find_core_material_by_name("N87");
+    REQUIRE(!n87.get_permittivity());
+    auto fNone = OpenMagnetics::Impedance::core_dimensional_attenuation(n87, 1e6, std::complex<double>(1000, 100), dims);
+    CHECK(std::abs(fNone - 1.0) < 1e-12);
+}
