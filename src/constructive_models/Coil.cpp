@@ -1784,7 +1784,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                         squeeze.parallel = parallel;
                         squeeze.coordinates = {crossed->get_coordinates()[0], routeEdgeY};
                         squeeze.dimensions = {wireOuterWidth, wireOuterHeight};
-                        squeeze.routedLength = 0;  // space-only: the copper is the drawn stubs + edge run below
+                        squeeze.routedLength = 0;  // space-only: the copper is the drawn diagonal below
                         squeeze.edgeDepth = runDepth;
                         squeeze.kind = ConnectionKind::LAYER_SQUEEZE;   // ABT #685: no copper
                         squeeze.fromTurn = exitTurn.get_name();
@@ -1922,23 +1922,48 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                         seg.toTurn = entryTurn.get_name();
                         spaces.push_back(seg);
                     };
-                    // Verticals start at the turn CENTRE (y1 / y2), not covering the whole turn, and
-                    // overlap the horizontal by half a wire at the corner.
-                    if (std::abs(routeEdgeY - y1) > 0.5 * wireOuterHeight) {
-                        double far1 = routeEdgeY + ((routeEdgeY >= y1) ? 1.0 : -1.0) * wireOuterHeight / 2;
-                        pushLink(x1, (y1 + far1) / 2, wireOuterWidth, std::abs(far1 - y1), std::abs(far1 - y1));
+                    // ABT #849 (Alf, 2026-08-22): THE RUN GOES DIAGONALLY when the two turns sit
+                    // at different heights -- "Secondary turn 5 is lower than turn 6, so the
+                    // connection should change height". The old shape (vertical stub up to one
+                    // shared band row, horizontal run, stub back down) drew copper the winder
+                    // never lays: a real wire leaving one section's last turn for the next
+                    // section's first simply crosses the gap, sloping as much as the two heights
+                    // differ. With the N-filar law both endpoints are at their layers' ends on
+                    // the SAME side (the alternation), so the diagonal lives in the edge band and
+                    // Alf's routing law (top or bottom, never through the middle) holds by the
+                    // same geometry that used to justify the horizontal.
+                    //
+                    // The BLOCKING stays the settled edge band (squeezes at the allocated row,
+                    // above): both endpoints sit within a pitch of that band by the alternation,
+                    // so the band's corridor covers the diagonal. Deriving the squeeze depths
+                    // from the diagonal itself was tried and DIVERGES: the corridor depth feeds
+                    // the packing, the packing moves the endpoint turns, the endpoints steepen
+                    // the diagonal -- Secondary re-packed from 6-turn to 11-turn sections and
+                    // the runs ended up mid-window (measured 2026-08-22).
+                    {
+                        const double deltaX = x2 - x1;
+                        const double deltaY = y2 - y1;
+                        const double length = std::sqrt(deltaX * deltaX + deltaY * deltaY);
+                        ConnectionReservedSpace run;
+                        run.winding = windingName;
+                        run.parallel = parallel;
+                        run.section = windingLayers[i].get_section().value_or("");
+                        run.layer = "";
+                        run.coordinates = {roundFloat((x1 + x2) / 2, 9), roundFloat((y1 + y2) / 2, 9)};
+                        run.dimensions = {roundFloat(length, 9), wireOuterHeight};
+                        run.routedLength = roundFloat(length, 9);
+                        run.rotation =
+                            roundFloat(std::atan2(deltaY, deltaX) * 180.0 / std::numbers::pi, 6);
+                        run.kind = ConnectionKind::EDGE_CONTINUATION;
+                        run.edgeDepth = runDepth;
+                        run.fromTurn = exitTurn.get_name();
+                        run.toTurn = entryTurn.get_name();
+                        spaces.push_back(run);
                     }
-                    pushLink((x1 + x2) / 2, routeEdgeY, std::abs(x2 - x1) + wireOuterWidth, wireOuterHeight,
-                             std::abs(x2 - x1) + wireOuterWidth, runDepth);
-                    if (std::abs(y2 - routeEdgeY) > 0.5 * wireOuterHeight) {
-                        double far2 = routeEdgeY + ((routeEdgeY >= y2) ? 1.0 : -1.0) * wireOuterHeight / 2;
-                        pushLink(x2, (y2 + far2) / 2, wireOuterWidth, std::abs(far2 - y2), std::abs(far2 - y2));
-                    }
-                    // ABT #685: stub up to the band row, run across the intervening layers, stub
-                    // down to the receiving turn — the three pushLink segments as ONE route.
                     addRoute(windingName, parallel, exitTurn.get_name(), entryTurn.get_name(),
                              ConnectionKind::EDGE_CONTINUATION,
-                             {{x1, y1}, {x1, routeEdgeY}, {x2, routeEdgeY}, {x2, y2}});
+                             {{x1, y1}, {x2, y2}});
+                    (void)pushLink;
                 }
                 else {
                     // ABT #608 RETRACTED (Alf, 2026-08-08): the U tangential link does NOT cost
@@ -3010,10 +3035,20 @@ void Coil::align_blocked_layer_turns() {
             for (size_t j = 0; j < numberParallelsInLayer; ++j) {
                 orderInThisLayer.push_back(turns[orderedTurns[j]].get_parallel());
             }
-            const std::string key = layer.get_section().value() + "/" + windingName;
+            // ABT #849 (Alf, 2026-08-22): the order holds across the WHOLE WINDING, not per
+            // section. "This is wound by grabbing the parallels fixed with the hand and giving
+            // turns up and down, but without twisting the order" -- the bundle's spatial stacking
+            // is a property of the wire in the hand, and an interleave boundary does not re-grip
+            // it. Keyed per (section, winding), each section chose its own order from its own
+            // first layer: on custom_magnetic 37 the Secondary's single-layer section 0 ended
+            // with p0 below p1, and section 1's first layer started p0 ABOVE p1 -- the parallels
+            // crossed inside the horizontal inter-section connection. Keyed per winding, the
+            // first-wound layer sets the order once and every later layer -- next section
+            // included -- keeps it.
+            const std::string key = windingName;
             auto knownOrder = orderPerSectionWinding.find(key);
             if (knownOrder == orderPerSectionWinding.end()) {
-                orderPerSectionWinding[key] = orderInThisLayer;   // the first layer sets the order
+                orderPerSectionWinding[key] = orderInThisLayer;   // the first-wound layer sets the order
                 continue;
             }
             if (knownOrder->second == orderInThisLayer) {
@@ -10574,6 +10609,16 @@ bool Coil::wind_by_rectangular_turns() {
             }
 
 
+            if (std::getenv("MKF_STYLE_DIAG")) {
+                std::fprintf(stderr, "[style] site=%d layer=%s style=%s parallels=%lld prop=[",
+                             10535, layer.get_name().c_str(),
+                             layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS
+                                 ? "TURNS" : "PARALLELS",
+                             (long long)get_number_parallels(windingIndex));
+                for (auto pr : partialWinding.get_parallels_proportion())
+                    std::fprintf(stderr, "%.4f ", pr);
+                std::fprintf(stderr, "]\n");
+            }
             // ABT #849 (Alf, 2026-08-21): REAL WINDING IS ALWAYS N-FILAR. "Real winding is
             // always N filar, unless one section is a full parallel and another section another
             // parallel" -- so the ONLY case where parallel-major is legitimate is a layer that
@@ -11016,6 +11061,16 @@ bool Coil::wind_by_round_turns() {
                 layer.set_winding_style(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
             }
 
+            if (std::getenv("MKF_STYLE_DIAG")) {
+                std::fprintf(stderr, "[style] site=%d layer=%s style=%s parallels=%lld prop=[",
+                             10928, layer.get_name().c_str(),
+                             layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS
+                                 ? "TURNS" : "PARALLELS",
+                             (long long)get_number_parallels(windingIndex));
+                for (auto pr : partialWinding.get_parallels_proportion())
+                    std::fprintf(stderr, "%.4f ", pr);
+                std::fprintf(stderr, "]\n");
+            }
             // ABT #849 (Alf, 2026-08-21): REAL WINDING IS ALWAYS N-FILAR. "Real winding is
             // always N filar, unless one section is a full parallel and another section another
             // parallel" -- so the ONLY case where parallel-major is legitimate is a layer that
@@ -11268,6 +11323,16 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
                 layer.set_winding_style(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
             }
 
+            if (std::getenv("MKF_STYLE_DIAG")) {
+                std::fprintf(stderr, "[style] site=%d layer=%s style=%s parallels=%lld prop=[",
+                             11131, layer.get_name().c_str(),
+                             layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS
+                                 ? "TURNS" : "PARALLELS",
+                             (long long)get_number_parallels(windingIndex));
+                for (auto pr : partialWinding.get_parallels_proportion())
+                    std::fprintf(stderr, "%.4f ", pr);
+                std::fprintf(stderr, "]\n");
+            }
             // ABT #849 (Alf, 2026-08-21): REAL WINDING IS ALWAYS N-FILAR. "Real winding is
             // always N filar, unless one section is a full parallel and another section another
             // parallel" -- so the ONLY case where parallel-major is legitimate is a layer that
