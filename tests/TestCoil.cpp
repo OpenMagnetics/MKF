@@ -24,6 +24,50 @@
 #include <set>
 #include <map>
 using json = nlohmann::json;
+
+// ABT #840: MARGIN-FILL ASSERTIONS THAT STATE WHICH CASE THEY TEST.
+// The family `marginAfterMarginFill[k] > marginAfterMarginNoFill[k]` guards margin fill, but a
+// site whose fixture has NO SLACK (the section already fills its band) passes on float dust --
+// one was measured at 8.67e-19 m, an attometre -- and would stay green if margin fill stopped
+// working entirely. MKF 416718ac split four such sites by hand; this macro measures every site
+// so the split can be made on evidence rather than on a pattern match (the blanket rewrite in
+// b54b7d51 is exactly what silently removed a genuine feature test).
+//
+// It preserves the strict '>' contract and adds two things: the site's measured difference under
+// MKF_MARGIN_DIAG, and a floor -- a site claiming fill GROWS the margin must show an
+// engineering-scale growth (1 nm), not rounding noise. Sites with no slack assert equality
+// instead and do not use this macro.
+// ABT #840: the NO-SLACK half of the family. The section already fills its band, so margin fill
+// has nothing to absorb and the margin must come back EXACTLY as it was. Measured, not assumed:
+// every site converted here was reported by MARGIN_FILL_GROWS at a delta of 4.3e-19 to 8.7e-19 m
+// -- attometres, i.e. float dust -- so as a strict '>' it was guarding nothing and would have
+// stayed green if margin fill stopped working. As an equality it closes the real hole, which is
+// SPURIOUS GROWTH (fill enlarging a margin it must not touch); a shrink was always caught, since
+// a >= b is false when a < b.
+#define MARGIN_FILL_UNCHANGED(fill, noFill)                                                    \
+    do {                                                                                       \
+        const double _mfFill = (fill), _mfNoFill = (noFill);                                   \
+        if (std::getenv("MKF_MARGIN_DIAG")) {                                                  \
+            std::cerr << "[margin-fill] line " << __LINE__ << " (no slack) delta="             \
+                      << (_mfFill - _mfNoFill) << "\n";                                        \
+        }                                                                                      \
+        INFO("margin fill must NOT change the margin at line " << __LINE__ << ": fill "         \
+             << _mfFill << " vs no-fill " << _mfNoFill);                                        \
+        REQUIRE_THAT(_mfFill, Catch::Matchers::WithinAbs(_mfNoFill, 1e-12));                    \
+    } while (0)
+
+#define MARGIN_FILL_GROWS(fill, noFill)                                                        \
+    do {                                                                                       \
+        const double _mfFill = (fill), _mfNoFill = (noFill);                                   \
+        if (std::getenv("MKF_MARGIN_DIAG")) {                                                  \
+            std::cerr << "[margin-fill] line " << __LINE__ << " delta="                        \
+                      << (_mfFill - _mfNoFill) << "\n";                                        \
+        }                                                                                      \
+        INFO("margin fill must GROW the margin at line " << __LINE__ << ": fill " << _mfFill    \
+             << " vs no-fill " << _mfNoFill << " (delta " << (_mfFill - _mfNoFill) << ")");     \
+        REQUIRE(_mfFill > _mfNoFill + 1e-9);                                                   \
+    } while (0)
+
 #include <typeinfo>
 #include <chrono>
 #include <thread>
@@ -576,8 +620,8 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered"
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[1] == sectionDimensionsAfterMarginNoFill[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth, 0.001));
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -699,12 +743,12 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_1[1] > sectionDimensionsAfterMarginNoFill_1[1]);
 
@@ -809,7 +853,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top", "[c
     REQUIRE_THAT(sectionDimensionsAfterMarginFill[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill[1], 0.0001));
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth, 0.0001));
     REQUIRE_THAT(marginAfterMarginFill[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill[0], 0.0001));
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -938,9 +982,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three
     REQUIRE_THAT(marginAfterMarginFill_0[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_0[0], 0.0001));
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
     REQUIRE_THAT(marginAfterMarginFill_2[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_2[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_2[1] > marginAfterMarginNoFill_2[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_2[1], marginAfterMarginNoFill_2[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE_THAT(sectionDimensionsBeforeMargin_1[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill_1[1], 0.0001));
     REQUIRE_THAT(sectionDimensionsBeforeMargin_2[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill_2[1], 0.0001));
@@ -1045,7 +1089,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom", 
     REQUIRE_THAT(sectionDimensionsAfterMarginFill[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill[1], 0.0001));
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth, 0.0001));
     REQUIRE_THAT(marginAfterMarginFill[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill[1], 0.0001));
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
     REQUIRE(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -1174,9 +1218,9 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Th
     REQUIRE_THAT(marginAfterMarginFill_0[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_0[1], 0.0001));
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 0.0001));
     REQUIRE_THAT(marginAfterMarginFill_2[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_2[1], 0.0001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
-    REQUIRE(marginAfterMarginFill_2[0] > marginAfterMarginNoFill_2[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_2[0], marginAfterMarginNoFill_2[0]);
     REQUIRE(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE_THAT(sectionDimensionsBeforeMargin_1[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill_1[1], 0.0001));
     REQUIRE_THAT(sectionDimensionsBeforeMargin_2[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill_2[1], 0.0001));
@@ -1422,7 +1466,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Th
     REQUIRE_THAT(sectionDimensionsAfterMarginFill_2[1], Catch::Matchers::WithinAbs(sectionDimensionsAfterMarginNoFill_2[1], 0.0001));
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.0001));
     REQUIRE_THAT(marginAfterMarginFill_0[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_0[1], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
     REQUIRE_THAT(marginAfterMarginFill_2[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_2[1], 0.0001));
     // ABT #830/#831/#839 (2026-08-20, deliberate): EQUALITY, not >= and not >. Removing the
     // per-station nanometre rounding in compute_spread_turn_stations (owner-approved; those
@@ -1528,8 +1572,8 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered", "
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[1] == sectionDimensionsAfterMarginNoFill[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth, 0.001));
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -1649,12 +1693,12 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Thr
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_1[1] > sectionDimensionsAfterMarginNoFill_1[1]);
 
@@ -1742,8 +1786,8 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered", "
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[1] == sectionDimensionsAfterMarginNoFill[1]);
     REQUIRE_THAT(windingWindowEndingWidth, Catch::Matchers::WithinAbs(sectionEndingWidth, 0.001));
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -1863,12 +1907,12 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Thr
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_1[1] > sectionDimensionsAfterMarginNoFill_1[1]);
 
@@ -1956,8 +2000,8 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered", 
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[1] == sectionDimensionsAfterMarginNoFill[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth, 0.001));
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -2077,12 +2121,12 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Th
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_1[1] > sectionDimensionsAfterMarginNoFill_1[1]);
 
@@ -2165,8 +2209,8 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered", 
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -2289,12 +2333,12 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Th
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0]);
     REQUIRE_THAT(marginAfterMarginFill_2[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_2[1], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -2377,8 +2421,8 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top", "[con
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -2498,12 +2542,12 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_D
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -2586,8 +2630,8 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom", "[
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
     OpenMagneticsTesting::check_turns_description(coil);
@@ -2707,12 +2751,12 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Thre
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -2795,7 +2839,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread", "[
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
     // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
     // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
     // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
@@ -2922,7 +2966,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Thre
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
     // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
     // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
     // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
@@ -2936,8 +2980,8 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Thre
     // cross-section comparisons below (_1 against _0) still hold -- those compare different
     // requested margins, not a margin against itself.
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 1e-9));
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -3020,8 +3064,8 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered", "[con
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -3142,12 +3186,12 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_D
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -3230,8 +3274,8 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner", "[constr
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -3352,12 +3396,12 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Diff
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -3440,8 +3484,8 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer", "[constr
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -3562,12 +3606,12 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Diff
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -3650,7 +3694,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread", "[const
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
     // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
     // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
     // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
@@ -3778,7 +3822,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Dif
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
     // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
     // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
     // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
@@ -3792,8 +3836,8 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Dif
     // cross-section comparisons below (_1 against _0) still hold -- those compare different
     // requested margins, not a margin against itself.
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 1e-9));
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -3876,8 +3920,8 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered", "[
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -3998,9 +4042,9 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Thre
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -4083,8 +4127,8 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner", "[con
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -4205,12 +4249,12 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_D
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -4293,8 +4337,8 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer", "[con
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -4415,12 +4459,12 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_D
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -4503,7 +4547,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread", "[co
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
     // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
     // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
     // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
@@ -4631,7 +4675,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
     // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
     // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
     // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
@@ -4645,8 +4689,8 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_
     // cross-section comparisons below (_1 against _0) still hold -- those compare different
     // requested margins, not a margin against itself.
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 1e-9));
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -4729,8 +4773,8 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered", "[
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -4851,12 +4895,12 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Thre
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -4939,8 +4983,8 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner", "[con
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -5061,12 +5105,12 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_D
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[0], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[0], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -5149,8 +5193,8 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer", "[con
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[1], marginAfterMarginNoFill[1]);
     REQUIRE(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
 
 
@@ -5271,12 +5315,12 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_D
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1]);
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 0.0001));
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
@@ -5359,7 +5403,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread", "[co
     REQUIRE(0 == marginBeforeMargin[0]);
     REQUIRE(0 == marginBeforeMargin[1]);
     REQUIRE(sectionDimensionsAfterMarginFill[0] == sectionDimensionsAfterMarginNoFill[0]);
-    REQUIRE(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill[0], marginAfterMarginNoFill[0]);
     // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
     // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
     // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
@@ -5487,7 +5531,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_
     REQUIRE(sectionDimensionsAfterMarginFill_0[1] == sectionDimensionsAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsAfterMarginFill_1[1] == sectionDimensionsAfterMarginNoFill_1[1]);
     REQUIRE_THAT(windingWindowStartingWidth, Catch::Matchers::WithinAbs(sectionStartingWidth_0, 0.001));
-    REQUIRE(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_UNCHANGED(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0]);
     // Margin tape can no longer GROW this margin (ABT #579). Filling used to reclaim the dead
     // half-gap that SPREAD parked OUTSIDE the outermost turn at each end of the run: measured on
     // this configuration as 57.78 um, exactly what the margin used to gain (500 -> 557.782 um).
@@ -5501,8 +5545,8 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_
     // cross-section comparisons below (_1 against _0) still hold -- those compare different
     // requested margins, not a margin against itself.
     REQUIRE_THAT(marginAfterMarginFill_1[1], Catch::Matchers::WithinAbs(marginAfterMarginNoFill_1[1], 1e-9));
-    REQUIRE(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
-    REQUIRE(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[0], marginAfterMarginNoFill_0[0]);
+    MARGIN_FILL_GROWS(marginAfterMarginFill_1[1], marginAfterMarginNoFill_0[1]);
     REQUIRE(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
     REQUIRE(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
 
