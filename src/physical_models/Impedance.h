@@ -83,17 +83,15 @@ class Impedance {
         ImpedanceTank build_magnetizing_tank(Core& core, Coil& coil);
     protected:
     public:
-    // The intended flagship is the FULL energy-based StrayCapacitance model (per-pair
-    // Albach statics, floating-core self term, mirrored-winding SRF factor — ABT #848).
-    // Controlled A/B on 107 measured WE common-mode chokes, same materials and complex-
-    // permeability model on both arms (2026-08-21): full model 92% peak / 45% frequency
-    // within 2x; fast path 99% / 74%. The whole remaining gap is the cased (nylon)
-    // SC-CMC family, whose measured peaks scale with turn count (genuinely LC-set) at a
-    // capacitance no honest electrostatic element delivers through a 1.25 mm case — the
-    // fast path lands them via its near-contact acosh term, accuracy not yet explained
-    // by physics. Until #848 resolves that, the fast path stays the default so shipped
-    // results are the best available; flip deliberately, with a rescore.
-    Impedance(bool fastCapacitance=true) {
+    // DEFAULT: the FULL energy-based StrayCapacitance model (owner decision, 2026-08-23): per-pair
+    // statics from Settings (Albach by default), floating-core self term, mirrored-winding SRF
+    // factor, wound on demand. Measured on 107 WE common-mode chokes with real geometry and real
+    // material data (no calibration): full+Albach 95% peak / 56% frequency within 2x,
+    // full+Massarini 99% / 63%, fast OneLayer path 98% / 64% — parity overall, and the full model
+    // is ahead on every MnZn family (A07 93% vs 72%); the nanocrystalline cased families are
+    // the open item for both (ABT #848). The fast Massarini-based OneLayer path remains
+    // available with fastCapacitance=true.
+    Impedance(bool fastCapacitance=false) {
         _fastCapacitance = fastCapacitance;
     } 
 
