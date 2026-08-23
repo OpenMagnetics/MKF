@@ -3405,6 +3405,13 @@ bool Coil::are_turns_inside_winding_window() {
             }
         }
         if (!insideAny) {
+            // ABT #864: name the escaping turn in _lastFitFailure, like the envelope check in
+            // are_sections_and_layers_fitting does — this verdict is what magnetic_autocomplete
+            // discards, so the consumer that re-derives it (MVB++'s autocomplete seam) needs the
+            // WHY without re-walking the turns.
+            _lastFitFailure = "turn '" + turn.get_name() + "' at (" + std::to_string(coordinates[0]) +
+                              "," + std::to_string(coordinates[1]) +
+                              ") lies outside every winding window (ABT #624)";
             if (std::getenv("MKF_BLOCKING_DIAG")) {
                 std::cerr << "[window] turn " << turn.get_name() << " at (" << coordinates[0]
                           << "," << coordinates[1] << ") lies outside every winding window\n";
@@ -4983,6 +4990,18 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
     // inside the bobbin flange).
     if (result && !are_turns_inside_winding_window()) {
         result = false;
+    }
+    // ABT #864: the mirror of the #650 "say it out loud" rule for the OTHER half of the contract.
+    // Blocking can be APPLIED (the flag above latched from the IDEAL verdict) and the BLOCKED
+    // layout still fail to fit — the fixpoint grows layers until the winding walks radially out
+    // of the window (13_current_sense: 20 secondary layers, copper past the core edge). wind()'s
+    // false return is the only signal, and magnetic_autocomplete discards it — so log the loss
+    // here, where the reason is known, instead of leaving it to a day of 3D bisecting.
+    if (settings.get_coil_use_real_winding_geometry() && _realWindingBlockingApplied && !result) {
+        logEntry("Real winding connection blocking WAS applied but the blocked layout does not "
+                 "fit its winding window"
+                 + (_lastFitFailure.empty() ? std::string() : " — " + _lastFitFailure),
+                 "Coil", 1);
     }
     // Deliberately NOT gated on `result`, for the same reason the crossing bump's station
     // zeroing is not: a wind that does not FIT still produced turns, the caller may consume them
