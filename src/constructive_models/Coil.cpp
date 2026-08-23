@@ -2724,9 +2724,19 @@ void Coil::align_blocked_layer_turns() {
         // ride over with a bump. A U winding has no dragbacks and needs no bumps: the turns must
         // sit as close in the turn axis as the layers are in the layer axis. A FULL layer is
         // unaffected (spread with no slack IS packed).
+        //
+        // SUPERSEDED (Alf, 2026-08-24, on the abt631 review SVG: "why are layer 1 2 and 3 not
+        // SPREAD? ... We said that real winding means everything is SPREAD"): EVERY conduction
+        // layer fence-post spreads, partial U landings and exit landings included. The #683
+        // hole-jump concern is obsolete since ABT #685 — the connection KINDS come from the
+        // published layout, not from a coordinate threshold, so a spread layer's larger
+        // per-revolution advance no longer misreads as a Z return. MKF_NO_SPREAD_ALL restores
+        // the packed behaviour (bisect).
+        const bool spreadAllLayers = !std::getenv("MKF_NO_SPREAD_ALL");
         bool packFromArrival = false;
         bool arrivalAtHighSide = false;
-        if (layer.get_section() && get_winding_order(layer.get_section().value()) == WindingOrder::U) {
+        if (!spreadAllLayers &&
+            layer.get_section() && get_winding_order(layer.get_section().value()) == WindingOrder::U) {
             // ABT #685: the recorded arrival EDGE decides, not the sign of the depth. A landing
             // level with a turn already at the window edge has depth zero on both sides, and
             // reading the side off the depth then mistook it for "not a landing": the layer fell
@@ -2747,7 +2757,11 @@ void Coil::align_blocked_layer_turns() {
         // landing ring blocking every azimuth of the band the vertical had to cross.
         bool steepExitLanding = false;
         bool steepArrivalAtHigh = false;
-        if (settings.get_coil_use_real_winding_geometry() && turnAxis == 1 && !layerTurns.empty()) {
+        // Alf 2026-08-24: the steep exit landing packs too — under "everything is SPREAD" the
+        // exit layer fence-posts like any other and the exit lead leaves from wherever its last
+        // turn lands. MKF_NO_SPREAD_ALL restores it together with the packed U landings.
+        if (!spreadAllLayers &&
+            settings.get_coil_use_real_winding_geometry() && turnAxis == 1 && !layerTurns.empty()) {
             steepExitLanding = true;
             const char* steepReject = nullptr;
             double arrivalSum = 0.0;
@@ -3422,7 +3436,7 @@ bool Coil::are_turns_inside_winding_window() {
     return true;
 }
 
-std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
+std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadBaseline) {
     std::map<std::string, uint64_t> ringDeficitSlots;
     if (!get_turns_description() || !get_layers_description()) {
         return ringDeficitSlots;
@@ -3461,6 +3475,30 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
     // turn spills inward. The structural consequence (an extra ring adds one inter-ring
     // crossing per parallel) is accepted and the affected pins updated.
     const size_t maximumRespreadsPerRing = 4;
+    // The minimal nudge can limit-cycle too: a nudged turn that is itself LEAD-ATTACHED drags
+    // its own lead's corridors (spaces are recomputed from the turns each pass) onto another
+    // ring, whose nudge drags them back — two rings ping-pong 'nudgedAll' forever, and because
+    // a successful nudge neither counts as a respread nor reports a deficit, the 24-iteration
+    // cap exhausts with intrusion=1 and NO escalation (measured on the overlapping-U toroid the
+    // moment the spread-all baseline put end turns near corridors). Budget the nudges per ring:
+    // past the budget the ring falls through to the counted respread, whose own cap escalates
+    // to a capacity spill — the #723 terminating path.
+    std::map<std::string, size_t> nudgeCountPerRing;
+    const size_t maximumNudgesPerRing = 6;
+    // Alf 2026-08-24 ("real winding means everything is SPREAD", on the CMC review SVG where
+    // ring 1 spread across its sector but ring 2 sat tight-centred): iteration 0 force-spreads
+    // EVERY conduction ring evenly across its winding's angular territory. Corridor-less rings
+    // previously never entered the displacement loop at all and kept the winder's centred
+    // packing. MKF_NO_SPREAD_ALL restores the intrusion-only behaviour (bisect, shared with the
+    // rectangular spread-all switch).
+    // Baseline calls only (the FIRST align of the toroidal blocking loop): this routine is
+    // also a displacement helper, re-invoked after crossing regeneration — re-running the
+    // force-spread there wipes the displacements the previous call just settled and the
+    // corridors never stop moving (measured: turn 21 left inside two regenerated lead
+    // corridors on the overlapping-U toroid).
+    const bool spreadAllRingsActive = forceSpreadBaseline &&
+                                      settings.get_coil_use_real_winding_geometry() &&
+                                      !std::getenv("MKF_NO_SPREAD_ALL");
     for (size_t iteration = 0; iteration < maximumIterations; ++iteration) {
         // ABT #833: measured fresh each pass on the CURRENT geometry. This clear used to sit at
         // the BOTTOM of the loop body, which silently destroyed the last pass's measurement
@@ -3520,6 +3558,80 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
             }
             ringRadius[ringName] = sum / double(turnIdxs.size());
         }
+        // The territory that is safe for ALL of a winding's rings at once is the arc the
+        // winding's own turns already occupy (its sector, measured on the geometry — sections'
+        // polar envelopes can be stale after compaction, cf. ABT #186). The per-ring margin rule
+        // below must not be used for the force-spread: a tight inner ring extended toward the
+        // nearest same-radius foreign turn reaches deep into the neighbouring sector while that
+        // neighbour's own inner ring is still huddled mid-sector (measured 179 deg of territory
+        // in a 120 deg sector on the 3-winding CMC).
+        std::map<std::string, std::pair<bool, std::pair<double, double>>> windingOccupiedArc;
+        if (spreadAllRingsActive) {
+            std::map<std::string, std::vector<double>> anglesPerWinding;
+            for (size_t t = 0; t < turns.size(); ++t) {
+                anglesPerWinding[turns[t].get_winding()].push_back(normalizeAngle(
+                    std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) *
+                    180.0 / std::numbers::pi));
+            }
+            for (auto& [windingName, angles] : anglesPerWinding) {
+                std::sort(angles.begin(), angles.end());
+                double largestGap = 360.0 - (angles.back() - angles.front());
+                double gapEnd = angles.front();
+                for (size_t i = 1; i < angles.size(); ++i) {
+                    double gap = angles[i] - angles[i - 1];
+                    if (gap > largestGap) {
+                        largestGap = gap;
+                        gapEnd = angles[i];
+                    }
+                }
+                double meanPitch = 360.0 / double(std::max<size_t>(angles.size(), 1));
+                bool windingFullCircle = largestGap <= 2 * meanPitch;
+                windingOccupiedArc[windingName] = {windingFullCircle, {gapEnd, 360.0 - largestGap}};
+            }
+            // The measured arcs are the TIGHT pre-spread occupancy (a huddled winding measures
+            // well under its sector), and extending each winding toward its neighbours' turns
+            // independently makes adjacent territories OVERLAP (both extend up to the same
+            // pre-spread turns, then both spread into the shared band). Partition instead: the
+            // boundary between two angularly adjacent windings is the MIDPOINT of the free gap
+            // between their occupied arcs — deterministic, disjoint, and symmetric. Only for
+            // multi-winding layouts where every winding is a sector; a single winding keeps its
+            // own arc (or the full circle), and a degenerate mix (a full-circle winding among
+            // sectors) keeps the per-ring territories untouched.
+            if (windingOccupiedArc.size() > 1) {
+                bool anyFullCircle = false;
+                for (const auto& [windingName, arc] : windingOccupiedArc) {
+                    anyFullCircle = anyFullCircle || arc.first;
+                }
+                if (anyFullCircle) {
+                    windingOccupiedArc.clear();
+                }
+                else {
+                    std::vector<std::pair<double, std::string>> orderedArcs;  // {start, winding}
+                    for (const auto& [windingName, arc] : windingOccupiedArc) {
+                        orderedArcs.push_back({arc.second.first, windingName});
+                    }
+                    std::sort(orderedArcs.begin(), orderedArcs.end());
+                    std::map<std::string, std::pair<double, double>> territory;  // {start, span}
+                    for (size_t i = 0; i < orderedArcs.size(); ++i) {
+                        const auto& previous = orderedArcs[(i + orderedArcs.size() - 1) % orderedArcs.size()];
+                        const auto& next = orderedArcs[(i + 1) % orderedArcs.size()];
+                        const auto& own = windingOccupiedArc.at(orderedArcs[i].second).second;
+                        const auto& previousArc = windingOccupiedArc.at(previous.second).second;
+                        double ownStart = own.first;
+                        double ownEnd = normalizeAngle(own.first + own.second);
+                        double previousEnd = normalizeAngle(previousArc.first + previousArc.second);
+                        double gapBehind = normalizeAngle(ownStart - previousEnd);
+                        double gapAhead = normalizeAngle(next.first - ownEnd);
+                        double territoryStartAngle = normalizeAngle(ownStart - gapBehind / 2);
+                        territory[orderedArcs[i].second] = {territoryStartAngle,
+                                                            own.second + gapBehind / 2 + gapAhead / 2};
+                    }
+                    for (auto& [windingName, arc] : windingOccupiedArc) {
+                        arc.second = territory.at(windingName);
+                    }
+                }
+            }
+        }
 
         // Blocked corridors for turn CENTERS per ring: marker azimuth +- (marker angular half-width
         // + the ring's own turn angular half-pitch). dimensions[1] is the lead's azimuthal wire
@@ -3541,8 +3653,12 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
 
         bool anyIntrusion = false;
         bool anyDisplacement = false;
-        for (const auto& [ringName, corridors] : corridorsPerRing) {
-            const auto& turnIdxs = ringTurnIndexes.at(ringName);
+        const bool forceSpreadAllRings = spreadAllRingsActive && iteration == 0;
+        static const std::vector<std::pair<double, double>> kNoCorridors;
+        for (const auto& [ringName, turnIdxs] : ringTurnIndexes) {
+            auto corridorsFound = corridorsPerRing.find(ringName);
+            const auto& corridors =
+                corridorsFound != corridorsPerRing.end() ? corridorsFound->second : kNoCorridors;
             double radius = ringRadius.at(ringName);
             size_t ringWindingIndex = get_winding_index_by_name(turns[turnIdxs[0]].get_winding());
             double turnPitchAngle = wound_distance_to_angle(wires[ringWindingIndex].get_maximum_outer_height(), radius);
@@ -3564,11 +3680,13 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
                     break;
                 }
             }
-            if (!intrusion) {
+            if (!intrusion && !forceSpreadAllRings) {
                 continue;
             }
-            anyIntrusion = true;
-            if (respreadCountPerRing[ringName] >= maximumRespreadsPerRing) {
+            if (intrusion) {
+                anyIntrusion = true;
+            }
+            if (intrusion && respreadCountPerRing[ringName] >= maximumRespreadsPerRing) {
                 // Escalate the limit cycle to capacity (see the counter's comment above).
                 ringDeficitSlots[ringName] = std::max<uint64_t>(ringDeficitSlots[ringName], 1);
                 continue;
@@ -3622,6 +3740,23 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
                 territoryStart = normalizeAngle(rawStart - marginStart);
                 sectionSpan = rawSpan + marginStart + marginEnd;
             }
+            // Alf 2026-08-24: the force-spread distributes over the WINDING's territory (see
+            // windingOccupiedArc above) so a huddled inner ring reaches its whole sector, and
+            // no ring's margin heuristic can walk it into a neighbour's.
+            if (forceSpreadAllRings) {
+                auto windingArc = windingOccupiedArc.find(turns[turnIdxs[0]].get_winding());
+                if (windingArc != windingOccupiedArc.end()) {
+                    fullCircle = windingArc->second.first;
+                    if (fullCircle) {
+                        territoryStart = 0;
+                        sectionSpan = 360;
+                    }
+                    else {
+                        territoryStart = windingArc->second.second.first;
+                        sectionSpan = windingArc->second.second.second;
+                    }
+                }
+            }
 
             // ABT #723: MINIMAL NUDGE first. The full even re-spread below moves every turn of
             // the ring — including the lead-attached END turns, whose corridors then land on
@@ -3631,7 +3766,10 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
             // set stays fixed and the pass converges. Only when a nudge cannot fit (no clear
             // edge with a full pitch to every same-ring neighbour inside the territory) does
             // the ring fall back to the even re-spread / capacity-deficit machinery.
-            {
+            // (Skipped by the iteration-0 force-spread: a nudge only moves intruders, and the
+            // force-spread is exactly the full even distribution. Also skipped past the ring's
+            // nudge budget — see nudgeCountPerRing above.)
+            if (!forceSpreadAllRings && nudgeCountPerRing[ringName] < maximumNudgesPerRing) {
                 auto moveTurnToAngle = [&](size_t t, double newAngleDegrees) {
                     double turnRadius = std::hypot(turns[t].get_coordinates()[0], turns[t].get_coordinates()[1]);
                     double newAngleRadians = newAngleDegrees / 180.0 * std::numbers::pi;
@@ -3693,6 +3831,7 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
                 }
                 if (nudgedAll) {
                     anyDisplacement = true;
+                    nudgeCountPerRing[ringName]++;
                     continue;   // ring settled by nudges alone; leads untouched
                 }
             }
@@ -3731,7 +3870,7 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
             // from the end of the widest corridor), placing each turn (original cyclic order
             // preserved) every totalFree/n of FREE arc, jumping over corridors as they are met.
             double referenceAngle = territoryStart;
-            if (fullCircle) {
+            if (fullCircle && !corridors.empty()) {
                 const std::pair<double, double>* widest = &corridors[0];
                 for (const auto& corridor : corridors) {
                     if (corridor.second > widest->second) {
@@ -3794,7 +3933,11 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
                 }
             }
             anyDisplacement = true;
-            respreadCountPerRing[ringName]++;
+            // The iteration-0 force-spread is baseline placement, not a corridor chase — it must
+            // not spend the ring's escalation budget.
+            if (intrusion) {
+                respreadCountPerRing[ringName]++;
+            }
         }
 
         if (anyDisplacement) {
@@ -3804,6 +3947,12 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns() {
             std::cerr << "[align] iter " << iteration << " rings=" << corridorsPerRing.size()
                       << " intrusion=" << anyIntrusion << " displaced=" << anyDisplacement
                       << " deficits=" << ringDeficitSlots.size() << "\n";
+        }
+        // The force-spread pass moves lead-attached end turns, which moves the corridors — its
+        // intrusion flags were measured on the PRE-spread geometry, so always run at least one
+        // measuring pass after it instead of breaking on them.
+        if (forceSpreadAllRings && anyDisplacement) {
+            continue;
         }
         if (!anyIntrusion || !anyDisplacement) {
             break;  // clean, or stuck on capacity (deficits reported to the caller) — either way stop
@@ -4876,7 +5025,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         if (resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND) {
             const size_t maximumToroidalBlockingIterations = 16;
             for (size_t blockingIteration = 0; blockingIteration < maximumToroidalBlockingIterations; ++blockingIteration) {
-                auto ringDeficits = align_blocked_ring_turns();
+                auto ringDeficits = align_blocked_ring_turns(/*forceSpreadBaseline=*/blockingIteration == 0);
                 bool changed = false;
                 for (const auto& [ringName, deficitSlots] : ringDeficits) {
                     if (deficitSlots == 0) {

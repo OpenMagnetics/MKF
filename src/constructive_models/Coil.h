@@ -709,7 +709,7 @@ class Coil : public MAS::Coil {
         // displacement, the CAPACITY deficit in that ring's own turn slots; wind()'s toroidal
         // blocking loop reserves those slots (turns spill inward) and re-winds, after which
         // displacement succeeds. Round windows only; no-op (empty map) otherwise.
-        std::map<std::string, uint64_t> align_blocked_ring_turns();
+        std::map<std::string, uint64_t> align_blocked_ring_turns(bool forceSpreadBaseline = false);
 
         std::vector<Section> get_sections_description_conduction() const;
         std::vector<Layer> get_layers_description_conduction() const;
