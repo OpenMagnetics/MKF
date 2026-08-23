@@ -74,6 +74,34 @@ namespace {
         }
     }
 
+    // ABT #857. The thermal model asks a litz wire what its coating is made of, in order to
+    // get the inter-strand matrix conductivity -- Temperature.cpp documents that value as
+    // "the strand enamel/insulation that heat must cross between conductors". It used to ask
+    // the wire's OWN coating, which for litz is the bundle SERVING: {type: served,
+    // material: null} in every catalogue and synthesized litz. resolve_coating_insulation_material
+    // then threw "Coating is missing material information" and the whole temperature field
+    // died. Measured on the production bug queue: 11 of 29 recent designs failed
+    // plot_temperature_field and every single one was litz, while every round, foil and
+    // planar design succeeded.
+    TEST_CASE("Litz resolves its coating material from the strand enamel rather than the bundle serving", "[constructive-model][wire][litz][coating]") {
+        for (const auto& name : {std::string("Litz 12x0.03 - Grade 1 - Double Served"),
+                                 std::string("Litz 12x0.03 - Grade 1 - Unserved")}) {
+            auto wire = OpenMagnetics::find_wire_by_name(name);
+            INFO("wire: " << name);
+
+            // Before the fix the SERVED bundle threw here rather than returning a number.
+            double thermalConductivity = wire.get_coating_thermal_conductivity();
+            REQUIRE(thermalConductivity > 0);
+            // Enamel, not copper: polyurethane/polyesterimide sits around 0.2-0.3 W/(m K).
+            // A value anywhere near copper's 400 would mean we had resolved the conductor.
+            REQUIRE(thermalConductivity < 1.0);
+
+            // The dielectric properties travel through the same resolution point, so they
+            // must answer too rather than throwing on the serving's absent material.
+            REQUIRE(wire.get_coating_relative_permittivity() > 1.0);
+        }
+    }
+
     // The outer envelope must be the BUNDLE, not one strand. get_maximum_outer_width() used to
     // fall back to get_maximum_conducting_width(), which for litz returns the strand diameter —
     // so a 12-strand bundle claimed to be as wide as one of its own strands.

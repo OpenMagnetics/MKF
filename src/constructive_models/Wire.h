@@ -162,6 +162,11 @@ class Wire : public MAS::Wire {
         static WireRound convert_from_wire_to_strand(Wire wire);
         static std::optional<InsulationWireCoating> resolve_coating(const Wire& wire);
         std::optional<InsulationWireCoating> resolve_coating();
+        // ABT #857: the coating that insulates one CONDUCTOR from another -- the STRAND's
+        // enamel for litz (whose own coating is the bundle serving), the wire's own coating
+        // otherwise. Every consumer of "what insulates this conductor" must go through this
+        // one point so litz cannot answer differently to different callers.
+        static std::optional<InsulationWireCoating> resolve_insulating_coating(const Wire& wire);
         static WireRound resolve_strand(const Wire& wire);
         WireRound resolve_strand();
         static WireMaterial resolve_material(Wire wire);

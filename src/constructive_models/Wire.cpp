@@ -1832,8 +1832,12 @@ namespace OpenMagnetics {
         }
         
         // Default values based on common coating materials
-        // These are typical values from literature
-        auto coatingType = wire.resolve_coating();
+        // These are typical values from literature.
+        // ABT #857: read the type from the same coating the material came from, or litz
+        // would resolve its material from the strand enamel and then pick its default
+        // from the bundle serving -- the exact self-disagreement this ticket exists to
+        // remove.
+        auto coatingType = resolve_insulating_coating(wire);
         if (coatingType) {
             auto coatingTypeEnum = coatingType->get_type();
             if (coatingTypeEnum == InsulationWireCoatingType::INSULATED) {
@@ -1909,8 +1913,33 @@ namespace OpenMagnetics {
         return resolve_coating_insulation_material(*this);
     }
 
+    // ABT #857: the coating that actually insulates one CONDUCTOR from another.
+    //
+    // For a litz wire that is the STRAND's enamel, not the wire's own coating: a litz
+    // wire's own coating describes the bundle SERVING, which in every real MAS is
+    // {type: served, material: null}. Asking the serving for a material therefore threw
+    // "Coating is missing material information" and took the whole thermal model down --
+    // measured over the production bug queue, 11 of 29 recent designs failed
+    // plot_temperature_field and every one of them was litz, while every round, foil and
+    // planar design succeeded. Two users reported it as temperature estimation being
+    // broken or "lagy" (web bug reports #165 and #167).
+    //
+    // The engine already knew which coating it meant. Temperature.cpp's litz matrix
+    // conductivity is documented as "the strand enamel/insulation that heat must cross
+    // between conductors", and get_coating_thermal_conductivity carries a SERVED branch
+    // that no call could ever reach, because this resolution threw first.
+    //
+    // Same reasoning as e01aeaf1, which made get_coating_thickness read the strand: one
+    // definition of "what insulates this conductor", so litz cannot disagree with itself.
+    std::optional<InsulationWireCoating> Wire::resolve_insulating_coating(const Wire& wire) {
+        if (wire.get_type() == WireType::LITZ) {
+            return resolve_coating(resolve_strand(wire));
+        }
+        return resolve_coating(wire);
+    }
+
     InsulationMaterial Wire::resolve_coating_insulation_material(Wire wire) {
-        auto coating = resolve_coating(wire);
+        auto coating = resolve_insulating_coating(wire);
 
         if (!coating) {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire has no coating");
