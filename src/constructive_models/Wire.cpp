@@ -1762,6 +1762,46 @@ namespace OpenMagnetics {
             return coating->get_thickness_layers().value() * coating->get_number_layers().value();
         }
 
+        if (coating->get_type() && coating->get_type().value() == InsulationWireCoatingType::BARE) {
+            return 0;
+        }
+
+        // ABT #853: a flat wire that DECLARES a coating but carries neither a thickness nor an
+        // outer dimension used to fall through to (outer - conducting) / 2 with the outer
+        // dimension itself defaulted to the conducting one -- i.e. "absent" read as "equal to
+        // the conductor", and a coated wire reported as bare metal. That zero then reached the
+        // shorted-turns guard and declared close-wound parallels a short circuit. Enamelled
+        // rectangular wire is resolved from the standard's own table for its grade, exactly as
+        // the litz branch above does for the strand; anything else that cannot be resolved is
+        // an incomplete wire and says so, instead of deriving 0.
+        bool isFlat = wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL ||
+                      wire.get_type() == WireType::PLANAR;
+        bool outerDimensionAbsent = isFlat ? (!wire.get_outer_width() && !wire.get_outer_height())
+                                           : !wire.get_outer_diameter();
+        if (outerDimensionAbsent) {
+            bool isEnamelled = !coating->get_type() ||
+                               coating->get_type().value() == InsulationWireCoatingType::ENAMELLED;
+            auto standard = wire.get_standard().value_or(WireStandard::IEC_60317);
+            if (wire.get_type() == WireType::RECTANGULAR && isEnamelled && coating->get_grade()) {
+                auto conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+                auto conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+                auto grade = coating->get_grade().value();
+                double coatingThicknessWidth = (get_outer_width_rectangular(conductingWidth, grade, standard) - conductingWidth) / 2;
+                double coatingThicknessHeight = (get_outer_height_rectangular(conductingHeight, grade, standard) - conductingHeight) / 2;
+                return std::min(coatingThicknessWidth, coatingThicknessHeight);
+            }
+            if (wire.get_type() == WireType::ROUND && isEnamelled && coating->get_grade()) {
+                auto conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
+                return (get_outer_diameter_round(conductingDiameter, coating->get_grade().value(), standard) - conductingDiameter) / 2;
+            }
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                "Wire " + wire.get_name().value_or("(unnamed)") + " declares a coating but gives neither its thickness"
+                " (coating.thickness, or thicknessLayers x numberLayers) nor an outer dimension (outerDiameter, or"
+                " outerWidth/outerHeight), and it is not an enamelled round/rectangular wire with a grade that the"
+                " standard's table could resolve; the coating thickness cannot be derived (it is NOT zero -- the wire"
+                " is not bare).");
+        }
+
         auto maximumOuterWidth = wire.get_maximum_outer_width();
         auto maximumOuterHeight = wire.get_maximum_outer_height();
         auto maximumConductingWidth = wire.get_maximum_conducting_width();

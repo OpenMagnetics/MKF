@@ -68,6 +68,30 @@ static double compute_global_minimum_gap(const std::vector<Turn>& turnsDescripti
     return globalMinGap;
 }
 
+// The core "coating" that sits in the winding-to-core dielectric path is the insulating JACKET
+// over the ferrite surface the turns rest on (parylene / epoxy / nylon / glass). A
+// MAGNETIC_EPOXY coating is a different thing: the powder-loaded shield cap moulded over the
+// winding of a semishielded drum. It is not between a turn and the core surface, and its
+// material is a powder core material, not an insulation (looking it up as one threw
+// MISSING_DATA "Insulation material not found: Kool Mµ 26" and made every semishielded drum
+// uncomputable under the full model). So it contributes no jacket layer here: thickness 0,
+// relative permittivity 1; the wire enamel alone bounds the element, as on a bare core.
+static std::pair<double, double> resolve_core_jacket(const Core& core) {
+    auto coating = core.get_functional_description().get_coating();
+    if (coating && std::holds_alternative<CoreCoating>(coating.value())) {
+        auto type = std::get<CoreCoating>(coating.value()).get_type();
+        if (type && type.value() == CoatingType::MAGNETIC_EPOXY) {
+            return {0.0, 1.0};
+        }
+    }
+    double thickness = core.get_coating_thickness();
+    // A bare (uncoated) ferrite has no coating layer; the wire enamel alone then bounds the
+    // element. get_coating_relative_permittivity() throws when there is no coating, so only
+    // resolve it when a coating actually exists.
+    double relativePermittivity = thickness > 0 ? core.get_coating_relative_permittivity() : 1.0;
+    return {thickness, relativePermittivity};
+}
+
 std::vector<std::pair<Turn, size_t>> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription, double globalMinimumGap) {
     std::vector<std::pair<Turn, size_t>> surroundingTurns;
     auto factor = Defaults().overlappingFactorSurroundingTurns;
@@ -1379,7 +1403,14 @@ static void throw_if_turns_are_shorted(Turn firstTurn, Wire firstWire, Turn seco
         conductingSurfaceGap = std::max(gapAlongWidth, gapAlongHeight);
     }
 
-    if (conductingSurfaceGap > 0) {
+    // Contact, not "gap > 0": turns laid exactly one conductor width apart come out of the
+    // winder with a gap of a few 1e-19 m (0.010997 - 0.010797 - 0.0002 in doubles), and a
+    // strict > 0 let that pair through to the models, which then diverged and surfaced as an
+    // anonymous non-finite capacitance instead of this message (seen on a 3-turn bare foil
+    // shield, ABT #853). One nanometre is far below any real dielectric and far above the
+    // rounding of millimetre-scale coordinates, so anything closer than that is touching.
+    constexpr double contactTolerance = 1e-9;
+    if (conductingSurfaceGap > contactTolerance) {
         return;
     }
 
@@ -1529,14 +1560,7 @@ double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core c
         coil.wind();
     }
 
-    double coreCoatingThickness = core.get_coating_thickness();
-    // A bare (uncoated) ferrite has no coating layer; the wire enamel alone then
-    // bounds the element. get_coating_relative_permittivity() throws when there is
-    // no coating, so only resolve it when a coating actually exists.
-    double coreCoatingRelativePermittivity = 1.0;
-    if (coreCoatingThickness > 0) {
-        coreCoatingRelativePermittivity = core.get_coating_relative_permittivity();
-    }
+    auto [coreCoatingThickness, coreCoatingRelativePermittivity] = resolve_core_jacket(core);
 
     auto turns = coil.get_turns_description().value();
     auto wirePerWinding = coil.get_wires();
@@ -1588,11 +1612,7 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
     auto turns = coil.get_turns_description().value();
     auto wirePerWinding = coil.get_wires();
 
-    double coreCoatingThickness = core.get_coating_thickness();
-    double coreCoatingRelativePermittivity = 1.0;
-    if (coreCoatingThickness > 0) {
-        coreCoatingRelativePermittivity = core.get_coating_relative_permittivity();
-    }
+    auto [coreCoatingThickness, coreCoatingRelativePermittivity] = resolve_core_jacket(core);
 
     std::vector<double> turnCoreCapacitance;
     std::vector<double> turnPotential;
@@ -1668,11 +1688,7 @@ double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core c
     auto turns = coil.get_turns_description().value();
     auto wirePerWinding = coil.get_wires();
 
-    double coreCoatingThickness = core.get_coating_thickness();
-    double coreCoatingRelativePermittivity = 1.0;
-    if (coreCoatingThickness > 0) {
-        coreCoatingRelativePermittivity = core.get_coating_relative_permittivity();
-    }
+    auto [coreCoatingThickness, coreCoatingRelativePermittivity] = resolve_core_jacket(core);
 
     std::vector<double> turnCoreCapacitance;
     std::vector<double> turnPotential;
@@ -1731,6 +1747,27 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
 
     std::set<std::pair<size_t, size_t>> turnsCombinations;
 
+    // ABT #853: corresponding turns of two parallels of the SAME winding are one electrical
+    // node -- the parallels join at the terminals, and the per-turn voltage divider
+    // (calculate_voltages_per_turn) hands turn k of every parallel the identical potential.
+    // There is no voltage across such a pair, hence no capacitor to compute and nothing that
+    // can short, however tightly a bifilar/trifilar pair is wound. get_surrounding_turns()
+    // filters by coordinates only, so without this the pair reached the short-circuit guard
+    // as an ordinary neighbour and a bare (or zero-derived) coating declared the winding
+    // shorted. The ordinal is counted exactly as the voltage divider counts it (per winding,
+    // per parallel, in turns order) so "same node" here means "same potential" there.
+    std::map<std::string, std::map<int64_t, size_t>> nextOrdinalPerWindingPerParallel;
+    std::vector<size_t> ordinalWithinParallel;
+    ordinalWithinParallel.reserve(turns.size());
+    for (auto& turn : turns) {
+        ordinalWithinParallel.push_back(nextOrdinalPerWindingPerParallel[turn.get_winding()][turn.get_parallel()]++);
+    }
+    auto areSameElectricalNode = [&](size_t firstIndex, size_t secondIndex) {
+        return turns[firstIndex].get_winding() == turns[secondIndex].get_winding() &&
+               turns[firstIndex].get_parallel() != turns[secondIndex].get_parallel() &&
+               ordinalWithinParallel[firstIndex] == ordinalWithinParallel[secondIndex];
+    };
+
     for (size_t turnIndex = 0; turnIndex <  turns.size(); ++turnIndex) {
         auto turnWindingIndex = coil.get_winding_index_by_name(turns[turnIndex].get_winding());
         auto turnWire = wirePerWinding[turnWindingIndex];
@@ -1740,6 +1777,10 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
             auto key = std::make_pair(turnIndex, surroundingTurnIndex);
             auto inverseKey = std::make_pair(surroundingTurnIndex, turnIndex);
             if (turnsCombinations.contains(key) || turnsCombinations.contains(inverseKey)) {
+                continue;
+            }
+            if (areSameElectricalNode(turnIndex, surroundingTurnIndex)) {
+                turnsCombinations.insert(key);
                 continue;
             }
             auto surroundingTurnWindingIndex = coil.get_winding_index_by_name(surroundingTurn.get_winding());

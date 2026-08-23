@@ -101,6 +101,53 @@ namespace {
         REQUIRE(wire.get_coating_thickness() == 0);
     }
 
+    // ABT #853: a wire that DECLARES a coating but gives neither its thickness nor an outer
+    // dimension used to derive (outer - conducting) / 2 with the outer dimension defaulted to the
+    // conducting one -- "absent" read as "equal to the conductor", i.e. as bare metal -- and that
+    // zero then declared close-wound turns a short circuit. Enamelled wire with a grade resolves
+    // from the standard's table; anything else unresolvable is an incomplete wire and throws.
+    // A wire with NO coating at all stays bare (0): foil and planar conductors legitimately rely
+    // on separate insulation layers, and that declaration is explicit, not missing.
+    TEST_CASE("Declared coating without thickness or outer dimension resolves from the table or throws, never 0", "[constructive-model][wire][coating]") {
+        auto rectangular = OpenMagnetics::Wire(json::parse(R"({"type": "rectangular", "material": "copper", "numberConductors": 1,
+            "conductingWidth": {"nominal": 0.004}, "conductingHeight": {"nominal": 0.001},
+            "coating": {"type": "enamelled", "grade": 1}})"));
+        double rectangularCoating = rectangular.get_coating_thickness();
+        INFO("rectangular grade-1 coating: " << rectangularCoating);
+        REQUIRE(rectangularCoating > 0);
+        REQUIRE(rectangularCoating < 0.001);  // a fraction of the conductor, not the conductor
+        REQUIRE(rectangularCoating == Catch::Approx(std::min(
+            (OpenMagnetics::Wire::get_outer_width_rectangular(0.004, 1, WireStandard::IEC_60317) - 0.004) / 2,
+            (OpenMagnetics::Wire::get_outer_height_rectangular(0.001, 1, WireStandard::IEC_60317) - 0.001) / 2)));
+
+        auto round = OpenMagnetics::Wire(json::parse(R"({"type": "round", "material": "copper", "numberConductors": 1,
+            "conductingDiameter": {"nominal": 0.001}, "coating": {"type": "enamelled", "grade": 2}})"));
+        double roundCoating = round.get_coating_thickness();
+        INFO("round grade-2 coating: " << roundCoating);
+        REQUIRE(roundCoating > 0);
+        REQUIRE(roundCoating < 0.001);
+        REQUIRE(roundCoating == Catch::Approx(
+            (OpenMagnetics::Wire::get_outer_diameter_round(0.001, 2, WireStandard::IEC_60317) - 0.001) / 2));
+
+        // Declares an insulation but nothing that sizes it: cannot be derived, must not be 0.
+        auto foil = OpenMagnetics::Wire(json::parse(R"({"type": "foil", "material": "copper", "numberConductors": 1,
+            "conductingWidth": {"nominal": 0.0002}, "conductingHeight": {"nominal": 0.01},
+            "coating": {"type": "insulated"}})"));
+        REQUIRE_THROWS_AS(foil.get_coating_thickness(), OpenMagnetics::InvalidInputException);
+
+        // Explicitly bare: no coating key at all. Still 0 -- that is a declaration, not a gap.
+        auto bareFoil = OpenMagnetics::Wire(json::parse(R"({"type": "foil", "material": "copper", "numberConductors": 1,
+            "conductingWidth": {"nominal": 0.0002}, "conductingHeight": {"nominal": 0.01}})"));
+        REQUIRE(bareFoil.get_coating_thickness() == 0);
+
+        // Outer dimensions given: the derived route is still the answer.
+        auto foilWithOuter = OpenMagnetics::Wire(json::parse(R"({"type": "foil", "material": "copper", "numberConductors": 1,
+            "conductingWidth": {"nominal": 0.0002}, "conductingHeight": {"nominal": 0.01},
+            "outerWidth": {"nominal": 0.00025}, "outerHeight": {"nominal": 0.01005},
+            "coating": {"type": "insulated"}})"));
+        REQUIRE(foilWithOuter.get_coating_thickness() == Catch::Approx(0.000025));
+    }
+
     TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_1", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(5.4e-05);
         double expectedValue = 0.755;

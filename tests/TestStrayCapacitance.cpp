@@ -2065,6 +2065,171 @@ TEST_CASE("Close-wound insulated conductors are not a short circuit", "[physical
     }
 }
 
+// ABT #853: corresponding turns of two parallels of one winding are the SAME electrical node
+// (the parallels join at the terminals; the voltage divider hands them identical potentials).
+// There is no voltage across such a pair, so it is neither a capacitor nor something that can
+// short -- yet get_surrounding_turns() filters by coordinates only, so a bifilar pair wound in
+// contact reached the short-circuit guard as an ordinary neighbour and bare (or zero-derived)
+// insulation declared the winding shorted. A web user hit exactly that on a bifilar winding.
+TEST_CASE("Corresponding turns of two parallels are one node, not a turn pair", "[physical-model][stray-capacitance][parallels][short-circuit]") {
+    settings.reset();
+    auto coreJsonStr = R"({"name": "abt853", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
+    std::string bareWireJsonStr = R"({"type": "round", "material": "copper", "conductingDiameter": {"nominal": 0.001}, "outerDiameter": {"nominal": 0.001}, "numberConductors": 1})";
+
+    // One turn, two parallels, bare wire: the only two conductors in the coil are turn 0 of each
+    // parallel, wound against each other. Same node -> no pair, no short, nothing to compute.
+    {
+        auto coilJsonStr = std::string(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 1, "numberParallels": 2, "isolationSide": "primary", "wire": )") + bareWireJsonStr + R"( } ] })";
+        auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+        auto turns = coil.get_turns_description().value();
+        REQUIRE(turns.size() == 2);
+        REQUIRE(turns[0].get_parallel() != turns[1].get_parallel());
+        // Premise of the test: the winder really does put them next to each other, so without
+        // the same-node rule they WOULD be a candidate pair of touching bare conductors.
+        REQUIRE(StrayCapacitance::get_surrounding_turns(turns[0], turns).size() == 1);
+        auto pairs = StrayCapacitance().calculate_capacitance_among_turns(coil);
+        CHECK(pairs.empty());
+        CHECK_NOTHROW(StrayCapacitance().calculate_capacitance(coil));
+    }
+
+    // Two turns, two parallels, bare wire: turn 0 and turn 1 of a parallel ARE different nodes
+    // in contact, so the #406 short-circuit verdict must survive untouched.
+    {
+        auto coilJsonStr = std::string(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 2, "numberParallels": 2, "isolationSide": "primary", "wire": )") + bareWireJsonStr + R"( } ] })";
+        auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+        CHECK_THROWS_AS(StrayCapacitance().calculate_capacitance(coil), OpenMagnetics::ShortedTurnsException);
+    }
+
+    // Insulated bifilar winding: no same-node pair appears in the turn-to-turn map (the ordinal
+    // is read back from the turn names the winder assigns), and the energy-derived self
+    // capacitance stays finite -- a pair at identical potential never stored energy anyway.
+    {
+        auto coilJsonStr = std::string(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 4, "numberParallels": 2, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })");
+        auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+        auto turns = coil.get_turns_description().value();
+        auto ordinalOf = [](const Turn& turn) {
+            auto name = turn.get_name();
+            auto position = name.rfind(" turn ");
+            REQUIRE(position != std::string::npos);
+            return std::stoul(name.substr(position + 6));
+        };
+        auto pairs = StrayCapacitance().calculate_capacitance_among_turns(coil);
+        REQUIRE(!pairs.empty());
+        size_t sameNodePairs = 0;
+        for (auto& [key, capacitance] : pairs) {
+            auto& first = turns[key.first];
+            auto& second = turns[key.second];
+            if (first.get_parallel() != second.get_parallel() && ordinalOf(first) == ordinalOf(second)) {
+                sameNodePairs++;
+            }
+            CHECK(std::isfinite(capacitance));
+        }
+        CHECK(sameNodePairs == 0);
+        auto output = StrayCapacitance().calculate_capacitance(coil);
+        auto selfCapacitance = output.get_capacitance_among_windings().value()["Primary"]["Primary"];
+        CHECK(std::isfinite(selfCapacitance));
+        CHECK(selfCapacitance > 0);
+    }
+}
+
+// ABT #853 (follow-up measured by the WebFrontend session on a real export): three bare foil
+// turns laid exactly one conductor width apart -- x = 10.797 / 10.997 / 11.197 mm, width 0.2 mm --
+// are in contact, but in doubles 0.010997 - 0.010797 - 0.0002 is +5e-19 m, so the #406 guard's
+// strict "gap > 0" let the pair through to the parallel-plate model, which diverged and surfaced
+// as an anonymous non-finite capacitance instead of the short-circuit verdict with its fix-it
+// message. Contact is judged with a physical tolerance now, and the typed error is what the user
+// gets for a bare foil wound on itself.
+TEST_CASE("Bare foil turns exactly one width apart are a short circuit, not a non-finite capacitance", "[physical-model][stray-capacitance][short-circuit]") {
+    settings.reset();
+    auto wire = OpenMagnetics::Wire(nlohmann::json::parse(R"({"type": "foil", "material": "copper", "numberConductors": 1,
+        "conductingWidth": {"nominal": 0.0002}, "conductingHeight": {"nominal": 0.0162},
+        "outerWidth": {"nominal": 0.0002}, "outerHeight": {"nominal": 0.0162}})"));
+    REQUIRE(wire.get_coating_thickness() == 0);
+    auto makeTurn = [](const std::string& name, double x) {
+        Turn turn;
+        turn.set_name(name);
+        turn.set_winding("shielding_3");
+        turn.set_parallel(0);
+        turn.set_coordinates({x, 0.0});
+        turn.set_dimensions(std::vector<double>{0.0002, 0.0162});
+        turn.set_length(0.05);
+        return turn;
+    };
+    auto firstTurn = makeTurn("shielding_3 parallel 0 turn 0", 0.010797);
+    auto secondTurn = makeTurn("shielding_3 parallel 0 turn 1", 0.010997);
+    // The premise: in doubles this is a hair above zero, not zero.
+    double gapInDoubles = (0.010997 - 0.010797) - 0.0002;
+    REQUIRE(gapInDoubles > 0);
+    REQUIRE(gapInDoubles < 1e-15);
+
+    bool threwShortedTurns = false;
+    std::string message;
+    try {
+        StrayCapacitance().calculate_static_capacitance_between_two_turns(firstTurn, wire, secondTurn, wire);
+    }
+    catch (const OpenMagnetics::ShortedTurnsException& exception) {
+        threwShortedTurns = true;
+        message = exception.what();
+    }
+    catch (const std::exception& exception) {
+        message = std::string("wrong exception: ") + exception.what();
+    }
+    UNSCOPED_INFO(message);
+    CHECK(threwShortedTurns);
+    CHECK(message.find("in electrical contact") != std::string::npos);
+    CHECK(message.find("give the wire its insulation") != std::string::npos);
+}
+
+// A semishielded drum's MAGNETIC_EPOXY "coating" is the powder-loaded shield cap moulded over
+// the winding, not an insulating jacket between the turns and the ferrite, and its material is
+// a powder core material. The full energy model used to feed it to the winding-to-core element
+// as a dielectric and look Kool Mµ 26 up as an insulation material -- MISSING_DATA for every
+// semishielded drum the moment the full model became Impedance's default. It contributes no
+// jacket layer: the part computes, and equals the same drum with no coating at all.
+TEST_CASE("Magnetic epoxy shield is not a winding-to-core dielectric", "[physical-model][stray-capacitance][drum-semishielded]") {
+    settings.reset();
+    auto buildMagnetic = [](nlohmann::json coating) {
+        nlohmann::json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+            {"aliases", nlohmann::json::array()}, {"name", "LQS-like 4018"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+                {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}},
+                {"J", {{"nominal", 0.0040}}}, {"K", {{"nominal", 0.0040}}}, {"L", {{"nominal", 0.0018}}}}}};
+        nlohmann::json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", shapeJson},
+            {"gapping", nlohmann::json::array()}, {"numberStacks", 1}};
+        if (!coating.is_null()) {
+            coreJson["functionalDescription"]["coating"] = coating;
+        }
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        nlohmann::json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = nlohmann::json::array({{
+            {"name", "winding 0"}, {"numberTurns", 8}, {"numberParallels", 1},
+            {"isolationSide", "primary"}, {"wire", "Round 0.1 - Grade 1"}}});
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+        return OpenMagnetics::magnetic_autocomplete(magnetic);
+    };
+    auto shielded = buildMagnetic({{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}});
+    auto bare = buildMagnetic(nlohmann::json());
+
+    StrayCapacitanceOutput shieldedOutput;
+    REQUIRE_NOTHROW(shieldedOutput = StrayCapacitance().calculate_capacitance(shielded.get_coil(), shielded.get_core()));
+    auto bareOutput = StrayCapacitance().calculate_capacitance(bare.get_coil(), bare.get_core());
+    double shieldedSelf = shieldedOutput.get_capacitance_among_windings().value()["winding 0"]["winding 0"];
+    double bareSelf = bareOutput.get_capacitance_among_windings().value()["winding 0"]["winding 0"];
+    UNSCOPED_INFO("self capacitance: shielded " << shieldedSelf << " F, bare " << bareSelf << " F");
+    CHECK(std::isfinite(shieldedSelf));
+    CHECK(shieldedSelf > 0);
+    CHECK(shieldedSelf == Catch::Approx(bareSelf));
+}
+
 // Insulated wire is the normal case and must keep working with parallels: same core, same turns,
 // only numberParallels varying, all exporting a finite self-capacitance.
 TEST_CASE("Calculate capacitance of a winding with 4 turns and several parallels", "[physical-model][stray-capacitance][parallels]") {
