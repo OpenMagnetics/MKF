@@ -9556,9 +9556,14 @@ TEST_CASE("Test_Additiona_Turns_Bug", "[constructive-model][coil][round-winding-
         outerCrossings.push_back({addCoords[0], addCoords[1]});
         minOuterRadius = std::min(minOuterRadius, hypot(addCoords[0], addCoords[1]));
     }
-    const double leanLimit = wireOuterDiameter / minOuterRadius + 1e-6;
+    // (1) near its own azimuth. Two wire ODs, not one (Alf, 2026-08-24): a crossing whose own
+    // slot is taken goes to the NEAREST FREE RING SLOT ON EITHER SIDE of the occupant — the WE
+    // CMC render request — so a cascade of one occupied slot legitimately displaces it by just
+    // over one OD. The binding contracts are (1b) monotonic order, (2) one-OD spacing and
+    // (3) everything on (or within one OD of) the base ring; this bound only keeps a crossing
+    // from wandering.
+    const double leanLimit = 2 * wireOuterDiameter / minOuterRadius + 1e-6;
     for (size_t i = 0; i < turns.size(); ++i) {
-        // (1) within the lean window of its own azimuth
         double lean = std::remainder(outerAngles[i] - innerAngles[i], 2 * std::numbers::pi);
         CHECK(std::abs(lean) <= leanLimit);
     }
@@ -13576,9 +13581,12 @@ TEST_CASE("Test_Toroidal_Outer_Crossings_Stack_When_Outer_Face_Is_Full",
         outerCrossings.push_back({addCoords[0], addCoords[1]});
         minOuterRadiusFull = std::min(minOuterRadiusFull, hypot(addCoords[0], addCoords[1]));
     }
-    // Within the LEAN WINDOW of its own azimuth (the outer leg may lean up to ~one wire OD
-    // of arc into a gap of the layers below — gap-fill compaction), never further.
-    const double leanLimitFull = wireOuterDiameter / minOuterRadiusFull + 1e-6;
+    // Within TWO wire ODs of arc of its own azimuth (Alf, 2026-08-24: a crossing whose own
+    // ring slot is taken goes to the NEAREST FREE RING SLOT ON EITHER SIDE of the occupant --
+    // own slot + the occupant's possible one-OD lean = two ODs). Beyond that the crossing
+    // STACKS at its own azimuth instead of travelling the rim, which the stacking assertions
+    // below enforce on this over-subscribed face.
+    const double leanLimitFull = 2 * wireOuterDiameter / minOuterRadiusFull + 1e-6;
     for (const auto& turn : turns) {
         auto addCoords = turn.get_additional_coordinates().value()[0];
         double innerAngle = atan2(turn.get_coordinates()[1], turn.get_coordinates()[0]);

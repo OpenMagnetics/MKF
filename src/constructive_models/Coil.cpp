@@ -11883,12 +11883,17 @@ bool Coil::wind_toroidal_additional_turns() {
                             // without the crossings.
                             const double windowRadialHeight = windingWindows[0].get_radial_height().value();
                             const double baseRadius = windowRadialHeight - currentBaseRadialHeight;
-                            // Lean + connection sweep are REAL-WINDING behaviour: the classic method
-                            // keeps the plain fixed-azimuth tangency rest, so a problem in the new
-                            // placement can be sidestepped by the flag alone.
+                            // COMPACTION IS GEOMETRY, NOT A REAL-WINDING FEATURE (Alf, 2026-08-23):
+                            // on a real toroid the return passes lie side by side ON the outer ring —
+                            // the OD has more angular room than the bore, so a second bore layer does
+                            // not produce a second outer ring. The lean + deepest-nest search below
+                            // therefore runs for EVERY wind; only the real-winding-specific semantics
+                            // (terminal verticals, the N+1 crossing, the last-station rule) stay behind
+                            // the flag. Before this, the classic path kept each crossing at its turn's
+                            // exact azimuth and could only rest OUTWARD, so two-layer toroids (e.g. the
+                            // spacer-wound WE CMCs) painted a scattered second ring of crossings.
                             const bool realWindingPlacement = settings.get_coil_use_real_winding_geometry();
-                            const double leanDegrees = realWindingPlacement
-                                ? (wireHeight / baseRadius) * 180 / std::numbers::pi : 0.0;
+                            const double leanDegrees = (wireHeight / baseRadius) * 180 / std::numbers::pi;
                             const double thetaDeg = additionalCoordinates[1];
                             // Candidate evaluation. A candidate azimuth yields: the tangency REST
                             // radius on the packing surface, and the FINAL-3D runs it implies --
@@ -11958,7 +11963,51 @@ bool Coil::wind_toroidal_additional_turns() {
                             double bestRadius = std::numeric_limits<double>::max();
                             double bestAzimuth = thetaDeg;
                             if (!realWindingPlacement) {
-                                bestRadius = restAt(thetaDeg);
+                                // CLASSIC WIND (Alf, 2026-08-24): every outer crossing belongs ON
+                                // THE BASE RING — the OD has more angular room than the bore, so
+                                // the returns rest side by side against the core. When a crossing's
+                                // own azimuth is taken, it goes to the NEAREST free ring slot on
+                                // EITHER side (the taken crossing's neighbour), and only when the
+                                // ring is genuinely full within the section does it stack at its
+                                // own azimuth, exactly as before. Mid-air nesting between crossings
+                                // of an earlier layer stays real-winding-only: free nesting on the
+                                // dense 180 kHz SRF anchor (T 12.5/7.5/5, 2x110 turns) re-paired
+                                // the crossings and put its capacitance 2.3x above measurement.
+                                const double sectionCentre = section.get_coordinates()[1];
+                                const double sectionHalfSpan = section.get_dimensions()[1] / 2;
+                                const double onRing = baseRadius + wireHeight * 1e-3;
+                                const double stepDeg = std::max(0.05, leanDegrees / 8.0);
+                                // The side-slot search is BOUNDED to two wire ODs of arc: enough to
+                                // sit on either side of the occupant of its own slot (which may
+                                // itself have leaned one OD), no more. Unbounded, an over-subscribed
+                                // face (ABT #231 fixture, T 40/24/16 with 65 turns of 2.00 mm) sent
+                                // late crossings up to 135 deg along the rim to distant free slots
+                                // -- no winder routes a return around the toroid. Past two ODs the
+                                // crossing stacks at its own azimuth, exactly the pre-compaction
+                                // over-subscription behaviour.
+                                const double sideSlotWindowDeg = std::min(2 * leanDegrees, 2 * sectionHalfSpan);
+                                for (double offset = 0.0; offset <= sideSlotWindowDeg; offset += stepDeg) {
+                                    bool found = false;
+                                    for (double sign : {1.0, -1.0}) {
+                                        double az = thetaDeg + sign * offset;
+                                        if (std::abs(std::remainder(az - sectionCentre, 360.0)) > sectionHalfSpan) {
+                                            continue;
+                                        }
+                                        double restRadius = restAt(az);
+                                        if (restRadius <= onRing) {
+                                            bestRadius = restRadius;
+                                            bestAzimuth = az;
+                                            found = true;
+                                            break;
+                                        }
+                                        if (offset == 0.0) {
+                                            break;   // both signs identical at the anchor
+                                        }
+                                    }
+                                    if (found) {
+                                        break;
+                                    }
+                                }
                             }
                             else {
                                 // Phase 1: START AT THE ANCHOR and step outward, taking the
@@ -11989,13 +12038,23 @@ bool Coil::wind_toroidal_additional_turns() {
                                         bestAzimuth = az;
                                     }
                                 }
-                                // Phase 2: nothing in the lean window clears the connections --
-                                // SWEEP THE WHOLE monotonic-feasible range WITHIN THE SECTION'S
-                                // ANGULAR TERRITORY for the NEAREST azimuth whose implied runs are
-                                // collision-free (radius is secondary: any rest beats a crossing).
-                                // Leaving the section is never allowed: that azimuth belongs to a
-                                // neighbouring winding's sector.
-                                if (bestRadius == std::numeric_limits<double>::max()) {
+                                // Phase 2 (REAL WINDING ONLY): nothing in the lean window clears the
+                                // connections -- SWEEP THE WHOLE monotonic-feasible range WITHIN THE
+                                // SECTION'S ANGULAR TERRITORY for the NEAREST azimuth whose implied
+                                // runs are collision-free (radius is secondary: any rest beats a
+                                // crossing). Leaving the section is never allowed: that azimuth
+                                // belongs to a neighbouring winding's sector.
+                                //
+                                // The classic path must NOT run this sweep: on a FULL outer ring
+                                // (T 12.5/7.5/5 with 2x110 turns of 0.15 mm -- the measured 180 kHz
+                                // SRF anchor) the greedy nearest-gap fill made every later crossing
+                                // drift cumulatively away from its station, pairing outer passes with
+                                // far-away turns at large voltage differences: the anchor's
+                                // capacitance came out 2.3x high (SRF 118 kHz). A real shuttle-wound
+                                // toroid has no such drift -- each return goes straight over -- so
+                                // the classic crossing may lean AT MOST one wire (phase 1) and
+                                // otherwise stacks outward at its own azimuth, exactly as before.
+                                if (bestRadius == std::numeric_limits<double>::max() && realWindingPlacement) {
                                     const double sectionCentre = section.get_coordinates()[1];
                                     const double sectionHalfSpan = section.get_dimensions()[1] / 2;
                                     const double sweepStep = 0.25;
@@ -12018,6 +12077,12 @@ bool Coil::wind_toroidal_additional_turns() {
                                         }
                                     }
                                 }
+                            }
+                            if (!realWindingPlacement && bestRadius == std::numeric_limits<double>::max()) {
+                                // Ring full within the section: stack at the crossing's own
+                                // azimuth, exactly the pre-compaction placement.
+                                bestRadius = restAt(thetaDeg);
+                                bestAzimuth = thetaDeg;
                             }
                             if (bestRadius == std::numeric_limits<double>::max() &&
                                 realWindingPlacement && !_applyConnectionBlocking) {
