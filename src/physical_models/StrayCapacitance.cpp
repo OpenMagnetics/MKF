@@ -1556,24 +1556,27 @@ double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRad
 double StrayCapacitance::core_image_factor(const Core& core, double frequency) {
     // ABT #848: the floating-core network (turn -> core -> turn) treats the core as an
     // EQUIPOTENTIAL ELECTRODE — a perfect image plane for every turn. That is exact for a
-    // conductor and, for AC fields, for any body whose complex permittivity dwarfs the
-    // dielectric between it and the turns (the field cannot penetrate it, so its surface is
-    // equipotential whether the charge is free or bound). It is NOT true for a plain
-    // dielectric body: a NiZn ferrite (eps_r ~ 12-25, rho ~ 1e6 Ohm.m) images a line charge
-    // with only a fraction of its strength. The image-method fraction for a half-space of
-    // permittivity eps2 seen from a medium eps1 is
-    //     beta = (eps2 - eps1) / (eps2 + eps1),
+    // conductor and, for AC fields, holds for any body whose complex permittivity dwarfs the
+    // dielectric between it and the turns: the field cannot penetrate it, and its surface
+    // polarisation charge follows the field like free charge would. A body whose permittivity
+    // is only a few times the surroundings images a line charge with the dielectric half-space
+    // fraction
+    //     beta = (|eps2| - eps1) / (|eps2| + eps1),
     // with eps2 the core's COMPLEX relative permittivity at the frequency of interest,
     //     eps2 = eps' - j eps'',   eps'' = eps''_dielectric + 1 / (omega eps0 rho),
-    // taken in magnitude. MnZn at 1-100 MHz: |eps2| ~ 1e4-1e5 -> beta = 1.000; nanocrystalline
-    // ribbon (rho ~ 1e-6 Ohm.m): |eps2| ~ 1e10 -> beta = 1; NiZn K07 at 10 MHz: eps' 15,
-    // conduction negligible -> beta ~ 0.6 against a nylon/epoxy jacket. Every quantity is a
-    // MAS material property; nothing is chosen. Measured: with beta = 1 for everything the
-    // NiZn WE-CMB chokes carried ~3x too much capacitance once their geometry was right, the
-    // MnZn and nanocrystalline ones were within 0.6-1.2x.
+    // and eps1 the dielectric on the core surface (jacket, else air). MnZn at 1-100 MHz:
+    // |eps2| ~ 1e4-1e5 -> beta = 1.000; nanocrystalline ribbon (rho ~ 1e-6 Ohm.m): |eps2| ~ 1e10
+    // -> beta = 1; NiZn K07 at 10 MHz: eps' 15, conduction negligible -> beta ~ 0.9 bare,
+    // ~0.6 under an epoxy jacket. Every quantity is a MAS material property; nothing chosen.
+    //
+    // Measured (WE NiZn chokes, geometry right): the four K07 parts resonate at x1.20 of
+    // RedExpert with beta = 1, x1.08 with this fraction, and x3.3 with the network switched
+    // OFF — so a dielectric core IS an image plane to its turns (the displacement-based
+    // picture above), and gating the network on conduction alone, which had seemed the safer
+    // physics, is contradicted by the data. The fraction is what the measurements support.
     //
     // The external medium eps1 is the dielectric the core surface touches: its jacket when it
-    // has one (parylene/epoxy/nylon case), else the wire enamel's neighbour, air.
+    // has one (parylene/epoxy/nylon case), else air.
     auto material = core.resolve_material();
     double epsExternal = 1.0;
     {

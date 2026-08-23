@@ -2252,7 +2252,8 @@ TEST_CASE("Turn-to-core element is the cylinder-over-plane image solution", "[ph
 // conductor and for any body whose complex permittivity dwarfs the dielectric on its surface
 // (MnZn, with eps_r ~ 1e4-1e5 and conduction; nanocrystalline ribbon); a NiZn ferrite
 // (eps_r ~ 12-25, rho ~ 1e6 Ohm.m) images a charge with only the dielectric half-space
-// fraction (eps2 - eps1)/(eps2 + eps1). All from MAS material data; nothing chosen.
+// fraction (eps2 - eps1)/(eps2 + eps1) — which the measured K07 resonances confirm (x1.08
+// with it, x3.3 with the network off, x1.20 with beta = 1). MAS data; nothing chosen.
 TEST_CASE("Core image factor follows the core material's complex permittivity", "[physical-model][stray-capacitance][parallels][image-factor]") {
     settings.reset();
     auto makeCore = [](const std::string& material) {
