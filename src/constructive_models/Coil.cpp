@@ -11680,6 +11680,16 @@ bool Coil::wind_toroidal_additional_turns() {
             // station to the candidate. Both are swept against the connection verticals.
             std::map<std::string, std::pair<double, double>> ownInnerXYByTurn;
             std::map<std::string, std::pair<double, double>> nextInnerXYByTurn;
+            // ABT #865: whether that next station lives in the SAME layer. The midpoint anchor
+            // below models the wire advancing to its NEXT TURN IN THE RING; across a ring hop
+            // there is no such advance -- the wire dives to the next ring -- and anchoring the
+            // ring-CLOSING crossing halfway toward the next ring's first station threw it tens
+            // of degrees along the rim, straight onto an earlier turn's crossing (toroid_3in:
+            // turn 26_ending anchored at 164.578 deg onto turn 0's 164.060; measured 0.19 mm
+            // centre-to-centre against a 2.074 mm envelope). It also swept the closing chord
+            // back over its own ring's turns (cmc_3w_2layer Primary 10_ending placed 36 deg
+            // BEHIND its station). A ring-closing crossing stays at its own station's azimuth.
+            std::set<std::string> nextInSameLayer;
             // ABT #685: and the PREVIOUS station, for the last turn of a parallel. It has no next
             // station to aim between, so without this it keeps its own azimuth while every turn
             // before it has advanced half a step -- which puts it BEHIND its predecessor's
@@ -11701,6 +11711,10 @@ bool Coil::wind_toroidal_additional_turns() {
                     if (found != previousInParallel.end()) {
                         nextInnerXYByTurn[found->second->get_name()] = stationXY(turn);
                         prevInnerXYByTurn[turn.get_name()] = stationXY(*found->second);
+                        if (found->second->get_layer() && turn.get_layer() &&
+                            found->second->get_layer().value() == turn.get_layer().value()) {
+                            nextInSameLayer.insert(found->second->get_name());   // ABT #865
+                        }
                     }
                     previousInParallel[key] = &turn;
                 }
@@ -11750,8 +11764,7 @@ bool Coil::wind_toroidal_additional_turns() {
             for (auto layer : layersThisSection) {
                 if (layer.get_type() == ElectricalType::CONDUCTION) {
                     auto turnsThisLayer = get_turns_by_layer(layer.get_name());
-                    bool isFirstConductionLayer = (conductionLayerCount == 0);
-                    conductionLayerCount++;
+                    conductionLayerCount++;   // (first-layer exemption removed, ABT #865)
                     // Winding progression sense of this layer (sign of the inner-azimuth step),
                     // for the outer-crossing monotonicity guard.
                     std::optional<double> previousOuterCrossingAzimuth;
@@ -11785,7 +11798,11 @@ bool Coil::wind_toroidal_additional_turns() {
                         if (settings.get_coil_use_real_winding_geometry()) {
                             auto ownFound = ownInnerXYByTurn.find(turn.get_name());
                             auto nextFound = nextInnerXYByTurn.find(turn.get_name());
-                            if (ownFound != ownInnerXYByTurn.end() && nextFound != nextInnerXYByTurn.end()) {
+                            // ABT #865: the half-step only when the next station is in the SAME
+                            // layer (see nextInSameLayer above) -- a ring-closing crossing keeps
+                            // its own azimuth instead of being flung toward the next ring.
+                            if (ownFound != ownInnerXYByTurn.end() && nextFound != nextInnerXYByTurn.end() &&
+                                nextInSameLayer.count(turn.get_name())) {
                                 const double ownAz = atan2(ownFound->second.second,
                                                            ownFound->second.first) * 180 / std::numbers::pi;
                                 const double nextAz = atan2(nextFound->second.second,
@@ -11798,7 +11815,17 @@ bool Coil::wind_toroidal_additional_turns() {
 
                         if (!areLayersTaped) {
 
-                            if (!isFirstConductionLayer) {
+                            // ABT #865 defect 1: the first conduction layer used to skip this
+                            // sweep entirely -- no rest, no monotonicity, and critically no
+                            // get_collision_distances -- so a ring-0 crossing thrown onto an
+                            // occupied azimuth SHIPPED (toroid_3in: 0.19 mm centre-to-centre on
+                            // a 2.074 mm envelope, and every multi-ring toroidal fixture had its
+                            // tightest pair at a ring-closing station). For ordinary first-ring
+                            // turns the sweep is a no-op (rest = base radius, anchor accepted),
+                            // so running it costs nothing where the exemption was harmless and
+                            // catches exactly the case where it was not. Taped layers keep their
+                            // exemption: tape separates the rings physically.
+                            {
                             // ABT #231. Two separate constraints, previously conflated by a single
                             // search that satisfied neither reliably.
                             //
