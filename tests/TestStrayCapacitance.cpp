@@ -2230,6 +2230,75 @@ TEST_CASE("Magnetic epoxy shield is not a winding-to-core dielectric", "[physica
     CHECK(shieldedSelf == Catch::Approx(bareSelf));
 }
 
+// ABT #848: the turn-to-core element is the exact image-method solution for a conducting
+// cylinder over a conducting plane, C = 2 pi eps0 L / acosh(h / r), the dielectric layers
+// between copper and ferrite entering as their air-equivalent thickness. Pinned against the
+// closed form, not against itself; bare copper in contact is refused as the short it is.
+TEST_CASE("Turn-to-core element is the cylinder-over-plane image solution", "[physical-model][stray-capacitance][coating]") {
+    const double r = 0.4e-3, L = 45e-3, tEnamel = 27e-6, epsEnamel = 3.28, tCase = 1.25e-3, epsCase = 3.4;
+    double expected = 2 * std::numbers::pi * 8.8541878128e-12 * L / std::acosh(1 + (tEnamel / epsEnamel + tCase / epsCase) / r);
+    double c = StrayCapacitance::calculate_turn_to_core_capacitance(r, L, tEnamel, epsEnamel, 0.0, tCase, epsCase);
+    CHECK(c == Catch::Approx(expected).epsilon(1e-9));
+    // An air gap adds to the equivalent thickness one-to-one.
+    double cGap = StrayCapacitance::calculate_turn_to_core_capacitance(r, L, tEnamel, epsEnamel, 0.2e-3, tCase, epsCase);
+    double expectedGap = 2 * std::numbers::pi * 8.8541878128e-12 * L / std::acosh(1 + (tEnamel / epsEnamel + 0.2e-3 + tCase / epsCase) / r);
+    CHECK(cGap == Catch::Approx(expectedGap).epsilon(1e-9));
+    CHECK(cGap < c);
+    // Bare conductor on a bare core at zero gap: a short circuit, never a capacitance.
+    CHECK_THROWS_AS(StrayCapacitance::calculate_turn_to_core_capacitance(r, L, 0.0, 0.0, 0.0, 0.0, 0.0), OpenMagnetics::InvalidInputException);
+}
+
+// ABT #848: the floating-core network treats the core as an image plane. It is one for a
+// conductor and for any body whose complex permittivity dwarfs the dielectric on its surface
+// (MnZn, with eps_r ~ 1e4-1e5 and conduction; nanocrystalline ribbon); a NiZn ferrite
+// (eps_r ~ 12-25, rho ~ 1e6 Ohm.m) images a charge with only the dielectric half-space
+// fraction (eps2 - eps1)/(eps2 + eps1). All from MAS material data; nothing chosen.
+TEST_CASE("Core image factor follows the core material's complex permittivity", "[physical-model][stray-capacitance][parallels][image-factor]") {
+    settings.reset();
+    auto makeCore = [](const std::string& material) {
+        auto coreJson = nlohmann::json::parse(R"({"name": "abt848", "functionalDescription": {"type": "toroidal", "material": "MAT", "shape": "T 14/8/9", "gapping": [], "numberStacks": 1}})");
+        coreJson["functionalDescription"]["material"] = material;
+        Core core(coreJson); core.process_data(); core.process_gap(); return core;
+    };
+    double mnZn = StrayCapacitance::core_image_factor(makeCore("A07"), 1e6);          // permittivity table: eps' ~ 1e5
+    double niZn10 = StrayCapacitance::core_image_factor(makeCore("K07"), 1e7);        // eps' ~ 15 at 10 MHz, rho 1e6
+    double niZn1 = StrayCapacitance::core_image_factor(makeCore("K07"), 1e6);         // eps' ~ 25 at 1 MHz
+    double nano = StrayCapacitance::core_image_factor(makeCore("SC-1K107"), 1e6);     // resistivity only: 1.3e-6 Ohm.m
+    UNSCOPED_INFO("beta: A07 " << mnZn << ", K07 @10MHz " << niZn10 << ", K07 @1MHz " << niZn1 << ", SC-1K107 " << nano);
+    CHECK(mnZn > 0.999);
+    CHECK(nano > 0.9999);
+    CHECK(niZn10 < 0.95);
+    CHECK(niZn10 > 0.5);
+    CHECK(niZn1 > niZn10);   // eps_r falls with frequency, so does the image strength
+    CHECK(niZn1 < 1.0);
+}
+
+// The same network, scaled: a NiZn toroid's full-model self-capacitance evaluated at its
+// resonance frequency is below the core-as-electrode value, an MnZn one is unchanged.
+TEST_CASE("Full-model capacitance carries the core image factor when a frequency is given", "[physical-model][stray-capacitance][image-factor]") {
+    settings.reset();
+    for (auto [material, expectBelow] : std::vector<std::pair<std::string, bool>>{{"K07", true}, {"A07", false}}) {
+        auto coreJsonStr = std::string(R"({"name": "abt848", "functionalDescription": {"type": "toroidal", "material": ")") + material + R"(", "shape": "T 14/8/9", "coating": {"type": "epoxy", "thickness": 0.0006}, "gapping": [], "numberStacks": 1}})";
+        auto coilJsonStr = R"({"bobbin": "Basic", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1"}]})";
+        OpenMagnetics::Core core(nlohmann::json::parse(coreJsonStr));
+        core.process_data();
+        core.process_gap();
+        OpenMagnetics::Coil coil(nlohmann::json::parse(coilJsonStr), false);
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+        coil.set_bobbin(bobbin);
+        REQUIRE_NOTHROW(coil.wind());
+        REQUIRE(coil.get_turns_description());
+        double electrode = 0, atResonance = 0;
+        REQUIRE_NOTHROW(electrode = StrayCapacitance().calculate_capacitance(coil, core).get_capacitance_among_windings().value()["Primary"]["Primary"]);
+        REQUIRE_NOTHROW(atResonance = StrayCapacitance().calculate_capacitance(coil, core, 1e7).get_capacitance_among_windings().value()["Primary"]["Primary"]);
+        UNSCOPED_INFO(material << ": electrode " << electrode << " F, at 10 MHz " << atResonance << " F");
+        CHECK(std::isfinite(atResonance));
+        CHECK(atResonance > 0);
+        if (expectBelow) { CHECK(atResonance < 0.95 * electrode); }
+        else { CHECK(atResonance == Catch::Approx(electrode).epsilon(1e-3)); }
+    }
+}
+
 // Insulated wire is the normal case and must keep working with parallels: same core, same turns,
 // only numberParallels varying, all exporting a finite self-capacitance.
 TEST_CASE("Calculate capacitance of a winding with 4 turns and several parallels", "[physical-model][stray-capacitance][parallels]") {

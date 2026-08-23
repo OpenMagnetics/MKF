@@ -1,4 +1,6 @@
 #include "physical_models/StrayCapacitance.h"
+#include "physical_models/Impedance.h"
+#include <algorithm>
 #include "support/Settings.h"
 #include "Defaults.h"
 #include "Constants.h"
@@ -1518,6 +1520,20 @@ double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRad
     // the wire-to-core air gap and the core coating thickness — the terms that set the real,
     // sub-pF turn-to-core value. The wire enamel is kept in the stack so the element stays
     // finite even at zero air gap and no core coating (close-wound, uncoated).
+    //
+    // ABT #848 (2026-08-23): the Kovacic construction above — radial field lines leaving the
+    // lower half of the conductor, each stretched by phi/sin(phi) — is an engineering
+    // approximation, and against the exact solution it is low by 1.3-2x for the geometries the
+    // WE chokes actually have (checked on 230 measured parts: 0.5-0.8x). The exact electrostatic
+    // solution for a conducting cylinder of radius r whose axis sits a height h above a
+    // conducting plane (image method, Smythe §4.13) is
+    //     C' = 2 pi eps0 / acosh(h / r)   per unit length,
+    // and it counts the whole circumference, not a half. The series dielectric layers between
+    // the copper and the ferrite — wire enamel, the wire-to-core air gap and the core coating or
+    // case — enter as their air-equivalent thickness t_i / eps_ri (exact in the parallel-plate
+    // limit t << r; for a thick case wall the result lies between the all-air and
+    // all-dielectric solutions, which is the right order). Same inputs, same bounded behaviour:
+    // finite at zero air gap (the enamel keeps h > r), monotone in the gap and the coating.
     if (conductingRadius <= 0 || turnLength <= 0) {
         return 0;
     }
@@ -1525,26 +1541,122 @@ double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRad
     const double wireRadius = conductingRadius;  // contract: conductingRadius is the radius (Dc = 2*r)
     const double enamelTerm = wireCoatingRelativePermittivity > 0 ? wireCoatingThickness / wireCoatingRelativePermittivity : 0.0;
     const double coatingTerm = coreCoatingRelativePermittivity > 0 ? coreCoatingThickness / coreCoatingRelativePermittivity : 0.0;
-
-    const int steps = 400;
-    const double upper = std::numbers::pi / 2.0;
-    double integral = 0.0;
-    for (int k = 0; k <= steps; ++k) {
-        double phi = upper * k / steps;
-        double phiOverSin = phi < 1e-9 ? 1.0 : phi / std::sin(phi);
-        double airLength = phiOverSin * (airGapToCore + wireRadius * (1.0 - std::cos(phi)));
-        double denominator = enamelTerm + airLength + coatingTerm;
-        double integrand = denominator > 0 ? 1.0 / denominator : 0.0;
-        double weight = (k == 0 || k == steps) ? 0.5 : 1.0;  // trapezoidal
-        integral += weight * integrand;
+    const double airEquivalentGap = enamelTerm + std::max(0.0, airGapToCore) + coatingTerm;
+    if (airEquivalentGap <= 0) {
+        // Bare copper on a bare conductor: the image solution diverges, and so does the physics
+        // — that is a short, which the callers' geometry guards report; never a number here.
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "Turn-to-core capacitance asked for a bare conductor in contact with the core (no wire"
+            " coating, no air gap, no core coating): that is a short circuit, not a capacitance");
     }
-    integral *= upper / steps;   // dphi
-    integral *= 2.0;             // symmetric over [-pi/2, pi/2]
-
-    return vacuumPermittivity * turnLength * wireRadius * integral;
+    const double heightOverRadius = 1.0 + airEquivalentGap / wireRadius;
+    return 2.0 * std::numbers::pi * vacuumPermittivity * turnLength / std::acosh(heightOverRadius);
 }
 
-double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core core, std::string windingName) {
+double StrayCapacitance::core_image_factor(const Core& core, double frequency) {
+    // ABT #848: the floating-core network (turn -> core -> turn) treats the core as an
+    // EQUIPOTENTIAL ELECTRODE — a perfect image plane for every turn. That is exact for a
+    // conductor and, for AC fields, for any body whose complex permittivity dwarfs the
+    // dielectric between it and the turns (the field cannot penetrate it, so its surface is
+    // equipotential whether the charge is free or bound). It is NOT true for a plain
+    // dielectric body: a NiZn ferrite (eps_r ~ 12-25, rho ~ 1e6 Ohm.m) images a line charge
+    // with only a fraction of its strength. The image-method fraction for a half-space of
+    // permittivity eps2 seen from a medium eps1 is
+    //     beta = (eps2 - eps1) / (eps2 + eps1),
+    // with eps2 the core's COMPLEX relative permittivity at the frequency of interest,
+    //     eps2 = eps' - j eps'',   eps'' = eps''_dielectric + 1 / (omega eps0 rho),
+    // taken in magnitude. MnZn at 1-100 MHz: |eps2| ~ 1e4-1e5 -> beta = 1.000; nanocrystalline
+    // ribbon (rho ~ 1e-6 Ohm.m): |eps2| ~ 1e10 -> beta = 1; NiZn K07 at 10 MHz: eps' 15,
+    // conduction negligible -> beta ~ 0.6 against a nylon/epoxy jacket. Every quantity is a
+    // MAS material property; nothing is chosen. Measured: with beta = 1 for everything the
+    // NiZn WE-CMB chokes carried ~3x too much capacitance once their geometry was right, the
+    // MnZn and nanocrystalline ones were within 0.6-1.2x.
+    //
+    // The external medium eps1 is the dielectric the core surface touches: its jacket when it
+    // has one (parylene/epoxy/nylon case), else the wire enamel's neighbour, air.
+    auto material = core.resolve_material();
+    double epsExternal = 1.0;
+    {
+        auto coating = core.get_functional_description().get_coating();
+        bool magneticShield = coating && std::holds_alternative<CoreCoating>(coating.value()) &&
+                              std::get<CoreCoating>(coating.value()).get_type() &&
+                              std::get<CoreCoating>(coating.value()).get_type().value() == CoatingType::MAGNETIC_EPOXY;
+        if (!magneticShield && core.get_coating_thickness() > 0) {
+            epsExternal = core.get_coating_relative_permittivity();
+        }
+    }
+    double omega = 2.0 * std::numbers::pi * frequency;
+    const double vacuumPermittivity = Constants().vacuumPermittivity;
+    double epsReal = 0.0, epsImag = 0.0;
+    bool haveData = false;
+    if (material.get_permittivity() && material.get_permittivity()->get_complex()) {
+        auto complexPermittivity = material.get_permittivity()->get_complex().value();
+        epsReal = interpolate_permittivity_points(complexPermittivity.get_real(), frequency);
+        epsImag = interpolate_permittivity_points(complexPermittivity.get_imaginary(), frequency);
+        haveData = epsReal > 0;
+    }
+    else if (!material.get_resistivity().empty() && frequency > 0) {
+        // Conduction only (metallic ribbon cores, or a ferrite whose permittivity the database
+        // does not carry but whose resistivity it does): eps'' = 1 / (omega eps0 rho).
+        auto resistivity = material.get_resistivity()[0];
+        double rho = resistivity.get_value();
+        if (rho > 0) {
+            epsImag = 1.0 / (omega * vacuumPermittivity * rho);
+            haveData = true;
+        }
+    }
+    if (!haveData) {
+        // No permittivity and no resistivity in the database: the model keeps its pre-#848
+        // meaning — the core is the electrode. (A ferrite with no data is not a reason to
+        // invent a permittivity; it is a reason to add it to MAS.)
+        return 1.0;
+    }
+    double epsCoreMagnitude = std::hypot(epsReal, epsImag);
+    double beta = (epsCoreMagnitude - epsExternal) / (epsCoreMagnitude + epsExternal);
+    return std::clamp(beta, 0.0, 1.0);
+}
+
+// ABT #848: the air gap between a turn's conductor surface and the core surface it faces, from
+// the coil's real geometry instead of "close-wound, 0". Toroid (round window): the first layer
+// sits on the (jacketed) core, a deeper layer sits on the layer below it, so the gap is how far
+// the turn's radial position lies inside the bore surface. Bobbin-wound (rectangular window):
+// the turn is separated from the central ferrite column by the bobbin wall and any inner
+// layers, i.e. by its distance from the ferrite column surface; the bobbin plastic in that gap
+// is counted as air (air-equivalent thickness would be t/eps_r — this is the conservative side,
+// and documented rather than invented). A bare conductor at zero gap is then only ever asked
+// for when it really is in contact, and calculate_turn_to_core_capacitance refuses it as the
+// short it is.
+static double turn_to_core_air_gap(Coil& coil, const Turn& turn, double conductingRadius) {
+    auto bobbin = coil.resolve_bobbin();
+    if (!bobbin.get_processed_description()) {
+        return 0.0;
+    }
+    auto processed = bobbin.get_processed_description().value();
+    auto windows = processed.get_winding_windows();
+    if (windows.empty()) {
+        return 0.0;
+    }
+    auto coordinates = turn.get_coordinates();
+    if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
+        // Bore radius of the surface the first layer rests on; the turn's radius from the axis.
+        if (!windows[0].get_radial_height()) {
+            return 0.0;
+        }
+        double boreRadius = windows[0].get_radial_height().value();
+        double turnRadius = std::hypot(coordinates[0], coordinates.size() > 1 ? coordinates[1] : 0.0);
+        return std::max(0.0, (boreRadius - conductingRadius) - turnRadius);
+    }
+    // Rectangular window: the ferrite column surface sits at column_width - column_thickness
+    // from the axis (column_width includes the bobbin wall), the turn's conductor surface at
+    // |x| - r.
+    if (!processed.get_column_width()) {
+        return 0.0;
+    }
+    double ferriteColumnSurface = processed.get_column_width().value() - processed.get_column_thickness();
+    return std::max(0.0, std::abs(coordinates[0]) - conductingRadius - ferriteColumnSurface);
+}
+
+double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core core, std::string windingName, std::optional<double> frequency) {
     // Total capacitance from one whole winding to the (equipotential) ferrite core,
     // = the parallel sum of every turn's turn-to-core element (all turns of the
     // winding share the single core node). This is the building block for the
@@ -1561,6 +1673,7 @@ double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core c
     }
 
     auto [coreCoatingThickness, coreCoatingRelativePermittivity] = resolve_core_jacket(core);
+    double imageFactor = frequency ? core_image_factor(core, frequency.value()) : 1.0;
 
     auto turns = coil.get_turns_description().value();
     auto wirePerWinding = coil.get_wires();
@@ -1574,17 +1687,16 @@ double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core c
     double conductingRadius = turn_to_core_equivalent_radius(wire);
     double wireCoatingThickness = wire.get_coating_thickness();
     double wireCoatingRelativePermittivity = get_wire_insulation_relative_permittivity(wire);
-    constexpr double airGapToCore = 0.0;  // close-wound onto the coated core
 
     double windingToCore = 0;
     for (auto& turn : turns) {
         if (turn.get_winding() != windingName) {
             continue;
         }
-        windingToCore += calculate_turn_to_core_capacitance(
+        windingToCore += imageFactor * calculate_turn_to_core_capacitance(
             conductingRadius, turn.get_length(),
             wireCoatingThickness, wireCoatingRelativePermittivity,
-            airGapToCore,
+            turn_to_core_air_gap(coil, turn, conductingRadius),
             coreCoatingThickness, coreCoatingRelativePermittivity);
     }
     return windingToCore;
@@ -1592,7 +1704,7 @@ double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core c
 
 double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core,
         const std::string& firstWindingName, const std::string& secondWindingName,
-        const std::vector<double>& voltagesPerTurn) {
+        const std::vector<double>& voltagesPerTurn, std::optional<double> frequency) {
     // Inter-winding capacitance between two separated windings through the floating,
     // equipotential ferrite core. Energy method (CPSS 2025 core-potential approach):
     //   1. each turn i has a turn-to-core element C_i and sits at potential V_i;
@@ -1613,6 +1725,7 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
     auto wirePerWinding = coil.get_wires();
 
     auto [coreCoatingThickness, coreCoatingRelativePermittivity] = resolve_core_jacket(core);
+    double imageFactor = frequency ? core_image_factor(core, frequency.value()) : 1.0;
 
     std::vector<double> turnCoreCapacitance;
     std::vector<double> turnPotential;
@@ -1632,12 +1745,12 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
         }
 
         auto wire = wirePerWinding[coil.get_winding_index_by_name(windingName)];
-        // Bare-conductor radius for the field-spreading integral; flat conductors
+        // Bare-conductor radius for the image solution; flat conductors
         // use an area-equivalent radius (see turn_to_core_equivalent_radius).
-        double capacitance = calculate_turn_to_core_capacitance(
+        double capacitance = imageFactor * calculate_turn_to_core_capacitance(
             turn_to_core_equivalent_radius(wire), turns[turnIndex].get_length(),
             wire.get_coating_thickness(), get_wire_insulation_relative_permittivity(wire),
-            0.0 /* air gap: close-wound */,
+            turn_to_core_air_gap(coil, turns[turnIndex], turn_to_core_equivalent_radius(wire)),
             coreCoatingThickness, coreCoatingRelativePermittivity);
         double potential = sign * voltagesPerTurn[turnIndex];
 
@@ -1675,7 +1788,7 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
 
 double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core core,
         const std::string& windingName,
-        const std::vector<double>& voltagesPerTurn) {
+        const std::vector<double>& voltagesPerTurn, std::optional<double> frequency) {
     // One winding against the floating core (ABT #848). Mirrors
     // calculate_through_core_capacitance exactly — same per-turn elements, same
     // charge-balanced core node — but over a single winding's turns, all with
@@ -1689,6 +1802,7 @@ double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core c
     auto wirePerWinding = coil.get_wires();
 
     auto [coreCoatingThickness, coreCoatingRelativePermittivity] = resolve_core_jacket(core);
+    double imageFactor = frequency ? core_image_factor(core, frequency.value()) : 1.0;
 
     std::vector<double> turnCoreCapacitance;
     std::vector<double> turnPotential;
@@ -1699,10 +1813,10 @@ double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core c
             continue;
         }
         auto wire = wirePerWinding[coil.get_winding_index_by_name(windingName)];
-        double capacitance = calculate_turn_to_core_capacitance(
+        double capacitance = imageFactor * calculate_turn_to_core_capacitance(
             turn_to_core_equivalent_radius(wire), turns[turnIndex].get_length(),
             wire.get_coating_thickness(), get_wire_insulation_relative_permittivity(wire),
-            0.0 /* air gap: close-wound */,
+            turn_to_core_air_gap(coil, turns[turnIndex], turn_to_core_equivalent_radius(wire)),
             coreCoatingThickness, coreCoatingRelativePermittivity);
         turnCoreCapacitance.push_back(capacitance);
         turnPotential.push_back(voltagesPerTurn[turnIndex]);
@@ -1886,17 +2000,17 @@ SixCapacitorNetworkPerWinding StrayCapacitance::calculate_six_capacitor_network(
 }
 
 
-StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, std::optional<Core> core) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, std::optional<Core> core, std::optional<double> frequency) {
     std::map<std::string, double> voltageRmsPerWinding;
     double primaryNumberTurns = coil.get_functional_description()[0].get_number_turns();
     for (auto winding : coil.get_functional_description()) {
         double turnsRatio = primaryNumberTurns /  winding.get_number_turns();
         voltageRmsPerWinding[winding.get_name()] = 10.0 / turnsRatio;
     }
-    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core);
+    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core, frequency);
 }
 
-StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core, std::optional<double> frequency) {
     // Extract actual RMS voltages from operating point
     std::map<std::string, double> voltageRmsPerWinding;
     
@@ -1923,10 +2037,10 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, Operat
         voltageRmsPerWinding[coil.get_functional_description()[windingIndex].get_name()] = rmsVoltage.value();
     }
 
-    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core);
+    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core, frequency);
 }
 
-StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core, std::optional<double> frequency) {
     std::map<std::pair<size_t, size_t>, double> electricEnergyBetweenTurnsMap;
     std::map<std::pair<size_t, size_t>, double> voltageDropBetweenTurnsMap;
     std::map<std::string, std::map<std::string, ScalarMatrixAtFrequency>> capacitanceMatrix;
@@ -2022,7 +2136,7 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
                 // elements as the through-core inter-winding path below.
                 if (firstWindingName == secondWindingName && core) {
                     energyInBetweenTheseWindings += calculate_winding_to_core_self_energy(
-                        coil, core.value(), firstWindingName, voltagesPerTurn);
+                        coil, core.value(), firstWindingName, voltagesPerTurn, frequency);
                 }
 
                 if (windingAreNotAdjacent) {
@@ -2035,7 +2149,7 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
                     // sets the dielectric floor); without it we fall back to 0 (old behaviour).
                     double throughCore = 0;
                     if (core && firstWindingName != secondWindingName) {
-                        throughCore = calculate_through_core_capacitance(coil, core.value(), firstWindingName, secondWindingName, voltagesPerTurn);
+                        throughCore = calculate_through_core_capacitance(coil, core.value(), firstWindingName, secondWindingName, voltagesPerTurn, frequency);
                     }
                     capacitanceMapPerWindings[windingsKey] = throughCore;
                     continue;

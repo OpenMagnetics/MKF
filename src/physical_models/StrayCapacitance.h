@@ -72,7 +72,7 @@ class StrayCapacitance{
         StrayCapacitanceModels _modelName;
         static double calculate_area_between_two_turns_using_diagonals(Turn firstTurn, Turn secondTurn);
         static double calculate_area_between_two_turns_using_vecticals_and_horizontals(Turn firstTurn, Turn secondTurn);
-        StrayCapacitanceOutput calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core = std::nullopt);
+        StrayCapacitanceOutput calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt);
     public:
 
         StrayCapacitance(StrayCapacitanceModels strayCapacitanceModel = StrayCapacitanceModels::ALBACH){
@@ -107,7 +107,7 @@ class StrayCapacitance{
         // Total capacitance from one winding to the (equipotential) ferrite core: the
         // parallel sum of its turns' turn-to-core elements. Two of these in series through
         // the core node give the inter-winding capacitance for separated windings.
-        static double calculate_winding_to_core_capacitance(Coil coil, Core core, std::string windingName);
+        static double calculate_winding_to_core_capacitance(Coil coil, Core core, std::string windingName, std::optional<double> frequency = std::nullopt);
 
         // Inter-winding capacitance between two SEPARATED windings through the floating,
         // equipotential ferrite core (turn -> core -> turn). Energy method: weights each
@@ -119,7 +119,8 @@ class StrayCapacitance{
         static double calculate_through_core_capacitance(Coil coil, Core core,
                                                          const std::string& firstWindingName,
                                                          const std::string& secondWindingName,
-                                                         const std::vector<double>& voltagesPerTurn);
+                                                         const std::vector<double>& voltagesPerTurn,
+                                                         std::optional<double> frequency = std::nullopt);
 
         // Energy stored in ONE winding's turn-to-core elements against the floating core
         // (ABT #848): same per-turn elements and charge-balanced core node as
@@ -131,15 +132,26 @@ class StrayCapacitance{
         // potentials), to be added to the self-pair energy before the 2E/dV^2 reduction.
         static double calculate_winding_to_core_self_energy(Coil coil, Core core,
                                                             const std::string& windingName,
-                                                            const std::vector<double>& voltagesPerTurn);
+                                                            const std::vector<double>& voltagesPerTurn,
+                                                            std::optional<double> frequency = std::nullopt);
+
+        // ABT #848: how much of an image plane the core is for the turns, from its MAS
+        // permittivity (complex, with conduction) against the dielectric on its surface:
+        // beta = (|eps_core| - eps_ext) / (|eps_core| + eps_ext). 1 for MnZn, nanocrystalline
+        // and any conductor; ~0.6 for NiZn at 10 MHz; 1 when the database has neither
+        // permittivity nor resistivity for the material. The floating-core terms above are
+        // scaled by it when a frequency is given; with no frequency they keep beta = 1.
+        static double core_image_factor(const Core& core, double frequency);
 
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
         // The optional core supplies the through-core inter-winding capacitance for
         // separated (non-adjacent) windings; omit it to keep the legacy behaviour where
         // separated windings have zero mutual capacitance.
-        StrayCapacitanceOutput calculate_capacitance(Coil coil, std::optional<Core> core = std::nullopt);
-        StrayCapacitanceOutput calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core = std::nullopt);
+        // frequency: where the capacitance is wanted (the impedance path passes its resonance);
+        // it only sets the core image factor (see core_image_factor) — omit it for beta = 1.
+        StrayCapacitanceOutput calculate_capacitance(Coil coil, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt);
+        StrayCapacitanceOutput calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt);
     
     // Bipolar coordinate system for round-round energy density computation
     struct BipolarParams {

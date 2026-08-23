@@ -74,6 +74,10 @@ struct WidebandImpedanceModel {
     double temperature = Defaults().ambientTemperature;
 };
 
+// Log-log interpolation of a MAS permittivity table at a frequency (clamped to the table ends).
+// Shared by the core dimensional attenuation here and StrayCapacitance::core_image_factor.
+double interpolate_permittivity_points(const MAS::Permittivity& data, double frequency);
+
 class Impedance {
     private:
         bool _fastCapacitance;
@@ -81,6 +85,9 @@ class Impedance {
         // The magnetizing tank (air-cored inductance ∥ winding self-capacitance),
         // the first resonance shared by calculate_impedance and the wideband model.
         ImpedanceTank build_magnetizing_tank(Core& core, Coil& coil);
+        // Resonance of (air-cored inductance x initial permeability) with a capacitance: the
+        // frequency the stray-capacitance core image factor is evaluated at (ABT #848).
+        static double estimate_resonance_frequency(Core& core, double airCoredInductance, double capacitance);
     protected:
     public:
     // DEFAULT: the FULL energy-based StrayCapacitance model (owner decision, 2026-08-23): per-pair
