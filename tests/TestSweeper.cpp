@@ -1073,7 +1073,14 @@ namespace {
             "closedShape"), 8));
 
         for (auto& [label, magnetic] : magnetics) {
-            auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 100000000, 200);
+            // Band to 1 GHz, not 100 MHz: with the full energy-based capacitance model as the
+            // Impedance default (MKF d424c32e) these 8-turn bare-drum fixtures carry ~0.04 pF --
+            // a single air-spaced layer of 0.1 mm enamelled wire on a 2.3 mm drum, no resin, no
+            // second layer -- and with ~54 uH that puts the self-resonance at ~110 MHz, just past
+            // the old ceiling, where the "maximum interior to the band" check read it as no
+            // resonance at all. Real moulded parts sit in the pF class because of the resin and
+            // layering these synthetic fixtures do not have.
+            auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 1000000000, 200);
             auto impedanceMagnitudes = impedanceSweep.get_y_points();
             REQUIRE(impedanceMagnitudes.size() > 100);
             for (auto impedanceMagnitude : impedanceMagnitudes) {

@@ -284,10 +284,19 @@ const std::vector<TopEntry> kTopStandardPower = {
 // Changsung/Ferroxcube/TDK/VAC materials entered the interference-suppression
 // normalization pool, nudging slots 1-2 by ~1e-5 (min-max scores are pool-relative).
 // Identical cores + order; slot 0 unchanged.
+// Re-pin 2026-08-23 (ABT #845/#846/#848): the OneLayer stray-capacitance path the adviser scores
+// impedance with was corrected after the 2026-08-20 pin (pi fix, toroid turn length from the
+// core cross-section, floating-core network that grows with turn count -- validated on 107 WE
+// CMCs), and MnZn/NiZn candidates now carry the core dimensional attenuation from real
+// permittivity. Slots 0-1 keep their identities (+0.26 % / +0.11 %); slot 2 is now the thinner
+// T 134/77/27 (1.5967) ahead of T 167/87/27 (previously 1.5057): a 27 mm-tall XFlux toroid
+// with the same OD wins on the composite once its impedance is scored with the corrected
+// capacitance. No measurement arbitrates a third-place swap between two XFlux 26 toroids; the
+// pin records the corrected engine, not a new truth.
 const std::vector<TopEntry> kTopAvailableInterference = {
-    {"T 134/77/155 - XFlux 26 - Ungapped",         1.9451312382492831},
-    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8562803208704106},
-    {"T 167/87/27 - XFlux 26 - Ungapped",          1.5056616982902709},
+    {"T 134/77/155 - XFlux 26 - Ungapped",         1.9501467399903731},
+    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8582787244505599},
+    {"T 134/77/27 - XFlux 26 - Ungapped",          1.5966645076627959},
 };
 
 } // namespace

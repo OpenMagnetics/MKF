@@ -376,10 +376,20 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
     // Keeping the raw monotonic dev preserves ranking spread when this is the only
     // active filter.
 
+    // Candidate SCORING runs the fast (OneLayer) capacitance path, explicitly. MKF d424c32e made
+    // the full energy-based capacitance model Impedance's default -- right for analysing ONE
+    // magnetic (that is the flagship path the Sweeper and the impedance panels use) -- but this
+    // filter is called once per candidate for every core the adviser considers, and the full
+    // model's per-turn energy sum costs seconds per candidate: the DMC default-wizard repro
+    // (Test_CoreAdviser_DMC_Default_Wizard_Hang_Repro, 10 s budget) went to 28 minutes and the
+    // INTERFERENCE_SUPPRESSION ranking snapshot moved 0.26 %. Ranking needs the same fast model
+    // it was pinned and budgeted against; the chosen design is then analysed with the full one.
+    constexpr bool kFastCapacitanceForScoring = true;
+
     if (inputs->get_design_requirements().get_minimum_impedance()) {
         auto impedanceRequirement = inputs->get_design_requirements().get_minimum_impedance().value();
         for (auto impedanceAtFrequency : impedanceRequirement) {
-            auto impedance = OpenMagnetics::Impedance().calculate_impedance(*magnetic, impedanceAtFrequency.get_frequency());
+            auto impedance = OpenMagnetics::Impedance(kFastCapacitanceForScoring).calculate_impedance(*magnetic, impedanceAtFrequency.get_frequency());
             double zReq = impedanceAtFrequency.get_impedance().get_magnitude();
             double zAct = abs(impedance);
 
@@ -403,7 +413,7 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
     if (inputs->get_operating_points().size() > 0 && outputs != nullptr) {
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
             auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
-            auto impedance = OpenMagnetics::Impedance().calculate_impedance(*magnetic, operatingPoint.get_excitations_per_winding()[0].get_frequency());
+            auto impedance = OpenMagnetics::Impedance(kFastCapacitanceForScoring).calculate_impedance(*magnetic, operatingPoint.get_excitations_per_winding()[0].get_frequency());
             std::string name = magnetic->get_coil().get_functional_description()[0].get_name();
 
             while (outputs->size() < operatingPointIndex + 1) {

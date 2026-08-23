@@ -90,7 +90,11 @@ class Impedance {
     // full+Massarini 99% / 63%, fast OneLayer path 98% / 64% — parity overall, and the full model
     // is ahead on every MnZn family (A07 93% vs 72%); the nanocrystalline cased families are
     // the open item for both (ABT #848). The fast Massarini-based OneLayer path remains
-    // available with fastCapacitance=true.
+    // available with fastCapacitance=true -- and the advisers' candidate scoring
+    // (MagneticFilterImpedance) opts into it explicitly: the full model's per-turn energy sum
+    // costs seconds per candidate, which turned the DMC default-wizard adviser run from < 10 s
+    // into 28 minutes when this default flipped. Analyse the chosen design with the full model;
+    // rank the catalogue with the fast one.
     Impedance(bool fastCapacitance=false) {
         _fastCapacitance = fastCapacitance;
     } 
