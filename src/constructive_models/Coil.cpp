@@ -3123,7 +3123,7 @@ void Coil::align_blocked_layer_turns() {
             }
             bool widened = false;
             for (auto& [layerPair, links] : linksByLayerPair) {
-                if (links.size() < 2) {
+                if (links.empty()) {
                     continue;
                 }
                 const size_t windingIndex =
@@ -3148,6 +3148,54 @@ void Coil::align_blocked_layer_turns() {
                 });
                 // Worst sibling-pair deficit against the coated OD, on the drawn diagonals.
                 double worstRatio = 1.0;
+                // ABT #373 (Alf, 2026-08-23, choosing option (a)): the link must also clear the
+                // STATION IT DEPARTS FROM -- not only its siblings. Sibling-pair spacing was the
+                // only currency ABT #831 funded, but the defect measured on realwinding_round_2p
+                // is a conductor against ITSELF: with K parallels wound N-filar a parallel's own
+                // consecutive turns sit K wire ODs apart, so its U link climbs K ODs over one
+                // radial pitch and the resulting diagonal passes od*cos(alpha) from the station
+                // one climb below it -- 0.8579 mm against a 0.900 mm envelope, 42 um, with no
+                // sibling involved. Same law, same currency (the departing bundle's spacing),
+                // measured point-to-diagonal against every station of the departure layer.
+                // MKF_NO_LINK_OWN_STATION bisects.
+                if (!std::getenv("MKF_NO_LINK_OWN_STATION")) {
+                    auto ptSegDist = [](double px, double py, double sx0, double sy0,
+                                        double sx1, double sy1) {
+                        const double vx = sx1 - sx0, vy = sy1 - sy0;
+                        const double l2 = vx * vx + vy * vy;
+                        double t = l2 > 0.0 ? ((px - sx0) * vx + (py - sy0) * vy) / l2 : 0.0;
+                        t = std::clamp(t, 0.0, 1.0);
+                        return std::hypot(px - (sx0 + vx * t), py - (sy0 + vy * t));
+                    };
+                    for (const auto& lk : links) {
+                        const auto& dep = turns[lk.depTurn];
+                        const auto& arr = turns[lk.arrTurn];
+                        for (size_t ti = 0; ti < turns.size(); ++ti) {
+                            if (ti == lk.depTurn || ti == lk.arrTurn) {
+                                continue;
+                            }
+                            const auto& other = turns[ti];
+                            if (!other.get_layer() ||
+                                other.get_layer().value() != layerPair.first) {
+                                continue;   // only the layer the link departs from
+                            }
+                            const double d = ptSegDist(
+                                other.get_coordinates()[0], other.get_coordinates()[1],
+                                dep.get_coordinates()[0], dep.get_coordinates()[1],
+                                arr.get_coordinates()[0], arr.get_coordinates()[1]);
+                            if (d > 1e-12 && d + 1e-9 < od) {
+                                worstRatio = std::max(worstRatio, od / d);
+                                if (linkDiag) {
+                                    std::cerr << "[link-pitch] own-station deficit on "
+                                              << layerPair.first << ": link "
+                                              << dep.get_name() << " -> " << arr.get_name()
+                                              << " passes " << d << " from "
+                                              << other.get_name() << " (od " << od << ")\n";
+                                }
+                            }
+                        }
+                    }
+                }
                 for (size_t k = 0; k + 1 < links.size(); ++k) {
                     const auto& ta = turns[links[k].depTurn];
                     const auto& tb = turns[links[k].arrTurn];
@@ -3163,6 +3211,18 @@ void Coil::align_blocked_layer_turns() {
                     }
                 }
                 if (worstRatio <= 1.0) {
+                    continue;
+                }
+                if (links.size() < 2) {
+                    // Nothing to spread: a bundle of one has no spacing of its own. The deficit
+                    // is real and stays for the certified gate to report, which is the contract
+                    // this pass has always had for layers it cannot fund.
+                    if (linkDiag) {
+                        std::cerr << "[link-pitch] " << layerPair.first << " -> "
+                                  << layerPair.second << ": single link needs ratio "
+                                  << worstRatio << " but a lone bundle has no spacing to widen; "
+                                  << "leaving to the gate\n";
+                    }
                     continue;
                 }
                 // Widen the departing bundle's spacing by the measured deficit, on the nm grid.
