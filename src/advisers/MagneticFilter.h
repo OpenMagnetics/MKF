@@ -170,7 +170,22 @@ class MagneticFilterTurnCount : public MagneticFilter {
 
 class MagneticFilterCoreMinimumImpedance : public MagneticFilter {
     private:
-        Impedance _impedanceModel;
+        // Candidate GATING runs the fast (OneLayer) capacitance path, explicitly, for exactly
+        // the reason 2047e169 gave for MagneticFilterImpedance -- which is a DIFFERENT class,
+        // and was the only one that commit fixed. MKF d424c32e made the full energy-based
+        // capacitance model Impedance's default, which is right for analysing ONE magnetic but
+        // wrong here: build_magnetizing_tank WINDS THE COIL and runs the per-turn energy sum on
+        // every call, and this filter calls calculate_impedance once per requirement frequency
+        // per candidate, plus up to five Newton re-bumps, for every core in the catalogue.
+        //
+        // Measured on Test_CoreAdviser_DMC_Default_Wizard_Hang_Repro (10 s budget), with the
+        // default-constructed member below: filterMinimumImpedance alone took 1,038,396 ms over
+        // 4,834 candidates -- 17.3 of the run's 17.4 minutes; every other stage in the pipeline
+        // summed to about 7 s. That is the 28-minute regression 2047e169 describes, still live,
+        // because the DMC/CMC suppression pipeline gates on THIS filter, not on that one.
+        //
+        // Rank the catalogue with the fast model; analyse the chosen design with the full one.
+        Impedance _impedanceModel{/*fastCapacitance=*/true};
     public:
         MagneticFilterCoreMinimumImpedance() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);

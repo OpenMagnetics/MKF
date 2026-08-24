@@ -613,7 +613,24 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     // therefore pure waste: it never reached the output yet cost a full
     // per-candidate magnetizing-inductance/gapping solve (~157 ms each) on the
     // entire ~4.6k-core suppression set — minutes of work, and the hang behind
-    // ABT #9. The cheap impedance filter (~0.3 ms/core) does the real culling.
+    // ABT #9. The impedance filter does the real culling.
+    //
+    // ABT #859: that last sentence used to read "the cheap impedance filter
+    // (~0.3 ms/core)". It is only cheap when it runs on the FAST (OneLayer)
+    // capacitance path. Measured on Test_CoreAdviser_DMC_Default_Wizard_Hang_Repro
+    // (10 s budget), 4,834 candidates reaching this line:
+    //
+    //     full capacitance model   1,038,396 ms   (215 ms/candidate)
+    //     fast OneLayer path           1,452 ms   (0.3 ms/candidate)
+    //
+    // The 0.3 ms figure was measured against the fast path and then quoted as if
+    // it were unconditional, which is what made it look safe to run this filter
+    // over the whole catalogue after MKF d424c32e flipped Impedance's DEFAULT to
+    // the full model. build_magnetizing_tank WINDS THE COIL on the full path, so
+    // the filter went to 17.3 of the run's 17.4 minutes while every other stage
+    // together came to about 7 s. MagneticFilterCoreMinimumImpedance now pins
+    // fastCapacitance=true on its member (see MagneticFilter.h); if that ever
+    // reverts, this line's premise goes with it.
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 0.001, true);
     log_probe("filterMinimumImpedance", magneticsWithScoring.size());
 
