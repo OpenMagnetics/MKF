@@ -3595,7 +3595,23 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                     }
                 }
                 double meanPitch = 360.0 / double(std::max<size_t>(angles.size(), 1));
-                bool windingFullCircle = largestGap <= 2 * meanPitch;
+                // ABT #885: a SINGLE-TURN winding is not a full-circle winding. The test above
+                // asks "is there no gap big enough to be the winding's opening", which is
+                // meaningless for one angle: largestGap comes out 360 (there is nothing to
+                // subtract) and meanPitch comes out 360 too, so `largestGap <= 2 * meanPitch`
+                // passes trivially and the turn is recorded as occupying the WHOLE CIRCLE — the
+                // exact opposite of the truth, which is that it occupies one wire's width.
+                //
+                // The consequence was not local. A full-circle winding makes the partition below
+                // give up (the "degenerate mix" branch clears every territory), the force-spread
+                // then finds no winding arc and each ring falls back to its own measured arc, and
+                // the other winding's rings spread over 360 degrees straight through this turn.
+                // Measured on current_transformer_complete (T 25.3/14.8/10, a 1-turn Round 6.0
+                // primary and a 100-turn Round 0.5 secondary): the secondary spanned 0.9..353 deg
+                // instead of its own 163 deg sector, and TWELVE of its turns ended up inside the
+                // primary's copper -- inside it both in azimuth (156.8..203.2 deg) and in radius
+                // (3.214..7.400 mm).
+                bool windingFullCircle = angles.size() > 1 && largestGap <= 2 * meanPitch;
                 windingOccupiedArc[windingName] = {windingFullCircle, {gapEnd, 360.0 - largestGap}};
             }
             // The measured arcs are the TIGHT pre-spread occupancy (a huddled winding measures
