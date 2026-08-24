@@ -3676,6 +3676,63 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             }
             corridorsPerRing[space.layer].push_back({normalizeAngle(space.rotation), markerHalfAngle + turnHalfAngle});
         }
+        // ABT #885: ANOTHER WINDING'S COPPER IS A CORRIDOR TOO. The re-spread and the nudge march
+        // turns over "territory minus corridors", and the corridor set held only this ring's own
+        // connection markers — no other winding's turns were in the obstacle model at all. The
+        // iteration-0 force-spread survives that omission because its winding-territory partition
+        // keeps the sectors apart; the per-ring passes on iterations >= 1 do not: their margin
+        // rule can extend a ring's territory across a foreign winding (and the full-circle
+        // classifier can hand it the whole circle), and the march then walks turns straight
+        // through the foreign copper. Traced move by move on the SP-ordered
+        // current_transformer_complete: every intruding turn was placed by a RESPREAD with
+        // territory span 360, landing inside the one-turn Round 6.0 primary.
+        //
+        // So register, per ring, an exclusion corridor at each foreign turn whose RADIAL band
+        // overlaps the ring's. The half-angle is exact for round wire: two crossings at radii
+        // r and rf touch when their centre distance equals the sum of half-widths D, and the
+        // planar law of cosines gives the azimuth below which they interpenetrate,
+        //     cos(alpha) = (r^2 + rf^2 - D^2) / (2 r rf).
+        // cos(alpha) >= 1 means the radial separation alone clears the pair — no corridor. Same-
+        // winding turns are exempt: a winding's own rings nest at exactly one OD by design.
+        //
+        // Capacity accounting follows for free: blockedUnion now counts the foreign copper, so a
+        // ring that genuinely cannot hold its turns outside it reports a deficit and the blocking
+        // loop spills turns to the next ring, instead of the march inventing an overlap.
+        for (const auto& [ringName, turnIdxs] : ringTurnIndexes) {
+            const double radius = ringRadius.at(ringName);
+            const std::string& ringWindingName = turns[turnIdxs[0]].get_winding();
+            const size_t ringWindingIndex = get_winding_index_by_name(ringWindingName);
+            const double ownHalfWidth = wires[ringWindingIndex].get_maximum_outer_width() / 2;
+            for (size_t t = 0; t < turns.size(); ++t) {
+                if (turns[t].get_winding() == ringWindingName) {
+                    continue;
+                }
+                const size_t foreignWindingIndex = get_winding_index_by_name(turns[t].get_winding());
+                const double foreignHalfWidth =
+                    wires[foreignWindingIndex].get_maximum_outer_width() / 2;
+                const double foreignRadius = std::hypot(turns[t].get_coordinates()[0],
+                                                        turns[t].get_coordinates()[1]);
+                if (foreignRadius < 1e-12 || radius < 1e-12) {
+                    continue;
+                }
+                const double touchDistance = ownHalfWidth + foreignHalfWidth;
+                const double cosAlpha =
+                    (radius * radius + foreignRadius * foreignRadius - touchDistance * touchDistance) /
+                    (2 * radius * foreignRadius);
+                if (cosAlpha >= 1.0) {
+                    continue;   // radially clear of each other at every azimuth
+                }
+                const double alpha =
+                    std::acos(std::clamp(cosAlpha, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+                if (alpha >= 180) {
+                    continue;   // foreign turn swallows the whole ring: nothing sane to block
+                }
+                const double foreignAngle = normalizeAngle(
+                    std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) *
+                    180.0 / std::numbers::pi);
+                corridorsPerRing[ringName].push_back({foreignAngle, alpha});
+            }
+        }
 
         bool anyIntrusion = false;
         bool anyDisplacement = false;
@@ -3797,6 +3854,12 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             // nudge budget — see nudgeCountPerRing above.)
             if (!forceSpreadAllRings && nudgeCountPerRing[ringName] < maximumNudgesPerRing) {
                 auto moveTurnToAngle = [&](size_t t, double newAngleDegrees) {
+                    if (std::getenv("MKF_ALIGN_DIAG")) {
+                        std::cerr << "[move] iter=" << iteration << " pass=NUDGE ring=" << ringName << " turn='"
+                                  << turns[t].get_name() << "' "
+                                  << normalizeAngle(std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) * 180.0 / std::numbers::pi)
+                                  << " -> " << newAngleDegrees << std::endl;
+                    }
                     double turnRadius = std::hypot(turns[t].get_coordinates()[0], turns[t].get_coordinates()[1]);
                     double newAngleRadians = newAngleDegrees / 180.0 * std::numbers::pi;
                     turns[t].set_coordinates(std::vector<double>{
@@ -3941,6 +4004,15 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                     toAdvance -= step;
                 }
                 size_t t = orderedTurns[k];
+                if (std::getenv("MKF_ALIGN_DIAG")) {
+                    std::cerr << "[move] iter=" << iteration
+                              << (forceSpreadAllRings ? " pass=FORCESPREAD" : " pass=RESPREAD")
+                              << " ring=" << ringName << " turn='" << turns[t].get_name() << "' "
+                              << normalizeAngle(std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) * 180.0 / std::numbers::pi)
+                              << " -> " << position
+                              << " territory[" << territoryStart << " span " << sectionSpan << "]"
+                              << std::endl;
+                }
                 double turnRadius = std::hypot(turns[t].get_coordinates()[0], turns[t].get_coordinates()[1]);
                 double positionRadians = position / 180.0 * std::numbers::pi;
                 turns[t].set_coordinates(std::vector<double>{
@@ -12079,13 +12151,24 @@ bool Coil::wind_toroidal_additional_turns() {
                             // runs, the entrance vertical below it for returns): the turns of the
                             // final 3D must never cross the connection wires. Inner coordinates
                             // are never touched; only this outer crossing moves.
+                            // ABT #865 (a) (Alf: "all parts should be CLEAN of coil collision"):
+                            // rest positions bind at wireHeight + 5 nm, not at exact touch. The
+                            // coordinates ship on a 1 nm grid (roundFloat 9) and the 3D builder
+                            // derives corners and chords from them through trigonometry, so a
+                            // crossing packed at EXACTLY one coated OD comes out certified
+                            // 0.03..3 nm INSIDE the envelope downstream — the whole nm-dust
+                            // class of the certified gate. Five nanometres on a 534 um envelope
+                            // (1e-5 relative) is invisible to any mesh and permanently above the
+                            // worst observed derivation error. A construction bias, like the
+                            // bend factor — the gates still measure exactly.
+                            const double wireHeightClear = wireHeight + 5e-9;
                             auto restAt = [&](double az) {
                                 double restRadius = baseRadius;
                                 for (auto& placedCoordinates : placedTurnsCoordinates) {
                                     double placedRadius = windowRadialHeight - placedCoordinates[0];
                                     double dAng = std::remainder(placedCoordinates[1] - az, 360.0) / 180 * std::numbers::pi;
                                     double chord = placedRadius * sin(dAng);
-                                    double discriminant = wireHeight * wireHeight - chord * chord;
+                                    double discriminant = wireHeightClear * wireHeightClear - chord * chord;
                                     if (discriminant <= 0) {
                                         continue;   // cannot bind at this azimuth
                                     }
@@ -12324,7 +12407,7 @@ bool Coil::wind_toroidal_additional_turns() {
                             }
                             additionalCoordinates[0] = windowRadialHeight - bestRadius;
                             additionalCoordinates[1] = bestAzimuth;
-                            if (!get_collision_distances(additionalCoordinates, placedTurnsCoordinates, wireHeight).empty()) {
+                            if (!get_collision_distances(additionalCoordinates, placedTurnsCoordinates, wireHeightClear).empty()) {
                                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                                     "wind_toroidal_additional_turns: rested outer crossing still collides for turn " + turn.get_name());
                             }
