@@ -68,6 +68,42 @@ namespace {
         REQUIRE_THAT(expectedBeipValue, Catch::Matchers::WithinAbs(calculatedBeipValue, expectedBeipValue * 0.001));
     }
 
+    // ABT #605: Ferreira's ROUND-wire proximity factor is built from ORDER-2 Kelvin
+    // functions — kelvin_function_real(2, gamma) and kelvin_function_imaginary(2, gamma) —
+    // and until now only ORDER 0 was pinned anywhere. That gap mattered: the #605
+    // investigation named order-2 as the most likely locus of a 10000x disagreement
+    // between proximity models, specifically because bessel_first_kind divides by
+    // tgammaf (the FLOAT gamma function), which is the same 'float truncating a Bessel
+    // series' class that has bitten this codebase before.
+    //
+    // Measured, not assumed: a faithful port of bessel_first_kind including tgammaf,
+    // compared against J_n(x*e^{i3pi/4}) at 30 significant digits, agrees to 3e-6
+    // relative or better for orders 0 and 2 over x = 0.5..5. The float gamma costs
+    // about a part in 1e6 and nothing more, so order-2 was NOT the bug. Pinning it so
+    // that stays true, and so the next person does not have to re-derive it.
+    //
+    // Reference values from mpmath at 30 dps via ber_n(x) + i*bei_n(x) = J_n(x*e^{i3pi/4}),
+    // the identity checked against Abramowitz & Stegun's order-0 pair at x = 1
+    // (0.98438178 / 0.24956604) before being trusted at order 2.
+    TEST_CASE("Kelvin functions of order 2", "[support][utils][smoke-test]") {
+        struct Reference { double x; double ber2; double bei2; };
+        const std::vector<Reference> references = {
+            {1.0,  0.0104112417231, -0.124674535679},
+            {2.0,  0.16527943067,   -0.479224502597},
+            {3.5,  1.44233885257,   -0.948359035325},
+        };
+
+        for (const auto& reference : references) {
+            INFO("x = " << reference.x);
+            double calculatedBer2 = kelvin_function_real(2.0, reference.x);
+            double calculatedBei2 = kelvin_function_imaginary(2.0, reference.x);
+            // 1e-5 relative: tight enough to catch a wrong recurrence, a sign error or a
+            // dropped term, loose enough for the tgammaf precision measured above.
+            REQUIRE_THAT(calculatedBer2, Catch::Matchers::WithinRel(reference.ber2, 1e-5));
+            REQUIRE_THAT(calculatedBei2, Catch::Matchers::WithinRel(reference.bei2, 1e-5));
+        }
+    }
+
     TEST_CASE("Test_Complete_Ellipitical_1_0", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_1(0);
         double expectedValue = M_PI / 2.0;
