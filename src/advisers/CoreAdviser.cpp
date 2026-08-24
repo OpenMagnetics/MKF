@@ -360,7 +360,9 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
     size_t maximumMagneticsAfterFiltering = settings.get_core_adviser_maximum_magnetics_after_filtering();
     std::vector<std::pair<Magnetic, double>> magnetics;
 
+    log_probe("entering create_magnetic_dataset", cores->size());
     magnetics = create_magnetic_dataset(inputs, cores, false);
+    log_probe("create_magnetic_dataset", magnetics.size());
 
     // logEntry("We start the search with " + std::to_string(magnetics.size()) + " magnetics for the first filter, culling to " + std::to_string(maximumMagneticsAfterFiltering) + " for the remaining filters.", "CoreAdviser");
     // logEntry("We don't include stacks of cores in our search.", "CoreAdviser");

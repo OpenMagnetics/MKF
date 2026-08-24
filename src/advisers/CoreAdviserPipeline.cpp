@@ -323,10 +323,14 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
     std::vector<std::pair<Mas, double>> masWithScoring;
     std::vector<std::string> usedShapes;
     const bool uniqueShapes = get_unique_core_shapes();
+    log_probe("entering post_process_and_cut", magneticsWithScoring.size());
+    size_t candidatesExamined = 0;
+    size_t candidatesDropped = 0;
     for (auto& magneticWithScoring : magneticsWithScoring) {
         if (masWithScoring.size() >= maximumNumberResults) {
             break;
         }
+        ++candidatesExamined;
         std::string shapeName;
         if (uniqueShapes) {
             shapeName = magneticWithScoring.first.get_core().get_shape_name();
@@ -351,8 +355,13 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
             // drop it and let the next-scored candidate backfill (ABT #126: the
             // old resize-first order silently returned ZERO results when the
             // top-N were unwindable while windable survivors had been discarded).
+            ++candidatesDropped;
             logEntry(std::string("CoreAdviser: dropping core that failed post-processing (backfilling): ") + e.what(), "CoreAdviser", 2);
         }
+        log_probe("post_process candidate " + std::to_string(candidatesExamined) +
+                  " (kept " + std::to_string(masWithScoring.size()) +
+                  ", dropped " + std::to_string(candidatesDropped) + ")",
+                  magneticsWithScoring.size());
     }
     return masWithScoring;
 }
@@ -519,7 +528,9 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
+    log_probe("entering pre_process_inputs (suppression)", magnetics->size());
     inputs = pre_process_inputs(inputs);
+    log_probe("pre_process_inputs (suppression)", magnetics->size());
 
     MagneticCoreFilterCost filterCost(inputs);
     MagneticCoreFilterLosses filterLosses(inputs, _models);
@@ -584,6 +595,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
             }
         }
         magneticsWithScoring = std::move(dmcFiltered);
+        log_probe("DMC material/gap pre-filter", magneticsWithScoring.size());
     }
 
     // (CMC powder pre-filter previously lived here. Removed in favour of the
@@ -603,8 +615,10 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     // entire ~4.6k-core suppression set — minutes of work, and the hang behind
     // ABT #9. The cheap impedance filter (~0.3 ms/core) does the real culling.
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 0.001, true);
+    log_probe("filterMinimumImpedance", magneticsWithScoring.size());
 
     magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 1.0, false);
+    log_probe("filterTurnCount", magneticsWithScoring.size());
 
     // Cap before the two expensive per-candidate physical filters below
     // (saturation and losses each cost ~0.1 s/core: they wind the coil and run
@@ -619,12 +633,16 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
 
     magneticsWithScoring = filterSaturation.filter_magnetics(
         &magneticsWithScoring, inputs, 1, true);
+    log_probe("filterSaturation", magneticsWithScoring.size());
 
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
+    log_probe("filterCost", magneticsWithScoring.size());
 
     magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::DIMENSIONS], true);
+    log_probe("filterDimensions", magneticsWithScoring.size());
 
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+    log_probe("filterMagneticInductance", magneticsWithScoring.size());
 
     {
         // Interference-suppression materials are characterised by complex
