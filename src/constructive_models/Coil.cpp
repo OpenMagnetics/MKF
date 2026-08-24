@@ -2287,6 +2287,16 @@ std::map<std::string, std::pair<double, double>> Coil::compute_u_landing_extra_d
     // ABT #685: recomputed with the depths, never merged — same lifetime, same fixpoint.
     _uLandingAtHighSidePerLayer.clear();
     _uLandingIdealDepthPerLayer.clear();
+    // Alf 2026-08-24 (abt631 review, spread-all): "a U connection among layers on the same
+    // section doesn't need to block space in the receiving layer ... the U connection between
+    // layers must be horizontal and the layers must be on the same height." With every layer
+    // fence-post spread over the SAME span, the arrival station and the receiving layer's edge
+    // station sit at the same height by construction — the link is the pure radial step and no
+    // landing band exists to reserve. The #608 descent law and its #685 capacity ceiling apply
+    // only to the packed layouts MKF_NO_SPREAD_ALL restores.
+    if (!std::getenv("MKF_NO_SPREAD_ALL")) {
+        return extraDepths;
+    }
     if (!get_layers_description() || !get_turns_description()) {
         return extraDepths;
     }

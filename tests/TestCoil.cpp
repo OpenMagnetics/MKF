@@ -14326,8 +14326,16 @@ TEST_CASE("Test_Abt685_U_Parallels_Keep_Their_Lane", "[constructive-model][coil]
         REQUIRE(firstInSecondLayer);
         INFO("parallel " << parallelIndex << " leaves layer 0 at " << lastInFirstLayer.value() * 1000
                          << " mm and lands at " << firstInSecondLayer.value() * 1000 << " mm");
+        // Alf 2026-08-24 (spread-all, abt631 review): "the U connection between layers must be
+        // horizontal and the layers must be on the same height" — the landing is LEVEL with the
+        // departure, the link a pure radial step, and no landing band is reserved. This
+        // supersedes the ABT #608/#685 K-OD descent this pin used to hold (still reachable via
+        // MKF_NO_SPREAD_ALL, where the old expectation would apply). The lane guarantee itself —
+        // each parallel lands on its OWN turn, not its sibling's — is untouched and pinned by
+        // the parallel-identity checks above.
+        (void)wireHeight;
         CHECK(std::abs(firstInSecondLayer.value() - lastInFirstLayer.value()) ==
-              Catch::Approx(2 * wireHeight).margin(1e-6));
+              Catch::Approx(0.0).margin(1e-6));
     }
     settings.reset();
 }
