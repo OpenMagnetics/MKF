@@ -1774,3 +1774,58 @@ TEST_CASE("Test_ABT635_Gapping_From_Inductance_Without_ProcessedDescription",
 
     settings.reset();
 }
+
+// ABT #907: on a CCM flybuck the magnetizing-current DC anchor was taken as
+// peak(I1) - pkpk(I1)/2, but the primary's pk-pk excursion contains the
+// commutation step (the secondary's ampere-turns handed over at turn-on),
+// which moves no flux. That understated the DC anchor (0.420 A instead of
+// 0.583 A) and with it B_dc (0.191 T instead of 0.266 T) and B_peak (0.259 T
+// instead of 0.334 T) — the saturation margin read 28% better than reality.
+// The anchor is now peak-based: peak(i_mag) == peak(I1) (at the primary peak
+// the secondary is off, so the primary carries the whole magnetizing MMF),
+// minus the magnetizing excursion above its mean from the volt-second
+// integral. User-reported design: High Flux 160 T10/6/5, 56:28 turns,
+// 170 kHz flybuck. The AC flux swing (67.8 mT peak) is pinned by Faraday's
+// law on the primary volt-seconds and must not move with this fix.
+TEST_CASE("Test_ABT907_Flybuck_Flux_Density_Dc_Offset_Uses_Net_Mmf_Anchor",
+          "[physical-model][magnetizing-inductance][flyback][abt907]") {
+    settings.reset();
+    clear_databases();
+    namespace fs = std::filesystem;
+    auto masPath = fs::path{std::source_location::current().file_name()}
+                       .parent_path().append("testData").append("flybuck_hf160_250u_abt907.json");
+    std::ifstream masFile(masPath);
+    REQUIRE(masFile.good());
+    json masJson = json::parse(masFile);
+
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    OperatingPoint operatingPoint(masJson["inputs"]["operatingPoints"][0]);
+
+    MagnetizingInductance magnetizingInductanceModel;
+    auto [inductanceOutput, fluxDensity] = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(
+        magnetic.get_core(), magnetic.get_coil(), &operatingPoint);
+    auto fluxProcessed = fluxDensity.get_processed().value();
+
+    // AC part: Faraday on the primary voltage waveform gives 75.9 uVs over
+    // 56 turns x 10 mm2 -> 135.6 mT pk-pk. Model-independent; unchanged by the fix.
+    CHECK_THAT(fluxProcessed.get_peak_to_peak().value(), Catch::Matchers::WithinRel(0.1356, 0.02));
+
+    // DC part: the magnetizing current i_m = I1 + (N2/N1)*I2 is a clean triangle
+    // running 0.4347 -> 0.7326 A (verified against the pointwise volt-second
+    // integral); its midpoint 0.5837 A through the core reluctance gives 0.266 T.
+    CHECK_THAT(fluxProcessed.get_offset(), Catch::Matchers::WithinRel(0.2657, 0.02));
+    CHECK_THAT(fluxProcessed.get_peak().value(), Catch::Matchers::WithinRel(0.3335, 0.02));
+
+    // The anchor itself: peak(i_mag) must coincide with the measured primary peak
+    // (0.7326 A), and the valley with the commutation-corrected 0.4347 A — NOT the
+    // primary waveform's own 0.108 A minimum.
+    auto magnetizingCurrentWaveform =
+        operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
+    const std::vector<double>& magnetizingCurrentData = magnetizingCurrentWaveform.get_data();
+    double magnetizingCurrentMaximum = *max_element(magnetizingCurrentData.begin(), magnetizingCurrentData.end());
+    double magnetizingCurrentMinimum = *min_element(magnetizingCurrentData.begin(), magnetizingCurrentData.end());
+    CHECK_THAT(magnetizingCurrentMaximum, Catch::Matchers::WithinRel(0.7326, 0.01));
+    CHECK_THAT(magnetizingCurrentMinimum, Catch::Matchers::WithinRel(0.4347, 0.02));
+
+    settings.reset();
+}

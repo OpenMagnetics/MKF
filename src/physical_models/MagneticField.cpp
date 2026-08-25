@@ -230,7 +230,8 @@ double get_magnetic_field_strength_gap(OperatingPoint& operatingPoint, Magnetic 
         auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
         auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
                                                                                resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
-                                                                               true, includeDcCurrent);
+                                                                               true, includeDcCurrent,
+                                                                               operatingPoint.get_excitations_per_winding().size() > 1);
         operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
     }
 
@@ -466,7 +467,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
                 auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
                                                                                        resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
-                                                                                       true, includeDcCurrent);
+                                                                                       true, includeDcCurrent,
+                                                                               operatingPoint.get_excitations_per_winding().size() > 1);
 
                 operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
                 // throw std::runtime_error("Operating point is missing magnetizing current");
@@ -687,7 +689,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                         auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
                         auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
                                                                                                resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
-                                                                                               true, includeDcCurrent);
+                                                                                               true, includeDcCurrent,
+                                                                               operatingPoint.get_excitations_per_winding().size() > 1);
 
                         operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
                         // throw std::runtime_error("Operating point is missing magnetizing current");

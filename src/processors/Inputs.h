@@ -102,15 +102,23 @@ class Inputs : public MAS::Inputs {
     static double calculate_max_volt_seconds(const OperatingPointExcitation& excitation);
     static double calculate_max_volt_seconds(const OperatingPoint& operatingPoint);
     static bool include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios);
+    // addOffset: anchor the magnetizing current's DC level to the winding current
+    // (see include_dc_offset_into_magnetizing_current). alternatingConduction: true
+    // when the operating point has several windings conducting alternately (flyback
+    // style); the winding current then contains commutation steps, so the DC anchor
+    // is peak-based on the volt-second integral instead of the measured midpoint
+    // (ABT #907). Pass excitations_per_winding().size() > 1 at the call site.
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
                                                             bool compress,
-                                                            bool addOffset);
+                                                            bool addOffset,
+                                                            bool alternatingConduction);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             Waveform voltageSampledWaveform,
                                                             double magnetizingInductance,
                                                             bool compress,
-                                                            bool addOffset);
+                                                            bool addOffset,
+                                                            bool alternatingConduction);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
                                                             bool compress,

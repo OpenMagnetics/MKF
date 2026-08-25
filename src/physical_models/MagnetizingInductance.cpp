@@ -512,7 +512,8 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                                                                                                 sampledVoltageWaveform,
                                                                                                 modifiedMagnetizingInductance,
                                                                                                 false,
-                                                                                                addOffset);
+                                                                                                addOffset,
+                                                                                                operatingPoint->get_excitations_per_winding().size() > 1);
 
                         auto sampledMagnetizingCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
                         // Replace the stored waveform with the resampled (power-of-2)

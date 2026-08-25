@@ -1255,7 +1255,8 @@ std::pair<bool, std::string> Inputs::check_integrity() {
                 bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoints[i], turnsRatiosValues);
                 // bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current_rosano(sampledWaveform);
                 excitation.set_current(
-                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizing_inductance(), true, includeDcOffsetIntoMagnetizingCurrent));
+                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizing_inductance(), true, includeDcOffsetIntoMagnetizingCurrent,
+                                                  operatingPoints[i].get_excitations_per_winding().size() > 1));
             }
             processedExcitationsPerWinding.push_back(excitation);
         }
@@ -1695,43 +1696,12 @@ Waveform Inputs::compress_waveform(const Waveform& waveform) {
     return compressedWaveform;
 }
 
-double get_ac_ripple(Waveform waveform, double frequency) {
-    Waveform sampledWaveform;
-    if (!Inputs::is_waveform_sampled(waveform)) {
-        if (frequency > 0) {
-            sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
-        }
-        else {
-            // Cannot calculate ripple without frequency
-            return 0.0;
-        }
-    }
-    else {
-        sampledWaveform = waveform;
-    }
- 
-    std::vector<double> data = sampledWaveform.get_data();
-
-    double maximum = *max_element(data.begin(), data.end());
-    double threshold = maximum * 0.05;
-
-    double minimumAcRipple = DBL_MAX;
-    double maximumAcRipple = 0;
-    for (size_t i = 0; i < data.size(); ++i) {
-        if (fabs(data[i]) > threshold) {
-            minimumAcRipple = std::min(minimumAcRipple, data[i]);
-            maximumAcRipple = std::max(maximumAcRipple, data[i]);
-        }
-    }
-
-    return maximumAcRipple - minimumAcRipple;
-}
-
 SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 Waveform voltageSampledWaveform,
                                                                 double magnetizingInductance,
                                                                 bool compress,
-                                                                bool addOffset) {
+                                                                bool addOffset,
+                                                                bool alternatingConduction) {
     double dcCurrent = 0;
     if (magnetizingInductance <= 0) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "magnetizingInductance cannot be zero or negative");
@@ -1749,7 +1719,6 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
         }
 
         if (excitation.get_current()->get_waveform()) {
-            double acRipple = get_ac_ripple(excitation.get_current()->get_waveform().value(), excitation.get_frequency());
             if (!excitation.get_current()->get_processed()->get_peak()) {
                 auto currentExcitation = excitation.get_current().value();
                 auto processed = calculate_processed_data(excitation.get_current()->get_waveform().value());
@@ -1758,7 +1727,35 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 
             }
 
-            dcCurrent = excitation.get_current()->get_processed()->get_peak().value() - acRipple / 2;
+            if (alternatingConduction) {
+                // Several windings conducting alternately (flyback style): this winding's
+                // measured waveform contains commutation steps (the other winding's
+                // ampere-turns handed over at the switching instant), which move no flux,
+                // so neither its midpoint nor its pk-pk ripple describe the magnetizing
+                // current. What IS exact is the peak: at this winding's current peak it
+                // carries the whole magnetizing MMF, so peak(i_mag) == peak(i_winding).
+                // Anchor there, subtracting the magnetizing excursion above its mean taken
+                // from the same zero-mean volt-second integral the overload below builds
+                // the waveform from. The previous code subtracted half this winding's own
+                // pk-pk ripple (commutation step included), understating the DC anchor and
+                // with it B_dc and B_peak by ~30% on CCM flyback/flybuck (ABT #907).
+                auto centeredMagnetizingWaveform = calculate_integral_waveform(voltageSampledWaveform, true);
+                centeredMagnetizingWaveform = multiply_waveform(centeredMagnetizingWaveform, 1.0 / magnetizingInductance);
+                double excursionAboveMean = *max_element(centeredMagnetizingWaveform.get_data().begin(),
+                                                         centeredMagnetizingWaveform.get_data().end());
+                dcCurrent = excitation.get_current()->get_processed()->get_peak().value() - excursionAboveMean;
+            }
+            else {
+                // Single winding: the measured current IS the magnetizing current, and the
+                // measurement is the only source of DC truth (the voltage integral carries
+                // none). Anchor at its midpoint. (Named locals: MAS getters return by
+                // value, so chaining into get_data() would dangle.)
+                auto currentSignal = excitation.get_current().value();
+                auto currentWaveform = currentSignal.get_waveform().value();
+                const std::vector<double>& currentData = currentWaveform.get_data();
+                dcCurrent = (*max_element(currentData.begin(), currentData.end()) +
+                             *min_element(currentData.begin(), currentData.end())) / 2;
+            }
         }
         else {
             dcCurrent = excitation.get_current()->get_processed()->get_offset();
@@ -1770,18 +1767,19 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 double magnetizingInductance,
                                                                 bool compress,
-                                                                bool addOffset) {
+                                                                bool addOffset,
+                                                                bool alternatingConduction) {
     if (!excitation.get_voltage()) {
         throw std::invalid_argument("Missing voltage signal");
     }
     auto voltageExcitation = excitation.get_voltage().value();
     voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
     auto waveform = voltageExcitation.get_waveform().value();
- 
+
     if (!is_waveform_sampled(waveform)) {
         waveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
     }
-    return calculate_magnetizing_current(excitation, waveform, magnetizingInductance, compress, addOffset);
+    return calculate_magnetizing_current(excitation, waveform, magnetizingInductance, compress, addOffset, alternatingConduction);
 }
 
 bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
@@ -2288,7 +2286,8 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
                     if (windingIndex < voltageSampledWaveforms.size()) {
                         waveform = voltageSampledWaveforms[windingIndex];
                     }
-                    excitation.set_magnetizing_current(calculate_magnetizing_current(excitation, waveform, magnetizingInductance, false, includeDcOffsetIntoMagnetizingCurrent));
+                    excitation.set_magnetizing_current(calculate_magnetizing_current(excitation, waveform, magnetizingInductance, false, includeDcOffsetIntoMagnetizingCurrent,
+                                                                                     operatingPoint.get_excitations_per_winding().size() > 1));
                 }
                 processedExcitationsPerWinding[windingIndex] = excitation;
             }
