@@ -7,7 +7,10 @@
 #include "support/Painter.h"
 #include "processors/Sweeper.h"
 #include "processors/CircuitSimulatorInterface.h"
+#include "advisers/MagneticAdviser.h"
 #include "TestingUtils.h"
+#include <fstream>
+#include <sstream>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -2327,4 +2330,54 @@ TEST_CASE("Calculate capacitance of a winding with 4 turns and several parallels
         REQUIRE_NOTHROW(subcircuit = exporter.export_magnetic_as_subcircuit(magnetic, 100000, 25));
         CHECK(subcircuit.size() > 0);
     }
+}
+
+// ABT #898: the exact production path that was dying — the fast magnetic adviser designs a
+// magnetic for a seed it was handed, magnetic_autocomplete winds it, and the result is
+// exported as a SPICE subcircuit. It threw on an infinite turn-to-turn capacitance because
+// the wire the adviser synthesised for its dummy coil (Wire::get_wire_for_frequency, exact
+// mode) carried no coating at all, so every turn was reported as bare copper and the models
+// had no dielectric to work with. The seed is the boost converter from Heaviside's
+// test_kirchhoff_fill.py, saved as the designer emitted it, so this is the reported failure
+// and not a reconstruction of it.
+TEST_CASE("Test_Fast_Advised_Magnetic_Exports_As_Subcircuit", "[physical-model][stray-capacitance][abt898]") {
+    settings.reset();
+    auto seedPath = std::filesystem::path{__FILE__}.parent_path().append("testData").append("abt898_boost_magnetic_seed.json");
+    std::ifstream seedFile(seedPath);
+    REQUIRE(seedFile.is_open());
+    json seedJson;
+    seedFile >> seedJson;
+
+    OpenMagnetics::Inputs inputs(seedJson);
+    OpenMagnetics::MagneticAdviser magneticAdviser;
+    magneticAdviser.set_core_mode(OpenMagnetics::CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto advised = magneticAdviser.get_advised_magnetic_fast(inputs, 1);
+    REQUIRE(advised.size() >= 1);
+
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(advised[0].first.get_magnetic(), json(), inputs);
+
+    // The adviser's own wire must be insulated: this is what #898 is about.
+    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+        auto wire = magnetic.get_mutable_coil().resolve_wire(windingIndex);
+        INFO("winding " << magnetic.get_coil().get_functional_description()[windingIndex].get_name());
+        REQUIRE(wire.get_coating_thickness() > 0);
+    }
+
+    auto exporter = OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::NGSPICE);
+    std::string subcircuit;
+    REQUIRE_NOTHROW(subcircuit = exporter.export_magnetic_as_subcircuit(magnetic));
+    INFO(subcircuit);
+    REQUIRE(subcircuit.find(".subckt") != std::string::npos);
+    // The self-capacitance is the number that used to be infinite. Read it back off the
+    // deck rather than grepping for "inf"/"nan", which the exporter's own comments
+    // ("self-resonance") match.
+    auto selfCapacitancePosition = subcircuit.find("Cself_1");
+    REQUIRE(selfCapacitancePosition != std::string::npos);
+    std::istringstream selfCapacitanceLine(subcircuit.substr(selfCapacitancePosition));
+    std::string designator, positiveNode, negativeNode, capacitanceText;
+    selfCapacitanceLine >> designator >> positiveNode >> negativeNode >> capacitanceText;
+    double selfCapacitance = std::stod(capacitanceText);
+    INFO("Cself_1 = " << capacitanceText);
+    REQUIRE(std::isfinite(selfCapacitance));
+    REQUIRE(selfCapacitance > 0);
 }

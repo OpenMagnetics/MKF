@@ -1001,4 +1001,29 @@ namespace {
         REQUIRE(newWire.get_type() == WireType::LITZ);
     }
 
+
+    // ABT #898: the wire the ADVISERS synthesise must carry the coating whose table
+    // produced its outer diameter. get_wire_for_frequency/get_wire_for_conducting_area in
+    // `exact` mode size the outer diameter with get_outer_diameter_round(d, grade 1,
+    // IEC 60317) -- an ENAMELLED grade-1 wire -- but used to stamp no coating at all, so
+    // Wire::get_coating_thickness() read "no coating object" and answered 0. Every turn of
+    // the fast adviser's dummy coil was then bare copper, and StrayCapacitance rightly
+    // called close-wound bare turns a short circuit / an infinite capacitance.
+    TEST_CASE("Test_Synthesised_Adviser_Wire_Is_Insulated", "[constructive-model][wire][abt898]") {
+        for (auto wire : {OpenMagnetics::Wire::get_wire_for_frequency(100000, 25, true),
+                          OpenMagnetics::Wire::get_wire_for_conducting_area(1e-7, 25, true)}) {
+            auto conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
+            auto outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
+            REQUIRE(outerDiameter > conductingDiameter);
+            // The coating must exist, must not claim to be bare, and must measure the very
+            // gap the outer diameter already describes.
+            auto coating = wire.resolve_coating();
+            REQUIRE(coating);
+            REQUIRE(coating->get_type().value() != InsulationWireCoatingType::BARE);
+            REQUIRE(wire.get_coating_thickness() > 0);
+            REQUIRE_THAT(wire.get_coating_thickness(),
+                         Catch::Matchers::WithinRel((outerDiameter - conductingDiameter) / 2, 1e-9));
+        }
+    }
+
 }  // namespace

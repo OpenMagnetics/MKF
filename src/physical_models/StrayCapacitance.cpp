@@ -1340,8 +1340,16 @@ static void throw_if_capacitance_is_not_finite(double capacitance, Turn firstTur
     double secondCoatingThickness = secondWire.get_coating_thickness();
     double centerToCenterDistance = hypot(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0],
                                           firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1]);
-    double surfaceSeparation = centerToCenterDistance - firstWire.get_maximum_outer_width() / 2 -
-                               secondWire.get_maximum_outer_width() / 2;
+    // ABT #898: these two separations are NOT the same number, and saying so matters. This one
+    // subtracts the OUTER radii, so it is the gap between the outer surfaces; the message used to
+    // call it the conducting separation, and on a close-wound coil it therefore read "the
+    // conducting surfaces are 0.000000 m apart" while the copper was in fact a full coating
+    // thickness apart on each side. That sent the reader hunting for a winding-geometry fault when
+    // the actual defect was a wire declaring no insulation. Report both, each by its own name.
+    double outerSurfaceSeparation = centerToCenterDistance - firstWire.get_maximum_outer_width() / 2 -
+                                    secondWire.get_maximum_outer_width() / 2;
+    double conductingSurfaceSeparation = centerToCenterDistance - firstWire.get_maximum_conducting_width() / 2 -
+                                         secondWire.get_maximum_conducting_width() / 2;
     std::string reason;
     if (firstCoatingThickness <= 0 || secondCoatingThickness <= 0) {
         reason = " The wires report zero coating thickness (" + std::to_string(firstCoatingThickness) + " m and " +
@@ -1351,8 +1359,9 @@ static void throw_if_capacitance_is_not_finite(double capacitance, Turn firstTur
     }
     throw NaNResultException("Turn-to-turn capacitance is " + std::to_string(capacitance) + " between " +
                              describeTurn(firstTurn) + " and " + describeTurn(secondTurn) +
-                             ", whose conducting surfaces are " + std::to_string(surfaceSeparation) +
-                             " m apart." + reason);
+                             ", whose outer surfaces are " + std::to_string(outerSurfaceSeparation) +
+                             " m apart and whose conducting surfaces are " +
+                             std::to_string(conductingSurfaceSeparation) + " m apart." + reason);
 }
 
 // ABT #406: report the ELECTRICAL fault, from the geometry, before any capacitance model runs.

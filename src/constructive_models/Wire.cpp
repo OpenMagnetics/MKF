@@ -2173,6 +2173,35 @@ namespace OpenMagnetics {
     }
     
 
+    // ABT #898: a synthesised wire must DECLARE the coating whose table sized it.
+    //
+    // The outer diameter below comes from get_outer_diameter_round(d, grade 1, IEC 60317),
+    // whose key is literally "round enamelled 1 IEC 60317" -- so this wire IS a grade-1
+    // enamelled round wire, and the gap between its outer and conducting diameters IS that
+    // enamel. Leaving the coating unset did not make the wire coating-less, it made the
+    // wire DISAGREE WITH ITSELF: Wire::get_coating_thickness() reads "no coating object"
+    // as bare metal and answers 0 regardless of the outer diameter (that is deliberate --
+    // ABT #395 -- because absent must not be guessed at). Every turn of the fast adviser's
+    // dummy coil (CoreAdviserDataset::get_dummy_coil, the only `exact` caller) was therefore
+    // reported as bare copper, and StrayCapacitance has no dielectric to work with between
+    // two bare conductors: the turn-to-turn capacitance diverged and took the SPICE export
+    // of every fast-advised magnetic with it.
+    //
+    // Note this was NOT #406's shorted-turns case and its guard was right not to fire: the
+    // turns are laid one OUTER diameter apart, so the copper really was ~31 um clear. The
+    // geometry was sound throughout; only the wire's own description of itself was wrong.
+    //
+    // This is NOT a fabricated default -- nothing here is invented. The grade and standard
+    // were already chosen by the line that computes the outer diameter; they were simply
+    // not recorded. Stating them makes get_coating_thickness() derive exactly
+    // (outer - conducting) / 2, the dielectric the geometry already describes.
+    static InsulationWireCoating enamelled_grade_1_coating() {
+        InsulationWireCoating coating;
+        coating.set_type(InsulationWireCoatingType::ENAMELLED);
+        coating.set_grade(1);
+        return coating;
+    }
+
     Wire Wire::get_wire_for_frequency(double effectiveFrequency, double temperature, bool exact) {
         auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth("copper", effectiveFrequency, temperature);
         double wireConductingDiameter = skinDepth * 2;
@@ -2184,6 +2213,8 @@ namespace OpenMagnetics {
             wire.set_material("copper");
             wire.set_type(WireType::ROUND);
             wire.set_number_conductors(1);
+            wire.set_standard(WireStandard::IEC_60317);
+            wire.set_coating(enamelled_grade_1_coating());
             return wire;
         }
         else {
@@ -2202,6 +2233,9 @@ namespace OpenMagnetics {
             wire.set_material("copper");
             wire.set_type(WireType::ROUND);
             wire.set_number_conductors(1);
+            // ABT #898, same reasoning as get_wire_for_frequency above.
+            wire.set_standard(WireStandard::IEC_60317);
+            wire.set_coating(enamelled_grade_1_coating());
             return wire;
         }
         else {
