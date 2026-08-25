@@ -178,6 +178,20 @@ TemperatureConfig TemperatureConfig::fromMasOperatingConditions(
     return config;
 }
 
+TemperatureConfig TemperatureConfig::fromSimulatedOutput(const MAS::OperatingPoint& operatingPoint,
+                                                         const MAS::Outputs& output) {
+    TemperatureConfig config = fromMasOperatingConditions(operatingPoint.get_conditions());
+    config.plotSchematic = false;
+    if (output.get_core_losses()) {
+        config.coreLosses = output.get_core_losses()->get_core_losses();
+    }
+    if (output.get_winding_losses()) {
+        config.windingLosses = output.get_winding_losses()->get_winding_losses();
+        config.windingLossesOutput = output.get_winding_losses();
+    }
+    return config;
+}
+
 // ============================================================================
 // Material Properties
 // ============================================================================
@@ -3859,6 +3873,50 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
         double holeCylinderArea = 2.0 * std::numbers::pi * innerEnvelopeR * envelopeHeight;
         double annularFacesArea = 2.0 * std::numbers::pi * (outerEnvelopeR * outerEnvelopeR - innerEnvelopeR * innerEnvelopeR);
 
+        // Angular coverage of a boundary group: a sector-wound toroid's envelope only
+        // exists over the wound arc, so the full-circle areas above are scaled by the
+        // fraction of the circle the group actually covers. Each turn covers its own
+        // angular width plus half a stagnant gap on each side (crevices narrower than
+        // kConvection_StagnantAirGap are part of the envelope, not open air); the
+        // covered arcs are merged and summed. A fully wound toroid merges to 1.0.
+        auto boundaryCoverage = [&](const std::vector<size_t>& boundaryNodes) {
+            if (boundaryNodes.empty()) return 0.0;
+            std::vector<std::pair<double, double>> arcs;
+            for (size_t i : boundaryNodes) {
+                const auto& node = _nodes[i];
+                double nodeR = std::hypot(node.physicalCoordinates[0], node.physicalCoordinates[1]);
+                if (nodeR <= 0) continue;
+                double nodeMaxDim = std::max(node.dimensions.width, node.dimensions.height);
+                double halfWidth = (nodeMaxDim + ThermalDefaults::kConvection_StagnantAirGap) / 2.0 / nodeR;
+                double angle = std::atan2(node.physicalCoordinates[1], node.physicalCoordinates[0]);
+                // Normalize the arc start into [0, 2*pi)
+                double start = angle - halfWidth;
+                start = std::fmod(std::fmod(start, 2.0 * std::numbers::pi) + 2.0 * std::numbers::pi, 2.0 * std::numbers::pi);
+                arcs.push_back({start, 2.0 * halfWidth});
+            }
+            if (arcs.empty()) return 0.0;
+            std::sort(arcs.begin(), arcs.end());
+            // Merge [start, start+length) arcs on the circle (wrap-around handled by
+            // clamping the total to a full circle).
+            double covered = 0.0;
+            double currentStart = arcs[0].first;
+            double currentEnd = arcs[0].first + arcs[0].second;
+            for (size_t k = 1; k < arcs.size(); ++k) {
+                if (arcs[k].first <= currentEnd) {
+                    currentEnd = std::max(currentEnd, arcs[k].first + arcs[k].second);
+                }
+                else {
+                    covered += currentEnd - currentStart;
+                    currentStart = arcs[k].first;
+                    currentEnd = arcs[k].first + arcs[k].second;
+                }
+            }
+            covered += currentEnd - currentStart;
+            return std::min(1.0, covered / (2.0 * std::numbers::pi));
+        };
+        double outerCoverage = boundaryCoverage(outerBoundaryNodes);
+        double holeCoverage = boundaryCoverage(holeBoundaryNodes);
+
         auto connectBoundaryNodes = [&](const std::vector<size_t>& boundaryNodes, double boundaryArea,
                                         ThermalNodeFace face) {
             if (boundaryNodes.empty() || boundaryArea <= 0) return;
@@ -3884,10 +3942,11 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
 
         // Each boundary carries its cylinder plus half of the two annular faces
         // (the top/bottom of the wound body span from the hole to the outer rim;
-        // splitting them between the two boundary node groups keeps the total right).
-        connectBoundaryNodes(outerBoundaryNodes, outerCylinderArea + annularFacesArea / 2.0,
+        // splitting them between the two boundary node groups keeps the total right),
+        // scaled by the angular fraction of the circle that boundary actually covers.
+        connectBoundaryNodes(outerBoundaryNodes, (outerCylinderArea + annularFacesArea / 2.0) * outerCoverage,
                              ThermalNodeFace::RADIAL_OUTER);
-        connectBoundaryNodes(holeBoundaryNodes, holeCylinderArea + annularFacesArea / 2.0,
+        connectBoundaryNodes(holeBoundaryNodes, (holeCylinderArea + annularFacesArea / 2.0) * holeCoverage,
                              ThermalNodeFace::RADIAL_INNER);
     }
 
@@ -3905,6 +3964,20 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
             // the wrapped core surface kept convecting to ambient through the winding
             // (ABT #906). Block when the turn's inner surface is within the stagnant
             // gap of the core surface.
+            // Per-SEGMENT blocking (ABT #906 follow-up): a sector-wound toroid wraps
+            // only some segments; the bare arc's core surface must keep convecting.
+            double segmentAngle = std::atan2(_nodes[i].physicalCoordinates[1], _nodes[i].physicalCoordinates[0]);
+            double segmentHalfSpan = std::numbers::pi / std::max(1, _config.toroidalSegments);
+            auto turnOverlapsSegment = [&](size_t j, double turnR, double turnMaxDim) {
+                if (turnR <= 0) return false;
+                double turnAngle = std::atan2(_nodes[j].physicalCoordinates[1], _nodes[j].physicalCoordinates[0]);
+                double turnHalfWidth = (turnMaxDim + ThermalDefaults::kConvection_StagnantAirGap) / 2.0 / turnR;
+                double angleDiff = turnAngle - segmentAngle;
+                while (angleDiff > std::numbers::pi) angleDiff -= 2.0 * std::numbers::pi;
+                while (angleDiff < -std::numbers::pi) angleDiff += 2.0 * std::numbers::pi;
+                return std::abs(angleDiff) < segmentHalfSpan + turnHalfWidth;
+            };
+
             bool outerBlocked = false;
             for (size_t j = 0; j < _nodes.size(); j++) {
                 if (_nodes[j].part != ThermalNodePartType::TURN) continue;
@@ -3916,7 +3989,8 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                 double turnMaxDim = std::max(_nodes[j].dimensions.width, _nodes[j].dimensions.height);
 
                 double surfaceGap = (turnR - turnMaxDim / 2.0) - coreOuterR;
-                if (turnR > coreOuterR && surfaceGap < ThermalDefaults::kConvection_StagnantAirGap) {
+                if (turnR > coreOuterR && surfaceGap < ThermalDefaults::kConvection_StagnantAirGap &&
+                    turnOverlapsSegment(j, turnR, turnMaxDim)) {
                     outerBlocked = true;
                     break;
                 }
@@ -3958,7 +4032,8 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                 double turnMaxDim = std::max(_nodes[j].dimensions.width, _nodes[j].dimensions.height);
 
                 double surfaceGap = coreInnerR - (turnR + turnMaxDim / 2.0);
-                if (turnR < coreInnerR && surfaceGap < ThermalDefaults::kConvection_StagnantAirGap) {
+                if (turnR < coreInnerR && surfaceGap < ThermalDefaults::kConvection_StagnantAirGap &&
+                    turnOverlapsSegment(j, turnR, turnMaxDim)) {
                     innerBlocked = true;
                     break;
                 }

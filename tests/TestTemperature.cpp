@@ -4135,3 +4135,82 @@ TEST_CASE("Temperature: ABT906 Packed Toroid Envelope Ambient Interface",
     CHECK(ambientConvectionArea > 3.5e-4);
     CHECK(ambientConvectionArea < 6.0e-4);
 }
+
+// ABT #906 follow-up: validate the envelope-based toroidal ambient interface
+// against Magnetics Inc.'s independent empirical fit dT = (P_mW / A_cm2)^0.833
+// (their published thermal-rise estimate for wound powder toroids, with A the
+// wound-body surface). The envelope area here is computed by ARITHMETIC in the
+// test (from core OD/ID/height + wire OD), independent of the model's element
+// areas, and the power for each size is chosen so the empirical fit predicts a
+// +40 K rise. The network solves h(T) correlations + radiation, a completely
+// different derivation, so tracking the empirical fit within a band across a
+// 4x size span is a real cross-check, not a tautology.
+// (WE RedExpert's measured deltat catalogue was considered for this validation
+// but its parts are drum/shielded cores, which never enter the toroidal path.)
+TEST_CASE("Temperature: ABT906 Envelope Model Tracks Magnetics Empirical Rise Across Sizes",
+          "[temperature][toroidal][abt906][thermal-validation][smoke-test]") {
+    settings.reset();
+    struct SweepCase {
+        std::string shape;
+        int64_t turns;
+    };
+    std::vector<SweepCase> sweep = {
+        {"T 10/6/5", 40},
+        {"T 20/10/7", 60},
+        {"T 30/20/10", 80},
+        {"T 40/24/16", 100},
+    };
+
+    for (const auto& sweepCase : sweep) {
+        CAPTURE(sweepCase.shape);
+        auto coil = OpenMagneticsTesting::get_quick_coil({sweepCase.turns},
+                                                         {1},
+                                                         sweepCase.shape,
+                                                         1,
+                                                         WindingOrientation::OVERLAPPING,
+                                                         WindingOrientation::OVERLAPPING,
+                                                         CoilAlignment::SPREAD,
+                                                         CoilAlignment::SPREAD);
+        auto core = OpenMagneticsTesting::get_quick_core(sweepCase.shape, json::array(), 1, "High Flux 60");
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        magnetic.get_mutable_coil().wind();
+
+        // Wound-envelope surface by plain arithmetic: core dims + one wire on each side.
+        auto dimensions = core.resolve_shape().get_dimensions().value();
+        double coreOuterDiameter = resolve_dimensional_values(dimensions["A"]);
+        double coreInnerDiameter = resolve_dimensional_values(dimensions["B"]);
+        double coreHeight = resolve_dimensional_values(dimensions["C"]);
+        auto wire = std::get<OpenMagnetics::Wire>(magnetic.get_coil().get_functional_description()[0].get_wire());
+        double wireOuterDiameter = wire.calculate_outer_diameter();
+        double woundOuterDiameter = coreOuterDiameter + 2 * wireOuterDiameter;
+        double woundInnerDiameter = std::max(0.0, coreInnerDiameter - 2 * wireOuterDiameter);
+        double woundHeight = coreHeight + 2 * wireOuterDiameter;
+        double envelopeAreaSquareMeters = std::numbers::pi * woundOuterDiameter * woundHeight +
+                                          std::numbers::pi * woundInnerDiameter * woundHeight +
+                                          2.0 * std::numbers::pi / 4.0 *
+                                              (woundOuterDiameter * woundOuterDiameter -
+                                               woundInnerDiameter * woundInnerDiameter);
+        double envelopeAreaSquareCentimeters = envelopeAreaSquareMeters * 1e4;
+
+        // Power for which the Magnetics empirical fit predicts +40 K.
+        double expectedRise = 40.0;
+        double lossesMilliwatts = envelopeAreaSquareCentimeters * std::pow(expectedRise, 1.0 / 0.833);
+
+        TemperatureConfig config;
+        config.ambientTemperature = 25.0;
+        config.coreLosses = lossesMilliwatts / 1000.0;
+        config.plotSchematic = false;
+
+        auto result = Temperature(magnetic, config).calculateTemperatures();
+        REQUIRE(result.converged);
+
+        double networkRise = result.maximumTemperature - config.ambientTemperature;
+        double ratio = networkRise / expectedRise;
+        CAPTURE(envelopeAreaSquareCentimeters, lossesMilliwatts, networkRise, ratio);
+        CHECK(ratio > 0.6);
+        CHECK(ratio < 1.7);
+    }
+    settings.reset();
+}

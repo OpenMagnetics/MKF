@@ -46,6 +46,10 @@ class MagneticSimulator {
         // only the datasheetInfo block is populated/overwritten. The result is also attached to
         // mas.magnetic.manufacturerInfo. Requires mas to carry simulation outputs (run simulate first).
         MagneticManufacturerInfo build_datasheet(Mas& mas);
+        // Full thermal-network hot-spot for one simulated operating point, configured through
+        // TemperatureConfig::fromSimulatedOutput (ABT #906) — the same config the temperature-map
+        // plot wrappers use, so the exported MAS and the UI can never disagree.
+        TemperatureOutput calculate_temperature(OperatingPoint& operatingPoint, Magnetic magnetic, const Outputs& output);
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic);
         LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
         static LeakageInductanceOutput calculate_leakage_inductance(Magnetic magnetic, double frequency);
