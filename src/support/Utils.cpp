@@ -2688,6 +2688,48 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
             insulationWireCoating = wire.resolve_coating().value();
         }
         else {
+            // ABT #902: "no coating stated" may be read as BARE only while the wire's own
+            // geometry agrees with it. A wire whose outer size EXCEEDS its conductor has a
+            // dielectric between those two surfaces by construction; stamping BARE on it is
+            // not completing the wire, it is overwriting what the geometry says with a guess,
+            // and a wrong one. That guess is how ABT #898's uncoated wire reached the netlist
+            // wearing an insulation MATERIAL (the block below hands every coating one) while
+            // still reporting zero thickness -- self-contradictory data that surfaced far
+            // downstream as an infinite turn-to-turn capacitance, or worse, as a finite
+            // capacitance computed with no dielectric at all.
+            double conductorToOuterGap = std::numeric_limits<double>::lowest();
+            if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+                if (wire.get_outer_diameter() && wire.get_conducting_diameter()) {
+                    conductorToOuterGap = resolve_dimensional_values(wire.get_outer_diameter().value()) -
+                                          resolve_dimensional_values(wire.get_conducting_diameter().value());
+                }
+            }
+            else {
+                if (wire.get_outer_width() && wire.get_conducting_width()) {
+                    conductorToOuterGap = std::max(conductorToOuterGap,
+                                                   resolve_dimensional_values(wire.get_outer_width().value()) -
+                                                       resolve_dimensional_values(wire.get_conducting_width().value()));
+                }
+                if (wire.get_outer_height() && wire.get_conducting_height()) {
+                    conductorToOuterGap = std::max(conductorToOuterGap,
+                                                   resolve_dimensional_values(wire.get_outer_height().value()) -
+                                                       resolve_dimensional_values(wire.get_conducting_height().value()));
+                }
+            }
+            // One nanometre: the same contact tolerance StrayCapacitance's shorted-turns guard
+            // uses, far below any real dielectric and far above the rounding of millimetre-scale
+            // dimensions.
+            if (conductorToOuterGap > 1e-9) {
+                std::string windingName = magnetic.get_coil().get_functional_description()[i].get_name();
+                throw InvalidInputException(
+                    ErrorCode::INVALID_WIRE_DATA,
+                    "The wire on winding " + std::to_string(i) + " ('" + windingName + "') states no coating, but its"
+                    " outer size exceeds its conductor by " + std::to_string(conductorToOuterGap) + " m, so it is not"
+                    " bare: something insulates those two surfaces and the wire does not say what. Give the coating"
+                    " (a type with a thickness, or a grade the standard's table can resolve); it cannot be inferred"
+                    " from the outer size alone, and calling the wire bare would delete the only dielectric its"
+                    " turns have.");
+            }
             insulationWireCoating.set_type(InsulationWireCoatingType::BARE);
         }
 

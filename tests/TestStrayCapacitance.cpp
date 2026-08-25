@@ -2381,3 +2381,60 @@ TEST_CASE("Test_Fast_Advised_Magnetic_Exports_As_Subcircuit", "[physical-model][
     REQUIRE(std::isfinite(selfCapacitance));
     REQUIRE(selfCapacitance > 0);
 }
+
+// ABT #902 (split out of #898): magnetic_autocomplete used to complete a wire that states no
+// coating by stamping BARE on it -- a guess, and one the wire's own geometry contradicts when
+// its outer size exceeds its conductor. That is exactly the shape #898's fast adviser produced,
+// and reading it as bare is what left the turn-to-turn capacitance with no dielectric. It now
+// refuses, where the winding is still named, and still accepts a wire that is genuinely bare
+// (outer == conducting), which is the only case BARE was ever right for.
+TEST_CASE("Autocomplete refuses to call an insulated-looking wire bare", "[support][utils][abt902]") {
+    settings.reset();
+    auto coreJsonStr = R"({"name": "abt902", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
+
+    auto magneticFor = [&](const std::string& wireJsonStr) {
+        auto coilJsonStr = std::string(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 4, "numberParallels": 1, "isolationSide": "primary", "wire": )")
+            + wireJsonStr + R"( } ] })";
+        json magneticJson;
+        magneticJson["core"] = json::parse(coreJsonStr);
+        magneticJson["coil"] = json::parse(coilJsonStr);
+        return OpenMagnetics::Magnetic(magneticJson);
+    };
+
+    SECTION("round: outer larger than the conductor is not bare") {
+        auto magnetic = magneticFor(R"({"type": "round", "material": "copper", "conductingDiameter": {"nominal": 0.001}, "outerDiameter": {"nominal": 0.00106}, "numberConductors": 1})");
+        std::string message;
+        try {
+            OpenMagnetics::magnetic_autocomplete(magnetic);
+            message = "no exception";
+        }
+        catch (const std::exception& exception) {
+            message = exception.what();
+        }
+        INFO(message);
+        CHECK(message.find("states no coating") != std::string::npos);
+        CHECK(message.find("Primary") != std::string::npos);
+    }
+
+    SECTION("rectangular: the flat branch measures its own axes") {
+        auto magnetic = magneticFor(R"({"type": "rectangular", "material": "copper", "conductingWidth": {"nominal": 0.003}, "conductingHeight": {"nominal": 0.0005}, "outerWidth": {"nominal": 0.0031}, "outerHeight": {"nominal": 0.0006}, "numberConductors": 1})");
+        std::string message;
+        try {
+            OpenMagnetics::magnetic_autocomplete(magnetic);
+            message = "no exception";
+        }
+        catch (const std::exception& exception) {
+            message = exception.what();
+        }
+        INFO(message);
+        CHECK(message.find("states no coating") != std::string::npos);
+    }
+
+    SECTION("outer equal to the conductor really is bare") {
+        auto magnetic = magneticFor(R"({"type": "round", "material": "copper", "conductingDiameter": {"nominal": 0.001}, "outerDiameter": {"nominal": 0.001}, "numberConductors": 1})");
+        auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+        auto wire = completed.get_mutable_coil().resolve_wire(0);
+        REQUIRE(wire.resolve_coating());
+        CHECK(wire.resolve_coating()->get_type().value() == InsulationWireCoatingType::BARE);
+    }
+}
