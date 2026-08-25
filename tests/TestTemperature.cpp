@@ -4082,3 +4082,56 @@ TEST_CASE("Temperature: OMFEM 2D FEM cross-check battery over MAS examples", "[t
     }
 }
 
+
+// ABT #906: on a small packed toroid (High Flux 160 T10/6/5, 56+28 turns AWG29,
+// 0.29 W total loss at 50 C ambient — a user-reported flybuck) the full network
+// exposed every turn's quarter-developed surface plus the wrapped core surface to
+// ambient: 16.6 cm2 of convecting area on a wound body whose physical envelope is
+// ~4.8 cm2. Predicted rise +14 K where Magnetics' own empirical (P_mW/A_cm2)^0.833
+// gives +31..36 K and first-principles convection+radiation gives +33..42 K — and
+// the MagneticSimulator core-only path simultaneously reported +36 K for the same
+// design (a 2.5x self-contradiction between two surfaces of the same solver).
+// The toroidal ambient interface is now envelope-based (outer cylinder + annular
+// faces + hole cylinder, divided over the boundary turn nodes), which lands the
+// rise in the physical band and makes the two paths agree.
+TEST_CASE("Temperature: ABT906 Packed Toroid Envelope Ambient Interface",
+          "[temperature][toroidal][abt906][smoke-test]") {
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flybuck_hf160_250u_abt907.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    auto magnetic = mas.get_magnetic();
+
+    // Losses as simulated for this operating point (checked against the user's
+    // own Steinmetz hand-calculation once the correct magnetizing ripple is used).
+    TemperatureConfig config;
+    config.ambientTemperature = 50;
+    config.coreLosses = mas.get_outputs()[0].get_core_losses()->get_core_losses();
+    config.windingLosses = mas.get_outputs()[0].get_winding_losses()->get_winding_losses();
+    config.windingLossesOutput = mas.get_outputs()[0].get_winding_losses().value();
+    config.plotSchematic = false;
+
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+
+    REQUIRE(result.converged);
+    // Physical band for ~0.29 W on a ~4.5-4.8 cm2 wound envelope: +28..+46 K.
+    // The old developed-surface model gave +14 K (below band); the intermediate
+    // binary-blocking attempt gave +140 K (above band).
+    CHECK(result.maximumTemperature > 78.0);
+    CHECK(result.maximumTemperature < 96.0);
+    // Assembly-to-ambient thermal resistance in the physical range for this size.
+    CHECK(result.totalThermalResistance > 95.0);
+    CHECK(result.totalThermalResistance < 160.0);
+
+    // The convecting+radiating area presented to ambient must be the wound-body
+    // envelope, not the developed wire surface: ~4.5 cm2 here, not 16.6 cm2.
+    double ambientConvectionArea = 0.0;
+    const auto& resistances = temp.getResistances();
+    for (const auto& res : resistances) {
+        if (res.type == OpenMagnetics::HeatTransferType::NATURAL_CONVECTION ||
+            res.type == OpenMagnetics::HeatTransferType::FORCED_CONVECTION) {
+            ambientConvectionArea += res.area;
+        }
+    }
+    CHECK(ambientConvectionArea > 3.5e-4);
+    CHECK(ambientConvectionArea < 6.0e-4);
+}

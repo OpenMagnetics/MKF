@@ -3772,8 +3772,6 @@ void Temperature::createConvectionConnections() {
 
 // IMP-4: Toroidal convection connections
 void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double h_conv) {
-    double maxConvectionDist = getMaximumDistanceForConvection();
-
     auto core = _magnetic.get_core();
     auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
     double coreInnerR = dimensions["B"] / 2.0;
@@ -3802,207 +3800,97 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
         }
     }
 
-    // For each turn node, check each quadrant for exposure to air
+    // ---- Envelope-based ambient interface for the wound toroid (ABT #906) ----
+    // A packed toroidal winding presents its ENVELOPE to the air: the outer cylinder
+    // of the wound body, its two annular faces, and the cylinder lining the core
+    // hole. It does NOT present each wire's developed surface: the crevices between
+    // adjacent turns, between layers, and between the winding and the core sit
+    // inside the stagnant boundary layer (see kConvection_StagnantAirGap) and
+    // exchange heat by conduction, not by convection to ambient. The previous
+    // per-face exposure model connected up to three quarter-developed-surface faces
+    // per turn to ambient (~3.5x the physical envelope on a small toroid, predicting
+    // a ~2.5x-too-low temperature rise), and its binary per-face blocking could not
+    // represent a half-filled outer layer either (every turn under it counted as
+    // fully covered — overshooting the other way). Instead, the envelope area is
+    // computed once from the wound-body dimensions and divided equally among the
+    // turn nodes that form each boundary; the solver's per-iteration recalculation
+    // keeps h consistent because it recomputes resistance from each element's area.
+    {
+        double axialLength = 0.0;
+        if (dimensions.count("C") && dimensions["C"] > 0) {
+            axialLength = dimensions["C"];
+        }
+        else {
+            throw std::runtime_error("Temperature::createToroidalConvectionConnections: toroidal shape is "
+                                     "missing dimension C (axial height), required for the winding envelope.");
+        }
+
+        std::vector<size_t> outerBoundaryNodes;
+        std::vector<size_t> holeBoundaryNodes;
+        double outerEnvelopeR = coreOuterR;
+        double innerEnvelopeR = coreInnerR;
+        double maximumTurnDimension = 0.0;
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::TURN) continue;
-            
             const auto& node = _nodes[i];
+            double nodeR = std::hypot(node.physicalCoordinates[0], node.physicalCoordinates[1]);
+            double nodeMaxDim = std::max(node.dimensions.width, node.dimensions.height);
+            maximumTurnDimension = std::max(maximumTurnDimension, nodeMaxDim);
 
-            // If insulation layers exist, turns should NOT have convection to ambient
-            // Only insulation layer nodes should have convection (on radial faces).
-            // EXCEPTION: when no outer-side ILs exist (contiguous toroidal case),
-            // the OUTER face of the winding IS exposed to ambient -- allow per-quadrant
-            // exposure check below to evaluate it. We still skip turns whose outermost
-            // surface is on the inner-hole side (those are covered by inner ILs).
+            // Preserve the insulation-layer gating of the previous model: when
+            // insulation layers wrap a side, the IL nodes own that side's convection
+            // (created below) and the turns under them must not also convect.
             bool turnIsOuterSide = !node.isInnerTurn;
             if (hasInsulationLayers && !(turnIsOuterSide && !hasOuterInsulationLayers)) continue;
-            double nodeX = node.physicalCoordinates[0];
-            double nodeY = node.physicalCoordinates[1];
-            double nodeR = std::sqrt(nodeX*nodeX + nodeY*nodeY);
-            double nodeAngle = std::atan2(nodeY, nodeX);
-            double nodeWidth = node.dimensions.width;
-            double nodeHeight = node.dimensions.height;
-            
-            // Check each quadrant
-            for (int qIdx = 0; qIdx < 4; ++qIdx) {
-                ThermalNodeFace face = node.quadrants[qIdx].face;
-                if (face == ThermalNodeFace::NONE) continue;
-                
-                // Skip if this quadrant is already connected by conduction
-                std::string qKey = std::to_string(i) + "_" + std::string(magic_enum::enum_name(face));
-                if (connectedQuadrants.count(qKey) > 0) continue;
-                
-                bool isExposed = true;
-                
-                // Check for blocking objects in the quadrant's direction
-                // Purely geometric: block if there's a turn in the quadrant direction
-                // that is significantly offset radially (not a tangential neighbor)
-                // AND within this node's max dimension distance
-                double maxBlockingDist = std::max(nodeWidth, nodeHeight);
-                // Minimum radial difference to distinguish radial from tangential neighbors
-                double minRadialDiff = std::min(nodeWidth, nodeHeight) / 4.0;
-                
-                if (face == ThermalNodeFace::RADIAL_INNER) {
-                    // Check for any object significantly closer to center in this direction
-                    for (size_t j = 0; j < _nodes.size(); j++) {
-                        if (i == j) continue;
-                        
-                        double otherX = _nodes[j].physicalCoordinates[0];
-                        double otherY = _nodes[j].physicalCoordinates[1];
-                        double otherR = std::sqrt(otherX*otherX + otherY*otherY);
-                        double otherAngle = std::atan2(otherY, otherX);
-                        
-                        double radialDiff = nodeR - otherR;
-                        // Must be: significantly closer (not tangential) AND within max blocking distance
-                        if (radialDiff > minRadialDiff && radialDiff < maxBlockingDist) {
-                            // Proper angle normalization to [-pi, pi]
-                            double angleDiff = nodeAngle - otherAngle;
-                            while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
-                            while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
-                            
-                            // Block if there's an object in roughly same angular direction
-                            if (std::abs(angleDiff) < kConvection_AngularBlockingTolerance) {
-                                isExposed = false;
-                                break;
-                            }
-                        }
-                    }
-                }
-                else if (face == ThermalNodeFace::RADIAL_OUTER) {
-                    // Check for any object significantly farther from center in this direction
-                    for (size_t j = 0; j < _nodes.size(); j++) {
-                        if (i == j) continue;
-                        
-                        double otherX = _nodes[j].physicalCoordinates[0];
-                        double otherY = _nodes[j].physicalCoordinates[1];
-                        double otherR = std::sqrt(otherX*otherX + otherY*otherY);
-                        double otherAngle = std::atan2(otherY, otherX);
-                        
-                        double radialDiff = otherR - nodeR;
-                        // Must be: significantly farther (not tangential) AND within max blocking distance
-                        if (radialDiff > minRadialDiff && radialDiff < maxBlockingDist) {
-                            // Proper angle normalization to [-pi, pi]
-                            double angleDiff = nodeAngle - otherAngle;
-                            while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
-                            while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
-                            
-                            // Block if there's an object in roughly same angular direction
-                            if (std::abs(angleDiff) < kConvection_AngularBlockingTolerance) {
-                                isExposed = false;
-                                break;
-                            }
-                        }
-                    }
-                }
-                else if (face == ThermalNodeFace::TANGENTIAL_LEFT || face == ThermalNodeFace::TANGENTIAL_RIGHT) {
-                    // For tangential faces, check adjacent turns
-                    // If there's a conduction connection, this face is not exposed
-                    // Otherwise, check if there's a blocking turn within convection distance
-                    for (size_t j = 0; j < _nodes.size(); j++) {
-                        if (i == j) continue;
-                        if (_nodes[j].part != ThermalNodePartType::TURN) continue;
-                        
-                        double otherX = _nodes[j].physicalCoordinates[0];
-                        double otherY = _nodes[j].physicalCoordinates[1];
-                        double otherR = std::sqrt(otherX*otherX + otherY*otherY);
-                        double otherAngle = std::atan2(otherY, otherX);
-                        
-                        // Similar radius (same "layer" inner or outer)
-                        if (std::abs(otherR - nodeR) < nodeWidth) {
-                            double angleDiff = otherAngle - nodeAngle;
-                            while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
-                            while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
-                            
-                            bool isLeft = (face == ThermalNodeFace::TANGENTIAL_LEFT);
-                            double distAlongTangent = std::abs(angleDiff) * nodeR;
 
-                            // Block if a turn sits in this face's tangential direction.
-                            // initializeToroidalQuadrants assigns TANGENTIAL_LEFT to +pi/2
-                            // (CCW, larger angle) and TANGENTIAL_RIGHT to -pi/2 (CW, smaller
-                            // angle), and angleDiff = otherAngle - nodeAngle. So a LEFT face
-                            // is blocked by a neighbour at LARGER angle (angleDiff > 0) and a
-                            // RIGHT face by one at SMALLER angle. The previous signs were
-                            // reversed (they disagreed with the insulation-layer block below,
-                            // which already used the correct convention).
-                            if (isLeft && angleDiff > 0 && distAlongTangent < maxConvectionDist) {
-                                isExposed = false;
-                                break;
-                            }
-                            if (!isLeft && angleDiff < 0 && distAlongTangent < maxConvectionDist) {
-                                isExposed = false;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Also check if tangential face is covered by an insulation layer
-                    // This happens when the turn is at the same radial position as an insulation layer
-                    if (isExposed) {
-                        for (size_t j = 0; j < _nodes.size(); j++) {
-                            if (_nodes[j].part != ThermalNodePartType::INSULATION_LAYER) continue;
-                            
-                            double insX = _nodes[j].physicalCoordinates[0];
-                            double insY = _nodes[j].physicalCoordinates[1];
-                            double insR = std::sqrt(insX*insX + insY*insY);
-                            double insAngle = std::atan2(insY, insX);
-                            
-                            // Check if insulation is at similar radial position (within wire width)
-                            // and in the same inner/outer region
-                            bool isInsInner = (insR < coreInnerR);
-                            if (node.isInnerTurn != isInsInner) continue;
-                            
-                            // Check if insulation is at similar radial position
-                            // Use full wire width as threshold to account for wire radius + insulation thickness
-                            double radialThreshold = nodeWidth;
-                            if (std::abs(insR - nodeR) < radialThreshold) {
-                                // Check angular proximity - is the insulation in the direction of this face?
-                                double angleDiff = insAngle - nodeAngle;
-                                while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
-                                while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
-                                
-                                bool isLeft = (face == ThermalNodeFace::TANGENTIAL_LEFT);
-                                double distAlongTangent = std::abs(angleDiff) * nodeR;
-                                
-                                // If insulation is in this tangential direction, block convection
-                                // TANGENTIAL_LEFT: insulation at larger angle (positive angleDiff)
-                                // TANGENTIAL_RIGHT: insulation at smaller angle (negative angleDiff)
-                                if (isLeft && angleDiff > 0 && distAlongTangent < maxConvectionDist) {
-                                    isExposed = false;
-                                    break;
-                                }
-                                if (!isLeft && angleDiff < 0 && distAlongTangent < maxConvectionDist) {
-                                    isExposed = false;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // If exposed, connect to ambient
-                if (isExposed) {
-                    auto* q = node.getQuadrant(face);
-                    if (q && q->surfaceArea > 0) {
-                        ThermalResistanceElement r;
-                        r.nodeFromId = i;
-                        r.quadrantFrom = face;
-                        r.nodeToId = ambientIdx;
-                        r.quadrantTo = ThermalNodeFace::NONE;
-                        r.type = _config.includeForcedConvection ? 
-                                 HeatTransferType::FORCED_CONVECTION : 
-                                 HeatTransferType::NATURAL_CONVECTION;
-                        // Use coating-aware calculation if coating exists
-                        r.resistance = q->calculateConvectionResistance(h_conv);
-                        r.area = q->surfaceArea;  // Store area for forced convection calculation
-                        if (q->coating.has_value()) {
-                            r.resistance += WireCoatingUtils::calculateCoatingResistance(q->coating.value(), q->surfaceArea);
-                        }
-                        _resistances.push_back(r);
-                    } else if (THERMAL_DEBUG) {
-                    }
-                }
+            if (turnIsOuterSide) {
+                outerBoundaryNodes.push_back(i);
+                outerEnvelopeR = std::max(outerEnvelopeR, nodeR + nodeMaxDim / 2.0);
+            }
+            else {
+                holeBoundaryNodes.push_back(i);
+                innerEnvelopeR = std::min(innerEnvelopeR, nodeR - nodeMaxDim / 2.0);
             }
         }
+
+        // The wound body is the core axial height plus one wire on each face.
+        double envelopeHeight = axialLength + 2.0 * maximumTurnDimension;
+        double outerCylinderArea = 2.0 * std::numbers::pi * outerEnvelopeR * envelopeHeight;
+        double holeCylinderArea = 2.0 * std::numbers::pi * innerEnvelopeR * envelopeHeight;
+        double annularFacesArea = 2.0 * std::numbers::pi * (outerEnvelopeR * outerEnvelopeR - innerEnvelopeR * innerEnvelopeR);
+
+        auto connectBoundaryNodes = [&](const std::vector<size_t>& boundaryNodes, double boundaryArea,
+                                        ThermalNodeFace face) {
+            if (boundaryNodes.empty() || boundaryArea <= 0) return;
+            double areaShare = boundaryArea / boundaryNodes.size();
+            for (size_t i : boundaryNodes) {
+                ThermalResistanceElement r;
+                r.nodeFromId = i;
+                r.quadrantFrom = face;
+                r.nodeToId = ambientIdx;
+                r.quadrantTo = ThermalNodeFace::NONE;
+                r.type = _config.includeForcedConvection ?
+                         HeatTransferType::FORCED_CONVECTION :
+                         HeatTransferType::NATURAL_CONVECTION;
+                r.resistance = 1.0 / (h_conv * areaShare);
+                r.area = areaShare;
+                auto* q = _nodes[i].getQuadrant(face);
+                if (q && q->coating.has_value()) {
+                    r.resistance += WireCoatingUtils::calculateCoatingResistance(q->coating.value(), areaShare);
+                }
+                _resistances.push_back(r);
+            }
+        };
+
+        // Each boundary carries its cylinder plus half of the two annular faces
+        // (the top/bottom of the wound body span from the hole to the outer rim;
+        // splitting them between the two boundary node groups keeps the total right).
+        connectBoundaryNodes(outerBoundaryNodes, outerCylinderArea + annularFacesArea / 2.0,
+                             ThermalNodeFace::RADIAL_OUTER);
+        connectBoundaryNodes(holeBoundaryNodes, holeCylinderArea + annularFacesArea / 2.0,
+                             ThermalNodeFace::RADIAL_INNER);
+    }
+
         
         // Core convection - connect exposed core quadrants
         // When insulation layers are present, core is covered by insulation and has no convection
@@ -4010,18 +3898,25 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::CORE_TOROIDAL_SEGMENT) continue;
             
-            // Check RADIAL_OUTER - exposed if no turn is close to outer core
+            // Check RADIAL_OUTER - exposed if no turn wraps the outer core surface.
+            // Surface-to-surface: a turn resting on the core OD has its CENTER half a
+            // wire dimension (plus coating/placement clearance) beyond coreOuterR, so
+            // the previous |turnR - coreOuterR| < turnWidth center test never fired and
+            // the wrapped core surface kept convecting to ambient through the winding
+            // (ABT #906). Block when the turn's inner surface is within the stagnant
+            // gap of the core surface.
             bool outerBlocked = false;
             for (size_t j = 0; j < _nodes.size(); j++) {
                 if (_nodes[j].part != ThermalNodePartType::TURN) continue;
-                
+
                 double turnR = std::sqrt(
                     _nodes[j].physicalCoordinates[0]*_nodes[j].physicalCoordinates[0] +
                     _nodes[j].physicalCoordinates[1]*_nodes[j].physicalCoordinates[1]
                 );
-                double turnWidth = _nodes[j].dimensions.width;
-                
-                if (std::abs(turnR - coreOuterR) < turnWidth) {
+                double turnMaxDim = std::max(_nodes[j].dimensions.width, _nodes[j].dimensions.height);
+
+                double surfaceGap = (turnR - turnMaxDim / 2.0) - coreOuterR;
+                if (turnR > coreOuterR && surfaceGap < ThermalDefaults::kConvection_StagnantAirGap) {
                     outerBlocked = true;
                     break;
                 }
@@ -4048,18 +3943,22 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                 }
             }
             
-            // Check RADIAL_INNER - exposed if no turn is close to inner core
+            // Check RADIAL_INNER - exposed if no turn lines the inner core surface.
+            // Same surface-to-surface reasoning as RADIAL_OUTER above (ABT #906): a
+            // turn resting on the core ID has its center half a wire dimension inside
+            // coreInnerR.
             bool innerBlocked = false;
             for (size_t j = 0; j < _nodes.size(); j++) {
                 if (_nodes[j].part != ThermalNodePartType::TURN) continue;
-                
+
                 double turnR = std::sqrt(
                     _nodes[j].physicalCoordinates[0]*_nodes[j].physicalCoordinates[0] +
                     _nodes[j].physicalCoordinates[1]*_nodes[j].physicalCoordinates[1]
                 );
-                double turnWidth = _nodes[j].dimensions.width;
-                
-                if (std::abs(turnR - coreInnerR) < turnWidth) {
+                double turnMaxDim = std::max(_nodes[j].dimensions.width, _nodes[j].dimensions.height);
+
+                double surfaceGap = coreInnerR - (turnR + turnMaxDim / 2.0);
+                if (turnR < coreInnerR && surfaceGap < ThermalDefaults::kConvection_StagnantAirGap) {
                     innerBlocked = true;
                     break;
                 }

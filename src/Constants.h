@@ -104,8 +104,19 @@ namespace ThermalDefaults {
     // FR4 PCB
     constexpr double kFR4_ThermalConductivity = 0.3;           // [W/(m·K)] through-plane
     
-    // Angular tolerance for convection blocking detection on toroidal cores
-    constexpr double kConvection_AngularBlockingTolerance = 0.3; // [rad] ~17 degrees
+    // Surface-to-surface gap below which the air between two solid surfaces is
+    // treated as stagnant (no convection to ambient through the crevice). At the
+    // sizes of wound components the natural-convection boundary layer is millimetres
+    // thick (delta ~ L/Nu; e.g. a 12 mm toroid at h~10 W/m2K, k_air 0.026 -> Nu ~ 4.4,
+    // delta ~ 2.7 mm), so sub-millimetre crevices between adjacent turns, or between
+    // the winding and the core surface it wraps, sit entirely inside the stagnant
+    // film and exchange heat by conduction internally, not by convection to ambient.
+    // NOTE (ABT #906): the previous blocking checks compared CENTER-to-center
+    // distances against one wire dimension — geometrically impossible to satisfy for
+    // touching same-size wires (their centers are never closer than one diameter),
+    // so every turn face of a packed toroidal winding convected its full developed
+    // surface and the predicted temperature rise came out ~2.5x low.
+    constexpr double kConvection_StagnantAirGap = 1.0e-3;      // [m]
     
     // TIM
     constexpr double kTIM_DefaultResistance = 0.5;             // [K/W]
