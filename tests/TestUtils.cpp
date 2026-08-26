@@ -759,11 +759,22 @@ namespace {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0048);
             wire.set_nominal_value_conducting_height(0.00076);
-            wire.set_nominal_value_outer_width(0.0049);
+            wire.set_nominal_value_outer_width(0.0048076);
             wire.set_nominal_value_outer_height(0.0007676);
             wire.set_number_conductors(1);
             wire.set_material("copper");
             wire.set_type(WireType::RECTANGULAR);
+            // ABT #908: since ABT #902 a wire whose outer size exceeds its conductor must
+            // state what insulates those surfaces. These fixtures are enamelled rectangular
+            // wire: 3.8 um of enamel per face, so the outer sizes are exactly
+            // conducting + 2 x 3.8 um on both axes (the previous outer widths carried an
+            // arbitrary 100 um of undeclared margin, which the guard rightly rejected).
+            InsulationWireCoating coating;
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            DimensionWithTolerance coatingThickness;
+            coatingThickness.set_nominal(3.8e-6);
+            coating.set_thickness(coatingThickness);
+            wire.set_coating(coating);
             winding.set_wire(wire);
             coil.get_mutable_functional_description().push_back(winding);
         }
@@ -775,11 +786,18 @@ namespace {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0038);
             wire.set_nominal_value_conducting_height(0.00076);
-            wire.set_nominal_value_outer_width(0.0039);
+            wire.set_nominal_value_outer_width(0.0038076);
             wire.set_nominal_value_outer_height(0.0007676);
             wire.set_number_conductors(1);
             wire.set_material("copper");
             wire.set_type(WireType::RECTANGULAR);
+            // ABT #908: enamelled, 3.8 um per face — see the first fixture wire above.
+            InsulationWireCoating coating;
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            DimensionWithTolerance coatingThickness;
+            coatingThickness.set_nominal(3.8e-6);
+            coating.set_thickness(coatingThickness);
+            wire.set_coating(coating);
             winding.set_wire(wire);
             coil.get_mutable_functional_description().push_back(winding);
         }
@@ -823,11 +841,18 @@ namespace {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0048);
             wire.set_nominal_value_conducting_height(0.00056);
-            wire.set_nominal_value_outer_width(0.0049);
+            wire.set_nominal_value_outer_width(0.0048076);
             wire.set_nominal_value_outer_height(0.0005676);
             wire.set_number_conductors(1);
             wire.set_material("copper");
             wire.set_type(WireType::RECTANGULAR);
+            // ABT #908: enamelled, 3.8 um per face — see the first fixture wire above.
+            InsulationWireCoating coating;
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            DimensionWithTolerance coatingThickness;
+            coatingThickness.set_nominal(3.8e-6);
+            coating.set_thickness(coatingThickness);
+            wire.set_coating(coating);
             winding.set_wire(wire);
             coil.get_mutable_functional_description().push_back(winding);
         }
@@ -839,11 +864,18 @@ namespace {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0038);
             wire.set_nominal_value_conducting_height(0.00056);
-            wire.set_nominal_value_outer_width(0.0039);
+            wire.set_nominal_value_outer_width(0.0038076);
             wire.set_nominal_value_outer_height(0.0005676);
             wire.set_number_conductors(1);
             wire.set_material("copper");
             wire.set_type(WireType::RECTANGULAR);
+            // ABT #908: enamelled, 3.8 um per face — see the first fixture wire above.
+            InsulationWireCoating coating;
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            DimensionWithTolerance coatingThickness;
+            coatingThickness.set_nominal(3.8e-6);
+            coating.set_thickness(coatingThickness);
+            wire.set_coating(coating);
             winding.set_wire(wire);
             coil.get_mutable_functional_description().push_back(winding);
         }
