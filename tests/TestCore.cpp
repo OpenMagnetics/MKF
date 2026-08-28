@@ -2632,6 +2632,21 @@ namespace TestMulticolumnWindows {
         OpenMagnetics::Mas simulated;
         REQUIRE_NOTHROW(simulated = simulator.simulate(inputs, magnetic));
         REQUIRE(simulated.get_outputs().size() > 0);
+
+        // ABT #925: this fixture shipped with designRequirements.turnsRatios = 1e9 for a 24:12
+        // coil, so its generated secondary excitation carried 1e9 A. Nothing noticed until
+        // simulate() grew a thermal step (ABT #906): 1.26e16 W of ohmic loss in the secondary
+        // drove the thermal network to 5.7e6 K and it refused to converge, and the throw read as
+        // a thermal-solver bug rather than as impossible input. Pin the ampere-turn balance so a
+        // regenerated fixture cannot go unphysical again without saying so here.
+        auto primaryExcitation = inputs.get_winding_excitation(0, 0);
+        auto secondaryExcitation = inputs.get_winding_excitation(0, 1);
+        double primaryAmpereTurns = primaryExcitation.get_current()->get_processed()->get_rms().value()
+                                    * magnetic.get_coil().get_functional_description()[0].get_number_turns();
+        double secondaryAmpereTurns = secondaryExcitation.get_current()->get_processed()->get_rms().value()
+                                      * magnetic.get_coil().get_functional_description()[1].get_number_turns();
+        UNSCOPED_INFO("primary " << primaryAmpereTurns << " At, secondary " << secondaryAmpereTurns << " At");
+        CHECK_THAT(secondaryAmpereTurns, Catch::Matchers::WithinRel(primaryAmpereTurns, 0.01));
         auto& output = simulated.get_outputs()[0];
         REQUIRE(output.get_inductance());
         double inductance = OpenMagnetics::resolve_dimensional_values(
