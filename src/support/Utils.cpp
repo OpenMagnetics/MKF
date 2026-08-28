@@ -465,6 +465,42 @@ static void check_core_shape_geometry(const CoreShape& coreShape) {
     }
 }
 
+// ABT #924: an alias never overwrites a real shape. Aliases are applied after the whole
+// catalog is in the map, and only onto free keys, so a name that another record already
+// owns keeps pointing at its own geometry.
+static void register_core_shape_aliases(const std::vector<std::pair<std::string, CoreShape>>& aliases) {
+    std::vector<std::string> shadowed;
+    for (const auto& [alias, coreShape] : aliases) {
+        auto [it, inserted] = coreShapeDatabase.emplace(alias, coreShape);
+        if (!inserted && it->second.get_name() != coreShape.get_name()) {
+            shadowed.push_back(alias);
+        }
+    }
+    if (!shadowed.empty()) {
+        std::string summary;
+        for (const auto& alias : shadowed) {
+            if (!summary.empty()) {
+                summary += ", ";
+            }
+            summary += "'" + alias + "'";
+        }
+        OM_WARNING_M("Utils", "Ignored " + std::to_string(shadowed.size()) + " core shape alias(es) that collide "
+                              "with the name of a different shape (" + summary + "). The name resolves to the shape "
+                              "that owns it; the aliased shape is still reachable by its own name.");
+    }
+}
+
+// ABT #924: the shape database doubles as an alias index, so its keys are NOT a catalog.
+// Anything that LISTS shapes (the UI dropdowns, the adviser sweeps) must show each shape
+// exactly once, under the name the engine will echo back — otherwise picking "EFD 25"
+// silently re-labels itself "EFD 25/13/9" and reads as the tool choosing another size.
+static bool is_canonical_core_shape_key(const std::string& key, const CoreShape& shape) {
+    if (!shape.get_name()) {
+        return true;
+    }
+    return key == shape.get_name().value();
+}
+
 void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     throw_if_databases_frozen("load_core_shapes");
     if (!_addInternalData) {
@@ -481,7 +517,13 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     // and say so once — while geometry that cannot exist is CORRUPT DATA and must never
     // load at all.
     std::map<CoreShapeFamily, size_t> skippedPerFamily;
-    parse_ndjson(database, [withAliases, includeToroidalCores, includeConcentricCores, &skippedPerFamily](const json& jf) {
+    // ABT #924: aliases are LOOKUP keys, never catalog entries. They are collected here and
+    // inserted only after every canonical name is in the map, with emplace rather than
+    // operator[], so an alias can never shadow a shape that carries that name for real
+    // ("RM 6-S" is both the canonical name of one shape and an alias of "RM 6/I"; the
+    // straight-line assignment made "RM 6-S" resolve to RM 6/I, a different gapped part).
+    std::vector<std::pair<std::string, CoreShape>> pendingAliases;
+    parse_ndjson(database, [withAliases, includeToroidalCores, includeConcentricCores, &skippedPerFamily, &pendingAliases](const json& jf) {
         CoreShape coreShape(jf);
         check_core_shape_geometry(coreShape);
         if (!CorePiece::is_family_supported(coreShape.get_family())) {
@@ -499,11 +541,12 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
             // "type must be string, but is number". Guard instead of indexing.
             if (withAliases && jf.contains("aliases")) {
                 for (auto& alias : jf.at("aliases")) {
-                    coreShapeDatabase[alias] = coreShape;
+                    pendingAliases.emplace_back(alias.get<std::string>(), coreShape);
                 }
             }
         }
     });
+    register_core_shape_aliases(pendingAliases);
 
     if (!skippedPerFamily.empty()) {
         std::string summary;
@@ -606,6 +649,7 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
         }
     }
 
+    std::vector<std::pair<std::string, CoreShape>> pendingCoreShapeAliases;
     for (auto& element : data["coreShapes"].items()) {
         json jf = element.value();
 
@@ -630,10 +674,11 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
 
         if (withAliases && jf.contains("aliases")) {
             for (auto& alias : jf.at("aliases")) {
-                coreShapeDatabase[alias] = coreShape;
+                pendingCoreShapeAliases.emplace_back(alias.get<std::string>(), coreShape);
             }
         }
     }
+    register_core_shape_aliases(pendingCoreShapeAliases);
 
     for (auto& element : data["wires"].items()) {
         json jf = element.value();
@@ -816,6 +861,9 @@ std::vector<std::string> get_core_shape_names(CoreShapeFamily family) {
     std::vector<std::string> shapeNames;
  
     for (auto& [name, shape] : coreShapeDatabase) {
+        if (!is_canonical_core_shape_key(name, shape)) {
+            continue;
+        }
         if (shape.get_family() == family) {
             shapeNames.push_back(name);
         }
@@ -834,6 +882,9 @@ std::vector<std::string> get_core_shape_names() {
     std::vector<std::string> shapeNames;
  
     for (auto& [name, shape] : coreShapeDatabase) {
+        if (!is_canonical_core_shape_key(name, shape)) {
+            continue;
+        }
         if ((includeToroidalCores && shape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && shape.get_family() != CoreShapeFamily::T)) {
             shapeNames.push_back(name);
         }

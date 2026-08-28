@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
+#include <set>
 #include <vector>
 using json = nlohmann::json;
 #include <typeinfo>
@@ -253,6 +254,46 @@ namespace {
 
         REQUIRE(allShapeNames.size() > magneticsShapeNames.size());
         REQUIRE(allShapeNames.size() > ferroxcubeShapeNames.size());
+    }
+
+    // ABT #924: the shape listing is a CATALOG, the shape database is an alias INDEX.
+    // Listing the index's keys put every aliased shape in the UI dropdown twice — once as
+    // "EFD 25", once as "EFD 25/13/9" — and picking the alias row re-labelled itself to the
+    // canonical name, which reads as the tool silently choosing a different core size.
+    TEST_CASE("Test_Get_Shapes_Lists_Canonical_Names_Only", "[support][utils][smoke-test]") {
+        clear_databases();
+        settings.reset();
+        auto allShapeNames = get_core_shape_names();
+
+        std::set<std::string> listed(allShapeNames.begin(), allShapeNames.end());
+        REQUIRE(listed.size() == allShapeNames.size());  // no name listed twice
+
+        for (const auto& name : allShapeNames) {
+            auto shape = find_core_shape_by_name(name);
+            REQUIRE(shape.get_name());
+            // Every listed name is the name the engine echoes back for that shape, so the
+            // selection the user makes is the selection the UI keeps showing.
+            REQUIRE(shape.get_name().value() == name);
+        }
+
+        // Aliases stay resolvable — they are just not offered as separate catalog entries.
+        REQUIRE(listed.count("EFD 25/13/9") == 1);
+        REQUIRE(listed.count("EFD 25") == 0);
+        REQUIRE(find_core_shape_by_name("EFD 25").get_name().value() == "EFD 25/13/9");
+    }
+
+    // ABT #924: "RM 6-S" is the real name of one shape AND an alias of "RM 6/I". The alias
+    // used to overwrite the canonical entry, so asking for RM 6-S handed back RM 6/I —
+    // a part without the centre hole.
+    TEST_CASE("Test_Core_Shape_Alias_Never_Shadows_A_Real_Shape", "[support][utils][smoke-test]") {
+        clear_databases();
+        settings.reset();
+
+        REQUIRE(find_core_shape_by_name("RM 6-S").get_name().value() == "RM 6-S");
+        REQUIRE(find_core_shape_by_name("RM 6/I").get_name().value() == "RM 6/I");
+        REQUIRE(find_core_shape_by_name("RM 6").get_name().value() == "RM 6");
+        REQUIRE(find_core_shape_by_name("ER 28L").get_name().value() == "ER 28L");
+        REQUIRE(find_core_shape_by_name("EER 35/21/11").get_name().value() == "EER 35/21/11");
     }
 
     TEST_CASE("Test_Wire_Names_With_Types", "[support][utils][smoke-test]") {
