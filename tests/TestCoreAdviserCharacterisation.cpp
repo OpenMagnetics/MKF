@@ -293,10 +293,20 @@ const std::vector<TopEntry> kTopStandardPower = {
 // with the same OD wins on the composite once its impedance is scored with the corrected
 // capacitance. No measurement arbitrates a third-place swap between two XFlux 26 toroids; the
 // pin records the corrected engine, not a new truth.
+// Re-pin 2026-08-28 (ABT #927): the coil-geometry work since the 2026-08-23 pin -- spread
+// winding on every layer and ring (25069e00), U links reserving nothing in the receiving layer
+// (602d2241), a single-turn winding no longer treated as a full circle (0296ad20), and foreign
+// copper as a corridor (85c42e65) -- moves the turn positions this scenario's stray capacitance
+// is computed from, and the suppression rank is scored through that capacitance. Slots 0-1 keep
+// their identities and order (+0.51 % / -0.20 %). Slot 2 stays the same core, T 134/77/27, but
+// swaps material from XFlux 26 to Edge 26 -- both Magnetics powders at mu_i = 26, so this is the
+// same kind of unarbitrated near-tie as the 2026-08-23 third-place swap: no measurement decides
+// between them, and the pin records the engine, not a new truth. Scores are pool-relative
+// min-max, so they are not comparable across pins in absolute terms.
 const std::vector<TopEntry> kTopAvailableInterference = {
-    {"T 134/77/155 - XFlux 26 - Ungapped",         1.9501467399903731},
-    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8582787244505599},
-    {"T 134/77/27 - XFlux 26 - Ungapped",          1.5966645076627959},
+    {"T 134/77/155 - XFlux 26 - Ungapped",         1.96010195480288},
+    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8544802939152827},
+    {"T 134/77/27 - Edge 26 - Ungapped",           1.5364767289418393},
 };
 
 } // namespace
