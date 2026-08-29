@@ -239,7 +239,7 @@ TEST_CASE("WireAdviser PLANAR top-5 snapshot",
 //
 
 TEST_CASE("Benchmark WireAdviser ALL_TYPES (top-20)",
-          "[adviser][wire-adviser][!benchmark][benchmark-wire-adviser]") {
+          "[!benchmark][benchmark-wire-adviser]") {
     settings.reset();
     clear_databases();
     enable_all_wire_types();

@@ -837,7 +837,7 @@ TEST_CASE("Test mutual inductance relationships for three windings", "[physical-
 // Benchmark Tests
 // ============================================================================
 
-TEST_CASE("Benchmark inductance matrix calculation for two windings", "[physical-model][inductance][!benchmark]") {
+TEST_CASE("Benchmark inductance matrix calculation for two windings", "[!benchmark]") {
     BENCHMARK_ADVANCED("two winding inductance matrix")(Catch::Benchmark::Chronometer meter) {
         settings.reset();
         clear_databases();
@@ -869,7 +869,7 @@ TEST_CASE("Benchmark inductance matrix calculation for two windings", "[physical
     };
 }
 
-TEST_CASE("Benchmark inductance matrix calculation for three windings", "[physical-model][inductance][!benchmark]") {
+TEST_CASE("Benchmark inductance matrix calculation for three windings", "[!benchmark]") {
     BENCHMARK_ADVANCED("three winding inductance matrix")(Catch::Benchmark::Chronometer meter) {
         settings.reset();
         clear_databases();
@@ -902,7 +902,7 @@ TEST_CASE("Benchmark inductance matrix calculation for three windings", "[physic
     };
 }
 
-TEST_CASE("Benchmark inductance matrix calculation for four windings", "[physical-model][inductance][!benchmark]") {
+TEST_CASE("Benchmark inductance matrix calculation for four windings", "[!benchmark]") {
     BENCHMARK_ADVANCED("four winding inductance matrix")(Catch::Benchmark::Chronometer meter) {
         settings.reset();
         clear_databases();
@@ -936,7 +936,7 @@ TEST_CASE("Benchmark inductance matrix calculation for four windings", "[physica
     };
 }
 
-TEST_CASE("Benchmark self inductance calculation", "[physical-model][inductance][!benchmark]") {
+TEST_CASE("Benchmark self inductance calculation", "[!benchmark]") {
     BENCHMARK_ADVANCED("self inductance")(Catch::Benchmark::Chronometer meter) {
         settings.reset();
         clear_databases();
@@ -968,7 +968,7 @@ TEST_CASE("Benchmark self inductance calculation", "[physical-model][inductance]
     };
 }
 
-TEST_CASE("Benchmark coupling coefficient calculation", "[physical-model][inductance][!benchmark]") {
+TEST_CASE("Benchmark coupling coefficient calculation", "[!benchmark]") {
     BENCHMARK_ADVANCED("coupling coefficient")(Catch::Benchmark::Chronometer meter) {
         settings.reset();
         clear_databases();

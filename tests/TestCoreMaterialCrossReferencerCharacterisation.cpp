@@ -241,7 +241,7 @@ TEST_CASE("CoreMaterialCrossReferencer Kool Mµ MAX 26 only-Micrometals top-5 sn
 // =============================================================================
 
 TEST_CASE("Benchmark CoreMaterialCrossReferencer 3C97 (top-20)",
-          "[adviser][core-material-cross-referencer][!benchmark][benchmark-mat-xref]") {
+          "[!benchmark][benchmark-mat-xref]") {
     settings.reset();
     clear_databases();
 
@@ -255,7 +255,7 @@ TEST_CASE("Benchmark CoreMaterialCrossReferencer 3C97 (top-20)",
 }
 
 TEST_CASE("Benchmark CoreMaterialCrossReferencer Kool Mµ MAX 26 (top-20)",
-          "[adviser][core-material-cross-referencer][!benchmark][benchmark-mat-xref-powder]") {
+          "[!benchmark][benchmark-mat-xref-powder]") {
     settings.reset();
     clear_databases();
 

@@ -635,7 +635,7 @@ TEST_CASE("Checks that increasing insulation between layers keeps leakage induct
     settings.reset();
 }
 
-TEST_CASE("Benchmarks leakage inductance calculation in planar", "[physical-model][leakage-inductance][!benchmark]") {
+TEST_CASE("Benchmarks leakage inductance calculation in planar", "[!benchmark]") {
     BENCHMARK_ADVANCED("measures computation time")(Catch::Benchmark::Chronometer meter) {
 
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "leakage_inductance_planar.json");

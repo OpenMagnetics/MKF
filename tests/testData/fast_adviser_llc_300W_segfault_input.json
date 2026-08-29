@@ -1,0 +1,26 @@
+{
+  "topology": "llc",
+  "converter": {
+    "inputVoltage": {
+      "minimum": 380.0,
+      "maximum": 420.0
+    },
+    "minSwitchingFrequency": 80000.0,
+    "maxSwitchingFrequency": 250000.0,
+    "inductanceRatio": 5.0,
+    "efficiency": 0.96,
+    "operatingPoints": [
+      {
+        "ambientTemperature": 25.0,
+        "outputVoltages": [
+          12.0
+        ],
+        "outputCurrents": [
+          25.0
+        ],
+        "switchingFrequency": 150000.0
+      }
+    ]
+  },
+  "note": "process_converter segfaults with use_ngspice=False"
+}

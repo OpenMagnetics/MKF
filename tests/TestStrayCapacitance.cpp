@@ -327,7 +327,7 @@ TEST_CASE("Calculate capacitance among three windings each with 8 turns and 1 pa
 //     }
 // }
 
-TEST_CASE("Benchmakrs stray capacitance calculation", "[physical-model][stray-capacitance][!benchmark]") {
+TEST_CASE("Benchmakrs stray capacitance calculation", "[!benchmark]") {
     BENCHMARK_ADVANCED("measures computation time")(Catch::Benchmark::Chronometer meter) {
         std::vector<int64_t> numberTurns = {110, 110};
         std::vector<int64_t> numberParallels = {1, 1};

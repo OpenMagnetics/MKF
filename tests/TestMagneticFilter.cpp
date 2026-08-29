@@ -876,7 +876,7 @@ TEST_CASE("MagneticFilter factory requires Inputs for CORE_DC_AND_SKIN_LOSSES",
 // Tiered datasets: 10 / 100 / full (~4800 cores after parse-skips).
 
 TEST_CASE("Benchmark MagneticFilter SATURATION (10 cores)",
-          "[magnetic-filter][!benchmark][benchmark-saturation]") {
+          "[!benchmark][benchmark-saturation]") {
     settings.reset();
     auto inputs = make_reference_inputs();
     auto cores = load_test_cores(10);
@@ -904,7 +904,7 @@ TEST_CASE("Benchmark MagneticFilter SATURATION (10 cores)",
 }
 
 TEST_CASE("Benchmark MagneticFilter CORE_AND_DC_LOSSES (100 cores)",
-          "[magnetic-filter][!benchmark][benchmark-core-and-dc-losses]") {
+          "[!benchmark][benchmark-core-and-dc-losses]") {
     settings.reset();
     auto inputs = make_reference_inputs();
     auto cores = load_test_cores(100);
@@ -927,7 +927,7 @@ TEST_CASE("Benchmark MagneticFilter CORE_AND_DC_LOSSES (100 cores)",
 }
 
 TEST_CASE("Benchmark MagneticFilter AREA_PRODUCT (full DB)",
-          "[magnetic-filter][!benchmark][benchmark-area-product]") {
+          "[!benchmark][benchmark-area-product]") {
     settings.reset();
     auto inputs = make_reference_inputs();
     auto cores = load_test_cores();

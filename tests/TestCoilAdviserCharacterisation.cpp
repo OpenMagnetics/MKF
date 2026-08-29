@@ -216,7 +216,7 @@ TEST_CASE("CoilAdviser flyback 2-winding top-3 structural snapshot",
 //
 
 TEST_CASE("Benchmark CoilAdviser flyback 2-winding (top-3)",
-          "[adviser][coil-adviser][!benchmark][benchmark-coil-adviser]") {
+          "[!benchmark][benchmark-coil-adviser]") {
     settings.reset();
     settings.set_coil_allow_margin_tape(false);
     settings.set_coil_allow_insulated_wire(true);

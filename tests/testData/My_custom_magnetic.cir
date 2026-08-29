@@ -1,0 +1,23 @@
+* Magnetic model made with OpenMagnetics
+* My custom magnetic
+
+.subckt My_custom_magnetic P1+ P1-
+Lladder1_0 P1+ Node_Lladder_1_0 0.000000149828
+Rladder1_0 Node_Lladder_1_0 Node_R_Lmag_1 2.182116090970
+Lladder1_2 P1+ Node_Lladder_1_2 0.000026980704
+Rladder1_2 Node_Lladder_1_2 Node_Lladder_1_0 0.128758057998
+Lladder1_4 P1+ Node_Lladder_1_4 0.000000030528
+Rladder1_4 Node_Lladder_1_4 Node_Lladder_1_2 1.987893911994
+Lladder1_6 P1+ Node_Lladder_1_6 0.000000003596
+Rladder1_6 Node_Lladder_1_6 Node_Lladder_1_4 0.106848144023
+Lladder1_8 P1+ Node_Lladder_1_8 0.000285862223
+Rladder1_8 Node_Lladder_1_8 Node_Lladder_1_6 0.099723822777
+Rdc1 P1+ Node_R_Lmag_1 {Rdc_1_Value}
+Lmag_1 P1- Node_R_Lmag_1 {NumberTurns_1**2*Permeance}
+
+.param MagnetizingInductance_Value=0.000110
+.param Permeance=MagnetizingInductance_Value/NumberTurns_1**2
+.param Rdc_1_Value=0.045715
+.param NumberTurns_1=17
+
+.ends My_custom_magnetic

@@ -249,7 +249,7 @@ TEST_CASE("MagneticAdviser 3-winding end-to-end top-3 snapshot",
 //
 
 TEST_CASE("Benchmark MagneticAdviser 3-winding end-to-end (top-3)",
-          "[adviser][magnetic-adviser][!benchmark][benchmark-magnetic-adviser]") {
+          "[!benchmark][benchmark-magnetic-adviser]") {
     settings.reset();
     settings.set_coil_allow_margin_tape(true);
     settings.set_coil_allow_insulated_wire(false);

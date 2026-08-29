@@ -252,7 +252,7 @@ TEST_CASE("CoreCrossReferencer powder reference top-5 snapshot",
 //
 
 TEST_CASE("Benchmark CoreCrossReferencer default ferrite (top-50)",
-          "[adviser][core-cross-referencer][!benchmark][benchmark-core-xref]") {
+          "[!benchmark][benchmark-core-xref]") {
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
     clear_databases();
@@ -267,7 +267,7 @@ TEST_CASE("Benchmark CoreCrossReferencer default ferrite (top-50)",
 }
 
 TEST_CASE("Benchmark CoreCrossReferencer powder (top-50)",
-          "[adviser][core-cross-referencer][!benchmark][benchmark-core-xref-powder]") {
+          "[!benchmark][benchmark-core-xref-powder]") {
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
     clear_databases();

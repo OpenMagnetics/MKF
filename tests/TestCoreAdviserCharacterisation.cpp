@@ -394,7 +394,7 @@ TEST_CASE("CoreAdviser AVAILABLE_CORES x INTERFERENCE_SUPPRESSION top-3 snapshot
 //
 
 TEST_CASE("Benchmark CoreAdviser AVAILABLE_CORES x POWER (full DB, top-50)",
-          "[adviser][core-adviser][!benchmark][benchmark-available-power]") {
+          "[!benchmark][benchmark-available-power]") {
     clear_databases();
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
@@ -415,7 +415,7 @@ TEST_CASE("Benchmark CoreAdviser AVAILABLE_CORES x POWER (full DB, top-50)",
 }
 
 TEST_CASE("Benchmark CoreAdviser STANDARD_CORES x POWER (top-50)",
-          "[adviser][core-adviser][!benchmark][benchmark-standard-power]") {
+          "[!benchmark][benchmark-standard-power]") {
     clear_databases();
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
@@ -435,7 +435,7 @@ TEST_CASE("Benchmark CoreAdviser STANDARD_CORES x POWER (top-50)",
 }
 
 TEST_CASE("Benchmark CoreAdviser AVAILABLE_CORES x INTERFERENCE_SUPPRESSION (full DB, top-10)",
-          "[adviser][core-adviser][!benchmark][benchmark-available-interference]") {
+          "[!benchmark][benchmark-available-interference]") {
     clear_databases();
     settings.reset();
     settings.set_use_concentric_cores(false);
