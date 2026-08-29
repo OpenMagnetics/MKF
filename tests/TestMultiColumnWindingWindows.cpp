@@ -5,6 +5,8 @@
 #include "json.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
+#include <source_location>
 #include <fstream>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -698,7 +700,12 @@ TEST_CASE("WoundWith_WebFixtureMultiWindowBobbin", "[constructive-model][coil][m
     settings.set_coil_wind_even_if_not_fit(true);
     settings.set_coil_delimit_and_compact(true);
     settings.set_coil_include_additional_coordinates(true);
-    std::ifstream fixtureFile("/home/alf/OpenMagnetics/WebFrontend/tests/fixtures/multicolumn_e42_transformer.json");
+    // ABT #929: was an absolute path into a WebFrontend checkout, so this MKF test only ran on
+    // one machine and silently depended on a sibling repo existing. MKF ships the same fixture in
+    // its own testData (both copies corrected together in ABT #925); read ours.
+    auto fixturePath = std::filesystem::path{std::source_location::current().file_name()}
+                           .parent_path().append("testData").append("multicolumn_e42_transformer.json");
+    std::ifstream fixtureFile(fixturePath);
     REQUIRE(fixtureFile.is_open());
     json fixture = json::parse(fixtureFile);
     json coilJson = fixture["magnetic"]["coil"];
