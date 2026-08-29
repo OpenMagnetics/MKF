@@ -13673,6 +13673,78 @@ TEST_CASE("Test_Core_Window_Winding_Order_Reaches_Autocompleted_Bobbin",
 // concentric winder must land every turn's centre inside the annulus with at least a wire
 // radius of clearance to the post, the cavity wall, and both plates. Guards the reconstruction
 // contract: cavity dims + N x wire must be mutually consistent for a faithful molded record.
+// ABT #930: a wind that produces no turns must say WHY. Reported from the field as "Turns not
+// created" on a 2.5 x 2.0 x 1.0 mm moulded body (183 WE-PMI records blocked), diagnosed as a
+// broken winder. It was not: the reporter's F = 0.50 / E = 0.70 leaves a (E-F)/2 = 0.10 mm radial
+// annulus, and the printed conductor is 0.36 mm wide, so MKF was correctly refusing an impossible
+// geometry — it just never said so, and wind()'s bool is discarded by magnetic_autocomplete. Pin
+// both halves: the refusal still happens, and it now names the conductor, the window and the gap.
+TEST_CASE("Test_Molded_Small_Body_Refusal_Names_The_Reason", "[constructive-model][coil][molded][abt930]") {
+    settings.reset();
+    auto build = [](double postF, double cavityE, int64_t turns, double wireWidth) {
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+            {"aliases", json::array()}, {"name", "PMI-like 2520"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0025}}}, {"B", {{"nominal", 0.0010}}}, {"C", {{"nominal", 0.0020}}},
+                {"D", {{"nominal", 0.0007}}}, {"E", {{"nominal", cavityE}}}, {"F", {{"nominal", postF}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", "Kool Mµ 26"}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        OpenMagnetics::Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        json wireJson = {
+            {"type", "rectangular"}, {"material", "copper"}, {"name", "printed"},
+            {"conductingWidth", {{"nominal", wireWidth}}}, {"conductingHeight", {{"nominal", 0.000025}}},
+            {"outerWidth", {{"nominal", wireWidth}}}, {"outerHeight", {{"nominal", 0.000025}}},
+            {"numberConductors", 1}};
+        json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = json::array();
+        json winding;
+        winding["name"] = "winding 0";
+        winding["numberTurns"] = turns;
+        winding["numberParallels"] = 1;
+        winding["isolationSide"] = "primary";
+        winding["wire"] = wireJson;
+        coilJson["functionalDescription"].push_back(winding);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+        return OpenMagnetics::magnetic_autocomplete(magnetic).get_coil();
+    };
+
+    SECTION("a conductor wider than the annulus is refused, and the refusal names the numbers") {
+        // 0.36 mm conductor into (0.70 - 0.50)/2 = 0.10 mm of annulus.
+        auto coil = build(0.00050, 0.00070, 5, 0.00036);
+        REQUIRE_FALSE(coil.get_turns_description().has_value());
+        auto reason = coil.get_last_fit_failure();
+        UNSCOPED_INFO("reason: " << reason);
+        REQUIRE_FALSE(reason.empty());
+        CHECK(reason.find("winding 0") != std::string::npos);
+        CHECK(reason.find("0.360") != std::string::npos);   // the conductor
+        CHECK(reason.find("0.100") != std::string::npos);   // the window it will not fit
+    }
+
+    SECTION("turn count is not the lever: one turn fails identically") {
+        auto coil = build(0.00050, 0.00070, 1, 0.00036);
+        REQUIRE_FALSE(coil.get_turns_description().has_value());
+        CHECK_FALSE(coil.get_last_fit_failure().empty());
+    }
+
+    SECTION("widen the annulus and the same part winds") {
+        // (0.80 - 0.30)/2 = 0.25 mm of annulus for a 0.10 mm conductor.
+        auto coil = build(0.00030, 0.00080, 5, 0.00010);
+        REQUIRE(coil.get_turns_description().has_value());
+        CHECK(coil.get_turns_description()->size() == 5);
+        CHECK(coil.get_last_fit_failure().empty());
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Molded_Cavity_Turn_Placement", "[constructive-model][coil][molded]") {
     settings.reset();
     json shapeJson = {

@@ -1,3 +1,5 @@
+#include <iomanip>
+#include <sstream>
 #include <cmath>
 #include "constructive_models/MasMigration.h"
 #include <algorithm>
@@ -4372,6 +4374,78 @@ std::vector<size_t> Coil::extract_stack_up(std::vector<Section> sections) {
     return stackUp;
 }
 
+// ABT #930: name why a wind produced no turns. The dominant physical cause at small scale is a
+// conductor that simply does not fit the winding window — reported from the field as "Turns not
+// created" on a 2.5 x 2.0 x 1.0 mm moulded body, where a 0.36 mm printed conductor was being asked
+// into the 0.10 mm radial annulus between a 0.50 mm post and a 0.70 mm cavity. MKF was right to
+// refuse; it just never said so, and the refusal read as a broken winder. Compare each winding's
+// wire against the window and record the first hard mismatch, with the numbers.
+void Coil::diagnose_empty_wind() {
+    if (!_lastFitFailure.empty()) {
+        return;  // something more specific already claimed the failure
+    }
+    try {
+        if (!std::holds_alternative<Bobbin>(get_bobbin())) {
+            return;
+        }
+        auto bobbin = std::get<Bobbin>(get_bobbin());
+        if (!bobbin.get_processed_description()) {
+            return;
+        }
+        auto windingWindows = bobbin.get_processed_description()->get_winding_windows();
+        if (windingWindows.empty()) {
+            return;
+        }
+        auto wires = get_wires();
+        for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+            if (windingIndex >= wires.size()) {
+                break;
+            }
+            double wireWidth = wires[windingIndex].get_maximum_outer_width();
+            double wireHeight = wires[windingIndex].get_maximum_outer_height();
+            std::optional<double> windowWidth;
+            std::optional<double> windowHeight;
+            if (windingWindows[0].get_radial_height()) {
+                // Round window (pot, moulded, toroidal bore): the radial height IS the annulus
+                // a turn has to sit in, post surface to cavity wall.
+                windowWidth = windingWindows[0].get_radial_height().value();
+            }
+            else {
+                if (windingWindows[0].get_width()) {
+                    windowWidth = windingWindows[0].get_width().value();
+                }
+                if (windingWindows[0].get_height()) {
+                    windowHeight = windingWindows[0].get_height().value();
+                }
+            }
+            auto mm = [](double metres) {
+                std::ostringstream out;
+                out << std::fixed << std::setprecision(3) << metres * 1000;
+                return out.str();
+            };
+            if (windowWidth && wireWidth > windowWidth.value()) {
+                _lastFitFailure =
+                    "winding '" + get_functional_description()[windingIndex].get_name() + "' cannot be wound: its "
+                    "conductor is " + mm(wireWidth) + " mm wide but the winding window is only " +
+                    mm(windowWidth.value()) + " mm across, so not one turn fits. The conductor, the window, or the "
+                    "core geometry has to change — no turn count will make this wind.";
+                return;
+            }
+            if (windowHeight && wireHeight > windowHeight.value()) {
+                _lastFitFailure =
+                    "winding '" + get_functional_description()[windingIndex].get_name() + "' cannot be wound: its "
+                    "conductor is " + mm(wireHeight) + " mm tall but the winding window is only " +
+                    mm(windowHeight.value()) + " mm high, so not one turn fits.";
+                return;
+            }
+        }
+    }
+    catch (const std::exception&) {
+        // Diagnosis must never become the failure. A coil too incomplete to measure simply
+        // keeps the generic message.
+    }
+}
+
 bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     // ABT #850: a failed wind must not poison the coil. The ABT #676 margin recovery
     // below loads persisted section margins into TRANSIENT members
@@ -4389,6 +4463,13 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     bool explicitlyClearedSnapshot = _marginsExplicitlyCleared;
     bool ok = wind_inner(proportionPerWinding, pattern, repetitions);
     if (!ok && !get_turns_description()) {
+        // ABT #930: a wind that produces NO turns at all is the one failure the caller cannot
+        // diagnose from the result — there is nothing to inspect. wind()'s bool is discarded by
+        // magnetic_autocomplete (and by the Impedance / StrayCapacitance scoring paths), so the
+        // reason has to be recorded HERE, where the geometry is still in hand, or it is lost and
+        // the caller is left with a bare "no turns". Costs nothing on the hot path: it runs only
+        // when the wind produced nothing.
+        diagnose_empty_wind();
         _marginsPerSection = marginsSnapshot;
         _recoveredMarginWindings = recoveredWindingsSnapshot;
         _recoveredMarginPerWinding = recoveredPerWindingSnapshot;

@@ -887,13 +887,20 @@ class Coil : public MAS::Coil {
         // loses real-winding blocking can say WHY instead of just not doing it. Diagnostic text
         // only — never a control input.
         std::string _lastFitFailure;
+        // ABT #930: fills _lastFitFailure when a wind produced no turns at all.
+        void diagnose_empty_wind();
         std::vector<Turn> get_turns_touching_bobbin_column();
         std::vector<Turn> get_turns_touching_bobbin_walls();
         std::vector<Turn> get_turns_touching_bobbin_column(std::vector<Turn> turns);
         std::vector<Turn> get_turns_touching_bobbin_walls(std::vector<Turn> turns);
         std::vector<Turn> get_turns_touching_bobbin_column(std::vector<size_t> turnIndexes);
         std::vector<Turn> get_turns_touching_bobbin_walls(std::vector<size_t> turnIndexes);
-                                               
+
+        // ABT #930: why the last wind failed to fit, in words, for callers that discard wind()'s
+        // bool (magnetic_autocomplete, the Impedance / StrayCapacitance scoring paths). Empty when
+        // the last wind succeeded or the reason could not be determined. Diagnostic only.
+        const std::string& get_last_fit_failure() const { return _lastFitFailure; }
+
 };
 }
 namespace OpenMagnetics {

@@ -3064,6 +3064,20 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
         }
     }
 
+    // ABT #930: autocompleting ONE magnetic and getting a coil with no turns back, silently, is
+    // how "Turns not created" reached a reporter with no way to tell a broken winder from a
+    // conductor that cannot fit its window. Deliberately a loud warning and not a throw: the
+    // per-candidate wind() callers (CoilAdviser, Impedance, StrayCapacitance) legitimately cull
+    // on a failed wind, and a throw here would turn their culls into aborts.
+    if (!magnetic.get_mutable_coil().get_turns_description()) {
+        const auto& reason = magnetic.get_mutable_coil().get_last_fit_failure();
+        OM_WARNING_M("Utils", "Autocomplete produced no turns for this magnetic"
+                              + (reason.empty()
+                                 ? std::string(": the winding does not fit its window, and the reason could not "
+                                               "be narrowed further.")
+                                 : ". " + reason));
+    }
+
     if (magnetic.get_mutable_coil().get_layers_description()) {
         auto layers = magnetic.get_mutable_coil().get_layers_description().value();
         for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
