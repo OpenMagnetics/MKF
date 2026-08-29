@@ -457,9 +457,44 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         magneticsWithScoring = *magnetics;
         magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
         magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+
+        // ABT #926: bound the retry BY SIZE, which is the thing it is actually looking for.
+        //
+        // Removing the cull entirely (what this did before) sent every surviving candidate —
+        // 8332 of them on the reported case — through add_initial_turns_by_inductance and the
+        // saturation filter, at ~44 ms each: 6 min 10 s of a 6 min 49 s call, 90 % of the whole
+        // thing. Re-instating the NORMAL cull is not the answer either, because that keeps the
+        // top-N by SCORE and the score favours small, cheap cores — exactly the ones already
+        // rejected, and the reason this retry exists.
+        //
+        // So cull on the retry's own criterion instead. The comment above states it and the
+        // classic area-product iteration (McLyman) is the same rule: try the NEXT LARGER core.
+        // Keeping the largest candidates preserves every core this pass could plausibly return
+        // — a core that fails saturation does so because it is too small — while bounding the
+        // work. Parallelising was the other candidate fix and is a dead end for users: the
+        // engine ships to the browser as WASM built without pthreads, so threads would speed up
+        // the CLI and leave the 6-minute wait exactly where the users are.
+        const size_t retryCap = std::max<size_t>(maximumMagneticsAfterFiltering * 4, 1000);
+        if (magneticsWithScoring.size() > retryCap) {
+            const size_t before = magneticsWithScoring.size();
+            std::stable_sort(magneticsWithScoring.begin(), magneticsWithScoring.end(),
+                             [](const std::pair<Magnetic, double>& left,
+                                const std::pair<Magnetic, double>& right) {
+                                 return left.first.get_core().get_effective_area() >
+                                        right.first.get_core().get_effective_area();
+                             });
+            magneticsWithScoring.resize(retryCap);
+            // Hand the rest of the pipeline the score order it expects; only the MEMBERSHIP of
+            // the pool was decided by size.
+            sort_magnetics_by_scoring(&magneticsWithScoring);
+            logEntry("Retry pool culled from " + std::to_string(before) + " to " +
+                     std::to_string(retryCap) + " candidates, largest cores kept (the retry is "
+                     "looking for a bigger core, so the smallest cannot answer it).", "CoreAdviser");
+        }
+
         add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
         magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-        log_stage("retry Saturation (no pruning)", magneticsWithScoring.size());
+        log_stage("retry Saturation (size-bounded)", magneticsWithScoring.size());
 
         // Stage 2: still nothing — relax the saturation MARGIN to 1.0 (still
         // physically non-saturating, just without the production headroom) and
