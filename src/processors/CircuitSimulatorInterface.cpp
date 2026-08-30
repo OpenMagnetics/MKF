@@ -17,6 +17,8 @@
 #include "physical_models/CoreLosses.h"
 #include "physical_models/InitialPermeability.h"
 #include "physical_models/StrayCapacitance.h"
+#include <cmath>
+#include <numbers>
 
 namespace OpenMagnetics {
 
@@ -1716,14 +1718,46 @@ std::string emit_mutual_resistance_behavioural_spice(
 // Stray/parasitic capacitance network (positive 3-capacitor / pi-model). Shared verbatim by the
 // ngspice and LTspice exporters — the caps are plain `C…` terminal elements with identical syntax
 // in both. See the header for the model rationale.
-std::string emit_stray_capacitance_spice(const Coil& coil, size_t numWindings) {
+std::string emit_stray_capacitance_spice(const Coil& coil, const Core& core,
+                                         double magnetizingInductance, size_t numWindings) {
     auto& settings = Settings::GetInstance();
     if (!settings.get_circuit_simulator_include_stray_capacitance() || !coil.get_turns_description()) {
         return "";
     }
-    auto capAmongWindings = StrayCapacitance().calculate_capacitance(coil).get_capacitance_among_windings();
+    // ABT #948: the core is part of the winding's SELF capacitance, not just of the
+    // inter-winding path. Every turn faces the ferrite across its own enamel and whatever gap
+    // the coil geometry gives it; the core is a floating conductor that couples all of them
+    // (StrayCapacitance::calculate_winding_to_core_self_energy). Omitting it left the exported
+    // netlist with the turn-to-turn chain alone, which is ~C_tt/(N-1) -- a term that SHRINKS
+    // with turn count where the measured self-capacitance grows with it. See the header.
+    StrayCapacitance strayCapacitanceModel;
+    auto capAmongWindings = strayCapacitanceModel.calculate_capacitance(coil, core).get_capacitance_among_windings();
     if (!capAmongWindings) {
         return "";
+    }
+    // Second pass at the self-resonance the first pass implies, so the core image factor reads
+    // the core material's permittivity where the capacitance actually acts (identical in intent
+    // to Impedance::calculate_self_resonant_frequency's refine; here the real gapped magnetizing
+    // inductance is already in hand, so it is used directly instead of the air-cored estimate).
+    // The factor is slow in frequency, so one refinement is enough; a non-finite or non-positive
+    // estimate simply leaves the first pass (image factor 1) in place.
+    if (magnetizingInductance > 0 && !coil.get_functional_description().empty()) {
+        const std::string& firstWindingName = coil.get_functional_description()[0].get_name();
+        const auto& firstPass = capAmongWindings.value();
+        if (firstPass.contains(firstWindingName) && firstPass.at(firstWindingName).contains(firstWindingName)) {
+            double firstPassSelfCapacitance = firstPass.at(firstWindingName).at(firstWindingName);
+            if (std::isfinite(firstPassSelfCapacitance) && firstPassSelfCapacitance > 0) {
+                double resonanceEstimate = 1.0 / (2.0 * std::numbers::pi *
+                    std::sqrt(magnetizingInductance * firstPassSelfCapacitance));
+                if (std::isfinite(resonanceEstimate) && resonanceEstimate > 0) {
+                    auto refined = strayCapacitanceModel.calculate_capacitance(coil, core, resonanceEstimate)
+                                       .get_capacitance_among_windings();
+                    if (refined) {
+                        capAmongWindings = refined;
+                    }
+                }
+            }
+        }
     }
     const auto& capMap = capAmongWindings.value();
     const auto& fd = coil.get_functional_description();

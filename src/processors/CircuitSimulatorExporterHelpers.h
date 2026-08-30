@@ -82,6 +82,18 @@ std::string emit_gse_core_loss_spice(
 // is shared verbatim by the ngspice and LTspice exporters. Gated by
 // circuit_simulator_include_stray_capacitance and only emitted when the coil is wound (turns
 // description present); returns "" otherwise.
-std::string emit_stray_capacitance_spice(const Coil& coil, size_t numWindings);
+//
+// ABT #948: the CORE is required, not optional. StrayCapacitance's self term is the turn-to-turn
+// CHAIN plus the turns' energy against the floating core, and the second half is only computed
+// when a core is supplied (StrayCapacitance::calculate_winding_to_core_self_energy, ABT #848).
+// This emitter used to call calculate_capacitance(coil) with no core, so every exported subcircuit
+// carried the chain alone -- which shrinks as 1/(N-1) while the real term grows with N. Measured
+// against RedExpert's equivalent-circuit Cp for 1884 shipped Wurth inductors, eight independent
+// wound-round-wire drum families all sat at Cp_model/Cp_measured = 0.09-0.14: one missing term,
+// not scatter. magnetizingInductance is used only to place the second pass' core image factor at
+// the self-resonance the first pass implies (the same two-pass Impedance does); it never enters
+// the capacitance itself.
+std::string emit_stray_capacitance_spice(const Coil& coil, const Core& core,
+                                         double magnetizingInductance, size_t numWindings);
 
 } // namespace OpenMagnetics

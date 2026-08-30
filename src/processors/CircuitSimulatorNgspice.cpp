@@ -370,7 +370,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     // add no convergence risk and behave identically in AC and transient; being terminal-
     // referenced they need no core/ground pin. Gated (default off) like the saturation and
     // mutual-resistance terms; only wired when the coil is wound.
-    circuitString += emit_stray_capacitance_spice(coil, numWindings);
+    circuitString += emit_stray_capacitance_spice(coil, magnetic.get_core(), magnetizingInductance, numWindings);
 
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
 }
