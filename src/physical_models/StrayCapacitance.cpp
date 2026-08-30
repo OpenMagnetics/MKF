@@ -947,15 +947,62 @@ std::vector<double> StrayCapacitanceParallelPlateModel::preprocess_data_for_plan
 
     distanceBetweenTurns = roundFloat(distanceBetweenTurns, 6);
 
-    double distanceThroughLayers = distanceBetweenTurns;
-
-    std::vector<double> distancesThroughLayers;
-    std::vector<double> relativePermittivityLayers;
-
+    // ABT #948: the dielectric between the two CONDUCTING surfaces is a SERIES STACK, and
+    // what fills the middle of it is not the same substance for every flat conductor.
+    //
+    // distanceBetweenTurns above is measured conductor-surface to conductor-surface, so it
+    // already contains both wires' coatings plus whatever separates them. This function used to
+    // hand that whole distance to the parallel-plate formula with the permittivity of FR4 —
+    // i.e. it asserted that the entire conductor-to-conductor gap of every flat winding is
+    // board laminate. For a PCB trace that is true, and nothing below changes it. For a WOUND
+    // rectangular or foil conductor it is not: the stack is the wire's own enamel, then air,
+    // then the other wire's enamel, and calling the air FR4 multiplies the pair capacitance by
+    // up to eps_FR4 (~4.4x when the turns are spaced, ~1.3x when they are close-wound). That is
+    // the sign and the size of the error the flat-wire families show against measurement
+    // (IndHCF 3.2x, IndHCFT 9.3x, IndHCI 1.9x HIGH, where every round-wire family is LOW).
+    //
+    // The stack is series, so it reduces exactly: with t_i of relative permittivity eps_i,
+    //     C = eps0 * A / sum(t_i / eps_i),
+    // which the parallel-plate call below reproduces as eps0 * eps_eff * A / d with the same d
+    // and eps_eff = d / sum(t_i / eps_i). get_effective_relative_permittivity is that reduction
+    // for two layers at a time, the same idiom the round-wire preprocess uses.
+    //
+    // Assumptions, stated: (1) the field crosses the layers normally (exact in the
+    // parallel-plate limit the model is already committed to); (2) an inter-turn space that no
+    // coating and no insulation layer accounts for is AIR for a wound conductor and BOARD
+    // DIELECTRIC for a planar one — a PCB trace is embedded in laminate, a wound wire is not.
     auto coatingInsulationMaterial = find_insulation_material_by_name(defaults.defaultPcbInsulationMaterial);
     if (!coatingInsulationMaterial.get_relative_permittivity())
         throw InvalidInputException(ErrorCode::INVALID_INSULATION_DATA, "FR4 insulation material is missing dielectric constant");
-    double effectiveRelativePermittivityLayers = coatingInsulationMaterial.get_relative_permittivity().value();
+    double boardRelativePermittivity = coatingInsulationMaterial.get_relative_permittivity().value();
+
+    bool eitherWireIsPlanar = firstWire.get_type() == WireType::PLANAR || secondWire.get_type() == WireType::PLANAR;
+    double fillRelativePermittivity = eitherWireIsPlanar ? boardRelativePermittivity : 1.0;
+
+    double firstCoatingThickness = firstWire.get_coating_thickness();
+    double secondCoatingThickness = secondWire.get_coating_thickness();
+    double firstCoatingRelativePermittivity = get_wire_insulation_relative_permittivity(firstWire);
+    double secondCoatingRelativePermittivity = get_wire_insulation_relative_permittivity(secondWire);
+    // The coatings cannot be thicker than the gap they sit in (a turn pair whose separation the
+    // winder rounded below the sum of the two coatings); scale them down together rather than
+    // letting the fill thickness go negative.
+    double totalCoatingThickness = firstCoatingThickness + secondCoatingThickness;
+    if (distanceBetweenTurns > 0 && totalCoatingThickness > distanceBetweenTurns && totalCoatingThickness > 0) {
+        double shrink = distanceBetweenTurns / totalCoatingThickness;
+        firstCoatingThickness *= shrink;
+        secondCoatingThickness *= shrink;
+        totalCoatingThickness = distanceBetweenTurns;
+    }
+    double fillThickness = std::max(0.0, distanceBetweenTurns - totalCoatingThickness);
+
+    double effectiveRelativePermittivityLayers = get_effective_relative_permittivity(
+        firstCoatingThickness, firstCoatingRelativePermittivity,
+        secondCoatingThickness, secondCoatingRelativePermittivity);
+    effectiveRelativePermittivityLayers = get_effective_relative_permittivity(
+        totalCoatingThickness, effectiveRelativePermittivityLayers,
+        fillThickness, fillRelativePermittivity);
+
+    double distanceThroughLayers = distanceBetweenTurns;
 
     auto averageTurnLength = (firstTurn.get_length() + secondTurn.get_length()) / 2;
 
@@ -1610,11 +1657,34 @@ double StrayCapacitance::core_image_factor(const Core& core, double frequency) {
     else if (!material.get_resistivity().empty() && frequency > 0) {
         // Conduction only (metallic ribbon cores, or a ferrite whose permittivity the database
         // does not carry but whose resistivity it does): eps'' = 1 / (omega eps0 rho).
+        //
+        // ABT #948: this branch knows eps'' and NOT eps', so it bounds |eps_core| FROM BELOW —
+        // |eps_core| = hypot(eps', eps'') >= eps''. Treating the unknown eps' as ZERO is not a
+        // neutral choice: it asserts the core is less polarisable than vacuum, which no material
+        // is (NiZn ferrites sit at eps' ~ 15-100, MnZn at 1e4-1e5). For a CONDUCTOR the lower
+        // bound is decisive — a nanocrystalline ribbon at rho ~ 1e-6 Ohm.m gives eps'' ~ 1e10, so
+        // beta = 1 whatever eps' is — which is the case this branch was written for. For an
+        // INSULATING grade it is not: rho = 1e6 Ohm.m gives eps'' ~ 2e-4 at 10 MHz, and the
+        // formula then returned beta = 0, silently deleting the entire floating-core term. That
+        // is what it did to the shipped Wurth catalogue: N5D/F5H/F6D/F4D/FB301 all carry
+        // resistivity >= 1e6 Ohm.m and no permittivity record, and the exported self-capacitance
+        // of IndPD/IndTPC/IndTI/IndLQS/IndLQFS did not move at all when the core term was wired
+        // in, while the low-resistivity grades (N2J 6.5, M6D 1e3) moved by 5-10x.
+        //
+        // So the branch is used only where it decides the question: when the conduction term
+        // alone already exceeds the external dielectric. Below that it establishes nothing about
+        // eps' and the state is the documented NO-DATA case handled below (the core is the
+        // electrode), not a measurement of "does not image". A grade whose real eps' matters is
+        // a grade whose permittivity belongs in MAS — that remains the proper fix, and the
+        // permittivity branch above uses it the moment it is there.
         auto resistivity = material.get_resistivity()[0];
         double rho = resistivity.get_value();
         if (rho > 0) {
-            epsImag = 1.0 / (omega * vacuumPermittivity * rho);
-            haveData = true;
+            double conductionPermittivity = 1.0 / (omega * vacuumPermittivity * rho);
+            if (conductionPermittivity > epsExternal) {
+                epsImag = conductionPermittivity;
+                haveData = true;
+            }
         }
     }
     if (!haveData) {
@@ -1638,34 +1708,122 @@ double StrayCapacitance::core_image_factor(const Core& core, double frequency) {
 // and documented rather than invented). A bare conductor at zero gap is then only ever asked
 // for when it really is in contact, and calculate_turn_to_core_capacitance refuses it as the
 // short it is.
-static double turn_to_core_air_gap(Coil& coil, const Turn& turn, double conductingRadius) {
+static std::vector<double> turn_to_core_air_gaps(Coil& coil, const Turn& turn, Wire wire) {
+    double conductingRadius = turn_to_core_equivalent_radius(wire);
     auto bobbin = coil.resolve_bobbin();
     if (!bobbin.get_processed_description()) {
-        return 0.0;
+        return {0.0};
     }
     auto processed = bobbin.get_processed_description().value();
     auto windows = processed.get_winding_windows();
     if (windows.empty()) {
-        return 0.0;
+        return {0.0};
     }
     auto coordinates = turn.get_coordinates();
     if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
         // Bore radius of the surface the first layer rests on; the turn's radius from the axis.
+        // Left exactly as ABT #848 validated it against 107 measured WE common-mode chokes: one
+        // face, measured from the CONDUCTING surface. No toroid measurement is in scope here.
         if (!windows[0].get_radial_height()) {
-            return 0.0;
+            return {0.0};
         }
         double boreRadius = windows[0].get_radial_height().value();
         double turnRadius = std::hypot(coordinates[0], coordinates.size() > 1 ? coordinates[1] : 0.0);
-        return std::max(0.0, (boreRadius - conductingRadius) - turnRadius);
+        return {std::max(0.0, (boreRadius - conductingRadius) - turnRadius)};
     }
-    // Rectangular window: the ferrite column surface sits at column_width - column_thickness
-    // from the axis (column_width includes the bobbin wall), the turn's conductor surface at
-    // |x| - r.
-    if (!processed.get_column_width()) {
-        return 0.0;
+    // Rectangular window: the ferrite column surface sits one bobbin wall inside the radial
+    // INNER EDGE OF THE WINDING WINDOW, and the turn's conductor surface at |x| - r.
+    //
+    // ABT #948: the datum used to be column_width - column_thickness. Both are meant to name the
+    // same place (Bobbin.cpp sets column_width = column half-width + wall, so window inner edge
+    // == column_width for a bobbin MKF builds itself), but column_width is a HALF-width while
+    // nothing in the record forces a supplied bobbin to honour that, and catalogue bobbins reach
+    // this code carrying the column's full width there. When they do, the "ferrite surface" lands
+    // outside the whole winding window, every turn's gap goes negative, and the clamp below hands
+    // back 0 for ALL of them -- so an outer layer, a full wire diameter away from the ferrite, is
+    // told it is touching, and its turn-to-core element is inflated by the ratio of acosh terms
+    // (several-fold). Measured on the shipped Wurth catalogue: the multi-layer drum families were
+    // the ones that overshot after the core term was wired in, while single-layer families landed.
+    // The winding window's inner edge is the datum the WINDER itself places turns against, so
+    // deriving the ferrite surface from it cannot disagree with the turn coordinates. It is
+    // identical to the old expression for every bobbin MKF generates.
+    //
+    // ABT #948, second correction in this branch: the gap returned here is the AIR in the stack,
+    // and calculate_turn_to_core_capacitance adds the wire coating to it as a separate series
+    // layer (t_coating / eps_coating). Measuring from the CONDUCTING surface therefore hands back
+    // the coating a second time, as if it were air: a turn resting on the ferrite reports a gap
+    // of one coating thickness instead of zero, and its air-equivalent stack becomes
+    // t/eps + t instead of t/eps -- a factor of (1 + eps) too thick, which for enamel is 4.5x and
+    // cost a factor of ~2 in the element. The insulation surface is the right boundary: outside
+    // it is air, inside it is the coating the callee already accounts for.
+    //
+    // The ROUND (toroid) branch above still measures from the conducting surface. That is not an
+    // oversight: its form is what the 107 measured WE common-mode chokes of ABT #848 were
+    // validated against, no toroid measurement is in scope here, and correcting a term in a
+    // branch this corpus cannot re-measure would be an unverified change. It is recorded in
+    // ABT #948 as the remaining inconsistency.
+    if (!windows[0].get_coordinates() || !windows[0].get_width()) {
+        return {0.0};
     }
-    double ferriteColumnSurface = processed.get_column_width().value() - processed.get_column_thickness();
-    return std::max(0.0, std::abs(coordinates[0]) - conductingRadius - ferriteColumnSurface);
+    double windowInnerEdge = windows[0].get_coordinates().value()[0] - windows[0].get_width().value() / 2;
+    double ferriteColumnSurface = windowInnerEdge - processed.get_column_thickness();
+    double turnInsulationSurface = std::abs(coordinates[0]) - wire.get_maximum_outer_width() / 2;
+    std::vector<double> gaps = {std::max(0.0, turnInsulationSurface - ferriteColumnSurface)};
+
+    // ABT #948, third correction: a turn faces the core on more than one side. A winding WINDOW
+    // is by definition the space the core encloses, and for a rectangular one the two AXIAL
+    // boundaries are core as surely as the radial-inner one is — the yoke of an E/EI/PQ/RM/pot
+    // core, the two flanges of a drum. The model counted only the central column, so every turn
+    // was missing the two nearest large ferrite surfaces above and below it, and the whole
+    // floating-core term came out low by the ratio of what was counted to what is there.
+    // Measured on the shipped Wurth catalogue with the real wound coordinates: summing the two
+    // axial faces multiplies the per-turn element by 1.3-1.8x across the drum families, and the
+    // deficit it closes is uniform in turn count (0.45-0.56 of measurement from N=1 to N=50),
+    // which is the signature of a missing SURFACE rather than a mis-scaled one.
+    //
+    // Each face is its own cylinder-over-plane element and they charge the same floating core
+    // node in parallel, so the caller sums them. The turn's full length faces each of them (a
+    // drum turn is a circle at a fixed axial height, so all of it sits at the same distance from
+    // a flange) — the same approximation the radial face already makes.
+    //
+    // wall_thickness is the bobbin plastic between the winding and the yoke, the axial
+    // counterpart of column_thickness, and is counted as air exactly as column_thickness is.
+    //
+    // NOT included, and recorded in ABT #948 as the remaining known face: the OUTER radial
+    // boundary. It is ferrite for a closed core (a shielded drum's ring, an E core's outer leg)
+    // and air for an open one, and nothing in the bobbin record distinguishes the two — the
+    // processed description carries a column_thickness and a wall_thickness but no outer wall.
+    // Inventing which one it is would be exactly the fabricated input this work refuses. The
+    // shielded families sitting lowest against measurement is the evidence that it is real.
+    if (windows[0].get_height() && windows[0].get_coordinates().value().size() > 1) {
+        double windowCentreY = windows[0].get_coordinates().value()[1];
+        double windowHalfHeight = windows[0].get_height().value() / 2;
+        double turnHalfHeight = wire.get_maximum_outer_height() / 2;
+        double wallThickness = processed.get_wall_thickness();
+        double upperFerriteSurface = windowCentreY + windowHalfHeight + wallThickness;
+        double lowerFerriteSurface = windowCentreY - windowHalfHeight - wallThickness;
+        gaps.push_back(std::max(0.0, upperFerriteSurface - (coordinates[1] + turnHalfHeight)));
+        gaps.push_back(std::max(0.0, (coordinates[1] - turnHalfHeight) - lowerFerriteSurface));
+    }
+    return gaps;
+}
+
+// One turn's total capacitance to the floating core: the parallel sum of its element against
+// every core surface bounding its winding window (ABT #948). Shared by the three callers so the
+// self, inter-winding and whole-winding paths cannot drift apart on which faces they count.
+static double turn_to_core_element(Coil& coil, const Turn& turn, Wire wire,
+                                   double coreCoatingThickness, double coreCoatingRelativePermittivity) {
+    double conductingRadius = turn_to_core_equivalent_radius(wire);
+    double wireCoatingThickness = wire.get_coating_thickness();
+    double wireCoatingRelativePermittivity = get_wire_insulation_relative_permittivity(wire);
+    double element = 0;
+    for (double airGapToCore : turn_to_core_air_gaps(coil, turn, wire)) {
+        element += StrayCapacitance::calculate_turn_to_core_capacitance(
+            conductingRadius, turn.get_length(),
+            wireCoatingThickness, wireCoatingRelativePermittivity,
+            airGapToCore, coreCoatingThickness, coreCoatingRelativePermittivity);
+    }
+    return element;
 }
 
 double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core core, std::string windingName, std::optional<double> frequency) {
@@ -1696,20 +1854,13 @@ double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core c
     // wires use their true radius; flat conductors use an area-equivalent radius
     // (see turn_to_core_equivalent_radius), so planar/foil/rectangular windings get a
     // finite through-core element instead of throwing.
-    double conductingRadius = turn_to_core_equivalent_radius(wire);
-    double wireCoatingThickness = wire.get_coating_thickness();
-    double wireCoatingRelativePermittivity = get_wire_insulation_relative_permittivity(wire);
-
     double windingToCore = 0;
     for (auto& turn : turns) {
         if (turn.get_winding() != windingName) {
             continue;
         }
-        windingToCore += imageFactor * calculate_turn_to_core_capacitance(
-            conductingRadius, turn.get_length(),
-            wireCoatingThickness, wireCoatingRelativePermittivity,
-            turn_to_core_air_gap(coil, turn, conductingRadius),
-            coreCoatingThickness, coreCoatingRelativePermittivity);
+        windingToCore += imageFactor * turn_to_core_element(
+            coil, turn, wire, coreCoatingThickness, coreCoatingRelativePermittivity);
     }
     return windingToCore;
 }
@@ -1759,11 +1910,8 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
         auto wire = wirePerWinding[coil.get_winding_index_by_name(windingName)];
         // Bare-conductor radius for the image solution; flat conductors
         // use an area-equivalent radius (see turn_to_core_equivalent_radius).
-        double capacitance = imageFactor * calculate_turn_to_core_capacitance(
-            turn_to_core_equivalent_radius(wire), turns[turnIndex].get_length(),
-            wire.get_coating_thickness(), get_wire_insulation_relative_permittivity(wire),
-            turn_to_core_air_gap(coil, turns[turnIndex], turn_to_core_equivalent_radius(wire)),
-            coreCoatingThickness, coreCoatingRelativePermittivity);
+        double capacitance = imageFactor * turn_to_core_element(
+            coil, turns[turnIndex], wire, coreCoatingThickness, coreCoatingRelativePermittivity);
         double potential = sign * voltagesPerTurn[turnIndex];
 
         turnCoreCapacitance.push_back(capacitance);
@@ -1825,11 +1973,8 @@ double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core c
             continue;
         }
         auto wire = wirePerWinding[coil.get_winding_index_by_name(windingName)];
-        double capacitance = imageFactor * calculate_turn_to_core_capacitance(
-            turn_to_core_equivalent_radius(wire), turns[turnIndex].get_length(),
-            wire.get_coating_thickness(), get_wire_insulation_relative_permittivity(wire),
-            turn_to_core_air_gap(coil, turns[turnIndex], turn_to_core_equivalent_radius(wire)),
-            coreCoatingThickness, coreCoatingRelativePermittivity);
+        double capacitance = imageFactor * turn_to_core_element(
+            coil, turns[turnIndex], wire, coreCoatingThickness, coreCoatingRelativePermittivity);
         turnCoreCapacitance.push_back(capacitance);
         turnPotential.push_back(voltagesPerTurn[turnIndex]);
         sumCV += capacitance * voltagesPerTurn[turnIndex];
