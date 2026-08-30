@@ -121,6 +121,96 @@ double MagnetizingInductance::calculate_open_core_magnetizing_inductance(Core co
     return sqrt(upperBound * lowerBound);
 }
 
+// ===================== ROD magnetizing inductance (open circuit), ABT #933 =====================
+// A bare cylinder has NO return limb: every line of flux that leaves one end travels back through
+// the surrounding air. The closed-circuit machinery (le/Ae over one mu) has nothing to describe
+// here — le does not exist — so a rod uses the same demagnetising-factor treatment the drum does
+// (Bozorth, "Ferromagnetism", 1945; cylinder refinements in Chen/Brug/Goldfarb, IEEE Trans. Magn.
+// 27 (1991) 3601):
+//
+//     mu_rod = mu_i / (1 + N_d (mu_i - 1)),   N_d = axial demagnetising factor of the ROD.
+//
+// N_d is a property of the ROD's own slenderness B/A and of nothing else. That is the physical
+// content of an open circuit and it is worth stating plainly, because it bounds what this model
+// can and cannot explain: lengthening the WINDING on a fixed rod does not change N_d.
+//
+// The winding length enters through the other term. The rod-core inductor is the air solenoid
+// lifted by mu_rod, and an air solenoid's inductance goes as N^2 A / l_winding, so a SHORT coil
+// on a long rod has more inductance per turn than a full-length one. That is the only route by
+// which the coil's own geometry reaches the answer, and it is bounded: over the full rod the two
+// bracket bounds below collapse onto each other and the coil length drops out entirely.
+//
+// Same log-midpoint bracket idiom as the drum:
+//   upper: the solenoid formula on the rod cross-section at mu_rod — exact for a long thin rod
+//          fully wound, optimistic for a short coil because it ignores the flux that leaves the
+//          rod alongside the winding;
+//   lower: series reluctance of the external air return (N_d B / mu0 A_rod) and the rod itself
+//          (B / mu0 mu_i A_rod) — pessimistic for the same reason, mirrored.
+// For a fully wound rod the two agree to a fraction of a percent (for N_d = 0.2, mu_i = 400 they
+// differ by 0.25%), so the bracket is not doing hidden work: it only opens up as the winding is
+// shortened, which is exactly where the uncertainty actually lives.
+static std::pair<double, double> rod_open_core_bounds(Core core, double numberTurns,
+                                                     double windingLength, double temperature) {
+    auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+    for (auto required : {"A", "B"}) {
+        if (dimensions.find(required) == dimensions.end()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                std::string("Open-core (rod) shape is missing dimension ") + required +
+                " (a rod is A = diameter, B = length, H = optional bore)");
+        }
+    }
+    // Only REAL gaps are rejected: process_gap() distributes residual bookkeeping entries onto
+    // the columns of every non-toroidal core, rods included, so emptiness is not the test.
+    for (auto& gap : core.get_functional_description().get_gapping()) {
+        if (gap.get_type() != GapType::RESIDUAL && gap.get_length() > 1e-6) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "An open-circuit (rod) core cannot be gapped: its return path is already air");
+        }
+    }
+    double rodDiameter = dimensions["A"];
+    double rodLength = dimensions["B"];
+    double bore = (dimensions.find("H") != dimensions.end()) ? dimensions["H"] : 0.0;
+    if (rodDiameter <= 0 || rodLength <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Rod core has a non-positive diameter A or length B");
+    }
+    if (bore < 0 || bore >= rodDiameter) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Rod core bore H must be non-negative and smaller than the diameter A");
+    }
+    if (!(windingLength > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Rod magnetizing inductance needs the axial length of the winding, and none was "
+            "available; a rod imposes no groove, so the coil must state it (bobbin winding "
+            "window height)");
+    }
+    if (windingLength > rodLength * (1 + 1e-9)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "The winding is longer (" + std::to_string(windingLength) + " m) than the rod it sits on (" +
+            std::to_string(rodLength) + " m); the overhanging turns are air-cored and this model "
+            "does not describe them");
+    }
+    double initialPermeability = InitialPermeability::get_initial_permeability(core.resolve_material(), temperature);
+
+    double vacuumPermeability = Constants().vacuumPermeability;
+    double demagnetizingFactor = open_core_axial_demagnetizing_factor(rodLength / rodDiameter);
+    double rodArea = std::numbers::pi / 4 * (pow(rodDiameter, 2) - pow(bore, 2));
+    double rodPermeability = initialPermeability / (1 + demagnetizingFactor * (initialPermeability - 1));
+
+    double upperBound = vacuumPermeability * rodPermeability * rodArea / windingLength * pow(numberTurns, 2);
+    double airReluctance = demagnetizingFactor * rodLength / (vacuumPermeability * rodArea);
+    double ferriteReluctance = rodLength / (vacuumPermeability * initialPermeability * rodArea);
+    double lowerBound = pow(numberTurns, 2) / (airReluctance + ferriteReluctance);
+
+    return {lowerBound, upperBound};
+}
+
+double MagnetizingInductance::calculate_rod_magnetizing_inductance(Core core, double numberTurns,
+                                                                  double windingLength, double temperature) {
+    auto [lowerBound, upperBound] = rod_open_core_bounds(core, numberTurns, windingLength, temperature);
+    return sqrt(upperBound * lowerBound);
+}
+
 // ABT #362: semi-shielded drum — a ferrite drum closed by a MAGNETIC-EPOXY shell. The circuit
 // crosses TWO materials, so neither the closed-circuit path (one mu over le/Ae) nor a gap
 // model fits: reluctance is applied PER SECTION using the piece's c1 split. The shell material
@@ -311,6 +401,37 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 core.get_columns()[0].get_area(), operatingPoint);
             return drumRingResult;
         }
+    }
+
+    // Rods (ABT #933): the most open shape there is — a bare cylinder with no return limb at all.
+    // Its demagnetising model needs one thing a drum's does not, the axial length of the winding,
+    // because a rod has no groove to imply it. That length is the coil's, so it is read here where
+    // the coil is in scope and passed in; there is no default and no guess.
+    if (core.get_shape_family() == CoreShapeFamily::ROD) {
+        double rodTemperature = operatingPoint ? operatingPoint->get_conditions().get_ambient_temperature()
+                                               : Defaults().ambientTemperature;
+        double numberTurnsRod = coil.get_functional_description()[0].get_number_turns();
+        double windingLength = coil.resolve_bobbin().get_winding_window_dimensions(0)[1];
+        auto [rodLowerBound, rodUpperBound] = rod_open_core_bounds(core, numberTurnsRod, windingLength, rodTemperature);
+        double rodInductance = sqrt(rodUpperBound * rodLowerBound);
+        MagnetizingInductanceOutput rodOutput;
+        DimensionWithTolerance rodWithTolerance;
+        rodWithTolerance.set_nominal(rodInductance);
+        // The two PHYSICAL bounds are themselves the honest uncertainty statement for this
+        // geometry — no pinned percentage. Unlike the drum's validated +-12% this is not a
+        // constant: it collapses to nothing on a fully wound rod and opens as the coil shortens,
+        // which is exactly where the model's real uncertainty lives.
+        rodWithTolerance.set_minimum(rodLowerBound);
+        rodWithTolerance.set_maximum(rodUpperBound);
+        rodOutput.set_magnetizing_inductance(rodWithTolerance);
+        rodOutput.set_method_used("RodOpenCoreDemagnetizingFactor");
+        rodOutput.set_origin(ResultOrigin::SIMULATION);
+        std::pair<MagnetizingInductanceOutput, SignalDescriptor> rodResult;
+        rodResult.first = rodOutput;
+        // Flux crosses the rod itself (the bore is already subtracted from its column area).
+        rodResult.second = calculate_flux_density_for_family_model(
+            rodInductance, numberTurnsRod, core.get_columns()[0].get_area(), operatingPoint);
+        return rodResult;
     }
 
     // Open shapes (drums, rods): route to the open-core model — the closed-circuit reluctance

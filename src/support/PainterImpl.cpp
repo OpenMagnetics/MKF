@@ -1586,6 +1586,7 @@ void Painter::paint_core(Magnetic magnetic) {
             return paint_toroidal_core(core);
             break;
         case CoreShapeFamily::DRUM:
+        case CoreShapeFamily::ROD:
         case CoreShapeFamily::DRUM_RING:
         case CoreShapeFamily::DRUM_SEMISHIELDED:
         case CoreShapeFamily::MOLDED:

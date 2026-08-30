@@ -95,8 +95,10 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
         // doubled, the piece class reports the whole assembly).
         get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
     }
-    else if (shapeFamily == CoreShapeFamily::DRUM) {
-        // Single piece whose magnetic circuit closes through the surrounding air (ABT #331).
+    else if (shapeFamily == CoreShapeFamily::DRUM || shapeFamily == CoreShapeFamily::ROD) {
+        // Single piece whose magnetic circuit closes through the surrounding air (drum ABT #331,
+        // rod ABT #933). Without this the default below would make a rod a TWO_PIECE_SET and
+        // silently double its effective length.
         get_mutable_functional_description().set_type(CoreType::OPEN_SHAPE);
     }
     else if (shapeFamily == CoreShapeFamily::MOLDED) {
@@ -2433,7 +2435,7 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
         // A shaped piece closed by a plate/ring/shell, not by a mirrored half (ABT #274/#275, #366, #362).
         core.set_type(CoreType::PIECE_AND_PLATE);
     }
-    else if (coreShape.get_family() == CoreShapeFamily::DRUM) {
+    else if (coreShape.get_family() == CoreShapeFamily::DRUM || coreShape.get_family() == CoreShapeFamily::ROD) {
         core.set_type(CoreType::OPEN_SHAPE);
     }
     else if (coreShape.get_family() == CoreShapeFamily::MOLDED) {

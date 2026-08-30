@@ -2168,6 +2168,114 @@ class CorePieceDrum : public CorePiece {
     }
 };
 
+// ROD core (ABT #933): a bare cylinder — no flanges, no return limb. The magnetic circuit closes
+// entirely through the surrounding air, so this is the most open shape MKF carries
+// (CoreType::OPEN_SHAPE). Letters, following the drum convention with the flanges removed:
+//   A rod diameter, B rod length, H axial bore (optional, carries no flux).
+// C is deliberately NOT read: on a drum C is the post OD, and a rod IS its own post, so a rod
+// record that also states C would be describing two different diameters for one cylinder.
+//
+// IMPORTANT, same caveat as CorePieceDrum: get_shape_constants below is the FERRITE INTERNAL
+// PATH ONLY (the cylinder, straight through). It is honest as the piece's partial parameters,
+// but on its own it is not a magnetic circuit at all — there is no return path in the ferrite.
+// Feeding it to the closed-circuit reluctance path would report an inductance many times too
+// high. Rod magnetizing inductance routes to the demagnetising-factor model in
+// MagnetizingInductance.cpp, which is what makes the open circuit's air return appear.
+class CorePieceRod : public CorePiece {
+  public:
+    static double rod_diameter(std::map<std::string, double>& dimensions) {
+        if (!dimensions.count("A") || dimensions["A"] <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "rod: dimension A (rod diameter) is missing or non-positive");
+        }
+        return dimensions["A"];
+    }
+
+    static double rod_length(std::map<std::string, double>& dimensions) {
+        if (!dimensions.count("B") || dimensions["B"] <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "rod: dimension B (rod length) is missing or non-positive");
+        }
+        return dimensions["B"];
+    }
+
+    static double rod_bore(std::map<std::string, double>& dimensions) {
+        double bore = dimensions.count("H") ? dimensions["H"] : 0.0;
+        if (bore < 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "rod: bore H cannot be negative");
+        }
+        if (bore >= rod_diameter(dimensions)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "rod: bore H (" + std::to_string(bore) + ") is not smaller than the rod diameter A (" +
+                std::to_string(rod_diameter(dimensions)) + "); nothing would be left to carry flux");
+        }
+        return bore;
+    }
+
+    static double rod_area(std::map<std::string, double>& dimensions) {
+        double radius = rod_diameter(dimensions) / 2;
+        double boreRadius = rod_bore(dimensions) / 2;
+        return std::numbers::pi * (pow(radius, 2) - pow(boreRadius, 2));
+    }
+
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(rod_diameter(dimensions));
+        set_depth(rod_diameter(dimensions));
+        set_height(rod_length(dimensions));
+    }
+
+    // A rod has no groove, so it constrains the winding only in length: the wire is laid along
+    // the cylinder over at most its full length B. The window WIDTH is the build height the
+    // winding may occupy radially; a bare rod imposes no outer bound, so the natural, honest
+    // statement of "unbounded" would be infinite. Instead the window is one rod radius deep,
+    // which is the largest build that keeps the coil's outer diameter within 2A — beyond that
+    // the solenoid is no longer a rod-core inductor in any useful sense. A caller who knows the
+    // real build volume (a rod potted in a body) states it with an explicit bobbin, which is
+    // what Coil::resolve_bobbin honours and what the inductance model reads its length from.
+    void process_winding_window() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double diameter = rod_diameter(dimensions);
+        WindingWindowElement windingWindow;
+        windingWindow.set_height(rod_length(dimensions));
+        windingWindow.set_width(diameter / 2);
+        windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
+        // ABT #107 convention: coordinates[0] = window CENTRE (rod surface + half the build).
+        windingWindow.set_coordinates(std::vector<double>({diameter / 2 + diameter / 4, 0}));
+        set_winding_window(windingWindow);
+    }
+
+    void process_columns() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        std::vector<ColumnElement> columns;
+        ColumnElement mainColumn;
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
+        mainColumn.set_width(roundFloat(rod_diameter(dimensions)));
+        mainColumn.set_depth(roundFloat(rod_diameter(dimensions)));
+        mainColumn.set_height(roundFloat(rod_length(dimensions)));
+        // Bore subtracted: the mounting hole carries no flux.
+        mainColumn.set_area(roundFloat(rod_area(dimensions)));
+        mainColumn.set_coordinates({0, 0, 0});
+        columns.push_back(mainColumn);
+        set_columns(columns);
+    }
+
+    // The cylinder, straight through: one uniform section, so c1 = l/A and c2 = l/A^2 and the
+    // IEC 60205 reduction gives back le = l and Ae = A exactly.
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double area = rod_area(dimensions);
+        double length = rod_length(dimensions);
+        return {length / area, length / pow(area, 2), area};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        return {pow(c1, 2) / c2, c1 / c2, minimumArea};
+    }
+};
+
 // DRUM + RING ("shielded drum", ABT #366): a drum closed by a concentric shield ring,
 // CoreType::PIECE_AND_PLATE. Letters: the drum convention above (A, A2, B, C, D, E, F, H)
 // plus J ring OD, K ring ID, L ring height (defined with the MAS drumRing records, sourced
@@ -2642,6 +2750,7 @@ bool CorePiece::is_family_supported(CoreShapeFamily family) {
         case CoreShapeFamily::UI:
         case CoreShapeFamily::EI:
         case CoreShapeFamily::DRUM:
+        case CoreShapeFamily::ROD:
         case CoreShapeFamily::DRUM_RING:
         case CoreShapeFamily::DRUM_SEMISHIELDED:
         case CoreShapeFamily::MOLDED:
@@ -2859,6 +2968,12 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     }
     else if (family == CoreShapeFamily::DRUM_SEMISHIELDED) {
         auto piece = std::make_shared<CorePieceDrumSemishielded>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::ROD) {
+        auto piece = std::make_shared<CorePieceRod>();
         piece->set_shape(shape);
         if (process) piece->process();
         return piece;

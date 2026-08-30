@@ -84,6 +84,14 @@ class MagnetizingInductance {
     // missing drum dimensions.
     static double calculate_open_core_magnetizing_inductance(Core core, double numberTurns, double temperature);
 
+        // Rod (bare cylinder) magnetizing inductance via the same demagnetising-factor bracket
+        // (ABT #933); routed automatically for CoreShapeFamily::ROD. Unlike a drum, a rod has no
+        // groove, so the axial length of the WINDING is a separate required input — the caller
+        // takes it from the coil. Throws on gapped cores, on a missing A/B, and on a winding
+        // longer than the rod.
+        static double calculate_rod_magnetizing_inductance(Core core, double numberTurns,
+                                                           double windingLength, double temperature);
+
     // Semi-shielded drum (ABT #362): ferrite drum closed by a magnetic-epoxy shell — mixed-
     // material sectioned reluctance (drum mu + glue mu applied per section via the piece's c1
     // split); routed automatically for CoreShapeFamily::DRUM_SEMISHIELDED. The shell material

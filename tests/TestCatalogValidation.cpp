@@ -76,9 +76,13 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     // so load_core_shapes keeps skipping them instead of half-building a core.
     // DRUM moved off this list (ABT #331): it has a geometry class and an open-core model.
     // EI moved off this list (ABT #625): it has a geometry class now too, see below.
-    for (auto family : {CoreShapeFamily::ROD, CoreShapeFamily::BLOCK, CoreShapeFamily::H}) {
+    // ROD moved off this list (ABT #933): CorePieceRod + the rod open-core model. Note that MAS
+    // still carries ZERO rod records, so unlike UI/DRUM there is no catalogued name to resolve
+    // below — a rod reaches MKF as an inline shape today.
+    for (auto family : {CoreShapeFamily::BLOCK, CoreShapeFamily::H}) {
         REQUIRE_FALSE(CorePiece::is_family_supported(family));
     }
+    REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::ROD));
 
     // UI is now supported (ABT #274, user-approved) and its shapes must resolve.
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::UI));
