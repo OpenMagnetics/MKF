@@ -1,4 +1,5 @@
 #pragma once
+#include <set>
 #include "Defaults.h"
 #include "constructive_models/Magnetic.h"
 #include "support/Utils.h"
@@ -90,6 +91,11 @@ class StrayCapacitance{
     private:
         std::shared_ptr<StrayCapacitanceModel> _model;
         StrayCapacitanceModels _modelName;
+        // WHICH MODEL ACTUALLY COMPUTED THE PAIRS, which is not always the one selected. Any pair
+        // involving a flat conductor is routed to ParallelPlate regardless of the caller's choice,
+        // so reporting the SELECTED name for such a winding says the model ran when it did not.
+        // Recorded per pair as the dispatch decides, and reported at the end (ABT #950).
+        std::set<std::string> _methodsUsed;
         static double calculate_area_between_two_turns_using_diagonals(Turn firstTurn, Turn secondTurn);
         static double calculate_area_between_two_turns_using_vecticals_and_horizontals(Turn firstTurn, Turn secondTurn);
         StrayCapacitanceOutput calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt);

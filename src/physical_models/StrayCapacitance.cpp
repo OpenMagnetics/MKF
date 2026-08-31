@@ -1516,6 +1516,7 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
     if (isFlatWire(firstWire.get_type()) && isFlatWire(secondWire.get_type())) {
         // Both wires are flat: use parallel plate model
         StrayCapacitanceParallelPlateModel model;
+        _methodsUsed.insert(model.methodName);
         auto aux = model.preprocess_data_for_planar_wires(firstTurn, firstWire, secondTurn, secondWire);
         double averageTurnLength = aux[0];
         double overlappingDimension = aux[1];
@@ -1527,6 +1528,7 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
     }
     else if (isRoundLike(firstWire.get_type()) && isRoundLike(secondWire.get_type())) {
         // Both wires are round-like (ROUND or LITZ): use cylindrical wire model
+        _methodsUsed.insert(_model->methodName);
         auto aux = _model->preprocess_data_for_round_wires(firstTurn, firstWire, secondTurn, secondWire, coil);
         double wireCoatingThickness = aux[0];
         double averageTurnLength = aux[1];
@@ -2214,6 +2216,10 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, Operat
 }
 
 StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core, std::optional<double> frequency) {
+    // Per-call, not per-object: the same StrayCapacitance is reused across magnetics (the SPICE
+    // export calls it twice, once to estimate resonance and once refined), and a stale entry would
+    // report a model that ran for a previous coil.
+    _methodsUsed.clear();
     std::map<std::pair<size_t, size_t>, double> electricEnergyBetweenTurnsMap;
     std::map<std::pair<size_t, size_t>, double> voltageDropBetweenTurnsMap;
     std::map<std::string, std::map<std::string, ScalarMatrixAtFrequency>> capacitanceMatrix;
@@ -2461,7 +2467,20 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
     strayCapacitanceOutput.set_six_capacitor_network_per_winding(sixCapacitorNetworkPerWinding);
     strayCapacitanceOutput.set_tripole_capacitance_per_winding(tripoleCapacitancePerWinding);
     strayCapacitanceOutput.set_origin(ResultOrigin::SIMULATION);
-    strayCapacitanceOutput.set_method_used(_model->methodName);
+    // The method the caller ASKED for is _model->methodName; what actually ran is what the
+    // dispatch recorded. They differ whenever a pair involves a flat conductor, and a winding can
+    // legitimately use both. Naming every model that contributed is the only honest answer for a
+    // mixed winding, and it costs nothing to read (ABT #950).
+    if (_methodsUsed.empty()) {
+        strayCapacitanceOutput.set_method_used(_model->methodName);
+    }
+    else {
+        std::string used;
+        for (const auto& name : _methodsUsed) {
+            used += (used.empty() ? "" : "+") + name;
+        }
+        strayCapacitanceOutput.set_method_used(used);
+    }
 
     return strayCapacitanceOutput;
 }
