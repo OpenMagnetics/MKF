@@ -771,8 +771,21 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
         
         // The "coating thickness" is only the serving/outer insulation
         wireCoatingThicknessFirstWire = (outerDiameterFirstWire - bareBundleDiameter) / 2;
-        if (wireCoatingThicknessFirstWire < 0) {
-            wireCoatingThicknessFirstWire = 0;
+        if (wireCoatingThicknessFirstWire <= 0) {
+            // AN UNSERVED BUNDLE IS NOT A BARE CONDUCTOR. With no serving the outer diameter IS
+            // the bare bundle diameter, so this came out zero and two adjacent turns were treated
+            // as touching with no dielectric between them -- an infinite turn-to-turn capacitance,
+            // which the guard downstream then correctly refused, taking the whole SPICE export
+            // with it. But the surface of a bare litz bundle is made of ENAMELLED STRANDS, so what
+            // separates two touching bundles is two strand enamels, not nothing.
+            //
+            // This is the same reasoning get_wire_insulation_relative_permittivity already applies
+            // to the litz PERMITTIVITY, which falls back to the strand enamel; only the THICKNESS
+            // was missing it. Reached only when the serving is absent, i.e. only in cases that
+            // previously produced an infinity and threw, so no working result can move.
+            wireCoatingThicknessFirstWire =
+                (Wire::get_outer_diameter_round(strandConductingDiameter, grade, standard)
+                 - strandConductingDiameter) / 2;
         }
     } else {
         // ROUND wire
@@ -803,8 +816,11 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
         conductingDiameterSecondWire = bareBundleDiameter;
         
         wireCoatingThicknessSecondWire = (outerDiameterSecondWire - bareBundleDiameter) / 2;
-        if (wireCoatingThicknessSecondWire < 0) {
-            wireCoatingThicknessSecondWire = 0;
+        if (wireCoatingThicknessSecondWire <= 0) {
+            // Unserved bundle: the strand enamel is the surface insulation -- see the first wire.
+            wireCoatingThicknessSecondWire =
+                (Wire::get_outer_diameter_round(strandConductingDiameter, grade, standard)
+                 - strandConductingDiameter) / 2;
         }
     } else {
         // ROUND wire
