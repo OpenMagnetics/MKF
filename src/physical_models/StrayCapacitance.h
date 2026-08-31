@@ -34,7 +34,12 @@ class StrayCapacitanceParallelPlateModel {
 // https://sci-hub.st/https://ieeexplore.ieee.org/document/602562
 class StrayCapacitanceMassariniModel : public StrayCapacitanceModel {
     public:
-        std::string methodName = "Massarini";
+        // Sets the INHERITED methodName rather than redeclaring one. A redeclaration here shadows
+        // the base member, and StrayCapacitance holds the model through a
+        // shared_ptr<StrayCapacitanceModel>, so `_model->methodName` bound to the BASE member and
+        // every result reported "Default" -- including results where the requested model really
+        // had been applied. See ABT #950.
+        StrayCapacitanceMassariniModel() { methodName = "Massarini"; }
         double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers);
 
 };
@@ -42,7 +47,12 @@ class StrayCapacitanceMassariniModel : public StrayCapacitanceModel {
 // Based on "Equivalent capacitances of transformer windings" by W. T. Duerdoth
 class StrayCapacitanceDuerdothModel : public StrayCapacitanceModel {
     public:
-        std::string methodName = "Duerdoth";
+        // Sets the INHERITED methodName rather than redeclaring one. A redeclaration here shadows
+        // the base member, and StrayCapacitance holds the model through a
+        // shared_ptr<StrayCapacitanceModel>, so `_model->methodName` bound to the BASE member and
+        // every result reported "Default" -- including results where the requested model really
+        // had been applied. See ABT #950.
+        StrayCapacitanceDuerdothModel() { methodName = "Duerdoth"; }
         double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers);
 
 };
@@ -50,7 +60,12 @@ class StrayCapacitanceDuerdothModel : public StrayCapacitanceModel {
 // Based on "Induktivitäten in der Leistungselektronik", pages 49-50, by Manfred Albach
 class StrayCapacitanceAlbachModel : public StrayCapacitanceModel {
     public:
-        std::string methodName = "Albach";
+        // Sets the INHERITED methodName rather than redeclaring one. A redeclaration here shadows
+        // the base member, and StrayCapacitance holds the model through a
+        // shared_ptr<StrayCapacitanceModel>, so `_model->methodName` bound to the BASE member and
+        // every result reported "Default" -- including results where the requested model really
+        // had been applied. See ABT #950.
+        StrayCapacitanceAlbachModel() { methodName = "Albach"; }
         double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers);
 
 };
@@ -60,7 +75,12 @@ class StrayCapacitanceAlbachModel : public StrayCapacitanceModel {
 // https://www.pes-publications.ee.ethz.ch/uploads/tx_ethpublications/biela_IEEETrans_ReviewStrayCap.pdf
 class StrayCapacitanceKochModel : public StrayCapacitanceModel {
     public:
-        std::string methodName = "Koch";
+        // Sets the INHERITED methodName rather than redeclaring one. A redeclaration here shadows
+        // the base member, and StrayCapacitance holds the model through a
+        // shared_ptr<StrayCapacitanceModel>, so `_model->methodName` bound to the BASE member and
+        // every result reported "Default" -- including results where the requested model really
+        // had been applied. See ABT #950.
+        StrayCapacitanceKochModel() { methodName = "Koch"; }
         double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers);
 
 };
