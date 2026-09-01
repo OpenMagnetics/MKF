@@ -8,6 +8,7 @@
 #include "physical_models/WireBend.h"
 #include "constructive_models/Wire.h"
 #include "constructive_models/Magnetic.h"
+#include "advisers/MagneticFilter.h"
 #include "support/Utils.h"
 #include "json.hpp"
 
@@ -335,4 +336,53 @@ TEST_CASE("Test_WireBend_Corpus_Census", "[wire][wire-bend][wire-bend-census]") 
     std::cout << "=== " << examined << " windings examined, " << lifted << " lift off the former, "
               << belowFlexibility << " are drawn today tighter than the wire may be bent ===\n";
     REQUIRE(examined > 0);
+}
+
+TEST_CASE("Test_WireBend_Filter_Judges_The_Wire_Against_Its_Former", "[wire][wire-bend][filter]") {
+    // The filter reads the MAS datum, so this also exercises the new columnCornerRadius field.
+    const std::filesystem::path example =
+        "/home/alf/OpenMagnetics/MKF/MAS/examples/02_flyback_efd25_3c95.json";
+    std::ifstream stream(example);
+    if (!stream.good()) {
+        SKIP("MAS example not available in this checkout");
+    }
+    json masJson = json::parse(stream);
+    json magneticJson = masJson.contains("magnetic") ? masJson["magnetic"] : masJson;
+
+    auto withCornerRadius = [&](double cornerRadius) {
+        OpenMagnetics::Magnetic magnetic(magneticJson);
+        auto coil = magnetic.get_mutable_coil();
+        auto bobbin = coil.resolve_bobbin();
+        if (!bobbin.get_processed_description()) {
+            bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false);
+        }
+        auto processedDescription = bobbin.get_processed_description().value();
+        processedDescription.set_column_corner_radius(cornerRadius);
+        bobbin.set_processed_description(processedDescription);
+        coil.set_bobbin(bobbin);
+        magnetic.set_coil(coil);
+        return magnetic;
+    };
+
+    OpenMagnetics::Inputs inputs;
+    auto filter = OpenMagnetics::MagneticFilter::factory(MagneticFilters::WINDABILITY);
+
+    // A sharp former -- what MKF has always modelled -- cannot be wound with this wire.
+    auto sharp = withCornerRadius(0.0);
+    auto sharpVerdict = filter->evaluate_magnetic(&sharp, &inputs);
+    REQUIRE_FALSE(sharpVerdict.first);
+
+    // The floor is set by the THICKEST wire on the former: this design also carries a 0,500 mm
+    // conductor, whose Table 6 mandrel is 0,500 mm and so whose corner floor is 0,250 mm. Legal
+    // there, but the insulation is not qualified to be heated afterwards, so it must still score
+    // worse than...
+    auto atFloor = withCornerRadius(0.250e-3);
+    auto atFloorVerdict = filter->evaluate_magnetic(&atFloor, &inputs);
+    REQUIRE(atFloorVerdict.first);
+
+    // ...a former with the corner the heat-shock mandrel asks for.
+    auto comfortable = withCornerRadius(0.700e-3);
+    auto comfortableVerdict = filter->evaluate_magnetic(&comfortable, &inputs);
+    REQUIRE(comfortableVerdict.first);
+    REQUIRE(comfortableVerdict.second < atFloorVerdict.second);
 }

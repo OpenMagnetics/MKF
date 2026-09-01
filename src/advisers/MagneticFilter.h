@@ -226,6 +226,32 @@ class MagneticFilterProximityFactor : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Winding winding, double effectiveSkinDepth, double temperature);
 };
 
+/**
+ * @class MagneticFilterWindability
+ *
+ * Can each winding's wire actually be bent around the corner of the former it is wound on?
+ * A turn wraps the column exactly the way the flexibility test wraps its mandrel, so the
+ * standards give the answer directly (see WireBend): the former's corner radius must be at
+ * least the mandrel's. Two thresholds, both citations rather than tuning knobs --
+ * IEC 60317-0-1 Table 6 (or -0-2 Table 6) is the bend the insulation must survive AT ALL, and
+ * Table 7 (or -0-2 clause 9) the bend it must survive and then be HEAT SHOCKED, which is what a
+ * coil gets when it is soldered, varnish-baked and cycled.
+ *
+ * The bend judged is the one the coil actually lays -- the turn tangent to the former, so
+ * former corner + standoff. A candidate is INVALID below the flexibility floor: that wire cannot
+ * be wound on that former without cracking its enamel, and the only way it could be is by
+ * standing off the former, which is not the layup the layout assumed. Below the heat-shock floor
+ * it stays valid but scores worse, in proportion to how far short the bend falls.
+ *
+ * Wire types the standards do not cover (litz, foil, planar) are passed through untouched rather
+ * than judged by a rule that was not written for them.
+ */
+class MagneticFilterWindability : public MagneticFilter {
+    public:
+        MagneticFilterWindability() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
 class MagneticFilterSolidInsulationRequirements : public MagneticFilter {
     private:
         double _maximumCurrent;

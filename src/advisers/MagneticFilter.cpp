@@ -1,4 +1,5 @@
 #include "advisers/MagneticFilter.h"
+#include "physical_models/WireBend.h"
 #include "advisers/MagneticFilterInternal.h"
 #include "physical_models/Temperature.h"
 #include "constructive_models/NumberTurns.h"
@@ -138,13 +139,17 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             return std::make_shared<MagneticFilterTemperature>(inputs.value(), 130.0);
         case MagneticFilters::TURN_COUNT:
             return std::make_shared<MagneticFilterTurnCount>();
+        case MagneticFilters::WINDABILITY:
+            // Needs no Inputs: whether a wire can be bent around its former is a property of the
+            // magnetic alone.
+            return std::make_shared<MagneticFilterWindability>();
         case MagneticFilters::DATASHEET_LIMITS:
             // No Inputs needed at construction — datasheet limits are read per
             // call from the candidate magnetic, operating values from the
             // `inputs` argument of evaluate_magnetic.
             return std::make_shared<MagneticFilterDatasheetLimits>();
         default:
-            throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LEAKAGE_INDUCTANCE, TEMPERATURE, TURN_COUNT, DATASHEET_LIMITS}");
+            throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LEAKAGE_INDUCTANCE, TEMPERATURE, TURN_COUNT, DATASHEET_LIMITS, WINDABILITY}");
     }
 }
 
@@ -155,6 +160,73 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
 
 
 
+
+std::pair<bool, double> MagneticFilterWindability::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    auto coil = magnetic->get_mutable_coil();
+    auto bobbin = coil.resolve_bobbin();
+    if (!bobbin.get_processed_description()) {
+        // Nothing to wind around yet. A candidate without a resolved bobbin is not the place to
+        // decide windability, and inventing a former here would be inventing the answer.
+        return {true, 0.0};
+    }
+
+    const auto columnShape = bobbin.get_processed_description()->get_column_shape();
+    if (columnShape != ColumnShape::RECTANGULAR && columnShape != ColumnShape::IRREGULAR) {
+        // A round or oblong column is all corner: its radius is its own, and every turn follows
+        // it by construction. There is no tighter bend anywhere on the turn to judge.
+        return {true, 0.0};
+    }
+
+    const double cornerRadius = bobbin.get_column_corner_radius();
+    const double cornerHalfAngle = bobbin.get_column_corner_half_angle();
+
+    bool valid = true;
+    double scoring = 0;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto wire = coil.resolve_wire(windingIndex);
+        if (wire.get_type() != WireType::ROUND && wire.get_type() != WireType::RECTANGULAR) {
+            continue;  // no standardised bend data; see MagneticFilterWindability's note
+        }
+
+        // The turn laid against the column stands off by its own outer half-dimension, which is
+        // how the coil places it.
+        const double standoff = 0.5 * (wire.get_type() == WireType::ROUND
+                                           ? Wire::calculate_outer_diameter(wire)
+                                           : Wire::calculate_outer_width(wire));
+        const auto axis = wire.get_type() == WireType::ROUND
+                              ? BendAxis::ROUND
+                              : WireBend::axis_from_bend_plane_dimension(wire, true);
+
+        // THE QUESTION THIS FILTER ASKS: with the winding laid where the coil lays it -- tangent
+        // to the former -- is the bend the wire is put through legal? That is evaluate() of the
+        // radius it would actually follow, NOT solve(): solve never returns an illegal bend,
+        // because it moves the wire instead, and a winding that only works by standing off the
+        // former is exactly what this filter exists to catch.
+        WoundCorner asLaid;
+        try {
+            asLaid = WireBend::evaluate(cornerRadius + standoff, wire, axis);
+        }
+        catch (const std::exception&) {
+            // The standards stop somewhere (a conductor above 1,600 mm, a missing dimension).
+            // Rejecting the whole candidate for that would reject designs this filter has no
+            // opinion on, so it abstains on that winding and says nothing about it.
+            continue;
+        }
+
+        if (asLaid.verdict == BendVerdict::BELOW_FLEXIBILITY) {
+            // Not windable: that wire cannot be bent around that former without cracking.
+            valid = false;
+        }
+        // How far the bend falls short of the comfortable (heat-shock) radius, as a fraction of
+        // it: 0 when comfortable, approaching 1 as the bend collapses onto the wire itself.
+        if (asLaid.heatShockRadius) {
+            scoring += std::max(0.0, (asLaid.heatShockRadius.value() - asLaid.bendRadius) /
+                                         asLaid.heatShockRadius.value());
+        }
+    }
+
+    return {valid, scoring};
+}
 
 std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = false;
