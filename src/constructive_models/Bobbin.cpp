@@ -1248,5 +1248,61 @@ double Bobbin::get_column_depth() {
     return get_processed_description()->get_column_depth();
 }
 
+double Bobbin::get_column_corner_radius() {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    auto processedDescription = get_processed_description().value();
+
+    switch (processedDescription.get_column_shape()) {
+        case ColumnShape::ROUND:
+            // column_width IS the radius for a round column (see get_column_right_face_area),
+            // and a cylinder is nothing but corner, so that radius is the bend radius.
+            if (!processedDescription.get_column_width()) {
+                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                            "Bobbin: a round column has no column width, so its "
+                                            "radius -- which is what a turn bends around -- is "
+                                            "not defined");
+            }
+            return processedDescription.get_column_width().value();
+        case ColumnShape::OBLONG:
+            // A stadium's ends are semicircles of half the depth, and column_depth is already
+            // the half-dimension. This has always been derivable and was simply never used.
+            return processedDescription.get_column_depth();
+        case ColumnShape::RECTANGULAR:
+        case ColumnShape::IRREGULAR:
+            if (processedDescription.get_column_corner_radius()) {
+                return processedDescription.get_column_corner_radius().value();
+            }
+            // No datum: a moulded bobbin still cannot have a sharp corner. The injection-moulding
+            // rule puts the inside radius at half the wall thickness, which is a sourced design
+            // rule rather than a tuned constant, and it is the same treatment the wall thickness
+            // itself gets in create_quick_bobbin when a real bobbin is not available. A catalogue
+            // bobbin should carry the radius off its drawing instead.
+            return 0.5 * processedDescription.get_column_thickness();
+    }
+    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                "Bobbin: unknown column shape, cannot resolve its corner radius");
+}
+
+double Bobbin::get_column_corner_half_angle() {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    switch (get_processed_description()->get_column_shape()) {
+        case ColumnShape::RECTANGULAR:
+        case ColumnShape::IRREGULAR:
+            // Two perpendicular faces meet at each corner of the racetrack.
+            return 0.25 * std::numbers::pi;
+        case ColumnShape::ROUND:
+        case ColumnShape::OBLONG:
+            // Nothing meets at an angle: the wire never leaves the curve, so there is no
+            // lift-off term to apply.
+            return 0.5 * std::numbers::pi;
+    }
+    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                "Bobbin: unknown column shape, cannot resolve its corner angle");
+}
+
 
 } // namespace OpenMagnetics

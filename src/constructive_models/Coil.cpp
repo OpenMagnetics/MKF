@@ -7731,6 +7731,12 @@ WoundColumnFrame Coil::get_wound_column_frame_for_section(const std::string& sec
             frame.columnWidth = bobbinWindingWindow.get_coordinates().value()[0] - bobbinWindingWindow.get_width().value() / 2;
         }
         frame.axisX = 0;
+        // Only the cornered shapes carry one, and only they read it back: a bobbin may legally
+        // have no column width at all (the branch above), which is exactly the case where the
+        // round column's "radius" does not exist to be asked for.
+        if (frame.shape == ColumnShape::RECTANGULAR || frame.shape == ColumnShape::IRREGULAR) {
+            frame.cornerRadius = bobbin.get_column_corner_radius();
+        }
         return frame;
     };
 
@@ -7790,13 +7796,19 @@ WoundColumnFrame Coil::get_wound_column_frame_for_section(const std::string& sec
     // one column-wall thickness sits between the leg and the winding space.
     frame.columnWidth = column.get_width() / 2 + bobbinProcessedDescription.get_column_thickness();
     frame.columnDepth = column.get_depth() / 2 + bobbinProcessedDescription.get_column_thickness();
+    // The wall wrapped around the leg carries the leg's own corner outwards; where the core
+    // gives no corner radius, the moulded wall still has one (see Bobbin::get_column_corner_radius).
+    frame.cornerRadius = column.get_corner_radius()
+        ? column.get_corner_radius().value() + bobbinProcessedDescription.get_column_thickness()
+        : 0.5 * bobbinProcessedDescription.get_column_thickness();
     // The winding frame is the +x side; mirrored (negative-x) windows are wound
     // against the mirrored column and flipped into place afterwards.
     frame.axisX = std::abs(column.get_coordinates()[0]);
     return frame;
 }
 
-std::optional<double> Coil::get_turn_length_in_frame(const WoundColumnFrame& frame, double turnX) {
+std::optional<double> Coil::get_turn_length_in_frame(const WoundColumnFrame& frame, double turnX,
+                                                     std::optional<double> turnBendRadius) {
     double radius = frame.axisX == 0 ? turnX : std::abs(turnX - frame.axisX);
     double length;
     if (frame.shape == ColumnShape::ROUND) {
@@ -7806,7 +7818,23 @@ std::optional<double> Coil::get_turn_length_in_frame(const WoundColumnFrame& fra
         length = 2 * std::numbers::pi * radius + 4 * (frame.columnDepth - frame.columnWidth);
     }
     else if (frame.shape == ColumnShape::RECTANGULAR || frame.shape == ColumnShape::IRREGULAR) {
-        length = 4 * frame.columnDepth + 4 * frame.columnWidth + 2 * std::numbers::pi * (radius - frame.columnWidth);
+        if (settings.get_coil_use_real_winding_geometry()) {
+            // A racetrack whose corners have a REAL radius: four straights between the corner
+            // arcs, plus one full circle of the bend radius. The corner arcs cut the sharp
+            // corner off, so a turn on a former with a rounded corner is SHORTER than the same
+            // turn drawn around a sharp one, by (2 pi - 8) * (bend - standoff) -- about 1,72
+            // times the corner radius over the whole turn.
+            const double standoff = radius - frame.columnWidth;
+            const double bendRadius = turnBendRadius.value_or(frame.cornerRadius + standoff);
+            length = 4 * frame.columnDepth + 4 * frame.columnWidth + 8 * standoff +
+                     (2 * std::numbers::pi - 8) * bendRadius;
+        }
+        else {
+            // Classic model: the column is a sharp rectangle, so the turn's corner radius is
+            // exactly its standoff. Kept as the original expression, not as the general one
+            // evaluated at bend == standoff, so that no existing result moves by a rounding bit.
+            length = 4 * frame.columnDepth + 4 * frame.columnWidth + 2 * std::numbers::pi * (radius - frame.columnWidth);
+        }
     }
     else {
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");

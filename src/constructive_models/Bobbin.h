@@ -179,6 +179,27 @@ class Bobbin : public MAS::Bobbin {
      * @return Column depth in m
      */
     double get_column_depth();
+
+    /**
+     * @brief Radius of the corners of the central column, which is what a wire bends around
+     *        while being wound onto it (see WireBend: the former's corner plays exactly the
+     *        role of the mandrel in the IEC 60317 flexibility test).
+     *
+     * Derived where the shape already defines it -- a round column's corner radius is its own
+     * radius, an oblong one's is half its depth -- and read from the MAS datum for rectangular
+     * and irregular columns. A synthesised bobbin that carries no datum falls back to the
+     * injection-moulding rule (inside radius >= 0.5 x wall thickness), which is the same kind of
+     * modelled-but-sourced value create_quick_bobbin already uses for the wall thickness itself.
+     * @return Column corner radius in m
+     */
+    double get_column_corner_radius();
+
+    /**
+     * @brief Half the interior angle between the two straight runs that a turn's corner joins:
+     *        pi/4 on a rectangular column, pi/2 where there is no corner at all.
+     * @return Corner half-angle in radians
+     */
+    double get_column_corner_half_angle();
 };
 
 

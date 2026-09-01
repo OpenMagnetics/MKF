@@ -258,6 +258,11 @@ struct WoundColumnFrame {
     double columnWidth;
     double columnDepth;
     double axisX;
+    // Radius of the former's corners, which is what a turn actually bends around (see
+    // WireBend). Only read under the real-winding flag: the classic model treats the
+    // column as a mathematically sharp rectangle, so the turn's corner radius there is
+    // just its standoff, and every existing result depends on that.
+    double cornerRadius = 0;
 };
 
 class Coil : public MAS::Coil {
@@ -450,7 +455,12 @@ class Coil : public MAS::Coil {
         // Length of one turn at radial position turnX wrapped around the given
         // column frame; nullopt when the geometry is invalid (negative length),
         // matching the winder's historical soft-failure.
-        std::optional<double> get_turn_length_in_frame(const WoundColumnFrame& frame, double turnX);
+        // turnBendRadius: the centreline radius the turn's corners actually achieve, when the
+        // caller has solved it (WireBend). Only consulted under the real-winding flag, and only
+        // needed for a turn that LIFTS OFF the former -- a conforming turn's bend is simply the
+        // former's corner plus its standoff, which the frame already carries.
+        std::optional<double> get_turn_length_in_frame(const WoundColumnFrame& frame, double turnX,
+                                                       std::optional<double> turnBendRadius = std::nullopt);
         // Multi-column winding support: every group is wound in a window-local
         // frame on the +x side of the main column, so the whole section/layer/
         // turn machinery keeps a single geometry. This final winding step
