@@ -2438,3 +2438,198 @@ TEST_CASE("Autocomplete refuses to call an insulated-looking wire bare", "[suppo
         CHECK(wire.resolve_coating()->get_type().value() == InsulationWireCoatingType::BARE);
     }
 }
+
+// ABT #964 / #848: RE-MEASURE THE CHOKE CORPUS.
+//
+// The turn-to-core element was originally fitted against 230 Wurth common-mode chokes with
+// measured REDEXPERT common-mode impedance curves. Those parts are toroids, so they were fitted
+// with BOTH of the forms ABT #964 has now corrected -- the powder-core coating thickness applied
+// to ferrite, and the round-window gap measured from the conducting surface, which counted the
+// wire enamel a second time as air. The two push the series gap in opposite directions, so the
+// corpus was matched with both present and neither could be corrected alone without moving it.
+//
+// This walks the corpus and reports where the corrected model lands. It asserts only that the
+// run completed and stayed finite: the numbers are the deliverable, and pinning an agreement
+// ratio would turn a measurement into a target. Hidden by default ([.]) because it needs an
+// external corpus and runs a few hundred impedance sweeps. Run with:
+//     ./MKF_tests "[cmc-corpus]"
+TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.][cmc-corpus]") {
+    const std::filesystem::path corpusRoot = "/home/alf/wuerth/cmc_score";
+    const std::filesystem::path datasetPath = corpusRoot / "dataset_all.json";
+    if (!std::filesystem::exists(datasetPath)) {
+        SKIP("WE choke corpus not present in this checkout");
+    }
+    std::ifstream datasetStream(datasetPath);
+    json dataset = json::parse(datasetStream);
+
+    struct Row {
+        std::string part;
+        double measured = 0;
+        double previous = 0;   // what the corpus recorded before ABT #964
+        double corrected = 0;
+        bool coatingWasDefaulted = false;
+        std::string jacket;     // how this part's coating is recorded, as a group label
+    };
+    std::vector<Row> rows;
+
+    for (const auto& entry : dataset) {
+        if (!entry.contains("part") || !entry.contains("meas")) {
+            continue;
+        }
+        const auto& measured = entry["meas"];
+        if (!measured.contains("f_peak") || measured["f_peak"].is_null()) {
+            continue;
+        }
+        Row row;
+        row.part = entry["part"].is_string() ? entry["part"].get<std::string>()
+                                             : std::to_string(entry["part"].get<int64_t>());
+        row.measured = measured["f_peak"].get<double>();
+        if (entry.contains("model") && entry["model"].is_object() && entry["model"].contains("f_peak") &&
+            !entry["model"]["f_peak"].is_null()) {
+            row.previous = entry["model"]["f_peak"].get<double>();
+        }
+        // "null" here is the STRING the corpus builder wrote for a core with no coating field --
+        // exactly the parts whose jacket now resolves to the ferrite value instead of the powder one.
+        row.coatingWasDefaulted = !entry.contains("coating") || entry["coating"].is_null() ||
+                                  (entry["coating"].is_string() && entry["coating"].get<std::string>() == "null");
+
+        const std::filesystem::path partPath = corpusRoot / "parts_all" / (row.part + ".json");
+        if (!std::filesystem::exists(partPath)) {
+            continue;
+        }
+        try {
+            std::ifstream partStream(partPath);
+            json magneticJson = json::parse(partStream);
+            if (magneticJson.contains("magnetic")) {
+                magneticJson = magneticJson["magnetic"];
+            }
+            const auto& coreFunctional = magneticJson["core"]["functionalDescription"];
+            if (!coreFunctional.contains("coating") || coreFunctional["coating"].is_null()) {
+                row.jacket = "no coating (defaulted)";
+            }
+            else if (coreFunctional["coating"].is_string()) {
+                row.jacket = "name-only " + coreFunctional["coating"].get<std::string>();
+            }
+            else {
+                const auto& coatingRecord = coreFunctional["coating"];
+                std::string type = coatingRecord.contains("type") && coatingRecord["type"].is_string()
+                                       ? coatingRecord["type"].get<std::string>()
+                                       : "untyped";
+                double thickness = coatingRecord.contains("thickness") && coatingRecord["thickness"].is_number()
+                                       ? coatingRecord["thickness"].get<double>()
+                                       : 0.0;
+                std::ostringstream label;
+                label << type << " case " << std::fixed << std::setprecision(2) << thickness * 1e3 << " mm";
+                row.jacket = label.str();
+            }
+            OpenMagnetics::Magnetic magnetic(magneticJson);
+            auto curve = Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, 1e3, 2e8, 400);
+            const auto& frequencies = curve.get_x_points();
+            const auto& impedances = curve.get_y_points();
+            if (frequencies.size() < 2 || impedances.size() != frequencies.size()) {
+                continue;
+            }
+            size_t peakIndex = 0;
+            for (size_t i = 0; i < impedances.size(); ++i) {
+                if (std::isfinite(impedances[i]) && impedances[i] > impedances[peakIndex]) {
+                    peakIndex = i;
+                }
+            }
+            if (!std::isfinite(impedances[peakIndex]) || impedances[peakIndex] <= 0) {
+                continue;
+            }
+            row.corrected = frequencies[peakIndex];
+        }
+        catch (const std::exception&) {
+            continue;  // a part the current model cannot build is not evidence either way
+        }
+        if (row.corrected > 0 && row.measured > 0) {
+            rows.push_back(row);
+        }
+    }
+
+    REQUIRE(rows.size() > 0);
+
+    auto report = [](const std::string& label, std::vector<double> ratios) {
+        if (ratios.empty()) {
+            std::cout << "  " << label << ": no parts\n";
+            return;
+        }
+        std::sort(ratios.begin(), ratios.end());
+        auto quantile = [&](double q) {
+            return ratios[std::min(ratios.size() - 1, static_cast<size_t>(q * (ratios.size() - 1) + 0.5))];
+        };
+        size_t within25 = 0;
+        for (double r : ratios) {
+            if (r >= 0.8 && r <= 1.25) {
+                ++within25;
+            }
+        }
+        std::cout << "  " << label << ": n=" << ratios.size()
+                  << "  median=" << quantile(0.5)
+                  << "  p10=" << quantile(0.1) << "  p90=" << quantile(0.9)
+                  << "  within[0.80,1.25]=" << within25 << "/" << ratios.size() << "\n";
+    };
+
+    std::vector<double> correctedAll, previousAll, correctedDefaulted, correctedExplicit;
+    for (const auto& row : rows) {
+        correctedAll.push_back(row.corrected / row.measured);
+        if (row.previous > 0) {
+            previousAll.push_back(row.previous / row.measured);
+        }
+        (row.coatingWasDefaulted ? correctedDefaulted : correctedExplicit)
+            .push_back(row.corrected / row.measured);
+    }
+
+    std::cout << "\n=== WE common-mode choke corpus: modelled peak frequency / measured ===\n";
+    report("BEFORE ABT #964 (corpus as recorded)", previousAll);
+    report("AFTER  ABT #964 (this build)        ", correctedAll);
+    report("  of which jacket was DEFAULTED     ", correctedDefaulted);
+    report("  of which jacket was EXPLICIT      ", correctedExplicit);
+    std::cout << "(a ratio above 1 means the model resonates HIGH, i.e. it under-predicts"
+                 " capacitance)\n\n";
+
+    // Per-part rows, so the corpus can be sliced by whatever turns out to matter (coating type,
+    // core size, turn count) without re-running a few hundred sweeps.
+    const char* dumpPath = "/tmp/mkf_choke_corpus.json";
+    json dump = json::array();
+    for (const auto& row : rows) {
+        dump.push_back({{"part", row.part},
+                        {"measured", row.measured},
+                        {"previous", row.previous},
+                        {"corrected", row.corrected},
+                        {"coatingWasDefaulted", row.coatingWasDefaulted}});
+    }
+    std::ofstream dumpStream(dumpPath);
+    dumpStream << dump.dump();
+    std::cout << "per-part rows written to " << dumpPath << "\n\n";
+
+    // By how the jacket is recorded. This is the slice that matters: the corpus straddles 1,0,
+    // so a pooled median can move the WRONG way while every group moves toward it.
+    std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> byJacket;
+    for (const auto& row : rows) {
+        if (row.previous > 0) {
+            byJacket[row.jacket].first.push_back(row.previous / row.measured);
+        }
+        byJacket[row.jacket].second.push_back(row.corrected / row.measured);
+    }
+    auto median = [](std::vector<double> values) {
+        if (values.empty()) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        std::sort(values.begin(), values.end());
+        return values[values.size() / 2];
+    };
+    std::cout << "=== by how the jacket is recorded: median modelled/measured ===\n";
+    for (const auto& [jacket, ratios] : byJacket) {
+        std::cout << "  " << std::setw(26) << std::left << jacket << " n=" << std::setw(4)
+                  << ratios.second.size() << "  before=" << median(ratios.first)
+                  << "  after=" << median(ratios.second) << "\n";
+    }
+    std::cout << "\n";
+
+    for (double ratio : correctedAll) {
+        REQUIRE(std::isfinite(ratio));
+        REQUIRE(ratio > 0);
+    }
+}
