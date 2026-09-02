@@ -178,7 +178,33 @@ std::pair<bool, double> MagneticFilterWindability::evaluate_magnetic(Magnetic* m
     }
 
     const double cornerRadius = bobbin.get_column_corner_radius();
-    const double cornerHalfAngle = bobbin.get_column_corner_half_angle();
+    // Read the window off the processed description rather than through
+    // Bobbin::get_winding_window_shape(), which throws when a bobbin carries no winding windows
+    // at all. This filter runs over the whole core catalogue, and a candidate that cannot answer
+    // the question is one to abstain on, never one to fail the run on.
+    //
+    // get_processed_description() hands back the optional BY VALUE and get_winding_windows()
+    // returns a reference INTO it, so the description has to be a named local: binding the vector
+    // straight off the call would leave a reference into a temporary that is already gone.
+    const auto processedDescription = bobbin.get_processed_description().value();
+    const auto& windingWindows = processedDescription.get_winding_windows();
+    // An absent shape reads as RECTANGULAR, which is the convention
+    // Bobbin::get_winding_window_shape() itself uses; an absent WINDOW says nothing either way,
+    // so it abstains.
+    const bool wrapsACoreSection =
+        windingWindows.empty() || (windingWindows[0].get_shape() &&
+                                   windingWindows[0].get_shape().value() ==
+                                       WindingWindowShape::ROUND);
+    if (cornerRadius <= 0 && wrapsACoreSection) {
+        // A toroid whose ring edge is not stated. A round winding window means the turn wraps a
+        // core cross-section rather than a moulded former, and create_quick_bobbin resolves that
+        // edge from the part's coating -- so a zero here is a hand-authored toroidal bobbin that
+        // carries no coating and no corner datum, i.e. nothing that says what the wire is pulled
+        // over. Rejecting on a radius nobody stated would be inventing the answer, so the filter
+        // abstains, as it does on an unresolved bobbin above. A zero on a RECTANGULAR window is a
+        // different statement: that former really is specified sharp, and is judged as such.
+        return {true, 0.0};
+    }
 
     bool valid = true;
     double scoring = 0;

@@ -386,3 +386,83 @@ TEST_CASE("Test_WireBend_Filter_Judges_The_Wire_Against_Its_Former", "[wire][wir
     REQUIRE(comfortableVerdict.first);
     REQUIRE(comfortableVerdict.second < atFloorVerdict.second);
 }
+
+TEST_CASE("Test_WireBend_Toroid_Edge_Comes_From_The_Coating", "[wire][wire-bend][filter]") {
+    // A toroid has no moulded former: the turn is a closed loop around the ring cross-section and
+    // bends at that section's edges. MAS says so directly -- cornerRadius is "the radius of the
+    // core cross-section edges (or of its coating, when coated), which is what the wire is pulled
+    // over" -- and create_quick_bobbin now resolves it instead of leaving the zero that the
+    // rectangular-column moulding fallback produced from a toroid's zero wall thickness.
+    //
+    // The coating is the only quantity on that surface anyone dimensions. IEC 62317-12 gives a
+    // ring core as A/B/C and admits the chamfer only through the effective height; the MMPA/IMA
+    // toroid specification says only that the corners "shall not be sharp or rough"; Fair-Rite
+    // burnishes to break the edge; TDK gives tumbling or a chamfer by size tier. None publishes a
+    // number. The jacket does: Ferroxcube draws PA11 at ~0,3 mm, TDK specifies epoxy below 0,4 mm
+    // and parylene at 12,7 or 25 um. A conformal jacket cannot form an edge sharper than itself,
+    // so its thickness is a sourced lower bound on what the wire rides over.
+    for (const std::string name : {"05_pfc_inductor_t4020_hf60", "07_cmc_t2515_w800",
+                                   "12_boost_inductor_t5026_26"}) {
+        const std::filesystem::path example =
+            std::filesystem::path(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/')))
+            / "../MAS/examples" / (name + ".json");
+        std::ifstream stream(example);
+        if (!stream.good()) {
+            SKIP("MAS example not available in this checkout");
+        }
+        json masJson = json::parse(stream);
+        json magneticJson = masJson.contains("magnetic") ? masJson["magnetic"] : masJson;
+        OpenMagnetics::Magnetic magnetic(magneticJson);
+
+        auto core = magnetic.get_mutable_core();
+        REQUIRE(core.get_shape_family() == CoreShapeFamily::T);
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, false);
+        const double edgeRadius = bobbin.get_column_corner_radius();
+
+        // The edge is the jacket's, not the zero a wall-less part used to resolve.
+        REQUIRE(edgeRadius > 0);
+        REQUIRE_THAT(edgeRadius, Catch::Matchers::WithinRel(core.get_coating_thickness(), 1e-12));
+
+        // And it is a real bend the filter can judge. IEC 60851-3 winds the wire ON the mandrel,
+        // so the wire's own outer radius appears on both sides of the comparison and cancels:
+        // the edge is legal for a given wire exactly when it is at least the mandrel radius.
+        for (const std::string wireName : {"Round 0.2 - Grade 1", "Round 0.4 - Grade 1"}) {
+            auto wire = find_wire_by_name(wireName);
+            const double standoff = 0.5 * OpenMagnetics::Wire::calculate_outer_diameter(wire);
+            const double mandrelRadius =
+                0.5 * WireBend::get_mandrel_diameter(wire, BendCriterion::FLEXIBILITY,
+                                                     BendAxis::ROUND);
+            const auto asLaid = WireBend::evaluate(edgeRadius + standoff, wire, BendAxis::ROUND);
+            const bool legal = asLaid.verdict != BendVerdict::BELOW_FLEXIBILITY;
+            REQUIRE(legal == (edgeRadius >= mandrelRadius - 1e-9));
+            std::cout << name << "  " << wireName << "  edge=" << edgeRadius * 1e3
+                      << " mm  mandrelRadius=" << mandrelRadius * 1e3 << " mm  -> "
+                      << (legal ? "windable" : "BELOW_FLEXIBILITY") << "\n";
+        }
+    }
+}
+
+TEST_CASE("Test_WireBend_Windability_Filter_Survives_A_Json_Round_Trip", "[wire][wire-bend][filter]") {
+    // MagneticFilters has two hand-maintained serializers, and a new enumerator is only reachable
+    // over JSON once it is registered in BOTH. Every adviser pipeline crosses that boundary -- a
+    // MagneticFilterOperation is how a flow is configured and how it is echoed back -- so an
+    // unregistered value throws on the way in ("does not conform to MagneticFilters schema") and
+    // again on the way out ("Unexpected value in enumeration"). The C++ factory never notices,
+    // which is exactly why this needs its own test.
+    const json asJson = "Windability";
+    REQUIRE(asJson.get<MagneticFilters>() == MagneticFilters::WINDABILITY);
+
+    json roundTripped = MagneticFilters::WINDABILITY;
+    REQUIRE(roundTripped.get<std::string>() == "Windability");
+
+    // And through the operation that actually carries it into an adviser.
+    OpenMagnetics::MagneticFilterOperation operation;
+    operation.set_filter(MagneticFilters::WINDABILITY);
+    operation.set_invert(false);
+    operation.set_log(false);
+    operation.set_weight(1.0);
+    json operationJson = operation;
+    REQUIRE(operationJson["filter"].get<std::string>() == "Windability");
+    REQUIRE(operationJson.get<OpenMagnetics::MagneticFilterOperation>().get_filter() ==
+            MagneticFilters::WINDABILITY);
+}

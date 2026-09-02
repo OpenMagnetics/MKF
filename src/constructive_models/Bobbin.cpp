@@ -846,6 +846,39 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
         // Toroid: no bobbin plastic, but carry the coating folded into columnThickness above so
         // the coated-OD outer wrap is preserved (and cancels out of get_air_cored_reluctance).
         coreBobbinProcessedDescription.set_column_thickness(columnThickness);
+
+        // THE EDGE THE WIRE IS PULLED OVER. A turn on a toroid is a closed loop around the ring
+        // cross-section, so it bends at that section's edges and nowhere else -- there is no
+        // moulded former corner here, and the injection-moulding fallback in
+        // get_column_corner_radius() (half the wall thickness) is the wrong rule for a part that
+        // has no wall. MAS names this case directly: cornerRadius is "the radius of the core
+        // cross-section edges (or of its coating, when coated), which is what the wire is pulled
+        // over".
+        //
+        // What that radius is, from the sources: NOTHING publishes the bare ferrite edge as a
+        // number. IEC 62317-12 dimensions a ring core as A/B/C and admits the chamfer only
+        // through the effective height; the MMPA/IMA "Standard Specification for Ferrite Toroid
+        // Cores" says only that "the toroid corners shall not be sharp or rough" (4.2.4-4.2.5);
+        // Fair-Rite states its toroids are "supplied burnished to break sharp edges"; TDK gives
+        // the treatment by size tier (small = edges rounded by tumbling, medium/large = chamfer)
+        // and no dimension. The one quantity that IS dimensioned on the winding surface is the
+        // COATING: Ferroxcube draws PA11 at ~0.3 mm on its TN ring cores, TDK specifies epoxy
+        // < 0.4 mm and parylene at 12.7 or 25 um, and Magnetics' coated-vs-uncoated limits imply
+        // ~0.3-0.4 mm of epoxy buildup per surface.
+        //
+        // So the coating is what we can source, and it is also what the wire actually touches: a
+        // conformal jacket of thickness t laid over an edge cannot reproduce an edge sharper than
+        // itself, so the radius the wire follows is at least t. That makes this a sourced LOWER
+        // bound on the true edge radius (the tumbled or chamfered ferrite underneath only adds to
+        // it), not an invented constant.
+        //
+        // Unlike the OUTER-WRAP fold above -- which takes only an EXPLICIT coating, because
+        // inflating the wound OD from a jacket the catalogue never claimed would move mean turn
+        // length and reluctance -- the edge radius uses the canonical resolver, defaults and all.
+        // Core::get_coating_thickness() documents why: a toroid ships jacketed even when the
+        // catalogue omits it, and a bare-ferrite toroid wound with bare wire is not a real part.
+        // StrayCapacitance consumes the same resolver the same way.
+        coreBobbinProcessedDescription.set_column_corner_radius(core.get_coating_thickness());
     }
 
     // NOTE: column_depth/column_shape/column_width describe the centre/main
