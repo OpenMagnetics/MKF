@@ -1471,12 +1471,39 @@ CoreShape Core::resolve_shape(CoreShapeDataOrNameUnion coreShape) {
     }
 }
 
+bool Core::is_ferrite_core() const {
+    // Which jacket a toroid carries, and how thick, is a property of the ceramic it is pressed
+    // from: a ferrite ring core and a powder toroid are coated by different vendors to different
+    // specifications. Anything we cannot read a material for is treated as not-ferrite, which
+    // keeps the powder/legacy values these cores already used.
+    try {
+        return resolve_material().get_material() == MaterialType::FERRITE;
+    }
+    catch (const std::exception&) {
+        return false;
+    }
+}
+
 bool Core::get_default_toroid_coating_is_parylene() const {
     // Pick the default coating type for an uncoated toroid by its outer diameter (the "A"
-    // dimension): small toroids are parylene-coated, larger ones epoxy (Micrometals/Fair-
-    // Rite). Only meaningful for toroidal shapes; callers guard on the shape family.
+    // dimension): small toroids are parylene-coated, larger ones epoxy. The crossover size is
+    // family-specific -- TDK puts a ferrite ring core's at R 9.53 and Magnetics' ferrite
+    // catalogue agrees, while Micrometals/Fair-Rite put a powder toroid's at 0.20" -- and
+    // picking the wrong one hands a 6 mm ferrite toroid an epoxy thickness ~24x the parylene
+    // film it really carries. Only meaningful for toroidal shapes; callers guard on the family.
     double outerDiameter = flatten_dimensions(resolve_shape().get_dimensions().value())["A"];
-    return outerDiameter <= Defaults().defaultToroidParyleneMaximumOuterDiameter;
+    auto defaults = Defaults();
+    return outerDiameter <= (is_ferrite_core()
+                                 ? defaults.defaultFerriteToroidParyleneMaximumOuterDiameter
+                                 : defaults.defaultToroidParyleneMaximumOuterDiameter);
+}
+
+double Core::get_default_epoxy_coating_thickness() const {
+    // Epoxy on a ferrite ring core is ~3x the film on a powder toroid; see Defaults for the
+    // tolerance-free derivations (TDK's coated-vs-uncoated LIMITS, Ferroxcube's drawn jacket).
+    auto defaults = Defaults();
+    return is_ferrite_core() ? defaults.defaultFerriteEpoxyCoreCoatingThickness
+                             : defaults.defaultEpoxyCoreCoatingThickness;
 }
 
 double Core::get_toroid_edge_radius() const {
@@ -1503,10 +1530,20 @@ double Core::get_toroid_edge_radius() const {
             std::to_string(ringWall) + " m and height " + std::to_string(ringHeight) + " m");
     }
 
+    // Which edge this core actually has depends on its size tier, because the two are made
+    // differently: TDK chamfers medium and large ring cores but only tumbles the small ones, and
+    // a tumbled edge is far tighter than a drawn chamfer. The tier boundary is the same size the
+    // coating crosses over at (parylene below, epoxy above), which is not a coincidence -- both
+    // are "is this a small core?" -- so it is read from the same place.
+    auto defaults = Defaults();
+    const double tierRadius = get_default_toroid_coating_is_parylene()
+                                  ? defaults.defaultTumbledToroidEdgeRadius
+                                  : defaults.defaultToroidRingEdgeRadius;
+
     // The jacket is always there, so the edge is at least as round as the jacket is thick; the
-    // drawn ring-core value is the number to use when it is thicker than that (see
-    // Defaults::defaultToroidRingEdgeRadius for the sourcing).
-    const double sourced = std::max(Defaults().defaultToroidRingEdgeRadius, get_coating_thickness());
+    // tier value is the number to use when it is larger than that (see Defaults for the sourcing
+    // of both, and for the caveat on the tumbled one).
+    const double sourced = std::max(tierRadius, get_coating_thickness());
 
     // A corner radius cannot exceed half the smaller dimension of the section it is a corner of:
     // past that the two edges on the same face have eaten the face between them and the section
@@ -1528,7 +1565,7 @@ double Core::get_coating_thickness() const {
             auto defaults = Defaults();
             return get_default_toroid_coating_is_parylene()
                 ? defaults.defaultParyleneCoreCoatingThickness
-                : defaults.defaultEpoxyCoreCoatingThickness;
+                : get_default_epoxy_coating_thickness();
         }
         return 0;
     }
@@ -1546,7 +1583,7 @@ double Core::get_coating_thickness() const {
         return defaults.defaultParyleneCoreCoatingThickness;
     }
     if (name == "epoxy") {
-        return defaults.defaultEpoxyCoreCoatingThickness;
+        return get_default_epoxy_coating_thickness();
     }
     throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
         "Core coating type '" + name + "' has no known default thickness; provide an explicit coating thickness");

@@ -2077,8 +2077,17 @@ TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][co
 
     // A toroid with no coating field is jacketed in practice, so it falls back to the
     // default (epoxy) coating; a name-only coating resolves to its datasheet default.
-    REQUIRE_THAT(defaulted.get_coating_thickness(), Catch::Matchers::WithinAbs(0.1e-3, 1e-12));
-    REQUIRE_THAT(epoxy.get_coating_thickness(), Catch::Matchers::WithinAbs(0.1e-3, 1e-12));
+    //
+    // ABT #964: this is a FERRITE ring core, and epoxy on ferrite is not the film a powder
+    // toroid carries. Fair-Rite's thermo-set plastic adds at most 0.5 mm across a diameter
+    // (0.25 mm per surface), Ferroxcube DIMENSIONS its TN jacket at ~0.3 mm, and TDK's coated
+    // limits on R 50.0x30.0x20.0 work out to exactly 0.400 mm per surface against the UNCOATED
+    // limits, matching the "< 0.4 mm" it states. The old 0.10 mm here was the POWDER-core value,
+    // which is still what a powder toroid resolves to.
+    REQUIRE_THAT(defaulted.get_coating_thickness(),
+                 Catch::Matchers::WithinAbs(Defaults().defaultFerriteEpoxyCoreCoatingThickness, 1e-12));
+    REQUIRE_THAT(epoxy.get_coating_thickness(),
+                 Catch::Matchers::WithinAbs(Defaults().defaultFerriteEpoxyCoreCoatingThickness, 1e-12));
     REQUIRE_THAT(parylene.get_coating_thickness(), Catch::Matchers::WithinAbs(12.7e-6, 1e-12));
 
     // True-uncoated baseline: an explicit zero-thickness coating gives the full bore.
@@ -2100,7 +2109,8 @@ TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][co
 
     // The usable winding bore shrinks by exactly the coating thickness vs the bare bore.
     REQUIRE(epoxyRh < uncoatedRh);
-    REQUIRE_THAT(uncoatedRh - epoxyRh, Catch::Matchers::WithinAbs(0.1e-3, 1e-9));
+    REQUIRE_THAT(uncoatedRh - epoxyRh,
+                 Catch::Matchers::WithinAbs(Defaults().defaultFerriteEpoxyCoreCoatingThickness, 1e-9));
     REQUIRE_THAT(uncoatedRh - paryleneRh, Catch::Matchers::WithinAbs(12.7e-6, 1e-9));
     // Window area follows the reduced radius.
     double epoxyArea = epoxy.get_processed_description()->get_winding_windows()[0].get_area().value();
@@ -3126,4 +3136,51 @@ TEST_CASE("ABT644_Gap_Type_Decides_Where_The_Gap_Goes", "[constructive-model][co
         REQUIRE(gapping.size() == 3);
         CHECK(countOfType(gapping, GapType::RESIDUAL) == 3);
     }
+}
+
+TEST_CASE("Toroid_Coating_Is_Resolved_Per_Material_Family", "[core][coating][abt964]") {
+    // Which jacket a toroid carries, and how thick, is a property of the ceramic it is pressed
+    // from. Epoxy on a FERRITE ring core is ~3x the film on a powder toroid, and the two families
+    // cross over from parylene to epoxy at DIFFERENT sizes -- TDK puts a ferrite ring core's at
+    // R 9.53 and Magnetics' ferrite catalogue agrees (coating code Y up to 7.62 mm OD, code Z
+    // from 9.53 mm), while Micrometals/Fair-Rite put a powder toroid's at 0.20". Both thickness
+    // numbers are tolerance-free: they compare a coated limit against the UNCOATED limit in the
+    // same direction, so the bare core's dimensional tolerance cancels instead of being counted
+    // as coating. TDK R 50.0x30.0x20.0 yields 0.400 mm on all three axes that way, matching the
+    // "< 0.4 mm" it states; Ferroxcube draws its TN jacket at ~0.3 mm.
+    auto toroid = [](const std::string& shape, const std::string& material) {
+        json coreJson;
+        coreJson["functionalDescription"]["type"] = "toroidal";
+        coreJson["functionalDescription"]["material"] = material;
+        coreJson["functionalDescription"]["shape"] = shape;
+        coreJson["functionalDescription"]["gapping"] = json::array();
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        return Core(coreJson, true);
+    };
+    auto defaults = Defaults();
+
+    // Ferrite past TDK's R 9.53 crossover: epoxy, at the drawn ring-core thickness.
+    auto ferriteLarge = toroid("T 25/15/10", "N97");
+    REQUIRE(ferriteLarge.is_ferrite_core());
+    REQUIRE_FALSE(ferriteLarge.get_default_toroid_coating_is_parylene());
+    REQUIRE_THAT(ferriteLarge.get_coating_thickness(),
+                 Catch::Matchers::WithinAbs(defaults.defaultFerriteEpoxyCoreCoatingThickness, 1e-12));
+
+    // THE CASE A SINGLE SHARED THRESHOLD GOT WRONG. One shape, 6,3 mm across, sits between the
+    // two crossovers: past 0.20" so a POWDER toroid of that size is epoxy, but short of R 9.53 so
+    // a FERRITE one is still parylene. Same geometry, opposite jackets, ~24x apart in thickness.
+    auto ferriteMid = toroid("T 6.3/3.8/2.5", "N97");
+    REQUIRE(ferriteMid.is_ferrite_core());
+    REQUIRE(ferriteMid.get_default_toroid_coating_is_parylene());
+    REQUIRE_THAT(ferriteMid.get_coating_thickness(),
+                 Catch::Matchers::WithinAbs(defaults.defaultParyleneCoreCoatingThickness, 1e-12));
+
+    auto powderMid = toroid("T 6.3/3.8/2.5", "Kool M\u00b5 26");
+    REQUIRE_FALSE(powderMid.is_ferrite_core());
+    REQUIRE_FALSE(powderMid.get_default_toroid_coating_is_parylene());
+    REQUIRE_THAT(powderMid.get_coating_thickness(),
+                 Catch::Matchers::WithinAbs(defaults.defaultEpoxyCoreCoatingThickness, 1e-12));
+
+    REQUIRE(ferriteMid.get_coating_thickness() < powderMid.get_coating_thickness());
+    REQUIRE(powderMid.get_coating_thickness() < ferriteLarge.get_coating_thickness());
 }

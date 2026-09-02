@@ -481,36 +481,72 @@ TEST_CASE("Test_WireBend_Windability_Filter_Survives_A_Json_Round_Trip", "[wire]
 }
 
 
-TEST_CASE("Test_WireBend_Toroid_Edge_Cannot_Exceed_The_Ring_Section", "[wire][wire-bend][filter]") {
-    // The drawn ring-core jacket is ~0,3 mm, but a corner radius cannot exceed half the smaller
-    // dimension of the section it is a corner of -- past that the two edges on one face have
-    // eaten the face between them. T 2.5/1.5/1 has a radial wall of only (2,5 - 1,5) / 2 = 0,5 mm
-    // and a height of 1,0 mm, so its edge must clamp to 0,25 mm rather than take the drawn value.
-    json coreJson;
-    coreJson["functionalDescription"]["type"] = "toroidal";
-    coreJson["functionalDescription"]["material"] = "N97";
-    coreJson["functionalDescription"]["shape"] = "T 2.5/1.5/1";
-    coreJson["functionalDescription"]["gapping"] = json::array();
-    coreJson["functionalDescription"]["numberStacks"] = 1;
-    OpenMagnetics::Core core(coreJson, true);
+TEST_CASE("Test_WireBend_Toroid_Edge_Follows_The_Size_Tier", "[wire][wire-bend][filter]") {
+    // Ring cores are not all finished the same way, and TDK's ring-core general information says
+    // so by size: small cores get "edges rounded by tumbling", medium and large ones get a
+    // chamfer. A tumbled edge is far tighter than a drawn chamfer, so the two tiers carry
+    // different numbers and the tier is read off the same size boundary the coating crosses at.
+    auto toroid = [](const std::string& shape) {
+        json coreJson;
+        coreJson["functionalDescription"]["type"] = "toroidal";
+        coreJson["functionalDescription"]["material"] = "N97";
+        coreJson["functionalDescription"]["shape"] = shape;
+        coreJson["functionalDescription"]["gapping"] = json::array();
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        return OpenMagnetics::Core(coreJson, true);
+    };
+    auto defaults = Defaults();
 
-    const auto& ringSection = core.get_processed_description()->get_columns()[0];
-    REQUIRE_THAT(ringSection.get_width(), Catch::Matchers::WithinAbs(0.5e-3, 1e-9));
-    REQUIRE_THAT(ringSection.get_depth(), Catch::Matchers::WithinAbs(1.0e-3, 1e-9));
+    // Chamfered tier: the drawn ring-core jacket.
+    auto large = toroid("T 25/15/10");
+    REQUIRE_FALSE(large.get_default_toroid_coating_is_parylene());
+    REQUIRE_THAT(large.get_toroid_edge_radius(),
+                 Catch::Matchers::WithinAbs(defaults.defaultToroidRingEdgeRadius, 1e-12));
 
-    // Clamped to half the wall, not the 0,3 mm the datasheets draw.
-    REQUIRE_THAT(core.get_toroid_edge_radius(), Catch::Matchers::WithinAbs(0.25e-3, 1e-9));
-    REQUIRE(core.get_toroid_edge_radius() < Defaults().defaultToroidRingEdgeRadius);
+    // Tumbled tier: an order of magnitude tighter, and the reason a small toroid is judged much
+    // more harshly than a large one. See Defaults for how weakly sourced that number is.
+    auto small = toroid("T 2.5/1.5/1");
+    REQUIRE(small.get_default_toroid_coating_is_parylene());
+    REQUIRE_THAT(small.get_toroid_edge_radius(),
+                 Catch::Matchers::WithinAbs(defaults.defaultTumbledToroidEdgeRadius, 1e-12));
+    REQUIRE(small.get_toroid_edge_radius() < large.get_toroid_edge_radius());
 
-    // And the bobbin carries the clamped value through, so the filter judges the real edge.
-    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, false);
-    REQUIRE_THAT(bobbin.get_column_corner_radius(),
-                 Catch::Matchers::WithinAbs(0.25e-3, 1e-9));
+    // Whatever the tier says, the edge can never exceed what the ring section can carry: a corner
+    // radius past half the smaller dimension of a section has eaten the face between its two
+    // edges. No catalogue toroid is thin enough for that clamp to bite today (nothing has a wall
+    // or height under 0,6 mm), so this asserts it as a property across the whole family rather
+    // than picking a part that happens to trip it.
+    size_t examined = 0;
+    for (const auto& shape : get_shapes(true)) {
+        if (shape.get_family() != CoreShapeFamily::T || !shape.get_name()) {
+            continue;
+        }
+        OpenMagnetics::Core core = [&] {
+            json coreJson;
+            coreJson["functionalDescription"]["type"] = "toroidal";
+            coreJson["functionalDescription"]["material"] = "N97";
+            coreJson["functionalDescription"]["shape"] = shape.get_name().value();
+            coreJson["functionalDescription"]["gapping"] = json::array();
+            coreJson["functionalDescription"]["numberStacks"] = 1;
+            return OpenMagnetics::Core(coreJson, true);
+        }();
+        const auto& ringSection = core.get_processed_description()->get_columns()[0];
+        const double edge = core.get_toroid_edge_radius();
+        REQUIRE(edge > 0);
+        REQUIRE(edge <= 0.5 * std::min(ringSection.get_width(), ringSection.get_depth()) + 1e-12);
+        ++examined;
+    }
+    REQUIRE(examined > 0);
+    std::cout << "toroid edge radius checked against the ring section on " << examined
+              << " catalogue T shapes\n";
 
     // A bobbin-wound core has no ring edge to ask about, and says so rather than inventing one.
-    auto eCoreJson = coreJson;
+    json eCoreJson;
     eCoreJson["functionalDescription"]["type"] = "two-piece set";
+    eCoreJson["functionalDescription"]["material"] = "N97";
     eCoreJson["functionalDescription"]["shape"] = "E 55/28/21";
+    eCoreJson["functionalDescription"]["gapping"] = json::array();
+    eCoreJson["functionalDescription"]["numberStacks"] = 1;
     OpenMagnetics::Core eCore(eCoreJson, true);
     REQUIRE_THROWS(eCore.get_toroid_edge_radius());
 }

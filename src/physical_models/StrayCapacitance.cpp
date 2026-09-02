@@ -1740,14 +1740,34 @@ static std::vector<double> turn_to_core_air_gaps(Coil& coil, const Turn& turn, W
     auto coordinates = turn.get_coordinates();
     if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
         // Bore radius of the surface the first layer rests on; the turn's radius from the axis.
-        // Left exactly as ABT #848 validated it against 107 measured WE common-mode chokes: one
-        // face, measured from the CONDUCTING surface. No toroid measurement is in scope here.
+        //
+        // ABT #964: measured from the turn's INSULATION surface, as the rectangular branch below
+        // is. What this function returns is the AIR in the series stack, and
+        // calculate_turn_to_core_capacitance adds the wire coating separately as t/eps_r.
+        // Measuring from the CONDUCTING surface hands the enamel back a second time, as if it
+        // were air: a turn resting on the bore reports a gap of one enamel thickness instead of
+        // zero, so its air-equivalent stack becomes t/eps + t rather than t/eps -- a factor of
+        // (1 + eps_r), which is 4,5x for enamel. It is a geometry error on its face: the same turn,
+        // in the same place, must report the same gap whichever window it sits in, and ABT #948
+        // recorded it as the remaining inconsistency after correcting the rectangular branch.
+        //
+        // CAUTION, because this branch is NOT unvalidated: the 107 measured WE common-mode chokes
+        // of ABT #848 are toroids, so they were fitted with this form -- and with the powder-core
+        // coating thickness that ABT #964 has now replaced for ferrite. Those two errors push the
+        // series gap in OPPOSITE directions (the enamel double-count widened it, the too-thin
+        // jacket narrowed it), so the corpus was matched with both present and neither can be
+        // corrected alone without moving it. Both are corrected together here. The only toroid
+        // reference in the suite, Test_Impedance_0, lands at +24,6% against its 1,400 MHz with
+        // both applied, against +27,0% with the jacket alone -- but that is ONE part, and the
+        // 107-choke corpus has not been re-measured since. Re-measure it before trusting toroid
+        // capacitance to better than that band.
         if (!windows[0].get_radial_height()) {
             return {0.0};
         }
         double boreRadius = windows[0].get_radial_height().value();
         double turnRadius = std::hypot(coordinates[0], coordinates.size() > 1 ? coordinates[1] : 0.0);
-        return {std::max(0.0, (boreRadius - conductingRadius) - turnRadius)};
+        double turnInsulationRadius = wire.get_maximum_outer_width() / 2;
+        return {std::max(0.0, (boreRadius - turnInsulationRadius) - turnRadius)};
     }
     // Rectangular window: the ferrite column surface sits one bobbin wall inside the radial
     // INNER EDGE OF THE WINDING WINDOW, and the turn's conductor surface at |x| - r.

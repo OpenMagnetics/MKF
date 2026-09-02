@@ -119,6 +119,11 @@ class Core : public MAS::MagneticCore {
     // Explicit CoreCoating.material wins; otherwise the datasheet default material for
     // the coating type. Throws if the core has no coating or the type has no material.
     double get_coating_relative_permittivity() const;
+    // Whether this core is pressed from ferrite rather than powder/tape. Decides which
+    // vendor's coating specification applies; false when no material can be resolved.
+    bool is_ferrite_core() const;
+    // Datasheet epoxy thickness per surface for this core's material family, in m.
+    double get_default_epoxy_coating_thickness() const;
     // For an uncoated toroid, whether the default coating type is parylene (small cores)
     // rather than epoxy (larger cores), selected by the outer diameter.
     bool get_default_toroid_coating_is_parylene() const;
