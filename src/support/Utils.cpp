@@ -2847,13 +2847,28 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
                     }
                     break;
                 }
-                case WireType::RECTANGULAR:
-                case WireType::FOIL:
-                case WireType::PLANAR: {
+                case WireType::RECTANGULAR: {
                     if (!wire.get_outer_width()) {
                         wire.set_outer_width(as_dimension(wire.calculate_outer_width()));
                     }
                     if (!wire.get_outer_height()) {
+                        wire.set_outer_height(as_dimension(wire.calculate_outer_height()));
+                    }
+                    break;
+                }
+                case WireType::FOIL:
+                case WireType::PLANAR: {
+                    // ABT #967: a database FOIL carries only its thickness (conductingWidth) --
+                    // the turn is as tall as its section and wind() cuts it to that height
+                    // (Wire::cut_foil_wire_to_section), which is when conductingHeight and the
+                    // outer sizes appear. A PLANAR is the mirror case (its width is cut to the
+                    // section). So derive here only the dimension the wire already states;
+                    // asking for the other one before winding dereferenced an empty optional and
+                    // refused every design that names a database foil ("Foil 0.2").
+                    if (!wire.get_outer_width() && wire.get_conducting_width()) {
+                        wire.set_outer_width(as_dimension(wire.calculate_outer_width()));
+                    }
+                    if (!wire.get_outer_height() && wire.get_conducting_height()) {
                         wire.set_outer_height(as_dimension(wire.calculate_outer_height()));
                     }
                     break;

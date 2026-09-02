@@ -12964,6 +12964,33 @@ TEST_CASE("Test_Real_Geometry_Connection_Skin_Losses", "[constructive-model][coi
     }
 }
 
+TEST_CASE("Test_Abt967_Autocomplete_Accepts_A_Database_Foil", "[constructive-model][coil][foil][regression]") {
+    // ABT #967: a database FOIL ("Foil 0.2") states only its thickness (conductingWidth); its
+    // height is the section's, cut in at wind() time. The ABT #823 pre-wind outer-size derivation
+    // asked such a wire for its outer HEIGHT and dereferenced an empty optional -- every design
+    // naming a database foil died in autocomplete with INVALID_WIRE_DATA. Autocomplete must derive
+    // only what the wire states, and leave the rest to the wind.
+    settings.reset();
+    clear_databases();
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/04_forward_xfmr_e3216_n87.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    REQUIRE(windings.size() >= 2);
+    windings[1].set_wire("Foil 0.2");
+    // A fresh wind, so autocomplete has to complete the wire itself.
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    auto wire = magnetic.get_mutable_coil().resolve_wire(1);
+    REQUIRE(wire.get_type() == WireType::FOIL);
+    REQUIRE(wire.get_outer_width());
+    REQUIRE_THAT(resolve_dimensional_values(wire.get_outer_width().value()),
+                 Catch::Matchers::WithinRel(resolve_dimensional_values(wire.get_conducting_width().value()), 1e-9));
+    settings.reset();
+}
+
 TEST_CASE("Test_Real_Geometry_Planar_Throws", "[constructive-model][coil][real-geometry]") {
     // ABT #492 owner ruling: planar wires are PCBs — the real-winding connection model (leads,
     // markers, blocking, YZ-face dragbacks, connection losses) is for WOUND magnetics only, and
