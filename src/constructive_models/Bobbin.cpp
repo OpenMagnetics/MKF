@@ -866,19 +866,24 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
         // < 0.4 mm and parylene at 12.7 or 25 um, and Magnetics' coated-vs-uncoated limits imply
         // ~0.3-0.4 mm of epoxy buildup per surface.
         //
-        // So the coating is what we can source, and it is also what the wire actually touches: a
-        // conformal jacket of thickness t laid over an edge cannot reproduce an edge sharper than
-        // itself, so the radius the wire follows is at least t. That makes this a sourced LOWER
-        // bound on the true edge radius (the tumbled or chamfered ferrite underneath only adds to
-        // it), not an invented constant.
+        // So the jacket is what we can source, and it is also what the wire actually touches: a
+        // conformal coating cannot reproduce an edge sharper than itself, and the tumbled or
+        // chamfered ferrite underneath only adds to it. Core::get_toroid_edge_radius() carries
+        // that resolution -- the drawn ring-core value, floored at this part's own coating and
+        // clamped to what the ring section can geometrically carry.
         //
-        // Unlike the OUTER-WRAP fold above -- which takes only an EXPLICIT coating, because
-        // inflating the wound OD from a jacket the catalogue never claimed would move mean turn
-        // length and reluctance -- the edge radius uses the canonical resolver, defaults and all.
-        // Core::get_coating_thickness() documents why: a toroid ships jacketed even when the
-        // catalogue omits it, and a bare-ferrite toroid wound with bare wire is not a real part.
-        // StrayCapacitance consumes the same resolver the same way.
-        coreBobbinProcessedDescription.set_column_corner_radius(core.get_coating_thickness());
+        // It is deliberately NOT get_coating_thickness(). That datum is the dielectric path
+        // normal to the flat faces, which is what StrayCapacitance integrates over and what the
+        // outer-wrap fold above uses; this one is the curvature at the corner. Reusing a single
+        // number for both would tie the windability verdict to a capacitance constant, and moving
+        // either would silently move the other.
+        //
+        // Unlike that OUTER-WRAP fold -- which takes only an EXPLICIT coating, because inflating
+        // the wound OD from a jacket the catalogue never claimed would move mean turn length and
+        // reluctance -- the edge radius resolves for every toroid, defaults and all: a toroid
+        // ships jacketed even when the catalogue omits it, and a bare-ferrite toroid wound with
+        // bare wire is not a real part.
+        coreBobbinProcessedDescription.set_column_corner_radius(core.get_toroid_edge_radius());
     }
 
     // NOTE: column_depth/column_shape/column_width describe the centre/main

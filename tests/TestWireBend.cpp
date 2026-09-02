@@ -416,12 +416,25 @@ TEST_CASE("Test_WireBend_Toroid_Edge_Comes_From_The_Coating", "[wire][wire-bend]
 
         auto core = magnetic.get_mutable_core();
         REQUIRE(core.get_shape_family() == CoreShapeFamily::T);
+        // create_quick_bobbin processes its own copy, so process this one to query it directly.
+        core.process_data();
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, false);
         const double edgeRadius = bobbin.get_column_corner_radius();
 
         // The edge is the jacket's, not the zero a wall-less part used to resolve.
         REQUIRE(edgeRadius > 0);
-        REQUIRE_THAT(edgeRadius, Catch::Matchers::WithinRel(core.get_coating_thickness(), 1e-12));
+        REQUIRE_THAT(edgeRadius, Catch::Matchers::WithinRel(core.get_toroid_edge_radius(), 1e-12));
+
+        // It is its OWN datum, not the coating thickness: that one is the dielectric path normal
+        // to the flat faces (what StrayCapacitance integrates over), this one is the curvature at
+        // the corner. They are resolved separately so moving one cannot silently move the other.
+        REQUIRE(edgeRadius >= core.get_coating_thickness());
+
+        // And it never exceeds what the ring section can carry: a corner radius past half the
+        // smaller dimension of the section would have eaten the face between the two edges.
+        const auto& ringSection = core.get_processed_description()->get_columns()[0];
+        REQUIRE(edgeRadius <=
+                0.5 * std::min(ringSection.get_width(), ringSection.get_depth()) + 1e-12);
 
         // And it is a real bend the filter can judge. IEC 60851-3 winds the wire ON the mandrel,
         // so the wire's own outer radius appears on both sides of the comparison and cancels:
@@ -465,4 +478,39 @@ TEST_CASE("Test_WireBend_Windability_Filter_Survives_A_Json_Round_Trip", "[wire]
     REQUIRE(operationJson["filter"].get<std::string>() == "Windability");
     REQUIRE(operationJson.get<OpenMagnetics::MagneticFilterOperation>().get_filter() ==
             MagneticFilters::WINDABILITY);
+}
+
+
+TEST_CASE("Test_WireBend_Toroid_Edge_Cannot_Exceed_The_Ring_Section", "[wire][wire-bend][filter]") {
+    // The drawn ring-core jacket is ~0,3 mm, but a corner radius cannot exceed half the smaller
+    // dimension of the section it is a corner of -- past that the two edges on one face have
+    // eaten the face between them. T 2.5/1.5/1 has a radial wall of only (2,5 - 1,5) / 2 = 0,5 mm
+    // and a height of 1,0 mm, so its edge must clamp to 0,25 mm rather than take the drawn value.
+    json coreJson;
+    coreJson["functionalDescription"]["type"] = "toroidal";
+    coreJson["functionalDescription"]["material"] = "N97";
+    coreJson["functionalDescription"]["shape"] = "T 2.5/1.5/1";
+    coreJson["functionalDescription"]["gapping"] = json::array();
+    coreJson["functionalDescription"]["numberStacks"] = 1;
+    OpenMagnetics::Core core(coreJson, true);
+
+    const auto& ringSection = core.get_processed_description()->get_columns()[0];
+    REQUIRE_THAT(ringSection.get_width(), Catch::Matchers::WithinAbs(0.5e-3, 1e-9));
+    REQUIRE_THAT(ringSection.get_depth(), Catch::Matchers::WithinAbs(1.0e-3, 1e-9));
+
+    // Clamped to half the wall, not the 0,3 mm the datasheets draw.
+    REQUIRE_THAT(core.get_toroid_edge_radius(), Catch::Matchers::WithinAbs(0.25e-3, 1e-9));
+    REQUIRE(core.get_toroid_edge_radius() < Defaults().defaultToroidRingEdgeRadius);
+
+    // And the bobbin carries the clamped value through, so the filter judges the real edge.
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, false);
+    REQUIRE_THAT(bobbin.get_column_corner_radius(),
+                 Catch::Matchers::WithinAbs(0.25e-3, 1e-9));
+
+    // A bobbin-wound core has no ring edge to ask about, and says so rather than inventing one.
+    auto eCoreJson = coreJson;
+    eCoreJson["functionalDescription"]["type"] = "two-piece set";
+    eCoreJson["functionalDescription"]["shape"] = "E 55/28/21";
+    OpenMagnetics::Core eCore(eCoreJson, true);
+    REQUIRE_THROWS(eCore.get_toroid_edge_radius());
 }

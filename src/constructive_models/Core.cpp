@@ -1479,6 +1479,43 @@ bool Core::get_default_toroid_coating_is_parylene() const {
     return outerDiameter <= Defaults().defaultToroidParyleneMaximumOuterDiameter;
 }
 
+double Core::get_toroid_edge_radius() const {
+    if (get_shape_family() != CoreShapeFamily::T) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Only a toroid has a ring cross-section edge for a turn to be pulled over; a "
+            "bobbin-wound core's turns bend around the bobbin's column corner instead");
+    }
+    if (!get_processed_description()) {
+        throw CoreNotProcessedException("Core has not been processed yet");
+    }
+    const auto& columns = get_processed_description()->get_columns();
+    if (columns.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Toroid has no processed column, so its ring cross-section is not known");
+    }
+    // CorePieceT::process_columns sets the ring section: width is the radial wall (A - B) / 2,
+    // depth is the height C.
+    const double ringWall = columns[0].get_width();
+    const double ringHeight = columns[0].get_depth();
+    if (!(ringWall > 0) || !(ringHeight > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Toroid ring cross-section must have a positive wall and height, got wall " +
+            std::to_string(ringWall) + " m and height " + std::to_string(ringHeight) + " m");
+    }
+
+    // The jacket is always there, so the edge is at least as round as the jacket is thick; the
+    // drawn ring-core value is the number to use when it is thicker than that (see
+    // Defaults::defaultToroidRingEdgeRadius for the sourcing).
+    const double sourced = std::max(Defaults().defaultToroidRingEdgeRadius, get_coating_thickness());
+
+    // A corner radius cannot exceed half the smaller dimension of the section it is a corner of:
+    // past that the two edges on the same face have eaten the face between them and the section
+    // is no longer that shape. This is a geometric limit, not a tuned cap, and it is what keeps a
+    // 0,3 mm edge off a T 2.5/1.5/1 whose radial wall is only 0,5 mm.
+    const double geometricLimit = 0.5 * std::min(ringWall, ringHeight);
+    return std::min(sourced, geometricLimit);
+}
+
 double Core::get_coating_thickness() const {
     if (!get_functional_description().get_coating()) {
         // A toroid is jacketed (epoxy/parylene) in practice even when the catalogue omits

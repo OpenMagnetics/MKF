@@ -122,6 +122,11 @@ class Core : public MAS::MagneticCore {
     // For an uncoated toroid, whether the default coating type is parylene (small cores)
     // rather than epoxy (larger cores), selected by the outer diameter.
     bool get_default_toroid_coating_is_parylene() const;
+    // Radius of the ring cross-section's edge, in m -- the thing a turn is pulled over on a
+    // toroid, which is a DIFFERENT question from get_coating_thickness(). That one is the
+    // dielectric path normal to the flat faces; this is the curvature the jacket forms at the
+    // corner, over a ferrite edge that was already tumbled or chamfered. Toroids only.
+    double get_toroid_edge_radius() const;
     double get_initial_permeability(double temperature = Defaults().ambientTemperature);
     static double get_initial_permeability(CoreMaterial coreMaterial, double temperature = Defaults().ambientTemperature);
     double get_effective_permeability(double temperature);

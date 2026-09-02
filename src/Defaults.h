@@ -88,6 +88,18 @@ struct Defaults {
     // thin parylene film does not consume the small bore). Thickness stays a flat
     // per-type value; the buildup is not size-scaled (Fair-Rite/Magnetics catalogs).
     const double defaultToroidParyleneMaximumOuterDiameter = 5.08e-3;  // 0.20"
+    // Radius of a coated ring core's cross-section edge, in m: what a turn is pulled over on a
+    // toroid. NOT the same datum as the coating thicknesses above, which are the dielectric path
+    // normal to the flat faces; this is the curvature the jacket forms AT the corner, on top of a
+    // ferrite edge that was already broken. Nobody dimensions the bare ferrite edge -- IEC
+    // 62317-12 gives a ring core as A/B/C and admits the chamfer only through the effective
+    // height, the MMPA/IMA toroid specification says only that the corners "shall not be sharp or
+    // rough", and Fair-Rite says its toroids are "supplied burnished to break sharp edges" -- but
+    // the jacket over it IS dimensioned: Ferroxcube draws PA11 at ~0,3 mm on its TN ring-core
+    // datasheets, and TDK bounds ring-core epoxy at < 0,4 mm. Take the drawn value; the tumbled
+    // or chamfered ferrite underneath only adds to it, so this stays a lower bound.
+    // Core::get_toroid_edge_radius() clamps it to what the ring section can geometrically carry.
+    const double defaultToroidRingEdgeRadius = 0.3e-3;  // Ferroxcube TN drawings, TDK < 0.4 mm
     const double overlappingFactorSurroundingTurns = 0.7;
     const WireStandard commonWireStandard = WireStandard::NEMA_MW_1000_C;
     const WiringTechnology wiringTechnology = WiringTechnology::WOUND;
