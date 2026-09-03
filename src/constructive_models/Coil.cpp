@@ -399,6 +399,10 @@ Coil::Coil(const MAS::Coil coil) {
         set_bobbin(bobbin);
     }
 
+    // The groups carry caller data (MAS-RFC 0012: a printed group's pcb); dropping them here silently lost it.
+    if (coil.get_groups_description()) {
+        set_groups_description(coil.get_groups_description());
+    }
     if (coil.get_sections_description()) {
         hasSectionsData = true;
         set_sections_description(coil.get_sections_description());
