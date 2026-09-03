@@ -1,4 +1,5 @@
 #include "RandomUtils.h"
+#include <catch2/catch_approx.hpp>
 #include <source_location>
 #include "support/Settings.h"
 #include "support/Painter.h"
@@ -9825,6 +9826,91 @@ TEST_CASE("Test_Wind_By_Layers_Planar_One_Layer", "[constructive-model][coil][pl
     coil.wind_by_planar_layers();
     auto layersDescription = coil.get_layers_description().value();
     REQUIRE(layersDescription.size() == 1);
+}
+
+// ABT #978 / MAS-RFC 0012: with real winding geometry a planar coil is wound to the PCB reference placement —
+// turns left-justified from the column at pcb.designRules.coreToTrack, pitch trackWidth + trackToTrack — and the
+// caller's pcb survives the wind on the printed group.
+TEST_CASE("Test_Wind_Planar_Real_Winding_Left_Justified_From_Pcb_Rules", "[constructive-model][coil][planar][real-geometry]") {
+    settings.set_coil_wind_even_if_not_fit(false);
+    settings.set_coil_try_rewind(false);
+    settings.set_coil_use_real_winding_geometry(true);
+
+    const double trackWidth = 0.001, trackToTrack = 0.0002, coreToTrack = 0.0005;
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(0.01, 0.02);
+
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_width(trackWidth);
+    wire.set_nominal_value_conducting_height(0.00007);
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    wire.set_type(WireType::PLANAR);
+
+    OpenMagnetics::Coil coil;
+    OpenMagnetics::Winding winding;
+    winding.set_number_turns(6);
+    winding.set_number_parallels(1);
+    winding.set_name("Primary");
+    winding.set_isolation_side(IsolationSide::PRIMARY);
+    winding.set_wire(wire);
+    coil.get_mutable_functional_description().push_back(winding);
+    coil.set_bobbin(bobbin);
+
+    // caller-provided pcb on a printed group (the group geometry is rebuilt by the wind; the pcb must survive)
+    Pcb pcb;
+    PcbVias vias; DimensionWithTolerance d; d.set_nominal(0.0004); DimensionWithTolerance dr; dr.set_nominal(0.0003);
+    vias.set_diameter(d); vias.set_drill_diameter(dr); pcb.set_vias(vias);
+    PcbDesignRules rules; rules.set_track_to_track(trackToTrack); rules.set_core_to_track(coreToTrack); rules.set_via_to_via(0.0003); rules.set_via_to_track(0.0003);
+    pcb.set_design_rules(rules);
+    PcbOutline outline; outline.set_width(0.06); outline.set_depth(0.04); pcb.set_outline(outline);
+    Group group;
+    group.set_name("Board"); group.set_type(WiringTechnology::PRINTED); group.set_sections_orientation(WindingOrientation::CONTIGUOUS);
+    group.set_partial_windings({}); group.set_dimensions({0.02, 0.01}); group.set_coordinates({0.01, 0});
+    group.set_pcb(pcb);
+    coil.set_groups_description(std::vector<Group>{group});
+
+    REQUIRE(coil.wind_planar({0, 0}, std::nullopt, {}, {}, defaults.coreToLayerDistance));
+
+    auto groups = coil.get_groups_description().value();
+    REQUIRE(groups.size() == 1);
+    REQUIRE(groups[0].get_pcb().has_value());
+    CHECK(groups[0].get_pcb()->get_design_rules().get_core_to_track() == Catch::Approx(coreToTrack));
+
+    auto layers = coil.get_layers_by_type(ElectricalType::CONDUCTION);
+    REQUIRE(layers.size() == 2);
+    auto turns = coil.get_turns_description().value();
+    REQUIRE(turns.size() == 6);
+    // the copper region starts coreToTrack from the column: layer left edge = column edge + coreToTrack
+    const double columnEdge = bobbin.get_processed_description()->get_winding_windows()[0].get_coordinates().value()[0]
+                            - bobbin.get_processed_description()->get_winding_windows()[0].get_width().value() / 2;
+    const double layerLeftEdge = layers[0].get_coordinates()[0] - layers[0].get_dimensions()[0] / 2;
+    CHECK(layerLeftEdge == Catch::Approx(columnEdge + coreToTrack).margin(1e-9));
+    // first turn hugs that edge; following turns at the PCB pitch
+    std::vector<double> layer0Radii;
+    for (auto& turn : turns) if (turn.get_layer().value() == layers[0].get_name()) layer0Radii.push_back(turn.get_coordinates()[0]);
+    std::sort(layer0Radii.begin(), layer0Radii.end());
+    REQUIRE(layer0Radii.size() == 3);
+    CHECK(layer0Radii[0] == Catch::Approx(columnEdge + coreToTrack + trackWidth / 2).margin(1e-9));
+    CHECK(layer0Radii[1] - layer0Radii[0] == Catch::Approx(trackWidth + trackToTrack).margin(1e-9));
+    CHECK(layer0Radii[2] - layer0Radii[1] == Catch::Approx(trackWidth + trackToTrack).margin(1e-9));
+
+    settings.set_coil_use_real_winding_geometry(false);
+}
+
+TEST_CASE("Test_Wind_Planar_Real_Winding_Requires_Pcb", "[constructive-model][coil][planar][real-geometry]") {
+    settings.set_coil_use_real_winding_geometry(true);
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(0.01, 0.02);
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_width(0.001); wire.set_nominal_value_conducting_height(0.00007);
+    wire.set_number_conductors(1); wire.set_material("copper"); wire.set_type(WireType::PLANAR);
+    OpenMagnetics::Coil coil;
+    OpenMagnetics::Winding winding;
+    winding.set_number_turns(2); winding.set_number_parallels(1); winding.set_name("Primary");
+    winding.set_isolation_side(IsolationSide::PRIMARY); winding.set_wire(wire);
+    coil.get_mutable_functional_description().push_back(winding);
+    coil.set_bobbin(bobbin);
+    CHECK_THROWS(coil.wind_planar({0}));
+    settings.set_coil_use_real_winding_geometry(false);
 }
 
 TEST_CASE("Test_Wind_By_Layers_Planar_Two_Layers", "[constructive-model][coil][planar][smoke-test]") {

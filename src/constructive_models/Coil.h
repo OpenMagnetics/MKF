@@ -335,6 +335,9 @@ class Coil : public MAS::Coil {
         // (the ABT #650 gate declined). Consumers that require blocked geometry — the 3D
         // ConductorBuilder above all — must ASK instead of discovering it as a collision.
         bool _realWindingBlockingApplied = false;
+        // ABT #978: set by wind_planar when real winding geometry places planar turns left-justified from the
+        // column (pcb.designRules), consumed by wind_by_planar_turns.
+        bool _planarLeftJustifyTurns = false;
         // ABT #685 (Alf, 2026-08-15): conductors whose LAST turn is a STEEP EXIT LANDING — "when a
         // turn is the last one of the section and must go out [at the far side], they must reach
         // the other side in one full pitch". The last turn's station is placed at the FAR edge of
@@ -506,6 +509,8 @@ class Coil : public MAS::Coil {
         // Transient, like preload_margins: not part of the MAS coil.
         void preload_custom_section_rects(std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> rects) { _customSectionRects = rects; }
         bool apply_custom_section_rects();
+        // MAS-RFC 0012: pcb for a printed default group from MKF's default fabrication class (Defaults.h).
+        static Pcb default_pcb(Bobbin bobbin, double coreToLayerDistance);
         bool wind_by_planar_sections(std::vector<size_t> stackUp, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
         bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);

@@ -5458,6 +5458,15 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
         }
 
         if (wind) {
+            // MAS-RFC 0012: the printed group's pcb is caller data; it survives the group rebuild below and,
+            // under real winding geometry, it IS the spacing the turns are placed with.
+            std::optional<Pcb> pcb;
+            if (get_groups_description()) {
+                auto existingGroups = get_groups_description().value();   // optional returned by value
+                for (auto& group : existingGroups) {
+                    if (group.get_type() == WiringTechnology::PRINTED && group.get_pcb()) { pcb = group.get_pcb(); break; }
+                }
+            }
             set_groups_description(std::nullopt);
             set_sections_description(std::nullopt);
             set_layers_description(std::nullopt);
@@ -5467,6 +5476,26 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
             // isolation (primary-secondary), not for conductor-to-core or turn-to-turn spacing.
             // Both borderToWireDistance and wireToWireDistance should use manufacturing defaults,
             // not the insulation clearance which applies to inter-winding spacing.
+
+            // ABT #978: real winding geometry for a planar (PCB) coil is the reference PCB placement — turns
+            // left-justified from the column at pcb.designRules.coreToTrack with pitch trackWidth +
+            // trackToTrack, exactly where auto_planar/MPB draws them (the via bands sit outside the winding
+            // window, on the terminal sides, so nothing inside the window has to be reserved). The copper
+            // region (the layer) starts coreToTrack from the column and the first turn hugs its edge.
+            const bool realWindingPlanar = settings.get_coil_use_real_winding_geometry() && pcb;
+            if (realWindingPlanar) {
+                coreToLayerDistance = pcb->get_design_rules().get_core_to_track();
+                borderToWireDistance = 0.0;
+                for (size_t i = 0; i < get_functional_description().size(); ++i) {
+                    wireToWireDistance[i] = pcb->get_design_rules().get_track_to_track();
+                }
+            }
+            else if (settings.get_coil_use_real_winding_geometry()) {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                    "Real winding geometry for a planar coil needs the printed group's pcb (MAS-RFC 0012): "
+                    "the turn placement is defined by pcb.designRules, which MKF must not invent");
+            }
+            _planarLeftJustifyTurns = realWindingPlanar;
 
             if (!borderToWireDistance) {
                 borderToWireDistance = defaults.minimumBorderToWireDistance;
@@ -5479,6 +5508,11 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
 
             logEntry("Winding by sections", "Coil", 2);
             wind_by_planar_sections(stackUp, insulationThickness, coreToLayerDistance);
+            if (pcb && get_groups_description()) {
+                auto groups = get_groups_description().value();
+                for (auto& group : groups) if (group.get_type() == WiringTechnology::PRINTED) group.set_pcb(pcb);
+                set_groups_description(groups);
+            }
             logEntry("Winding by layers", "Coil", 2);
             wind_by_planar_layers();
 
@@ -7463,9 +7497,42 @@ bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType, double
     group.set_partial_windings(partialWindings);
     group.set_sections_orientation(get_winding_orientation());
     group.set_type(coilType);
+    if (coilType == WiringTechnology::PRINTED) {
+        // MAS-RFC 0012: a printed group is one PCB and must describe it. Without a caller-provided pcb the
+        // adviser proposal uses MKF's default fabrication class (Defaults.h); the spacing rules are the ones
+        // this very wind uses (coreToLayerDistance from the column, minimumWireToWireDistance between turns).
+        group.set_pcb(default_pcb(bobbin, coreToLayerDistance));
+    }
     set_groups_description(std::vector<Group>{group});
 
     return true;
+}
+
+Pcb Coil::default_pcb(Bobbin bobbin, double coreToLayerDistance) {
+    Pcb pcb;
+    PcbVias vias;
+    DimensionWithTolerance diameter; diameter.set_nominal(defaults.pcbViaDiameter);
+    DimensionWithTolerance drill; drill.set_nominal(defaults.pcbViaDrillDiameter);
+    vias.set_diameter(diameter);
+    vias.set_drill_diameter(drill);
+    vias.set_type(ViasType::THROUGH);
+    pcb.set_vias(vias);
+    PcbDesignRules rules;
+    rules.set_track_to_track(defaults.minimumWireToWireDistance);
+    rules.set_core_to_track(coreToLayerDistance > 0 ? coreToLayerDistance : defaults.coreToLayerDistance);
+    rules.set_via_to_via(defaults.pcbViaToVia);
+    rules.set_via_to_track(defaults.pcbViaToTrack);
+    pcb.set_design_rules(rules);
+    PcbOutline outline;
+    auto processed = bobbin.get_processed_description().value();
+    auto windingWindow = processed.get_winding_windows()[0];
+    // column + both windows + core legs on the depth axis; column + windows + terminal areas on the width axis
+    double columnWidth = processed.get_column_width().value_or(processed.get_column_depth());
+    double windowWidth = windingWindow.get_width().value_or(windingWindow.get_radial_height().value_or(0));
+    outline.set_width(columnWidth + 2 * windowWidth + 2 * defaults.pcbTerminalAreaWidth);
+    outline.set_depth(processed.get_column_depth() + 2 * windowWidth + 2 * defaults.pcbEdgeMargin);
+    pcb.set_outline(outline);
+    return pcb;
 }
 
 bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, double coreToLayerDistance) {
@@ -11724,6 +11791,11 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
             double layerLeftEdge = layer.get_coordinates()[0] - layerWidth / 2;
             double turnsBlockMargin = (layerWidth - turnsBlockWidth) / 2;
             if (turnsBlockMargin < borderToWireDistance) {
+                turnsBlockMargin = borderToWireDistance;
+            }
+            // ABT #978: PCB reference placement is left-justified — the first turn hugs the column-side edge of
+            // the copper region (the layer already sits coreToTrack from the column); no centring.
+            if (_planarLeftJustifyTurns) {
                 turnsBlockMargin = borderToWireDistance;
             }
             double currentTurnCenterWidth = roundFloat(layerLeftEdge + turnsBlockMargin + wireWidth / 2, 9);
