@@ -3184,3 +3184,36 @@ TEST_CASE("Toroid_Coating_Is_Resolved_Per_Material_Family", "[core][coating][abt
     REQUIRE(ferriteMid.get_coating_thickness() < powderMid.get_coating_thickness());
     REQUIRE(powderMid.get_coating_thickness() < ferriteLarge.get_coating_thickness());
 }
+
+TEST_CASE("Unprocessed toroid still resolves its ring edge", "[core][coating][abt964][regression]") {
+    // REGRESSION. get_toroid_edge_radius() read the processed columns through
+    //     const auto& columns = get_processed_description()->get_columns();
+    // and get_processed_description() hands the optional back BY VALUE, so that reference pointed
+    // into a temporary that was already gone. Undefined behaviour does not fail loudly: this build
+    // read it fine, while asgard's WASM read it back EMPTY and threw "Toroid has no processed
+    // column" for every catalogue toroid -- all 236 CMCs and El Choker's graph panel with them.
+    //
+    // The path that exposed it is the one autocomplete takes: a MAS record from the catalogue
+    // carries no processedDescription, so the core arrives unprocessed and create_quick_bobbin
+    // processes it on the way through. Build it that way here rather than pre-processing.
+    json coreJson;
+    coreJson["functionalDescription"]["type"] = "toroidal";
+    coreJson["functionalDescription"]["material"] = "N97";
+    coreJson["functionalDescription"]["shape"] = "T 25/15/10";
+    coreJson["functionalDescription"]["gapping"] = json::array();
+    coreJson["functionalDescription"]["numberStacks"] = 1;
+    Core unprocessed(coreJson, true);
+    unprocessed.set_processed_description(std::nullopt);
+    REQUIRE_FALSE(unprocessed.get_processed_description());
+
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(unprocessed, false);
+    REQUIRE(bobbin.get_processed_description());
+    REQUIRE(bobbin.get_column_corner_radius() > 0);
+
+    // And the same core, processed up front, must agree: the datum is a property of the part,
+    // not of the order the caller happened to build it in.
+    Core processed(coreJson, true);
+    auto processedBobbin = OpenMagnetics::Bobbin::create_quick_bobbin(processed, false);
+    REQUIRE_THAT(bobbin.get_column_corner_radius(),
+                 Catch::Matchers::WithinRel(processedBobbin.get_column_corner_radius(), 1e-12));
+}

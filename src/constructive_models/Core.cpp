@@ -1515,7 +1515,14 @@ double Core::get_toroid_edge_radius() const {
     if (!get_processed_description()) {
         throw CoreNotProcessedException("Core has not been processed yet");
     }
-    const auto& columns = get_processed_description()->get_columns();
+    // get_processed_description() hands the optional back BY VALUE and get_columns() returns a
+    // reference INTO it, so the description has to be a named local: binding the column vector
+    // straight off the call leaves a reference into a temporary that is already gone. Reading it
+    // is undefined behaviour, and it does not fail loudly -- under a different build it read back
+    // EMPTY and threw "no processed column" for every catalogue toroid, which is how this reached
+    // asgard's WASM and broke the whole CMC catalogue and El Choker's graph panel.
+    const auto processedDescription = get_processed_description().value();
+    const auto& columns = processedDescription.get_columns();
     if (columns.empty()) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
             "Toroid has no processed column, so its ring cross-section is not known");
