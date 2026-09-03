@@ -144,15 +144,6 @@ struct Defaults {
     const double minimumWireToWireDistance = 90e-6;
     const double minimumBorderToWireDistance = 90e-6;
     const double coreToLayerDistance = 250e-6;
-    // Default PCB fabrication class for planar coils the advisers wind without a MAS group.pcb (MAS-RFC 0012 makes
-    // pcb mandatory on printed groups). Ordinary 2-layer-capable fab: 0.4/0.3 mm vias, 0.3 mm copper spacing.
-    const double pcbViaDiameter = 0.4e-3;
-    const double pcbViaDrillDiameter = 0.3e-3;
-    const double pcbViaToVia = 0.3e-3;
-    const double pcbViaToTrack = 0.3e-3;
-    // Board outline of an adviser-proposed planar: the core footprint plus room for terminals on both sides.
-    const double pcbTerminalAreaWidth = 10e-3;
-    const double pcbEdgeMargin = 2e-3;
 
     // Phase 4 (Group A): adviser sweep/optimization iteration budgets and step
     // factors. Previously magic-numbered in-line at the call sites; collected

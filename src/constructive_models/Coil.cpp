@@ -7501,42 +7501,9 @@ bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType, double
     group.set_partial_windings(partialWindings);
     group.set_sections_orientation(get_winding_orientation());
     group.set_type(coilType);
-    if (coilType == WiringTechnology::PRINTED) {
-        // MAS-RFC 0012: a printed group is one PCB and must describe it. Without a caller-provided pcb the
-        // adviser proposal uses MKF's default fabrication class (Defaults.h); the spacing rules are the ones
-        // this very wind uses (coreToLayerDistance from the column, minimumWireToWireDistance between turns).
-        group.set_pcb(default_pcb(bobbin, coreToLayerDistance));
-    }
     set_groups_description(std::vector<Group>{group});
 
     return true;
-}
-
-Pcb Coil::default_pcb(Bobbin bobbin, double coreToLayerDistance) {
-    Pcb pcb;
-    PcbVias vias;
-    DimensionWithTolerance diameter; diameter.set_nominal(defaults.pcbViaDiameter);
-    DimensionWithTolerance drill; drill.set_nominal(defaults.pcbViaDrillDiameter);
-    vias.set_diameter(diameter);
-    vias.set_drill_diameter(drill);
-    vias.set_type(ViasType::THROUGH);
-    pcb.set_vias(vias);
-    PcbDesignRules rules;
-    rules.set_track_to_track(defaults.minimumWireToWireDistance);
-    rules.set_core_to_track(coreToLayerDistance > 0 ? coreToLayerDistance : defaults.coreToLayerDistance);
-    rules.set_via_to_via(defaults.pcbViaToVia);
-    rules.set_via_to_track(defaults.pcbViaToTrack);
-    pcb.set_design_rules(rules);
-    PcbOutline outline;
-    auto processed = bobbin.get_processed_description().value();
-    auto windingWindow = processed.get_winding_windows()[0];
-    // column + both windows + core legs on the depth axis; column + windows + terminal areas on the width axis
-    double columnWidth = processed.get_column_width().value_or(processed.get_column_depth());
-    double windowWidth = windingWindow.get_width().value_or(windingWindow.get_radial_height().value_or(0));
-    outline.set_width(columnWidth + 2 * windowWidth + 2 * defaults.pcbTerminalAreaWidth);
-    outline.set_depth(processed.get_column_depth() + 2 * windowWidth + 2 * defaults.pcbEdgeMargin);
-    pcb.set_outline(outline);
-    return pcb;
 }
 
 bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, double coreToLayerDistance) {

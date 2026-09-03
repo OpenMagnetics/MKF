@@ -509,8 +509,6 @@ class Coil : public MAS::Coil {
         // Transient, like preload_margins: not part of the MAS coil.
         void preload_custom_section_rects(std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> rects) { _customSectionRects = rects; }
         bool apply_custom_section_rects();
-        // MAS-RFC 0012: pcb for a printed default group from MKF's default fabrication class (Defaults.h).
-        static Pcb default_pcb(Bobbin bobbin, double coreToLayerDistance);
         bool wind_by_planar_sections(std::vector<size_t> stackUp, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
         bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);
