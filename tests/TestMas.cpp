@@ -133,10 +133,12 @@ TEST_CASE("Test_All_Examples_Real_Geometry_Physics", "[constructive-model][mas][
                 // The planar example ships fully wound, so autocomplete does not re-wind it; the
                 // gate fires at the first real-winding machinery a planar coil can reach: a
                 // re-wind, and the connection-resistance path the loss chain uses.
+                // ABT #978: a planar coil under real winding geometry is wound as a PCB (placement from the
+                // printed group's pcb, MAS-RFC 0012); only the wound-magnetics lead-resistance path still refuses it.
                 OpenMagnetics::Magnetic planarMagnetic;
                 REQUIRE_NOTHROW(planarMagnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic()));
-                REQUIRE_THROWS_WITH(planarMagnetic.get_mutable_coil().wind(),
-                                    Catch::Matchers::ContainsSubstring("not implemented for planar"));
+                REQUIRE(planarMagnetic.get_mutable_coil().wind());
+                REQUIRE(planarMagnetic.get_coil().get_turns_description());
                 REQUIRE_THROWS_WITH(WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(
                                         planarMagnetic.get_coil(), 25.0),
                                     Catch::Matchers::ContainsSubstring("not implemented for planar"));

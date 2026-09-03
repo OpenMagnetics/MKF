@@ -9897,6 +9897,57 @@ TEST_CASE("Test_Wind_Planar_Real_Winding_Left_Justified_From_Pcb_Rules", "[const
     settings.set_coil_use_real_winding_geometry(false);
 }
 
+// ABT #978: wind() itself routes a planar coil to wind_planar under real winding geometry (the old ABT #492 gate is gone).
+TEST_CASE("Test_Wind_Real_Winding_Planar_Dispatches_To_Wind_Planar", "[constructive-model][coil][planar][real-geometry]") {
+    settings.set_coil_wind_even_if_not_fit(false);
+    settings.set_coil_try_rewind(false);
+    settings.set_coil_use_real_winding_geometry(true);
+    const double trackWidth = 0.001, trackToTrack = 0.0002, coreToTrack = 0.0005;
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(0.01, 0.02);
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_width(trackWidth); wire.set_nominal_value_conducting_height(0.00007);
+    wire.set_number_conductors(1); wire.set_material("copper"); wire.set_type(WireType::PLANAR);
+    OpenMagnetics::Coil coil;
+    OpenMagnetics::Winding winding;
+    winding.set_number_turns(6); winding.set_number_parallels(2); winding.set_name("Primary");
+    winding.set_isolation_side(IsolationSide::PRIMARY); winding.set_wire(wire);
+    coil.get_mutable_functional_description().push_back(winding);
+    coil.set_bobbin(bobbin);
+    Pcb pcb;
+    PcbVias vias; DimensionWithTolerance d; d.set_nominal(0.0004); DimensionWithTolerance dr; dr.set_nominal(0.0003);
+    vias.set_diameter(d); vias.set_drill_diameter(dr); pcb.set_vias(vias);
+    PcbDesignRules rules; rules.set_track_to_track(trackToTrack); rules.set_core_to_track(coreToTrack); rules.set_via_to_via(0.0003); rules.set_via_to_track(0.0003);
+    pcb.set_design_rules(rules);
+    PcbOutline outline; outline.set_width(0.06); outline.set_depth(0.04); pcb.set_outline(outline);
+    Group group;
+    group.set_name("Board"); group.set_type(WiringTechnology::PRINTED); group.set_sections_orientation(WindingOrientation::CONTIGUOUS);
+    group.set_partial_windings({}); group.set_dimensions({0.02, 0.01}); group.set_coordinates({0.01, 0}); group.set_pcb(pcb);
+    coil.set_groups_description(std::vector<Group>{group});
+
+    REQUIRE(coil.wind());   // not wind_planar: the generic entry point
+    auto layers = coil.get_layers_by_type(ElectricalType::CONDUCTION);
+    REQUIRE(!layers.empty());
+    // ABT #982: every copper layer carries exactly one parallel (the stack-up planner gives each parallel its layers)
+    for (auto& layer : layers) {
+        REQUIRE(layer.get_partial_windings().size() == 1);
+        int active = 0;
+        for (double proportion : layer.get_partial_windings()[0].get_parallels_proportion()) if (proportion > 0) ++active;
+        CHECK(active == 1);
+    }
+    // parallels alternate per turn group: layer 0 -> parallel 0, layer 1 -> parallel 1
+    CHECK(layers[0].get_partial_windings()[0].get_parallels_proportion()[0] > 0);
+    CHECK(layers[1].get_partial_windings()[0].get_parallels_proportion()[1] > 0);
+    auto turns = coil.get_turns_description().value();
+    CHECK(turns.size() == 12);
+    // reference placement: first turn of the first layer hugs the copper region's column-side edge
+    const double columnEdge = bobbin.get_processed_description()->get_winding_windows()[0].get_coordinates().value()[0]
+                            - bobbin.get_processed_description()->get_winding_windows()[0].get_width().value() / 2;
+    double firstRadius = 1e9;
+    for (auto& turn : turns) if (turn.get_layer().value() == layers[0].get_name()) firstRadius = std::min(firstRadius, turn.get_coordinates()[0]);
+    CHECK(firstRadius == Catch::Approx(columnEdge + coreToTrack + trackWidth / 2).margin(1e-9));
+    settings.set_coil_use_real_winding_geometry(false);
+}
+
 TEST_CASE("Test_Wind_Planar_Real_Winding_Requires_Pcb", "[constructive-model][coil][planar][real-geometry]") {
     settings.set_coil_use_real_winding_geometry(true);
     auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(0.01, 0.02);
@@ -13077,23 +13128,29 @@ TEST_CASE("Test_Abt967_Autocomplete_Accepts_A_Database_Foil", "[constructive-mod
     settings.reset();
 }
 
-TEST_CASE("Test_Real_Geometry_Planar_Throws", "[constructive-model][coil][real-geometry]") {
-    // ABT #492 owner ruling: planar wires are PCBs — the real-winding connection model (leads,
-    // markers, blocking, YZ-face dragbacks, connection losses) is for WOUND magnetics only, and
-    // real winding for planar has not been started. Enabling the setting on a planar construction
-    // must THROW, loudly, at the first point the machinery would engage — no via model, no
-    // fallback, no silent skip. (Production planar flows are unaffected: the setting defaults
-    // false.)
+TEST_CASE("Test_Real_Geometry_Planar_Winds_As_Pcb", "[constructive-model][coil][real-geometry][planar]") {
+    // ABT #978 (supersedes the ABT #492 gate): a planar coil under real winding geometry is a PCB and wind()
+    // routes it to wind_planar with the placement defined by the printed group's pcb (MAS-RFC 0012). The
+    // connection-resistance path is still the wound-magnetics lead model and keeps refusing planar coils.
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
     auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
                                                 + "/../MAS/examples/09_planar_xfmr_er2510_3c94.json");
-    // The planar example ships fully wound, so autocomplete does not re-wind it; the gate must fire
-    // at the first real-winding machinery a planar coil can reach from there: a re-wind, and the
-    // connection-resistance path the loss chain uses (the two entries that consult the setting).
     auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
-    REQUIRE_THROWS_WITH(magnetic.get_mutable_coil().wind(),
-                        Catch::Matchers::ContainsSubstring("not implemented for planar"));
+    REQUIRE(magnetic.get_mutable_coil().wind());
+    auto turns = magnetic.get_coil().get_turns_description();
+    REQUIRE(turns);
+    REQUIRE(!turns->empty());
+    // every copper layer carries one parallel (ABT #982)
+    for (auto& layer : magnetic.get_mutable_coil().get_layers_by_type(ElectricalType::CONDUCTION)) {
+        int active = 0;
+        for (double proportion : layer.get_partial_windings()[0].get_parallels_proportion()) if (proportion > 0) ++active;
+        CHECK(active == 1);
+    }
+    // the pcb survived the wind on the printed group
+    auto groups = magnetic.get_coil().get_groups_description();
+    REQUIRE(groups);
+    CHECK(groups->front().get_pcb().has_value());
     REQUIRE_THROWS_WITH(OpenMagnetics::WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(
                             magnetic.get_coil(), 25.0),
                         Catch::Matchers::ContainsSubstring("not implemented for planar"));

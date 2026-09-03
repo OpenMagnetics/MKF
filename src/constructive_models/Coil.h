@@ -509,6 +509,9 @@ class Coil : public MAS::Coil {
         // Transient, like preload_margins: not part of the MAS coil.
         void preload_custom_section_rects(std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> rects) { _customSectionRects = rects; }
         bool apply_custom_section_rects();
+        // ABT #978/#982: stack-up for a planar PCB from the printed group's pcb rules — one copper layer per
+        // (winding, parallel) group, windings interleaved (port of the auto_planar/MPB layerer).
+        std::vector<size_t> plan_planar_stackup();
         bool wind_by_planar_sections(std::vector<size_t> stackUp, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
         bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);

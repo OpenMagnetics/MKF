@@ -4745,22 +4745,13 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         }
 
         if (wind) {
-            // ABT #492 owner ruling: planar wires are PCBs — the real-winding connection model
-            // (leads, markers, blocking, YZ-face dragbacks, connection losses) is for WOUND
-            // magnetics only, and real winding for planar has not been started. Throw before ANY
-            // of that machinery engages (the N+1 crossing bump armed just below is already part of
-            // it), so every downstream path — marker emission, blocking, dragbacks, ohmic lead
-            // lengths, apply_connection_reserved_space — is covered by one unavoidable gate.
-            // Production planar flows are unaffected: the setting defaults to false.
-            if (settings.get_coil_use_real_winding_geometry()) {
-                for (const auto& wire : get_wires()) {
-                    if (wire.get_type() == WireType::PLANAR) {
-                        throw std::runtime_error(
-                            "Real winding geometry (connection/lead routing) is not implemented for "
-                            "planar (PCB) constructions; disable coilUseRealWindingGeometry for "
-                            "planar magnetics");
-                    }
-                }
+            // ABT #978: a planar coil under real winding geometry is a PCB — it is wound by wind_planar to the
+            // PCB reference placement (pcb.designRules from the printed group), with a stack-up of one copper
+            // layer per (winding, parallel) group. None of the wound-magnetics real-winding machinery below
+            // (leads, markers, blocking, dragbacks) applies to it. (Supersedes the ABT #492 planar gate.)
+            if (settings.get_coil_use_real_winding_geometry() && is_planar()) {
+                auto stackUp = plan_planar_stackup();
+                return wind_planar(stackUp);
             }
             set_sections_description(std::nullopt);
             set_layers_description(std::nullopt);
@@ -9512,6 +9503,56 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     return true;
 }
 
+std::vector<size_t> Coil::plan_planar_stackup() {
+    std::optional<Pcb> pcb;
+    if (get_groups_description()) {
+        auto groups = get_groups_description().value();
+        for (auto& group : groups) if (group.get_type() == WiringTechnology::PRINTED && group.get_pcb()) { pcb = group.get_pcb(); break; }
+    }
+    if (!pcb) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Planar stack-up planning needs the printed group's pcb (MAS-RFC 0012): coreToTrack, trackToTrack, "
+            "via diameter and viaToTrack define how many turns fit a copper layer");
+    }
+    const auto& rules = pcb->get_design_rules();
+    const double viaDiameter = resolve_dimensional_values(pcb->get_vias().get_diameter());
+    auto bobbin = resolve_bobbin();
+    const double windowWidth = bobbin.get_winding_window_dimensions()[0];
+    // radial room for turns: the window minus the core clearance on both ends and the via band beside the column
+    const double spaceForTurns = windowWidth - 2 * rules.get_core_to_track() - 2 * rules.get_via_to_track() - 2 * viaDiameter;
+    if (spaceForTurns <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "No room between the column and the legs for any planar turn (window " + std::to_string(windowWidth) + " m)");
+    }
+    const size_t numberWindings = get_functional_description().size();
+    std::vector<size_t> layersNeeded(numberWindings);
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        const double trackWidth = resolve_wire(windingIndex).get_maximum_outer_width();
+        const size_t maximumTurnsPerLayer = std::max<size_t>(1, static_cast<size_t>(std::floor(spaceForTurns / (trackWidth + rules.get_track_to_track()))) - 1);
+        const size_t layersPerParallel = static_cast<size_t>(std::ceil(double(get_number_turns(windingIndex)) / maximumTurnsPerLayer));
+        layersNeeded[windingIndex] = layersPerParallel * get_number_parallels(windingIndex);
+    }
+    const size_t minimumLayers = *std::min_element(layersNeeded.begin(), layersNeeded.end());
+    std::vector<size_t> normalizedLayers(numberWindings);
+    for (size_t i = 0; i < numberWindings; ++i) normalizedLayers[i] = layersNeeded[i] / minimumLayers;
+    // interleave: each winding takes `normalized` consecutive layers before handing over
+    std::vector<size_t> stackUp;
+    std::vector<size_t> remaining = layersNeeded;
+    size_t current = 0, contiguous = 1;
+    while (std::accumulate(remaining.begin(), remaining.end(), size_t(0)) > 0) {
+        if (remaining[current] > 0) {
+            stackUp.push_back(current);
+            remaining[current]--;
+            if (contiguous == normalizedLayers[current]) { current = (current + 1) % numberWindings; contiguous = 1; }
+            else contiguous++;
+        }
+        else {
+            current = (current + 1) % numberWindings;
+        }
+    }
+    return stackUp;
+}
+
 bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std::map<std::pair<size_t, size_t>, double> insulationThickness, double coreToLayerDistance) {
     // In planar coils each section will have only one layer
     set_layers_description(std::nullopt);
@@ -9630,14 +9671,34 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
 
         WindingStyle windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberSections, windingIndex);
 
-        auto parallelsProportions = get_parallels_proportions(sectionIndex,
-                                                               numberSections,
-                                                               get_number_turns(windingIndex),
-                                                               get_number_parallels(windingIndex),
-                                                               remainingParallelsProportionInWinding,
-                                                               windByConsecutiveTurns,
-                                                               totalParallelsProportionInWinding);
-
+        std::pair<uint64_t, std::vector<double>> parallelsProportions;
+        const auto numberParallels = get_number_parallels(windingIndex);
+        if (numberParallels > 1 && numberSections % numberParallels == 0) {
+            // ABT #982: a planar copper layer carries ONE parallel. Parallels side by side on a layer sit at
+            // different radii (unequal length and linkage, poor current sharing); stacked parallels with identical
+            // artwork share current by construction. Sections of this winding go P0 group 0, P1 group 0, ...,
+            // P0 group 1, ... (parallels of one turn group adjacent, so a PCB generator can share their via band),
+            // each taking its parallel's share of turns spread over that parallel's layers.
+            const size_t layersPerParallel = numberSections / numberParallels;
+            const size_t parallelIndex = sectionIndex % numberParallels;
+            const size_t groupIndex = sectionIndex / numberParallels;
+            const uint64_t remainingTurnsOfParallel = std::llround(remainingParallelsProportionInWinding[parallelIndex] * get_number_turns(windingIndex));
+            const uint64_t turnsThisSection = static_cast<uint64_t>(std::ceil(double(remainingTurnsOfParallel) / (layersPerParallel - groupIndex)));
+            std::vector<double> proportion(numberParallels, 0.0);
+            proportion[parallelIndex] = double(turnsThisSection) / get_number_turns(windingIndex);
+            parallelsProportions = {turnsThisSection, proportion};
+            windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+        }
+        else {
+            // stack-up cannot give every parallel its own layers: MKF's generic distribution (parallels may share)
+            parallelsProportions = get_parallels_proportions(sectionIndex,
+                                                             numberSections,
+                                                             get_number_turns(windingIndex),
+                                                             numberParallels,
+                                                             remainingParallelsProportionInWinding,
+                                                             windByConsecutiveTurns,
+                                                             totalParallelsProportionInWinding);
+        }
         std::vector<double> sectionParallelsProportion = parallelsProportions.second;
 
         size_t numberParallelsProportionsToZero = 0;
