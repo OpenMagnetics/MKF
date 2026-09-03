@@ -340,16 +340,24 @@ std::vector<OperatingPoint> CommonModeChoke::process_operating_points(
     // mains load, so scaling the fallback with operatingCurrent (the old
     // "1 % of line current" rule) overstated noise on high-current CMCs and
     // pushed the modelled core flux toward saturation for no physical reason.
-    // 100 mA ≈ 20 pF × 5 V/ns — a moderate silicon SMPS into a small chassis
-    // parasitic, representative of the AC current the core actually sees
-    // after any Y-cap upstream of the CMC. Users who want a stricter model
-    // should supply parasiticCap_pF + dvdt_V_ns explicitly.
+    //
+    // The fallback is the *residual* CM current flowing through the choke in
+    // normal operation, i.e. what the core actually sees after the input Y-caps
+    // shunt most of the switch-node injection — NOT the raw C·dV/dt source
+    // current. The previous 100 mA fallback was the raw injection (≈20 pF ×
+    // 5 V/ns); through a high-permeability nanocrystalline CM core (µ_r ~1e5)
+    // even that modest current drives B far past saturation (e.g. B_peak ≈ 2.7 T
+    // on a small WE nanocrystalline choke, B_sat ≈ 1.2 T), which is exactly the
+    // false saturation this fallback is meant to avoid. 10 mA is a moderate
+    // post-Y-cap residual that keeps a typical mains CMC in its linear region;
+    // users who want the raw-injection stress case supply parasiticCap_pF +
+    // dvdt_V_ns explicitly.
     double iCmPeak;
     if (parasiticCap_pF > 0.0 && dvdt_V_ns > 0.0) {
         // I_cm = (pF · 1e-12) · (V/ns · 1e9) = pF · V/ns · 1e-3  (amps)
         iCmPeak = parasiticCap_pF * dvdt_V_ns * 1e-3;
     } else {
-        iCmPeak = 0.1;
+        iCmPeak = 0.01;
     }
     // Scale the CM ripple with the user's mains voltage (see cmExcitationScaling).
     // Calibrated so V_mains = 230 V is a no-op; halving the mains halves I_cm
