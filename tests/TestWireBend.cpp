@@ -432,7 +432,10 @@ TEST_CASE("Test_WireBend_Toroid_Edge_Comes_From_The_Coating", "[wire][wire-bend]
 
         // And it never exceeds what the ring section can carry: a corner radius past half the
         // smaller dimension of the section would have eaten the face between the two edges.
-        const auto& ringSection = core.get_processed_description()->get_columns()[0];
+        // Named local: get_processed_description() returns the optional BY VALUE, so binding a
+        // reference through it would point into a temporary that is already gone.
+        const auto coreProcessed = core.get_processed_description().value();
+        const auto& ringSection = coreProcessed.get_columns()[0];
         REQUIRE(edgeRadius <=
                 0.5 * std::min(ringSection.get_width(), ringSection.get_depth()) + 1e-12);
 
@@ -530,7 +533,10 @@ TEST_CASE("Test_WireBend_Toroid_Edge_Follows_The_Size_Tier", "[wire][wire-bend][
             coreJson["functionalDescription"]["numberStacks"] = 1;
             return OpenMagnetics::Core(coreJson, true);
         }();
-        const auto& ringSection = core.get_processed_description()->get_columns()[0];
+        // Named local: get_processed_description() returns the optional BY VALUE, so binding a
+        // reference through it would point into a temporary that is already gone.
+        const auto coreProcessed = core.get_processed_description().value();
+        const auto& ringSection = coreProcessed.get_columns()[0];
         const double edge = core.get_toroid_edge_radius();
         REQUIRE(edge > 0);
         REQUIRE(edge <= 0.5 * std::min(ringSection.get_width(), ringSection.get_depth()) + 1e-12);
