@@ -3217,3 +3217,38 @@ TEST_CASE("Unprocessed toroid still resolves its ring edge", "[core][coating][ab
     REQUIRE_THAT(bobbin.get_column_corner_radius(),
                  Catch::Matchers::WithinRel(processedBobbin.get_column_corner_radius(), 1e-12));
 }
+
+// ABT #995: a UT core is a U closed by a flat bar — the T — which is the same construction as
+// the UI beside it in the family cascade. With no entry it fell to the TWO_PIECE_SET default
+// and was mirrored, doubling the effective magnetic path.
+//
+// The failure is SILENT, which is why it survived: a toroid wrongly typed twoPieceSet throws
+// bad_optional_access, while a UT returns entirely plausible numbers. It was found by
+// measuring a datasheet against the engine, not by anything failing.
+TEST_CASE("Test_Core_Type_UT_Is_Piece_And_Plate", "[core][core-type][smoke-test]") {
+    settings.reset();
+
+    // The family cascade lives in Core(CoreShape, material) — the constructor that BUILDS a
+    // core from a shape. (Core(MagneticCore) requires the type in the json and does not derive
+    // one, which is why a producer must state it.)
+    auto coreShape = OpenMagnetics::find_core_shape_by_name("UT 20");
+    Core core(coreShape, OpenMagnetics::find_core_material_by_name("3C95"));
+
+    // A U piece closed by a flat bar — the same as UI, not a mirrored two-piece set and not a
+    // single solid. US 11,749,439 describes the construction as "a U-shaped core and I-shaped
+    // core ... the I-shaped core connecting both leg portions of the U-shaped core to form a
+    // closed magnetic path", and UT parts are wound on a bobbin, which a one-piece core could
+    // not accept.
+    //
+    // "Closed rectangular ferrite core" on a UT choke datasheet, and magneticCircuit: closed on
+    // the MAS shape record, describe the assembled CIRCUIT — not the piece count. That is the
+    // exact confusion Core.cpp's cascade comment warns about for UI/PQI.
+    CHECK(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+
+    // And it must show in the physics: mirrored, a UT reports ~106 mm of effective length for
+    // a core whose real path is ~53 mm (the WE-FC datasheets state 53).
+    core.process_data();
+    REQUIRE(core.get_processed_description());
+    auto effective = core.get_processed_description()->get_effective_parameters();
+    CHECK_THAT(effective.get_effective_length() * 1000, Catch::Matchers::WithinRel(53.20, 0.02));
+}
