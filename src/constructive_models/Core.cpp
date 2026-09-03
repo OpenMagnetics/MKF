@@ -89,11 +89,16 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
         get_mutable_functional_description().set_type(CoreType::TOROIDAL);
     }
     else if (shapeFamily == CoreShapeFamily::UI || shapeFamily == CoreShapeFamily::PQI ||
-             shapeFamily == CoreShapeFamily::UT ||
+             shapeFamily == CoreShapeFamily::UT || shapeFamily == CoreShapeFamily::EI ||
              shapeFamily == CoreShapeFamily::DRUM_RING || shapeFamily == CoreShapeFamily::DRUM_SEMISHIELDED) {
         // DRUM_RING (ABT #366) / DRUM_SEMISHIELDED (ABT #362): a drum closed by its shield
         // ring / magnetic-epoxy shell — same piece-plus-closer semantics as UI/PQI (nothing
         // doubled, the piece class reports the whole assembly).
+        //
+        // EI: an E piece closed by an I bar — the same construction as UI, and the family the
+        // records themselves name "E+I". It had no entry either, so it was mirrored too:
+        // ET 20 reports le 99.51 mm as a twoPieceSet against 49.76 mm as a piece and plate,
+        // the same exact factor of two.
         //
         // UT (ABT #995): a U piece closed by a flat bar — the T — exactly the UI case. It had
         // NO entry here at all and fell to the TWO_PIECE_SET default, which MIRRORED it and
@@ -2522,7 +2527,7 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
         core.set_type(CoreType::TOROIDAL);
     }
     else if (coreShape.get_family() == CoreShapeFamily::UI || coreShape.get_family() == CoreShapeFamily::PQI ||
-             coreShape.get_family() == CoreShapeFamily::UT ||
+             coreShape.get_family() == CoreShapeFamily::UT || coreShape.get_family() == CoreShapeFamily::EI ||
              coreShape.get_family() == CoreShapeFamily::DRUM_RING ||
              coreShape.get_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
         // UT joins UI here (ABT #995), replacing a TWO_PIECE_SET branch labelled "UT cores are

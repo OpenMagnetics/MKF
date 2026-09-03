@@ -3252,3 +3252,39 @@ TEST_CASE("Test_Core_Type_UT_Is_Piece_And_Plate", "[core][core-type][smoke-test]
     auto effective = core.get_processed_description()->get_effective_parameters();
     CHECK_THAT(effective.get_effective_length() * 1000, Catch::Matchers::WithinRel(53.20, 0.02));
 }
+
+
+// Same class as the UT case above (ABT #995): an EI core is an E piece closed by an I bar —
+// the family the records themselves name "E+I" — and it had no entry in the cascade either,
+// so it fell to TWO_PIECE_SET and was mirrored. ET 20 reported le 99.51 mm against the
+// 49.76 mm a piece-and-plate gives, the same exact factor of two.
+//
+// Found by the heimdall CMC pipeline while adding ET 20 to MAS, immediately after the UT
+// fix — the same gap, one family over, which is why this test exists beside that one rather
+// than as an afterthought in it.
+TEST_CASE("Test_Core_Type_EI_Is_Piece_And_Plate", "[core][core-type][smoke-test]") {
+    settings.reset();
+
+    // An EI core is an E piece closed by an I bar — the same construction as the UI already
+    // in the cascade, and the family our own records name "E+I". It had no entry either, so
+    // it fell to TWO_PIECE_SET and was mirrored: on ET 20, le 99.51 mm against the 49.76 mm a
+    // piece-and-plate gives — the same exact factor of two as the UT case above.
+    //
+    // The shape is built INLINE rather than looked up, because MAS ships no `ei` record yet
+    // (ET 20 is being added). So this asserts the family->type derivation only; the effective
+    // length is deliberately NOT asserted, since pinning it would mean embedding dimensions
+    // here that belong in MAS. Add the le assertion, as the UT test has, once an ei shape is
+    // published — a type-only test would pass through a regression that keeps the enum and
+    // changes the mirroring.
+    CoreShape shape;
+    shape.set_family(CoreShapeFamily::EI);
+    shape.set_name("EI test shape");
+    shape.set_type(FunctionalDescriptionType::CUSTOM);
+    shape.set_dimensions(std::map<std::string, Dimension>{
+        {"A", 0.0404}, {"B", 0.0202}, {"C", 0.0128},
+        {"D", 0.0101}, {"E", 0.0202}, {"F", 0.0128},
+    });
+
+    Core core(shape, OpenMagnetics::find_core_material_by_name("3C95"));
+    CHECK(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+}
