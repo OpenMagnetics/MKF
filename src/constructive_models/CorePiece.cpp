@@ -1,6 +1,8 @@
 #include "constructive_models/CorePiece.h"
 #include "support/Settings.h"
 
+#include <magic_enum.hpp>
+
 #include "json.hpp"
 #include "support/Utils.h"
 
@@ -2767,6 +2769,43 @@ bool CorePiece::is_family_supported(CoreShapeFamily family) {
     }
 }
 
+// The shape families CorePiece::factory below actually constructs. Kept as data so the
+// "available options" in its error can be GENERATED rather than hand-typed: the literal
+// that used to live there had gone stale twice over — it stopped at "T, C" while the
+// factory had long handled UI/EI/EER/EF/EPC/EPQ/EPW/EPT/LEP/PQI, and it never listed the
+// drum families at all (DRUM/DRUM_RING/DRUM_SEMISHIELDED/ROD/MOLDED, added in 52d99c35).
+// A caller reading that message reasonably concluded those cores were unimplemented
+// upstream and went looking for a feature gap that did not exist (ABT #975).
+//
+// Add a family here in the same edit that adds its branch below, and the message can
+// never disagree with the code again.
+static constexpr CoreShapeFamily kSupportedShapeFamilies[] = {
+    CoreShapeFamily::E,          CoreShapeFamily::EC,         CoreShapeFamily::EFD,
+    CoreShapeFamily::EL,         CoreShapeFamily::EP,         CoreShapeFamily::EPX,
+    CoreShapeFamily::LP,         CoreShapeFamily::EQ,         CoreShapeFamily::ER,
+    CoreShapeFamily::ETD,        CoreShapeFamily::P,          CoreShapeFamily::PLANAR_E,
+    CoreShapeFamily::PLANAR_EL,  CoreShapeFamily::PLANAR_ER,  CoreShapeFamily::PM,
+    CoreShapeFamily::PQ,         CoreShapeFamily::RM,         CoreShapeFamily::U,
+    CoreShapeFamily::UR,         CoreShapeFamily::UT,         CoreShapeFamily::T,
+    CoreShapeFamily::C,          CoreShapeFamily::EER,        CoreShapeFamily::EF,
+    CoreShapeFamily::EPC,        CoreShapeFamily::UI,         CoreShapeFamily::EI,
+    CoreShapeFamily::DRUM,       CoreShapeFamily::DRUM_RING,  CoreShapeFamily::DRUM_SEMISHIELDED,
+    CoreShapeFamily::ROD,        CoreShapeFamily::MOLDED,     CoreShapeFamily::PQI,
+    CoreShapeFamily::EPQ,        CoreShapeFamily::EPW,        CoreShapeFamily::EPT,
+    CoreShapeFamily::LEP,
+};
+
+static std::string supported_shape_family_list() {
+    std::string list = "{";
+    for (size_t index = 0; index < std::size(kSupportedShapeFamilies); ++index) {
+        if (index > 0) {
+            list += ", ";
+        }
+        list += magic_enum::enum_name(kSupportedShapeFamilies[index]);
+    }
+    return list + "}";
+}
+
 std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     auto family = shape.get_family();
     if (family == CoreShapeFamily::E) {
@@ -3015,8 +3054,7 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
         return piece;
     }
     else
-        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown shape family: " + to_string(family) + " for shape '" + shape.get_name().value_or("<unnamed>") + "', available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
-                                 "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UI, EI, UR, UT, T, C, EER, EF, EPC, EPQ, EPW, EPT, LEP, PQI}");
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown shape family: " + to_string(family) + " for shape '" + shape.get_name().value_or("<unnamed>") + "', available options are: " + supported_shape_family_list());
 }
 
 // ============================================================================
