@@ -2469,6 +2469,58 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
         double corrected = 0;
         bool coatingWasDefaulted = false;
         std::string jacket;     // how this part's coating is recorded, as a group label
+        double measuredInductance = 0, correctedInductance = 0;
+        double measuredCapacitance = 0, correctedCapacitance = 0;
+        // Same part, same winding, with the recorded case REMOVED from the core. Attributes the
+        // capacitance error to the case, or clears it.
+        double uncasedInductance = 0, uncasedCapacitance = 0, uncasedPeak = 0;
+    };
+
+    // The same two metrics the corpus itself was built with, read off a swept |Z| curve:
+    // the low-frequency inductive line, and the 1/(omega C) fall above the peak. Reading BOTH
+    // is what separates a capacitance error from an inductance one -- the peak frequency alone
+    // cannot, since it moves as 1/sqrt(L C) and a compensating pair looks like agreement.
+    struct CurveMetrics { double peakFrequency = 0, inductance = 0, capacitance = 0; };
+    auto metricsOf = [](const std::vector<double>& frequencies, const std::vector<double>& impedances) {
+        CurveMetrics metrics;
+        size_t peakIndex = 0;
+        for (size_t i = 0; i < impedances.size(); ++i) {
+            if (std::isfinite(impedances[i]) && impedances[i] > impedances[peakIndex]) {
+                peakIndex = i;
+            }
+        }
+        metrics.peakFrequency = frequencies[peakIndex];
+
+        std::vector<double> inductive;
+        for (size_t i = 0; i < frequencies.size(); ++i) {
+            if (frequencies[i] < metrics.peakFrequency / 30 && impedances[i] > 0) {
+                inductive.push_back(impedances[i] / (2 * std::numbers::pi * frequencies[i]));
+            }
+        }
+        if (inductive.size() >= 3) {
+            // The upper third of the inductive run: above the R_dc plateau, below the peak.
+            std::vector<double> upper(inductive.end() - std::max<size_t>(3, inductive.size() / 3),
+                                      inductive.end());
+            std::sort(upper.begin(), upper.end());
+            metrics.inductance = upper[upper.size() / 2];
+        }
+
+        std::vector<double> capacitive;
+        for (size_t j = peakIndex + 2; j + 1 < frequencies.size(); ++j) {
+            if (impedances[j - 1] <= 0 || impedances[j + 1] <= 0) {
+                continue;
+            }
+            double slope = (std::log(impedances[j + 1]) - std::log(impedances[j - 1])) /
+                           (std::log(frequencies[j + 1]) - std::log(frequencies[j - 1]));
+            if (slope >= -1.3 && slope <= -0.7) {
+                capacitive.push_back(1.0 / (2 * std::numbers::pi * frequencies[j] * impedances[j]));
+            }
+        }
+        if (capacitive.size() >= 3) {
+            std::sort(capacitive.begin(), capacitive.end());
+            metrics.capacitance = capacitive[capacitive.size() / 2];
+        }
+        return metrics;
     };
     std::vector<Row> rows;
 
@@ -2484,6 +2536,12 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
         row.part = entry["part"].is_string() ? entry["part"].get<std::string>()
                                              : std::to_string(entry["part"].get<int64_t>());
         row.measured = measured["f_peak"].get<double>();
+        if (measured.contains("L_low") && measured["L_low"].is_number()) {
+            row.measuredInductance = measured["L_low"].get<double>();
+        }
+        if (measured.contains("C_hf") && measured["C_hf"].is_number()) {
+            row.measuredCapacitance = measured["C_hf"].get<double>();
+        }
         if (entry.contains("model") && entry["model"].is_object() && entry["model"].contains("f_peak") &&
             !entry["model"]["f_peak"].is_null()) {
             row.previous = entry["model"]["f_peak"].get<double>();
@@ -2529,16 +2587,25 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
             if (frequencies.size() < 2 || impedances.size() != frequencies.size()) {
                 continue;
             }
-            size_t peakIndex = 0;
-            for (size_t i = 0; i < impedances.size(); ++i) {
-                if (std::isfinite(impedances[i]) && impedances[i] > impedances[peakIndex]) {
-                    peakIndex = i;
-                }
-            }
-            if (!std::isfinite(impedances[peakIndex]) || impedances[peakIndex] <= 0) {
+            auto modelled = metricsOf(frequencies, impedances);
+            if (!std::isfinite(modelled.peakFrequency) || modelled.peakFrequency <= 0) {
                 continue;
             }
-            row.corrected = frequencies[peakIndex];
+            row.corrected = modelled.peakFrequency;
+            row.correctedInductance = modelled.inductance;
+            row.correctedCapacitance = modelled.capacitance;
+
+            // A/B on the case itself: is the jacket what is suppressing the capacitance?
+            if (coreFunctional.contains("coating") && coreFunctional["coating"].is_object()) {
+                json uncasedJson = magneticJson;
+                uncasedJson["core"]["functionalDescription"].erase("coating");
+                OpenMagnetics::Magnetic uncased(uncasedJson);
+                auto uncasedCurve = Sweeper::sweep_common_mode_impedance_over_frequency(uncased, 1e3, 2e8, 400);
+                auto uncasedMetrics = metricsOf(uncasedCurve.get_x_points(), uncasedCurve.get_y_points());
+                row.uncasedPeak = uncasedMetrics.peakFrequency;
+                row.uncasedInductance = uncasedMetrics.inductance;
+                row.uncasedCapacitance = uncasedMetrics.capacitance;
+            }
         }
         catch (const std::exception&) {
             continue;  // a part the current model cannot build is not evidence either way
@@ -2625,6 +2692,48 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
         std::cout << "  " << std::setw(26) << std::left << jacket << " n=" << std::setw(4)
                   << ratios.second.size() << "  before=" << median(ratios.first)
                   << "  after=" << median(ratios.second) << "\n";
+    }
+    std::cout << "\n";
+
+    // Peak frequency alone cannot say WHICH term is wrong: it moves as 1/sqrt(L C), so an
+    // inductance error and a capacitance error in the same direction compound, and in opposite
+    // directions they hide each other. Report both legs.
+    std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> legsByJacket;
+    for (const auto& row : rows) {
+        if (row.measuredInductance > 0 && row.correctedInductance > 0) {
+            legsByJacket[row.jacket].first.push_back(row.correctedInductance / row.measuredInductance);
+        }
+        if (row.measuredCapacitance > 0 && row.correctedCapacitance > 0) {
+            legsByJacket[row.jacket].second.push_back(row.correctedCapacitance / row.measuredCapacitance);
+        }
+    }
+    // A/B on the case itself. If the recorded jacket is what suppresses these parts'
+    // capacitance, removing it must move the capacitance ratio toward 1; if it barely moves,
+    // the case is not the cause and the error is in the winding's own network.
+    std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> casedVsUncased;
+    for (const auto& row : rows) {
+        if (row.measuredCapacitance > 0 && row.correctedCapacitance > 0 && row.uncasedCapacitance > 0) {
+            casedVsUncased[row.jacket].first.push_back(row.correctedCapacitance / row.measuredCapacitance);
+            casedVsUncased[row.jacket].second.push_back(row.uncasedCapacitance / row.measuredCapacitance);
+        }
+    }
+    if (!casedVsUncased.empty()) {
+        std::cout << "=== capacitance ratio with the recorded case KEPT vs REMOVED ===\n";
+        for (const auto& [jacket, ratios] : casedVsUncased) {
+            std::cout << "  " << std::setw(26) << std::left << jacket << " n=" << std::setw(4)
+                      << ratios.first.size() << " cased=" << std::setw(11) << median(ratios.first)
+                      << " uncased=" << median(ratios.second) << "\n";
+        }
+        std::cout << "\n";
+    }
+
+    std::cout << "=== the two legs, modelled/measured (1.0 is agreement) ===\n";
+    for (const auto& [jacket, legs] : legsByJacket) {
+        std::cout << "  " << std::setw(26) << std::left << jacket
+                  << " inductance n=" << std::setw(4) << legs.first.size()
+                  << " median=" << std::setw(9) << median(legs.first)
+                  << "   capacitance n=" << std::setw(4) << legs.second.size()
+                  << " median=" << median(legs.second) << "\n";
     }
     std::cout << "\n";
 
