@@ -9,6 +9,7 @@
 #include "constructive_models/Magnetic.h"
 #include "support/Utils.h"
 #include "json.hpp"
+#include "Fixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -61,4 +62,45 @@ TEST_CASE("Test_Filling_Factors_Area_Fraction_Is_Not_An_Overfill_Ratio", "[coil]
     CHECK_THAT(cleanFactors.areaFillingFactor, Catch::Matchers::WithinAbs(0.0235, 0.005));
     CHECK(cleanFactors.contiguousFillingFactor > 0);
     CHECK(cleanFactors.overlappingFillingFactor > 0);
+}
+
+// A bobbin may legitimately carry no winding-window `area`: MAS marks it optional on
+// windingWindowElement, which requires only width+height (rectangular) or
+// angle+radialHeight (round). calculate_filling_factor used to read it as
+// `windingWindows[0].get_area().value()`, so such a bobbin threw std::bad_optional_access
+// — and because the WASM binding returned a bare what(), the browser JSON.parse'd the
+// message and showed
+//     SyntaxError: Unexpected token 'b', "bad_optional_access" is not valid JSON
+// which names neither the bobbin nor the field.
+//
+// The fixture is the exact coil the MagneticBuilder sent for WE 744025006, a drumRing
+// inductor whose catalogue MAS carries a processedDescription-only bobbin (no
+// functionalDescription, so process_bobbin cannot fill the area in either — that is a
+// legal bobbin, not a broken one). Its window is 0.3 mm x 2.08 mm with area and shape null.
+TEST_CASE("Test_Filling_Factors_Bobbin_Without_Winding_Window_Area", "[coil][filling-factor][smoke-test]") {
+    settings.reset();
+    json coilJson = OpenMagneticsTesting::fixtures::get_json("coil-drumring-bobbin-without-winding-window-area");
+
+    // Precondition: this is only a regression test while the fixture really omits the area.
+    REQUIRE(coilJson["bobbin"]["processedDescription"]["windingWindows"][0]["area"].is_null());
+
+    OpenMagnetics::Coil coil(coilJson, false);
+    OpenMagnetics::Coil::FillingFactorsOutput factors;
+    REQUIRE_NOTHROW(factors = coil.calculate_filling_factor());
+
+    // The area is derived from the window's own dimensions with the same formula
+    // create_quick_bobbin writes: 0.0003 m x 0.00208 m = 6.24e-7 m2. A wrong denominator
+    // would still not throw, so pin the value rather than just the absence of a throw.
+    const double expectedAvailableArea = 0.0002999999999999999 * 0.0020800000000000003;
+    CHECK(factors.areaFillingFactor > 0);
+    CHECK(factors.areaFillingFactor < 1);
+
+    // Same coil, area stated explicitly: the derivation must agree with what MKF would
+    // have written itself, so both paths give the same answer.
+    json statedJson = coilJson;
+    statedJson["bobbin"]["processedDescription"]["windingWindows"][0]["area"] = expectedAvailableArea;
+    OpenMagnetics::Coil stated(statedJson, false);
+    auto statedFactors = stated.calculate_filling_factor();
+    CHECK_THAT(factors.areaFillingFactor,
+               Catch::Matchers::WithinRel(statedFactors.areaFillingFactor, 1e-12));
 }

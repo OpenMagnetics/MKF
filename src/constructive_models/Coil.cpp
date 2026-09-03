@@ -6361,7 +6361,16 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
     auto sections = get_sections_description().value();
 
     double area = 0;
-    double availableArea = windingWindows[0].get_area().value();
+    // Bobbin::get_winding_window_area, not windingWindows[0].get_area().value(): `area`
+    // is OPTIONAL in MAS (windingWindowElement requires only width+height, or
+    // angle+radialHeight), so a caller-supplied bobbin may legitimately omit it and the
+    // bare .value() threw std::bad_optional_access. That surfaced in the browser as an
+    // unreadable `SyntaxError: Unexpected token 'b', "bad_optional_access" is not valid
+    // JSON`, with nothing pointing at the bobbin. The accessor already derives the area
+    // from the window's own dimensions using the same formulas create_quick_bobbin sets
+    // it with (w*h rectangular, pi*r^2*angle/360 round), so this reuses MKF's definition
+    // rather than adding a second one here.
+    double availableArea = bobbin.get_winding_window_area(0);
     double availableContiguousDimension;
     double availableOverlappingDimension;
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
@@ -9528,7 +9537,9 @@ std::vector<size_t> Coil::plan_planar_stackup() {
     std::vector<size_t> layersNeeded(numberWindings);
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         const double trackWidth = resolve_wire(windingIndex).get_maximum_outer_width();
-        const size_t maximumTurnsPerLayer = std::max<size_t>(1, static_cast<size_t>(std::floor(spaceForTurns / (trackWidth + rules.get_track_to_track()))) - 1);
+        // signed arithmetic: when no turn fits, floor(...) is 0 and "0 - 1" must clamp to 1, not wrap to SIZE_MAX
+        const long turnsThatFit = static_cast<long>(std::floor(spaceForTurns / (trackWidth + rules.get_track_to_track()))) - 1;
+        const size_t maximumTurnsPerLayer = static_cast<size_t>(std::max(1L, turnsThatFit));
         const size_t layersPerParallel = static_cast<size_t>(std::ceil(double(get_number_turns(windingIndex)) / maximumTurnsPerLayer));
         layersNeeded[windingIndex] = layersPerParallel * get_number_parallels(windingIndex);
     }
