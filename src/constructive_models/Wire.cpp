@@ -1657,12 +1657,35 @@ namespace OpenMagnetics {
         }
     }
 
-    void Wire::cut_foil_wire_to_section(Section section) {
+    void Wire::cut_foil_wire_to_section(Section section, double reservedPerEdge) {
         if (get_type() != WireType::FOIL) {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Method only valid for Foil wire");
         }
+        // A SHEET MAY NOT SPAN A LEAD'S CORRIDOR (ABT #1001, 2026-09-04). An inner winding's
+        // lead-out crosses the window at one edge to reach its pin, and a foil is as tall as the
+        // space it is wound in -- so unless the sheet is cut short of that corridor, the lead runs
+        // straight through it. Measured on two_switch_forward_transformer_complete: the primary's
+        // exit lead occupies y 12.845..13.634 mm and the sheets reached 12.968, so every one of
+        // the eight was cut by it; that was the whole remaining overlap class on the design.
+        // Real practice routes an inner lead-out in the MARGIN or through a notch in the foil
+        // edge, never through the sheet.
+        //
+        // The reservation is symmetric -- the same depth taken from both edges -- so the sheet
+        // stays CENTRED on its section. Reserving asymmetrically would be less copper lost, but
+        // it would put the sheet off-centre, and nothing in the foil path moves a sheet off its
+        // layer's centre (ABT #1004). The caller passes the deepest corridor of either edge.
         DimensionWithTolerance dimensionWithTolerance;
-        dimensionWithTolerance.set_maximum(section.get_dimensions()[1] * (1 - constants.foilToSectionMargin));
+        const double cutHeight = section.get_dimensions()[1] * (1 - constants.foilToSectionMargin) -
+                                 2.0 * std::max(0.0, reservedPerEdge);
+        if (cutHeight <= 0) {
+            throw InvalidInputException(
+                ErrorCode::INVALID_WIRE_DATA,
+                "Foil wire '" + get_name().value_or("<unnamed>") + "': the connection leads crossing"
+                " section '" + section.get_name() + "' reserve " + std::to_string(reservedPerEdge) +
+                " m at each edge, which leaves no height for the sheet in a section of " +
+                std::to_string(section.get_dimensions()[1]) + " m");
+        }
+        dimensionWithTolerance.set_maximum(cutHeight);
         set_conducting_height(dimensionWithTolerance);
         // The width the layer occupies is the foil PLUS its interleaved film (see
         // get_foil_interlayer_insulation); the height is the foil's own.

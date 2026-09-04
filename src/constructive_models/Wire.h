@@ -293,7 +293,9 @@ class Wire : public MAS::Wire {
         double get_coating_relative_permittivity();
         static double get_coating_relative_permittivity(Wire wire);
 
-        void cut_foil_wire_to_section(Section section);
+        // reservedPerEdge: the depth a connection lead crossing this section reserves at EACH
+        // edge of the turn axis. A foil sheet may not span a corridor a lead crosses (ABT #1001).
+        void cut_foil_wire_to_section(Section section, double reservedPerEdge = 0.0);
         void cut_planar_wire_to_section(Section section);
         double get_relative_cost();
         std::string get_reference();

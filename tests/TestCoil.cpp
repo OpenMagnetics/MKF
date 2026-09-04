@@ -13337,6 +13337,49 @@ TEST_CASE("Test_Foil_Sheets_Of_A_Stack_Share_One_Height", "[constructive-model][
     settings.reset();
 }
 
+TEST_CASE("Test_Foil_Cut_Reserves_A_Crossing_Leads_Corridor", "[constructive-model][coil][foil][regression]") {
+    // ABT #1001: an inner winding's lead-out crosses the window at one edge to reach its pin, and
+    // a foil is as tall as the space it is wound in -- so unless the sheet is cut short of that
+    // corridor, the lead runs straight through it. Measured on
+    // two_switch_forward_transformer_complete (MVB++ fixture): the primary's exit lead occupied
+    // y 12.845..13.634 mm while the sheets reached 12.968, and that was the whole remaining
+    // overlap class of the design, one pair per sheet. With the corridor reserved the cut went
+    // 25.935 -> 24.2428 mm and the sheets span +-12.121, clear of it.
+    //
+    // This guards the RULE the cut applies. The end-to-end guard is MVB++'s overlap audit on that
+    // design: no MKF example places a lead corridor across a foil, so none of them reproduces it
+    // (checked: 22_margin_tape_forward's leads cross a round winding, not the foil).
+    settings.reset();
+    clear_databases();
+    auto wire = OpenMagnetics::find_wire_by_name("Foil 0.2");
+    REQUIRE(wire.get_type() == WireType::FOIL);
+    MAS::Section section;
+    section.set_name("Secondary section 0");
+    section.set_dimensions(std::vector<double>{0.005, 0.0273});
+
+    OpenMagnetics::Wire unblocked = wire;
+    unblocked.cut_foil_wire_to_section(section);
+    const double freeHeight = resolve_dimensional_values(unblocked.get_conducting_height().value());
+
+    // A corridor 0.846 mm deep at each edge -- the depth two_switch's primary leads reserve.
+    OpenMagnetics::Wire blocked = wire;
+    blocked.cut_foil_wire_to_section(section, 0.846e-3);
+    const double cutHeight = resolve_dimensional_values(blocked.get_conducting_height().value());
+    CHECK_THAT(freeHeight - cutHeight, Catch::Matchers::WithinAbs(2 * 0.846e-3, 1e-9));
+
+    // The reservation is symmetric so the sheet stays centred on its section (ABT #1004): the
+    // caller passes the deepest corridor of either edge.
+    OpenMagnetics::Wire zero = wire;
+    zero.cut_foil_wire_to_section(section, 0.0);
+    CHECK_THAT(resolve_dimensional_values(zero.get_conducting_height().value()),
+               Catch::Matchers::WithinRel(freeHeight, 1e-9));
+
+    // A corridor that leaves no sheet is refused, not silently clamped to nothing.
+    OpenMagnetics::Wire impossible = wire;
+    CHECK_THROWS(impossible.cut_foil_wire_to_section(section, 0.02));
+    settings.reset();
+}
+
 TEST_CASE("Test_Real_Geometry_Planar_Winds_As_Pcb", "[constructive-model][coil][real-geometry][planar]") {
     // ABT #978 (supersedes the ABT #492 gate): a planar coil under real winding geometry is a PCB and wind()
     // routes it to wind_planar with the placement defined by the printed group's pcb (MAS-RFC 0012). The

@@ -2166,6 +2166,8 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     std::map<std::string, double> layerCenterOnTurnAxis;
     std::map<std::string, double> layerWirePitch;  // crossed layer's own wire, along its turn axis
     std::map<std::string, double> layerExtent;     // crossed layer's own extent, same axis
+    std::map<std::string, std::string> layerOwnWinding;   // for the foil rule below
+    std::map<std::string, bool> layerIsFoil;
     for (const auto& layer : layers) {
         size_t turnAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
         layerTurnAxis[layer.get_name()] = turnAxis;
@@ -2177,6 +2179,8 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
             layerWirePitch[layer.get_name()] = (turnAxis == 1)
                 ? wires[windingIndex].get_maximum_outer_height()
                 : wires[windingIndex].get_maximum_outer_width();
+            layerOwnWinding[layer.get_name()] = layer.get_partial_windings()[0].get_winding();
+            layerIsFoil[layer.get_name()] = wires[windingIndex].get_type() == WireType::FOIL;
         }
     }
     // ABT #229: every edge-routed run (terminal lead or U interleaved continuation) now carries the
@@ -2203,6 +2207,21 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
         }
         // Defensive: a marker without an allocated depth still costs its own thickness (one row),
         // measured along the crossed layer's turn axis — the axis this lead takes a slot out of.
+        // A FOIL SHEET DOES NOT BLOCK ITSELF (ABT #1001, 2026-09-04). The depth a crossing run
+        // reserves is at least its own size along the crossed layer's turn axis -- and a foil's
+        // OWN terminal markers are as tall as the sheet, because that is what they connect to. Fed
+        // back in as obstacles they made the foil's own layers reserve a corridor of the whole
+        // window and more: measured on two_switch_forward_transformer_complete, the bottom depth
+        // ran 0.846 mm on layer 0, then 26.756, then 52.691 -- twice the 27.300 mm window -- and
+        // the span the turns were then spread over came out INVERTED (39.041 .. -39.041 mm). What
+        // genuinely crosses a sheet is ANOTHER winding's lead-out, and that is what must be
+        // reserved: layer 0's honest {0.846, 0.846} is the primary's two leads. A conductor's own
+        // terminal sits at its own edge and is not an obstacle to itself.
+        const bool crossedIsFoil = layerIsFoil.count(space.layer) && layerIsFoil.at(space.layer);
+        if (crossedIsFoil && layerOwnWinding.count(space.layer) &&
+            layerOwnWinding.at(space.layer) == space.winding) {
+            continue;
+        }
         double depth = std::max(space.edgeDepth, space.dimensions[layerTurnAxis.at(space.layer)]);
         if (std::getenv("MKF_BLOCKING_DIAG")) {
             std::cerr << "[marker] layer=" << space.layer << " w=" << space.winding << " p" << space.parallel
@@ -9077,8 +9096,23 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                     section.set_dimensions(std::vector<double>{currentSectionWidth - _marginsPerSection[marginIndex][0] - _marginsPerSection[marginIndex][1], currentSectionHeight});
                 }
 
-                if (wirePerWinding[windingIndex].get_type() == WireType::FOIL && !wirePerWinding[windingIndex].get_conducting_height()) {
-                    wirePerWinding[windingIndex].cut_foil_wire_to_section(section);
+                if (wirePerWinding[windingIndex].get_type() == WireType::FOIL) {
+                    // THE CUT IS RE-TAKEN EVERY PASS (ABT #1001). A foil's height is a function of
+                    // its section AND of the corridors the connection leads cut across it, and
+                    // those are only known after a wind has placed the leads -- so the height
+                    // cannot be settled on the first pass alone. wind() already iterates to a
+                    // fixpoint on the blocked slots and depths, both of which accumulate
+                    // MONOTONICALLY, so re-cutting here is monotonically decreasing and converges
+                    // with them. (Cutting only once, when the height was still unset, is what let
+                    // a lead run through every sheet of two_switch_forward_transformer_complete.)
+                    double reservedPerEdge = 0.0;
+                    for (const auto& [layerName, depths] : _connectionBlockedDepthPerLayer) {
+                        if (layerName.rfind(section.get_name() + " layer ", 0) != 0) {
+                            continue;
+                        }
+                        reservedPerEdge = std::max({reservedPerEdge, depths.first, depths.second});
+                    }
+                    wirePerWinding[windingIndex].cut_foil_wire_to_section(section, reservedPerEdge);
                     get_mutable_functional_description()[windingIndex].set_wire(wirePerWinding[windingIndex]);
                 }
 
