@@ -90,8 +90,7 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
     }
     else if (shapeFamily == CoreShapeFamily::UI || shapeFamily == CoreShapeFamily::PQI ||
              shapeFamily == CoreShapeFamily::UT || shapeFamily == CoreShapeFamily::EI ||
-             shapeFamily == CoreShapeFamily::DRUM_RING || shapeFamily == CoreShapeFamily::DRUM_SEMISHIELDED ||
-             shapeFamily == CoreShapeFamily::DRUM_PLATE) {
+             shapeFamily == CoreShapeFamily::DRUM_RING || shapeFamily == CoreShapeFamily::DRUM_SEMISHIELDED) {
         // DRUM_RING (ABT #366) / DRUM_SEMISHIELDED (ABT #362): a drum closed by its shield
         // ring / magnetic-epoxy shell — same piece-plus-closer semantics as UI/PQI (nothing
         // doubled, the piece class reports the whole assembly).
@@ -2538,8 +2537,7 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
     else if (coreShape.get_family() == CoreShapeFamily::UI || coreShape.get_family() == CoreShapeFamily::PQI ||
              coreShape.get_family() == CoreShapeFamily::UT || coreShape.get_family() == CoreShapeFamily::EI ||
              coreShape.get_family() == CoreShapeFamily::DRUM_RING ||
-             coreShape.get_family() == CoreShapeFamily::DRUM_SEMISHIELDED ||
-             coreShape.get_family() == CoreShapeFamily::DRUM_PLATE) {
+             coreShape.get_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
         // UT joins UI here (ABT #995), replacing a TWO_PIECE_SET branch labelled "UT cores are
         // U-type assembled, not toroidal" — which corrected a wrong TOROIDAL classification and
         // then stopped one step short. U-type assembled is right; two-piece-SET is not, because
