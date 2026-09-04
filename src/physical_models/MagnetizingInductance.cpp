@@ -309,6 +309,124 @@ double MagnetizingInductance::calculate_drum_ring_magnetizing_inductance(Core co
     return pow(numberTurns, 2) / (ferriteReluctance + clearanceReluctance);
 }
 
+// ABT #1002: the WE moulded families are pressed in up to three steps and each pressing can be
+// its own powder -- Inner / Outer in the MAPI and MAIA lists of parts, SUB / COR / COV (base,
+// post, cover) in the MXGI one. The single fitted "effective" permeability the one-grade model
+// absorbs those into is not a property of any powder, and it hides the fact that the post and
+// the return path saturate at different currents. Here every region takes its own grade's mu at
+// its own field: R = sum_r c1_r / (mu0 mu_r(H_r)), with H_r from the flux the DC magnetizing
+// current drives through the whole series circuit, B_r = phi / Ae_r, iterated (damped, so a
+// steep knee cannot make it ring) until every region's mu has settled.
+double MagnetizingInductance::calculate_molded_magnetizing_inductance(Core core, double numberTurns, double temperature,
+                                                                      std::optional<double> frequency,
+                                                                      std::optional<double> magnetizingCurrentDcBias) {
+    if (core.get_shape_family() != CoreShapeFamily::MOLDED) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "per-region moulded inductance asked of a core that is not a moulded body");
+    }
+    auto corePiece = CorePiece::factory(core.resolve_shape());
+    auto regionConstants = corePiece->get_region_shape_constants();
+    if (!regionConstants) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "moulded piece did not expose its per-region shape constants");
+    }
+    auto regionMaterials = core.resolve_region_materials();
+    if (regionMaterials.size() == 1) {
+        regionMaterials = std::vector<std::optional<CoreMaterial>>(regionConstants->size(), regionMaterials[0]);
+    }
+    if (regionMaterials.size() != regionConstants->size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "moulded body has " + std::to_string(regionConstants->size()) + " regions but its material "
+            "list resolves to " + std::to_string(regionMaterials.size()));
+    }
+    if (!core.get_functional_description().get_gapping().empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "a moulded body has no discrete gaps: its distributed gap lives in the powder");
+    }
+
+    double vacuumPermeability = Constants().vacuumPermeability;
+    size_t numberRegions = regionConstants->size();
+    auto permeabilityAt = [&](size_t regionIndex, std::optional<double> magneticFieldDcBias) {
+        if (!regionMaterials[regionIndex]) {
+            return 1.0;
+        }
+        return InitialPermeability::get_initial_permeability(regionMaterials[regionIndex].value(), temperature,
+                                                             magneticFieldDcBias, frequency);
+    };
+    auto reluctanceOf = [&](const std::vector<double>& permeabilities) {
+        double reluctance = 0;
+        for (size_t regionIndex = 0; regionIndex < numberRegions; ++regionIndex) {
+            reluctance += (*regionConstants)[regionIndex].c1 / (vacuumPermeability * permeabilities[regionIndex]);
+        }
+        return reluctance;
+    };
+
+    std::vector<double> permeabilities(numberRegions);
+    for (size_t regionIndex = 0; regionIndex < numberRegions; ++regionIndex) {
+        permeabilities[regionIndex] = permeabilityAt(regionIndex, std::nullopt);
+    }
+    double reluctance = reluctanceOf(permeabilities);
+
+    if (magnetizingCurrentDcBias && *magnetizingCurrentDcBias != 0) {
+        bool converged = false;
+        for (size_t iteration = 0; iteration < 500 && !converged; ++iteration) {
+            double magneticFlux = numberTurns * fabs(*magnetizingCurrentDcBias) / reluctance;
+            double worstChange = 0;
+            std::vector<double> updated(numberRegions);
+            for (size_t regionIndex = 0; regionIndex < numberRegions; ++regionIndex) {
+                auto& region = (*regionConstants)[regionIndex];
+                double regionEffectiveArea = region.c1 / region.c2;
+                double magneticFluxDensity = magneticFlux / regionEffectiveArea;
+                double magneticFieldDcBias = magneticFluxDensity / (vacuumPermeability * permeabilities[regionIndex]);
+                double target = permeabilityAt(regionIndex, magneticFieldDcBias);
+                worstChange = std::max(worstChange, fabs(target - permeabilities[regionIndex]) / permeabilities[regionIndex]);
+                // Geometric damping: mu(H) is decreasing, so the undamped fixed point can
+                // oscillate around a steep knee; the half-step in log space cannot.
+                updated[regionIndex] = sqrt(permeabilities[regionIndex] * target);
+            }
+            permeabilities = updated;
+            reluctance = reluctanceOf(permeabilities);
+            converged = worstChange < 1e-5;
+        }
+        if (!converged) {
+            throw std::runtime_error("per-region moulded DC-bias iteration did not converge at " +
+                                     std::to_string(*magnetizingCurrentDcBias) + " A");
+        }
+    }
+    if (std::isnan(reluctance) || reluctance <= 0) {
+        throw NaNResultException("moulded per-region reluctance must be a positive number");
+    }
+    return pow(numberTurns, 2) / reluctance;
+}
+
+// The DC component of the current that magnetizes the core, for the per-region moulded path:
+// the magnetizing current when the caller already derived one, else the winding current of a
+// single-winding part. Processed data is computed from the waveform when it is absent.
+static std::optional<double> excitation_dc_current(const OperatingPointExcitation& excitation) {
+    std::optional<SignalDescriptor> signal;
+    if (excitation.get_magnetizing_current()) {
+        signal = excitation.get_magnetizing_current();
+    }
+    else if (excitation.get_current()) {
+        signal = excitation.get_current();
+    }
+    if (!signal) {
+        return std::nullopt;
+    }
+    if (signal->get_processed()) {
+        return signal->get_processed()->get_offset();
+    }
+    if (signal->get_waveform()) {
+        // Same construction as the standard path: a power-of-two resample, its harmonics on the
+        // descriptor, then the processed data -- calculate_processed_data reads the harmonics.
+        auto sampled = Inputs::calculate_sampled_waveform(signal->get_waveform().value(), excitation.get_frequency());
+        signal->set_harmonics(Inputs::calculate_harmonics_data(sampled, excitation.get_frequency()));
+        auto processed = Inputs::calculate_processed_data(*signal, sampled, false);
+        return processed.get_offset();
+    }
+    return std::nullopt;
+}
+
 // ABT #362/#331: the drum-family paths below return early with their own inductance model, so
 // they must ALSO produce the magnetic flux density this function is contracted to return —
 // MagneticSimulator feeds result.second straight into the core-loss stage, and a default-
@@ -401,6 +519,40 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 core.get_columns()[0].get_area(), operatingPoint);
             return drumRingResult;
         }
+    }
+
+    // Moulded bodies pressed from more than one powder (ABT #1002). Gated on the material list
+    // actually resolving to more than one region, so every single-grade moulded core keeps the
+    // standard path below unchanged.
+    if (core.get_shape_family() == CoreShapeFamily::MOLDED && core.resolve_region_materials().size() > 1) {
+        double moldedTemperature = operatingPoint ? operatingPoint->get_conditions().get_ambient_temperature()
+                                                  : Defaults().ambientTemperature;
+        double numberTurnsMolded = coil.get_functional_description()[0].get_number_turns();
+        // The same reference frequency the standard path evaluates mu at when no operating point
+        // is given, so a body that lists one grade three times reproduces the single-grade result.
+        std::optional<double> moldedFrequency = Defaults().coreAdviserFrequencyReference;
+        std::optional<double> moldedDcBias;
+        if (operatingPoint && !operatingPoint->get_excitations_per_winding().empty()) {
+            auto excitation = Inputs::get_primary_excitation(*operatingPoint);
+            moldedFrequency = excitation.get_frequency();
+            moldedDcBias = excitation_dc_current(excitation);
+        }
+        double moldedInductance = calculate_molded_magnetizing_inductance(
+            core, numberTurnsMolded, moldedTemperature, moldedFrequency, moldedDcBias);
+        MagnetizingInductanceOutput moldedOutput;
+        DimensionWithTolerance moldedWithTolerance;
+        moldedWithTolerance.set_nominal(moldedInductance);
+        moldedWithTolerance.set_minimum(moldedInductance * 0.8);
+        moldedWithTolerance.set_maximum(moldedInductance * 1.2);
+        moldedOutput.set_magnetizing_inductance(moldedWithTolerance);
+        moldedOutput.set_method_used("MoldedPerRegionReluctance");
+        moldedOutput.set_origin(ResultOrigin::SIMULATION);
+        std::pair<MagnetizingInductanceOutput, SignalDescriptor> moldedResult;
+        moldedResult.first = moldedOutput;
+        // Flux crosses the post, the region with the smallest section.
+        moldedResult.second = calculate_flux_density_for_family_model(
+            moldedInductance, numberTurnsMolded, core.get_columns()[0].get_area(), operatingPoint);
+        return moldedResult;
     }
 
     // Rods (ABT #933): the most open shape there is — a bare cylinder with no return limb at all.

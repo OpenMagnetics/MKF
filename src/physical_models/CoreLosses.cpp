@@ -1,6 +1,7 @@
 #include "constructive_models/MasMigration.h"
 #include "constructive_models/CorePiece.h"
 #include "physical_models/CoreLosses.h"
+#include <algorithm>
 #include "physical_models/Resistivity.h"
 #include "physical_models/InitialPermeability.h"
 
@@ -265,10 +266,101 @@ CoreLossesOutput CoreLosses::calculate_semishielded_core_losses(Core core, Opera
     return coreLossesOutput;
 }
 
+CoreLossesOutput CoreLosses::calculate_molded_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
+    auto corePiece = CorePiece::factory(core.resolve_shape());
+    auto regionConstants = corePiece->get_region_shape_constants();
+    if (!regionConstants) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "moulded piece did not expose its per-region shape constants");
+    }
+    auto regionMaterials = core.resolve_region_materials();
+    if (regionMaterials.size() != regionConstants->size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "moulded body has " + std::to_string(regionConstants->size()) + " regions but its material "
+            "list resolves to " + std::to_string(regionMaterials.size()));
+    }
+    double wholeC1 = 0;
+    double wholeC2 = 0;
+    for (auto& region : *regionConstants) {
+        wholeC1 += region.c1;
+        wholeC2 += region.c2;
+    }
+    double wholeEffectiveArea = wholeC1 / wholeC2;
+
+    // Rescale the excitation's flux density to a region's own area (flux continuity), the same
+    // construction the semi-shielded split uses.
+    auto excitationForArea = [&](double regionEffectiveArea) {
+        auto regionExcitation = excitation;
+        auto magneticFluxDensity = regionExcitation.get_magnetic_flux_density().value();
+        auto processed = magneticFluxDensity.get_processed().value();
+        double areaRatio = wholeEffectiveArea / regionEffectiveArea;
+        if (processed.get_peak()) {
+            processed.set_peak(processed.get_peak().value() * areaRatio);
+        }
+        if (processed.get_peak_to_peak()) {
+            processed.set_peak_to_peak(processed.get_peak_to_peak().value() * areaRatio);
+        }
+        if (processed.get_offset() != 0) {
+            processed.set_offset(processed.get_offset() * areaRatio);
+        }
+        if (processed.get_rms()) {
+            processed.set_rms(processed.get_rms().value() * areaRatio);
+        }
+        magneticFluxDensity.set_processed(processed);
+        regionExcitation.set_magnetic_flux_density(magneticFluxDensity);
+        return regionExcitation;
+    };
+
+    double totalLosses = 0;
+    double totalVolume = 0;
+    std::vector<std::string> unpriced;
+    for (size_t regionIndex = 0; regionIndex < regionConstants->size(); ++regionIndex) {
+        auto& region = (*regionConstants)[regionIndex];
+        double regionVolume = pow(region.c1, 3) / pow(region.c2, 2);
+        totalVolume += regionVolume;
+        if (!regionMaterials[regionIndex]) {
+            continue;  // air: nothing to magnetize, nothing to heat
+        }
+        auto& material = regionMaterials[regionIndex].value();
+        if (material.get_volumetric_losses().empty()) {
+            unpriced.push_back(region.name + "=" + material.get_name());
+            continue;
+        }
+        double regionVolumetricLosses = get_core_volumetric_losses(
+            material, excitationForArea(region.c1 / region.c2), temperature);
+        totalLosses += regionVolumetricLosses * regionVolume;
+    }
+    if (unpriced.size() + std::count_if(regionMaterials.begin(), regionMaterials.end(), [](auto& m) { return !m; }) ==
+        regionMaterials.size()) {
+        throw ModelNotAvailableException("No core-loss model for any region of the moulded body: " +
+                                         [&] { std::string joined; for (auto& u : unpriced) { joined += (joined.empty() ? "" : ", ") + u; } return joined; }());
+    }
+
+    CoreLossesOutput coreLossesOutput;
+    coreLossesOutput.set_core_losses(totalLosses);
+    coreLossesOutput.set_volumetric_losses(totalLosses / totalVolume);
+    coreLossesOutput.set_temperature(temperature);
+    coreLossesOutput.set_origin(ResultOrigin::SIMULATION);
+    std::string methodUsed = "MoldedPerRegionSplit";
+    if (!unpriced.empty()) {
+        methodUsed += "(lossesAssumedZero:";
+        for (size_t i = 0; i < unpriced.size(); ++i) {
+            methodUsed += (i ? "," : "") + unpriced[i];
+        }
+        methodUsed += ")";
+    }
+    coreLossesOutput.set_method_used(methodUsed);
+    return coreLossesOutput;
+}
+
 CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
     // Mixed-material circuit: price each material over its own volume (ABT #362).
     if (core.get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
         return calculate_semishielded_core_losses(core, excitation, temperature);
+    }
+    // A moulded body pressed from more than one powder: each region over its own volume (ABT #1002).
+    if (core.get_shape_family() == CoreShapeFamily::MOLDED && core.resolve_region_materials().size() > 1) {
+        return calculate_molded_core_losses(core, excitation, temperature);
     }
 
     auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());

@@ -3866,3 +3866,63 @@ TEST_CASE("Test_Subcircuit_Export_Accepts_LossFactor_Materials", "[processor][ci
     CHECK(simbaSubcircuit.size() > 50);
     settings.reset();
 }
+
+// ABT #1002: a moulded body pressed from more than one powder prices each region with its own
+// grade over its own volume. One grade listed everywhere must reproduce the single-grade loss
+// exactly, and an unpriced or non-magnetic region is disclosed, never silently zeroed.
+TEST_CASE("Test_Core_Losses_Molded_Per_Region_Split", "[physical-model][core-losses][molded][abt-1002]") {
+    settings.reset();
+    clear_databases();
+    auto buildCore = [](json material) {
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+            {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+                {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", material}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        return core;
+    };
+
+    json excitationJson = json();
+    excitationJson["frequency"] = 500000;
+    excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+    excitationJson["magneticFluxDensity"]["processed"]["peak"] = 0.05;
+    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 0.1;
+    excitationJson["magneticFieldStrength"]["processed"]["offset"] = 0;
+    excitationJson["magneticFieldStrength"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFieldStrength"]["processed"]["peakToPeak"] = 0;
+    OperatingPointExcitation excitation(excitationJson);
+
+    auto bare = CoreLosses().calculate_core_losses(buildCore("Kool Mµ 26"), excitation, 25);
+    auto listed = CoreLosses().calculate_core_losses(buildCore(json::array({"Kool Mµ 26", "Kool Mµ 26", "Kool Mµ 26"})), excitation, 25);
+    REQUIRE(std::isfinite(bare.get_core_losses()));
+    REQUIRE(bare.get_core_losses() > 0);
+    CHECK(listed.get_method_used() == "MoldedPerRegionSplit");
+    UNSCOPED_INFO("bare " << bare.get_core_losses() * 1e3 << " mW, listed x3 " << listed.get_core_losses() * 1e3 << " mW");
+    CHECK_THAT(listed.get_core_losses(), Catch::Matchers::WithinRel(bare.get_core_losses(), 0.02));
+
+    // A plastic-bobbin post dissipates nothing, so the body loses less than the all-powder one.
+    auto bobbinPost = CoreLosses().calculate_core_losses(buildCore(json::array({"air", "Kool Mµ 26", "Kool Mµ 26"})), excitation, 25);
+    CHECK(bobbinPost.get_method_used() == "MoldedPerRegionSplit");
+    CHECK(bobbinPost.get_core_losses() > 0);
+    CHECK(bobbinPost.get_core_losses() < listed.get_core_losses());
+
+    // A grade without a published loss model is disclosed in the method name.
+    auto unpricedBase = CoreLosses().calculate_core_losses(buildCore(json::array({"Kool Mµ 26", "Kool Mµ 26", "Nanoperm 4000"})), excitation, 25);
+    CHECK(unpricedBase.get_method_used() == "MoldedPerRegionSplit(lossesAssumedZero:base=Nanoperm 4000)");
+    CHECK(unpricedBase.get_core_losses() < listed.get_core_losses());
+
+    // Nothing priceable at all is an error, not a zero.
+    CHECK_THROWS(CoreLosses().calculate_core_losses(buildCore(json::array({"air", "Nanoperm 4000", "Nanoperm 4000"})), excitation, 25));
+    settings.reset();
+}

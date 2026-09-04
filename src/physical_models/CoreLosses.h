@@ -591,6 +591,12 @@ class CoreLosses {
     // overcounts. This splits the circuit per material, each priced over ITS OWN volume at ITS
     // OWN flux density. Routed automatically from calculate_core_losses for DRUM_SEMISHIELDED.
     CoreLossesOutput calculate_semishielded_core_losses(Core core, OperatingPointExcitation excitation, double temperature);
+    // ABT #1002: a moulded body pressed from more than one powder. Each region (post, cover,
+    // base) is priced with ITS grade over ITS volume at ITS flux density; a region declared "air"
+    // dissipates nothing, and a grade with no published loss model is disclosed in the method
+    // name rather than silently priced at zero. Routed automatically from calculate_core_losses
+    // for MOLDED cores whose material list resolves to more than one region.
+    CoreLossesOutput calculate_molded_core_losses(Core core, OperatingPointExcitation excitation, double temperature);
     std::shared_ptr<CoreLossesModel> get_core_losses_model(std::string materialName);
     double get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature);
     double get_core_losses_series_resistance(Core core, double frequency, double temperature, double magnetizingInductance);

@@ -1,5 +1,7 @@
 #include <source_location>
 #include "constructive_models/Core.h"
+#include "constructive_models/CorePiece.h"
+#include <limits>
 #include "constructive_models/Coil.h"
 #include "constructive_models/Magnetic.h"
 #include "TestingUtils.h"
@@ -3287,4 +3289,115 @@ TEST_CASE("Test_Core_Type_EI_Is_Piece_And_Plate", "[core][core-type][smoke-test]
 
     Core core(shape, OpenMagnetics::find_core_material_by_name("3C95"));
     CHECK(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+}
+
+// ABT #1002: a moulded body pressed from more than one powder. The piece exposes its IEC sections
+// grouped by the pressing that carries them -- post, cover, base -- and the single-material
+// constants are the SUM of those regions, so the two views can never disagree.
+TEST_CASE("Test_Molded_Region_Constants_Sum_To_Piece", "[core][molded][abt-1002]") {
+    settings.reset();
+    clear_databases();
+    json shapeJson = {
+        {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+        {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+        {"dimensions", {
+            {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+            {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+    };
+    json coreJson;
+    coreJson["functionalDescription"] = {
+        {"type", "closedShape"}, {"material", "Kool Mµ 26"}, {"shape", shapeJson},
+        {"gapping", json::array()}, {"numberStacks", 1}};
+    Core core(coreJson);
+    auto corePiece = CorePiece::factory(core.resolve_shape());
+    auto regions = corePiece->get_region_shape_constants();
+    REQUIRE(regions.has_value());
+    REQUIRE(regions->size() == 3);
+    CHECK((*regions)[0].name == "post");
+    CHECK((*regions)[1].name == "cover");
+    CHECK((*regions)[2].name == "base");
+
+    auto [c1, c2, minimumArea] = corePiece->get_shape_constants();
+    double c1Sum = 0;
+    double c2Sum = 0;
+    double minimumAreaOfRegions = std::numeric_limits<double>::max();
+    for (auto& region : *regions) {
+        CHECK(region.c1 > 0);
+        CHECK(region.c2 > 0);
+        CHECK(region.minimumArea > 0);
+        c1Sum += region.c1;
+        c2Sum += region.c2;
+        minimumAreaOfRegions = std::min(minimumAreaOfRegions, region.minimumArea);
+    }
+    CHECK_THAT(c1Sum, Catch::Matchers::WithinRel(c1, 1e-12));
+    CHECK_THAT(c2Sum, Catch::Matchers::WithinRel(c2, 1e-12));
+    CHECK_THAT(minimumAreaOfRegions, Catch::Matchers::WithinRel(minimumArea, 1e-12));
+
+    // The post region is the axial run through the cavity: D over pi/4 F^2, nothing else.
+    double postArea = std::numbers::pi / 4 * pow(0.0012, 2);
+    CHECK_THAT((*regions)[0].c1, Catch::Matchers::WithinRel(0.0014 / postArea, 1e-9));
+    CHECK_THAT((*regions)[0].minimumArea, Catch::Matchers::WithinRel(postArea, 1e-9));
+    // The cover carries the side wall, so it is the longer return path of the two plates.
+    CHECK((*regions)[1].c1 > (*regions)[2].c1);
+    settings.reset();
+}
+
+// ABT #1002: how the material list of a moulded body resolves to its regions, and what the
+// reserved non-magnetic name "air" is allowed to mean.
+TEST_CASE("Test_Molded_Region_Materials_Resolution", "[core][molded][abt-1002]") {
+    settings.reset();
+    clear_databases();
+    json shapeJson = {
+        {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+        {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+        {"dimensions", {
+            {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+            {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+    };
+    auto coreWithMaterial = [&](json material) {
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", material}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        return Core(coreJson);
+    };
+
+    // A bare grade and a one-entry list are one grade everywhere: ONE region entry, so the
+    // per-region models stay out of the way of every single-grade moulded core.
+    CHECK(coreWithMaterial("Kool Mµ 26").resolve_region_materials().size() == 1);
+    CHECK(coreWithMaterial(json::array({"Kool Mµ 26"})).resolve_region_materials().size() == 1);
+
+    // [inner, outer]: the outer powder fills cover AND base.
+    auto twoGrades = coreWithMaterial(json::array({"Kool Mµ 60", "Kool Mµ 26"}));
+    auto regions = twoGrades.resolve_region_materials();
+    REQUIRE(regions.size() == 3);
+    CHECK(regions[0].value().get_name() == "Kool Mµ 60");
+    CHECK(regions[1].value().get_name() == "Kool Mµ 26");
+    CHECK(regions[2].value().get_name() == "Kool Mµ 26");
+    // The primary grade is the post's.
+    CHECK(twoGrades.resolve_material().get_name() == "Kool Mµ 60");
+
+    // [post, cover, base]
+    auto threeGrades = coreWithMaterial(json::array({"Kool Mµ 60", "Kool Mµ 26", "Kool Mµ 40"}));
+    regions = threeGrades.resolve_region_materials();
+    REQUIRE(regions.size() == 3);
+    CHECK(regions[2].value().get_name() == "Kool Mµ 40");
+
+    // A coil on a plastic bobbin: the post is air, and the primary GRADE is then the cover's.
+    auto bobbinPost = coreWithMaterial(json::array({"air", "Kool Mµ 26", "Kool Mµ 26"}));
+    regions = bobbinPost.resolve_region_materials();
+    REQUIRE(regions.size() == 3);
+    CHECK_FALSE(regions[0].has_value());
+    CHECK(regions[1].value().get_name() == "Kool Mµ 26");
+    CHECK(bobbinPost.resolve_material().get_name() == "Kool Mµ 26");
+    CHECK(bobbinPost.get_material_name() == "Kool Mµ 26");
+    // The drum families have no non-magnetic piece, so the piece list refuses the placeholder.
+    CHECK_THROWS(bobbinPost.resolve_materials());
+
+    // What the body cannot be.
+    CHECK_THROWS(coreWithMaterial(json::array({"Kool Mµ 26", "Kool Mµ 26", "Kool Mµ 26", "Kool Mµ 26"})).resolve_region_materials());
+    CHECK_THROWS(coreWithMaterial(json::array({"Kool Mµ 26", "air"})).resolve_region_materials());
+    CHECK_THROWS(coreWithMaterial(json::array({"air"})).resolve_region_materials());
+    CHECK_THROWS(coreWithMaterial(json::array({"air", "air", "air"})).resolve_material());
+    settings.reset();
 }

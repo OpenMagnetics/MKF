@@ -107,6 +107,19 @@ class MagnetizingInductance {
     static double calculate_drum_ring_magnetizing_inductance(Core core, CoreMaterial ringMaterial,
                                                              double numberTurns, double temperature);
 
+    // Moulded body pressed from more than one powder (ABT #1002): each region of the body (post,
+    // cover, base -- CorePiece::get_region_shape_constants) takes ITS grade's permeability at ITS
+    // DC-bias field, R = sum c1_r / (mu0 mu_r(H_r)), and the per-region fields are iterated to
+    // convergence against the DC magnetizing current when one is given -- a powder's L(I) IS its
+    // mu(H), so a body whose post saturates before its cover must be modelled region by region.
+    // A region declared "air" (a coil on a plastic bobbin, no composite post) takes mu = 1 and
+    // never saturates. Routed automatically for CoreShapeFamily::MOLDED whenever
+    // functionalDescription.material lists more than one grade; single-grade moulded cores keep
+    // the standard path exactly. Throws when the DC-bias iteration does not converge.
+    static double calculate_molded_magnetizing_inductance(Core core, double numberTurns, double temperature,
+                                                          std::optional<double> frequency = std::nullopt,
+                                                          std::optional<double> magnetizingCurrentDcBias = std::nullopt);
+
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
         Core core,
         Coil coil,

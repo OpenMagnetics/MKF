@@ -67,6 +67,22 @@ class CorePiece {
     // return nullopt (default).
     virtual std::optional<std::array<double, 4>> get_mixed_material_constants() { return std::nullopt; }
 
+    // ABT #1002: a compression-moulded body can be pressed from up to THREE powders -- the post
+    // the coil sits on, the cover moulded over the coil, and the base plate under it (the WE lists
+    // of parts name them COR / COV / SUB, or Inner / Outer when base and cover are one pressing).
+    // Pieces built that way expose their IEC 60205 sections grouped per REGION, in the order
+    // functionalDescription.material lists the grades, so the inductance model can apply each
+    // region's own permeability and the loss model can price each region's own volume. c1 and c2
+    // are the same sums get_shape_constants() makes: adding the regions reproduces the piece.
+    // Single-region pieces return nullopt (default).
+    struct RegionShapeConstants {
+        std::string name;
+        double c1;
+        double c2;
+        double minimumArea;
+    };
+    virtual std::optional<std::vector<RegionShapeConstants>> get_region_shape_constants() { return std::nullopt; }
+
     virtual ~CorePiece() = default;
 
     /**

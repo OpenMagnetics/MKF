@@ -83,6 +83,23 @@ class Core : public MAS::MagneticCore {
     // single-material core yields a one-element vector so callers never branch on the form.
     std::vector<CoreMaterial> resolve_materials();
     static CoreMaterialDataOrNameUnion material_element_to_union(const MaterialElement& materialElement);
+
+    // ABT #1002: the reserved material name "air" marks a region of a moulded assembly as
+    // NON-MAGNETIC -- a coil wound on a plastic bobbin with no composite post inside it, which the
+    // WE MXGI list of parts writes as COR = "Bobbin". Only meaningful inside a material list:
+    // resolve_material() skips it when picking the primary grade, and resolve_materials() refuses
+    // it because the drum families have no non-magnetic piece.
+    static bool is_non_magnetic_region(const MaterialElement& materialElement);
+
+    // The grade pressed around each region of a moulded body, in the piece's region order (post,
+    // cover, base -- see CorePiece::get_region_shape_constants). A two-entry list is
+    // [inner, outer], the outer grade filling both cover and base (the MAPI/MAIA Inner/Outer
+    // columns); a three-entry list is [post, cover, base] (the MXGI COR/COV/SUB columns); a bare
+    // material or a one-entry list is one grade everywhere and yields ONE entry, so callers can
+    // gate the per-region models on size() > 1. nullopt marks a non-magnetic region. Throws on
+    // a list longer than the body has regions. Families other than molded get one entry per
+    // listed piece, exactly as resolve_materials().
+    std::vector<std::optional<CoreMaterial>> resolve_region_materials();
     CoreShape resolve_shape();
     CoreShape resolve_shape() const;
     static CoreShape resolve_shape(CoreShapeDataOrNameUnion coreShape);

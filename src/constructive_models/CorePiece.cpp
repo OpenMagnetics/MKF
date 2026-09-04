@@ -2553,7 +2553,20 @@ class CorePieceMolded : public CorePiece {
         set_columns(columns);
     }
 
-    std::tuple<double, double, double> get_shape_constants() {
+    // The IEC 60205 walk, section by section, each assigned to the REGION of the body that is
+    // pressed around it (ABT #1002). The WE molded families are made in up to three pressings --
+    // SUB (base plate), COR (the post the coil sits on) and COV (the cover over the coil) in the
+    // MXGI list of parts, Inner (post) / Outer (the rest) in the MAPI/MAIA ones -- and each
+    // pressing can be a different powder. Regions, in the order the magnetic circuit crosses
+    // them from the post upward, which is the order functionalDescription.material lists them:
+    //   post   the axial run of the composite post through the cavity height D
+    //   cover  the top plate, its post corner, the outer shell down to the top face of the base
+    //          plate, and the top rim corner
+    //   base   the bottom plate, its post corner, the base plate's share of the shell (from its
+    //          mid-plane, where the IEC walk turns, up to its top face) and the bottom rim corner
+    // A body pressed from one powder sums the regions back into get_shape_constants() below, so
+    // the single-material and the per-region views can never disagree.
+    std::optional<std::vector<RegionShapeConstants>> get_region_shape_constants() override {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         double pi = std::numbers::pi;
         double postRadius = dimensions["F"] / 2;
@@ -2563,44 +2576,61 @@ class CorePieceMolded : public CorePiece {
         double shellArea = dimensions["A"] * dimensions["C"] - pi * pow(cavityRadius, 2);
         double equivalentOuterRadius = sqrt(dimensions["A"] * dimensions["C"] / pi);
         double shellWall = equivalentOuterRadius - cavityRadius;
-
         double postArea = pi * pow(postRadius, 2);
-        std::vector<double> areas;
-        areas.push_back(postArea);
-        double c1 = cavityHeight / postArea;
-        double c2 = cavityHeight / pow(postArea, 2);
 
-        // Two plates: radial spreading discs post edge -> cavity edge, plus post corners
-        // (clause 4.6, same idiom as the drum flanges).
-        for (size_t plateIndex = 0; plateIndex < 2; ++plateIndex) {
-            c1 += 1.0 / (2 * pi * plateThickness) * log(cavityRadius / postRadius);
-            c2 += 1.0 / (2 * pow(pi * plateThickness, 2)) * (cavityRadius - postRadius) / (cavityRadius * postRadius);
-            areas.push_back(2 * pi * postRadius * plateThickness);
+        RegionShapeConstants post{"post", cavityHeight / postArea, cavityHeight / pow(postArea, 2), postArea};
+
+        // One plate: radial spreading disc post edge -> cavity edge, the post corner (clause
+        // 4.6, same idiom as the drum flanges) and the radial->axial rim corner into the shell.
+        auto plate = [&](std::string name) {
+            RegionShapeConstants region{name, 0, 0, std::numeric_limits<double>::max()};
+            region.c1 += 1.0 / (2 * pi * plateThickness) * log(cavityRadius / postRadius);
+            region.c2 += 1.0 / (2 * pow(pi * plateThickness, 2)) * (cavityRadius - postRadius) / (cavityRadius * postRadius);
+            double plateEntryArea = 2 * pi * postRadius * plateThickness;
+            region.minimumArea = std::min(region.minimumArea, plateEntryArea);
             double s1 = postRadius - sqrt(pow(postRadius, 2) / 2);
-            double cornerLength = pi / 4 * (2 * s1 + plateThickness);
-            double cornerArea = 0.5 * (postArea + 2 * pi * postRadius * plateThickness);
-            areas.push_back(cornerArea);
-            c1 += cornerLength / cornerArea;
-            c2 += cornerLength / pow(cornerArea, 2);
-        }
+            double postCornerLength = pi / 4 * (2 * s1 + plateThickness);
+            double postCornerArea = 0.5 * (postArea + plateEntryArea);
+            region.minimumArea = std::min(region.minimumArea, postCornerArea);
+            region.c1 += postCornerLength / postCornerArea;
+            region.c2 += postCornerLength / pow(postCornerArea, 2);
+            double rimEntryArea = 2 * pi * cavityRadius * plateThickness;
+            double rimCornerLength = pi / 4 * (shellWall / 2 + plateThickness / 2);
+            double rimCornerArea = 0.5 * (rimEntryArea + shellArea);
+            region.minimumArea = std::min(region.minimumArea, rimCornerArea);
+            region.c1 += rimCornerLength / rimCornerArea;
+            region.c2 += rimCornerLength / pow(rimCornerArea, 2);
+            return region;
+        };
+        RegionShapeConstants cover = plate("cover");
+        RegionShapeConstants base = plate("base");
 
-        // Outer shell: axial run between the two plate mid-planes.
-        double shellLength = dimensions["B"] - plateThickness;
-        c1 += shellLength / shellArea;
-        c2 += shellLength / pow(shellArea, 2);
-        areas.push_back(shellArea);
+        // Outer shell: the axial run between the two plate mid-planes, B - t. The base plate
+        // owns the half-thickness of it that lies inside the base pressing; the cover owns the
+        // rest, which is the side wall of the cover pressing.
+        double baseShellLength = plateThickness / 2;
+        double coverShellLength = dimensions["B"] - plateThickness - baseShellLength;
+        base.c1 += baseShellLength / shellArea;
+        base.c2 += baseShellLength / pow(shellArea, 2);
+        base.minimumArea = std::min(base.minimumArea, shellArea);
+        cover.c1 += coverShellLength / shellArea;
+        cover.c2 += coverShellLength / pow(shellArea, 2);
+        cover.minimumArea = std::min(cover.minimumArea, shellArea);
 
-        // Two radial->axial turns into the shell at the cavity edge (clause-4.6 idiom, same
-        // as the drumRing ring corners): mean of the entry band and the shell cross-section.
-        for (size_t cornerIndex = 0; cornerIndex < 2; ++cornerIndex) {
-            double entryArea = 2 * pi * cavityRadius * plateThickness;
-            double cornerLength = pi / 4 * (shellWall / 2 + plateThickness / 2);
-            double cornerArea = 0.5 * (entryArea + shellArea);
-            areas.push_back(cornerArea);
-            c1 += cornerLength / cornerArea;
-            c2 += cornerLength / pow(cornerArea, 2);
+        return std::vector<RegionShapeConstants>{post, cover, base};
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto regions = get_region_shape_constants().value();
+        double c1 = 0;
+        double c2 = 0;
+        double minimumArea = std::numeric_limits<double>::max();
+        for (auto& region : regions) {
+            c1 += region.c1;
+            c2 += region.c2;
+            minimumArea = std::min(minimumArea, region.minimumArea);
         }
-        return {c1, c2, *min_element(areas.begin(), areas.end())};
+        return {c1, c2, minimumArea};
     }
 
     std::tuple<double, double, double> get_shape_constants_iec63182() override {

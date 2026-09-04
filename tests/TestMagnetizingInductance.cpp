@@ -1,6 +1,8 @@
 #include <source_location>
 #include "processors/CircuitSimulatorInterface.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/InitialPermeability.h"
+#include "constructive_models/CorePiece.h"
 #include "physical_models/Reluctance.h"
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/Magnetic.h"
@@ -1827,5 +1829,122 @@ TEST_CASE("Test_ABT907_Flybuck_Flux_Density_Dc_Offset_Uses_Net_Mmf_Anchor",
     CHECK_THAT(magnetizingCurrentMaximum, Catch::Matchers::WithinRel(0.7326, 0.01));
     CHECK_THAT(magnetizingCurrentMinimum, Catch::Matchers::WithinRel(0.4347, 0.02));
 
+    settings.reset();
+}
+
+// ABT #1002: a moulded body pressed from more than one powder takes each region's own mu. The
+// brackets that pin the physics: listing one grade three times must reproduce the single-grade
+// model exactly (the regions sum to the piece), a stiffer post must raise the inductance but
+// never past the all-stiff body, a plastic-bobbin post must lower it and land on the analytic
+// series sum, and a DC bias must pull it down through each region's own knee.
+TEST_CASE("Test_Molded_Per_Region_Inductance", "[physical-model][magnetizing-inductance][molded][abt-1002]") {
+    settings.reset();
+    clear_databases();
+    double numberTurns = 12;
+    json shapeJson = {
+        {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+        {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+        {"dimensions", {
+            {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+            {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}
+    };
+    json windingData = json::parse(
+        R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+            "numberParallels": 1, "numberTurns": 12, "wire": "Dummy"}]})");
+    OpenMagnetics::Coil winding(windingData);
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+
+    auto inductanceOf = [&](json material, std::string* methodUsed = nullptr) {
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", material}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        auto output = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, winding, nullptr);
+        if (methodUsed) {
+            *methodUsed = output.get_method_used();
+        }
+        return output.get_magnetizing_inductance().get_nominal().value();
+    };
+
+    std::string bareMethod;
+    std::string listMethod;
+    double bare26 = inductanceOf("Kool Mµ 26", &bareMethod);
+    double listed26 = inductanceOf(json::array({"Kool Mµ 26", "Kool Mµ 26", "Kool Mµ 26"}), &listMethod);
+    double paired26 = inductanceOf(json::array({"Kool Mµ 26", "Kool Mµ 26"}));
+    UNSCOPED_INFO("bare " << bare26 * 1e6 << " uH (" << bareMethod << "), listed x3 " << listed26 * 1e6
+                          << " uH (" << listMethod << "), listed x2 " << paired26 * 1e6 << " uH");
+    CHECK(bareMethod != "MoldedPerRegionReluctance");
+    CHECK(listMethod == "MoldedPerRegionReluctance");
+    CHECK_THAT(listed26, Catch::Matchers::WithinRel(bare26, 1e-6));
+    CHECK_THAT(paired26, Catch::Matchers::WithinRel(bare26, 1e-6));
+
+    double bare60 = inductanceOf("Kool Mµ 60");
+    double stiffPost = inductanceOf(json::array({"Kool Mµ 60", "Kool Mµ 26"}));
+    double stiffBase = inductanceOf(json::array({"Kool Mµ 26", "Kool Mµ 26", "Kool Mµ 60"}));
+    CHECK(stiffPost > bare26);
+    CHECK(stiffPost < bare60);
+    CHECK(stiffBase > bare26);
+    CHECK(stiffBase < bare60);
+
+    // A coil on a plastic bobbin: the post is air. Analytic series sum from the piece's own
+    // region constants and the grade's zero-bias permeability.
+    double bobbinPost = inductanceOf(json::array({"air", "Kool Mµ 26", "Kool Mµ 26"}));
+    CHECK(bobbinPost < bare26);
+    json coreJson;
+    coreJson["functionalDescription"] = {
+        {"type", "closedShape"}, {"material", "Kool Mµ 26"}, {"shape", shapeJson},
+        {"gapping", json::array()}, {"numberStacks", 1}};
+    Core core(coreJson);
+    auto regions = CorePiece::factory(core.resolve_shape())->get_region_shape_constants().value();
+    // Evaluated at the reference frequency the standard path uses when no operating point is given.
+    double referenceFrequency = Defaults().coreAdviserFrequencyReference;
+    double permeability26 = InitialPermeability::get_initial_permeability(core.resolve_material(), 25.0, std::nullopt, referenceFrequency);
+    double vacuumPermeability = Constants().vacuumPermeability;
+    double expectedReluctance = regions[0].c1 / vacuumPermeability +
+                                (regions[1].c1 + regions[2].c1) / (vacuumPermeability * permeability26);
+    CHECK_THAT(bobbinPost, Catch::Matchers::WithinRel(pow(numberTurns, 2) / expectedReluctance, 1e-6));
+
+    // Four entries do not describe this body.
+    CHECK_THROWS(inductanceOf(json::array({"Kool Mµ 26", "Kool Mµ 26", "Kool Mµ 26", "Kool Mµ 26"})));
+
+    // DC bias pulls each region down its own mu(H); the post, with the smallest section, first.
+    json biasedCoreJson;
+    biasedCoreJson["functionalDescription"] = {
+        {"type", "closedShape"}, {"material", json::array({"Kool Mµ 60", "Kool Mµ 26"})}, {"shape", shapeJson},
+        {"gapping", json::array()}, {"numberStacks", 1}};
+    Core biasedCore(biasedCoreJson);
+    biasedCore.process_data();
+    biasedCore.process_gap();
+    double unbiased = MagnetizingInductance::calculate_molded_magnetizing_inductance(biasedCore, numberTurns, 25, referenceFrequency);
+    double biased = MagnetizingInductance::calculate_molded_magnetizing_inductance(biasedCore, numberTurns, 25, referenceFrequency, 20.0);
+    double moreBiased = MagnetizingInductance::calculate_molded_magnetizing_inductance(biasedCore, numberTurns, 25, referenceFrequency, 60.0);
+    UNSCOPED_INFO("unbiased " << unbiased * 1e6 << " uH, 20 A " << biased * 1e6 << " uH, 60 A " << moreBiased * 1e6 << " uH");
+    CHECK(biased < unbiased);
+    CHECK(moreBiased < biased);
+    CHECK_THAT(unbiased, Catch::Matchers::WithinRel(stiffPost, 1e-6));
+
+    // Through the public entry point WITH an operating point, the way every consumer calls it:
+    // a raw current waveform (no processed data, no harmonics) whose DC component is the bias.
+    // A symmetric ripple reproduces the unbiased figure; a 20 A offset reproduces the biased one.
+    auto operatingPointWithOffset = [&](double offset) {
+        json operatingPointJson = json::parse(R"({"conditions": {"ambientTemperature": 25.0},
+            "excitationsPerWinding": [{"name": "Primary", "frequency": 100000,
+              "current": {"waveform": {"data": [-0.05, 0.05, -0.05], "time": [0, 5e-6, 1e-5]}},
+              "voltage": {"waveform": {"data": [-1, 1, 1, -1, -1], "time": [0, 0, 5e-6, 5e-6, 1e-5]}}}]})");
+        for (auto& sample : operatingPointJson["excitationsPerWinding"][0]["current"]["waveform"]["data"]) {
+            sample = sample.get<double>() + offset;
+        }
+        return OperatingPoint(operatingPointJson);
+    };
+    auto rippleOnly = operatingPointWithOffset(0);
+    auto withOffset = operatingPointWithOffset(20);
+    auto rippleOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(biasedCore, winding, &rippleOnly);
+    auto offsetOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(biasedCore, winding, &withOffset);
+    CHECK(rippleOutput.get_method_used() == "MoldedPerRegionReluctance");
+    CHECK_THAT(rippleOutput.get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinRel(unbiased, 1e-3));
+    CHECK_THAT(offsetOutput.get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinRel(biased, 1e-3));
     settings.reset();
 }

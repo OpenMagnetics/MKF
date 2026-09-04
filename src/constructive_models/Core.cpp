@@ -10,6 +10,7 @@
 #include "support/Utils.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -1400,7 +1401,17 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                 "core material list is empty — it must name at least the primary piece");
         }
-        return resolve_material(material_element_to_union(materials[0]));
+        // ABT #1002: a moulded body whose post is a plastic bobbin lists "air" first. The
+        // primary GRADE is then the first entry that is a material -- the cover the flux
+        // returns through -- never the placeholder.
+        for (auto& materialElement : materials) {
+            if (!is_non_magnetic_region(materialElement)) {
+                return resolve_material(material_element_to_union(materialElement));
+            }
+        }
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "core material list names no magnetic grade: every entry is the reserved non-magnetic "
+            "region \"air\"");
     }
     else {
         return std::get<CoreMaterial>(coreMaterial);
@@ -1432,9 +1443,69 @@ std::vector<CoreMaterial> Core::resolve_materials() {
     std::vector<CoreMaterial> resolved;
     resolved.reserve(materials.size());
     for (const auto& materialElement : materials) {
+        if (is_non_magnetic_region(materialElement)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "the reserved non-magnetic region name \"air\" belongs to a moulded body's material "
+                "list (resolve_region_materials); every piece of this assembly is magnetic");
+        }
         resolved.push_back(resolve_material(material_element_to_union(materialElement)));
     }
     return resolved;
+}
+
+bool Core::is_non_magnetic_region(const MaterialElement& materialElement) {
+    if (!std::holds_alternative<std::string>(materialElement)) {
+        return false;
+    }
+    auto name = std::get<std::string>(materialElement);
+    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return std::tolower(c); });
+    return name == "air";
+}
+
+std::vector<std::optional<CoreMaterial>> Core::resolve_region_materials() {
+    auto materialField = get_functional_description().get_material();
+    if (!std::holds_alternative<std::vector<MaterialElement>>(materialField)) {
+        return {resolve_material()};
+    }
+    auto materials = std::get<std::vector<MaterialElement>>(materialField);
+    if (materials.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "core material list is empty — it must name at least the primary piece");
+    }
+    auto resolveRegion = [](const MaterialElement& materialElement) -> std::optional<CoreMaterial> {
+        if (is_non_magnetic_region(materialElement)) {
+            return std::nullopt;
+        }
+        return resolve_material(material_element_to_union(materialElement));
+    };
+    if (get_shape_family() != CoreShapeFamily::MOLDED) {
+        std::vector<std::optional<CoreMaterial>> resolved;
+        for (const auto& materialElement : materials) {
+            resolved.push_back(resolveRegion(materialElement));
+        }
+        return resolved;
+    }
+    if (materials.size() > 3) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "molded names " + std::to_string(materials.size()) + " grades; the body has three regions "
+            "(post, cover, base), so the list must hold one, two ([inner, outer]) or three entries");
+    }
+    if (materials.size() == 1) {
+        if (is_non_magnetic_region(materials[0])) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "a moulded body pressed from nothing but \"air\" is not a core");
+        }
+        return {resolveRegion(materials[0])};
+    }
+    auto post = resolveRegion(materials[0]);
+    auto cover = resolveRegion(materials[1]);
+    auto base = materials.size() == 3 ? resolveRegion(materials[2]) : cover;
+    if (!cover || !base) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "a moulded body's cover and base are pressed from powder; only the post may be the "
+            "non-magnetic region \"air\" (a coil on a plastic bobbin)");
+    }
+    return {post, cover, base};
 }
 
 void Core::set_type(CoreType coreType) {
