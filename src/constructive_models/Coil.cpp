@@ -2749,6 +2749,30 @@ void Coil::align_blocked_layer_turns() {
         // per-revolution advance no longer misreads as a Z return. MKF_NO_SPREAD_ALL restores
         // the packed behaviour (bisect).
         const bool spreadAllLayers = !std::getenv("MKF_NO_SPREAD_ALL");
+        // A FOIL LAYER IS NOT RE-ALIGNED (ABT #1004, 2026-09-04). This routine reserves turn
+        // SLOTS for the connection leads crossing a layer and re-spreads the remaining turns, and
+        // it measures those slots in the wire's turn-axis size. A foil layer holds ONE sheet whose
+        // turn-axis size IS the window, so a single blocked slot insets the span by 25.935 mm --
+        // measured here: layers 9-15 came out with a span of 39.041 .. -39.041 mm inside a 27.300
+        // mm window, inverted, and the sheets landed at +0.164, +0.6825 and -0.6825 in the same
+        // stack. There is nothing to reserve either: a foil layer has one slot, and blocking it
+        // would leave no room for the turn at all (the layer builder already caps its blocked
+        // slots at maxPerLayer - 1 = 0 for exactly this reason). The sheet stays where the winder
+        // centred it; the corridor a crossing lead needs is a question about the sheet's cut
+        // HEIGHT, which is ABT #1001, not about sliding the sheet.
+        bool layerIsFoil = false;
+        if (!layer.get_partial_windings().empty()) {
+            const auto windingNameForFoil = layer.get_partial_windings()[0].get_winding();
+            for (size_t wi = 0; wi < get_functional_description().size(); ++wi) {
+                if (get_functional_description()[wi].get_name() == windingNameForFoil) {
+                    layerIsFoil = wires[wi].get_type() == WireType::FOIL;
+                    break;
+                }
+            }
+        }
+        if (layerIsFoil) {
+            continue;
+        }
         bool packFromArrival = false;
         bool arrivalAtHighSide = false;
         if (!spreadAllLayers &&
@@ -10303,6 +10327,21 @@ bool Coil::wind_by_rectangular_layers() {
                 if (realWindingBlocking) {
                     layerTurnsAlignment = CoilAlignment::SPREAD;
                 }
+                // A FOIL SHEET HAS NO PACKING CHOICE (ABT #1004, 2026-09-04). Its height is the
+                // section's, less the margins, and there is exactly one of it per layer -- so
+                // "pack the turns at the top" and "pack them at the bottom" describe the same
+                // sheet, offset by the margin. Letting the alignment vary therefore does not
+                // choose a packing, it just moves the sheet: innerOrTop puts it at +0.6825 mm,
+                // outerOrBottom at -0.6825, and because wind() runs many passes and the section
+                // alignment is not stable across them (measured on
+                // two_switch_forward_transformer_complete: every layer index appears with both
+                // innerOrTop and centered), sibling sheets of ONE stack ended up at different
+                // heights -- +0.164, +0.6825 and -0.6825 in the same winding. A continuous sheet
+                // cannot step sideways between turns, and the terminal wires need the margin free
+                // on the edge they leave through, so a foil is CENTRED in its layer, always.
+                if (wirePerWinding[windingIndex].get_type() == WireType::FOIL) {
+                    layerTurnsAlignment = CoilAlignment::CENTERED;
+                }
                 layer.set_turns_alignment(layerTurnsAlignment);
                 // In real winding geometry, each layer loses the turn slots blocked by connection
                 // leads crossing it: shrink the layer along its TURN axis by the blocked slots and
@@ -10674,7 +10713,11 @@ bool Coil::wind_by_round_layers() {
                 layer.set_type(ElectricalType::CONDUCTION);
                 layer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
                 layer.set_orientation(sections[sectionIndex].get_layers_orientation());
-                layer.set_turns_alignment(turnsAlignment);
+                // A foil sheet fills its layer: centred, always (ABT #1004 -- see the other layer
+            // builder and align_blocked_layer_turns).
+            layer.set_turns_alignment(wirePerWinding[windingIndex].get_type() == WireType::FOIL
+                                          ? CoilAlignment::CENTERED
+                                          : turnsAlignment);
                 layer.set_dimensions(std::vector<double>{layerRadialHeight, layerAngle});
                 layer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
                 layer.set_coordinate_system(CoordinateSystem::POLAR);

@@ -13295,6 +13295,48 @@ TEST_CASE("Test_Foil_Layer_Pitch_Includes_The_Interleaved_Film", "[constructive-
     settings.reset();
 }
 
+TEST_CASE("Test_Foil_Sheets_Of_A_Stack_Share_One_Height", "[constructive-model][coil][foil][real-geometry][regression]") {
+    // ABT #1004: a continuous sheet has no axial advance, so every layer of a foil stack sits at
+    // ONE height. align_blocked_layer_turns re-spreads the turns of layers that carry connection
+    // leads, and it measures the reserved slots in the wire's TURN-AXIS SIZE -- which for a foil
+    // is the whole window. One blocked slot therefore inset the span by 25.935 mm: layers came
+    // back with a span of 39.041 .. -39.041 mm inside a 27.300 mm window, INVERTED, and the
+    // sheets of one stack landed at +0.164, +0.6825 and -0.6825. A foil layer has one slot and
+    // nothing to re-spread, so it is left where the winder centred it.
+    //
+    // Only reproduces when some winding carries connection leads (that is what runs the routine),
+    // which is why a foil design without them looked clean.
+    settings.reset();
+    clear_databases();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/22_margin_tape_forward_e4218_3c95.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    REQUIRE(windings.size() >= 2);
+    windings[1].set_wire("Foil 0.2");
+    windings[1].set_number_turns(2);
+    windings[1].set_number_parallels(6);
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    auto& coil = magnetic.get_mutable_coil();
+    auto turns = coil.get_turns_description();
+    REQUIRE(turns);
+    const auto foilName = coil.get_functional_description()[1].get_name();
+    std::vector<double> heights;
+    for (const auto& turn : turns.value()) {
+        if (turn.get_winding() != foilName) continue;
+        heights.push_back(turn.get_coordinates()[1]);
+    }
+    REQUIRE(heights.size() == 12);
+    for (double h : heights) {
+        CHECK_THAT(h, Catch::Matchers::WithinAbs(heights.front(), 1e-9));
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Real_Geometry_Planar_Winds_As_Pcb", "[constructive-model][coil][real-geometry][planar]") {
     // ABT #978 (supersedes the ABT #492 gate): a planar coil under real winding geometry is a PCB and wind()
     // routes it to wind_planar with the placement defined by the printed group's pcb (MAS-RFC 0012). The
