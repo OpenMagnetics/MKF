@@ -245,6 +245,20 @@ class CorePiece {
     CoreLossFractions calculate_core_loss_fractions();
 };
 
+/**
+ * The shape families CorePiece::factory can actually construct.
+ *
+ * This is the ENGINE's capability, and it is deliberately not the same question as
+ * get_core_shape_families() in Utils.h, which reports the families that happen to
+ * appear in the loaded shape database. A family with no catalogue shape is still
+ * fully buildable from a custom shape, so a UI that offers families must ask this
+ * one; asking the database instead silently hides every family nobody has published
+ * a part for yet.
+ *
+ * @return the supported families, in declaration order
+ */
+std::vector<CoreShapeFamily> get_supported_core_shape_families();
+
 void from_json(const json& j, OpenMagnetics::CorePiece& x);
 void to_json(json& j, const OpenMagnetics::CorePiece& x);
 

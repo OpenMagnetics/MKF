@@ -6,6 +6,7 @@
 #include "json.hpp"
 #include "support/Utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -2723,52 +2724,6 @@ class CorePieceEpw : public CorePieceEp {};
 class CorePieceEpt : public CorePieceEp {};
 class CorePieceLep : public CorePieceEp {};
 
-bool CorePiece::is_family_supported(CoreShapeFamily family) {
-    // Mirrors factory()'s dispatch below — add a family here when you add its branch.
-    switch (family) {
-        case CoreShapeFamily::E:
-        case CoreShapeFamily::EC:
-        case CoreShapeFamily::EFD:
-        case CoreShapeFamily::EL:
-        case CoreShapeFamily::EP:
-        case CoreShapeFamily::EPX:
-        case CoreShapeFamily::LP:
-        case CoreShapeFamily::EQ:
-        case CoreShapeFamily::ER:
-        case CoreShapeFamily::ETD:
-        case CoreShapeFamily::P:
-        case CoreShapeFamily::PLANAR_E:
-        case CoreShapeFamily::PLANAR_EL:
-        case CoreShapeFamily::PLANAR_ER:
-        case CoreShapeFamily::PM:
-        case CoreShapeFamily::PQ:
-        case CoreShapeFamily::RM:
-        case CoreShapeFamily::U:
-        case CoreShapeFamily::UR:
-        case CoreShapeFamily::UT:
-        case CoreShapeFamily::T:
-        case CoreShapeFamily::C:
-        case CoreShapeFamily::EER:
-        case CoreShapeFamily::UI:
-        case CoreShapeFamily::EI:
-        case CoreShapeFamily::DRUM:
-        case CoreShapeFamily::ROD:
-        case CoreShapeFamily::DRUM_RING:
-        case CoreShapeFamily::DRUM_SEMISHIELDED:
-        case CoreShapeFamily::MOLDED:
-        case CoreShapeFamily::PQI:
-        case CoreShapeFamily::EF:
-        case CoreShapeFamily::EPC:
-        case CoreShapeFamily::EPQ:
-        case CoreShapeFamily::EPW:
-        case CoreShapeFamily::EPT:
-        case CoreShapeFamily::LEP:
-            return true;
-        default:
-            return false;
-    }
-}
-
 // The shape families CorePiece::factory below actually constructs. Kept as data so the
 // "available options" in its error can be GENERATED rather than hand-typed: the literal
 // that used to live there had gone stale twice over — it stopped at "T, C" while the
@@ -2794,6 +2749,20 @@ static constexpr CoreShapeFamily kSupportedShapeFamilies[] = {
     CoreShapeFamily::EPQ,        CoreShapeFamily::EPW,        CoreShapeFamily::EPT,
     CoreShapeFamily::LEP,
 };
+
+std::vector<CoreShapeFamily> get_supported_core_shape_families() {
+    return {std::begin(kSupportedShapeFamilies), std::end(kSupportedShapeFamilies)};
+}
+
+// Answered from the same array, so a family can never be "supported" for the error message
+// and unsupported for the guard. This used to be a 37-case switch that mirrored the array
+// by hand: a third copy of the list that had to be edited in lockstep with the array and
+// with factory()'s dispatch, and the array's own comment already records what happens when
+// one copy is forgotten (ABT #975).
+bool CorePiece::is_family_supported(CoreShapeFamily family) {
+    return std::find(std::begin(kSupportedShapeFamilies), std::end(kSupportedShapeFamilies),
+                     family) != std::end(kSupportedShapeFamilies);
+}
 
 static std::string supported_shape_family_list() {
     std::string list = "{";

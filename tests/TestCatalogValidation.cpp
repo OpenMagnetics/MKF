@@ -443,3 +443,48 @@ TEST_CASE("Test_Adviser_Proposes_Molded_Reconstructions", "[catalog][molded][adv
 
     settings.reset();
 }
+
+// The families a UI may offer are the ENGINE's, not the database's. get_core_shape_families()
+// (Utils.h) reports only families with a loaded catalogue shape, so DRUM_SEMISHIELDED and MOLDED
+// — real, buildable families that ship no bare-core records because the construction is
+// reconstructed per part — were absent from the shape-family dropdown entirely, and a user had no
+// way to reach them. get_supported_core_shape_families() answers the capability question instead.
+TEST_CASE("Test_Supported_Families_Are_The_Engine_Not_The_Database", "[catalog][smoke-test]") {
+    settings.reset();
+    clear_databases();
+
+    auto supported = OpenMagnetics::get_supported_core_shape_families();
+    REQUIRE(supported.size() > 30);
+
+    // Every family the list names must actually be buildable, and every buildable family must be
+    // named: the two answers come from one array precisely so they cannot drift apart.
+    for (auto family : supported) {
+        INFO("listed as supported: " << magic_enum::enum_name(family));
+        CHECK(CorePiece::is_family_supported(family));
+    }
+    for (auto family : magic_enum::enum_values<CoreShapeFamily>()) {
+        if (!CorePiece::is_family_supported(family)) {
+            continue;
+        }
+        INFO("buildable but missing from the list: " << magic_enum::enum_name(family));
+        CHECK(std::find(supported.begin(), supported.end(), family) != supported.end());
+    }
+
+    // The point of the function: it must be a STRICT superset of what the database happens to
+    // carry. If these ever became equal the function would be redundant and the families with no
+    // catalogue shape would have silently vanished again.
+    auto inDatabase = get_core_shape_families();
+    REQUIRE_FALSE(inDatabase.empty());
+    for (auto family : inDatabase) {
+        INFO("in the shape database but not buildable: " << magic_enum::enum_name(family));
+        CHECK(std::find(supported.begin(), supported.end(), family) != supported.end());
+    }
+    CHECK(supported.size() > inDatabase.size());
+
+    // Named explicitly, because these two are the whole reason the distinction exists: buildable,
+    // and carrying no catalogue shape of their own.
+    for (auto family : {CoreShapeFamily::DRUM_SEMISHIELDED, CoreShapeFamily::MOLDED}) {
+        CHECK(std::find(supported.begin(), supported.end(), family) != supported.end());
+        CHECK(std::find(inDatabase.begin(), inDatabase.end(), family) == inDatabase.end());
+    }
+}
