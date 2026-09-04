@@ -281,6 +281,11 @@ class Wire : public MAS::Wire {
         static double get_coating_thermal_conductivity(Wire wire);  // NEW: Static version
         // NEW: Overloads that work directly with InsulationWireCoating (for thermal modeling)
         static double get_coating_thickness(const InsulationWireCoating& coating);
+        // The film a foil is wound with: one per turn interval, so a foil's layer pitch is the
+        // foil plus this. A declared coating gives its thickness; otherwise the standard
+        // polyester (Constants::foilInterlayerInsulationThickness). See Wire.cpp.
+        static double get_foil_interlayer_insulation(const Wire& wire);
+
         static double get_coating_thermal_conductivity(const InsulationWireCoating& coating);
         std::string encode_coating_label();
         static std::string encode_coating_label(Wire wire);

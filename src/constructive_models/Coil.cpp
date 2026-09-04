@@ -9987,6 +9987,10 @@ bool Coil::wind_by_rectangular_layers() {
                           << " -> numberLayers=" << numberLayers
                           << " sectionDims=" << sections[sectionIndex].get_dimensions()[0]
                           << "x" << sections[sectionIndex].get_dimensions()[1]
+                          << " layerWidth=" << layerWidth
+                          << " outerWidth=" << (wirePerWinding[windingIndex].get_outer_width()
+                                                    ? resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_width().value())
+                                                    : -1.0)
                           << " turns(winding)=" << get_number_turns(windingIndex)
                           << " parallels=" << get_number_parallels(windingIndex)
                           << " prop={";

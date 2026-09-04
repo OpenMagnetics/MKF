@@ -1048,6 +1048,8 @@ namespace OpenMagnetics {
             }
             case WireType::PLANAR:
             case WireType::FOIL:
+                // The film is WIDER than the foil (the cuff) but that breadth belongs to the
+                // insulation, not to the conductor: the foil's own height is what it conducts on.
                 return resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue);
             default:
                 throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Cannot calculate outer height for ROUND or LITZ");
@@ -1056,6 +1058,27 @@ namespace OpenMagnetics {
 
     double Wire::calculate_outer_height(OpenMagnetics::DimensionalValues preferredValue) {
         return calculate_outer_height(*this, preferredValue);
+    }
+
+    // THE INTERLEAVED FILM OF A FOIL WINDING (2026-09-04). A foil is wound together with an
+    // insulating film -- one film per turn interval -- so its layer pitch is the foil plus that
+    // film, and its parallels, which are wound N-filar, are separated by the same film (they are
+    // common at the terminals but must not touch along their length, or the asymmetric coupling
+    // between them circulates current: US12555713). Unlike a round wire's enamel, which wraps the
+    // conductor and is therefore counted on BOTH faces, the interleaf lies between one turn and
+    // the next and is counted ONCE. A declared coating gives its thickness; with none declared a
+    // foil would be bare copper touching bare copper, which is not a winding, so the standard
+    // polyester of Constants::foilInterlayerInsulationThickness is used and the choice is here to
+    // be seen rather than hidden in a fill factor.
+    double Wire::get_foil_interlayer_insulation(const Wire& wire) {
+        auto coating = Wire::resolve_coating(wire);
+        if (coating && coating->get_type() == InsulationWireCoatingType::BARE) {
+            return 0.0;
+        }
+        if (coating) {
+            return Wire::get_coating_thickness(coating.value());
+        }
+        return constants.foilInterlayerInsulationThickness;
     }
 
     double Wire::calculate_outer_width(Wire wire, OpenMagnetics::DimensionalValues preferredValue) {
@@ -1081,8 +1104,11 @@ namespace OpenMagnetics {
                     return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
                 }
             }
-            case WireType::PLANAR:
             case WireType::FOIL:
+                // The interleaved film: the pitch a foil layer occupies is foil + film.
+                return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue) +
+                       Wire::get_foil_interlayer_insulation(wire);
+            case WireType::PLANAR:
                 return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
             default:
                 throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Cannot calculate outer width for ROUND or LITZ");
@@ -1638,7 +1664,12 @@ namespace OpenMagnetics {
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_maximum(section.get_dimensions()[1] * (1 - constants.foilToSectionMargin));
         set_conducting_height(dimensionWithTolerance);
-        set_outer_width(get_conducting_width());
+        // The width the layer occupies is the foil PLUS its interleaved film (see
+        // get_foil_interlayer_insulation); the height is the foil's own.
+        DimensionWithTolerance outerWidth;
+        outerWidth.set_nominal(resolve_dimensional_values(get_conducting_width().value()) +
+                               Wire::get_foil_interlayer_insulation(*this));
+        set_outer_width(outerWidth);
         set_outer_height(get_conducting_height());
     }
 

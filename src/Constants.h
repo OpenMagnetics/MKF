@@ -73,6 +73,15 @@ struct Constants {
 
     const double roshenMagneticFieldStrengthStep = 0.1;
     const double foilToSectionMargin = 0.05;
+    // A FOIL IS WOUND WITH A FILM (2026-09-04). Foil winding machines carry two synchronised
+    // de-reelers -- one foil, one insulation -- and lay one film per turn interval, so a foil
+    // winding's layer pitch is the foil PLUS that film; the sheets never touch, or every turn
+    // would be shorted. The published homogenisation convention is exactly this split:
+    // b = b_c + b_i with fill factor lambda = b_c / b (arXiv 2503.13010). 25 um is the standard
+    // polyester: PPI's laminate range is PET 0.025 or 0.050 mm per face, Power Integrations
+    // AN-18 puts the minimum tape base film at 0.025 mm, and US4323870 states 0.010-0.050 mm of
+    // PET between turns for foil of 0.01-3 mm. A wire that DECLARES a coating overrides it.
+    const double foilInterlayerInsulationThickness = 25e-6;
     const double planarToSectionMargin = 0.05;
 };
 

@@ -2810,6 +2810,21 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
                     " from the outer size alone, and calling the wire bare would delete the only dielectric its"
                     " turns have.");
             }
+            // ...EXCEPT A FOIL (2026-09-04). "No coating stated" reads as BARE for a wire whose
+            // insulation is a coating ON the conductor -- enamel, serving, extrusion -- because
+            // then the record would have said so. A foil's insulation is not on the foil: it is
+            // a separate film wound in with it, one per turn interval, and no foil record states
+            // it (all 35 in the database carry no coating). Stamping BARE on a foil therefore
+            // asserts something no source supports and something that cannot be built: a stack
+            // of bare sheets touching each other is a shorted winding. Leave the coating unset
+            // and let the foil's own rule apply (Wire::get_foil_interlayer_insulation, which
+            // uses the standard polyester unless the wire declares otherwise). A foil that
+            // really is bare -- anodised aluminium carries its own oxide -- says so explicitly,
+            // and that declaration is still honoured.
+            if (wire.get_type() == WireType::FOIL) {
+                magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_wire(wire);
+                continue;
+            }
             insulationWireCoating.set_type(InsulationWireCoatingType::BARE);
         }
 

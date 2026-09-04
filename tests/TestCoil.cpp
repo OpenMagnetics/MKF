@@ -13123,8 +13123,14 @@ TEST_CASE("Test_Abt967_Autocomplete_Accepts_A_Database_Foil", "[constructive-mod
     auto wire = magnetic.get_mutable_coil().resolve_wire(1);
     REQUIRE(wire.get_type() == WireType::FOIL);
     REQUIRE(wire.get_outer_width());
-    REQUIRE_THAT(resolve_dimensional_values(wire.get_outer_width().value()),
-                 Catch::Matchers::WithinRel(resolve_dimensional_values(wire.get_conducting_width().value()), 1e-9));
+    // The width a foil OCCUPIES is its thickness plus the film it is wound with (2026-09-04).
+    // This assertion used to demand outer == conducting, which pinned the behaviour that made a
+    // foil stack short: every sheet touching its neighbour. What this test is actually about is
+    // that autocomplete SURVIVES a database foil stating only its thickness -- it used to
+    // dereference an empty optional -- and that is unchanged.
+    REQUIRE_THAT(resolve_dimensional_values(wire.get_outer_width().value()) -
+                     resolve_dimensional_values(wire.get_conducting_width().value()),
+                 Catch::Matchers::WithinAbs(25e-6, 1e-9));
     settings.reset();
 }
 
@@ -13226,6 +13232,66 @@ TEST_CASE("Test_Foil_Parallels_Are_N_Filar", "[constructive-model][coil][real-ge
         CHECK(std::get<1>(byRadius[L]) == int64_t(L % 4));
         CHECK(std::get<2>(byRadius[L]) == int64_t(L / 4));
     }
+    // ...and the wound layers are one FOIL PLUS ITS FILM apart, not one bare foil: the sheets of
+    // an N-filar stack are insulated from each other exactly as consecutive turns are (US12555713
+    // -- they are common at the terminals but circulate current if they touch along their length).
+    // This is the end-to-end check on the pitch: the layout, not just the wire.
+    auto foilWire = coil.resolve_wire(1);
+    const double foilThickness = resolve_dimensional_values(foilWire.get_conducting_width().value());
+    const double expectedPitch = foilThickness + 25e-6;
+    for (size_t L = 1; L < byRadius.size(); ++L) {
+        CHECK_THAT(std::get<0>(byRadius[L]) - std::get<0>(byRadius[L - 1]),
+                   Catch::Matchers::WithinAbs(expectedPitch, 1e-9));
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_Foil_Layer_Pitch_Includes_The_Interleaved_Film", "[constructive-model][coil][foil][regression]") {
+    // A foil is wound together with an insulating film -- foil winding machines run two
+    // synchronised de-reelers and lay one film per turn interval -- so the layer pitch is the
+    // foil PLUS that film, and the published homogenisation convention says the same thing:
+    // b = b_c + b_i (arXiv 2503.13010). MKF used to force outer = conducting for FOIL, giving a
+    // pitch of exactly the bare foil: every sheet touching its neighbour, which is a shorted
+    // winding. Parallels are wound N-filar and are separated by the same film (US12555713 --
+    // they are common at the terminals but circulate current if they touch along their length).
+    settings.reset();
+    clear_databases();
+    auto wire = OpenMagnetics::find_wire_by_name("Foil 0.2");
+    REQUIRE(wire.get_type() == WireType::FOIL);
+    REQUIRE(wire.get_conducting_width());
+    const double foil = resolve_dimensional_values(wire.get_conducting_width().value());
+
+    // The wire states no coating, so the standard polyester applies and is visible in the pitch.
+    MAS::Section section;
+    section.set_dimensions(std::vector<double>{0.005, 0.027});
+    wire.cut_foil_wire_to_section(section);
+    REQUIRE(wire.get_outer_width());
+    const double pitch = resolve_dimensional_values(wire.get_outer_width().value());
+    CHECK(pitch > foil);
+    CHECK_THAT(pitch - foil, Catch::Matchers::WithinAbs(25e-6, 1e-9));
+    // The foil's own height is what it conducts on: the film's extra breadth is the insulation's.
+    REQUIRE(wire.get_outer_height());
+    CHECK_THAT(resolve_dimensional_values(wire.get_outer_height().value()),
+               Catch::Matchers::WithinRel(resolve_dimensional_values(wire.get_conducting_height().value()), 1e-9));
+
+    // A wire that DECLARES its coating overrides the default...
+    OpenMagnetics::Wire taped = OpenMagnetics::find_wire_by_name("Foil 0.2");
+    MAS::InsulationWireCoating film;
+    film.set_type(MAS::InsulationWireCoatingType::INSULATED);
+    DimensionWithTolerance filmThickness;
+    filmThickness.set_nominal(50e-6);
+    film.set_thickness(filmThickness);
+    taped.set_coating(film);
+    taped.cut_foil_wire_to_section(section);
+    CHECK_THAT(resolve_dimensional_values(taped.get_outer_width().value()) - foil,
+               Catch::Matchers::WithinAbs(50e-6, 1e-9));
+
+    // ...and a foil declared BARE really is bare (an anodised strip carries its own oxide).
+    OpenMagnetics::Wire bare = OpenMagnetics::find_wire_by_name("Foil 0.2");
+    bare.set_bare_coating();
+    bare.cut_foil_wire_to_section(section);
+    CHECK_THAT(resolve_dimensional_values(bare.get_outer_width().value()),
+               Catch::Matchers::WithinRel(foil, 1e-9));
     settings.reset();
 }
 
