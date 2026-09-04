@@ -104,3 +104,64 @@ TEST_CASE("Test_Filling_Factors_Bobbin_Without_Winding_Window_Area", "[coil][fil
     CHECK_THAT(factors.areaFillingFactor,
                Catch::Matchers::WithinRel(statedFactors.areaFillingFactor, 1e-12));
 }
+
+// A winding narrower than its window must sit ON the former, not float in the middle of it.
+//
+// WE 74402500030 is a drumRing whose 0.3 mm window carries one 0.191 mm layer. Wound, the
+// turns land against the drum post at 0.650 mm — correct. Run delimit_and_compact over the
+// result and the layer MOVES OUT to the window centre, 0.7045..0.8955, with equal 0.053 mm
+// gaps on both sides. A coil does not levitate off the bobbin it is wound on.
+//
+// The section orientation is what exposes it: with OVERLAPPING the section starts at the
+// inner edge and stays there; with CONTIGUOUS the section is created spanning the FULL window
+// width and the winding inside it ends up centred.
+//
+// THIS TEST FAILS ON PURPOSE — it is a reproducer for an unfixed defect, not a regression
+// guard, and it is committed failing so the signal is not lost. Traced this far:
+//
+//   wind_by_sections  creates the section full-window-width, centred      (0.800 / 0.300)
+//   wind_by_layers    places the layer against the former                 (0.7455 / 0.191)
+//   delimit_and_compact  shrink-wraps the section ONTO the layer          (0.7455 / 0.191)  <- correct
+//   ...a later pass inside wind_inner moves BOTH to the window centre     (0.800  / 0.191)  <- the bug
+//
+// The last step is the one still unattributed. wind_inner runs wind_by_turns +
+// delimit_and_compact up to four times (the real-winding re-wind paths at 4887/4922/4949/5035),
+// and the layer is already at 0.800 by the second compaction, so a re-wind is re-placing it
+// centred rather than against the former. Instrumenting the two compaction calls shows the
+// first behaving correctly, which is what rules compaction itself out.
+//
+// Not patched speculatively: this is a physics path, and a guessed fix here would produce a
+// plausible wrong number rather than an error — the failure mode this whole area keeps
+// exhibiting.
+TEST_CASE("Test_Compaction_Keeps_A_Narrow_Winding_On_The_Former", "[coil][compaction][smoke-test]") {
+    settings.reset();
+    json coilJson = OpenMagneticsTesting::fixtures::get_json("coil-drumring-contiguous-narrow-section");
+
+    auto windAndReport = [&](bool compact) {
+        settings.reset();
+        settings.set_coil_delimit_and_compact(compact);
+        OpenMagnetics::Coil coil(coilJson, false);
+        coil.wind({1.0}, {0}, 1);
+        if (compact) {
+            coil.delimit_and_compact();
+        }
+        REQUIRE(coil.get_turns_description());
+        double innermost = std::numeric_limits<double>::max();
+        // By VALUE: get_turns_description() returns by value, so a reference bound through
+        // it dangles the moment the full expression ends (ABT #964, ABT #988).
+        auto turns = coil.get_turns_description().value();
+        for (const auto& turn : turns) {
+            innermost = std::min(innermost, turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2);
+        }
+        return innermost;
+    };
+
+    const double formerSurface = 0.00065;   // bobbin columnWidth: the post the wire lies on
+
+    // Without compaction the winding is already correct, which is what makes compaction the
+    // suspect rather than the winder.
+    CHECK_THAT(windAndReport(false), Catch::Matchers::WithinAbs(formerSurface, 1e-6));
+
+    // With it, the winding must not have moved off the former.
+    CHECK_THAT(windAndReport(true), Catch::Matchers::WithinAbs(formerSurface, 1e-6));
+}
