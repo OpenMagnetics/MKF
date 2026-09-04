@@ -372,12 +372,29 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
     std::vector<double> newScoring;
 
+    // Resistivity is OPTIONAL on a core material since MAS b56fd13, so this dimension has to
+    // behave like the Curie-temperature one above rather than abort the whole cross-reference:
+    // no reference value -> skip the dimension; no candidate value -> cull that candidate from
+    // this filter. Nothing is substituted for a missing resistivity.
+    if (!referenceCoreMaterial.get_resistivity()) {
+        logEntry("CoreMaterialCrossReferencer: reference material '" + referenceCoreMaterial.get_name() +
+                     "' has no resistivity; skipping the resistivity dimension and cross-referencing on "
+                     "the remaining filters",
+                 "CoreMaterialCrossReferencer");
+        return *unfilteredCoreMaterials;
+    }
     double referenceResistivityWithTemperature = Core::get_resistivity(referenceCoreMaterial, temperature);
     add_scored_value("Reference", CoreMaterialCrossReferencerFilters::RESISTIVITY, referenceResistivityWithTemperature);
 
-
+    std::vector<std::pair<CoreMaterial, double>> filteredCoreMaterialsWithScoring;
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
+
+        if (!coreMaterial.get_resistivity()) {
+            // The maker does not publish it (e.g. Yean Shing N7). Cull rather than score: a
+            // substituted value would rank the material on a number nobody measured.
+            continue;
+        }
 
         double resistivityWithTemperature = Core::get_resistivity(coreMaterial, temperature);
 
@@ -385,16 +402,16 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::RESISTIVITY, scoring);
         add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::RESISTIVITY, resistivityWithTemperature);
+        filteredCoreMaterialsWithScoring.push_back((*unfilteredCoreMaterials)[coreMaterialIndex]);
     }
 
-    if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    if (filteredCoreMaterialsWithScoring.size() != newScoring.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of filteredCoreMaterials: " + std::to_string(filteredCoreMaterialsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
-
-    if ((*unfilteredCoreMaterials).size() > 0) {
-        normalize_scoring(unfilteredCoreMaterials, &newScoring, weight, (*_filterConfiguration)[CoreMaterialCrossReferencerFilters::RESISTIVITY]);
+    if (filteredCoreMaterialsWithScoring.size() > 0) {
+        normalize_scoring(&filteredCoreMaterialsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreMaterialCrossReferencerFilters::RESISTIVITY]);
     }
-    return *unfilteredCoreMaterials;
+    return filteredCoreMaterialsWithScoring;
 }
 
 std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::get_cross_referenced_core_material(CoreMaterial referenceCoreMaterial, double temperature, size_t maximumNumberResults) {

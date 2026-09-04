@@ -13,8 +13,19 @@
 namespace OpenMagnetics {
 
 double ResistivityCoreMaterialModel::get_resistivity(ResistivityMaterial materialData, double temperature) {
-    auto resistivityData = std::get<CoreMaterial>(materialData).get_resistivity();
+    // MAS made core-material resistivity OPTIONAL (MAS b56fd13): a maker that publishes
+    // permeability, saturation and a loss curve but no resistivity can now be represented
+    // honestly instead of carrying an invented number. The model's contract is unchanged --
+    // absent data THROWS, it does not fall back -- so a caller that needs a resistivity still
+    // finds out loudly. Callers that can do without it (the cross-referencer's resistivity
+    // dimension) test `get_resistivity()` for a value first, as the Curie filter already does.
+    auto resistivityDataOptional = std::get<CoreMaterial>(materialData).get_resistivity();
     double resistivity = -1;
+
+    if (!resistivityDataOptional) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "No resistivity data available for core material");
+    }
+    auto resistivityData = resistivityDataOptional.value();
 
     if (resistivityData.empty()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "No resistivity data available for core material");

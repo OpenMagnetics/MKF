@@ -1672,7 +1672,10 @@ double StrayCapacitance::core_image_factor(const Core& core, double frequency) {
         epsImag = interpolate_permittivity_points(complexPermittivity.get_imaginary(), frequency);
         haveData = epsReal > 0;
     }
-    else if (!material.get_resistivity().empty() && frequency > 0) {
+    // Resistivity is optional on a core material since MAS b56fd13. A grade whose maker does
+    // not publish it simply falls through to the NO-DATA case documented below, which is the
+    // correct outcome here: this branch needs a resistivity to say anything at all.
+    else if (material.get_resistivity() && !material.get_resistivity()->empty() && frequency > 0) {
         // Conduction only (metallic ribbon cores, or a ferrite whose permittivity the database
         // does not carry but whose resistivity it does): eps'' = 1 / (omega eps0 rho).
         //
@@ -1695,7 +1698,7 @@ double StrayCapacitance::core_image_factor(const Core& core, double frequency) {
         // electrode), not a measurement of "does not image". A grade whose real eps' matters is
         // a grade whose permittivity belongs in MAS — that remains the proper fix, and the
         // permittivity branch above uses it the moment it is there.
-        auto resistivity = material.get_resistivity()[0];
+        auto resistivity = material.get_resistivity().value()[0];
         double rho = resistivity.get_value();
         if (rho > 0) {
             double conductionPermittivity = 1.0 / (omega * vacuumPermittivity * rho);
