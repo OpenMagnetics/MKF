@@ -2480,7 +2480,16 @@ class CorePieceDrumSemishielded : public CorePieceDrum {
 // a coil compression-molded inside a homogeneous low-permeability SMC block. The distributed
 // gap lives in the MATERIAL (mu_eff ~15-40), so the piece is a single solid CLOSED circuit
 // (CoreType::CLOSED_SHAPE) with NO discrete gaps: magnetically a pot core with a rectangular
-// outer boundary. Letters follow the pot-core (P/PM) convention: A body width, B body height
+// outer boundary.
+//
+// CLOSED_SHAPE IS LOAD-BEARING, and getting it wrong is silent (ABT #1002). A moulded core
+// written as CoreType::TWO_PIECE_SET is mirrored: process_data doubles le and Ve, so a 4020 body
+// reports le 8.0 mm instead of 4.0 and its inductance comes out HALF. Nothing throws, and the
+// number stays plausible — so a permeability FITTED against that geometry silently absorbs the
+// factor and comes out at twice the powder's. Four Würth grades did exactly that and were wrong
+// by 2.00 each until an independent measurement caught them. If you fit a material through this
+// piece, check the core type first; the geometry is not self-evidently right just because the
+// inductance agrees with the part it was fitted on. Letters follow the pot-core (P/PM) convention: A body width, B body height
 // (coil axis), C body depth, D coil-cavity height (internal height), E coil-cavity outer
 // diameter, F coil-cavity inner diameter (the composite post under the coil bore).
 //
