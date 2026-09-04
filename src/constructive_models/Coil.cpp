@@ -10255,6 +10255,21 @@ bool Coil::wind_by_rectangular_layers() {
                     : get_parallels_proportions(layerIndex, numberLayers, get_number_turns(windingIndex), get_number_parallels(windingIndex),
                                                 remainingParallelsProportionInSection, windByConsecutiveTurns, totalParallelsProportionInSection);
 
+                // FOIL PARALLELS ARE N-FILAR, ALWAYS (Alf, 2026-09-04): the N sheets are wound
+                // together as one stack, so layer L holds parallel L mod N, turn L div N -- every
+                // parallel's turn 0, then every parallel's turn 1. Neither winding style gives
+                // that with one turn per layer: CONSECUTIVE_PARALLELS wants all N side by side
+                // in a layer that holds one, so it is downgraded to CONSECUTIVE_TURNS above, which
+                // winds each parallel's turns as adjacent layers -- parallel 0 turn 0, parallel 0
+                // turn 1, parallel 1 turn 0 -- a sequential stack no foil is ever wound as.
+                if (wirePerWinding[windingIndex].get_type() == WireType::FOIL &&
+                    get_number_parallels(windingIndex) > 1) {
+                    const uint64_t nPar = get_number_parallels(windingIndex);
+                    const size_t parallelOfLayer = layerIndex % nPar;
+                    std::vector<double> nfilar(nPar, 0.0);
+                    nfilar[parallelOfLayer] = 1.0 / double(get_number_turns(windingIndex));
+                    parallelsProportions = {uint64_t(1), nfilar};
+                }
                 std::vector<double> layerParallelsProportion = parallelsProportions.second;
 
                 size_t numberParallelsProportionsToZero = 0;

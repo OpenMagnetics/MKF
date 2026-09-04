@@ -13185,6 +13185,50 @@ TEST_CASE("Test_Abt881_Foil_Has_No_Crossing_Station", "[constructive-model][coil
     settings.reset();
 }
 
+TEST_CASE("Test_Foil_Parallels_Are_N_Filar", "[constructive-model][coil][real-geometry][foil][regression]") {
+    // Foil parallels are wound TOGETHER as one stack (Alf, 2026-09-04): layer L holds parallel
+    // L mod N, turn L div N -- every parallel's turn 0, then every parallel's turn 1. The winding
+    // styles could not express that with one turn per layer, and the layout came out sequential
+    // (parallel 0 turn 0, parallel 0 turn 1, parallel 1 turn 0, ...): a stack no foil is wound as,
+    // and one whose terminals cannot be modelled (a parallel's last layer was its neighbour's first).
+    settings.reset();
+    clear_databases();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/17_cllc_xfmr_e5528_3c92a.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    REQUIRE(windings.size() >= 2);
+    windings[1].set_wire("Foil 0.2");
+    windings[1].set_number_turns(2);
+    windings[1].set_number_parallels(4);
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    auto& coil = magnetic.get_mutable_coil();
+    auto turns = coil.get_turns_description();
+    REQUIRE(turns);
+    const auto foilName = coil.get_functional_description()[1].get_name();
+    // Sort this winding's turns by radial position; the (parallel, turn) sequence must be
+    // (0,0) (1,0) (2,0) (3,0) (0,1) (1,1) (2,1) (3,1).
+    std::vector<std::tuple<double, int64_t, int64_t>> byRadius;
+    for (const auto& turn : turns.value()) {
+        if (turn.get_winding() != foilName) continue;
+        const auto name = turn.get_name();
+        const auto tpos = name.rfind("turn ");
+        REQUIRE(tpos != std::string::npos);
+        byRadius.emplace_back(turn.get_coordinates()[0], turn.get_parallel(), std::stoll(name.substr(tpos + 5)));
+    }
+    std::sort(byRadius.begin(), byRadius.end());
+    REQUIRE(byRadius.size() == 8);
+    for (size_t L = 0; L < byRadius.size(); ++L) {
+        CHECK(std::get<1>(byRadius[L]) == int64_t(L % 4));
+        CHECK(std::get<2>(byRadius[L]) == int64_t(L / 4));
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Real_Geometry_Planar_Winds_As_Pcb", "[constructive-model][coil][real-geometry][planar]") {
     // ABT #978 (supersedes the ABT #492 gate): a planar coil under real winding geometry is a PCB and wind()
     // routes it to wind_planar with the placement defined by the printed group's pcb (MAS-RFC 0012). The
