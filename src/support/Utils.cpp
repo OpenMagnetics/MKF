@@ -2,6 +2,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/MagneticSimulator.h"
 #include "support/Utils.h"
+#include "constructive_models/CorePiece.h"
 #include "support/Logger.h"
 #include "json.hpp"
 
@@ -932,8 +933,16 @@ std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std
         load_core_shapes(true);
     }
 
-    std::vector<std::string> distinctDimensions;
- 
+    // What the GEOMETRY needs, which is a property of the CorePiece class and is therefore
+    // answerable for every buildable family. Scanning the database alone returned an empty
+    // list for the eleven families that ship no bare-core record (ABT #1007), so the builder
+    // offered the family and then no dimension fields, and a custom shape could not be made.
+    std::vector<std::string> distinctDimensions = get_core_shape_family_required_dimensions(family);
+
+    // Plus whatever the published shapes additionally carry. These are real: some are optional
+    // geometry the class reads behind a guard (drum's A2, a toroid's R/r0), and some this
+    // engine never reads at all but other consumers do — MVB++ renders EC's T and PM's alpha.
+    // Dropping them would silently remove input fields that work today.
     for (auto& [name, shape] : coreShapeDatabase) {
         if (shape.get_family() == family) {
             if (familySubtype && shape.get_family_subtype()) {
@@ -951,6 +960,11 @@ std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std
     }
 
     std::sort(distinctDimensions.begin(), distinctDimensions.end(), [](std::string a, std::string b) {return a<b;});
+
+    if (distinctDimensions.empty()) {
+        throw std::runtime_error("No dimensions resolved for shape family: " +
+                                 std::string{magic_enum::enum_name(family)});
+    }
 
     return distinctDimensions;
 }

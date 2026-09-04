@@ -275,6 +275,16 @@ class CorePiece {
  */
 std::vector<CoreShapeFamily> get_supported_core_shape_families();
 
+/**
+ * The dimensions a family's geometry reads and REQUIRES, from the CorePiece subclass that
+ * reads them — not from whichever shapes are published, which answers nothing for a family
+ * with no catalogue record (ABT #1007). Optional, guarded dimensions are deliberately absent;
+ * get_shape_family_dimensions adds whatever the catalogue additionally carries.
+ *
+ * @throws std::runtime_error if the family has no declaration.
+ */
+std::vector<std::string> get_core_shape_family_required_dimensions(CoreShapeFamily family);
+
 void from_json(const json& j, OpenMagnetics::CorePiece& x);
 void to_json(json& j, const OpenMagnetics::CorePiece& x);
 

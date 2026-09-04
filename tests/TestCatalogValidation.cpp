@@ -488,3 +488,86 @@ TEST_CASE("Test_Supported_Families_Are_The_Engine_Not_The_Database", "[catalog][
         CHECK(std::find(inDatabase.begin(), inDatabase.end(), family) == inDatabase.end());
     }
 }
+
+// ABT #1007: get_shape_family_dimensions answered "what does this family need?" by scanning the
+// shape database for published shapes of that family. A family that ships no bare-core record
+// therefore reported ZERO dimensions, and the builder — which draws one input per returned
+// dimension — offered the family and then no fields at all, so a custom shape in it could not be
+// defined. Eleven of the engine's families were in that state: molded, drumSemishielded, rod, ei,
+// el, ef, epc, epq, ept, epw and lep.
+TEST_CASE("Test_Family_Dimensions_Are_Declared_For_Every_Supported_Family", "[catalog][smoke-test]") {
+    settings.reset();
+    clear_databases();
+
+    auto supported = OpenMagnetics::get_supported_core_shape_families();
+    REQUIRE(supported.size() > 30);
+
+    // The bug, stated directly: every family the engine can build must be describable.
+    for (auto family : supported) {
+        INFO("family " << magic_enum::enum_name(family));
+        std::vector<std::string> required;
+        REQUIRE_NOTHROW(required = OpenMagnetics::get_core_shape_family_required_dimensions(family));
+        CHECK_FALSE(required.empty());
+
+        std::vector<std::string> offered;
+        REQUIRE_NOTHROW(offered = get_shape_family_dimensions(family));
+        CHECK_FALSE(offered.empty());
+
+        // Whatever the geometry requires must reach the caller.
+        for (auto& dimension : required) {
+            INFO("required dimension " << dimension << " missing from the offered set");
+            CHECK(std::find(offered.begin(), offered.end(), dimension) != offered.end());
+        }
+    }
+
+    // The families that carry no catalogue shape are the whole point: before this, each returned
+    // an empty list. Their dimensions can now come only from the declaration.
+    for (auto family : {CoreShapeFamily::MOLDED, CoreShapeFamily::DRUM_SEMISHIELDED,
+                        CoreShapeFamily::ROD, CoreShapeFamily::EI, CoreShapeFamily::LEP}) {
+        INFO("shape-less family " << magic_enum::enum_name(family));
+        CHECK(get_shape_family_dimensions(family).size() >= 3);
+    }
+
+    // Spot-checks against the geometry, so a wrong declaration is caught and not just a missing
+    // one. A rod is a cylinder: outer diameter, length, bore. A molded block is an E-like set.
+    CHECK(get_shape_family_dimensions(CoreShapeFamily::ROD) ==
+          std::vector<std::string>{"A", "B", "H"});
+    CHECK(get_shape_family_dimensions(CoreShapeFamily::MOLDED) ==
+          std::vector<std::string>{"A", "B", "C", "D", "E", "F"});
+    // The shielded drums add the shield's own J/K/L envelope on top of the drum's dimensions.
+    for (auto& dimension : {"J", "K", "L"}) {
+        auto offered = get_shape_family_dimensions(CoreShapeFamily::DRUM_SEMISHIELDED);
+        CHECK(std::find(offered.begin(), offered.end(), dimension) != offered.end());
+    }
+}
+
+// Backward compatibility: no family that worked before may lose an input field. The catalogue
+// union is still folded in, because some of those keys are optional geometry this engine reads
+// behind a guard (drum's A2, a toroid's R/r0) and some it never reads while another consumer
+// does — MVB++ renders EC's T and PM's alpha off the shape dimensions.
+TEST_CASE("Test_Family_Dimensions_Still_Cover_Every_Published_Shape", "[catalog][smoke-test]") {
+    settings.reset();
+    clear_databases();
+
+    auto names = get_core_shape_names();
+    REQUIRE(names.size() > 1000);
+
+    size_t checked = 0;
+    for (auto& name : names) {
+        auto shape = find_core_shape_by_name(name);
+        if (!shape.get_dimensions()) {
+            continue;
+        }
+        auto offered = get_shape_family_dimensions(shape.get_family());
+        // Materialise the optional: get_dimensions() returns by value, so binding the range-for
+        // to .value() directly is a dangling reference (-Werror=dangling-reference).
+        auto shapeDimensions = shape.get_dimensions().value();
+        for (auto& [dimensionKey, dimensionValue] : shapeDimensions) {
+            INFO(name << " (" << magic_enum::enum_name(shape.get_family())
+                      << ") carries dimension " << dimensionKey << ", which is no longer offered");
+            CHECK(std::find(offered.begin(), offered.end(), dimensionKey) != offered.end());
+        }
+        checked++;
+    }
+    CHECK(checked > 1000);
+}

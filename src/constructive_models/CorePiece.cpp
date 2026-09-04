@@ -7,6 +7,7 @@
 #include "support/Utils.h"
 
 #include <algorithm>
+#include <map>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -2779,6 +2780,70 @@ static constexpr CoreShapeFamily kSupportedShapeFamilies[] = {
     CoreShapeFamily::EPQ,        CoreShapeFamily::EPW,        CoreShapeFamily::EPT,
     CoreShapeFamily::LEP,
 };
+
+// The dimensions each family's geometry actually READS, keyed by family rather than
+// discovered from whatever shapes happen to be published. Every entry was extracted from
+// the CorePiece subclass above (including the reads it inherits and does not override),
+// and covers the REQUIRED reads only: a key behind a `dimensions.find(...)` guard — drum's
+// A2, a toroid's R/r0, PM's alpha — is optional geometry and reaches the caller through the
+// catalogue union in get_shape_family_dimensions instead, so declaring it here would put an
+// input field in front of every user for a dimension almost no part has.
+//
+// This exists because the question "what does this family need?" was being answered by
+// scanning the shape database, which returns NOTHING for a family that ships no bare-core
+// record (ABT #1007). Eleven buildable families were selectable in the builder and then
+// offered no dimension fields at all, so a custom shape in them could not be defined.
+//
+// Add a family here in the same edit that adds its CorePiece subclass. The guard is
+// Test_Family_Dimensions_Are_Declared_For_Every_Supported_Family.
+static const std::map<CoreShapeFamily, std::vector<std::string>> kFamilyRequiredDimensions = {
+    {CoreShapeFamily::E,                   {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::EC,                  {"A", "B", "C", "D", "E", "F", "s"}},
+    {CoreShapeFamily::EFD,                 {"A", "B", "C", "D", "E", "F", "F2", "K"}},
+    {CoreShapeFamily::EL,                  {"A", "B", "C", "D", "E", "F", "F2"}},
+    {CoreShapeFamily::EP,                  {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::EPX,                 {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::LP,                  {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::EQ,                  {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::ER,                  {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::ETD,                 {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::P,                   {"A", "B", "D", "E", "F", "G", "H"}},
+    {CoreShapeFamily::PLANAR_E,            {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::PLANAR_EL,           {"A", "B", "C", "D", "E", "F", "F2"}},
+    {CoreShapeFamily::PLANAR_ER,           {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::PM,                  {"A", "B", "D", "E", "F", "G", "H", "b", "t"}},
+    {CoreShapeFamily::PQ,                  {"A", "B", "C", "D", "E", "F", "G", "L"}},
+    {CoreShapeFamily::RM,                  {"A", "B", "C", "D", "E", "F", "G", "H", "J"}},
+    {CoreShapeFamily::U,                   {"A", "B", "C", "D"}},
+    {CoreShapeFamily::UR,                  {"A", "B", "C", "D", "G", "H"}},
+    {CoreShapeFamily::UT,                  {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::T,                   {"A", "B", "C"}},
+    {CoreShapeFamily::C,                   {"A", "B", "C", "D", "E"}},
+    {CoreShapeFamily::EER,                 {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::EF,                  {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::EPC,                 {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::UI,                  {"A", "B", "B2", "C", "D"}},
+    {CoreShapeFamily::EI,                  {"A", "B", "B2", "C", "D", "E", "F"}},
+    {CoreShapeFamily::DRUM,                {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::DRUM_RING,           {"A", "B", "C", "D", "E", "F", "J", "K", "L"}},
+    {CoreShapeFamily::DRUM_SEMISHIELDED,   {"A", "B", "C", "D", "E", "F", "J", "K", "L"}},
+    {CoreShapeFamily::ROD,                 {"A", "B", "H"}},
+    {CoreShapeFamily::MOLDED,              {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::PQI,                 {"A", "B", "B2", "C", "D", "E", "F", "G", "L"}},
+    {CoreShapeFamily::EPQ,                 {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::EPW,                 {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::EPT,                 {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::LEP,                 {"A", "B", "C", "D", "E", "F"}},
+};
+
+std::vector<std::string> get_core_shape_family_required_dimensions(CoreShapeFamily family) {
+    auto entry = kFamilyRequiredDimensions.find(family);
+    if (entry == kFamilyRequiredDimensions.end()) {
+        throw std::runtime_error("No dimensions declared for shape family: " +
+                                 std::string{magic_enum::enum_name(family)});
+    }
+    return entry->second;
+}
 
 std::vector<CoreShapeFamily> get_supported_core_shape_families() {
     return {std::begin(kSupportedShapeFamilies), std::end(kSupportedShapeFamilies)};
