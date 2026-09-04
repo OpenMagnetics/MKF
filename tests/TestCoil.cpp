@@ -13128,6 +13128,63 @@ TEST_CASE("Test_Abt967_Autocomplete_Accepts_A_Database_Foil", "[constructive-mod
     settings.reset();
 }
 
+TEST_CASE("Test_Abt881_Foil_Has_No_Crossing_Station", "[constructive-model][coil][real-geometry][foil][regression]") {
+    // ABT #881: the real-winding crossing bump (ABT #685) charges every winding one extra station
+    // per layer -- the slot a wire needs where it closes a layer and climbs to the next. A FOIL
+    // turn is a closed cylindrical band, one per layer, and its parallels stack RADIALLY: no
+    // parallel ever climbs, so there is no station to charge. Charging it DIVERGES on a foil,
+    // because a foil parallel declares one turn: the station doubles the winding, the doubled
+    // turns need more layers, and the raise reads those layers back as more stations.
+    // Measured before the fix on 8 parallels of "Foil 0.2" in an E 42/21/15: physical turns ran
+    // 16, 24, 32, 40 over four re-winds, 18 layers where 8 belong, a section 104 mm tall in a
+    // 27.3 mm window, and copper three window-heights outside the core.
+    settings.reset();
+    clear_databases();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/17_cllc_xfmr_e5528_3c92a.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    REQUIRE(windings.size() >= 2);
+    windings[1].set_wire("Foil 0.2");
+    windings[1].set_number_turns(1);
+    windings[1].set_number_parallels(6);
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    auto& coil = magnetic.get_mutable_coil();
+    auto turns = coil.get_turns_description();
+    REQUIRE(turns);
+
+    // EXACTLY the declared turns for the foil winding: one per parallel, no stations.
+    const auto foilName = coil.get_functional_description()[1].get_name();
+    size_t foilTurns = 0;
+    std::set<std::string> foilLayers;
+    for (const auto& turn : turns.value()) {
+        if (turn.get_winding() != foilName) continue;
+        ++foilTurns;
+        if (turn.get_layer()) foilLayers.insert(turn.get_layer().value());
+    }
+    CHECK(foilTurns == 6);
+    // ...and one layer per parallel: a foil layer holds a single band.
+    CHECK(foilLayers.size() == 6);
+
+    // The round winding still gets its station per layer -- the exemption is foil-only.
+    const auto roundName = coil.get_functional_description()[0].get_name();
+    size_t roundTurns = 0;
+    std::set<std::string> roundLayers;
+    for (const auto& turn : turns.value()) {
+        if (turn.get_winding() != roundName) continue;
+        ++roundTurns;
+        if (turn.get_layer()) roundLayers.insert(turn.get_layer().value());
+    }
+    CHECK(roundTurns == coil.get_functional_description()[0].get_number_turns() *
+                            coil.get_functional_description()[0].get_number_parallels() +
+                        roundLayers.size());
+    settings.reset();
+}
+
 TEST_CASE("Test_Real_Geometry_Planar_Winds_As_Pcb", "[constructive-model][coil][real-geometry][planar]") {
     // ABT #978 (supersedes the ABT #492 gate): a planar coil under real winding geometry is a PCB and wind()
     // routes it to wind_planar with the placement defined by the printed group's pcb (MAS-RFC 0012). The

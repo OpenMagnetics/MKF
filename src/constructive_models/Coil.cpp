@@ -4549,9 +4549,30 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             if (windowShape == WindingWindowShape::ROUND) {
                 return;
             }
-            extraPerWinding.assign(coil.get_functional_description().size(), 1);
-            for (auto& winding : coil.get_mutable_functional_description()) {
-                winding.set_number_turns(winding.get_number_turns() + 1);
+            // A FOIL WINDING HAS NO CROSSING STATION (ABT #881, 2026-09-04). The extra crossing
+            // pays for a wire that must come back to its starting azimuth to close a layer and
+            // then climb to the next. A foil turn is a closed cylindrical BAND, one per layer,
+            // and its parallels stack RADIALLY: each parallel is a single band that begins and
+            // ends at its own terminals and never climbs. Charging it the per-layer station is
+            // not merely wrong by one, it DIVERGES -- with one declared turn per parallel the
+            // station doubles the winding, the doubled turns need more layers, the raise below
+            // reads those layers back and adds more stations. Measured on
+            // two_switch_forward_transformer_complete (8 turns of Foil 0.2, E 42/21/15): the
+            // Secondary's physical turns ran 16, 24, 32, 40 over four re-winds, 18 layers where
+            // 8 belong, a section 104 mm tall in a 27.3 mm window, and copper three window
+            // heights outside the core. Same reasoning as the toroid exemption above: the
+            // station exists for a geometry this winding does not have.
+            const auto foilWires = coil.get_wires();
+            extraPerWinding.assign(coil.get_functional_description().size(), 0);
+            auto& armWindings = coil.get_mutable_functional_description();
+            for (size_t windingIndex = 0; windingIndex < armWindings.size(); ++windingIndex) {
+                if (windingIndex < foilWires.size() &&
+                    foilWires[windingIndex].get_type() == WireType::FOIL) {
+                    continue;
+                }
+                extraPerWinding[windingIndex] = 1;
+                armWindings[windingIndex].set_number_turns(
+                    armWindings[windingIndex].get_number_turns() + 1);
             }
             active = true;
         }
@@ -4560,6 +4581,9 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         // blocked-slot accumulation relies on). Returns true when it actually moved.
         bool raise(size_t windingIndex, size_t layers) {
             if (!active || windingIndex >= extraPerWinding.size()) return false;
+            // Foil was never armed (see arm()): it has no crossing to raise, and raising it is
+            // the divergence itself.
+            if (extraPerWinding[windingIndex] == 0) return false;
             if (layers <= extraPerWinding[windingIndex]) return false;
             auto& windings = coil.get_mutable_functional_description();
             windings[windingIndex].set_number_turns(
@@ -9932,6 +9956,20 @@ bool Coil::wind_by_rectangular_layers() {
 
             // We cannot have more layers than physical turns
             numberLayers = std::min(numberLayers, physicalTurnsInSection);
+            if (std::getenv("MKF_BLOCKING_DIAG")) {
+                std::cerr << "[layers] " << sections[sectionIndex].get_name()
+                          << " physTurns=" << physicalTurnsInSection
+                          << " maxLayersFitting=" << maximumNumberLayersFittingInSection
+                          << " maxPerLayer=" << maximumNumberPhysicalTurnsPerLayer
+                          << " -> numberLayers=" << numberLayers
+                          << " sectionDims=" << sections[sectionIndex].get_dimensions()[0]
+                          << "x" << sections[sectionIndex].get_dimensions()[1]
+                          << " turns(winding)=" << get_number_turns(windingIndex)
+                          << " parallels=" << get_number_parallels(windingIndex)
+                          << " prop={";
+                for (auto pr : remainingParallelsProportionInSection) std::cerr << pr << ",";
+                std::cerr << "}\n";
+            }
 
             // Real winding geometry: turn blocking is GLOBAL to the winding window. wind() computes,
             // per conduction layer, how many connection leads cross its top and bottom
