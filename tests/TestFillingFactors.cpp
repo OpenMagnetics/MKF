@@ -105,63 +105,54 @@ TEST_CASE("Test_Filling_Factors_Bobbin_Without_Winding_Window_Area", "[coil][fil
                Catch::Matchers::WithinRel(statedFactors.areaFillingFactor, 1e-12));
 }
 
-// A winding narrower than its window must sit ON the former, not float in the middle of it.
+// A drum's winding must end up ON the former, through the path a user actually travels.
 //
-// WE 74402500030 is a drumRing whose 0.3 mm window carries one 0.191 mm layer. Wound, the
-// turns land against the drum post at 0.650 mm — correct. Run delimit_and_compact over the
-// result and the layer MOVES OUT to the window centre, 0.7045..0.8955, with equal 0.053 mm
-// gaps on both sides. A coil does not levitate off the bobbin it is wound on.
+// Alf's report was visual: on WE 74402500030, a drumRing whose 0.3 mm window carries one
+// 0.191 mm layer, the turns rendered floating in the middle of the window with equal 0.053 mm
+// gaps either side, when the drum post's surface is at 0.650 mm. A coil does not levitate off
+// the bobbin it is wound on.
 //
-// The section orientation is what exposes it: with OVERLAPPING the section starts at the
-// inner edge and stays there; with CONTIGUOUS the section is created spanning the FULL window
-// width and the winding inside it ends up centred.
+// The cause was in magnetic_autocomplete (ABT #998): the sections orientation was chosen from
+// the CORE TYPE, so every non-two-piece core — drums, rods, molded, and the whole
+// piece-and-plate family — was told to wind as a flat spiral. CONTIGUOUS means the turns
+// advance RADIALLY, so MKF then took the section's radial position from the turns alignment
+// (Coil.cpp:12817) and a CENTERED alignment put the copper mid-window. Every step after the
+// orientation was behaving correctly, which is why compaction looked guilty for a while: it
+// faithfully shrink-wrapped a section that was already in the wrong place.
 //
-// THIS TEST FAILS ON PURPOSE — it is a reproducer for an unfixed defect, not a regression
-// guard, and it is committed failing so the signal is not lost. Traced this far:
-//
-//   wind_by_sections  creates the section full-window-width, centred      (0.800 / 0.300)
-//   wind_by_layers    places the layer against the former                 (0.7455 / 0.191)
-//   delimit_and_compact  shrink-wraps the section ONTO the layer          (0.7455 / 0.191)  <- correct
-//   ...a later pass inside wind_inner moves BOTH to the window centre     (0.800  / 0.191)  <- the bug
-//
-// The last step is the one still unattributed. wind_inner runs wind_by_turns +
-// delimit_and_compact up to four times (the real-winding re-wind paths at 4887/4922/4949/5035),
-// and the layer is already at 0.800 by the second compaction, so a re-wind is re-placing it
-// centred rather than against the former. Instrumenting the two compaction calls shows the
-// first behaving correctly, which is what rules compaction itself out.
-//
-// Not patched speculatively: this is a physics path, and a guessed fix here would produce a
-// plausible wrong number rather than an error — the failure mode this whole area keeps
-// exhibiting.
-TEST_CASE("Test_Compaction_Keeps_A_Narrow_Winding_On_The_Former", "[coil][compaction][smoke-test]") {
+// This asserts the END-TO-END property rather than any single step, because the intermediate
+// contracts are exactly what was misunderstood: MKF is entitled to centre a genuine spiral,
+// and a test saying otherwise would pin a contract MKF does not have. Feeding a catalogue
+// magnetic that states NO orientation is the point — it exercises the choice the engine makes,
+// which is where the defect lived.
+TEST_CASE("Test_Drum_Winding_Sits_On_The_Former", "[coil][winding][smoke-test]") {
     settings.reset();
-    json coilJson = OpenMagneticsTesting::fixtures::get_json("coil-drumring-contiguous-narrow-section");
+    json magneticJson = OpenMagneticsTesting::fixtures::get_json("magnetic-drumring-74402500030");
 
-    auto windAndReport = [&](bool compact) {
-        settings.reset();
-        settings.set_coil_delimit_and_compact(compact);
-        OpenMagnetics::Coil coil(coilJson, false);
-        coil.wind({1.0}, {0}, 1);
-        if (compact) {
-            coil.delimit_and_compact();
-        }
-        REQUIRE(coil.get_turns_description());
-        double innermost = std::numeric_limits<double>::max();
-        // By VALUE: get_turns_description() returns by value, so a reference bound through
-        // it dangles the moment the full expression ends (ABT #964, ABT #988).
-        auto turns = coil.get_turns_description().value();
-        for (const auto& turn : turns) {
-            innermost = std::min(innermost, turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2);
-        }
-        return innermost;
-    };
+    // Precondition: the fixture must NOT state an orientation, or this tests the caller's
+    // configuration instead of the engine's choice — and explicit configuration wins.
+    REQUIRE(magneticJson["coil"]["bobbin"]["processedDescription"]["windingWindows"][0]
+                .contains("sectionsOrientation") == false);
 
-    const double formerSurface = 0.00065;   // bobbin columnWidth: the post the wire lies on
+    // Through magnetic_autocomplete, NOT a bare coil.wind(): the orientation is chosen there,
+    // so a test that winds the coil directly bypasses the defect entirely. Confirmed by
+    // negative control — winding directly passes even with ABT #998 reverted, which is exactly
+    // the "green either way" test that proves nothing.
+    OpenMagnetics::Magnetic magnetic = OpenMagnetics::magnetic_autocomplete(
+        OpenMagnetics::Magnetic(magneticJson));
+    auto coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
 
-    // Without compaction the winding is already correct, which is what makes compaction the
-    // suspect rather than the winder.
-    CHECK_THAT(windAndReport(false), Catch::Matchers::WithinAbs(formerSurface, 1e-6));
+    // By VALUE: get_turns_description() returns by value, so a reference bound through it
+    // dangles at the end of the full expression (ABT #964, ABT #988).
+    auto turns = coil.get_turns_description().value();
+    double innermost = std::numeric_limits<double>::max();
+    for (const auto& turn : turns) {
+        innermost = std::min(innermost, turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2);
+    }
 
-    // With it, the winding must not have moved off the former.
-    CHECK_THAT(windAndReport(true), Catch::Matchers::WithinAbs(formerSurface, 1e-6));
+    // The drum post's surface: bobbin columnWidth, which for a zero-thickness former is the
+    // core column half-width. The wire lies on it.
+    const double formerSurface = 0.00065;
+    CHECK_THAT(innermost, Catch::Matchers::WithinAbs(formerSurface, 1e-6));
 }
