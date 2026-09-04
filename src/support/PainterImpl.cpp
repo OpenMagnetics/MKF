@@ -1655,6 +1655,25 @@ void Painter::paint_drum_family_core(Core core) {
 void Painter::paint_bobbin(Magnetic magnetic) {
     Core core = magnetic.get_core();
     _imageHeight = core.get_processed_description()->get_height();
+
+    // A bobbin with NO WALL and NO COLUMN is not a physical part, and drawing one puts an
+    // object in the picture that does not exist. MKF synthesises exactly that whenever the
+    // wire goes straight onto the core: a MOULDED inductor has its coil embedded in the
+    // composite and no former at all, and drum-family parts are wound in the core's own
+    // groove. The 3-D viewer already skips it on this same test; the 2-D painter drew it, so
+    // the two views disagreed about whether a bobbin was there.
+    //
+    // Thickness, not family, is the test — it is the property that says whether the bobbin
+    // encloses any material, and it keeps holding for any family that later gets a
+    // zero-thickness placeholder.
+    auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+    if (bobbin.get_processed_description()) {
+        auto processed = bobbin.get_processed_description().value();
+        if (processed.get_wall_thickness() <= 0 && processed.get_column_thickness() <= 0) {
+            return;
+        }
+    }
+
     CoreShape shape = core.resolve_shape();
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
