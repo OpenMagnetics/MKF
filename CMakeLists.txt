@@ -668,7 +668,14 @@ if(MKF_USE_KIRCHHOFF)
     if(KIRCHHOFF_SOURCE_DIR)
         set(_kirchhoff_include_dir "${KIRCHHOFF_SOURCE_DIR}/src")
     else()
-        set(_kirchhoff_include_dir "${CMAKE_BINARY_DIR}/kirchhoff_ext-prefix/src/kirchhoff_ext/src")
+        # CURRENT, not CMAKE_BINARY_DIR: ExternalProject_Add's default prefix is relative to the
+        # directory that declares it, so the clone lands in THIS project's binary dir. The two are
+        # the same when MKF is built standalone and differ by the FetchContent path when MKF is a
+        # subproject -- MVB++'s fresh build tree looked for the header in
+        # <top>/kirchhoff_ext-prefix/... while it sat in <top>/_deps/mkf-build/kirchhoff_ext-prefix/...,
+        # and every KirchhoffBridge.cpp compile failed with "KirchhoffApi.hpp: No such file or
+        # directory". Only a fresh tree shows it: an incremental build already had the header.
+        set(_kirchhoff_include_dir "${CMAKE_CURRENT_BINARY_DIR}/kirchhoff_ext-prefix/src/kirchhoff_ext/src")
     endif()
     # PUBLIC so consumers/tests that include KirchhoffBridge.h (-> KirchhoffApi.hpp) find it too.
     target_include_directories(MKF PUBLIC "${_kirchhoff_include_dir}")
