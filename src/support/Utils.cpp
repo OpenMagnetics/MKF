@@ -2919,18 +2919,38 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
             to_json(configuration["windingOrientation"], windingOrientation);
             processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(windingOrientation);
         }
+        else if (magnetic.get_mutable_coil().is_edge_wound_coil()) {
+            // An edge-wound coil is a flat spiral: its turns advance RADIALLY, which is what
+            // CONTIGUOUS means. That is a property of the winding, not of the core, so it is
+            // asked first and holds whatever the core is.
+            processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::CONTIGUOUS);
+        }
         else {
-            if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
-                if (magnetic.get_mutable_coil().is_edge_wound_coil()) {
-                    processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::CONTIGUOUS);
-                }
-                else {
-                    processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::OVERLAPPING);
-                }
-            }
-            else {
-                processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::CONTIGUOUS);
-            }
+            // ABT #998: this used to switch on the CORE TYPE -- TWO_PIECE_SET got OVERLAPPING
+            // and EVERYTHING ELSE fell through to CONTIGUOUS. Core type does not decide which way
+            // a coil is wound; the WINDOW does. A round window (a toroid) is wound contiguously
+            // because its turns really do advance around the bore, and a rectangular window is
+            // wound overlapping because its layers build radially off the former.
+            //
+            // The old rule swept up every non-two-piece core: drums, rods, molded parts, and the
+            // whole PIECE_AND_PLATE family (UI, UT, PQI, drum-ring, drum-semishielded) are all
+            // bobbin-wound in a rectangular window and were all being told to wind as spirals.
+            // Downstream that seats the winding by the TURN-axis alignment instead of on the
+            // former, so a narrow winding floated in the middle of its window -- visible in the
+            // browser, and the reason this was found (a 0,191 mm layer centred in a 0,3 mm window
+            // at 0,7045 mm instead of resting on the former at 0,650 mm).
+            //
+            // It is also a latent trap for reclassification: any core moved out of TWO_PIECE_SET
+            // silently changed winding orientation as a side effect. Measured, UT and EI do NOT
+            // reach this branch today (their catalogue bobbins already carry an orientation, so
+            // the guard above skips it) — but that is luck of the data, not a property of the
+            // rule, and it is why the rule should not depend on core type at all.
+            //
+            // Bobbin::get_winding_window_sections_orientation already IS this rule, backed by
+            // defaultRoundWindowSectionsOrientation / defaultRectangularWindowSectionsOrientation.
+            // Call it rather than restate it.
+            processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(
+                bobbin.get_winding_window_sections_orientation(0));
         }
 
         if (configuration.contains("sectionAlignment")) {
