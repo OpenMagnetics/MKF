@@ -1070,3 +1070,104 @@ TEST_CASE("Test_Coupling_Coefficient_Unchanged_For_Main_Column_Windings", "[phys
     CHECK(coupling <= 1.0);
     settings.reset();
 }
+
+// ABT #1057 asked for a "coupling term" in the inductance model because sector-wound common-mode
+// chokes (the two windings on opposite halves of one ring) were reading 2.5x their datasheet
+// inductance. There is no such term to add. The self inductance of one winding on a closed ring
+// is set by Ampere's law around the core path: the MMF is N·I whether the turns sit on one
+// sector or all the way round, and with a 10 000-permeability path the air route between the
+// winding's two ends carries three orders of magnitude less flux than the ring — so L_ii is
+// mu0·mu·N²·Ae/le to well under 1 % for ANY placement. What placement does change is the
+// coupling to the OTHER winding, and MKF already computes that (inductance matrix, k, leakage);
+// on a sector-wound ring it moves the parallel-connected common-mode inductance (L+M)/2 by
+// (1-k)/2, a fraction of a percent. The 2.5x was a data fault on five WE-SL5 rows (their
+// sector-wound siblings on WE-SL1 sit at 1.0), and the 0.47x "two-chamber" group was the
+// residual mating gap of a two-piece UU core. This pins the physics so the question stays answered.
+TEST_CASE("Test_Toroid_Sector_Winding_Self_Inductance_Is_Placement_Independent", "[physical-model][inductance][toroidal][smoke-test]") {
+    settings.reset();
+    clear_databases();
+    settings.set_use_toroidal_cores(true);
+    settings.set_coil_delimit_and_compact(false);
+    settings.set_coil_try_rewind(false);
+
+    std::vector<int64_t> numberTurns = {19, 19};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string coreShape = "T 20/10/7";
+    std::string coreMaterial = "3E6";   // 10 000-permeability MnZn, the common-mode-choke grade class
+    auto emptyGapping = json::array();
+    auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, 1, coreMaterial);
+
+    // Sector-wound: contiguous sections, each winding on its own half of the ring.
+    auto sectorCoil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, 1,
+                                                          WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
+                                                          CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    // Layered: the second winding wound over the first, the closest a winder gets to bifilar.
+    auto layeredCoil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, 1,
+                                                           WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                                                           CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+
+    // Prove the sector coil IS sector-wound: two conduction sections a half-turn apart.
+    auto sectorSections = sectorCoil.get_sections_description().value();
+    std::vector<double> sectionAngles;
+    for (auto& section : sectorSections) {
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            sectionAngles.push_back(section.get_coordinates()[1]);
+        }
+    }
+    REQUIRE(sectionAngles.size() == 2);
+    double angularSeparation = std::fmod(std::abs(sectionAngles[1] - sectionAngles[0]), 360.0);
+    UNSCOPED_INFO("sector centres at " << sectionAngles[0] << " and " << sectionAngles[1] << " deg");
+    CHECK_THAT(angularSeparation, WithinAbs(180.0, 10.0));
+
+    MagnetizingInductance magnetizingModel;
+    double closedForm = magnetizingModel.calculate_inductance_from_number_turns_and_gapping(core, sectorCoil)
+                            .get_magnetizing_inductance().get_nominal().value();
+    REQUIRE(closedForm > 0);
+
+    double frequency = 10000;
+    Inductance inductance;
+    auto firstName = sectorCoil.get_functional_description()[0].get_name();
+    auto secondName = sectorCoil.get_functional_description()[1].get_name();
+
+    double sectorLeakage = 0;
+    double layeredLeakage = 0;
+    for (auto* coil : {&sectorCoil, &layeredCoil}) {
+        bool isSector = (coil == &sectorCoil);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(*coil);
+
+        auto matrix = inductance.calculate_inductance_matrix(magnetic, frequency).get_magnitude();
+        double selfFirst = matrix[firstName][firstName].get_nominal().value();
+        double selfSecond = matrix[secondName][secondName].get_nominal().value();
+        double mutual = matrix[firstName][secondName].get_nominal().value();
+        double coupling = inductance.calculate_coupling_coefficient(magnetic, 0, 1, frequency);
+        auto leakageMatrix = inductance.calculate_leakage_inductance_matrix(magnetic, frequency).get_magnitude();
+        double leakage = leakageMatrix[firstName][secondName].get_nominal().value();
+        double commonModeParallel = (selfFirst + mutual) / 2;
+        UNSCOPED_INFO((isSector ? "sector" : "layered") << ": closed form " << closedForm << " H, L11 " << selfFirst
+                      << " H, L22 " << selfSecond << " H, M " << mutual << " H, k " << coupling
+                      << ", leakage " << leakage << " H");
+
+        // Self inductance of either winding is the closed form, regardless of where its turns sit.
+        CHECK_THAT(selfFirst, WithinRel(closedForm, 1e-3));
+        CHECK_THAT(selfSecond, WithinRel(closedForm, 1e-3));
+        // The other winding links the same core flux: mutual is the closed form too, k is ~1.
+        CHECK_THAT(mutual, WithinRel(closedForm, 1e-3));
+        CHECK(coupling > 0.999);
+        CHECK(coupling <= 1.0);
+        // And the parallel-connected common-mode inductance a choke datasheet states is (L+M)/2,
+        // which the coupling moves by (1-k)/2 — nowhere near the 2.5x the ticket attributed to it.
+        CHECK_THAT(commonModeParallel, WithinRel(closedForm, 1e-3));
+
+        (isSector ? sectorLeakage : layeredLeakage) = leakage;
+    }
+
+    // The coupling term the ticket asked for is the leakage MKF already resolves from the turn
+    // layout: it exists, it is larger for the sector layout, and it is small against the core term.
+    CHECK(sectorLeakage > 0);
+    CHECK(sectorLeakage > layeredLeakage);
+    CHECK(sectorLeakage < 0.01 * closedForm);
+
+    settings.reset();
+}
