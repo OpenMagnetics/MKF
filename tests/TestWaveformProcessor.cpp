@@ -15,6 +15,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <magic_enum.hpp>
 #include <cmath>
+#include <random>
 #include <vector>
 
 using json = nlohmann::json;
@@ -678,5 +679,108 @@ TEST_CASE("Test_Phase_Shifted_Non_Sine_Stays_Custom", "[processor][waveform-proc
             REQUIRE(magic_enum::enum_name(WaveformProcessor::try_guess_waveform_label(waveform)) !=
                     magic_enum::enum_name(WaveformLabel::SINUSOIDAL));
         }
+    }
+}
+
+TEST_CASE("Test_Triangular_Recognised_At_Every_Duty", "[processor][waveform-processor][smoke-test]") {
+    // A triangle's apex only lands ON a sample when the duty divides the sample
+    // count. At any other duty compression cannot pick one vertex, emits both
+    // neighbours, and the 3-point test missed a mathematically perfect triangle:
+    // an ideal 1024-point triangle was TRIANGULAR at duty 0.5 and CUSTOM at 0.1,
+    // 0.2, 0.3, 0.7 and 0.8.
+    //
+    // The duty came out wrong with it. Falling through to CUSTOM sent the
+    // measurement to the mid-level crossing, which a triangle crosses halfway up
+    // and halfway down whatever its ramps — so every duty reported 0.5.
+    const size_t numberPoints = 1024;
+    const double period = 1.0 / 100000;
+
+    for (double duty : {0.1, 0.2, 0.3, 0.5, 0.7, 0.8}) {
+        std::vector<double> data;
+        std::vector<double> time;
+        for (size_t i = 0; i < numberPoints; ++i) {
+            double position = double(i) / numberPoints;
+            data.push_back(position < duty ? (position / duty) * 2 - 1
+                                           : 1 - ((position - duty) / (1 - duty)) * 2);
+            time.push_back(period * i / numberPoints);
+        }
+        Waveform waveform;
+        waveform.set_data(data);
+        waveform.set_time(time);
+
+        INFO("duty " << duty);
+        auto processed = WaveformProcessor::calculate_basic_processed_data(waveform);
+        REQUIRE(magic_enum::enum_name(processed.get_label()) ==
+                magic_enum::enum_name(WaveformLabel::TRIANGULAR));
+        REQUIRE_THAT(processed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(duty, 0.01));
+    }
+}
+
+TEST_CASE("Test_Rectangular_Duty_Unaffected_By_Triangle_Path", "[processor][waveform-processor][smoke-test]") {
+    // The control for the test above: rectangles already reported their duty
+    // correctly, and the triangle work must not disturb either the label or the
+    // measurement. A rectangle's duty IS its mid-level crossing.
+    const size_t numberPoints = 1024;
+    const double period = 1.0 / 100000;
+
+    for (double duty : {0.2, 0.5, 0.8}) {
+        std::vector<double> data;
+        std::vector<double> time;
+        for (size_t i = 0; i < numberPoints; ++i) {
+            data.push_back(double(i) / numberPoints < duty ? 1.0 : -1.0);
+            time.push_back(period * i / numberPoints);
+        }
+        Waveform waveform;
+        waveform.set_data(data);
+        waveform.set_time(time);
+
+        INFO("duty " << duty);
+        auto processed = WaveformProcessor::calculate_basic_processed_data(waveform);
+        REQUIRE(magic_enum::enum_name(processed.get_label()) ==
+                magic_enum::enum_name(WaveformLabel::RECTANGULAR));
+        REQUIRE_THAT(processed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(duty, 0.01));
+    }
+}
+
+TEST_CASE("Test_Noisy_Triangle_Still_Triangular_And_Noisy_Sine_Still_Sinusoidal",
+          "[processor][waveform-processor][smoke-test]") {
+    // Measured data never survives the vertex tests: noise above about 1e-6
+    // relative leaves a real triangle compressing to 27-32 points, never 3, so
+    // TRIANGULAR was unreachable for anything measured. A quarter of the
+    // CoreDataX exchange is triangular and was reaching CUSTOM this way.
+    //
+    // The tolerance path recognises it, and must not do so by stealing sines.
+    const double pi = 3.14159265358979323846;
+    const size_t numberPoints = 1024;
+    const double period = 1.0 / 100000;
+    std::mt19937 generator(20260905);
+
+    for (double noise : {1e-5, 1e-4, 1e-3}) {
+        std::normal_distribution<double> jitter(0.0, noise);
+        std::vector<double> triangle;
+        std::vector<double> sine;
+        std::vector<double> time;
+        for (size_t i = 0; i < numberPoints; ++i) {
+            double position = double(i) / numberPoints;
+            triangle.push_back((position < 0.3 ? (position / 0.3) * 2 - 1
+                                               : 1 - ((position - 0.3) / 0.7) * 2) + jitter(generator));
+            sine.push_back(sin(2 * pi * position) + jitter(generator));
+            time.push_back(period * i / numberPoints);
+        }
+
+        INFO("relative noise " << noise);
+        Waveform noisyTriangle;
+        noisyTriangle.set_data(triangle);
+        noisyTriangle.set_time(time);
+        auto triangleProcessed = WaveformProcessor::calculate_basic_processed_data(noisyTriangle);
+        REQUIRE(magic_enum::enum_name(triangleProcessed.get_label()) ==
+                magic_enum::enum_name(WaveformLabel::TRIANGULAR));
+        REQUIRE_THAT(triangleProcessed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(0.3, 0.02));
+
+        Waveform noisySine;
+        noisySine.set_data(sine);
+        noisySine.set_time(time);
+        REQUIRE(magic_enum::enum_name(WaveformProcessor::try_guess_waveform_label(noisySine)) ==
+                magic_enum::enum_name(WaveformLabel::SINUSOIDAL));
     }
 }

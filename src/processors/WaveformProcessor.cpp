@@ -126,7 +126,15 @@ bool is_close_enough(double x, double y, double error){
 double calculate_offset(Waveform waveform, WaveformLabel label) {
     switch (label) {
         case WaveformLabel::TRIANGULAR:
-            return (waveform.get_data()[0] + waveform.get_data()[1]) / 2;
+            // The midpoint between the two extremes. This used to read
+            // (data[0] + data[1]) / 2, which IS that midpoint for the 3-point
+            // analytical form [trough, peak, trough] and nothing at all for any
+            // other: on a SAMPLED triangle those are merely the first two
+            // samples. It went unnoticed while TRIANGULAR was unreachable for
+            // measured data, and returned 0.199 T instead of 0.266 T for the
+            // ABT #907 flybuck flux the moment it became reachable.
+            return (*max_element(waveform.get_data().begin(), waveform.get_data().end()) +
+                    *min_element(waveform.get_data().begin(), waveform.get_data().end())) / 2;
         case WaveformLabel::UNIPOLAR_TRIANGULAR:
             return *min_element(waveform.get_data().begin(), waveform.get_data().end());
         case WaveformLabel::RECTANGULAR:
@@ -256,6 +264,38 @@ Waveform WaveformProcessor::compress_waveform(const Waveform& waveform) {
     return compressedWaveform;
 }
 
+// The fraction of the period a triangle spends rising: trough to peak.
+//
+// This is what a triangle's duty cycle MEANS, and it is not what the mid-level
+// crossing measures. A triangle crosses its mid-level exactly halfway up and
+// halfway down whatever its ramp rates, so measure_duty_cycle_from_samples
+// answers 0.5 for a 0.1-duty triangle and a 0.9-duty one alike. That is correct
+// for a rectangle, whose level IS the thing that changes, and wrong here.
+//
+// Read off the time axis when there is one, so it is right for a compressed
+// waveform whose points are not equally spaced; sample indices otherwise.
+static double triangle_duty_from_samples(const Waveform& waveform) {
+    const auto& data = waveform.get_data();
+    const size_t numberPoints = data.size();
+    size_t peakIndex = std::distance(data.begin(), max_element(data.begin(), data.end()));
+    size_t troughIndex = std::distance(data.begin(), min_element(data.begin(), data.end()));
+
+    const auto timeOptional = waveform.get_time();
+    if (timeOptional && timeOptional->size() == numberPoints && numberPoints > 1) {
+        const auto& time = *timeOptional;
+        double period = (time.back() - time.front()) * numberPoints / (numberPoints - 1.0);
+        if (period > 0) {
+            double rise = time[peakIndex] - time[troughIndex];
+            if (rise < 0) {
+                rise += period;
+            }
+            return rise / period;
+        }
+    }
+    double rise = double((peakIndex + numberPoints - troughIndex) % numberPoints);
+    return rise / numberPoints;
+}
+
 // Measure the duty cycle straight from the samples: the fraction of the period the
 // signal spends above its mid-level, (max + min) / 2.
 //
@@ -320,7 +360,11 @@ double WaveformProcessor::try_guess_duty_cycle(Waveform waveform, WaveformLabel 
                 else if (waveform.get_time()->size() == 4) {
                     return ((waveform.get_time().value()[1] + waveform.get_time().value()[2]) / 2 - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
                 }
-                break;
+                // A MEASURED triangle keeps far more than four vertices, and
+                // breaking here dropped it through to the mid-level crossing —
+                // which reports 0.5 for every triangle whatever its ramps, so a
+                // 0.1-duty measurement and a 0.8-duty one came back identical.
+                return triangle_duty_from_samples(waveform);
             }
             case WaveformLabel::UNIPOLAR_TRIANGULAR: {
                 return (waveform.get_time().value()[1] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
@@ -400,6 +444,52 @@ double WaveformProcessor::try_guess_duty_cycle(Waveform waveform, WaveformLabel 
     return measure_duty_cycle_from_samples(waveform);
 }
 
+// Mean deviation from an ideal triangle of this waveform's own duty, over its
+// mean magnitude — the same ratio guess_sinusoidal_or_custom forms against a
+// reference sine, so the two shapes are judged on one scale.
+static double triangle_fit_error(const Waveform& waveform, double duty) {
+    const auto& data = waveform.get_data();
+    const size_t numberPoints = data.size();
+    double maximum = *max_element(data.begin(), data.end());
+    double minimum = *min_element(data.begin(), data.end());
+    double peakToPeak = maximum - minimum;
+    double offset = (maximum + minimum) / 2;
+    size_t troughIndex = std::distance(data.begin(), min_element(data.begin(), data.end()));
+
+    const auto timeOptional = waveform.get_time();
+    const bool useTime = timeOptional && timeOptional->size() == numberPoints && numberPoints > 1 &&
+                         (timeOptional->back() - timeOptional->front()) > 0;
+    double period = 0;
+    if (useTime) {
+        period = (timeOptional->back() - timeOptional->front()) * numberPoints / (numberPoints - 1.0);
+    }
+
+    double error = 0;
+    double area = 0;
+    for (size_t i = 0; i < numberPoints; ++i) {
+        // Position in the period measured FROM THE TROUGH, which is where the
+        // ideal triangle below starts its rise.
+        double position;
+        if (useTime) {
+            position = ((*timeOptional)[i] - (*timeOptional)[troughIndex]) / period;
+        }
+        else {
+            position = double((i + numberPoints - troughIndex) % numberPoints) / numberPoints;
+        }
+        position -= floor(position);
+        double shape = position < duty ? (position / duty) * 2 - 1
+                                       : 1 - ((position - duty) / (1 - duty)) * 2;
+        area += fabs(data[i]);
+        error += fabs((shape * peakToPeak / 2 + offset) - data[i]);
+    }
+    error /= numberPoints;
+    area /= numberPoints;
+    if (area == 0) {
+        return DBL_MAX;
+    }
+    return error / area;
+}
+
 // Decide between a sine and an unrecognised shape by comparing the samples against
 // a reference sine of the same peak-to-peak, offset and period.
 //
@@ -466,8 +556,7 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
     // happen to start at a rising zero crossing scored an enormous error and came
     // back CUSTOM — a cosine was never recognised as sinusoidal at all. Every
     // analytical waveform MKF generates itself starts at zero phase, which is why
-    // this survived; imported and measured data does not. It cost the CoreDataX
-    // MagNet import 195 of its 318 genuine sines, all of which start near 300°.
+    // this survived; imported and measured data does not.
     //
     // One DFT bin at the fundamental gives the phase outright: for A·sin(θ + φ)
     // the sin-projection goes as cos φ and the cos-projection as sin φ, so
@@ -500,6 +589,27 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
     }
     error /= area;
 
+    // Measured data never survives the vertex tests above — a real triangle
+    // carries enough noise that compression leaves it 27 to 32 points, never the
+    // 3 those tests demand — so before this fell through to CUSTOM, SINUSOIDAL
+    // and CUSTOM were the only two labels an imported waveform could ever get.
+    // A quarter of the CoreDataX exchange is triangular and was reaching CUSTOM
+    // that way, taking its duty with it.
+    //
+    // The sine above is recognised by a TOLERANCE, not by exactness, which is why
+    // it survives noise. Hold a triangle to the same standard, on the same scale:
+    // fit one of the waveform's own measured duty and take whichever reference
+    // sits closer, provided it is inside the tolerance. On 200 real MagNet
+    // triangles this scores a median 2.5% and puts 195 of them under 5%.
+    double triangleDuty = triangle_duty_from_samples(waveform);
+    double triangleError = DBL_MAX;
+    if (triangleDuty > 0 && triangleDuty < 1) {
+        triangleError = triangle_fit_error(waveform, triangleDuty);
+    }
+
+    if (triangleError < error) {
+        return triangleError < 0.05 ? WaveformLabel::TRIANGULAR : WaveformLabel::CUSTOM;
+    }
     if (error < 0.05) {
         return WaveformLabel::SINUSOIDAL;
     }
@@ -529,6 +639,21 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
             compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[3]) {
                 return WaveformLabel::UNIPOLAR_TRIANGULAR;
+        }
+        else if (compressedWaveform.get_data().size() == 4 &&
+            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / numberPointsSampledWaveforms) &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[3] &&
+            (compressedWaveform.get_data()[1] - compressedWaveform.get_data()[0]) *
+            (compressedWaveform.get_data()[2] - compressedWaveform.get_data()[0]) > 0) {
+                // A triangle whose apex falls BETWEEN two samples: compression
+                // cannot pick one vertex, so it emits both, and the 3-point test
+                // above misses a waveform that is a perfect triangle. The apex only
+                // lands on a sample when the duty divides the sample count, which
+                // is why an ideal 1024-point triangle was recognised at duty 0.5
+                // and called CUSTOM at 0.1, 0.2, 0.3, 0.7 and 0.8. The two extra
+                // points are adjacent samples on the same side of the trough;
+                // try_guess_duty_cycle already averages their times.
+                return WaveformLabel::TRIANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
             !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
