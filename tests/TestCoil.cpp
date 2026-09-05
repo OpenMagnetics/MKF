@@ -15581,3 +15581,49 @@ TEST_CASE("Test_Failed_Wind_Does_Not_Poison_The_Coil", "[coil][wind][smoke-test]
     REQUIRE(coil.get_turns_description());
     CHECK(coil.get_turns_description()->size() > 0);
 }
+
+// ABT #1060: the proportions handed to wind() are shares of ONE window, and only the per-winding
+// bound was checked. {1, 1} on a two-winding toroid gave every section the full 360 deg, centred
+// the second at 540 deg on top of the first, and the fit check still said true. The honest answer
+// to an over-claimed window is a throw; a valid split of the same ring winds two real sectors.
+TEST_CASE("Test_Wind_Proportions_Over_One_Window_Throw_And_Valid_Split_Winds_Sectors", "[constructive-model][coil][round-winding-window][smoke-test]") {
+    clear_databases();
+    settings.reset();
+    settings.set_use_toroidal_cores(true);
+    settings.set_coil_try_rewind(false);
+    std::vector<int64_t> numberTurns = {19, 19};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string coreShape = "T 20/10/7";
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, 1,
+                                                    WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
+                                                    CoilAlignment::CENTERED, CoilAlignment::SPREAD);
+
+    // Two windings each claiming the whole window is an input error, not a layout.
+    REQUIRE_THROWS_AS(coil.wind({1.0, 1.0}, {0, 1}, 1), std::invalid_argument);
+    REQUIRE_THROWS_AS(coil.wind({0.7, 0.4}, {0, 1}, 1), std::invalid_argument);
+
+    // The same ring split honestly winds two sectors a half-turn apart, every layer inside its own.
+    REQUIRE(coil.wind({0.5, 0.5}, {0, 1}, 1));
+    auto sections = coil.get_sections_description().value();
+    std::vector<Section> conductionSections;
+    for (auto& section : sections) {
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            conductionSections.push_back(section);
+        }
+    }
+    REQUIRE(conductionSections.size() == 2);
+    double separation = std::fmod(std::abs(conductionSections[1].get_coordinates()[1] - conductionSections[0].get_coordinates()[1]), 360.0);
+    UNSCOPED_INFO("sector centres " << conductionSections[0].get_coordinates()[1] << " and " << conductionSections[1].get_coordinates()[1] << " deg");
+    CHECK_THAT(separation, Catch::Matchers::WithinAbs(180.0, 5.0));
+    for (auto& section : conductionSections) {
+        CHECK(section.get_coordinates()[1] >= 0);
+        CHECK(section.get_coordinates()[1] <= 360);
+        for (auto& layer : coil.get_layers_by_section(section.get_name())) {
+            double overhang = std::abs(layer.get_coordinates()[1] - section.get_coordinates()[1]) + layer.get_dimensions()[1] / 2 - section.get_dimensions()[1] / 2;
+            UNSCOPED_INFO(layer.get_name() << " overhangs its section by " << overhang << " deg");
+            CHECK(overhang <= 1e-6);
+        }
+    }
+    CHECK(coil.are_sections_and_layers_fitting());
+    settings.reset();
+}

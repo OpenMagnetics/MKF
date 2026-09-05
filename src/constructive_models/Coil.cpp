@@ -7018,6 +7018,29 @@ std::vector<std::pair<size_t, double>> Coil::get_ordered_sections(double spaceFo
         numberSectionsPerWinding[windingIndex] += repetitions;
     }
 
+    // ABT #1060: the proportions are shares of ONE window, so the windings in the pattern must
+    // not claim more than the whole of it between them. Only the per-winding bound was checked,
+    // and {1, 1} on a two-winding toroid sailed through: every section got the full 360 deg, the
+    // second was centred at 540 deg on top of the first, and the fit check still said true. An
+    // over-claimed window is an input error, not something to compact away.
+    double claimedProportion = 0;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        if (numberSectionsPerWinding[windingIndex] > 0) {
+            claimedProportion += proportionPerWinding[windingIndex];
+        }
+    }
+    constexpr double proportionTolerance = 1e-6;
+    if (claimedProportion > 1 + proportionTolerance) {
+        std::string claims;
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            if (numberSectionsPerWinding[windingIndex] > 0) {
+                claims += (claims.empty() ? "" : ", ") + get_name(windingIndex) + ": " + std::to_string(proportionPerWinding[windingIndex]);
+            }
+        }
+        throw std::invalid_argument("proportionPerWinding over the windings in the pattern must not exceed 1, got " +
+                                    std::to_string(claimedProportion) + " (" + claims + ")");
+    }
+
     for (size_t repetitionIndex = 0; repetitionIndex < repetitions; ++repetitionIndex) {
         for (auto windingIndex : pattern) {
             if (roundFloat(proportionPerWinding[windingIndex], 6) > 1) {
@@ -13894,28 +13917,16 @@ void Coil::try_rewind() {
     auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
     double windingWindowRemainingRestrictiveDimension;
     double windingWindowRemainingRestrictiveDimensionAccordingToSections;
-    double windingWindowRestrictiveDimension;
+    double windingWindowDimensionForProportions;
     if (sectionOrientation == WindingOrientation::OVERLAPPING) {
         windingWindowRemainingRestrictiveDimensionAccordingToSections = windingWindowDimensions[0];
         windingWindowRemainingRestrictiveDimension = windingWindowDimensions[0];
-        windingWindowRestrictiveDimension = windingWindowDimensions[0];
+        windingWindowDimensionForProportions = windingWindowDimensions[0];
     }
     else {
         windingWindowRemainingRestrictiveDimensionAccordingToSections = windingWindowDimensions[1];
         windingWindowRemainingRestrictiveDimension = windingWindowDimensions[1];
-        windingWindowRestrictiveDimension = windingWindowDimensions[1];
-    }
-
-
-    for (auto& section : sections) {
-        if (section.get_type() == ElectricalType::INSULATION) {
-            if (sectionOrientation == WindingOrientation::OVERLAPPING) {
-                windingWindowRestrictiveDimension -= section.get_dimensions()[0];
-            }
-            else {
-                windingWindowRestrictiveDimension -= section.get_dimensions()[1];
-            }
-        }
+        windingWindowDimensionForProportions = windingWindowDimensions[1];
     }
 
     for (auto& section : sections) {
@@ -14066,7 +14077,14 @@ void Coil::try_rewind() {
         // double proportionOfNeededForThisWinding = extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double extraSpaceGottenByThisWinding = windingWindowRemainingRestrictiveDimensionAccordingToSections * extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double newSpaceGottenByThisWinding = currentSpace + extraSpaceGottenByThisWinding;
-        double newProportionGottenByThisWinding = newSpaceGottenByThisWinding / windingWindowRestrictiveDimension;
+        // ABT #1060: a proportion is a share of the FULL window -- get_ordered_sections hands out
+        // spaceForSections x proportion and add_insulation_to_sections then carves each insulation
+        // out of its two neighbours -- and currentSpace above already carries the winding's half
+        // insulations for that reason. Dividing that by the window NET of insulation over-claimed
+        // the window by exactly the insulation counted, 1.6 % on Test_Coil_Json_5, which the
+        // planner now refuses instead of quietly compacting. Same base on both sides: the sum of
+        // the new proportions is then (sections + insulation + leftover) / window <= 1.
+        double newProportionGottenByThisWinding = newSpaceGottenByThisWinding / windingWindowDimensionForProportions;
 
         if (extraSpaceGottenByThisWinding < 0 || std::isnan(extraSpaceGottenByThisWinding)) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "extraSpaceGottenByThisWinding cannot be negative or nan: " + std::to_string(extraSpaceGottenByThisWinding));
