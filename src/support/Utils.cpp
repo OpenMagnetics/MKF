@@ -1088,9 +1088,15 @@ std::vector<CoreShape> get_shapes(bool includeToroidal) {
 
     std::vector<CoreShape> shapes;
 
-    for (auto& datum : coreShapeDatabase) {
-        if (includeToroidal || (datum.second.get_family() != CoreShapeFamily::T)) {
-            shapes.push_back(datum.second);
+    // ABT #1070: coreShapeDatabase is an alias INDEX (ABT #924), so iterating its entries
+    // hands back a shape once per alias — 2021 rows for 1581 shapes in the web shape table,
+    // and 2-5x redundant work in every bulk consumer. Only canonical keys are catalogue entries.
+    for (auto& [key, shape] : coreShapeDatabase) {
+        if (!is_canonical_core_shape_key(key, shape)) {
+            continue;
+        }
+        if (includeToroidal || (shape.get_family() != CoreShapeFamily::T)) {
+            shapes.push_back(shape);
         }
     }
 

@@ -282,6 +282,27 @@ namespace {
         REQUIRE(find_core_shape_by_name("EFD 25").get_name().value() == "EFD 25/13/9");
     }
 
+    // ABT #1070: get_shapes() iterated the alias index too, so a shape with N aliases came
+    // back N+1 times (the web shape table showed "E 22/6/16" five times) and bulk consumers
+    // such as calculate_all_core_data_from_shapes processed every aliased shape repeatedly.
+    TEST_CASE("Test_Get_Shapes_Returns_Each_Shape_Once", "[support][utils][smoke-test]") {
+        clear_databases();
+        settings.reset();
+        auto shapes = get_shapes(true);
+        auto listedNames = get_core_shape_names();
+
+        std::set<std::string> seen;
+        for (const auto& shape : shapes) {
+            REQUIRE(shape.get_name());
+            REQUIRE(seen.insert(shape.get_name().value()).second);  // no shape twice
+        }
+        // Same catalogue as the name listing: every listed name, nothing but listed names.
+        std::set<std::string> listed(listedNames.begin(), listedNames.end());
+        REQUIRE(seen == listed);
+        REQUIRE(seen.count("EFD 25/13/9") == 1);
+        REQUIRE(seen.count("EFD 25") == 0);  // an alias, still resolvable, not a catalogue entry
+    }
+
     // ABT #924: "RM 6-S" is the real name of one shape AND an alias of "RM 6/I". The alias
     // used to overwrite the canonical entry, so asking for RM 6-S handed back RM 6/I —
     // a part without the centre hole.
