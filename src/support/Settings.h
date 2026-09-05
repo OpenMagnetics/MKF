@@ -165,7 +165,7 @@ class Settings
         bool _wireAdviserIncludeLitz = true;
         bool _wireAdviserIncludeRound = true;
         bool _wireAdviserAllowRectangularInToroidalCores = false;
-        // Wire standard the advisers restrict themselves to (ABT #1101: the web follows the
+        // Wire standard the advisers restrict themselves to (ABT #1110: the web follows the
         // profile unit system, IEC 60317 under SI and NEMA MW 1000 C under imperial). Empty
         // means no preference: the wire adviser takes any standard and the coil adviser
         // keeps its built-in preference (Defaults::commonWireStandard).

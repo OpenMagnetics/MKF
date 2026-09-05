@@ -115,7 +115,7 @@ class WireAdviser {
             auto defaults = Defaults();
             _maximumEffectiveCurrentDensity = defaults.maximumEffectiveCurrentDensity;
             _maximumNumberParallels = defaults.maximumNumberParallels;
-            // ABT #1101: the preferred standard from Settings; empty keeps every standard.
+            // ABT #1110: the preferred standard from Settings; empty keeps every standard.
             _commonWireStandard = Settings::GetInstance().get_preferred_wire_standard();
         }
         virtual ~WireAdviser() = default;

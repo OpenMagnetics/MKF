@@ -116,7 +116,7 @@ namespace {
         REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    // ABT #1101: the preferred wire standard comes from Settings (the web sets it from the
+    // ABT #1110: the preferred wire standard comes from Settings (the web sets it from the
     // profile unit system), so an adviser built after the setting only offers that standard.
     TEST_CASE("Test_Round_Preferred_Standard_From_Settings", "[constructive-model][wire-adviser][wire-standard][smoke-test]") {
         settings.reset();

@@ -108,7 +108,7 @@ class CoilAdviser : public WireAdviser {
         std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;
         std::vector<MagneticFilterOperation> _loadedFilterFlow;
         OpenMagnetics::WireAdviser _wireAdviser;
-        // ABT #1101: Settings' preferred wire standard wins; with no preference the coil
+        // ABT #1110: Settings' preferred wire standard wins; with no preference the coil
         // adviser keeps its built-in one (Defaults::commonWireStandard, a preference that
         // falls back to every standard when the catalog has none of it, see get_advised_coil).
         std::optional<WireStandard> _commonWireStandard = Settings::GetInstance().get_preferred_wire_standard().has_value()
