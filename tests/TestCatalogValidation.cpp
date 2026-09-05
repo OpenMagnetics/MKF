@@ -571,3 +571,48 @@ TEST_CASE("Test_Family_Dimensions_Still_Cover_Every_Published_Shape", "[catalog]
     }
     CHECK(checked > 1000);
 }
+
+// A moulded body may be wound on an OVAL post. Several WE moulded families state both axes of the
+// bore ('1.5/1.0'), and read as a single diameter the pole area is wrong — which makes the winding
+// window (E - F)/2 wrong with it, since the window is measured from the post. F is the smaller
+// axis and F2 the larger, matching the nomenclature the other oblong-column families already use.
+TEST_CASE("Test_Molded_Oval_Post_Uses_Both_Axes", "[catalog][constructive-model][smoke-test]") {
+    settings.reset();
+    clear_databases();
+
+    auto shape = [](double F, std::optional<double> F2) {
+        json j = {{"type", "custom"}, {"family", "molded"}, {"name", "MLD oval probe"},
+                  {"magneticCircuit", "closed"}, {"aliases", json::array()},
+                  {"dimensions", {{"A", 0.004}, {"B", 0.002}, {"C", 0.004},
+                                  {"D", 0.0009}, {"E", 0.0030}, {"F", F}}}};
+        if (F2) {
+            j["dimensions"]["F2"] = *F2;
+        }
+        return CoreShape(j);
+    };
+
+    // Round: no F2 at all. The post is a circle of F and nothing about this changes.
+    auto roundPiece = CorePiece::factory(shape(0.0010, std::nullopt), true);
+    auto roundColumn = roundPiece->get_columns()[0];
+    REQUIRE(roundColumn.get_shape() == ColumnShape::ROUND);
+    CHECK(std::abs(roundColumn.get_area() - std::numbers::pi / 4 * 0.0010 * 0.0010) < 1e-9);   // roundFloat quantises areas at 1e-9
+
+    // Oval: F 1.0 mm x F2 1.5 mm. A stadium is a rectangle with a half-disc on each end, so the
+    // area is pi/4*F^2 + (F2 - F)*F — strictly MORE than the circle, which is the whole point:
+    // reading only F understates the pole and therefore overstates the reluctance.
+    auto ovalPiece = CorePiece::factory(shape(0.0010, 0.0015), true);
+    auto ovalColumn = ovalPiece->get_columns()[0];
+    REQUIRE(ovalColumn.get_shape() == ColumnShape::OBLONG);
+    CHECK(std::abs(ovalColumn.get_width() - 0.0010) < 1e-9);
+    CHECK(std::abs(ovalColumn.get_depth() - 0.0015) < 1e-9);
+    CHECK(std::abs(ovalColumn.get_area() -
+                   (std::numbers::pi / 4 * 0.0010 * 0.0010 + (0.0015 - 0.0010) * 0.0010)) < 1e-9);   // roundFloat quantises areas at 1e-9
+    CHECK(ovalColumn.get_area() > roundColumn.get_area());
+
+    // A degenerate or inverted F2 must NOT silently produce an oblong post: F2 == F is a circle,
+    // and F2 < F would mean the "larger" axis is smaller, which is a data error, not a shape.
+    CHECK(CorePiece::factory(shape(0.0010, 0.0010), true)->get_columns()[0].get_shape()
+          == ColumnShape::ROUND);
+    CHECK(CorePiece::factory(shape(0.0010, 0.0008), true)->get_columns()[0].get_shape()
+          == ColumnShape::ROUND);
+}

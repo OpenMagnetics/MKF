@@ -2540,11 +2540,28 @@ class CorePieceMolded : public CorePiece {
         std::vector<ColumnElement> columns;
         ColumnElement mainColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
-        mainColumn.set_shape(ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat(dimensions["F"]));
-        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        // An OVAL post, when the shape states one. Several Wurth moulded families are wound on an
+        // obround pole and their sheets give both axes ('1.5/1.0'); read as one diameter both the
+        // pole area and the winding window (E - F)/2 come out wrong. F is the smaller axis and F2
+        // the larger -- the nomenclature the oblong-column families already use (F width, F2
+        // depth) -- and the area is theirs too: a stadium is a rectangle with a half-disc on each
+        // end. Absent F2, or F2 <= F, nothing changes and the post stays round.
+        auto f2 = dimensions.find("F2");
+        bool oblongPost = f2 != dimensions.end() && f2->second > dimensions["F"];
+        if (oblongPost) {
+            mainColumn.set_shape(ColumnShape::OBLONG);
+            mainColumn.set_width(roundFloat(dimensions["F"]));
+            mainColumn.set_depth(roundFloat(f2->second));
+            mainColumn.set_area(roundFloat(std::numbers::pi / 4 * pow(dimensions["F"], 2) +
+                                           (f2->second - dimensions["F"]) * dimensions["F"]));
+        }
+        else {
+            mainColumn.set_shape(ColumnShape::ROUND);
+            mainColumn.set_width(roundFloat(dimensions["F"]));
+            mainColumn.set_depth(roundFloat(dimensions["F"]));
+            mainColumn.set_area(roundFloat(std::numbers::pi / 4 * pow(dimensions["F"], 2)));
+        }
         mainColumn.set_height(roundFloat(dimensions["D"]));
-        mainColumn.set_area(roundFloat(std::numbers::pi / 4 * pow(dimensions["F"], 2)));
         mainColumn.set_coordinates({0, 0, 0});
         columns.push_back(mainColumn);
         // The return shell: one annular-equivalent lateral column wrapping the cavity.
