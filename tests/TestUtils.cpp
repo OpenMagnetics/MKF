@@ -1,6 +1,7 @@
 #include <source_location>
 #include "support/Painter.h"
 #include "support/Utils.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "support/Settings.h"
 #include "TestingUtils.h"
 #include "json.hpp"
@@ -704,6 +705,47 @@ namespace {
         REQUIRE(autocompletedMas.get_outputs()[0].get_core_losses());
         REQUIRE(autocompletedMas.get_outputs()[0].get_winding_losses());
         REQUIRE(autocompletedMas.get_outputs()[0].get_inductance());
+    }
+
+    // ABT #1071: the web builder swaps the SHAPE of an existing core and keeps everything else,
+    // so a drum picked after a gapped PQ arrives with that PQ's subtractive gap. Autocomplete
+    // must drop it (as it does for toroids), not hand the inductance model a gapped open core.
+    TEST_CASE("Test_Magnetic_Autocomplete_Drum_Drops_Stale_Gap", "[support][utils][drum][open-core][smoke-test]") {
+        settings.reset();
+        clear_databases();
+
+        auto staleGap = json::array();
+        staleGap.push_back(json{{"type", "subtractive"}, {"length", 0.0005}});
+        auto core = OpenMagneticsTesting::get_quick_core("Bobbin 9677182209", staleGap, 1, "77");
+        // Mimic the builder: the type is still the previous core's.
+        core.get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
+
+        OpenMagnetics::Coil coil;
+        OpenMagnetics::Winding winding;
+        winding.set_name("Primary");
+        winding.set_number_turns(95);
+        winding.set_number_parallels(1);
+        winding.set_wire("Round 0.5 - Grade 1");
+        coil.get_mutable_functional_description().push_back(winding);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto autocompleted = OpenMagnetics::magnetic_autocomplete(magnetic);
+        auto& functionalDescription = autocompleted.get_core().get_functional_description();
+        REQUIRE(functionalDescription.get_type() == CoreType::OPEN_SHAPE);
+        for (auto& gap : functionalDescription.get_gapping()) {
+            // Only residual bookkeeping entries may remain (process_gap adds them to every
+            // non-toroidal core); the stale 0.5 mm subtractive gap must be gone.
+            REQUIRE(gap.get_type() == GapType::RESIDUAL);
+        }
+
+        // And the inductance model accepts the result (this is the call the builder makes).
+        OpenMagnetics::MagnetizingInductance magnetizingInductance;
+        double inductance = magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(
+            autocompleted.get_mutable_core(), autocompleted.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
+        REQUIRE(inductance > 0);
+        settings.reset();
     }
 
     TEST_CASE("Test_Mas_Autocomplete_Json", "[support][utils][bug][smoke-test]") {

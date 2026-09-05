@@ -2689,9 +2689,13 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM ||
              magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::ROD) {
         // Open-circuit single piece (drum ABT #331, rod ABT #933): honest type, and gapping is
-        // meaningless — the return path is already air.
+        // meaningless — the return path is already air. Drop it like the toroid branch does:
+        // a core carried over from a gapped two-piece set (the web builder swaps the shape and
+        // keeps the rest) otherwise reaches the inductance model with that stale gap and is
+        // refused as "an open-circuit core cannot be gapped" (ABT #1071).
         magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::OPEN_SHAPE);
         shape.set_magnetic_circuit(MagneticCircuit::OPEN);
+        magnetic.get_mutable_core().get_mutable_functional_description().get_mutable_gapping().clear();
     }
     else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::MOLDED) {
         // Molded composite body (ABT #357): single pressed solid, closed in-material —
