@@ -1226,8 +1226,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     }
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     OpenMagnetics::InitialPermeability initialPermeability;
-    size_t timeout = 10;
-    double modifiedInitialPermeability;
+    size_t timeout;
     double currentInitialPermeability;
 
     ReluctanceModels reluctanceModelEnum;
@@ -1242,22 +1241,22 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         inputs->set_operating_point_by_index(operatingPoint, 0);
     }
 
-    while (true) {
-        if (!excitation.get_magnetizing_current()) {
-            break;
-        }
+    // DC bias (ABT #1093). The flux density the target inductance imposes is known
+    // (B = N·I/(R·Ae) with the NEEDED reluctance: at the solution the gapped core has
+    // exactly that reluctance), and the material permeability under that bias is its
+    // reversible permeability at the field strength that carries B on the material's
+    // own magnetisation curve. The former fixed-point iteration µ ← µ(B/(µ0·µ)) is a
+    // secant through the incremental curve; it diverges wherever |dµ/dH|·B/(µ0·µ²) > 1,
+    // the knee of any ferrite, ran away to a saturated permeability, and the search then
+    // clamped at the residual gap for any target above a few tens of µH.
+    if (excitation.get_magnetizing_current()) {
         auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), neededTotalReluctance, numberTurnsPrimary);
         auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
-        auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
-
-        modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, magneticFieldStrength.get_processed().value().get_mutable_offset(), frequency);
-
-        if (fabs(currentInitialPermeability - modifiedInitialPermeability) < 1 || timeout == 0) {
-            break;
-        }
-        else {
-            currentInitialPermeability = modifiedInitialPermeability;
-            timeout--;
+        double biasFluxDensity = fabs(magneticFluxDensity.get_processed().value().get_offset());
+        if (biasFluxDensity > 0) {
+            auto material = core.resolve_material();
+            double biasFieldStrength = InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(material, biasFluxDensity, temperature, frequency);
+            currentInitialPermeability = initialPermeability.get_initial_permeability(material, temperature, biasFieldStrength, frequency);
         }
     }
 

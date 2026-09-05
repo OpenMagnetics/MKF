@@ -175,6 +175,53 @@ double InitialPermeability::has_temperature_dependency(CoreMaterial coreMaterial
     }
 }
 
+double InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(CoreMaterial coreMaterial, double biasFluxDensity, double temperature, std::optional<double> frequency) {
+    if (biasFluxDensity < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "A DC bias flux density cannot be negative: " + std::to_string(biasFluxDensity) + " T");
+    }
+    if (biasFluxDensity == 0) {
+        return 0;
+    }
+    double saturationFluxDensity = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
+    if (biasFluxDensity > saturationFluxDensity) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "The DC bias puts " + std::to_string(biasFluxDensity) + " T in material " + coreMaterial.get_name() +
+            ", above its saturation of " + std::to_string(saturationFluxDensity) + " T at " + std::to_string(temperature) +
+            " °C: no gap holds the target inductance at that bias, fewer turns or a larger core are needed");
+    }
+
+    // B(H) = µ0·∫0^H µ_rev(h)·dh, marched with the trapezoid rule on a grid fine against the
+    // knee (400 steps to the saturation field strength). µ_rev is floored at 1: the vacuum term
+    // B = µ0·(H + M) never vanishes, and the datasheet fits (1/(a + b·H^c) and kin) fall below
+    // it when extrapolated. The march ends inside the step that crosses the target, which is
+    // then interpolated linearly.
+    double saturationFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
+    double step = std::max(saturationFieldStrength / 400., 0.01);
+    double vacuumPermeability = Constants().vacuumPermeability;
+    auto reversiblePermeabilityAt = [&](double fieldStrength) {
+        return std::max(1.0, get_initial_permeability(coreMaterial, temperature, fieldStrength, frequency));
+    };
+    double fieldStrength = 0;
+    double fluxDensity = 0;
+    double previousPermeability = reversiblePermeabilityAt(0);
+    double fieldStrengthLimit = 1000 * saturationFieldStrength;
+    while (fieldStrength < fieldStrengthLimit) {
+        double nextFieldStrength = fieldStrength + step;
+        double nextPermeability = reversiblePermeabilityAt(nextFieldStrength);
+        double nextFluxDensity = fluxDensity + vacuumPermeability * 0.5 * (previousPermeability + nextPermeability) * step;
+        if (nextFluxDensity >= biasFluxDensity) {
+            return fieldStrength + (biasFluxDensity - fluxDensity) / (nextFluxDensity - fluxDensity) * step;
+        }
+        fieldStrength = nextFieldStrength;
+        fluxDensity = nextFluxDensity;
+        previousPermeability = nextPermeability;
+    }
+    throw std::runtime_error("The DC-bias permeability curve of material " + coreMaterial.get_name() + " integrates to only " +
+                             std::to_string(fluxDensity) + " T at " + std::to_string(fieldStrengthLimit) + " A/m, below the " +
+                             std::to_string(biasFluxDensity) + " T asked, although that is under its saturation of " +
+                             std::to_string(saturationFluxDensity) + " T: the material's DC-bias factor is inconsistent with its saturation data");
+}
+
 double InitialPermeability::has_magnetic_field_dc_bias_dependency(CoreMaterial coreMaterial) {
     auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
     if (std::holds_alternative<PermeabilityPoint>(initialPermeabilityData)) {

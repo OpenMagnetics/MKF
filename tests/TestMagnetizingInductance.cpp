@@ -459,6 +459,47 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(gapping[0].get_length(), max_error * expectedValue));
     }
 
+    // ABT #1093: the DC-bias permeability used to come from a fixed-point iteration that
+    // diverges at the B-H knee; with 2 A of bias on a 15-turn P 11/7/I the search ran away to
+    // a saturated permeability and returned the residual gap for any target above ~20 µH.
+    // The bias is now solved on the material's own B-H curve, so the gap is real and the
+    // bias-aware inductance of the gapped core lands on the target.
+    TEST_CASE("Test_Gapping_With_Dc_Bias_Does_Not_Collapse_To_Residual", "[physical-model][magnetizing-inductance][gapping][dc-bias][smoke-test]") {
+        settings.reset();
+        clear_databases();
+        double dcCurrent = 2;
+        double ambientTemperature = 25;
+        double desiredMagnetizingInductance = 36.5e-6;
+        double numberTurns = 15;
+        double frequency = 100000;
+        std::string coreShape = "P 11/7/I";
+        std::string coreMaterial = "98";
+        Core core;
+        OpenMagnetics::Coil winding;
+        OpenMagnetics::Inputs inputs;
+        MagnetizingInductance magnetizing_inductance("ZHANG");
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, desiredMagnetizingInductance, {},
+                                coreShape, coreMaterial, core, winding, inputs, 1);
+
+        auto gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(
+            core, winding, &inputs, GappingType::GROUND, 6);
+        UNSCOPED_INFO("ground gap " << gapping[0].get_length() * 1e6 << " um");
+        REQUIRE(gapping[0].get_length() > 50e-6);   // not the 5 um residual
+        REQUIRE(gapping[0].get_length() < 400e-6);
+
+        Core gappedCore(core);
+        gappedCore.get_mutable_functional_description().set_gapping(gapping);
+        gappedCore.set_processed_description(std::nullopt);
+        gappedCore.process_data();
+        gappedCore.process_gap();
+        auto operatingPoint = inputs.get_operating_point(0);
+        double inductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(gappedCore, winding, &operatingPoint)
+                                .get_magnetizing_inductance().get_nominal().value();
+        UNSCOPED_INFO("bias-aware inductance " << inductance * 1e6 << " uH for target " << desiredMagnetizingInductance * 1e6);
+        REQUIRE_THAT(inductance, Catch::Matchers::WithinRel(desiredMagnetizingInductance, 0.25));
+        settings.reset();
+    }
+
     TEST_CASE("Test_Gapping_U_Shape_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
@@ -556,6 +597,14 @@ namespace {
         REQUIRE(7UL == gapping.size());
     }
 
+    // ABT #1093: these three web-shaped cases used to carry a 46 A DC current (41..51 A) that put
+    // 1.7 T, 765 T and 7.6 T in 3C95 (saturation 0.53 T); the old fixed-point bias iteration
+    // silently produced a saturated permeability and some gap. The bias is now solved on the
+    // material's magnetisation curve and a flux density above saturation is refused (see
+    // Test_Gapping_Bias_Beyond_Saturation_Throws), so the currents are 2 A DC with the same
+    // 10 A peak-to-peak, and Test_Gapping_Web asks 4.65 µH of its single turn instead of 4.65 mH
+    // (a thousand times the ungapped AL of an ETD 54). The cases still exercise what they were
+    // written for: the web JSON goes through distributed / ground gapping without crashing.
     TEST_CASE("Test_Gapping_Classic_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
@@ -608,7 +657,7 @@ namespace {
             "turnsRatios": []}, "operatingPoints": [{"conditions": {"ambientRelativeHumidity": null,
             "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding":
             [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null,
-            "data": [41.0, 51.0, 41.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}},
+            "data": [-3.0, 7.0, -3.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}},
             "frequency": 100000.0, "magneticField": null, "magneticFluxDensity": null, "magnetizingCurrent":
             null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null,
             "waveform": {"ancillaryLabel": null, "data": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996,
@@ -625,6 +674,30 @@ namespace {
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
 
         REQUIRE(gapping.size() == 5);
+    }
+
+    TEST_CASE("Test_Gapping_Bias_Beyond_Saturation_Throws", "[physical-model][magnetizing-inductance][gapping][dc-bias][smoke-test]") {
+        settings.reset();
+        clear_databases();
+        // 46 A of DC through 40 turns asking 412 µH on an ETD 29 puts ~6 T in the ferrite: no gap
+        // holds that inductance at that bias. Refused loudly instead of returning a gap that does
+        // not deliver the target (ABT #1093).
+        double dcCurrent = 46;
+        double ambientTemperature = 25;
+        double desiredMagnetizingInductance = 412.7e-6;
+        double numberTurns = 40;
+        double frequency = 100000;
+        std::string coreShape = "ETD 29";
+        std::string coreMaterial = "3C97";
+        Core core;
+        OpenMagnetics::Coil winding;
+        OpenMagnetics::Inputs inputs;
+        MagnetizingInductance magnetizing_inductance("ZHANG");
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, desiredMagnetizingInductance, {},
+                                coreShape, coreMaterial, core, winding, inputs, 10);
+        REQUIRE_THROWS_WITH(magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, GappingType::GROUND, 5),
+                            Catch::Matchers::ContainsSubstring("above its saturation"));
+        settings.reset();
     }
 
     TEST_CASE("Test_Gapping_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
@@ -654,12 +727,12 @@ namespace {
         json inputsData = json::parse(
             R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null,
             "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum":
-            null, "maximum": null, "minimum": null, "nominal": 0.004654652816558039}, "name": null,
+            null, "maximum": null, "minimum": null, "nominal": 4.654652816558039e-06}, "name": null,
             "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null,
             "turnsRatios": []}, "operatingPoints": [{"conditions": {"ambientRelativeHumidity": null,
             "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding":
             [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null,
-            "data": [41.0, 51.0, 41.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}},
+            "data": [-3.0, 7.0, -3.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}},
             "frequency": 100000.0, "magneticField": null, "magneticFluxDensity": null, "magnetizingCurrent":
             null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null,
             "waveform": {"ancillaryLabel": null, "data": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996,
@@ -772,7 +845,7 @@ namespace {
             "turnsRatios": []}, "operatingPoints": [{"conditions": {"ambientRelativeHumidity": null,
             "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding":
             [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null,
-            "data": [41.0, 51.0, 41.0], "numberPeriods": null, "time": [0.0, 2.5e-06, 1e-05]}}, "frequency":
+            "data": [-3.0, 7.0, -3.0], "numberPeriods": null, "time": [0.0, 2.5e-06, 1e-05]}}, "frequency":
             100000.0, "magneticField": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name":
             "My Operating Point"}], "name": null}]})");
         GappingType gappingType = magic_enum::enum_cast<GappingType>("GROUND").value();

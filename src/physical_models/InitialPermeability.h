@@ -60,6 +60,16 @@ class InitialPermeability {
         static double get_initial_permeability_temperature_dependent(CoreMaterial coreMaterial, double temperature);
         static double get_initial_permeability_frequency_dependent(CoreMaterial coreMaterial, double frequency);
         static double get_initial_permeability_magnetic_field_dc_bias_dependent(CoreMaterial coreMaterial, double magneticFieldDcBias);
+        // ABT #1093: the field strength H_dc that carries a given DC flux density in the material.
+        // The datasheet bias curve is the REVERSIBLE (incremental) permeability, dB/dH along the
+        // magnetisation curve, so B(H) = µ0·∫0^H µ_rev(h)·dh must be integrated and inverted; the
+        // secant B = µ0·µ_rev(H)·H is wrong past the knee, and the fixed point µ ← µ_rev(B/(µ0·µ))
+        // diverges there. Throws when biasFluxDensity exceeds the material saturation at that
+        // temperature: no field strength holds that flux, the design is infeasible.
+        static double get_magnetic_field_dc_bias_for_flux_density(CoreMaterial coreMaterial,
+                                        double biasFluxDensity,
+                                        double temperature,
+                                        std::optional<double> frequency = std::nullopt);
         static std::vector<PermeabilityPoint> sample_initial_permeability_by_frequency_modifier(PermeabilityPoint permeabilityPoint);
         static double calculate_frequency_for_initial_permeability_drop(CoreMaterial coreMaterial, double percentageDrop, double maximumError = 0.01);
         static std::vector<size_t> get_only_temperature_dependent_indexes(CoreMaterial coreMaterial);
