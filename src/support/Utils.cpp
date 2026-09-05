@@ -937,7 +937,15 @@ std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std
     // answerable for every buildable family. Scanning the database alone returned an empty
     // list for the eleven families that ship no bare-core record (ABT #1007), so the builder
     // offered the family and then no dimension fields, and a custom shape could not be made.
-    std::vector<std::string> distinctDimensions = get_core_shape_family_required_dimensions(family);
+    //
+    // Family-level ONLY. A subtype query asks a narrower question — which dimensions THIS
+    // subtype's published shapes carry — and seeding it with the whole family's requirements
+    // answers the wrong one: UR subtype "2" gained a dimension no UR-2 shape has. A family with
+    // no catalogue shape has no subtypes either, so the ABT #1007 case is unaffected.
+    std::vector<std::string> distinctDimensions;
+    if (!familySubtype) {
+        distinctDimensions = get_core_shape_family_required_dimensions(family);
+    }
 
     // Plus whatever the published shapes additionally carry. These are real: some are optional
     // geometry the class reads behind a guard (drum's A2, a toroid's R/r0), and some this
