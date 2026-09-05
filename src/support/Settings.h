@@ -165,6 +165,11 @@ class Settings
         bool _wireAdviserIncludeLitz = true;
         bool _wireAdviserIncludeRound = true;
         bool _wireAdviserAllowRectangularInToroidalCores = false;
+        // Wire standard the advisers restrict themselves to (ABT #1101: the web follows the
+        // profile unit system, IEC 60317 under SI and NEMA MW 1000 C under imperial). Empty
+        // means no preference: the wire adviser takes any standard and the coil adviser
+        // keeps its built-in preference (Defaults::commonWireStandard).
+        std::optional<WireStandard> _preferredWireStandard = std::nullopt;
 
         bool _harmonicAmplitudeThresholdQuickMode = true;
         double _harmonicAmplitudeThreshold;
@@ -488,6 +493,8 @@ class Settings
         void set_wire_adviser_include_round(bool value);
 
         bool get_wire_adviser_allow_rectangular_in_toroidal_cores() const;
+        std::optional<WireStandard> get_preferred_wire_standard() const;
+        void set_preferred_wire_standard(std::optional<WireStandard> value);
         void set_wire_adviser_allow_rectangular_in_toroidal_cores(bool value);
 
         bool get_harmonic_amplitude_threshold_quick_mode() const;

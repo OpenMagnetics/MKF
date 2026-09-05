@@ -116,6 +116,47 @@ namespace {
         REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
+    // ABT #1101: the preferred wire standard comes from Settings (the web sets it from the
+    // profile unit system), so an adviser built after the setting only offers that standard.
+    TEST_CASE("Test_Round_Preferred_Standard_From_Settings", "[constructive-model][wire-adviser][wire-standard][smoke-test]") {
+        settings.reset();
+        clear_databases();
+        numberTurns = 2;
+        currentRms = 10;
+        currentEffectiveFrequency = 134567;
+        setup();
+        settings.set_wire_adviser_include_foil(false);
+        settings.set_wire_adviser_include_rectangular(false);
+        settings.set_wire_adviser_include_litz(false);
+        settings.set_wire_adviser_include_round(true);
+
+        settings.set_preferred_wire_standard(WireStandard::IEC_60317);
+        {
+            WireAdviser wireAdviser;
+            REQUIRE(wireAdviser.get_common_wire_standard() == WireStandard::IEC_60317);
+            auto advised = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
+            REQUIRE(advised.size() > 0);
+            for (auto& [winding, score] : advised) {
+                REQUIRE(OpenMagnetics::Coil::resolve_wire(winding).get_standard().value() == WireStandard::IEC_60317);
+            }
+        }
+        settings.set_preferred_wire_standard(WireStandard::NEMA_MW_1000_C);
+        {
+            WireAdviser wireAdviser;
+            auto advised = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
+            REQUIRE(advised.size() > 0);
+            for (auto& [winding, score] : advised) {
+                REQUIRE(OpenMagnetics::Coil::resolve_wire(winding).get_standard().value() == WireStandard::NEMA_MW_1000_C);
+            }
+        }
+        settings.set_preferred_wire_standard(std::nullopt);
+        {
+            WireAdviser wireAdviser;
+            REQUIRE(!wireAdviser.get_common_wire_standard().has_value());
+        }
+        settings.reset();
+    }
+
     TEST_CASE("Test_Litz", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();

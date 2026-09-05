@@ -168,6 +168,7 @@ namespace OpenMagnetics {
         _wireAdviserIncludeLitz = true;
         _wireAdviserIncludeRound = true;
         _wireAdviserAllowRectangularInToroidalCores = false;
+        _preferredWireStandard = std::nullopt;
 
         _harmonicAmplitudeThresholdQuickMode = true;
         _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
@@ -862,6 +863,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_wire_adviser_allow_rectangular_in_toroidal_cores(bool value) {
         _wireAdviserAllowRectangularInToroidalCores = value;
+    }
+
+    std::optional<WireStandard> Settings::get_preferred_wire_standard() const {
+        return _preferredWireStandard;
+    }
+    void Settings::set_preferred_wire_standard(std::optional<WireStandard> value) {
+        _preferredWireStandard = value;
     }
 
     bool Settings::get_harmonic_amplitude_threshold_quick_mode() const {
