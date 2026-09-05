@@ -444,12 +444,50 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
         period = span * numberPoints / (numberPoints - 1.0);
     }
 
+    auto angleAt = [&](size_t i) {
+        return useTime ? 2 * kWaveformPi * ((*timeOptional)[i] - timeOptional->front()) / period
+                       : i * 2 * kWaveformPi / numberPoints;
+    };
+
+    // Each sample stands for its own time step. A compressed waveform is not
+    // uniformly spaced, so an unweighted projection would lean toward wherever
+    // compression left the points dense.
+    auto weightAt = [&](size_t i) {
+        if (!useTime) {
+            return 1.0;
+        }
+        const auto& time = *timeOptional;
+        double next = (i + 1 < numberPoints) ? time[i + 1] : time.front() + period;
+        return next - time[i];
+    };
+
+    // Find the fundamental's phase before comparing anything. The reference sine
+    // was built at phase zero, so a mathematically perfect sine that did not
+    // happen to start at a rising zero crossing scored an enormous error and came
+    // back CUSTOM — a cosine was never recognised as sinusoidal at all. Every
+    // analytical waveform MKF generates itself starts at zero phase, which is why
+    // this survived; imported and measured data does not. It cost the CoreDataX
+    // MagNet import 195 of its 318 genuine sines, all of which start near 300°.
+    //
+    // One DFT bin at the fundamental gives the phase outright: for A·sin(θ + φ)
+    // the sin-projection goes as cos φ and the cos-projection as sin φ, so
+    // atan2(cosProjection, sinProjection) is φ. A signal with no fundamental at
+    // all has no phase to find and keeps the old zero — it is not a sine either
+    // way, and the error test below is what says so.
+    double sinProjection = 0;
+    double cosProjection = 0;
+    for (size_t i = 0; i < numberPoints; ++i) {
+        double weight = weightAt(i);
+        double centered = data[i] - offset;
+        sinProjection += weight * centered * sin(angleAt(i));
+        cosProjection += weight * centered * cos(angleAt(i));
+    }
+    double phase = (sinProjection == 0 && cosProjection == 0) ? 0 : atan2(cosProjection, sinProjection);
+
     double error = 0;
     double area = 0;
     for (size_t i = 0; i < numberPoints; ++i) {
-        double angle = useTime ? 2 * kWaveformPi * ((*timeOptional)[i] - timeOptional->front()) / period
-                               : i * 2 * kWaveformPi / numberPoints;
-        double calculatedData = (sin(angle) * peakToPeak / 2) + offset;
+        double calculatedData = (sin(angleAt(i) + phase) * peakToPeak / 2) + offset;
         area += fabs(data[i]);
         error += fabs(calculatedData - data[i]);
     }
