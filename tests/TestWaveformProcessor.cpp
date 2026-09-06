@@ -620,34 +620,6 @@ TEST_CASE("Test_Imported_Sine_Still_Classifies_Sinusoidal", "[processor][wavefor
     REQUIRE(magic_enum::enum_name(guessedLabel) == magic_enum::enum_name(WaveformLabel::SINUSOIDAL));
 }
 
-TEST_CASE("Test_Imported_Sine_Classifies_Sinusoidal_At_Any_Phase", "[processor][waveform-processor][smoke-test]") {
-    // The reference sine used to be built at phase zero, so a mathematically
-    // perfect sine that did not start at a rising zero crossing was called
-    // CUSTOM — a cosine was never recognised as a sine at all. Analytical
-    // waveforms MKF generates itself all start at zero phase, so nothing here
-    // caught it; imported data does not, and it cost the CoreDataX MagNet
-    // import 195 of its 318 genuine sines, every one starting near 300°.
-    const double pi = 3.14159265358979323846;
-    const size_t numberPoints = 512;
-    const double period = 1.0 / 100000;
-
-    for (double phaseDegrees : {0.0, 45.0, 90.0, 180.0, 270.0, 290.0, 327.0}) {
-        std::vector<double> data;
-        std::vector<double> time;
-        for (size_t i = 0; i < numberPoints; ++i) {
-            data.push_back(0.1 * sin(2 * pi * i / numberPoints + phaseDegrees * pi / 180) + 0.02);
-            time.push_back(period * i / numberPoints);
-        }
-        Waveform waveform;
-        waveform.set_data(data);
-        waveform.set_time(time);
-
-        INFO("phase " << phaseDegrees << " degrees");
-        REQUIRE(magic_enum::enum_name(WaveformProcessor::try_guess_waveform_label(waveform)) ==
-                magic_enum::enum_name(WaveformLabel::SINUSOIDAL));
-    }
-}
-
 TEST_CASE("Test_Phase_Shifted_Non_Sine_Stays_Custom", "[processor][waveform-processor][smoke-test]") {
     // Guarding the other direction: making the comparison phase-aware must not
     // let a triangle or a square through as a sine. Both sit around 0.27-0.36

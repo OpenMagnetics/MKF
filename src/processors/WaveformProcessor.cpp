@@ -514,6 +514,22 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
     double peakToPeak = maximum - minimum;
     double offset = (maximum + minimum) / 2;
 
+    // KNOWN LIMITATION: this reference sine is built at phase zero, so a perfect
+    // sine that does not start at a rising zero crossing is compared against a
+    // rotated reference and comes back CUSTOM — a cosine is not recognised as
+    // sinusoidal. Every analytical waveform MKF generates itself starts at a
+    // rising zero crossing, which is why it has not bitten in practice.
+    //
+    // Estimating the phase from one DFT bin was tried and reverted. That estimate
+    // is only valid for UNIFORM samples, and this function is handed the
+    // COMPRESSED waveform: its points are unevenly spaced and its span is already
+    // a whole period rather than a period minus one step, so the period below
+    // over-extends by n/(n-1), the estimate rotates with it, and on the CoreDataX
+    // MagNet import every one of the 123 genuine sines in a 2421-record window
+    // flipped to CUSTOM while 173 non-sines were promoted to SINUSOIDAL. Doing it
+    // properly means measuring the phase on the raw samples, or deriving a period
+    // correct for both bases — not taking a bin on the compressed one.
+    //
     // Build the reference sine on the waveform's OWN time axis when it has one.
     // try_guess_waveform_label is normally handed a COMPRESSED waveform, whose
     // points are not equally spaced, so an index-derived angle would compare the
@@ -551,32 +567,10 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
         return next - time[i];
     };
 
-    // Find the fundamental's phase before comparing anything. The reference sine
-    // was built at phase zero, so a mathematically perfect sine that did not
-    // happen to start at a rising zero crossing scored an enormous error and came
-    // back CUSTOM — a cosine was never recognised as sinusoidal at all. Every
-    // analytical waveform MKF generates itself starts at zero phase, which is why
-    // this survived; imported and measured data does not.
-    //
-    // One DFT bin at the fundamental gives the phase outright: for A·sin(θ + φ)
-    // the sin-projection goes as cos φ and the cos-projection as sin φ, so
-    // atan2(cosProjection, sinProjection) is φ. A signal with no fundamental at
-    // all has no phase to find and keeps the old zero — it is not a sine either
-    // way, and the error test below is what says so.
-    double sinProjection = 0;
-    double cosProjection = 0;
-    for (size_t i = 0; i < numberPoints; ++i) {
-        double weight = weightAt(i);
-        double centered = data[i] - offset;
-        sinProjection += weight * centered * sin(angleAt(i));
-        cosProjection += weight * centered * cos(angleAt(i));
-    }
-    double phase = (sinProjection == 0 && cosProjection == 0) ? 0 : atan2(cosProjection, sinProjection);
-
     double error = 0;
     double area = 0;
     for (size_t i = 0; i < numberPoints; ++i) {
-        double calculatedData = (sin(angleAt(i) + phase) * peakToPeak / 2) + offset;
+        double calculatedData = (sin(angleAt(i)) * peakToPeak / 2) + offset;
         area += fabs(data[i]);
         error += fabs(calculatedData - data[i]);
     }
