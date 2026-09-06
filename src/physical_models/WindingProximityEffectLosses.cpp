@@ -746,10 +746,32 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
             wireDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
         }
         double gamma = wireDiameter / (skinDepth * sqrt(2));
-        // Eq. A8: G = -2*PI*gamma * [...] — the pi was missing, underestimating
-        // round/litz proximity losses by exactly pi (numerically verified against
-        // the modified-Bessel form 2*pi*rho*Re[alpha*I1(alpha)/I0(alpha)])
-        factor = - 2 * std::numbers::pi * gamma * resistivity * (kelvin_function_real(2, gamma) * derivative_kelvin_function_real(0, gamma) + kelvin_function_imaginary(2, gamma) * derivative_kelvin_function_imaginary(0, gamma)) / (pow(kelvin_function_real(0, gamma), 2) + pow(kelvin_function_imaginary(0, gamma), 2));
+        // ABT #1127: Eq. A8 is a ratio of Kelvin functions, and ber/bei grow like
+        // exp(gamma/sqrt(2)) while the power series that evaluates them has terms as
+        // large as exp(gamma). Above gamma ~ 20 the ratio is a difference of huge
+        // nearly-cancelling numbers and no double-precision series survives it: the
+        // proximity factor first overshoots, then crosses ZERO and goes negative
+        // (a negative loss), which is what put the vertical notch in the
+        // resistance-over-frequency sweep. The strong-skin-effect limit of Eq. A8 is
+        // the exact closed form
+        //     G -> pi * rho * (sqrt(2) * gamma - 1)
+        // which is already within 1.3e-3 of the exact value at gamma = 10, 3e-4 at
+        // gamma = 20 and improves as 1/gamma (verified against 60-digit ber/bei).
+        // Same treatment, and the same threshold, as modified_bessel_ratio_I1_I0 uses
+        // for the Albach skin factor.
+        constexpr double gammaAsymptoticThreshold = 20.0;
+        if (gamma >= gammaAsymptoticThreshold) {
+            factor = std::numbers::pi * resistivity * (sqrt(2) * gamma - 1);
+        }
+        else {
+            // Eq. A8: G = -2*PI*gamma * [...] — the pi was missing, underestimating
+            // round/litz proximity losses by exactly pi (numerically verified against
+            // the modified-Bessel form 2*pi*rho*Re[alpha*I1(alpha)/I0(alpha)])
+            factor = - 2 * std::numbers::pi * gamma * resistivity * (kelvin_function_real(2, gamma) * derivative_kelvin_function_real(0, gamma) + kelvin_function_imaginary(2, gamma) * derivative_kelvin_function_imaginary(0, gamma)) / (pow(kelvin_function_real(0, gamma), 2) + pow(kelvin_function_imaginary(0, gamma), 2));
+        }
+        if (std::isnan(factor)) {
+            throw NaNResultException("NaN found in Ferreira's round/litz proximity factor");
+        }
 
 
     }

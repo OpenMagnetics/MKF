@@ -1924,19 +1924,32 @@ std::complex<double> modified_bessel_first_kind(double order, std::complex<doubl
 }
 
 std::complex<double> bessel_first_kind(double order, std::complex<double> z) {
-    std::complex<double> sum = 0;
-    std::complex<double> inc = 0;
-    std::complex<double> aux = 0.25 * pow(z, 2);
-    size_t limitK = 1000;
+    // ABT #1127: the terms used to be formed as pow(aux, k) / (tgammaf(k+1) * tgammaf(order+k+1))
+    // and the loop broke as soon as that divider overflowed. tgammaf is SINGLE precision, so it
+    // reaches inf at 35! -- i.e. around k = 33..35 REGARDLESS of the argument. For |z| above
+    // roughly 23 the series is still on its rising terms there, so the sum was truncated in the
+    // middle of the peak and the returned value is not J_n(z) at all: it swings sign and then
+    // settles on a wrong small number. Through the Kelvin functions that is what produced the
+    // vertical notch in Sweeper::sweep_resistance_over_frequency (Ferreira's round-conductor
+    // proximity factor went NEGATIVE around 30 MHz). It is the same defect that was already
+    // diagnosed for the modified-Bessel sibling in modified_bessel_ratio_I1_I0 below.
+    //
+    // Build each term from the previous one by recurrence instead: no factorial is ever formed,
+    // so nothing overflows and the loop can only end on real convergence. The convergence test
+    // is additionally gated on k > |z| so that a small early term cannot stop the sum while the
+    // terms are still growing.
+    std::complex<double> aux = 0.25 * z * z;
+    std::complex<double> term = std::complex<double>(1.0 / std::tgamma(order + 1.0), 0.0);
+    std::complex<double> sum = term;
+    size_t limitK = 10000;
     for (size_t k = 0; k < limitK; ++k)
     {
-        double divider = tgammaf(k + 1) * tgammaf(order + k + 1);
-        if (std::isinf(divider)) {
+        term *= -aux / ((k + 1.0) * (order + k + 1.0));
+        if (!std::isfinite(term.real()) || !std::isfinite(term.imag())) {
             break;
         }
-        inc = pow(-1, k) * pow(aux, k) / divider;
-        sum += inc;
-        if (std::abs(inc) < std::abs(sum) * 0.0001){
+        sum += term;
+        if (k > std::abs(z) && std::abs(term) < std::abs(sum) * 0.0001){
             break;
         }
     }

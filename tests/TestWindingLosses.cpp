@@ -11,6 +11,11 @@
 #include "TestingUtils.h"
 #include "TestWindingLosses.h"
 #include "advisers/CoilAdviser.h"
+#include "processors/Sweeper.h"
+#include "physical_models/WindingSkinEffectLosses.h"
+#include "physical_models/WindingProximityEffectLosses.h"
+#include "physical_models/Resistivity.h"
+#include <numbers>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -2681,5 +2686,86 @@ TEST_CASE("Test_Drum_Ring_Fringing_Loss_Omission_Is_Quantified",
     // revisited against its FEM data.
     CHECK(omissionRatio >= 1.0);
     CHECK(omissionRatio < 1.01);
+    settings.reset();
+}
+
+// ABT #1127: Sweeper::sweep_resistance_over_frequency showed a vertical notch — the effective
+// resistance rose smoothly with frequency, collapsed almost to the DC value in one step, then
+// climbed again. The cause was Ferreira's round-conductor proximity factor (Eq. A8), evaluated
+// through the Kelvin-function power series in Utils.cpp: bessel_first_kind divided its terms by
+// tgammaf(k+1)*tgammaf(order+k+1) and stopped as soon as that SINGLE-precision product hit inf,
+// i.e. around k = 34 whatever the argument. For gamma = d/(delta*sqrt(2)) above ~23 the series
+// was still on its rising terms there, so the sum was cut mid-peak and the "loss" it produced
+// went to zero and then NEGATIVE. Two invariants pin it: the proximity factor is a dissipation
+// and can never be negative, and in the strong-skin-effect limit it must approach the exact
+// closed form G = pi * rho * (sqrt(2)*gamma - 1).
+TEST_CASE("Test_Winding_Proximity_Factor_High_Frequency_Is_Physical", "[physical-model][winding-losses][abt1127]") {
+    auto wire = OpenMagnetics::find_wire_by_name("Round 0.475 - Grade 1");
+    double temperature = 25;
+    double conductingDiameter = OpenMagnetics::resolve_dimensional_values(wire.get_conducting_diameter().value());
+    auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
+    double resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+
+    double previousFactor = 0;
+    for (double frequency = 1e6; frequency <= 2e8; frequency *= 1.1) {
+        double skinDepth = OpenMagnetics::WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+        double gamma = conductingDiameter / (skinDepth * sqrt(2));
+        double factor = OpenMagnetics::WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(wire, frequency, temperature);
+
+        UNSCOPED_INFO("f = " << frequency << " Hz, gamma = " << gamma << ", G = " << factor);
+        // A proximity factor multiplies H^2 to give a power: it is a dissipation and is
+        // monotonically increasing in gamma. Before the fix it crossed zero near gamma = 28.
+        CHECK(factor > 0);
+        CHECK(factor > previousFactor);
+        previousFactor = factor;
+
+        // Strong-skin-effect limit, exact to better than 0.2% for gamma >= 20.
+        if (gamma >= 20) {
+            double asymptotic = std::numbers::pi * resistivity * (sqrt(2) * gamma - 1);
+            CHECK_THAT(factor, Catch::Matchers::WithinRel(asymptotic, 0.01));
+        }
+    }
+}
+
+// ABT #1127, the sweep the user actually looks at: single winding of round wire on a small pot
+// core. Effective resistance is ohmic (flat) + skin (rises with sqrt(f)) + proximity (rises with
+// gamma), so it must increase monotonically over the whole band. Before the fix it peaked at
+// ~20 MHz and fell by an order of magnitude by ~32 MHz.
+TEST_CASE("Test_Sweeper_Resistance_Over_Frequency_Has_No_Notch", "[physical-model][winding-losses][abt1127]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {15};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "P 11/7";
+    std::vector<OpenMagnetics::Wire> wires;
+    wires.push_back(OpenMagnetics::find_wire_by_name("Round 0.475 - Grade 1"));
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                    MAS::WindingOrientation::OVERLAPPING,
+                                                    MAS::WindingOrientation::OVERLAPPING,
+                                                    MAS::CoilAlignment::CENTERED,
+                                                    MAS::CoilAlignment::CENTERED,
+                                                    wires, true);
+    coil.wind();
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, OpenMagneticsTesting::get_ground_gap(0.0000008), 1, "98");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto curve = OpenMagnetics::Sweeper().sweep_resistance_over_frequency(magnetic, 1e6, 1e8, 60);
+    auto frequencies = curve.get_x_points();
+    auto resistances = curve.get_y_points();
+    REQUIRE(frequencies.size() == resistances.size());
+    REQUIRE(frequencies.size() > 10);
+
+    for (size_t index = 1; index < resistances.size(); ++index) {
+        UNSCOPED_INFO("f = " << frequencies[index] << " Hz, R = " << resistances[index]
+                      << " ohm, previous R = " << resistances[index - 1] << " ohm");
+        CHECK(resistances[index] > 0);
+        // No fall anywhere: allow only floating-point noise, not a notch.
+        CHECK(resistances[index] >= resistances[index - 1] * 0.999);
+    }
+
     settings.reset();
 }
