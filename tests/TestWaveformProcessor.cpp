@@ -756,3 +756,66 @@ TEST_CASE("Test_Noisy_Triangle_Still_Triangular_And_Noisy_Sine_Still_Sinusoidal"
                 magic_enum::enum_name(WaveformLabel::SINUSOIDAL));
     }
 }
+
+TEST_CASE("Test_Sampled_Sine_Classifies_Sinusoidal_At_Any_Phase", "[processor][waveform-processor][smoke-test]") {
+    // The reference sine was built at phase zero, so a perfect sine that did not
+    // start at a rising zero crossing was compared against a rotated reference and
+    // came back CUSTOM — a cosine was never recognised as a sine at all. Every
+    // analytical waveform MKF generates itself starts at a rising zero crossing,
+    // so nothing here presented a shifted one.
+    //
+    // Goes through calculate_basic_processed_data on purpose. An earlier attempt
+    // at this was verified only through try_guess_waveform_label on the raw
+    // samples, passed, and still broke every real import — because
+    // calculate_basic_processed_data used to classify from the COMPRESSED
+    // waveform, which no phase or distortion measure can be taken on.
+    const double pi = 3.14159265358979323846;
+    const size_t numberPoints = 1024;
+    const double period = 1.0 / 100000;
+
+    for (double phaseDegrees : {0.0, 45.0, 90.0, 180.0, 270.0, 290.0, 327.0}) {
+        std::vector<double> data;
+        std::vector<double> time;
+        for (size_t i = 0; i < numberPoints; ++i) {
+            data.push_back(0.1 * sin(2 * pi * i / numberPoints + phaseDegrees * pi / 180) + 0.02);
+            time.push_back(period * i / numberPoints);
+        }
+        Waveform waveform;
+        waveform.set_data(data);
+        waveform.set_time(time);
+
+        INFO("phase " << phaseDegrees << " degrees");
+        REQUIRE(magic_enum::enum_name(WaveformProcessor::calculate_basic_processed_data(waveform).get_label()) ==
+                magic_enum::enum_name(WaveformLabel::SINUSOIDAL));
+    }
+}
+
+TEST_CASE("Test_Phase_Shifted_Non_Sine_Never_Sinusoidal", "[processor][waveform-processor][smoke-test]") {
+    // Guarding the other direction: a phase-aware comparison must not start
+    // admitting triangles and squares. Which named label they land on is the
+    // vertex tests' business; the invariant here is that neither is ever called a
+    // sine, at any shift.
+    const size_t numberPoints = 1024;
+    const double period = 1.0 / 100000;
+
+    for (double shift : {0.0, 0.125, 0.25, 0.375, 0.5}) {
+        std::vector<double> triangle;
+        std::vector<double> square;
+        std::vector<double> time;
+        for (size_t i = 0; i < numberPoints; ++i) {
+            double positionInPeriod = std::fmod(double(i) / numberPoints + shift, 1.0);
+            triangle.push_back(positionInPeriod < 0.5 ? 4 * positionInPeriod - 1 : 3 - 4 * positionInPeriod);
+            square.push_back(positionInPeriod < 0.5 ? 1.0 : -1.0);
+            time.push_back(period * i / numberPoints);
+        }
+        for (const auto& data : {triangle, square}) {
+            Waveform waveform;
+            waveform.set_data(data);
+            waveform.set_time(time);
+
+            INFO("shift " << shift << " of a period");
+            REQUIRE(magic_enum::enum_name(WaveformProcessor::calculate_basic_processed_data(waveform).get_label()) !=
+                    magic_enum::enum_name(WaveformLabel::SINUSOIDAL));
+        }
+    }
+}

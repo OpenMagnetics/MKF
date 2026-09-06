@@ -514,22 +514,6 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
     double peakToPeak = maximum - minimum;
     double offset = (maximum + minimum) / 2;
 
-    // KNOWN LIMITATION: this reference sine is built at phase zero, so a perfect
-    // sine that does not start at a rising zero crossing is compared against a
-    // rotated reference and comes back CUSTOM — a cosine is not recognised as
-    // sinusoidal. Every analytical waveform MKF generates itself starts at a
-    // rising zero crossing, which is why it has not bitten in practice.
-    //
-    // Estimating the phase from one DFT bin was tried and reverted. That estimate
-    // is only valid for UNIFORM samples, and this function is handed the
-    // COMPRESSED waveform: its points are unevenly spaced and its span is already
-    // a whole period rather than a period minus one step, so the period below
-    // over-extends by n/(n-1), the estimate rotates with it, and on the CoreDataX
-    // MagNet import every one of the 123 genuine sines in a 2421-record window
-    // flipped to CUSTOM while 173 non-sines were promoted to SINUSOIDAL. Doing it
-    // properly means measuring the phase on the raw samples, or deriving a period
-    // correct for both bases — not taking a bin on the compressed one.
-    //
     // Build the reference sine on the waveform's OWN time axis when it has one.
     // try_guess_waveform_label is normally handed a COMPRESSED waveform, whose
     // points are not equally spaced, so an index-derived angle would compare the
@@ -543,11 +527,22 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
     double period = 0;
     if (useTime) {
         const auto& time = *timeOptional;
-        // The samples cover one period but stop one step short of it, so the span
-        // is T - dt. Extend by the mean step to recover T; otherwise the reference
-        // sine is stretched and a genuine sine picks up a spurious phase error.
         double span = time.back() - time.front();
-        period = span * numberPoints / (numberPoints - 1.0);
+        // Two bases reach here and they do NOT span the period the same way.
+        //
+        // Raw uniform samples stop one step short of it, so the span is T - dt and
+        // has to be extended by the mean step. A COMPRESSED waveform does not:
+        // compress_waveform appends the wrapped copy of the first point at
+        // time.back() + dt before it starts, so its span is already a whole T and
+        // extending it again stretches the period by n/(n-1) — 3.6% at the 29
+        // points a measured triangle compresses to. That skew is what made an
+        // earlier attempt at phase estimation rotate the reference sine off every
+        // imported waveform.
+        //
+        // The wrapped copy is the tell, and it is exact: a compressed waveform
+        // ends on the very value it starts on.
+        const bool spansWholePeriod = data.back() == data.front();
+        period = spansWholePeriod ? span : span * numberPoints / (numberPoints - 1.0);
     }
 
     auto angleAt = [&](size_t i) {
@@ -555,22 +550,53 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
                        : i * 2 * kWaveformPi / numberPoints;
     };
 
-    // Each sample stands for its own time step. A compressed waveform is not
-    // uniformly spaced, so an unweighted projection would lean toward wherever
-    // compression left the points dense.
+    // The projection below is a quadrature, and a compressed waveform is a
+    // brutally uneven mesh: consecutive points sit 10 ns apart where the signal
+    // curves and 1.5 us apart where it runs straight, so an unweighted sum leans
+    // wherever compression left the points dense.
+    //
+    // Weight each point by half the distance between its neighbours — the
+    // trapezoid rule on a periodic mesh. A one-sided (next - this) weight is NOT
+    // good enough here: on a mesh whose spacing varies by two orders of magnitude
+    // it biases the projection by a consistent 15 degrees, which is exactly how an
+    // earlier attempt at this rotated the reference sine off every imported
+    // waveform. Where the waveform wraps, the repeated final point is excluded
+    // rather than counted twice.
+    const size_t distinctPoints = (useTime && data.back() == data.front() && numberPoints > 1)
+                                      ? numberPoints - 1
+                                      : numberPoints;
     auto weightAt = [&](size_t i) {
         if (!useTime) {
             return 1.0;
         }
         const auto& time = *timeOptional;
-        double next = (i + 1 < numberPoints) ? time[i + 1] : time.front() + period;
-        return next - time[i];
+        double previous = (i == 0) ? time[distinctPoints - 1] - period : time[i - 1];
+        double next = (i + 1 >= distinctPoints) ? time[0] + period : time[i + 1];
+        return (next - previous) / 2;
     };
+
+    // Find the fundamental's phase before comparing. One DFT bin gives it: for
+    // A·sin(θ + φ) the sin-projection goes as cos φ and the cos-projection as
+    // sin φ, so atan2(cosProjection, sinProjection) is φ. Each sample is weighted
+    // by its own time step, which is what makes this valid on the unevenly spaced
+    // compressed waveform as well as on raw samples — and on a compressed one the
+    // trailing wrapped point correctly weighs zero, since it repeats the first.
+    //
+    // A signal with no fundamental has no phase to find and keeps zero; it is not
+    // a sine either way, and the error test below is what says so.
+    double sinProjection = 0;
+    double cosProjection = 0;
+    for (size_t i = 0; i < distinctPoints; ++i) {
+        double centered = data[i] - offset;
+        sinProjection += weightAt(i) * centered * sin(angleAt(i));
+        cosProjection += weightAt(i) * centered * cos(angleAt(i));
+    }
+    double phase = (sinProjection == 0 && cosProjection == 0) ? 0 : atan2(cosProjection, sinProjection);
 
     double error = 0;
     double area = 0;
     for (size_t i = 0; i < numberPoints; ++i) {
-        double calculatedData = (sin(angleAt(i)) * peakToPeak / 2) + offset;
+        double calculatedData = (sin(angleAt(i) + phase) * peakToPeak / 2) + offset;
         area += fabs(data[i]);
         error += fabs(calculatedData - data[i]);
     }
@@ -1086,7 +1112,18 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform wav
 
     WaveformLabel label;
 
-    label = try_guess_waveform_label(compressedWaveform, numberPointsSampledWaveforms);
+    // Hand over the RAW waveform, not the compressed one. try_guess_waveform_label
+    // compresses internally for the vertex tests, so those are unaffected, but its
+    // fall-through tolerance tests — sine and triangle — need the full samples.
+    // Compression deletes points precisely where the signal runs straight, which
+    // is where a non-sine keeps its harmonic content, and leaves a mesh whose
+    // spacing varies by two orders of magnitude. On that mesh a phase estimate
+    // lands 15 degrees out and a distortion measure calls four waveforms in five a
+    // sine. On the raw samples both are accurate.
+    //
+    // Analytical waveforms are unaffected either way: they are not sampled, so
+    // compress_waveform returns them unchanged.
+    label = try_guess_waveform_label(waveform, numberPointsSampledWaveforms);
     processed.set_label(label);
 
     if (is_waveform_sampled(waveform, numberPointsSampledWaveforms)) {
