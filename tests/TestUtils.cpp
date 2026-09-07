@@ -48,6 +48,47 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 
+    // ABT #1130: modified_bessel_first_kind carried the same defect as its sibling
+    // bessel_first_kind (ABT #1127) — each term was divided by tgammaf(k+1)*tgammaf(order+k+1)
+    // and the loop broke as soon as that SINGLE-precision product reached inf, which happens
+    // around k = 21 for order 0 whatever the argument. Every term of I_n is positive, so a
+    // truncated sum is always too SMALL, and past |z| ~ 23 the cut lands on the rising terms:
+    // measured against mpmath, the old code returned 97.8% of I_0(30) and 11.2% of I_0(50).
+    // Nothing observable was wrong because the one hot path,
+    // modified_bessel_ratio_I1_I0, switches to an asymptotic expansion above |z| = 20 — this
+    // pins the function itself so a new caller cannot inherit the defect.
+    //
+    // Reference values from mpmath at 25 dps. z = 30 and 50 are past the old break point,
+    // z = 1 and 5 are controls that were always right.
+    TEST_CASE("Modified Bessel of a large argument", "[support][utils][smoke-test][abt1130]") {
+        struct Reference { double z; double i0; double i1; };
+        const std::vector<Reference> references = {
+            {1.0,  1.2660658777520083,  0.56515910399248503},
+            {5.0,  27.239871823604447,  24.335642142450527},
+            {20.0, 43558282.559553533,  42454973.385127770},
+            {25.0, 5774560606.4663103,  5657865129.8787014},
+            {30.0, 781672297823.97749,  768532038938.95700},
+            {50.0, 2.9325537838493363e20, 2.9030785901035568e20},
+        };
+
+        for (const auto& reference : references) {
+            INFO("z = " << reference.z);
+            auto i0 = modified_bessel_first_kind(0.0, std::complex<double>{reference.z, 0.0});
+            auto i1 = modified_bessel_first_kind(1.0, std::complex<double>{reference.z, 0.0});
+            // 1e-5 relative, not tighter: the series stops when a term falls below 1e-4 of
+            // the running sum, which leaves about six significant digits (measured: I_1(1)
+            // lands 1.2e-6 low). That is the pre-existing convergence criterion, shared with
+            // bessel_first_kind, and this test is not the place to change it. It is still
+            // far tighter than the defect, which was an 89% shortfall at z = 50.
+            REQUIRE_THAT(i0.real(), Catch::Matchers::WithinRel(reference.i0, 1e-5));
+            REQUIRE_THAT(i1.real(), Catch::Matchers::WithinRel(reference.i1, 1e-5));
+            // I_n of a real argument is real and strictly positive; the truncated series
+            // stayed positive but shrank, so the magnitude check above is what catches it.
+            REQUIRE(i0.imag() == 0.0);
+            REQUIRE(i0.real() > i1.real());
+        }
+    }
+
     TEST_CASE("Bessel", "[support][utils][smoke-test]") {
         double calculatedValue = bessel_first_kind(0.0, std::complex<double>{1.0, 0.0}).real();
         double expectedValue = 0.7651976865579666;

@@ -1881,23 +1881,33 @@ std::complex<double> modified_bessel_first_kind(double order, std::complex<doubl
         return std::complex<double>(0.0, 0.0);
     }
     
-    std::complex<double> sum = 0;
-    std::complex<double> inc = 0;
-    std::complex<double> aux = 0.25 * pow(z, 2);
-    size_t limitK = 1000;
+    // ABT #1130: this had the same defect as bessel_first_kind (ABT #1127). The terms were
+    // formed as pow(aux, k) / (tgammaf(k+1) * tgammaf(order+k+1)) and the loop broke as soon
+    // as that divider overflowed. tgammaf is SINGLE precision, so the PRODUCT of the two
+    // factorials passes 3.4e38 around k = 21 for order 0, REGARDLESS of the argument. Every
+    // term of I_n is positive, so the sum only grows and truncating it always returns a
+    // number that is too small. Measured against mpmath: the old code returned 97.8% of
+    // I_0(30) and 11.2% of I_0(50) -- once |z| is past ~23 the cut lands on the rising terms
+    // and the answer is not I_n(z) at all. Its one hot path was shielded by
+    // modified_bessel_ratio_I1_I0 switching to an asymptotic expansion above |z| = 20, so
+    // nothing observable was wrong -- but any new caller reaching here with a large argument
+    // got silently wrong numbers and no error.
+    //
+    // Same fix as the sibling: build each term from the previous one by recurrence, so no
+    // factorial is ever formed and nothing overflows, and gate the convergence test on
+    // k > |z| so a small early term cannot stop a sum whose terms are still growing.
+    std::complex<double> aux = 0.25 * z * z;
+    std::complex<double> term = std::complex<double>(1.0 / std::tgamma(order + 1.0), 0.0);
+    std::complex<double> sum = term;
+    size_t limitK = 10000;
     for (size_t k = 0; k < limitK; ++k)
     {
-        double divider = tgammaf(k + 1) * tgammaf(order + k + 1);
-        if (std::isinf(divider)) {
+        term *= aux / ((k + 1.0) * (order + k + 1.0));
+        if (!std::isfinite(term.real()) || !std::isfinite(term.imag())) {
             break;
         }
-        inc = pow(aux, k) / divider;
-        // Check if increment is valid
-        if (!std::isfinite(inc.real()) || !std::isfinite(inc.imag())) {
-            break;
-        }
-        sum += inc;
-        if (std::abs(inc) < std::abs(sum) * 0.0001){
+        sum += term;
+        if (k > std::abs(z) && std::abs(term) < std::abs(sum) * 0.0001){
             break;
         }
     }
@@ -2272,13 +2282,30 @@ std::string to_title_case(std::string text) {
 }
 
 std::complex<double> modified_bessel_ratio_I1_I0(std::complex<double> z) {
-    // The truncated series in modified_bessel_first_kind (float tgammaf overflow
-    // at k~21) silently diverges for |z| >~ 20-25, producing NEGATIVE skin
-    // factors. Beyond that, use the asymptotic expansion
+    // This branch was introduced to dodge the truncated series in
+    // modified_bessel_first_kind. That defect is fixed (ABT #1130), but the branch stays,
+    // for a reason that is now the real one: above |z| ~ 20 the ASCENDING SERIES is
+    // unusable for a COMPLEX argument however exactly it is summed. Its terms peak near
+    // exp(|z|) while the sum is only exp(Re z), so on the ray these callers pass --
+    // alpha = (1 + j) r / delta, arg = pi/4 -- the cancellation is exp(0.29 |z|) and eats
+    // the mantissa. The asymptotic expansion
     //   I1(z)/I0(z) = 1 - 1/(2z) - 1/(8z^2) - ...
-    // which is accurate to <0.1% at |z| = 20.
+    // is the right tool there: measured against mpmath at 30 dps on that ray it agrees to
+    // 1.7e-5 relative at |z| = 20 and 4.9e-6 at |z| = 30, which is under 0.001% on the skin
+    // factor built from it.
     if (std::abs(z) < 20.0) {
         return modified_bessel_first_kind(1, z) / modified_bessel_first_kind(0, z);
+    }
+    // ...but only inside |arg z| < pi/2. Past that the subdominant exp(-z) branch takes over
+    // and the expansion returns +1.02 where the true ratio is -0.99: plausible magnitude,
+    // wrong sign. No caller goes there today (every one passes arg = pi/4), and neither tool
+    // works there, so refuse rather than hand a future caller a number that looks fine.
+    if (std::abs(std::arg(z)) >= std::numbers::pi / 2) {
+        throw InvalidInputException(
+            ErrorCode::INVALID_INPUT,
+            "modified_bessel_ratio_I1_I0: |z| = " + std::to_string(std::abs(z)) + " with arg z = " +
+            std::to_string(std::arg(z)) + " rad lies outside the sector where either the ascending "
+            "series or the asymptotic expansion can be evaluated");
     }
     return std::complex<double>(1.0, 0) - 1.0 / (2.0 * z) - 1.0 / (8.0 * z * z);
 }
