@@ -4214,3 +4214,25 @@ TEST_CASE("Temperature: ABT906 Envelope Model Tracks Magnetics Empirical Rise Ac
     }
     settings.reset();
 }
+
+// The disconnected-node diagnosis must test CONNECTIVITY to ambient, not node degree. A node
+// whose only edges lead to other stranded nodes has a non-zero conductance diagonal and passed
+// the old G(i,i) < 1e-12 test, so a floating island went straight to a singular solve. Bare
+// graph: ambient 0; 1 and 2 hang off it; 3 and 4 touch only each other; 5 touches nothing.
+TEST_CASE("Test_Thermal_Floating_Island_Is_Reported_Not_Just_Degree_Zero_Nodes", "[temperature][bug][omega]") {
+    auto link = [](size_t from, size_t to) {
+        ThermalResistanceElement res;
+        res.nodeFromId = from;
+        res.nodeToId = to;
+        res.type = HeatTransferType::CONDUCTION;
+        res.resistance = 1.0;
+        return res;
+    };
+    std::vector<ThermalResistanceElement> resistances = {link(0, 1), link(1, 2), link(3, 4)};
+    auto stranded = Temperature::nodesWithoutPathToRoots(6, resistances, {0});
+    REQUIRE(stranded == std::vector<size_t>{3, 4, 5});   // the island's members AND the isolated node
+    // a cold plate (fixed temperature) is a root too: the island hanging off it is fine
+    auto withColdPlate = Temperature::nodesWithoutPathToRoots(6, resistances, {0, 3});
+    REQUIRE(withColdPlate == std::vector<size_t>{5});
+    REQUIRE(Temperature::nodesWithoutPathToRoots(3, {link(0, 1), link(1, 2)}, {0}).empty());
+}

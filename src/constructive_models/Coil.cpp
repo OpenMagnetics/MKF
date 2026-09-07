@@ -1375,7 +1375,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         auto [edgeY, runDepth] = allocateEdgeRow(windowIndexOf(connectingTurn.get_section().value_or("")),
                                                  turnAtTop, wireOuterHeight,
                                                  turnX - wireOuterWidth / 2, windowOuterX,
-                                                 windingName + (isEntrance ? "/in" : "/out"),
+                                                 // A one-turn omega winding's entrance and exit
+                                                 // are the SAME bundle: its two terminals leave
+                                                 // side by side at the same height (Alf,
+                                                 // 2026-09-07), so they share one row and the
+                                                 // layers they cross lose one slot, not two.
+                                                 windingName + (get_number_turns(get_winding_index_by_name(windingName)) == 1
+                                                                    ? "/omega"
+                                                                    : (isEntrance ? "/in" : "/out")),
                                                  turnY);
         for (const Layer* crossed : crossedLayers) {
             ConnectionReservedSpace space;
@@ -4613,6 +4620,23 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     foilWires[windingIndex].get_type() == WireType::FOIL) {
                     continue;
                 }
+                // A ONE-TURN WINDING IS AN OMEGA (Alf, 2026-09-07): "one turn wire, independently
+                // of its composition ... should be a U or Omega symbol, just one crossing and the
+                // terminal, side by side, on the same height." The wire comes in, makes its single
+                // revolution and leaves next to where it came in -- the two terminals sit at the
+                // turn's own height, so there is nothing to climb to and no layer to close: ONE
+                // crossing, not two. Charging it the closing station is not merely one extra
+                // cross-section, it DIVERGES the same way the foil station did (ABT #881): on the
+                // RM 10/13 field report (17x2 primary of 0.4 mm, one turn of Litz 225x0.08) the
+                // station made the secondary two cross-sections in a layer that holds exactly two,
+                // the primary's exit leads then took one slot, the station spilled into a second
+                // layer that needed its own station, and so on -- 12 layers, 23 mm of litz in a
+                // 4.25 mm window, copper outside the core. Whatever the wire (round, litz,
+                // rectangular, N parallels: each parallel is its own one-turn conductor), one turn
+                // shows one cross-section.
+                if (armWindings[windingIndex].get_number_turns() == 1) {
+                    continue;
+                }
                 extraPerWinding[windingIndex] = 1;
                 armWindings[windingIndex].set_number_turns(
                     armWindings[windingIndex].get_number_turns() + 1);
@@ -4696,9 +4720,18 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     // explicitly on the connection markers (ConnectionReservedSpace::routedLength)
                     // — leaving a full turn's length on a layer's opening crossing would count it
                     // twice, exactly the ABT #674 error that made DC resistance read ~5% high.
+                    // Only windings that WERE charged a station have one to zero: a foil (ABT
+                    // #881) or a one-turn omega winding shows its real turn as its first (and
+                    // only) cross-section per layer, and zeroing that would delete the whole
+                    // conductor's length -- the omega secondary's DC resistance read 0.
                     std::set<std::pair<std::string, int64_t>> layerParallelSeen;
                     for (auto& crossingTurn : crossingTurns) {
                         if (!crossingTurn.get_layer()) continue;
+                        const auto stationWindingIndex = coil.get_winding_index_by_name(crossingTurn.get_winding());
+                        if (stationWindingIndex >= extraPerWinding.size() ||
+                            extraPerWinding[stationWindingIndex] == 0) {
+                            continue;
+                        }
                         const auto key = std::make_pair(crossingTurn.get_layer().value(),
                                                         crossingTurn.get_parallel());
                         if (layerParallelSeen.insert(key).second) {
@@ -4931,8 +4964,38 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         // It gets its OWN loop rather than sharing the blocking fixpoint's: every raise there
         // spent one of the 16 blocking iterations, and 13_current_sense (a 20-layer secondary)
         // ran out and threw "turn blocking did not converge".
+        // A STATION RAISE THAT NEVER SETTLES IS A DESIGN THAT CANNOT BE WOUND, NOT A LAYOUT
+        // (Alf, 2026-09-07). Every layer a winding spills into is charged its own closing station;
+        // with c usable slots per layer the fixpoint is L = N / (c - 1), and a layer that holds
+        // nothing beside its station (c = 1) makes it infinite. Running the budget out and
+        // keeping the last state shipped 12 station-only litz layers marching 23 mm out of a
+        // 4.25 mm window (the RM 10/13 field report) as a "wound" coil -- the thermal solver was
+        // the first consumer to choke on copper outside the core. Name the winding and why.
+        auto crossingDivergence = [&]() -> std::string {
+            const auto observed = realWindingCrossingBump.observedLayersPerWinding();
+            std::string text;
+            for (size_t windingIndex = 0; windingIndex < observed.size(); ++windingIndex) {
+                if (windingIndex >= realWindingCrossingBump.extraPerWinding.size() ||
+                    realWindingCrossingBump.extraPerWinding[windingIndex] == 0 ||
+                    observed[windingIndex] <= realWindingCrossingBump.extraPerWinding[windingIndex]) {
+                    continue;
+                }
+                const auto& winding = get_functional_description()[windingIndex];
+                const int64_t realTurns = winding.get_number_turns() -
+                                          int64_t(realWindingCrossingBump.extraPerWinding[windingIndex]);
+                auto wire = resolve_wire(windingIndex);
+                if (!text.empty()) text += "; ";
+                text += "winding '" + winding.get_name() + "': " + std::to_string(realTurns) +
+                        " turn(s) of a " + std::to_string(wire.get_maximum_outer_width() * 1e3) + " x " +
+                        std::to_string(wire.get_maximum_outer_height() * 1e3) +
+                        " mm wire already span " + std::to_string(observed[windingIndex]) +
+                        " layers and every new layer holds nothing beside its own closing station";
+            }
+            return text;
+        };
         {
             const size_t maximumCrossingIterations = 8;
+            bool crossingSettled = false;
             for (size_t crossingIteration = 0; crossingIteration < maximumCrossingIterations;
                  ++crossingIteration) {
                 const auto observedLayers = realWindingCrossingBump.observedLayersPerWinding();
@@ -4942,6 +5005,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     raised |= realWindingCrossingBump.raise(windingIndex, observedLayers[windingIndex]);
                 }
                 if (!raised) {
+                    crossingSettled = true;
                     break;
                 }
                 logEntry("Real winding: one extra crossing per layer -- re-winding", "Coil", 2);
@@ -4960,6 +5024,17 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     delimit_and_compact();
                 }
             }
+            if (!crossingSettled && get_layers_description() && get_turns_description()) {
+                const std::string why = crossingDivergence();
+                if (!why.empty()) {
+                    throw CoilException(
+                        ErrorCode::COIL_WINDING_ERROR,
+                        "Real winding: the per-layer crossing stations do not converge (" + why +
+                        "). The winding cannot be closed layer by layer inside this window: fewer "
+                        "layers need a taller window, a thinner wire, or a winding that is not "
+                        "crossed by other windings' leads.");
+                }
+            }
         }
         logEntry("Applying real winding geometry (global turn blocking)", "Coil", 2);
         // Upper bound: each iteration can at most add one blocked slot per layer edge and
@@ -4969,6 +5044,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         // a deep multi-layer winding can need several before the layer count settles.
         const size_t maximumBlockingIterations = 24;
         size_t directionRegimeResets = 0;
+        bool blockingConverged = false;
         for (size_t blockingIteration = 0; blockingIteration < maximumBlockingIterations; ++blockingIteration) {
             // ABT #685: blocking can spill a layer, and a new layer needs its own opening
             // crossing — so the raise has to be re-checked here too, not only before the loop.
@@ -5080,6 +5156,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                 _uLandingDepthPerLayer = std::move(freshLanding);
             }
             if (!changed) {
+                blockingConverged = true;
                 break;
             }
             _applyConnectionBlocking = true;
@@ -5111,6 +5188,18 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             // blocking must be derived from the ALIGNED geometry — aligning only after
             // the loop leaves silently unblocked slots (turns inside terminal leads).
             align_blocked_layer_turns();
+        }
+        // The blocking fixpoint shares the station raise (a spill needs a station, a station can
+        // spill): when the budget runs out with the layout still growing it is the same divergence
+        // as above, and the last state is not a layout anybody may consume.
+        if (!blockingConverged && get_layers_description() && get_turns_description()) {
+            const std::string why = crossingDivergence();
+            if (!why.empty()) {
+                throw CoilException(
+                    ErrorCode::COIL_WINDING_ERROR,
+                    "Real winding: turn blocking and the per-layer crossing stations do not converge (" +
+                    why + "). The winding cannot be closed layer by layer inside this window.");
+            }
         }
         // RELAXATION (ABT #615, Alf 2026-08-09 on 25_psps: "layer 3 could fit more turns,
         // right?"): the monotone max above converges by keeping the DEEPEST reservation any

@@ -11890,12 +11890,18 @@ static size_t layers_of_conductor(OpenMagnetics::Coil& coil, const std::string& 
     return std::max<size_t>(layers.size(), 1);
 }
 // Stations a whole winding must show: sum over its parallels of (its turns + the layers it spans).
+// A ONE-TURN conductor is an omega (Alf, 2026-09-07): one crossing, its terminals side by side at
+// the same height -- no closing station, so it shows exactly its one turn.
 static size_t expected_stations(OpenMagnetics::Coil& coil, const std::string& windingName,
                                 int64_t declaredTurnsPerParallel) {
     const auto windingIndex = coil.get_winding_index_by_name(windingName);
     const int64_t parallels = coil.get_functional_description()[windingIndex].get_number_parallels();
     size_t expected = 0;
     for (int64_t parallel = 0; parallel < parallels; ++parallel) {
+        if (declaredTurnsPerParallel == 1) {
+            expected += 1;
+            continue;
+        }
         expected += size_t(declaredTurnsPerParallel) + layers_of_conductor(coil, windingName, parallel);
     }
     return expected;
@@ -13847,9 +13853,11 @@ TEST_CASE("Test_Real_Geometry_Wind_Survives_Transient_Unfit", "[constructive-mod
     // window (17 per layer where 16 go), so the example was corrected to the 80 turns it can
     // actually hold. The count here follows the design, not the other way round.
     // ABT #685: one crossing per LAYER entered, so the count follows the layout's layers.
+    // By NAME: the example lists the Secondary first, and indexing [0]/[1] handed the 1-turn
+    // count to the Secondary and the 80 to the Primary -- two errors that cancelled under the
+    // N + L rule (7 + 81 = 88) and stopped cancelling once the 1-turn Primary became an omega.
     CHECK(coil.get_turns_description().value().size() ==
-          expected_stations(coil, coil.get_functional_description()[0].get_name(), 1) +
-          expected_stations(coil, coil.get_functional_description()[1].get_name(), 80));
+          expected_stations(coil, "Primary", 1) + expected_stations(coil, "Secondary", 80));
     settings.reset();
 }
 
@@ -15820,5 +15828,135 @@ TEST_CASE("Test_Wind_Proportions_Over_One_Window_Throw_And_Valid_Split_Winds_Sec
         }
     }
     CHECK(coil.are_sections_and_layers_fitting());
+    settings.reset();
+}
+
+// A ONE-TURN WINDING IS AN OMEGA (Alf, 2026-09-07): "one turn wire, independently of its
+// composition ... should be a U or Omega symbol, just one crossing and the terminal, side by
+// side, on the same height." Field report on an RM 10/13 (17x2 primary of 0.4 mm, one turn of
+// Litz 225x0.08): the per-layer closing station made the secondary two cross-sections in a layer
+// that holds exactly two, the primary's exit leads then took a slot, the station spilled into a
+// layer that needed its own station, and the raise ran the budget out at 12 layers -- 23 mm of
+// litz in a 4.25 mm window, copper outside the core, the thermal solver throwing on it.
+TEST_CASE("Test_One_Turn_Winding_Is_Omega_One_Crossing_Terminals_Same_Height", "[constructive-model][coil][real-geometry][omega]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_wind_even_if_not_fit(false);
+    auto path = std::filesystem::path(__FILE__).parent_path() / "testData" / "one_turn_litz_omega_rm10.json";
+    std::ifstream file(path);
+    json mas;
+    file >> mas;
+    auto windowJson = [&](json coilJson, double width, double height) {
+        auto& window = coilJson["bobbin"]["processedDescription"]["windingWindows"][0];
+        window["width"] = width;
+        window["height"] = height;
+        window["coordinates"][0] = 0.006575 + width / 2;
+        window["area"] = width * height;
+        return coilJson;
+    };
+    auto countLayers = [](OpenMagnetics::Coil& coil, const std::string& windingName) {
+        size_t count = 0;
+        auto layers = coil.get_layers_by_type(ElectricalType::CONDUCTION);
+        for (auto& layer : layers) {
+            if (layer.get_partial_windings()[0].get_winding() == windingName) count++;
+        }
+        return count;
+    };
+    auto checkOmegaSecondary = [&](OpenMagnetics::Coil& coil) {
+        auto secondaryTurns = coil.get_turns_by_winding("Secondary");
+        REQUIRE(secondaryTurns.size() == 1);            // one crossing, no closing station
+        CHECK(secondaryTurns[0].get_length() > 0.01);   // the wrap keeps its length (nothing to zero)
+        REQUIRE(countLayers(coil, "Secondary") == 1);
+        // the primary is untouched by the rule: N + L stations per parallel
+        CHECK(coil.get_turns_by_winding("Primary").size() == 2 * (17 + countLayers(coil, "Primary")));
+        // outermost: its two terminals leave radially, side by side at the turn's own height
+        size_t terminalLeads = 0;
+        auto spaces = coil.get_connection_reserved_spaces();
+        for (auto& space : spaces) {
+            if (space.winding != "Secondary" || !space.isTerminal || !space.layer.empty()) continue;
+            if (space.kind != ConnectionKind::TERMINAL_ENTRANCE && space.kind != ConnectionKind::TERMINAL_EXIT) continue;
+            terminalLeads++;
+            CHECK(space.coordinates[1] == Catch::Approx(secondaryTurns[0].get_coordinates()[1]).margin(1e-9));
+        }
+        CHECK(terminalLeads == 2);
+        return secondaryTurns[0];
+    };
+
+    SECTION("the field report's own window: one cross-section, and the honest verdict is a 0.3 mm radial overflow") {
+        OpenMagnetics::Coil coil(mas["magnetic"]["coil"], false);
+        // Under blocking the 17x2 primary needs 6 layers (2.58 mm); with the 1.95 mm litz that is
+        // 4.55 mm in a 4.25 mm window. wind() says so (ABT #864: a bad but possible design is
+        // wound and reported, never grown into a runaway) -- before the omega rule it returned the
+        // same false with TWELVE station-only layers marching 23 mm out of the window.
+        CHECK(!coil.wind());
+        auto turn = checkOmegaSecondary(coil);
+        const double windowRightEdge = 0.0087 + 0.00425 / 2;
+        const double litzRightEdge = turn.get_coordinates()[0] + coil.resolve_wire(1).get_maximum_outer_width() / 2;
+        CHECK(litzRightEdge - windowRightEdge == Catch::Approx(0.0003).margin(0.0001));
+        CHECK(!coil.are_turns_inside_winding_window());
+    }
+
+    SECTION("a window 0.4 mm wider: the same omega layout fits and winds") {
+        OpenMagnetics::Coil coil(windowJson(mas["magnetic"]["coil"], 0.0047, 0.004675), false);
+        REQUIRE(coil.wind());
+        REQUIRE(coil.are_sections_and_layers_fitting());
+        REQUIRE(coil.are_turns_inside_winding_window());
+        checkOmegaSecondary(coil);
+    }
+
+    SECTION("innermost one-turn litz: its two terminals cross the primary side by side in ONE row") {
+        // Its terminal row costs every primary layer one litz height (5 of 10 slots), so the
+        // primary needs 16 layers: a taller and wider window than the RM 10/13's for the fit.
+        OpenMagnetics::Coil coil(windowJson(mas["magnetic"]["coil"], 0.012, 0.012), false);
+        REQUIRE(coil.wind({0.5, 0.5}, {1, 0}, 1));
+        REQUIRE(coil.are_sections_and_layers_fitting());
+        REQUIRE(coil.are_turns_inside_winding_window());
+        auto secondaryTurns = coil.get_turns_by_winding("Secondary");
+        REQUIRE(secondaryTurns.size() == 1);
+        std::vector<double> leadRows;
+        std::map<std::string, std::vector<double>> squeezeDepthsByLayer;
+        auto spaces = coil.get_connection_reserved_spaces();
+        for (auto& space : spaces) {
+            if (space.winding != "Secondary" || !space.isTerminal) continue;
+            if (space.kind == ConnectionKind::LAYER_SQUEEZE) {
+                squeezeDepthsByLayer[space.layer].push_back(space.edgeDepth);
+            }
+            else if (space.layer.empty() && space.dimensions[0] > space.dimensions[1]) {
+                leadRows.push_back(space.coordinates[1]);   // the edge run (not the vertical stub)
+            }
+        }
+        REQUIRE(leadRows.size() == 2);
+        CHECK(leadRows[0] == Catch::Approx(leadRows[1]).margin(1e-9));   // same height
+        REQUIRE(!squeezeDepthsByLayer.empty());                          // it does cross the primary
+        for (auto& [layerName, depths] : squeezeDepthsByLayer) {
+            INFO(layerName);
+            REQUIRE(depths.size() == 2);
+            CHECK(depths[0] == Catch::Approx(depths[1]).margin(1e-9));   // one row, one slot
+        }
+    }
+    settings.reset();
+}
+
+// The same fixture with TWO turns of the litz has no omega to fall back on: 2 turns + a closing
+// station per layer in a layer that holds two, minus the slot the primary's exit leads take,
+// leaves every layer holding nothing beside its own station -- L = N / (c - 1) with c = 1. The
+// raise used to run its budget out silently (18 station-only layers on this very design, wind()
+// false, the layout handed on); it must say so instead.
+TEST_CASE("Test_Real_Winding_Station_Raise_That_Cannot_Converge_Throws", "[constructive-model][coil][real-geometry][omega]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_wind_even_if_not_fit(false);
+    auto path = std::filesystem::path(__FILE__).parent_path() / "testData" / "one_turn_litz_omega_rm10.json";
+    std::ifstream file(path);
+    json mas;
+    file >> mas;
+    json coilJson = mas["magnetic"]["coil"];
+    coilJson["functionalDescription"][1]["numberTurns"] = 2;
+    // a 30 mm wide window, so the runaway is not stopped by the radial edge before the budget
+    coilJson["bobbin"]["processedDescription"]["windingWindows"][0]["width"] = 0.03;
+    coilJson["bobbin"]["processedDescription"]["windingWindows"][0]["coordinates"][0] = 0.006575 + 0.015;
+    coilJson["bobbin"]["processedDescription"]["windingWindows"][0]["area"] = 0.03 * 0.004675;
+    OpenMagnetics::Coil coil(coilJson, false);
+    REQUIRE_THROWS_WITH(coil.wind(), Catch::Matchers::ContainsSubstring("do not converge"));
     settings.reset();
 }

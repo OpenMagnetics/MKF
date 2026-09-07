@@ -4967,6 +4967,47 @@ void Temperature::recalculateConvectionResistances(const std::vector<double>& te
     }
 }
 
+std::vector<size_t> Temperature::nodesWithoutPathToRoots(size_t nodeCount,
+                                                         const std::vector<ThermalResistanceElement>& resistances,
+                                                         const std::vector<size_t>& roots) {
+    std::vector<std::vector<size_t>> adjacency(nodeCount);
+    for (const auto& res : resistances) {
+        if (res.nodeFromId >= nodeCount || res.nodeToId >= nodeCount) {
+            throw std::runtime_error(
+                "Temperature::nodesWithoutPathToRoots: resistance references a node index out of range (from=" +
+                std::to_string(res.nodeFromId) + ", to=" + std::to_string(res.nodeToId) + ", node count=" +
+                std::to_string(nodeCount) + ").");
+        }
+        adjacency[res.nodeFromId].push_back(res.nodeToId);
+        adjacency[res.nodeToId].push_back(res.nodeFromId);
+    }
+    std::vector<bool> reached(nodeCount, false);
+    std::vector<size_t> frontier;
+    for (size_t root : roots) {
+        if (root < nodeCount && !reached[root]) {
+            reached[root] = true;
+            frontier.push_back(root);
+        }
+    }
+    while (!frontier.empty()) {
+        const size_t current = frontier.back();
+        frontier.pop_back();
+        for (size_t neighbour : adjacency[current]) {
+            if (!reached[neighbour]) {
+                reached[neighbour] = true;
+                frontier.push_back(neighbour);
+            }
+        }
+    }
+    std::vector<size_t> stranded;
+    for (size_t i = 0; i < nodeCount; ++i) {
+        if (!reached[i]) {
+            stranded.push_back(i);
+        }
+    }
+    return stranded;
+}
+
 ThermalResult Temperature::solveThermalCircuit() {
     size_t n = _nodes.size();
     if (n == 0) {
@@ -5037,18 +5078,21 @@ ThermalResult Temperature::solveThermalCircuit() {
             }
         }
         
-        // Diagnose disconnected nodes before attempting solve
+        // Diagnose disconnected nodes before attempting solve. CONNECTIVITY, not degree (see
+        // nodesWithoutPathToRoots): measured on the RM 10/13 field report, eleven runaway litz
+        // turns outside the core kept their convection to ambient, so only the one turn left
+        // inside the window was stranded -- but an island whose members only touch each other
+        // passed the old G(i,i) test and went to a singular solve.
         {
-            std::vector<size_t> disconnectedNodes;
+            std::vector<size_t> roots;
             for (size_t i = 0; i < n; ++i) {
-                if (i == ambientIdx) continue;
-                if (_nodes[i].isFixedTemperature) continue;
-                if (G(i, i) < 1e-12) {
-                    disconnectedNodes.push_back(i);
+                if (i == ambientIdx || _nodes[i].isFixedTemperature) {
+                    roots.push_back(i);
                 }
             }
+            std::vector<size_t> disconnectedNodes = nodesWithoutPathToRoots(n, _resistances, roots);
             if (!disconnectedNodes.empty()) {
-                std::string msg = "Temperature::solveThermalCircuit: " + std::to_string(disconnectedNodes.size()) + " disconnected node(s) found (no thermal path to any other node):\n";
+                std::string msg = "Temperature::solveThermalCircuit: " + std::to_string(disconnectedNodes.size()) + " disconnected node(s) found (no thermal path to ambient or any fixed-temperature node; an island is listed with all its members):\n";
                 for (size_t idx : disconnectedNodes) {
                     msg += "  Node " + std::to_string(idx) + ": name='" + _nodes[idx].name + "' part=";
                     switch (_nodes[idx].part) {

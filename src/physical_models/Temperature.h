@@ -395,6 +395,18 @@ public:
      * @brief Get the list of thermal resistances
      */
     const std::vector<ThermalResistanceElement>& getResistances() const { return _resistances; }
+
+    /**
+     * @brief Nodes with no path over the resistances to any of `roots` (ambient, cold plates).
+     *
+     * CONNECTIVITY, not degree: a node whose only edges lead to other stranded nodes has a
+     * non-zero conductance diagonal and passed the old G(i,i) test, yet the whole island floats
+     * and the solve is singular. Static and public so the rule is testable on a bare graph.
+     * Returns the stranded node indices in index order.
+     */
+    static std::vector<size_t> nodesWithoutPathToRoots(size_t nodeCount,
+                                                       const std::vector<ThermalResistanceElement>& resistances,
+                                                       const std::vector<size_t>& roots);
     
     /**
      * @brief Get configuration
