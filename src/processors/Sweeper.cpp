@@ -18,7 +18,7 @@
 namespace OpenMagnetics {
 
 
-Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title, bool fast) {
+Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title, bool fast, bool fastCapacitance) {
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -47,7 +47,7 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
     // effective resistance (adds proximity), more accurate but slower per point.
     const double temperature = Defaults().ambientTemperature;
     double referenceFrequency = frequencies[frequencies.size() / 2];
-    auto impedanceModel = OpenMagnetics::Impedance();
+    auto impedanceModel = OpenMagnetics::Impedance(fastCapacitance);
     auto model = impedanceModel.build_wideband_impedance_model(magnetic, referenceFrequency, temperature, fast);
 
     std::vector<double> impedances;
@@ -59,7 +59,7 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
     return Curve2D(frequencies, impedances, title);
 }
 
-Curve2D Sweeper::sweep_common_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
+Curve2D Sweeper::sweep_common_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title, bool fastCapacitance) {
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -77,7 +77,7 @@ Curve2D Sweeper::sweep_common_mode_impedance_over_frequency(Magnetic magnetic, d
     // damping), shunted by the winding self-capacitance. The frequency-independent
     // building blocks (reluctance, stray capacitance) are computed ONCE here; only
     // µ(f) and the complex arithmetic run per point.
-    auto impedanceModel = OpenMagnetics::Impedance();
+    auto impedanceModel = OpenMagnetics::Impedance(fastCapacitance);
     auto model = impedanceModel.build_common_mode_impedance_model(magnetic);
 
     std::vector<double> impedances;

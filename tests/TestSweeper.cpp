@@ -1101,5 +1101,47 @@ namespace {
         settings.reset();
     }
 
+
+    // A coil the winder CANNOT place has no full-model stray capacitance: the full model sums
+    // per-turn energies and therefore winds the coil, and the winder returning no turns is a
+    // hard error (ABT #850), not a zero. That is correct -- but it also made the impedance of
+    // such a part uncomputable through the sweep, which hardcoded the full model. For a bead
+    // the impedance is set by the core and the capacitance only moves the self-resonance, so
+    // the one-layer model gives a usable curve; the caller has to ASK for it, which is what
+    // this pins. Both halves matter: without the throw the fallback would be silent, and
+    // without the opt-in the curve would be unreachable.
+    TEST_CASE("Test_Sweeper_Impedance_Unwindable_Coil_Needs_The_Fast_Capacitance_Model", "[processor][sweeper][unwindable]") {
+        settings.reset();
+        settings.set_coil_wind_even_if_not_fit(false);
+
+        // The bore's inner circumference is what limits a toroid, not its diameter: turns lie
+        // side by side around it. pi * 7.5 mm = 23.6 mm of room, and 12 turns of 3.15 mm wire
+        // need 37.8 mm, so this part cannot be built as specified.
+        std::vector<int64_t> numberTurns = {12};
+        std::vector<int64_t> numberParallels = {1};
+        std::string shapeName = "T 12.5/7.5/5";
+        std::vector<OpenMagnetics::Wire> wires = {find_wire_by_name("Round 3.15 - Grade 1")};
+        auto coil = OpenMagneticsTesting::get_quick_coil(
+            numberTurns, numberParallels, shapeName, 1,
+            WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+            CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "3C97");
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        REQUIRE_THROWS(Sweeper().sweep_impedance_over_frequency(magnetic, 1e5, 1e8, 20));
+
+        auto curve = Sweeper().sweep_impedance_over_frequency(
+            magnetic, 1e5, 1e8, 20, "log", "Impedance over frequency",
+            /*fast=*/true, /*fastCapacitance=*/true);
+        auto impedances = curve.get_y_points();
+        REQUIRE(impedances.size() == 20);
+        for (auto impedance : impedances) {
+            REQUIRE(std::isfinite(impedance));
+            REQUIRE(impedance > 0);
+        }
+        settings.reset();
+    }
+
 }  // namespace
- 
