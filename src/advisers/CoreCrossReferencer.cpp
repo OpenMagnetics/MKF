@@ -1,6 +1,8 @@
 #include "constructive_models/Core.h"
 #include "physical_models/InitialPermeability.h"
 #include "advisers/CoreCrossReferencer.h"
+#include "physical_models/Impedance.h"
+#include "constructive_models/Bobbin.h"
 #include "advisers/CrossReferencerCommon.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/Reluctance.h"
@@ -555,6 +557,132 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
     return filteredCoresWithScoring;
 }
 
+std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterImpedance::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, int64_t referenceNumberTurns, double weight, double limit) {
+    if (weight <= 0) {
+        return *unfilteredCores;
+    }
+
+    // Build the reference curve once. Both reference and candidates are wound with the
+    // SAME turn count and the same dummy wire/bobbin, so the only thing that varies
+    // between them is the core -- which is the whole point of a core cross-reference.
+    // Fast (one-layer) stray capacitance, the same choice MagneticFilterImpedance makes when
+    // it SCORES rather than verifies. The full model needs a wound coil, and the dummy coil
+    // below is deliberately not windable on every candidate geometry -- a bare-core window
+    // that rejects the preset sections makes the winder return no turns and the full model
+    // throw (ABT #850), which would drop candidates for a reason that has nothing to do with
+    // their impedance. Every core here is compared under the same capacitance model, so the
+    // ranking is unaffected.
+    constexpr bool kFastCapacitanceForScoring = true;
+    auto impedanceModel = Impedance(kFastCapacitanceForScoring);
+    // The placeholder winding is the one MagnetizingInductance uses for its coil-less shim:
+    // a quick bobbin built from the core itself and one real wire. A DUMMY_SENTINEL_NAME
+    // bobbin is rejected outright by the capacitance model ("Bobbin is dummy"), and the
+    // impedance of a core under a fixed turn count does not depend on the gauge, so the
+    // concrete wire biases nothing -- it only has to exist.
+    auto windMagnetic = [referenceNumberTurns](Core core) {
+        Magnetic magnetic;
+        magnetic.set_core(core);
+        Coil coil;
+        coil.set_bobbin(Bobbin::create_quick_bobbin(core));
+        Winding winding;
+        winding.set_name("winding 0");
+        winding.set_number_turns(referenceNumberTurns);
+        winding.set_number_parallels(1);
+        winding.set_isolation_side_from_index(0);
+        winding.set_wire("Round 0.475 - Grade 1");
+        coil.set_functional_description({winding});
+        magnetic.set_coil(coil);
+        return magnetic;
+    };
+
+    std::vector<double> referenceImpedances;
+    {
+        auto referenceMagnetic = windMagnetic(referenceCore);
+        for (auto frequency : _frequencies) {
+            referenceImpedances.push_back(std::abs(impedanceModel.calculate_impedance(referenceMagnetic, frequency)));
+        }
+    }
+    // A reference that reads zero at every frequency carries no curve to match against;
+    // scoring every candidate against it would rank by nothing. Fail loudly instead of
+    // returning an arbitrary order.
+    if (std::all_of(referenceImpedances.begin(), referenceImpedances.end(), [](double z){ return z <= 0; })) {
+        throw std::runtime_error("Reference core has no impedance at any sampled frequency; cannot cross-reference by impedance");
+    }
+    add_scored_value("Reference", CoreCrossReferencerFilters::IMPEDANCE, 0);
+
+    std::vector<double> newScoring;
+    std::vector<std::pair<Core, double>> filteredCoresWithScoring;
+    std::list<size_t> listOfIndexesToErase;
+
+    for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
+        Core core = (*unfilteredCores)[coreIndex].first;
+
+        if ((*_validScorings).contains(CoreCrossReferencerFilters::IMPEDANCE)) {
+            if ((*_validScorings)[CoreCrossReferencerFilters::IMPEDANCE].contains(core.get_name().value())) {
+                if ((*_validScorings)[CoreCrossReferencerFilters::IMPEDANCE][core.get_name().value()]) {
+                    newScoring.push_back((*_scorings)[CoreCrossReferencerFilters::IMPEDANCE][core.get_name().value()]);
+                }
+                else {
+                    listOfIndexesToErase.push_back(coreIndex);
+                }
+                continue;
+            }
+        }
+
+        double deviation = 0;
+        size_t sampled = 0;
+        bool usable = true;
+        try {
+            auto candidateMagnetic = windMagnetic(core);
+            for (size_t i = 0; i < _frequencies.size(); ++i) {
+                double candidateImpedance = std::abs(impedanceModel.calculate_impedance(candidateMagnetic, _frequencies[i]));
+                // Skip a frequency where either side is zero rather than treating it as a
+                // perfect or infinite match: log10 of a ratio with a zero in it is not a
+                // number, and silently substituting one would invent a score.
+                if (candidateImpedance <= 0 || referenceImpedances[i] <= 0) {
+                    continue;
+                }
+                deviation += std::abs(std::log10(candidateImpedance / referenceImpedances[i]));
+                ++sampled;
+            }
+        }
+        catch (const std::exception& e) {
+            // A material without the complex permeability the impedance model needs cannot
+            // be compared on impedance. That is a data gap, not a reason to rank it
+            // arbitrarily, so it drops out of THIS filter's results.
+            usable = false;
+        }
+
+        if (!usable || sampled == 0) {
+            listOfIndexesToErase.push_back(coreIndex);
+            continue;
+        }
+
+        double meanDeviation = deviation / sampled;
+        newScoring.push_back(meanDeviation);
+        add_scoring(core.get_name().value(), CoreCrossReferencerFilters::IMPEDANCE, meanDeviation);
+        add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::IMPEDANCE, meanDeviation);
+    }
+
+    for (size_t i = 0; i < (*unfilteredCores).size(); ++i) {
+        if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
+            listOfIndexesToErase.pop_front();
+        }
+        else {
+            filteredCoresWithScoring.push_back((*unfilteredCores)[i]);
+        }
+    }
+
+    if (filteredCoresWithScoring.size() != newScoring.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering by impedance, size of filteredCoresWithScoring: " + std::to_string(filteredCoresWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    }
+
+    if (filteredCoresWithScoring.size() > 0) {
+        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencerFilters::IMPEDANCE]);
+    }
+    return filteredCoresWithScoring;
+}
+
 std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_core(Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, size_t maximumNumberResults) {
     return get_cross_referenced_core(referenceCore, referenceNumberTurns, inputs, _weights, maximumNumberResults);
 }
@@ -624,9 +752,10 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
     MagneticCoreFilterWindingWindowArea filterWindingWindowArea; // CCR-BUG-1 FIX: names now match types
     MagneticCoreFilterEffectiveArea filterEffectiveArea; // CCR-BUG-1 FIX: names now match types
     MagneticCoreFilterEnvelopingVolume filterEnvelopingVolume;
+    MagneticCoreFilterImpedance filterImpedance;
 
     wire_cross_referencer_filters<CoreCrossReferencerFilters>(
-        {&filterPermeance, &filterVolumetricLosses, &filterWindingWindowArea, &filterEffectiveArea, &filterEnvelopingVolume},
+        {&filterPermeance, &filterVolumetricLosses, &filterWindingWindowArea, &filterEffectiveArea, &filterEnvelopingVolume, &filterImpedance},
         &_scorings, &_validScorings, &_scoredValues, &_filterConfiguration);
 
     using F = CoreCrossReferencerFilters;
@@ -658,6 +787,16 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
     rankedCores = filterVolumetricLosses.filter_core(
         &rankedCores, referenceCore, referenceNumberTurns, inputs, _models,
         weights[F::CORE_LOSSES], limit, weights[F::SATURATION]);
+
+    // IMPEDANCE is costlier still -- a curve per candidate rather than a scalar -- so it
+    // runs last, on the already-pruned set, and only when a caller asked for it. Its own
+    // filter_core returns early when the weight is 0, so the cost is not paid by the
+    // cross-references that do not want it.
+    rankedCores = filterImpedance.filter_core(
+        &rankedCores, referenceCore, referenceNumberTurns, weights[F::IMPEDANCE], limit);
+    logEntry("There are " + std::to_string(rankedCores.size())
+                 + " after filtering by " + to_string(F::IMPEDANCE) + ".",
+             "Core Cross Referencer", 2);
     logEntry("There are " + std::to_string(rankedCores.size())
                  + " after filtering by " + to_string(F::CORE_LOSSES) + ".",
              "Core Cross Referencer", 2);

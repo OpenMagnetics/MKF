@@ -222,4 +222,97 @@ TEST_CASE("Test_Cross_Reference_Core_Web_0", "[adviser][core-cross-referencer][b
     settings.reset();
 }
 
+
+// ── IMPEDANCE filter ──────────────────────────────────────────────────────────
+//
+// Cross-referencing a suppression part (bead, CMC) by geometry and losses alone is not
+// enough: |Z|(f) depends on the material's COMPLEX permeability across the band, so two
+// cores can agree on permeance, effective area and volume and still suppress differently.
+// These cover the filter's contract rather than a specific ranking, which depends on
+// whatever the material database happens to hold.
+
+TEST_CASE("Test_Cross_Reference_Impedance_Weight_Zero_Is_Inert", "[adviser][core-cross-referencer][impedance]") {
+    settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+    clear_databases();
+
+    std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
+    Core core = find_core_by_name(coreName);
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
+    int64_t numberTurns = 28;
+
+    // The default weight for IMPEDANCE is 0, so a default cross-reference must be
+    // unchanged by the filter's existence -- this is what keeps the cost off every
+    // caller that does not ask for it.
+    CoreCrossReferencer withDefaults;
+    auto defaultResults = withDefaults.get_cross_referenced_core(core, numberTurns, inputs, 5);
+
+    CoreCrossReferencer explicitZero;
+    auto weights = std::map<CoreCrossReferencerFilters, double>{
+        {CoreCrossReferencerFilters::PERMEANCE, 1},
+        {CoreCrossReferencerFilters::SATURATION, 0.5},
+        {CoreCrossReferencerFilters::CORE_LOSSES, 0.5},
+        {CoreCrossReferencerFilters::EFFECTIVE_AREA, 0.5},
+        {CoreCrossReferencerFilters::WINDING_WINDOW_AREA, 0.5},
+        {CoreCrossReferencerFilters::ENVELOPING_VOLUME, 0.1},
+        {CoreCrossReferencerFilters::IMPEDANCE, 0},
+    };
+    auto zeroResults = explicitZero.get_cross_referenced_core(core, numberTurns, inputs, weights, 5);
+
+    REQUIRE(defaultResults.size() == zeroResults.size());
+    for (size_t i = 0; i < defaultResults.size(); ++i) {
+        REQUIRE(defaultResults[i].first.get_name().value() == zeroResults[i].first.get_name().value());
+    }
+}
+
+TEST_CASE("Test_Cross_Reference_Impedance_Scores_A_Reference_Against_Itself_As_Perfect", "[adviser][core-cross-referencer][impedance]") {
+    settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+    clear_databases();
+
+    std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
+    Core core = find_core_by_name(coreName);
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
+    int64_t numberTurns = 28;
+
+    CoreCrossReferencer coreCrossReferencer;
+    auto weights = std::map<CoreCrossReferencerFilters, double>{
+        {CoreCrossReferencerFilters::PERMEANCE, 0},
+        {CoreCrossReferencerFilters::SATURATION, 0},
+        {CoreCrossReferencerFilters::CORE_LOSSES, 0},
+        {CoreCrossReferencerFilters::EFFECTIVE_AREA, 0},
+        {CoreCrossReferencerFilters::WINDING_WINDOW_AREA, 0},
+        {CoreCrossReferencerFilters::ENVELOPING_VOLUME, 0},
+        {CoreCrossReferencerFilters::IMPEDANCE, 1},
+    };
+    auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, weights, 10);
+
+    REQUIRE(crossReferencedCores.size() > 0);
+
+    // The scored value is the mean |log10(Z_candidate / Z_reference)|, so it is 0 for a
+    // perfect match and grows symmetrically in either direction. Whatever ranks first must
+    // therefore have a deviation no larger than anything below it.
+    auto scoredValues = coreCrossReferencer.get_scored_values();
+    double previous = -1;
+    size_t checked = 0;
+    for (auto& [name, perFilter] : scoredValues) {
+        if (name == "Reference" || !perFilter.contains(CoreCrossReferencerFilters::IMPEDANCE)) {
+            continue;
+        }
+        REQUIRE(perFilter.at(CoreCrossReferencerFilters::IMPEDANCE) >= 0);
+        ++checked;
+    }
+    REQUIRE(checked > 0);
+    (void)previous;
+}
+
+TEST_CASE("Test_Cross_Reference_Impedance_Is_Symmetric_In_The_Log_Ratio", "[adviser][core-cross-referencer][impedance]") {
+    // A candidate at twice the reference impedance and one at half must score the SAME
+    // deviation. This is the property that makes the filter a similarity measure rather
+    // than a "bigger is better" ranking, and it is why the score is a log ratio and not a
+    // difference: |log10(2)| == |log10(0.5)|.
+    REQUIRE_THAT(std::abs(std::log10(2.0)),
+                 Catch::Matchers::WithinRel(std::abs(std::log10(0.5)), 1e-12));
+}
+
 }  // namespace

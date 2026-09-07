@@ -28,7 +28,8 @@ class CoreCrossReferencer {
                 { CoreCrossReferencerFilters::SATURATION,           { {"invert", true}, {"log", false} } },
                 { CoreCrossReferencerFilters::WINDING_WINDOW_AREA,  { {"invert", true}, {"log", false} } },
                 { CoreCrossReferencerFilters::EFFECTIVE_AREA,       { {"invert", true}, {"log", false} } },
-                { CoreCrossReferencerFilters::ENVELOPING_VOLUME,    { {"invert", true}, {"log", false} } }
+                { CoreCrossReferencerFilters::ENVELOPING_VOLUME,    { {"invert", true}, {"log", false} } },
+                { CoreCrossReferencerFilters::IMPEDANCE,            { {"invert", true}, {"log", false} } }
             };
         std::map<CoreCrossReferencerFilters, std::map<std::string, double>> _scorings;
         std::map<CoreCrossReferencerFilters, std::map<std::string, bool>> _validScorings;
@@ -43,6 +44,11 @@ class CoreCrossReferencer {
             _weights[CoreCrossReferencerFilters::EFFECTIVE_AREA] = 0.5;
             _weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA] = 0.5;
             _weights[CoreCrossReferencerFilters::ENVELOPING_VOLUME] = 0.1;
+            // 0 by default: impedance is expensive and only meaningful for suppression
+            // parts (beads, CMCs). Callers that want it -- La Ferrita's competitor
+            // cross-reference -- pass a weight explicitly. Defaulting it on would slow
+            // every existing cross-reference for a criterion most of them do not care about.
+            _weights[CoreCrossReferencerFilters::IMPEDANCE] = 0;
         }
         CoreCrossReferencer() : CoreCrossReferencer(std::map<std::string, std::string>{}) {}
         std::string read_log() {
@@ -98,6 +104,31 @@ class CoreCrossReferencer {
     class MagneticCoreFilterEnvelopingVolume : public MagneticCoreFilter {
         public:
             std::vector<std::pair<Core, double>> filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, double weight=1, double limit=0.25);
+    };
+
+    /**
+     * Scores a candidate core by how closely its IMPEDANCE CURVE matches the reference's,
+     * with the reference's turn count wound on both.
+     *
+     * This is deliberately not MagneticFilterImpedance, which asks "does this part meet a
+     * minimum |Z| requirement". Cross-referencing asks a different question: "which
+     * catalogue part behaves like THIS one". For a ferrite bead or a suppression choke the
+     * impedance curve IS the product — two cores can match on permeance, effective area and
+     * volume and still suppress differently, because |Z|(f) depends on the material's
+     * complex permeability across the band, not on a single scalar.
+     *
+     * Scored as the mean absolute log-ratio |log10(|Z|_candidate / |Z|_reference)| over a
+     * frequency sweep: symmetric (twice the impedance is penalised exactly as much as half),
+     * dimensionless, and 0 for a perfect match. Inverted downstream so 0 ranks best.
+     */
+    class MagneticCoreFilterImpedance : public MagneticCoreFilter {
+        public:
+            std::vector<std::pair<Core, double>> filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, int64_t referenceNumberTurns, double weight=1, double limit=0.25);
+        private:
+            // Decade-spaced sweep. A bead's useful band is roughly 1 MHz - 1 GHz; sampling
+            // per decade keeps the comparison honest across the whole curve rather than
+            // letting one resonance dominate a linear average.
+            std::vector<double> _frequencies = {1e5, 1e6, 1e7, 1e8, 1e9};
     };
 
     class MagneticCoreFilterCoreLosses : public MagneticCoreFilter {
