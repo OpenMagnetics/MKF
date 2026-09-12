@@ -98,7 +98,7 @@ class StrayCapacitance{
         std::set<std::string> _methodsUsed;
         static double calculate_area_between_two_turns_using_diagonals(Turn firstTurn, Turn secondTurn);
         static double calculate_area_between_two_turns_using_vecticals_and_horizontals(Turn firstTurn, Turn secondTurn);
-        StrayCapacitanceOutput calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt);
+        StrayCapacitanceOutput calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt, std::optional<CoreElectricalReference> coreElectricalReference = std::nullopt);
     public:
 
         StrayCapacitance(StrayCapacitanceModels strayCapacitanceModel = StrayCapacitanceModels::ALBACH){
@@ -149,6 +149,40 @@ class StrayCapacitance{
                                                          const std::vector<double>& voltagesPerTurn,
                                                          std::optional<double> frequency = std::nullopt);
 
+        // ABT #1165: the energy stored in the turn-to-core elements of a winding PAIR against
+        // the floating core -- the turn -> core -> turn path, which exists for every pair and
+        // not only for separated ones. The first winding's turns sit at
+        // firstWindingPotentialOffset + V_i (the offset is the orchestration loop's V3, the
+        // common-mode offset it already applies to the turn-to-turn drops) and the second
+        // winding's at -V_j (opposing DM currents, the sign flip the loop already applies);
+        // the core is one floating node whose potential balances the charge over BOTH windings.
+        // Returns ENERGY (J) so the caller folds it into the same sum as the turn-to-turn pairs
+        // and reduces once, instead of reducing a second capacitance against a second voltage.
+        static double calculate_winding_pair_to_core_energy(Coil coil, Core core,
+                                                            const std::string& firstWindingName,
+                                                            const std::string& secondWindingName,
+                                                            const std::vector<double>& voltagesPerTurn,
+                                                            double firstWindingPotentialOffset = 0.0,
+                                                            std::optional<double> frequency = std::nullopt);
+
+        // ABT #1167: the potential the core node is held at, or nullopt when it FLOATS (its
+        // potential set by charge balance over the turns facing it, which is what every caller
+        // assumed before magnetic.coreElectricalReference existed). An ABSENT reference, and an
+        // explicit "floating" one, both return nullopt -- bit-for-bit today's behaviour.
+        //  - grounded: a node with no potential swing, i.e. 0 in the frame the per-turn
+        //    potentials are expressed in (every winding's "end" terminal sits at 0 there, so
+        //    every isolation side's local ground is the same 0; isolationSide names the node,
+        //    it does not move it).
+        //  - tiedToWinding: the potential of the named winding's start or end TERMINAL, taken
+        //    from the voltage dividers (exact terminal potentials, where voltagesPerTurn carries
+        //    turn CENTRES). Throws if the named winding is not in the coil, or if the required
+        //    winding/terminal fields are missing -- never a silent fall back to floating.
+        static std::optional<double> resolve_core_reference_potential(
+                Coil& coil,
+                const std::optional<CoreElectricalReference>& coreElectricalReference,
+                const StrayCapacitanceOutput& voltagesOutput,
+                const std::map<std::string, double>& voltageRmsPerWinding);
+
         // Energy stored in ONE winding's turn-to-core elements against the floating core
         // (ABT #848): same per-turn elements and charge-balanced core node as
         // calculate_through_core_capacitance, but for a single winding driven alone —
@@ -160,7 +194,11 @@ class StrayCapacitance{
         static double calculate_winding_to_core_self_energy(Coil coil, Core core,
                                                             const std::string& windingName,
                                                             const std::vector<double>& voltagesPerTurn,
-                                                            std::optional<double> frequency = std::nullopt);
+                                                            std::optional<double> frequency = std::nullopt,
+                                                            // ABT #1167: nullopt = FLOATING core (charge-balanced node, the
+                                                            // pre-existing behaviour); a value pins the core at that potential,
+                                                            // which is what a clip, strap or flux band to a circuit node does.
+                                                            std::optional<double> fixedCorePotential = std::nullopt);
 
         // ABT #848: how much of an image plane the core is for the turns, from its MAS
         // permittivity (complex, with conduction) against the dielectric on its surface:
@@ -177,8 +215,16 @@ class StrayCapacitance{
         // separated windings have zero mutual capacitance.
         // frequency: where the capacitance is wanted (the impedance path passes its resonance);
         // it only sets the core image factor (see core_image_factor) — omit it for beta = 1.
-        StrayCapacitanceOutput calculate_capacitance(Coil coil, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt);
-        StrayCapacitanceOutput calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt);
+        StrayCapacitanceOutput calculate_capacitance(Coil coil, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt, std::optional<CoreElectricalReference> coreElectricalReference = std::nullopt);
+        StrayCapacitanceOutput calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt, std::optional<CoreElectricalReference> coreElectricalReference = std::nullopt);
+        // The core's electrical reference is a property of the MAGNETIC, not of the core or the
+        // coil (it describes how the assembled part is bonded), so these overloads are the ones
+        // that can honour it without the caller restating it: they read
+        // magnetic.coreElectricalReference. The Coil+Core overloads above stay for callers that
+        // hold no magnetic; an absent reference there means floating, which is exactly what they
+        // computed before ABT #1167.
+        StrayCapacitanceOutput calculate_capacitance(const Magnetic& magnetic, std::optional<double> frequency = std::nullopt);
+        StrayCapacitanceOutput calculate_capacitance(const Magnetic& magnetic, OperatingPoint operatingPoint, std::optional<double> frequency = std::nullopt);
     
     // Bipolar coordinate system for round-round energy density computation
     struct BipolarParams {

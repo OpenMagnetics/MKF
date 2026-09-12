@@ -2230,22 +2230,32 @@ double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core c
     return windingToCore;
 }
 
-double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core,
+double StrayCapacitance::calculate_winding_pair_to_core_energy(Coil coil, Core core,
         const std::string& firstWindingName, const std::string& secondWindingName,
-        const std::vector<double>& voltagesPerTurn, std::optional<double> frequency) {
-    // Inter-winding capacitance between two separated windings through the floating,
+        const std::vector<double>& voltagesPerTurn, double firstWindingPotentialOffset,
+        std::optional<double> frequency) {
+    // Energy in the turn -> core -> turn path of a winding PAIR, against the floating,
     // equipotential ferrite core. Energy method (CPSS 2025 core-potential approach):
     //   1. each turn i has a turn-to-core element C_i and sits at potential V_i;
     //   2. the two windings carry opposing DM currents, so the second winding's turns
-    //      enter with the opposite sign (V_i -> -V_i);
-    //   3. the core is a single floating node — its potential balances the charge:
+    //      enter with the opposite sign (V_i -> -V_i); the first winding's turns carry
+    //      the common-mode offset the orchestration loop is converging (V3);
+    //   3. the core is a single floating node -- its potential balances the charge:
     //      V_core = sum(C_i V_i) / sum(C_i);
     //   4. the energy stored in all the turn-to-core capacitors is
-    //      W = sum 0.5 C_i (V_i - V_core)^2, and the effective inter-winding
-    //      capacitance referenced to the differential terminal voltage V_dm is
-    //      C = 2W / V_dm^2.
+    //      W = sum 0.5 C_i (V_i - V_core)^2.
     // Weighting by the actual per-turn potential (instead of summing every turn at the
     // full winding voltage) is what removes the gross overestimate of the naive sum.
+    //
+    // ABT #1165: this path exists for EVERY pair, not only for windings with no adjacent
+    // turns. The caller adds this energy to the turn-to-turn energy of the same pair and
+    // reduces the sum once against the pair's terminal voltage, so the through-core term
+    // adds to the direct term instead of replacing it.
+    if (firstWindingName == secondWindingName) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "calculate_winding_pair_to_core_energy asked for a pair of one winding ('" +
+            firstWindingName + "') with itself: use calculate_winding_to_core_self_energy");
+    }
     if (!coil.get_turns_description()) {
         coil.wind();
     }
@@ -2261,12 +2271,12 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
     double sumC = 0;
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
         auto windingName = turns[turnIndex].get_winding();
-        double sign;
+        double potential;
         if (windingName == firstWindingName) {
-            sign = 1.0;
+            potential = firstWindingPotentialOffset + voltagesPerTurn[turnIndex];
         }
         else if (windingName == secondWindingName) {
-            sign = -1.0;  // opposing DM current
+            potential = -voltagesPerTurn[turnIndex];  // opposing DM current
         }
         else {
             continue;
@@ -2277,7 +2287,6 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
         // use an area-equivalent radius (see turn_to_core_equivalent_radius).
         double capacitance = imageFactor * turn_to_core_element(
             coil, core, turns[turnIndex], wire, coreCoatingThickness, coreCoatingRelativePermittivity, turns);
-        double potential = sign * voltagesPerTurn[turnIndex];
 
         turnCoreCapacitance.push_back(capacitance);
         turnPotential.push_back(potential);
@@ -2291,19 +2300,51 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
     double corePotential = sumCV / sumC;
 
     double energy = 0;
-    double maxFirstPotential = -std::numeric_limits<double>::max();
-    double minSecondPotential = std::numeric_limits<double>::max();
     for (size_t k = 0; k < turnCoreCapacitance.size(); ++k) {
         energy += 0.5 * turnCoreCapacitance[k] * std::pow(turnPotential[k] - corePotential, 2);
-        if (turnPotential[k] >= 0) {
-            maxFirstPotential = std::max(maxFirstPotential, turnPotential[k]);
+    }
+    return energy;
+}
+
+double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core,
+        const std::string& firstWindingName, const std::string& secondWindingName,
+        const std::vector<double>& voltagesPerTurn, std::optional<double> frequency) {
+    // Terminal-referenced form of the pair energy above: C = 2W / V_dm^2, with V_dm the
+    // differential terminal voltage across the two windings (the first winding spans
+    // [0, maxFirst]; the second, negated, spans [minSecond, 0]). Kept as the standalone
+    // entry point for callers that want the through-core capacitance on its own; the
+    // orchestration loop folds the ENERGY in instead (ABT #1165) so that one reduction
+    // covers the direct and the through-core path together.
+    double energy = calculate_winding_pair_to_core_energy(
+        coil, core, firstWindingName, secondWindingName, voltagesPerTurn, 0.0, frequency);
+    if (energy <= 0) {
+        return 0;
+    }
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    auto turns = coil.get_turns_description().value();
+    double maxFirstPotential = -std::numeric_limits<double>::max();
+    double minSecondPotential = std::numeric_limits<double>::max();
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto windingName = turns[turnIndex].get_winding();
+        double potential;
+        if (windingName == firstWindingName) {
+            potential = voltagesPerTurn[turnIndex];
+        }
+        else if (windingName == secondWindingName) {
+            potential = -voltagesPerTurn[turnIndex];
         }
         else {
-            minSecondPotential = std::min(minSecondPotential, turnPotential[k]);
+            continue;
+        }
+        if (potential >= 0) {
+            maxFirstPotential = std::max(maxFirstPotential, potential);
+        }
+        else {
+            minSecondPotential = std::min(minSecondPotential, potential);
         }
     }
-    // Differential terminal voltage across the two windings (first winding spans
-    // [0, maxFirst]; second, negated, spans [minSecond, 0]).
     double differentialVoltage = maxFirstPotential - minSecondPotential;
     if (differentialVoltage <= 0) {
         return 0;
@@ -2313,7 +2354,8 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
 
 double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core core,
         const std::string& windingName,
-        const std::vector<double>& voltagesPerTurn, std::optional<double> frequency) {
+        const std::vector<double>& voltagesPerTurn, std::optional<double> frequency,
+        std::optional<double> fixedCorePotential) {
     // One winding against the floating core (ABT #848). Mirrors
     // calculate_through_core_capacitance exactly — same per-turn elements, same
     // charge-balanced core node — but over a single winding's turns, all with
@@ -2348,12 +2390,101 @@ double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core c
     if (sumC <= 0) {
         return 0;
     }
-    double corePotential = sumCV / sumC;   // floating node: charge balance
+    // ABT #1167: a FLOATING core takes the charge-balanced potential of the turns facing it;
+    // a BONDED one (clip, strap, flux band, conductive tape) is held at its reference and the
+    // charge balance no longer applies -- the reference sources whatever charge the difference
+    // demands. For a linear potential ramp and uniform elements the two give C0/12 and C0/3
+    // respectively, a factor of 4 on identical copper (see MAS magnetic.md, "Core electrical
+    // reference"). Absent reference == nullopt == floating == the pre-#1167 behaviour.
+    double corePotential = fixedCorePotential ? fixedCorePotential.value() : sumCV / sumC;
     double energy = 0;
     for (size_t k = 0; k < turnCoreCapacitance.size(); ++k) {
         energy += 0.5 * turnCoreCapacitance[k] * std::pow(turnPotential[k] - corePotential, 2);
     }
     return energy;
+}
+
+std::optional<double> StrayCapacitance::resolve_core_reference_potential(Coil& coil,
+        const std::optional<CoreElectricalReference>& coreElectricalReference,
+        const StrayCapacitanceOutput& voltagesOutput,
+        const std::map<std::string, double>& voltageRmsPerWinding) {
+    // ABT #1167. Returns the potential the core node is HELD at, or nullopt when it floats.
+    if (!coreElectricalReference) {
+        return std::nullopt;  // absent means floating: exactly the pre-#1167 behaviour
+    }
+    switch (coreElectricalReference->get_type()) {
+        case CoreElectricalReferenceType::FLOATING:
+            return std::nullopt;
+        case CoreElectricalReferenceType::GROUNDED:
+            // A node with no potential swing. The per-turn potentials of every winding are
+            // expressed against a single zero (each winding's voltage divider runs from its
+            // full voltage down to 0 at its end terminal), so the local ground of any
+            // isolation side and protective earth are the same 0 in this frame:
+            // isolationSide identifies WHICH node it is, it does not move it. What the bond
+            // changes is that the core no longer charge-balances -- and that the
+            // primary->core->secondary path is diverted to the reference (handled by the
+            // caller, which drops the inter-winding through-core term).
+            return 0.0;
+        case CoreElectricalReferenceType::TIED_TO_WINDING:
+            break;
+    }
+
+    if (!coreElectricalReference->get_winding() || !coreElectricalReference->get_terminal()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "coreElectricalReference of type tiedToWinding needs both a winding name and a "
+            "terminal (start or end); the schema requires them and this document has "
+            + std::string(coreElectricalReference->get_winding() ? "no terminal" : "no winding"));
+    }
+    auto referenceWindingName = coreElectricalReference->get_winding().value();
+    auto terminal = coreElectricalReference->get_terminal().value();
+
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    auto turns = coil.get_turns_description().value();
+    bool found = false;
+    size_t firstTurnIndexOfWinding = 0;
+    size_t lastTurnIndexOfWinding = 0;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        if (turns[turnIndex].get_winding() != referenceWindingName) {
+            continue;
+        }
+        if (!found) {
+            firstTurnIndexOfWinding = turnIndex;
+            found = true;
+        }
+        lastTurnIndexOfWinding = turnIndex;
+    }
+    if (!found) {
+        std::string known;
+        for (auto& winding : coil.get_functional_description()) {
+            known += (known.empty() ? "" : ", ") + winding.get_name();
+        }
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "coreElectricalReference ties the core to winding '" + referenceWindingName +
+            "', which this coil does not have (its windings are: " + known + ")");
+    }
+    if (!voltageRmsPerWinding.contains(referenceWindingName)) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "coreElectricalReference ties the core to winding '" + referenceWindingName +
+            "', which has no voltage in this calculation");
+    }
+    if (!voltagesOutput.get_voltage_divider_start_per_turn() || !voltagesOutput.get_voltage_divider_end_per_turn()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "coreElectricalReference of type tiedToWinding needs the per-turn voltage dividers "
+            "to locate the winding's terminal potential, and they are missing");
+    }
+    // The TERMINAL potentials, not the turn centres voltagesPerTurn carries: the divider at the
+    // start of the winding's first turn is 1 (its full voltage) and at the end of its last turn
+    // is 0. With parallels every parallel repeats the same ramp, so the first and last turn of
+    // the winding carry the same two ends.
+    auto voltageDividerStartPerTurn = voltagesOutput.get_voltage_divider_start_per_turn().value();
+    auto voltageDividerEndPerTurn = voltagesOutput.get_voltage_divider_end_per_turn().value();
+    double windingVoltage = voltageRmsPerWinding.at(referenceWindingName);
+    if (terminal == WindingTerminal::START) {
+        return windingVoltage * voltageDividerStartPerTurn[firstTurnIndexOfWinding];
+    }
+    return windingVoltage * voltageDividerEndPerTurn[lastTurnIndexOfWinding];
 }
 
 double StrayCapacitance::calculate_energy_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil) {
@@ -2522,17 +2653,28 @@ SixCapacitorNetworkPerWinding StrayCapacitance::calculate_six_capacitor_network(
 }
 
 
-StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, std::optional<Core> core, std::optional<double> frequency) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(const Magnetic& magnetic, std::optional<double> frequency) {
+    // ABT #1167: the magnetic is the object that knows how its core is bonded.
+    return calculate_capacitance(magnetic.get_coil(), std::optional<Core>(magnetic.get_core()), frequency,
+                                 magnetic.get_core_electrical_reference());
+}
+
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(const Magnetic& magnetic, OperatingPoint operatingPoint, std::optional<double> frequency) {
+    return calculate_capacitance(magnetic.get_coil(), operatingPoint, std::optional<Core>(magnetic.get_core()), frequency,
+                                 magnetic.get_core_electrical_reference());
+}
+
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, std::optional<Core> core, std::optional<double> frequency, std::optional<CoreElectricalReference> coreElectricalReference) {
     std::map<std::string, double> voltageRmsPerWinding;
     double primaryNumberTurns = coil.get_functional_description()[0].get_number_turns();
     for (auto winding : coil.get_functional_description()) {
         double turnsRatio = primaryNumberTurns /  winding.get_number_turns();
         voltageRmsPerWinding[winding.get_name()] = 10.0 / turnsRatio;
     }
-    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core, frequency);
+    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core, frequency, coreElectricalReference);
 }
 
-StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core, std::optional<double> frequency) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, OperatingPoint operatingPoint, std::optional<Core> core, std::optional<double> frequency, std::optional<CoreElectricalReference> coreElectricalReference) {
     // Extract actual RMS voltages from operating point
     std::map<std::string, double> voltageRmsPerWinding;
     
@@ -2559,10 +2701,10 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, Operat
         voltageRmsPerWinding[coil.get_functional_description()[windingIndex].get_name()] = rmsVoltage.value();
     }
 
-    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core, frequency);
+    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding, core, frequency, coreElectricalReference);
 }
 
-StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core, std::optional<double> frequency) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core, std::optional<double> frequency, std::optional<CoreElectricalReference> coreElectricalReference) {
     // Per-call, not per-object: the same StrayCapacitance is reused across magnetics (the SPICE
     // export calls it twice, once to estimate resonance and once refined), and a stale entry would
     // report a model that ran for a previous coil.
@@ -2577,6 +2719,11 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
 
     auto strayCapacitanceOutput = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding);
     auto voltagesPerTurn = strayCapacitanceOutput.get_voltage_per_turn().value();
+    // ABT #1167: nullopt = the core floats (charge-balanced node), which is what an absent
+    // reference means and what every result before this ticket assumed. A value means the core
+    // is bonded and HELD there, which both fixes the self term's core potential and diverts the
+    // inter-winding through-core path to the reference (so that term disappears from the pair).
+    auto fixedCorePotential = resolve_core_reference_potential(coil, coreElectricalReference, strayCapacitanceOutput, voltageRmsPerWinding);
     auto windings = coil.get_functional_description();
     std::map<std::pair<std::string, std::string>, double> capacitanceMapPerWindings;
     for (auto firstWinding : windings) {
@@ -2660,28 +2807,69 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
                 // the self term came out ~50-100x low against 107 measured WE chokes
                 // (near-zero for single-layer windings). Same energy method and per-turn
                 // elements as the through-core inter-winding path below.
-                if (firstWindingName == secondWindingName && core) {
-                    energyInBetweenTheseWindings += calculate_winding_to_core_self_energy(
-                        coil, core.value(), firstWindingName, voltagesPerTurn, frequency);
-                }
-
-                if (windingAreNotAdjacent) {
-                    // No turn of the first winding is adjacent to any turn of the second,
-                    // so there is no direct turn-to-turn capacitive path between them (the
-                    // separated-winding CMC case: the two windings sit on opposite arcs of
-                    // the toroid). The only path is through the core: turn -> core -> turn.
-                    // The energy method (potential-weighted, floating-core node) builds it
-                    // from the per-turn turn-to-core elements. Requires the core (its coating
-                    // sets the dielectric floor); without it we fall back to 0 (old behaviour).
-                    double throughCore = 0;
-                    if (core && firstWindingName != secondWindingName) {
-                        throughCore = calculate_through_core_capacitance(coil, core.value(), firstWindingName, secondWindingName, voltagesPerTurn, frequency);
+                if (core) {
+                    if (firstWindingName == secondWindingName) {
+                        energyInBetweenTheseWindings += calculate_winding_to_core_self_energy(
+                            coil, core.value(), firstWindingName, voltagesPerTurn, frequency, fixedCorePotential);
                     }
-                    capacitanceMapPerWindings[windingsKey] = throughCore;
-                    continue;
+                    // ABT #1165: the turn -> core -> turn path between two DIFFERENT windings
+                    // exists whether or not they have adjacent turns. It used to be computed
+                    // only when they had none (the separated-winding CMC), so every concentric
+                    // or contiguous transformer pair on a bobbin was reported with its direct
+                    // turn-to-turn coupling alone -- although the outer winding still faces the
+                    // yokes and flanges that #948 made the model count, and its displacement
+                    // current still returns through the core to the other winding. Folding the
+                    // ENERGY into the same sum as the turn-to-turn pairs (rather than reducing a
+                    // second capacitance against a second voltage) makes the separated case the
+                    // special case of one path: there the turn-to-turn sum is simply empty.
+                    //
+                    // ABT #1167: unless the core is BONDED. A clip, strap or flux band returns
+                    // the first winding's displacement current to the reference instead of
+                    // letting it close through the core into the second winding, and each
+                    // winding's turn-to-core elements become a defined shunt to that reference
+                    // (already carried by the self term above, evaluated at the fixed potential).
+                    // So a grounded or tied core diverts exactly the term #1165 adds.
+                    else if (!fixedCorePotential) {
+                        energyInBetweenTheseWindings += calculate_winding_pair_to_core_energy(
+                            coil, core.value(), firstWindingName, secondWindingName, voltagesPerTurn, V3, frequency);
+                    }
                 }
 
                 voltageDropBetweenWindings = maxVoltageInFirstWinding - minVoltageInSecondWinding + V3;
+                if (windingAreNotAdjacent && firstWindingName == secondWindingName) {
+                    // A winding none of whose turns neighbours another turn of the same winding
+                    // (a single-turn winding, or one the winder has scattered): no turn-to-turn
+                    // chain, and no voltage drop across the pair either, so the 2E/dV^2 reduction
+                    // below has nothing to divide by. Reported as zero self-capacitance, which is
+                    // what this branch did before ABT #1165 -- unchanged here deliberately, since
+                    // giving a one-turn winding the core term it also drops is a separate
+                    // question from the inter-winding path this ticket is about.
+                    capacitanceMapPerWindings[windingsKey] = 0;
+                    continue;
+                }
+
+                if (windingAreNotAdjacent) {
+                    // No turn of the first winding is adjacent to any turn of the second, so
+                    // there is no direct turn-to-turn capacitive path between them (the
+                    // separated-winding CMC case: the two windings sit on opposite arcs of the
+                    // toroid). Everything the pair has is the through-core energy folded in
+                    // above, and it is reduced against the same terminal voltage below. There is
+                    // no three-input multipole to solve -- the six-capacitor representation
+                    // describes a DIRECT two-port coupling -- so the common-mode offset V3 stays
+                    // at 0 and no capacitance matrix is built for this pair, exactly as before.
+                    if (energyInBetweenTheseWindings == 0) {
+                        capacitanceMapPerWindings[windingsKey] = 0;
+                    }
+                    else if (voltageDropBetweenWindings == 0) {
+                        throw NaNResultException("Nonzero through-core energy with zero voltage drop between windings '"
+                                                 + firstWindingName + "' and '" + secondWindingName + "'");
+                    }
+                    else {
+                        capacitanceMapPerWindings[windingsKey] = energyInBetweenTheseWindings * 2 / pow(voltageDropBetweenWindings, 2);
+                    }
+                    continue;
+                }
+
                 relativeTurnsRatio = static_cast<double>(firstWinding.get_number_turns()) / secondWinding.get_number_turns(); 
                 capacitanceMatrixBetweenWindings = calculate_capacitance_matrix_between_windings(energyInBetweenTheseWindings, voltageDropBetweenWindings, relativeTurnsRatio);
                 if (firstWindingName != secondWindingName) {

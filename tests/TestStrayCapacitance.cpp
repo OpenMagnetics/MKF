@@ -2743,8 +2743,7 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
     }
 }
 
-// ===========================================================================================
-// ABT #1164: the bobbin wall is a dielectric, not air.
+// ====================================================================================// ABT #1164: the bobbin wall is a dielectric, not air.
 // ===========================================================================================
 
 TEST_CASE("ABT1164_Bobbin_Wall_Enters_Stack_As_Thickness_Over_Permittivity", "[physical-model][stray-capacitance][abt1164]") {
@@ -2992,4 +2991,275 @@ TEST_CASE("ABT1163_Toroid_Turn_Screened_In_The_Bore_Still_Faces_The_Outside", "[
                   << " second-layer turns=" << twoLayer.otherTurns << " C=" << twoLayer.capacitance
                   << " | element returned per second-layer turn=" << returnedPerSecondLayerTurn);
     REQUIRE(returnedPerSecondLayerTurn > 0.1);
+}
+// =====================================================================================
+// ABT #1165 (the through-core inter-winding path exists for EVERY winding pair, not only
+// for separated ones) and ABT #1167 (magnetic.coreElectricalReference: a bonded core is
+// held at its reference instead of charge-balancing, and diverts the through-core path).
+// The two compose: a grounded or tied core diverts exactly the term #1165 adds.
+// =====================================================================================
+
+// The headline of ABT #1167, straight out of the design note (§8-§12) and MAS
+// magnetic.md "Core electrical reference": a winding with a linear potential ramp and a
+// total distributed capacitance C0 to the core shows C0/12 at its terminals with the core
+// FLOATING and C0/3 with the core TIED to either end — a factor of 4 on identical copper.
+//
+// The analytic result is checked, not a snapshot, and checked in its exact DISCRETE form.
+// MKF's voltage divider puts turn k of an N-turn winding at V*(N-1-k)/(N-1), i.e. N equally
+// spaced potentials from V down to 0 inclusive, so with uniform turn-to-core elements
+// C_i = C0/N:
+//   floating (core at the charge-balanced mean V/2):  C = C0 (N+1) / (12 (N-1))
+//   tied to either end (core at V or at 0):           C = C0 (2N-1) / ( 6 (N-1))
+// whose ratio is 2(2N-1)/(N+1) — exactly 4 in the continuum limit, 3.85 at N = 40.
+// A TOROID is used because its turn-to-core element depends only on the turn's radius from
+// the axis, so a single-layer winding really does have uniform C_i and the closed forms
+// above are exact rather than approximate.
+TEST_CASE("A bonded core turns C0/12 into C0/3 on a linear potential ramp", "[physical-model][stray-capacitance][abt1167]") {
+    settings.reset();
+    const int64_t numberTurns = 40;
+    auto coreJsonStr = R"({"name": "abt1167", "functionalDescription": {"type": "toroidal", "material": "A07", "shape": "T 14/8/9", "coating": {"type": "epoxy", "thickness": 0.0006}, "gapping": [], "numberStacks": 1}})";
+    auto coilJsonStr = std::string(R"({"bobbin": "Basic", "functionalDescription":[{"name": "Primary", "numberTurns": )")
+        + std::to_string(numberTurns) + R"(, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 0.2 - Grade 1"}]})";
+    OpenMagnetics::Core core(nlohmann::json::parse(coreJsonStr));
+    core.process_data();
+    core.process_gap();
+    OpenMagnetics::Coil coil(nlohmann::json::parse(coilJsonStr), false);
+    coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
+    REQUIRE_NOTHROW(coil.wind());
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_turns_description().value().size() == size_t(numberTurns));
+
+    const double windingVoltage = 10.0;
+    auto voltagesPerTurn = StrayCapacitance::calculate_voltages_per_turn(coil, {{"Primary", windingVoltage}}).get_voltage_per_turn().value();
+    // The ramp really is linear and spans the whole winding voltage, which is what the
+    // closed forms assume; without this the C0/12 and C0/3 below would be checking nothing.
+    CHECK(voltagesPerTurn.front() == Catch::Approx(windingVoltage));
+    CHECK(voltagesPerTurn.back() == Catch::Approx(0.0).margin(1e-12));
+
+    double C0 = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, "Primary");
+    REQUIRE(C0 > 0);
+
+    auto terminalCapacitance = [&](std::optional<double> fixedCorePotential) {
+        double energy = StrayCapacitance::calculate_winding_to_core_self_energy(
+            coil, core, "Primary", voltagesPerTurn, std::nullopt, fixedCorePotential);
+        return 2.0 * energy / (windingVoltage * windingVoltage);
+    };
+    double floatingCore = terminalCapacitance(std::nullopt);
+    double tiedToStart = terminalCapacitance(windingVoltage);  // the live end
+    double tiedToEnd = terminalCapacitance(0.0);               // the return end
+
+    double N = static_cast<double>(numberTurns);
+    double expectedFloating = C0 * (N + 1.0) / (12.0 * (N - 1.0));
+    double expectedTied = C0 * (2.0 * N - 1.0) / (6.0 * (N - 1.0));
+    UNSCOPED_INFO("C0 = " << C0 << " F; floating " << floatingCore << " (expected " << expectedFloating
+                  << "), tied to start " << tiedToStart << ", tied to end " << tiedToEnd
+                  << " (expected " << expectedTied << ")");
+    CHECK(floatingCore == Catch::Approx(expectedFloating).epsilon(1e-6));
+    CHECK(tiedToStart == Catch::Approx(expectedTied).epsilon(1e-6));
+    // Either end gives the same shunt: the ramp is symmetric about the core potential.
+    CHECK(tiedToEnd == Catch::Approx(tiedToStart).epsilon(1e-9));
+    // The headline ratio, against the analytic discrete value and against its continuum limit.
+    double ratio = tiedToStart / floatingCore;
+    UNSCOPED_INFO("tied/floating = " << ratio << ", analytic 2(2N-1)/(N+1) = " << 2.0 * (2.0 * N - 1.0) / (N + 1.0));
+    CHECK(ratio == Catch::Approx(2.0 * (2.0 * N - 1.0) / (N + 1.0)).epsilon(1e-6));
+    CHECK(ratio > 3.8);
+    CHECK(ratio < 4.0);
+}
+
+// The same physics through the PUBLIC path, driven by magnetic.coreElectricalReference, and
+// the invariant the whole ticket rests on: ABSENT MEANS FLOATING and changes nothing.
+TEST_CASE("coreElectricalReference drives the core node, and absent means floating", "[physical-model][stray-capacitance][abt1167]") {
+    settings.reset();
+    auto coreJsonStr = R"({"name": "abt1167", "functionalDescription": {"type": "toroidal", "material": "A07", "shape": "T 14/8/9", "coating": {"type": "epoxy", "thickness": 0.0006}, "gapping": [], "numberStacks": 1}})";
+    auto coilJsonStr = R"({"bobbin": "Basic", "functionalDescription":[{"name": "Primary", "numberTurns": 20, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 0.2 - Grade 1"}]})";
+    OpenMagnetics::Core core(nlohmann::json::parse(coreJsonStr));
+    core.process_data();
+    core.process_gap();
+    OpenMagnetics::Coil coil(nlohmann::json::parse(coilJsonStr), false);
+    coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
+    REQUIRE_NOTHROW(coil.wind());
+
+    auto selfCapacitance = [&](std::optional<CoreElectricalReference> reference) {
+        return StrayCapacitance().calculate_capacitance(coil, std::optional<Core>(core), std::nullopt, reference)
+            .get_capacitance_among_windings().value()["Primary"]["Primary"];
+    };
+
+    double absent = selfCapacitance(std::nullopt);
+    CoreElectricalReference floatingReference;
+    floatingReference.set_type(CoreElectricalReferenceType::FLOATING);
+    CoreElectricalReference groundedReference;
+    groundedReference.set_type(CoreElectricalReferenceType::GROUNDED);
+    CoreElectricalReference tiedToStart;
+    tiedToStart.set_type(CoreElectricalReferenceType::TIED_TO_WINDING);
+    tiedToStart.set_winding("Primary");
+    tiedToStart.set_terminal(WindingTerminal::START);
+    CoreElectricalReference tiedToEnd(tiedToStart);
+    tiedToEnd.set_terminal(WindingTerminal::END);
+
+    // An explicit "floating" is the same document as no field at all — bit for bit.
+    CHECK(selfCapacitance(floatingReference) == absent);
+    // A bonded core is a bigger terminal shunt: the turns no longer share the charge balance
+    // that put the core in the middle of their ramp, so each turn's element is charged by its
+    // own full potential difference to the reference.
+    double grounded = selfCapacitance(groundedReference);
+    double tiedStart = selfCapacitance(tiedToStart);
+    double tiedEnd = selfCapacitance(tiedToEnd);
+    UNSCOPED_INFO("self-capacitance: absent/floating " << absent << ", grounded " << grounded
+                  << ", tied to start " << tiedStart << ", tied to end " << tiedEnd);
+    CHECK(grounded > absent);
+    CHECK(tiedStart > absent);
+    // "grounded" and "tied to the winding's end" name the same node here: the end terminal of
+    // a winding IS its zero in the frame the per-turn potentials are expressed in.
+    CHECK(tiedEnd == Catch::Approx(grounded).epsilon(1e-9));
+    CHECK(tiedStart == Catch::Approx(tiedEnd).epsilon(1e-9));
+
+    // No fallbacks: a reference naming a winding the coil does not have is a broken document,
+    // not a floating core.
+    CoreElectricalReference tiedToNothing;
+    tiedToNothing.set_type(CoreElectricalReferenceType::TIED_TO_WINDING);
+    tiedToNothing.set_winding("NotAWinding");
+    tiedToNothing.set_terminal(WindingTerminal::START);
+    CHECK_THROWS(selfCapacitance(tiedToNothing));
+    // ... and so is one that does not say which end.
+    CoreElectricalReference tiedWithoutTerminal;
+    tiedWithoutTerminal.set_type(CoreElectricalReferenceType::TIED_TO_WINDING);
+    tiedWithoutTerminal.set_winding("Primary");
+    CHECK_THROWS(selfCapacitance(tiedWithoutTerminal));
+}
+
+// ABT #1165 on a CONCENTRIC transformer — two windings on one bobbin, with adjacent turns, so
+// the old adjacency gate gave them their direct turn-to-turn coupling alone. The outer winding
+// still faces the yokes and flanges (ABT #948), so the path primary -> core -> secondary is
+// there and ADDS to the direct term.
+//
+// The counter-term is ABT #1167: with the core bonded, the primary's displacement current
+// returns to the reference instead of closing through the core into the secondary, so the
+// through-core term disappears again. That makes the grounded-core result the exact pre-#1165
+// number, which is also what the model computes with no core at all — the cleanest available
+// statement that #1167 diverts exactly what #1165 adds.
+TEST_CASE("The through-core path is counted for adjacent windings, and a bonded core diverts it", "[physical-model][stray-capacitance][abt1165][abt1167]") {
+    settings.reset();
+    auto coreJsonStr = R"({"name": "abt1165", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005}], "numberStacks": 1}})";
+    auto coilJsonStr = R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 10, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 0.5 - Grade 1"}, {"name": "Secondary", "numberTurns": 10, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 0.5 - Grade 1"}]})";
+    auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+    REQUIRE(coil.get_turns_description());
+
+    // The premise of the ticket: these two windings DO have adjacent turns, so the old code
+    // took the direct-coupling branch and never computed a through-core term for them.
+    auto amongTurns = StrayCapacitance().calculate_capacitance_among_turns(coil);
+    auto turns = coil.get_turns_description().value();
+    bool anyAdjacentPairAcrossWindings = false;
+    for (auto& [key, capacitance] : amongTurns) {
+        if (turns[key.first].get_winding() != turns[key.second].get_winding() && capacitance > 0) {
+            anyAdjacentPairAcrossWindings = true;
+        }
+    }
+    REQUIRE(anyAdjacentPairAcrossWindings);
+
+    auto capacitances = [&](std::optional<Core> withCore, std::optional<CoreElectricalReference> reference) {
+        return StrayCapacitance().calculate_capacitance(coil, withCore, std::nullopt, reference)
+            .get_capacitance_among_windings().value();
+    };
+    CoreElectricalReference groundedReference;
+    groundedReference.set_type(CoreElectricalReferenceType::GROUNDED);
+
+    auto floatingCore = capacitances(std::optional<Core>(core), std::nullopt);
+    auto bondedCore = capacitances(std::optional<Core>(core), groundedReference);
+    auto noCore = capacitances(std::nullopt, std::nullopt);
+
+    double interFloating = floatingCore["Primary"]["Secondary"];
+    double interBonded = bondedCore["Primary"]["Secondary"];
+    double interNoCore = noCore["Primary"]["Secondary"];
+    UNSCOPED_INFO("inter-winding capacitance: floating core " << interFloating << " F, bonded core "
+                  << interBonded << " F, no core " << interNoCore << " F (through-core share "
+                  << 100.0 * (interFloating - interNoCore) / interFloating << " %)");
+
+    // #1165: the through-core path adds to the direct turn-to-turn coupling of an ADJACENT pair.
+    CHECK(interFloating > interNoCore);
+    // #1167: bonding the core diverts that very term, leaving the direct coupling alone —
+    // identical to the coreless run, which carries no through-core term either.
+    CHECK(interBonded == Catch::Approx(interNoCore).epsilon(1e-9));
+    CHECK(interFloating > interBonded);
+    // It is an addition to a real term, not a replacement of it: the direct coupling survives.
+    CHECK(interNoCore > 0);
+    // And the whole inter-winding capacitance stays a physical few-hundred-pF-or-less number
+    // for a 10+10 turn RM 10 transformer.
+    CHECK(interFloating < 1e-9);
+
+    // The self terms move the other way round, as ABT #1167 requires: a bonded core is a
+    // LARGER shunt on each winding (C0/3 rather than C0/12 of its distributed capacitance).
+    CHECK(bondedCore["Primary"]["Primary"] > floatingCore["Primary"]["Primary"]);
+    CHECK(bondedCore["Secondary"]["Secondary"] > floatingCore["Secondary"]["Secondary"]);
+}
+
+// ABT #1165's compatibility requirement, as a test rather than an assumption: for SEPARATED
+// windings the refactor must be a pure restructuring. The orchestration loop now folds the
+// through-core ENERGY into the same sum as the turn-to-turn pairs and reduces once, where it
+// used to reduce the through-core capacitance on its own; with no turn-to-turn pairs to add,
+// the two must agree to the last bit — which is what keeps the measured CMC corpus still.
+TEST_CASE("On a real CMC the bonded core diverts exactly what the through-core path adds", "[physical-model][stray-capacitance][abt1165][abt1167]") {
+    settings.reset();
+    auto testDataPath = get_test_data_path(std::source_location::current(), "cmc_redexpert_744834622.json");
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    auto magneticJson = nlohmann::json::parse(file);
+    OpenMagnetics::Magnetic magnetic(magneticJson);
+    magnetic = magnetic_autocomplete(magnetic);
+    auto coil = magnetic.get_coil();
+    auto core = magnetic.get_core();
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    auto firstWindingName = coil.get_functional_description()[0].get_name();
+    auto secondWindingName = coil.get_functional_description()[1].get_name();
+
+    // The voltages the no-operating-point entry point uses, so the two routes are comparable.
+    std::map<std::string, double> voltageRmsPerWinding;
+    double primaryNumberTurns = coil.get_functional_description()[0].get_number_turns();
+    for (auto winding : coil.get_functional_description()) {
+        voltageRmsPerWinding[winding.get_name()] = 10.0 / (primaryNumberTurns / winding.get_number_turns());
+    }
+    auto voltagesPerTurn = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding).get_voltage_per_turn().value();
+    double throughCore = StrayCapacitance::calculate_through_core_capacitance(
+        coil, core, firstWindingName, secondWindingName, voltagesPerTurn);
+    CoreElectricalReference groundedReference;
+    groundedReference.set_type(CoreElectricalReferenceType::GROUNDED);
+    auto interWinding = [&](std::optional<Core> withCore, std::optional<CoreElectricalReference> reference) {
+        return StrayCapacitance().calculate_capacitance(coil, withCore, std::nullopt, reference)
+            .get_capacitance_among_windings().value()[firstWindingName][secondWindingName];
+    };
+    double floatingCore = interWinding(std::optional<Core>(core), std::nullopt);
+    double bondedCore = interWinding(std::optional<Core>(core), groundedReference);
+    double noCore = interWinding(std::nullopt, std::nullopt);
+
+    // How separated this part really is, MEASURED rather than assumed: ABT #173 showed that the
+    // boundary turns of this very choke, facing each other across the 2.8 mm separation gap, do
+    // carry turn-to-turn elements. So it is not a pair with no direct path at all, and the count
+    // is reported -- the premise of a test has to be checked, not believed.
+    auto amongTurns = StrayCapacitance().calculate_capacitance_among_turns(coil);
+    auto turns = coil.get_turns_description().value();
+    size_t crossWindingPairs = 0;
+    for (auto& [key, capacitance] : amongTurns) {
+        if (turns[key.first].get_winding() != turns[key.second].get_winding() && capacitance > 0) {
+            ++crossWindingPairs;
+        }
+    }
+    UNSCOPED_INFO("CMC 744834622: " << crossWindingPairs << " cross-winding turn pairs; inter-winding "
+                  << "no core " << noCore << " F, floating core " << floatingCore << " F, bonded core "
+                  << bondedCore << " F; standalone through-core " << throughCore << " F");
+    CHECK(throughCore > 0);
+
+    // The identity that holds for ANY geometry, separated or not, and is the whole composition of
+    // the two tickets: what ABT #1165 adds through the core is exactly what ABT #1167 takes away
+    // when the core is bonded, leaving the direct turn-to-turn coupling on its own -- which is
+    // precisely the coreless result.
+    CHECK(bondedCore == Catch::Approx(noCore).epsilon(1e-12));
+    CHECK(floatingCore > noCore);
+
+    if (crossWindingPairs == 0) {
+        // Genuinely separated: the turn-to-turn sum is empty, V3 stays 0, and the folded-energy
+        // reduction is then literally the standalone through-core expression.
+        CHECK(floatingCore == Catch::Approx(throughCore).epsilon(1e-12));
+        CHECK(bondedCore == 0.0);
+    }
 }

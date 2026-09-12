@@ -407,7 +407,7 @@ WidebandImpedanceModel Impedance::build_wideband_impedance_model(Magnetic magnet
         // Inter-winding capacitances: the off-diagonal terms of the stray-capacitance
         // matrix (the through-core path on a separated-winding choke). The whole
         // matrix is computed once here, not per frequency.
-        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core).get_capacitance_among_windings().value();
+        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core, std::nullopt, magnetic.get_core_electrical_reference()).get_capacitance_among_windings().value();
         auto primaryName = coil.get_functional_description()[0].get_name();
         double primaryTurns = coil.get_functional_description()[0].get_number_turns();
 
@@ -451,7 +451,7 @@ WidebandImpedanceModel Impedance::build_wideband_impedance_model(Magnetic magnet
             // carries the core image factor at the frequency where it acts (ABT #848).
             if (interWindingCapacitance > 0) {
                 double differentialResonance = 1.0 / (2.0 * std::numbers::pi * std::sqrt(leakageInductance * interWindingCapacitance));
-                auto refined = StrayCapacitance().calculate_capacitance(coil, core, differentialResonance).get_capacitance_among_windings().value();
+                auto refined = StrayCapacitance().calculate_capacitance(coil, core, differentialResonance, magnetic.get_core_electrical_reference()).get_capacitance_among_windings().value();
                 interWindingCapacitance = refined[primaryName][secondaryName];
             }
             // Referral factor (N_0/N_j)² for the secondary resistance in this leakage loop.
@@ -578,10 +578,10 @@ double Impedance::calculate_q_factor(Core core, Coil coil, double frequency, dou
 double Impedance::calculate_self_resonant_frequency(Magnetic magnetic, double temperature) {
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
-    return calculate_self_resonant_frequency(core, coil, temperature);
+    return calculate_self_resonant_frequency(core, coil, temperature, magnetic.get_core_electrical_reference());
 }
 
-double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double temperature) {
+double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double temperature, std::optional<CoreElectricalReference> coreElectricalReference) {
     double capacitance;
     if (_fastCapacitance) {
         capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil, core);
@@ -591,7 +591,7 @@ double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double
             coil.wind();
         }
         auto windingName = coil.get_functional_description()[0].get_name();
-        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core).get_capacitance_among_windings().value();
+        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core, std::nullopt, coreElectricalReference).get_capacitance_among_windings().value();
         capacitance = capacitanceMatrix[windingName][windingName];
         // Second pass at the resonance this capacitance implies, so the core image factor
         // reads the core permittivity where the capacitance acts (see build_magnetizing_tank).
@@ -601,7 +601,7 @@ double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double
             double airCoredInductance = numberTurns * numberTurns / reluctanceModel->get_core_reluctance(core, 1).get_core_reluctance();
             double resonanceEstimate = estimate_resonance_frequency(core, airCoredInductance, capacitance);
             if (resonanceEstimate > 0) {
-                capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core, resonanceEstimate).get_capacitance_among_windings().value();
+                capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core, resonanceEstimate, coreElectricalReference).get_capacitance_among_windings().value();
                 capacitance = capacitanceMatrix[windingName][windingName];
             }
         }

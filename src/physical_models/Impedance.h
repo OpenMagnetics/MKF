@@ -151,7 +151,11 @@ class Impedance {
     double calculate_q_factor(Magnetic magnetic, double frequency, double temperature = Defaults().ambientTemperature);
     double calculate_q_factor(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);
     double calculate_self_resonant_frequency(Magnetic magnetic, double temperature = Defaults().ambientTemperature);
-    double calculate_self_resonant_frequency(Core core, Coil coil, double temperature = Defaults().ambientTemperature);
+    // ABT #1167: the core's electrical reference lives on the MAGNETIC, so the Magnetic
+    // overload above forwards it here. Absent means floating, which is what this overload
+    // computed before the field existed, so callers holding only a core and a coil are
+    // unaffected.
+    double calculate_self_resonant_frequency(Core core, Coil coil, double temperature = Defaults().ambientTemperature, std::optional<CoreElectricalReference> coreElectricalReference = std::nullopt);
     int64_t calculate_minimum_number_turns(Magnetic magnetic, Inputs inputs);
 
 };

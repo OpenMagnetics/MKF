@@ -73,6 +73,13 @@ class Magnetic : public MAS::Magnetic {
             // Shunts belong to the assembled magnetic (MAS-RFC 0015); dropping them here silently
             // turned an integrated-leakage transformer into a plain one (ABT #1176).
             set_shunts(magnetic.get_shunts());
+            // ABT #1167: the core's electrical reference decides how the winding-to-core
+            // capacitances appear at the terminals (floating C0/12 vs bonded C0/3) and whether
+            // the primary->core->secondary common-mode path closes through the core. It is a
+            // MAS::Magnetic field, so it survives a copy but NOT this field-by-field converting
+            // constructor -- without this line every magnetic loaded from a MAS document reached
+            // StrayCapacitance as floating, whatever the document said.
+            set_core_electrical_reference(magnetic.get_core_electrical_reference());
         }
 
         // MagneticManufacturerInfo accessors (shadow MAS::Magnetic's field with the same type).
