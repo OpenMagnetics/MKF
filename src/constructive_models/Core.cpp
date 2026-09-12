@@ -33,14 +33,20 @@ Core::Core(json j, bool includeMaterialData, bool includeProcessedDescription, b
     
     if (includeProcessedDescription) {
         process_data();
-        // process_gap() reports "this gapping does not fit its columns" by returning false.
-        // That is a NORMAL answer here: the CoreAdviser synthesises candidate cores by sweeping
-        // gap lengths and necessarily generates some that do not fit (a 4.4 mm gap on an E 5),
-        // then skips them — CoreAdviserDataset checks the bool. So construction stays permissive.
-        // The place a non-fitting gapping is a genuine defect is the CATALOGUE, and that is
-        // checked in load_cores(), which is where the seven Magnetics records with mil-as-metre
-        // gap lengths (ABT #407) would have been caught.
-        process_gap();
+        // process_gap() reports "this gapping does not fit its columns" by returning false, and
+        // that bool is load-bearing for the CoreAdviser, which synthesises candidate cores by
+        // sweeping gap lengths, necessarily generates some that do not fit (a 4.4 mm gap on an
+        // E 5) and skips them — CoreAdviserDataset checks it. But the adviser calls
+        // process_gap() ITSELF, on a core it built from a shape; nobody sweeps gap lengths
+        // through this constructor. Here we are handed one specific core and asked to publish
+        // it, so a false is a defect in the input, not an answer.
+        //
+        // ABT #1189: dropping it published the gapping anyway — every derived gap field null —
+        // and then went on to build a geometricalDescription on top. MVB++ machined that
+        // geometry and ground the entire centre post of a DR 3.5x1.0 away, because a 1 mm gap
+        // had been accepted into a 0.8 mm column. No silent fallbacks: throw where the mismatch
+        // is known, naming the gap and the column it does not fit.
+        process_gap_or_throw();
     }
 
     if (!get_geometrical_description() && includeGeometricalDescription) {

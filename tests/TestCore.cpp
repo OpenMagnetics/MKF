@@ -2818,6 +2818,78 @@ TEST_CASE("ABT680_Gap_Longer_Than_Column_Opening_Throws_Instead_Of_Returning_Nul
     }
 }
 
+// ABT #1189: the Core(json) constructor used to CALL process_gap() and drop its bool, so a
+// gapping that does not fit its columns was published anyway -- every derived gap field null,
+// and a full geometricalDescription on top. MVB++ then machined the geometry it was handed and
+// ground the whole centre post of a DR 3.5x1.0 away, silently. The bool stays the adviser-facing
+// API (CoreAdviser sweeps candidate gap lengths and skips the ones that do not fit); the
+// CONSTRUCTOR is not sweeping anything, it is handed one specific core, so it takes the loud
+// variant, process_gap_or_throw().
+TEST_CASE("ABT1189_Core_Json_Constructor_Refuses_A_Gapping_That_Does_Not_Fit", "[core][gapping]") {
+    // The reported part: a 3.5 mm diameter, 1.0 mm high drum. Its winding column is the groove,
+    // E = 0.8 mm (an OPEN_SHAPE column is not doubled), and the record asked for a 1 mm gap.
+    auto drumCoreJson = [](double gapLength) {
+        json j;
+        j["name"] = "DR 3.5x1.0";
+        j["functionalDescription"]["type"] = "openShape";
+        j["functionalDescription"]["material"] = "3C95";
+        j["functionalDescription"]["numberStacks"] = 1;
+        j["functionalDescription"]["shape"]["type"] = "custom";
+        j["functionalDescription"]["shape"]["family"] = "drum";
+        j["functionalDescription"]["shape"]["name"] = "DR 3.5x1.0";
+        j["functionalDescription"]["shape"]["dimensions"]["A"] = 0.0035;
+        j["functionalDescription"]["shape"]["dimensions"]["B"] = 0.001;
+        j["functionalDescription"]["shape"]["dimensions"]["C"] = 0.0018;
+        j["functionalDescription"]["shape"]["dimensions"]["D"] = 0.0001;
+        j["functionalDescription"]["shape"]["dimensions"]["E"] = 0.0008;
+        j["functionalDescription"]["shape"]["dimensions"]["F"] = 0.0001;
+        j["functionalDescription"]["gapping"] =
+            json::array({{{"type", "subtractive"}, {"length", gapLength}}});
+        return j;
+    };
+
+    SECTION("1 mm of gap in a 0.8 mm column throws, naming the gap and the column") {
+        auto coreJson = drumCoreJson(0.001);
+        std::string message = "no exception";
+        try {
+            Core core(coreJson);
+            (void)core;
+        }
+        catch (const std::exception& exception) {
+            message = exception.what();
+        }
+        UNSCOPED_INFO(message);
+        CHECK(message != "no exception");
+        CHECK(message.find("0.001000") != std::string::npos);
+        CHECK(message.find("does not fit the winding column") != std::string::npos);
+        CHECK(message.find("0.000800") != std::string::npos);
+    }
+
+    SECTION("a gapping that fits still builds, and still publishes its geometrical description") {
+        auto coreJson = drumCoreJson(0.0002);
+        Core core(coreJson);
+        auto gapping = core.get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 1u);
+        CHECK(gapping[0].get_area().has_value());
+        CHECK(gapping[0].get_coordinates().has_value());
+        REQUIRE(gapping[0].get_distance_closest_normal_surface().has_value());
+        CHECK_THAT(*gapping[0].get_distance_closest_normal_surface(),
+                   Catch::Matchers::WithinAbs(0.0008 / 2 - 0.0002 / 2, 1e-9));
+        REQUIRE(core.get_geometrical_description().has_value());
+        CHECK(core.get_geometrical_description()->size() > 0u);
+    }
+
+    SECTION("an ungapped core still gets its residual gap and builds") {
+        auto coreJson = drumCoreJson(0.001);
+        coreJson["functionalDescription"]["gapping"] = json::array();
+        Core core(coreJson);
+        auto gapping = core.get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 1u);  // the synthesized residual gap of the single column
+        CHECK(gapping[0].get_type() == GapType::RESIDUAL);
+        CHECK(gapping[0].get_area().has_value());
+    }
+}
+
 // Every core in the shipped catalogue must be constructible. This is what would have caught the
 // seven bad records at the source instead of leaving them to break whichever consumer swept the
 // full catalogue first (the core cross-referencer, which sets use_only_cores_in_stock(false)).

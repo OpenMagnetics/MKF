@@ -261,43 +261,32 @@ void load_cores(std::optional<std::string> fileToLoad) {
         const bool keep = (includeToroidalCores  && type == CoreType::TOROIDAL)
                        || (includeConcentricCores && type != CoreType::TOROIDAL);
         if (!keep) return;
-        if (stockPath) {
-            coreDatabase.emplace_back(jf, false, true, false);
-        } else {
-            coreDatabase.emplace_back(jf);  // defaults: include geometricalDescription
-        }
-
-        // ABT #407: a CATALOGUE record whose gapping cannot fit its columns is corrupt, and must
-        // not enter the database looking usable. process_gap() reports that by returning false —
-        // a normal answer for the CoreAdviser, which sweeps candidate gap lengths and skips the
-        // ones that do not fit, but never legitimate for a shipped part. Left unchecked, such a
-        // record carries gaps with no area and kills the first consumer that sweeps the whole
-        // catalogue, with a bare "Gap Area is not set" naming neither the core nor the reason.
-        // That is exactly how the seven Magnetics parts with mil-as-metre gap lengths surfaced.
-        auto& loadedCore = coreDatabase.back();
-        for (const auto& gap : loadedCore.get_functional_description().get_gapping()) {
-            if (!gap.get_area()) {
-                std::string coreName = loadedCore.get_name().value_or("<unnamed>");
-                double longestGap = 0;
-                for (const auto& anyGap : loadedCore.get_functional_description().get_gapping()) {
-                    longestGap = std::max(longestGap, anyGap.get_length());
-                }
-                double shortestColumn = std::numeric_limits<double>::max();
-                if (loadedCore.get_processed_description()) {
-                    // ABT #650: the generated getter returns the description BY VALUE, so the
-                    // columns are a reference into a temporary. Only C++23's P2718 extends it
-                    // in a range-for — don't make correctness hinge on the toolchain having it.
-                    const auto coreProcessedDescription = loadedCore.get_processed_description().value();
-                    for (const auto& column : coreProcessedDescription.get_columns()) {
-                        shortestColumn = std::min(shortestColumn, column.get_height());
-                    }
-                }
-                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-                    "Catalogue core '" + coreName + "' has a gapping that does not fit its columns: "
-                    "the longest gap is " + std::to_string(longestGap * 1000) +
-                    " mm against a shortest column height of " + std::to_string(shortestColumn * 1000) +
-                    " mm. The record is corrupt and cannot be loaded.");
+        // ABT #407/#1189: a CATALOGUE record whose gapping cannot fit its columns is corrupt, and
+        // must not enter the database looking usable. Since ABT #1189 the Core(json) constructor
+        // refuses it itself, with a GapException naming the gap and the column height it does not
+        // fit — but not the RECORD, and a catalogue loader has to say WHICH of three thousand
+        // parts is bad. (Before #1189 the constructor swallowed the failure, and what arrived here
+        // was a core carrying gaps with no area; it was that missing area this block used to look
+        // for, and it killed the first consumer to sweep the whole catalogue with a bare "Gap Area
+        // is not set", naming neither the core nor the reason. That is how the seven Magnetics
+        // parts with mil-as-metre gap lengths surfaced.) So the construction failure is re-raised,
+        // unchanged in meaning, as the named InvalidInputException load_cores() callers expect:
+        // nothing is swallowed, nothing continues, and no half-built core reaches the database.
+        try {
+            if (stockPath) {
+                coreDatabase.emplace_back(jf, false, true, false);
+            } else {
+                coreDatabase.emplace_back(jf);  // defaults: include geometricalDescription
             }
+        }
+        catch (const GapException& gapException) {
+            std::string coreName = "<unnamed>";
+            if (jf.contains("name") && jf["name"].is_string()) {
+                coreName = jf["name"].get<std::string>();
+            }
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Catalogue core '" + coreName + "' has a gapping that does not fit its columns: " +
+                gapException.message() + ". The record is corrupt and cannot be loaded.");
         }
     });
 }
