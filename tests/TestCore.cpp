@@ -1803,10 +1803,37 @@ TEST_CASE("Test_Core_Functional_Description_Web_5", "[constructive-model][core][
         "\"family\": \"rm\", \"familySubtype\": \"3\", \"magneticCircuit\": \"open\", \"name\": \"RM 4\", "
         "\"type\": \"standard\"}, \"type\": \"two-piece set\"}}");
 
-    Core core(coreJson, true);
+    // ABT #1190: this web repro asks for 1 + 2 + 2 mm of DISTRIBUTED gap down the 7.2 mm central
+    // column of an RM 4. The three centres land at -1.8 / 0 / +1.8 mm, so the 2 mm gap at
+    // +1.8 mm spans 0.8..2.8 mm and eats 0.2 mm of the 2 mm gap at 0, which spans -1..+1 mm.
+    // That gapping is not machinable and MKF used to emit it anyway (the fit check only looked
+    // at the FIRST gap's 1 mm, which fits easily). The repro this test exists for is the
+    // SEGFAULT, and a named refusal is not a segfault: the case is kept, asserting the refusal
+    // and naming the overlapping pair, plus the same core with a gapping that does fit so the
+    // original "construction fully processes the core" path stays covered.
+    std::string message = "no exception";
+    try {
+        Core core(coreJson, true);
+        (void)core;
+    }
+    catch (const std::exception& exception) {
+        message = exception.what();
+    }
+    UNSCOPED_INFO(message);
+    CHECK(message.find("overlap") != std::string::npos);
+    CHECK(message.find("index 1") != std::string::npos);
+    CHECK(message.find("index 2") != std::string::npos);
 
+    // 1 + 1 + 1 mm in the same column: centres 1.8 mm apart, gaps 1 mm long, so nothing overlaps.
+    auto fittingCoreJson = coreJson;
+    fittingCoreJson["functionalDescription"]["gapping"][1]["length"] = 0.001;
+    fittingCoreJson["functionalDescription"]["gapping"][2]["length"] = 0.001;
+    Core core(fittingCoreJson, true);
     auto functionalDescription = core.get_functional_description();
     REQUIRE(functionalDescription.get_gapping().size() == 5u);
+    for (auto& gap : functionalDescription.get_gapping()) {
+        CHECK(gap.get_area().has_value());
+    }
 }
 
 TEST_CASE("Test_Core_Functional_Description_Web_6", "[constructive-model][core][functional-description][bug][smoke-test]") {
@@ -2887,6 +2914,117 @@ TEST_CASE("ABT1189_Core_Json_Constructor_Refuses_A_Gapping_That_Does_Not_Fit", "
         REQUIRE(gapping.size() == 1u);  // the synthesized residual gap of the single column
         CHECK(gapping[0].get_type() == GapType::RESIDUAL);
         CHECK(gapping[0].get_area().has_value());
+    }
+}
+
+// ABT #1190: distribute_and_process_gap() spaces DISTRIBUTED gaps by columnHeight/(n+1) on their
+// CENTRES, and its fit check used to read nonResidualGaps[0] only -- so a list of unequal gaps
+// was emitted OVERLAPPING (a short slab landing inside a long one), every gap after the first
+// carried the FIRST gap's clearance, and a gapping whose lengths sum to more than the whole
+// column reported no failure at all. The layout of a gapping that FITS is unchanged (the
+// coordinates and clearances below are pinned to what MKF emitted before this change, so no
+// reluctance moves); what is new is that every gap's own length is checked, their sum is checked
+// against the column height, and an overlapping pair is refused by name.
+TEST_CASE("ABT1190_Distributed_Gapping_Checks_Every_Gap_Length", "[core][gapping]") {
+    auto gappedCoreJson = [](std::string shapeName, std::vector<double> gapLengths) {
+        json j;
+        j["name"] = shapeName + " - distributed";
+        j["functionalDescription"]["type"] = "twoPieceSet";
+        j["functionalDescription"]["material"] = "3C95";
+        j["functionalDescription"]["numberStacks"] = 1;
+        j["functionalDescription"]["shape"] = shapeName;
+        j["functionalDescription"]["gapping"] = json::array();
+        for (auto gapLength : gapLengths) {
+            j["functionalDescription"]["gapping"].push_back({{"type", "subtractive"}, {"length", gapLength}});
+        }
+        return j;
+    };
+
+    SECTION("RM 5/8 with 1 / 0.5 / 2 mm: the overlapping pair is named and the gapping refused") {
+        auto coreJson = gappedCoreJson("RM 5/8", {0.001, 0.0005, 0.002});
+        Core core(coreJson, false, false, false);
+        core.process_data();
+        // The 3.8 mm central column of the bug report: centres land at -0.95 / 0 / +0.95 mm, so
+        // the 2 mm gap at +0.95 mm swallows the 0.5 mm one at 0.
+        auto columns = core.get_processed_description().value().get_columns();
+        REQUIRE_THAT(columns[0].get_height(), Catch::Matchers::WithinAbs(0.0038, 1e-9));
+        CHECK_FALSE(core.process_gap());
+        REQUIRE(core.get_last_gap_processing_failure().has_value());
+        auto message = core.get_last_gap_processing_failure().value();
+        UNSCOPED_INFO(message);
+        CHECK(message.find("overlap") != std::string::npos);
+        // Names the PAIR: both indices and both lengths.
+        CHECK(message.find("index 1") != std::string::npos);
+        CHECK(message.find("index 2") != std::string::npos);
+        CHECK(message.find("0.000500") != std::string::npos);
+        CHECK(message.find("0.002000") != std::string::npos);
+
+        // ... and nothing is published: the gaps keep their null derived fields.
+        auto gapping = core.get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 3u);
+        CHECK_FALSE(gapping[0].get_area().has_value());
+
+        // The same failure is loud through process_gap_or_throw(), and through the constructor.
+        CHECK_THROWS(core.process_gap_or_throw());
+        CHECK_THROWS([&]() { Core throwingCore(coreJson); }());
+    }
+
+    SECTION("EL 11/2.0 with 1 + 0.5 + 2 mm in a 2 mm column: 3.5 mm of gap is refused") {
+        auto coreJson = gappedCoreJson("EL 11/2.0", {0.001, 0.0005, 0.002});
+        Core core(coreJson, false, false, false);
+        core.process_data();
+        // The column this gapping has to live in really is 2 mm high.
+        auto columns = core.get_processed_description().value().get_columns();
+        REQUIRE_THAT(columns[0].get_height(), Catch::Matchers::WithinAbs(0.002, 1e-9));
+        CHECK_FALSE(core.process_gap());
+        REQUIRE(core.get_last_gap_processing_failure().has_value());
+        auto message = core.get_last_gap_processing_failure().value();
+        UNSCOPED_INFO(message);
+        CHECK(message.find("does not fit") != std::string::npos);
+        auto gapping = core.get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 3u);
+        CHECK_FALSE(gapping[0].get_area().has_value());
+    }
+
+    SECTION("a distributed gapping whose gaps all fit is accepted, at exactly today's positions") {
+        // Three 1 mm gaps down the 37.8 mm central column of an E 55/21 -- the core of
+        // E_55_21_central_distributed_gap_odd. Every number below is what MKF emitted before
+        // this change.
+        auto coreJson = gappedCoreJson("E 55/21", {0.001, 0.001, 0.001});
+        Core core(coreJson, false, false, false);
+        core.process_data();
+        auto columns = core.get_processed_description().value().get_columns();
+        REQUIRE_THAT(columns[0].get_height(), Catch::Matchers::WithinAbs(0.0378, 1e-9));
+        REQUIRE(core.process_gap());
+        CHECK_FALSE(core.get_last_gap_processing_failure().has_value());
+        auto gapping = core.get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 5u);  // three subtractive + one residual per return column
+        // columnHeight / (numberGaps + 1) = 37.8 / 4 = 9.45 mm between centres
+        CHECK_THAT((*gapping[0].get_coordinates())[1], Catch::Matchers::WithinAbs(-0.00945, 1e-9));
+        CHECK_THAT((*gapping[1].get_coordinates())[1], Catch::Matchers::WithinAbs(0.0, 1e-9));
+        CHECK_THAT((*gapping[2].get_coordinates())[1], Catch::Matchers::WithinAbs(0.00945, 1e-9));
+        CHECK_THAT(*gapping[0].get_distance_closest_normal_surface(), Catch::Matchers::WithinAbs(0.00895, 1e-9));
+        CHECK_THAT(*gapping[1].get_distance_closest_normal_surface(), Catch::Matchers::WithinAbs(0.0184, 1e-9));
+        CHECK_THAT(*gapping[2].get_distance_closest_normal_surface(), Catch::Matchers::WithinAbs(0.00895, 1e-9));
+        for (auto& gap : gapping) {
+            CHECK(gap.get_area().has_value());
+        }
+    }
+
+    SECTION("unequal gap lengths that do NOT overlap are accepted, each with its own clearance") {
+        // 1 mm and 0.5 mm, 12.6 mm apart on the same 37.8 mm column: no overlap, and each gap's
+        // distance to the closest normal surface comes from ITS OWN length. Reading
+        // nonResidualGaps[0] only gave the 0.5 mm gap the 1 mm gap's clearance.
+        auto coreJson = gappedCoreJson("E 55/21", {0.001, 0.0005});
+        Core core(coreJson, false, false, false);
+        core.process_data();
+        REQUIRE(core.process_gap());
+        auto gapping = core.get_functional_description().get_gapping();
+        REQUIRE(gapping.size() == 4u);
+        CHECK_THAT((*gapping[0].get_coordinates())[1], Catch::Matchers::WithinAbs(-0.0063, 1e-9));
+        CHECK_THAT((*gapping[1].get_coordinates())[1], Catch::Matchers::WithinAbs(0.0063, 1e-9));
+        CHECK_THAT(*gapping[0].get_distance_closest_normal_surface(), Catch::Matchers::WithinAbs(0.0126 - 0.0005, 1e-9));
+        CHECK_THAT(*gapping[1].get_distance_closest_normal_surface(), Catch::Matchers::WithinAbs(0.0126 - 0.00025, 1e-9));
     }
 }
 

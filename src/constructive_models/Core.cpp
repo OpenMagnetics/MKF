@@ -843,7 +843,6 @@ bool Core::distribute_and_process_gap() {
     std::vector<CoreGap> newGapping;
     auto gapping = get_functional_description().get_gapping();
     double centralColumnGapsHeightOffset;
-    double distanceClosestNormalSurface;
     double coreChunkSizePlusGap = 0;
     auto nonResidualGaps = find_gaps_by_type(GapType::SUBTRACTIVE);
     auto additiveGaps = find_gaps_by_type(GapType::ADDITIVE);
@@ -1002,6 +1001,18 @@ bool Core::distribute_and_process_gap() {
         // y = 0.25/4.275/8.3 mm instead of the distributed -4.025/0/+4.025 mm. Requiring exactly
         // one non-residual gap as well keeps every previously-correct case on its existing path
         // and sends only the genuinely distributed one to the branch below.
+
+        // ONE CENTRE OFFSET AND ONE CLEARANCE PER GAP (ABT #1190). These used to be single
+        // scalars: the clearance was derived from nonResidualGaps[0]'s length and then walked up
+        // and down the column in whole chunks, so every gap after the first was described with
+        // the FIRST gap's length -- and that was also the only length the fit check ever looked
+        // at. For the uniform-length gappings MKF emits today both forms agree exactly (the
+        // walk reproduces columnHeight/2 - |offset| - length/2 chunk by chunk), so no fitting
+        // gapping moves; unequal lengths now get their own numbers instead of the first gap's.
+        std::vector<double> gapCenterOffsets;
+        std::vector<double> gapDistancesClosestNormalSurface;
+        double windingColumnHeight = windingColumn.get_height();
+
         if (nonResidualGaps.size() == 1) {
             // A SINGLE GROUND GAP LIVES ENTIRELY IN ONE HALF, never straddling the mating plane:
             // it is cheaper to grind one piece by the whole gap than two pieces by half of it
@@ -1013,12 +1024,13 @@ bool Core::distribute_and_process_gap() {
             // and came out CENTRED on the mating plane instead -- the same core placed two
             // different ways depending only on how its gapping was written. The rule is about the
             // gap, not about how many entries came with it, so it keys off the non-residual count.
-            if (windingColumn.get_height() > nonResidualGaps[0].get_length()) {
+            if (windingColumnHeight > nonResidualGaps[0].get_length()) {
                 centralColumnGapsHeightOffset = roundFloat(nonResidualGaps[0].get_length() / 2);
             }
             else {
                 centralColumnGapsHeightOffset = 0;
             }
+            gapCenterOffsets.push_back(centralColumnGapsHeightOffset);
             // Left as height/2 - length/2, MEASURED AGAINST REFERENCE DATA rather than derived.
             // Reluctance.cpp documents this quantity as "the core left between this gap and the
             // nearest normal surface", which for a gap ground into one half (spanning 0..length)
@@ -1027,12 +1039,65 @@ bool Core::distribute_and_process_gap() {
             // and Test_Gapping_U_Shape_Ferrite_Ground's solved gap moves from 6.6mm to 5.8mm. The
             // half-length form is what reproduces measured reluctance on ground cores, so it
             // stands; the prose in Reluctance.cpp is the thing that does not quite describe it.
-            distanceClosestNormalSurface = roundFloat(windingColumn.get_height() / 2 - nonResidualGaps[0].get_length() / 2);
+            gapDistancesClosestNormalSurface.push_back(
+                roundFloat(windingColumnHeight / 2 - nonResidualGaps[0].get_length() / 2));
         }
         else {
-            coreChunkSizePlusGap = roundFloat(windingColumn.get_height() / (nonResidualGaps.size() + 1));
-            centralColumnGapsHeightOffset = roundFloat(-coreChunkSizePlusGap * (nonResidualGaps.size() - 1) / 2);
-            distanceClosestNormalSurface = roundFloat(coreChunkSizePlusGap - nonResidualGaps[0].get_length() / 2);
+            // A DISTRIBUTED GAP: numberGaps gaps with numberGaps + 1 chunks of core between and
+            // around them, so the centres are spaced columnHeight/(numberGaps + 1) apart and
+            // centred on the column. numberDistributedGaps is a double so this is a floating
+            // division however many gaps there are.
+            double numberDistributedGaps = static_cast<double>(nonResidualGaps.size());
+            coreChunkSizePlusGap = roundFloat(windingColumnHeight / (numberDistributedGaps + 1.));
+            centralColumnGapsHeightOffset =
+                roundFloat(-coreChunkSizePlusGap * (numberDistributedGaps - 1.) / 2.);
+            for (size_t i = 0; i < nonResidualGaps.size(); ++i) {
+                gapCenterOffsets.push_back(centralColumnGapsHeightOffset);
+                gapDistancesClosestNormalSurface.push_back(
+                    roundFloat(windingColumnHeight / 2 - fabs(centralColumnGapsHeightOffset) -
+                               nonResidualGaps[i].get_length() / 2));
+                centralColumnGapsHeightOffset += coreChunkSizePlusGap;
+            }
+
+            // THE GAPS TOGETHER MUST FIT THE COLUMN. Checking nonResidualGaps[0] alone let an
+            // EL 11/2.0 take 1 + 0.5 + 2 mm of gap in a 2 mm column and report nothing at all:
+            // 3.5 mm of air machined out of 2 mm of ferrite.
+            double totalGapLength = 0;
+            for (auto& nonResidualGap : nonResidualGaps) {
+                totalGapLength += nonResidualGap.get_length();
+            }
+            if (roundFloat(totalGapLength - windingColumnHeight) > 0) {
+                return fail_gap_processing(
+                    "the " + std::to_string(nonResidualGaps.size()) + " distributed gaps total " +
+                    std::to_string(totalGapLength) +
+                    " m of gap, which does not fit the winding column (column height " +
+                    std::to_string(windingColumnHeight) + " m)");
+            }
+
+            // AND THEY MUST NOT OVERLAP EACH OTHER. The layout spaces their CENTRES, which says
+            // nothing about their lengths, so a long gap can swallow its neighbour whole: on the
+            // 3.8 mm column of an RM 5/8, gaps of 1 / 0.5 / 2 mm land at -0.95 / 0 / +0.95 mm and
+            // the 2 mm one reaches down to -0.05 mm, straight through the 0.5 mm one at 0.
+            // Merging them silently would change the magnetic circuit the caller asked for, and
+            // emitting them lets whoever machines the geometry cut the column to pieces, so the
+            // gapping is refused and the pair named.
+            for (size_t i = 0; i + 1 < nonResidualGaps.size(); ++i) {
+                double topOfGap = gapCenterOffsets[i] + nonResidualGaps[i].get_length() / 2;
+                double bottomOfNextGap =
+                    gapCenterOffsets[i + 1] - nonResidualGaps[i + 1].get_length() / 2;
+                double overlap = roundFloat(topOfGap - bottomOfNextGap);
+                if (overlap > 0) {
+                    return fail_gap_processing(
+                        "distributed gap of index " + std::to_string(i) + " (length " +
+                        std::to_string(nonResidualGaps[i].get_length()) + " m, centred at " +
+                        std::to_string(gapCenterOffsets[i]) + " m) and gap of index " +
+                        std::to_string(i + 1) + " (length " +
+                        std::to_string(nonResidualGaps[i + 1].get_length()) + " m, centred at " +
+                        std::to_string(gapCenterOffsets[i + 1]) + " m) overlap by " +
+                        std::to_string(overlap) + " m in the winding column (column height " +
+                        std::to_string(windingColumnHeight) + " m)");
+                }
+            }
         }
 
         for (size_t i = 0; i < nonResidualGaps.size(); ++i) {
@@ -1040,32 +1105,25 @@ bool Core::distribute_and_process_gap() {
             gap.set_type(nonResidualGaps[i].get_type());
             gap.set_length(nonResidualGaps[i].get_length());
             gap.set_coordinates(std::vector<double>({windingColumn.get_coordinates()[0],
-                                      windingColumn.get_coordinates()[1] + centralColumnGapsHeightOffset,
+                                      windingColumn.get_coordinates()[1] + gapCenterOffsets[i],
                                       windingColumn.get_coordinates()[2]}));
             gap.set_shape(windingColumn.get_shape());
-            if (distanceClosestNormalSurface < 0) {
+            // Every gap is checked against ITS OWN length and ITS OWN position now, not just the
+            // first one's (ABT #1190): a gap whose slab reaches past the end of the column, at
+            // any index, refuses the whole gapping.
+            if (gapDistancesClosestNormalSurface[i] < 0) {
                 return fail_gap_processing(
                     "gap of length " + std::to_string(nonResidualGaps[i].get_length()) +
-                    " m does not fit the winding column (column height " +
-                    std::to_string(windingColumn.get_height()) + " m)");
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
-
+                    (nonResidualGaps.size() > 1 ? " m at index " + std::to_string(i) : std::string(" m")) +
+                    " does not fit the winding column (column height " +
+                    std::to_string(windingColumnHeight) + " m)");
             }
-            gap.set_distance_closest_normal_surface(distanceClosestNormalSurface);
+            gap.set_distance_closest_normal_surface(gapDistancesClosestNormalSurface[i]);
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(windingColumn.get_area());
             gap.set_section_dimensions(std::vector<double>({windingColumn.get_width(), windingColumn.get_depth()}));
             newGapping.push_back(gap);
-
-            centralColumnGapsHeightOffset += roundFloat(windingColumn.get_height() / (nonResidualGaps.size() + 1));
-            if (i < nonResidualGaps.size() / 2. - 1) {
-                distanceClosestNormalSurface = roundFloat(distanceClosestNormalSurface + coreChunkSizePlusGap);
-            }
-            else if (i > nonResidualGaps.size() / 2. - 1) {
-                distanceClosestNormalSurface = roundFloat(distanceClosestNormalSurface - coreChunkSizePlusGap);
-            }
         }
-
         if (residualGaps.size() < returnColumns.size()) {
             for (size_t i = 0; i < returnColumns.size(); ++i) {
                 CoreGap gap;
