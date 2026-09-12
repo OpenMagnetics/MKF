@@ -1,5 +1,6 @@
 #include "support/Utils.h"
 #include "constructive_models/Bobbin.h"
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -1015,6 +1016,231 @@ WindingWindowShape Bobbin::get_winding_window_shape(size_t windingWindowIndex) {
     return get_processed_description()->get_winding_windows()[windingWindowIndex].get_shape().value();
 }
 
+
+// ABT #1171 / WP2: a pinout is a footprint recipe; these two turn it into pins.
+// The frame, the numbering and every throw are documented on the declaration in Bobbin.h.
+namespace {
+
+// The pin offsets along a row's own axis, ascending, centred on the column.
+std::vector<double> row_positions(int64_t numberPinsInRow,
+                                  double pitch,
+                                  std::optional<double> centralPitch,
+                                  size_t rowIndex) {
+    if (numberPinsInRow <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Pinout row " + std::to_string(rowIndex) + " has " + std::to_string(numberPinsInRow) +
+            " pins; a row of a footprint holds at least one pin.");
+    }
+    if (!(pitch > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Pinout row " + std::to_string(rowIndex) + " has a pitch of " + std::to_string(pitch) +
+            " m. A pitch is the distance between two adjacent pins and cannot be zero or negative.");
+    }
+    std::vector<double> positions;
+    if (centralPitch) {
+        // The middle PAIR straddles the centre at -+ centralPitch / 2, everything outwards from
+        // there steps by the row pitch. With an odd count there is no middle pair to straddle,
+        // and guessing which pin owns the centre would invent the footprint.
+        if (numberPinsInRow % 2 != 0) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Pinout row " + std::to_string(rowIndex) + " has " + std::to_string(numberPinsInRow) +
+                " pins, an odd number, but the pinout states a centralPitch. centralPitch is the "
+                "distance between the two MIDDLE pins, which an odd row does not have.");
+        }
+        for (int64_t i = numberPinsInRow / 2; i > 0; --i) {
+            positions.push_back(-(centralPitch.value() / 2 + (i - 1) * pitch));
+        }
+        for (int64_t i = 0; i < numberPinsInRow / 2; ++i) {
+            positions.push_back(centralPitch.value() / 2 + i * pitch);
+        }
+    }
+    else {
+        for (int64_t i = 0; i < numberPinsInRow; ++i) {
+            positions.push_back((i - (numberPinsInRow - 1) / 2.0) * pitch);
+        }
+    }
+    return positions;
+}
+
+}  // namespace
+
+std::vector<MAS::Pin> Bobbin::expand_pinout(const MAS::Pinout& pinout,
+                                            MAS::Orientation orientation,
+                                            const MAS::WindingWindowElement& windingWindow,
+                                            double wallThickness,
+                                            double columnDepth) {
+    const int64_t numberPins = pinout.get_number_pins();
+    if (numberPins <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Pinout declares " + std::to_string(numberPins) + " pins.");
+    }
+    if (!pinout.get_pitch() || !pinout.get_row_distance()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Pinout declares " + std::to_string(numberPins) + " pins but " +
+            std::string(pinout.get_pitch() ? "no rowDistance" : "no pitch") +
+            ", so it describes a pin COUNT and no geometry. There is no default pitch to fall "
+            "back on: the record has to state pitch and rowDistance (in metres) before its pins "
+            "can be placed.");
+    }
+    if (!pinout.get_pin_description()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Pinout declares " + std::to_string(numberPins) + " pins with pitch and rowDistance "
+            "but no pinDescription, so the pin diameter and length are unknown. bobbin.json makes "
+            "pin.dimensions required, and a pin with invented dimensions is worse than no pin.");
+    }
+    const MAS::Pin& pinDescription = pinout.get_pin_description().value();
+    if (pinDescription.get_dimensions().size() < 3) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Pinout's pinDescription carries " + std::to_string(pinDescription.get_dimensions().size()) +
+            " dimensions; a pin needs three ([width/diameter, depth, length]) - the third is the "
+            "length it protrudes, which places its centre.");
+    }
+    const double pinLength = pinDescription.get_dimensions()[2];
+    if (!(pinLength > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Pinout's pinDescription has a length of " + std::to_string(pinLength) + " m.");
+    }
+
+    // How many pins on each row. An explicit numberPinsPerRow always wins; otherwise the pins
+    // split evenly over numberRows, and a count that does not divide evenly is a data error
+    // rather than a licence to choose a split.
+    std::vector<int64_t> pinsPerRow;
+    if (pinout.get_number_pins_per_row()) {
+        pinsPerRow = pinout.get_number_pins_per_row().value();
+        int64_t total = 0;
+        for (auto pins : pinsPerRow) {
+            total += pins;
+        }
+        if (total != numberPins) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Pinout's numberPinsPerRow adds up to " + std::to_string(total) +
+                " but numberPins is " + std::to_string(numberPins) + ".");
+        }
+        if (pinout.get_number_rows() && pinout.get_number_rows().value() != static_cast<int64_t>(pinsPerRow.size())) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Pinout declares " + std::to_string(pinout.get_number_rows().value()) +
+                " rows but numberPinsPerRow lists " + std::to_string(pinsPerRow.size()) + ".");
+        }
+    }
+    else {
+        // bobbin.json documents numberRows' default as 2; reading that default is not the same
+        // as inventing one.
+        const int64_t numberRows = pinout.get_number_rows() ? pinout.get_number_rows().value() : 2;
+        if (numberRows <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Pinout declares " + std::to_string(numberRows) + " rows.");
+        }
+        if (numberPins % numberRows != 0) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Pinout declares " + std::to_string(numberPins) + " pins over " +
+                std::to_string(numberRows) + " rows and no numberPinsPerRow, so the split between "
+                "the rows is unknown. State numberPinsPerRow.");
+        }
+        pinsPerRow.assign(numberRows, numberPins / numberRows);
+    }
+
+    // One pitch per row. A scalar pitch is the same on every row; an array is by row order.
+    std::vector<double> pitchPerRow;
+    if (std::holds_alternative<std::vector<double>>(pinout.get_pitch().value())) {
+        pitchPerRow = std::get<std::vector<double>>(pinout.get_pitch().value());
+        if (pitchPerRow.size() != pinsPerRow.size()) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Pinout lists " + std::to_string(pitchPerRow.size()) + " pitches for " +
+                std::to_string(pinsPerRow.size()) + " rows.");
+        }
+    }
+    else {
+        pitchPerRow.assign(pinsPerRow.size(), std::get<double>(pinout.get_pitch().value()));
+    }
+
+    if (pinsPerRow.size() > 2) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Pinout has " + std::to_string(pinsPerRow.size()) + " rows. rowDistance is a single "
+            "row-to-row distance and says nothing about how three or more rows are spaced; "
+            "spreading them evenly would invent the footprint.");
+    }
+    const double rowDistance = pinout.get_row_distance().value();
+    if (!(rowDistance > 0) && pinsPerRow.size() > 1) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Pinout has " + std::to_string(pinsPerRow.size()) + " rows but a rowDistance of " +
+            std::to_string(rowDistance) + " m, which would stack them on top of each other.");
+    }
+    if (!windingWindow.get_height()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "The bobbin's winding window has no height, so the flange the pins hang from has no "
+            "position.");
+    }
+    if (!windingWindow.get_width()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "The bobbin's winding window has no width, so the outer surface a horizontal "
+            "bobbin's pins hang from has no position.");
+    }
+
+    // The face the pins start at, and the coordinate of a pin's CENTRE half a pin further out.
+    const double flangeOuterY = windingWindow.get_height().value() / 2 + wallThickness;
+    const double bobbinOuterZ = columnDepth / 2 + windingWindow.get_width().value();
+    const double pinCentreY = -(flangeOuterY + pinLength / 2);
+    const double pinCentreZ = -(bobbinOuterZ + pinLength / 2);
+
+    std::vector<MAS::Pin> pins;
+    int64_t pinNumber = 1;
+    for (size_t rowIndex = 0; rowIndex < pinsPerRow.size(); ++rowIndex) {
+        auto positions = row_positions(pinsPerRow[rowIndex], pitchPerRow[rowIndex],
+                                       pinout.get_central_pitch(), rowIndex);
+        // Counter-clockwise as a ring: out along +X on row 0, back along -X on row 1.
+        if (rowIndex % 2 == 1) {
+            std::reverse(positions.begin(), positions.end());
+        }
+        // Two rows straddle the centre at -+ rowDistance / 2; a single row sits on it.
+        const double rowOffset = (pinsPerRow.size() == 1)
+            ? 0.0
+            : (rowIndex == 0 ? -rowDistance / 2 : rowDistance / 2);
+        for (auto position : positions) {
+            MAS::Pin pin = pinDescription;
+            pin.set_name(std::to_string(pinNumber));
+            if (orientation == MAS::Orientation::VERTICAL) {
+                pin.set_coordinates(std::vector<double>({position, pinCentreY, rowOffset}));
+            }
+            else {
+                // Lying on its side, the pin points along -Z; +90 degrees about X takes the
+                // default vertical pin (-Y) there.
+                pin.set_coordinates(std::vector<double>({position, rowOffset, pinCentreZ}));
+                pin.set_rotation(std::vector<double>({90, 0, 0}));
+            }
+            pins.push_back(pin);
+            ++pinNumber;
+        }
+    }
+    return pins;
+}
+
+MAS::Pin Bobbin::get_pin(const std::string& name) {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin has not been processed yet, so it has no pins");
+    }
+    auto pins = get_processed_description()->get_pins();
+    if (!pins || pins->empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + (get_name() ? get_name().value() : std::string("<unnamed>")) +
+            "' has no pins; its pinout states no pitch, row distance or pin dimensions.");
+    }
+    for (const auto& pin : pins.value()) {
+        if (pin.get_name() && pin.get_name().value() == name) {
+            return pin;
+        }
+    }
+    std::string known;
+    for (const auto& pin : pins.value()) {
+        if (!known.empty()) {
+            known += ", ";
+        }
+        known += pin.get_name() ? pin.get_name().value() : std::string("<unnamed>");
+    }
+    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+        "Bobbin '" + (get_name() ? get_name().value() : std::string("<unnamed>")) +
+        "' has no pin named '" + name + "'. It has: " + known + ".");
+}
+
 void Bobbin::process_data() {
     // ABT #763: guard before the factory too. factory() takes its Bobbin BY VALUE, so a
     // guard there protects its own copy only if it is reached; this is the public entry
@@ -1062,6 +1288,24 @@ void Bobbin::process_data() {
             "' produced a winding window of zero area. The family's processor did not find the "
             "dimensions it reads; the bobbin declares {" + declaredDimensions + "}. Either the "
             "declared family does not match the declared dimension set, or a dimension is missing.");
+    }
+
+    // ABT #1171 / WP2: every family processor gets its pins here, once, rather than nine copies
+    // of the same placement. They are pushed only when the record actually describes a footprint
+    // - pitch, row distance, pin dimensions AND the mounting orientation that decides which way
+    // the pins leave. A record that states a pin count and nothing else keeps no pins, which is
+    // what it describes; expand_pinout is the strict door and throws if called on it directly.
+    auto functionalDescriptionForPins = get_functional_description().value();
+    if (functionalDescriptionForPins.get_pinout()) {
+        const auto& pinout = functionalDescriptionForPins.get_pinout().value();
+        auto orientation = functionalDescriptionForPins.get_orientation();
+        if (pinout.get_pitch() && pinout.get_row_distance() && pinout.get_pin_description() && orientation) {
+            processedDescription.set_pins(expand_pinout(pinout,
+                                                        orientation.value(),
+                                                        processedDescription.get_winding_windows()[0],
+                                                        processedDescription.get_wall_thickness(),
+                                                        processedDescription.get_column_depth()));
+        }
     }
 
     set_processed_description(processedDescription);

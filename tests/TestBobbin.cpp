@@ -445,3 +445,283 @@ TEST_CASE("process_data on a bobbin with no functionalDescription throws, determ
 }
 
 }  // namespace
+
+// ============================================================================
+// ABT #1171 / WP2 — Bobbin::expand_pinout
+//
+// The catalogue's 342 pinouts were pin COUNTS: nothing downstream could place a
+// pin, so no bobbin ever drew one. These lock the placement, the numbering and —
+// just as importantly — the refusals: a count without a pitch, a pitch without
+// pin dimensions, and an odd row asked to straddle a centralPitch all throw
+// instead of producing a plausible-looking footprint nobody can trust.
+// ============================================================================
+
+namespace {
+
+// The Miles-Platts PQ 20/16 footprint as data/bobbins.ndjson states it, and as the
+// PC-B2016-14 datasheet draws it: 14 pins, 6 on one row and 8 on the other, rows
+// 10.16 mm (0.4 in) apart, 3.81 mm and 2.54 mm pitches, 5.08 mm across the middle pair.
+MAS::Pinout miles_platts_pq2016_pinout() {
+    json pinout = json::parse(R"({
+        "numberPins": 14,
+        "numberPinsPerRow": [6, 8],
+        "rowDistance": 0.01016,
+        "pitch": [0.00381, 0.00254],
+        "centralPitch": 0.00508,
+        "pinDescription": {"shape": "round", "type": "tht", "dimensions": [0.00071, 0.00071, 0.00508]}
+    })");
+    MAS::Pinout parsed;
+    MAS::from_json(pinout, parsed);
+    return parsed;
+}
+
+MAS::WindingWindowElement test_winding_window(double height, double width) {
+    MAS::WindingWindowElement windingWindow;
+    windingWindow.set_height(height);
+    windingWindow.set_width(width);
+    windingWindow.set_area(height * width);
+    windingWindow.set_coordinates(std::vector<double>({width / 2, 0}));
+    return windingWindow;
+}
+
+double pin_x(const std::vector<MAS::Pin>& pins, const std::string& name) {
+    for (const auto& pin : pins) {
+        if (pin.get_name() && pin.get_name().value() == name) {
+            return pin.get_coordinates().value()[0];
+        }
+    }
+    throw std::runtime_error("no pin named " + name);
+}
+
+}  // namespace
+
+TEST_CASE("expand_pinout places the Miles-Platts PQ 20/16 footprint (ABT #1171)",
+          "[constructive-model][bobbin][pins][abt1171]") {
+    // The record itself must still say what the test was written against.
+    auto catalogueBobbin = OpenMagnetics::find_bobbin_by_name("Bobbin PQ 20/16");
+    REQUIRE(catalogueBobbin.get_functional_description());
+    REQUIRE(catalogueBobbin.get_functional_description()->get_pinout());
+    auto cataloguePinout = catalogueBobbin.get_functional_description()->get_pinout().value();
+    CHECK(cataloguePinout.get_number_pins() == 14);
+    REQUIRE(cataloguePinout.get_number_pins_per_row());
+    CHECK(cataloguePinout.get_number_pins_per_row().value() == std::vector<int64_t>({6, 8}));
+    REQUIRE(cataloguePinout.get_row_distance());
+    CHECK_THAT(cataloguePinout.get_row_distance().value(),
+               Catch::Matchers::WithinAbs(0.01016, 1e-9));
+    REQUIRE(cataloguePinout.get_central_pitch());
+    CHECK_THAT(cataloguePinout.get_central_pitch().value(),
+               Catch::Matchers::WithinAbs(0.00508, 1e-9));
+    REQUIRE(cataloguePinout.get_pitch());
+    REQUIRE(std::holds_alternative<std::vector<double>>(cataloguePinout.get_pitch().value()));
+    auto cataloguePitches = std::get<std::vector<double>>(cataloguePinout.get_pitch().value());
+    REQUIRE(cataloguePitches.size() == 2);
+    CHECK_THAT(cataloguePitches[0], Catch::Matchers::WithinAbs(0.00381, 1e-9));
+    CHECK_THAT(cataloguePitches[1], Catch::Matchers::WithinAbs(0.00254, 1e-9));
+
+    // PQ 20/16: window 0.0116 high, wall 0.0007, column depth 0.0106 — the numbers only
+    // move the pins along the column axis, so the row/pitch assertions do not depend on them.
+    const double wallThickness = 0.0007;
+    const double columnDepth = 0.0106;
+    auto windingWindow = test_winding_window(0.0116, 0.0035);
+    auto pins = OpenMagnetics::Bobbin::expand_pinout(miles_platts_pq2016_pinout(),
+                                                     MAS::Orientation::VERTICAL,
+                                                     windingWindow, wallThickness, columnDepth);
+
+    REQUIRE(pins.size() == 14);
+    for (size_t index = 0; index < pins.size(); ++index) {
+        REQUIRE(pins[index].get_name());
+        CHECK(pins[index].get_name().value() == std::to_string(index + 1));
+        REQUIRE(pins[index].get_coordinates());
+        CHECK(pins[index].get_coordinates()->size() == 3);
+        CHECK(pins[index].get_shape() == MAS::PinShape::ROUND);
+        CHECK(pins[index].get_type() == MAS::PinDescriptionType::THT);
+    }
+
+    // Row 0 (6 pins, pitch 3.81, middle pair 5.08 apart) at z = -rowDistance/2, numbered
+    // along +X; row 1 (8 pins, pitch 2.54) at +rowDistance/2, numbered back along -X.
+    const std::vector<double> expectedRow0({-0.01016, -0.00635, -0.00254, 0.00254, 0.00635, 0.01016});
+    for (size_t index = 0; index < expectedRow0.size(); ++index) {
+        CHECK_THAT(pin_x(pins, std::to_string(index + 1)),
+                   Catch::Matchers::WithinAbs(expectedRow0[index], 1e-9));
+        CHECK_THAT(pins[index].get_coordinates().value()[2],
+                   Catch::Matchers::WithinAbs(-0.00508, 1e-9));
+    }
+    const std::vector<double> expectedRow1({0.01016, 0.00762, 0.00508, 0.00254,
+                                            -0.00254, -0.00508, -0.00762, -0.01016});
+    for (size_t index = 0; index < expectedRow1.size(); ++index) {
+        CHECK_THAT(pin_x(pins, std::to_string(index + 7)),
+                   Catch::Matchers::WithinAbs(expectedRow1[index], 1e-9));
+        CHECK_THAT(pins[6 + index].get_coordinates().value()[2],
+                   Catch::Matchers::WithinAbs(0.00508, 1e-9));
+    }
+
+    // Vertical: the pins hang below the bottom flange's OUTER face, centred half a pin lower.
+    const double expectedY = -(0.0116 / 2 + wallThickness + 0.00508 / 2);
+    for (const auto& pin : pins) {
+        CHECK_THAT(pin.get_coordinates().value()[1], Catch::Matchers::WithinAbs(expectedY, 1e-9));
+        CHECK_FALSE(pin.get_rotation());
+    }
+}
+
+TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
+          "[constructive-model][bobbin][pins][abt1171]") {
+    auto windingWindow = test_winding_window(0.0116, 0.0035);
+
+    SECTION("a pin count with no pitch and no row distance") {
+        // 342 of the 504 catalogue records looked exactly like this before WP2.
+        json onlyCount = json::parse(R"({"numberPins": 6})");
+        MAS::Pinout pinout;
+        MAS::from_json(onlyCount, pinout);
+        CHECK_THROWS_AS(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+                                                             windingWindow, 0.0007, 0.0106),
+                        OpenMagnetics::InvalidInputException);
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+                                                               windingWindow, 0.0007, 0.0106),
+                          Catch::Matchers::ContainsSubstring("no pitch"));
+    }
+
+    SECTION("a pitch with no row distance is still no footprint") {
+        json noRowDistance = json::parse(R"({"numberPins": 6, "pitch": 0.00254})");
+        MAS::Pinout pinout;
+        MAS::from_json(noRowDistance, pinout);
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+                                                               windingWindow, 0.0007, 0.0106),
+                          Catch::Matchers::ContainsSubstring("no rowDistance"));
+    }
+
+    SECTION("geometry without pin dimensions cannot become a solid") {
+        json noPinDescription = json::parse(
+            R"({"numberPins": 12, "numberRows": 2, "rowDistance": 0.02032, "pitch": 0.00508})");
+        MAS::Pinout pinout;
+        MAS::from_json(noPinDescription, pinout);
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+                                                               windingWindow, 0.0007, 0.0106),
+                          Catch::Matchers::ContainsSubstring("no pinDescription"));
+    }
+
+    SECTION("an odd row cannot straddle a centralPitch") {
+        json oddRow = json::parse(R"({
+            "numberPins": 10, "numberPinsPerRow": [5, 5], "rowDistance": 0.02032,
+            "pitch": 0.00508, "centralPitch": 0.00254,
+            "pinDescription": {"shape": "round", "type": "tht", "dimensions": [0.0007, 0.0007, 0.004]}
+        })");
+        MAS::Pinout pinout;
+        MAS::from_json(oddRow, pinout);
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+                                                               windingWindow, 0.0007, 0.0106),
+                          Catch::Matchers::ContainsSubstring("two MIDDLE pins"));
+    }
+
+    SECTION("a pin count that does not divide over its rows") {
+        json odd = json::parse(R"({
+            "numberPins": 13, "numberRows": 2, "rowDistance": 0.02032, "pitch": 0.00508,
+            "pinDescription": {"shape": "round", "type": "tht", "dimensions": [0.0007, 0.0007, 0.004]}
+        })");
+        MAS::Pinout pinout;
+        MAS::from_json(odd, pinout);
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+                                                               windingWindow, 0.0007, 0.0106),
+                          Catch::Matchers::ContainsSubstring("numberPinsPerRow"));
+    }
+}
+
+TEST_CASE("expand_pinout matches the hand computation for a scraped ETD 29 pinout (ABT #1171)",
+          "[constructive-model][bobbin][pins][abt1171]") {
+    // The geometry the WP2 enrichment writes onto "Bobbin ETD 29 vertical 12-pin
+    // (Norwe 90641-186)" from the Shulin row TF-2902: 12 pins, two rows, 20 mm apart,
+    // 5 mm pitch. The scrape publishes no pin diameter or length, so the dimensions here
+    // are the test's own, stated explicitly rather than defaulted anywhere in the code.
+    json scraped = json::parse(R"({
+        "numberPins": 12, "numberRows": 2, "rowDistance": 0.02, "pitch": 0.005,
+        "pinDescription": {"shape": "round", "type": "tht", "dimensions": [0.0008, 0.0008, 0.0045]}
+    })");
+    MAS::Pinout pinout;
+    MAS::from_json(scraped, pinout);
+
+    // ETD 29/16/10 bobbin: window 0.0195 high and 0.00475 wide, wall 0.0008, column depth 0.0113.
+    const double wallThickness = 0.0008;
+    const double columnDepth = 0.0113;
+    auto windingWindow = test_winding_window(0.0195, 0.00475);
+
+    SECTION("vertical: pins under the bottom flange, rows across the depth") {
+        auto pins = OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+                                                         windingWindow, wallThickness, columnDepth);
+        REQUIRE(pins.size() == 12);
+        // Six pins to a row, 5 mm apart, centred: -0.0125 .. +0.0125 by hand.
+        const std::vector<double> expectedRow0({-0.0125, -0.0075, -0.0025, 0.0025, 0.0075, 0.0125});
+        for (size_t index = 0; index < 6; ++index) {
+            CHECK_THAT(pins[index].get_coordinates().value()[0],
+                       Catch::Matchers::WithinAbs(expectedRow0[index], 1e-12));
+            CHECK_THAT(pins[index].get_coordinates().value()[2],
+                       Catch::Matchers::WithinAbs(-0.01, 1e-12));
+            // -(0.0195/2 + 0.0008 + 0.0045/2)
+            CHECK_THAT(pins[index].get_coordinates().value()[1],
+                       Catch::Matchers::WithinAbs(-0.012800, 1e-12));
+        }
+        // Pin 7 turns the corner: same end of the board as pin 6, on the other row.
+        CHECK_THAT(pins[6].get_coordinates().value()[0], Catch::Matchers::WithinAbs(0.0125, 1e-12));
+        CHECK_THAT(pins[6].get_coordinates().value()[2], Catch::Matchers::WithinAbs(0.01, 1e-12));
+        CHECK_THAT(pins[11].get_coordinates().value()[0], Catch::Matchers::WithinAbs(-0.0125, 1e-12));
+        CHECK_THAT(pins[11].get_coordinates().value()[2], Catch::Matchers::WithinAbs(0.01, 1e-12));
+    }
+
+    SECTION("horizontal: pins off the two end flanges, rows along the column axis") {
+        auto pins = OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::HORIZONTAL,
+                                                         windingWindow, wallThickness, columnDepth);
+        REQUIRE(pins.size() == 12);
+        for (size_t index = 0; index < 6; ++index) {
+            CHECK_THAT(pins[index].get_coordinates().value()[1],
+                       Catch::Matchers::WithinAbs(-0.01, 1e-12));
+        }
+        for (size_t index = 6; index < 12; ++index) {
+            CHECK_THAT(pins[index].get_coordinates().value()[1],
+                       Catch::Matchers::WithinAbs(0.01, 1e-12));
+        }
+        // -(0.0113/2 + 0.00475 + 0.0045/2)
+        for (const auto& pin : pins) {
+            CHECK_THAT(pin.get_coordinates().value()[2],
+                       Catch::Matchers::WithinAbs(-0.012850, 1e-12));
+            REQUIRE(pin.get_rotation());
+            CHECK(pin.get_rotation().value() == std::vector<double>({90, 0, 0}));
+        }
+    }
+}
+
+TEST_CASE("A processed bobbin carries its pins and can be asked for one by name (ABT #1171)",
+          "[constructive-model][bobbin][pins][abt1171]") {
+    // A record with the full footprint AND the mounting orientation: the four things
+    // process_data needs before it will place a pin.
+    json bobbinJson = json::parse(R"({
+        "name": "Bobbin WP2 Fixture",
+        "functionalDescription": {
+            "type": "standard", "family": "etd", "shape": "ETD 29/16/10",
+            "orientation": "vertical",
+            "dimensions": {"d1": {"nominal": 0.0212}, "d2": {"nominal": 0.0113},
+                           "d3": {"nominal": 0.0102}, "h1": {"nominal": 0.0212},
+                           "h2": {"nominal": 0.0195}, "s": {"nominal": 0.0008}},
+            "pinout": {
+                "numberPins": 12, "numberRows": 2, "rowDistance": 0.02032, "pitch": 0.00508,
+                "pinDescription": {"shape": "round", "type": "tht",
+                                   "dimensions": [0.0008, 0.0008, 0.0045]}
+            }
+        }
+    })");
+    OpenMagnetics::Bobbin bobbin(bobbinJson);
+    REQUIRE(bobbin.get_processed_description());
+    REQUIRE(bobbin.get_processed_description()->get_pins());
+    CHECK(bobbin.get_processed_description()->get_pins()->size() == 12);
+
+    auto pin = bobbin.get_pin("7");
+    REQUIRE(pin.get_coordinates());
+    CHECK_THAT(pin.get_coordinates().value()[2], Catch::Matchers::WithinAbs(0.01016, 1e-12));
+    CHECK_THROWS_WITH(bobbin.get_pin("13"), Catch::Matchers::ContainsSubstring("no pin named '13'"));
+
+    SECTION("the same record without an orientation places nothing rather than guessing") {
+        json noOrientation = bobbinJson;
+        noOrientation["functionalDescription"].erase("orientation");
+        OpenMagnetics::Bobbin unoriented(noOrientation);
+        REQUIRE(unoriented.get_processed_description());
+        CHECK_FALSE(unoriented.get_processed_description()->get_pins());
+        CHECK_THROWS_WITH(unoriented.get_pin("1"), Catch::Matchers::ContainsSubstring("has no pins"));
+    }
+}
