@@ -1065,7 +1065,7 @@ std::vector<double> row_positions(int64_t numberPinsInRow,
 }  // namespace
 
 std::vector<MAS::Pin> Bobbin::expand_pinout(const MAS::Pinout& pinout,
-                                            MAS::Orientation orientation,
+                                            MAS::OrientationEnum orientation,
                                             const MAS::WindingWindowElement& windingWindow,
                                             double wallThickness,
                                             double columnDepth) {
@@ -1200,7 +1200,7 @@ std::vector<MAS::Pin> Bobbin::expand_pinout(const MAS::Pinout& pinout,
         for (auto position : positions) {
             MAS::Pin pin = pinDescription;
             pin.set_name(std::to_string(pinNumber));
-            if (orientation == MAS::Orientation::VERTICAL) {
+            if (orientation == MAS::OrientationEnum::VERTICAL) {
                 pin.set_coordinates(std::vector<double>({position, pinCentreY, rowOffset}));
             }
             else {

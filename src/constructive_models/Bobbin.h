@@ -140,7 +140,7 @@ class Bobbin : public MAS::Bobbin {
      * the function depends on, so it is not taken.
      */
     static std::vector<MAS::Pin> expand_pinout(const MAS::Pinout& pinout,
-                                               MAS::Orientation orientation,
+                                               MAS::OrientationEnum orientation,
                                                const MAS::WindingWindowElement& windingWindow,
                                                double wallThickness,
                                                double columnDepth);

@@ -524,7 +524,7 @@ TEST_CASE("expand_pinout places the Miles-Platts PQ 20/16 footprint (ABT #1171)"
     const double columnDepth = 0.0106;
     auto windingWindow = test_winding_window(0.0116, 0.0035);
     auto pins = OpenMagnetics::Bobbin::expand_pinout(miles_platts_pq2016_pinout(),
-                                                     MAS::Orientation::VERTICAL,
+                                                     MAS::OrientationEnum::VERTICAL,
                                                      windingWindow, wallThickness, columnDepth);
 
     REQUIRE(pins.size() == 14);
@@ -572,10 +572,10 @@ TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
         json onlyCount = json::parse(R"({"numberPins": 6})");
         MAS::Pinout pinout;
         MAS::from_json(onlyCount, pinout);
-        CHECK_THROWS_AS(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+        CHECK_THROWS_AS(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
                                                              windingWindow, 0.0007, 0.0106),
                         OpenMagnetics::InvalidInputException);
-        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
                                                                windingWindow, 0.0007, 0.0106),
                           Catch::Matchers::ContainsSubstring("no pitch"));
     }
@@ -584,7 +584,7 @@ TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
         json noRowDistance = json::parse(R"({"numberPins": 6, "pitch": 0.00254})");
         MAS::Pinout pinout;
         MAS::from_json(noRowDistance, pinout);
-        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
                                                                windingWindow, 0.0007, 0.0106),
                           Catch::Matchers::ContainsSubstring("no rowDistance"));
     }
@@ -594,7 +594,7 @@ TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
             R"({"numberPins": 12, "numberRows": 2, "rowDistance": 0.02032, "pitch": 0.00508})");
         MAS::Pinout pinout;
         MAS::from_json(noPinDescription, pinout);
-        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
                                                                windingWindow, 0.0007, 0.0106),
                           Catch::Matchers::ContainsSubstring("no pinDescription"));
     }
@@ -607,7 +607,7 @@ TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
         })");
         MAS::Pinout pinout;
         MAS::from_json(oddRow, pinout);
-        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
                                                                windingWindow, 0.0007, 0.0106),
                           Catch::Matchers::ContainsSubstring("two MIDDLE pins"));
     }
@@ -619,7 +619,7 @@ TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
         })");
         MAS::Pinout pinout;
         MAS::from_json(odd, pinout);
-        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
                                                                windingWindow, 0.0007, 0.0106),
                           Catch::Matchers::ContainsSubstring("numberPinsPerRow"));
     }
@@ -644,7 +644,7 @@ TEST_CASE("expand_pinout matches the hand computation for a scraped ETD 29 pinou
     auto windingWindow = test_winding_window(0.0195, 0.00475);
 
     SECTION("vertical: pins under the bottom flange, rows across the depth") {
-        auto pins = OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::VERTICAL,
+        auto pins = OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
                                                          windingWindow, wallThickness, columnDepth);
         REQUIRE(pins.size() == 12);
         // Six pins to a row, 5 mm apart, centred: -0.0125 .. +0.0125 by hand.
@@ -666,7 +666,7 @@ TEST_CASE("expand_pinout matches the hand computation for a scraped ETD 29 pinou
     }
 
     SECTION("horizontal: pins off the two end flanges, rows along the column axis") {
-        auto pins = OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::Orientation::HORIZONTAL,
+        auto pins = OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::HORIZONTAL,
                                                          windingWindow, wallThickness, columnDepth);
         REQUIRE(pins.size() == 12);
         for (size_t index = 0; index < 6; ++index) {
