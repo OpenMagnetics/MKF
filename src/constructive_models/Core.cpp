@@ -427,13 +427,34 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
             }
 
             if (spacerThickness > 0) {
+                // ABT #1170: a shim between the two halves separates EVERY column, not only the
+                // lateral ones. create_spacer_gapping makes one ADDITIVE gap per column, so a
+                // sheet (or a set of per-leg shims) of the same thickness has to sit under each
+                // of them; emitting only the laterals left the centre leg's ADDITIVE gap with no
+                // solid for the CAD/FEM consumers to draw.
+                auto shape_data = std::get<CoreShape>(get_functional_description().get_shape());
+                auto dimensions = flatten_dimensions(shape_data.get_dimensions().value());
                 for (auto& column : corePiece->get_columns()) {
-                    auto shape_data = std::get<CoreShape>(get_functional_description().get_shape());
-                    if (column.get_type() == ColumnType::LATERAL) {
-                        spacer.set_type(CoreGeometricalDescriptionElementType::SPACER);
-                        spacer.set_material("plastic");
+                    // The element is reused around the loop; start from a clean one so a spacer
+                    // carries ONLY the fields core/spacer.json allows.
+                    spacer = CoreGeometricalDescriptionElement();
+                    spacer.set_type(CoreGeometricalDescriptionElementType::SPACER);
+                    // core/spacer.json calls this field `insulationMaterial`. `material` is the
+                    // piece field: setting it made the element validate against neither branch
+                    // of the geometricalDescription oneOf. Same for `rotation`, which spacer.json
+                    // does not define at all (the box is axis-aligned by construction).
+                    spacer.set_insulation_material(std::string("plastic"));
+
+                    double minimum_column_width;
+                    double minimum_column_depth;
+                    if (column.get_type() == ColumnType::CENTRAL) {
+                        // The centre leg's own footprint is exactly what the processed column
+                        // carries; none of the letter arithmetic below describes it.
+                        minimum_column_width = column.get_width();
+                        minimum_column_depth = column.get_depth() * numberStacks;
+                    }
+                    else {
                         // We cannot use directly column.get_width()
-                        auto dimensions = flatten_dimensions(shape_data.get_dimensions().value());
                         double windingWindowWidth;
                         if (dimensions.find("E") == dimensions.end() ||
                             (roundFloat(dimensions["E"]) == 0)) {
@@ -452,8 +473,6 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                         else {
                             windingWindowWidth = dimensions["E"];
                         }
-                        double minimum_column_width;
-                        double minimum_column_depth;
                         if ((shape_data.get_family() == CoreShapeFamily::EP ||
                              shape_data.get_family() == CoreShapeFamily::EPX) &&
                             corePiece->get_columns().size() == 2) {
@@ -501,47 +520,53 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                             minimum_column_depth =
                                 std::min(dimensions["C"], column.get_depth()) * numberStacks;
                         }
-                        minimum_column_width *= (1 + constants.spacerProtudingPercentage);
-                        minimum_column_depth *= (1 + constants.spacerProtudingPercentage);
-                        double protruding_width = minimum_column_width * constants.spacerProtudingPercentage;
-                        double protruding_depth = minimum_column_depth * constants.spacerProtudingPercentage;
-                        spacer.set_dimensions(std::vector<double>({minimum_column_width, spacerThickness, minimum_column_depth}));
-                        spacer.set_rotation(std::vector<double>({0, 0, 0}));
-                        if (column.get_coordinates()[0] == 0) {
-                            spacer.set_coordinates({0, column.get_coordinates()[1],
-                                                         -dimensions["C"] / 2 +
-                                                             minimum_column_depth / 2 - protruding_depth});
-                        }
-                        else if (column.get_coordinates()[0] < 0) {
-                            if (shape_data.get_family() == CoreShapeFamily::U ||
-                                shape_data.get_family() == CoreShapeFamily::UR ||
-                                shape_data.get_family() == CoreShapeFamily::C) {
-                                spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] - column.get_width() / 2 +
-                                                                 minimum_column_width / 2 - protruding_width,
-                                                             column.get_coordinates()[1], column.get_coordinates()[2]}));
-                            }
-                            else {
-                                spacer.set_coordinates(std::vector<double>({-dimensions["A"] / 2 +
-                                                                 minimum_column_width / 2 - protruding_width,
-                                                             column.get_coordinates()[1], column.get_coordinates()[2]}));
-                            }
+                    }
+
+                    minimum_column_width *= (1 + constants.spacerProtudingPercentage);
+                    minimum_column_depth *= (1 + constants.spacerProtudingPercentage);
+                    double protruding_width = minimum_column_width * constants.spacerProtudingPercentage;
+                    double protruding_depth = minimum_column_depth * constants.spacerProtudingPercentage;
+                    spacer.set_dimensions(std::vector<double>({minimum_column_width, spacerThickness, minimum_column_depth}));
+                    if (column.get_type() == ColumnType::CENTRAL) {
+                        // Centred on the leg it separates, in all three axes.
+                        spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0],
+                                                                    column.get_coordinates()[1],
+                                                                    column.get_coordinates()[2]}));
+                    }
+                    else if (column.get_coordinates()[0] == 0) {
+                        spacer.set_coordinates({0, column.get_coordinates()[1],
+                                                     -dimensions["C"] / 2 +
+                                                         minimum_column_depth / 2 - protruding_depth});
+                    }
+                    else if (column.get_coordinates()[0] < 0) {
+                        if (shape_data.get_family() == CoreShapeFamily::U ||
+                            shape_data.get_family() == CoreShapeFamily::UR ||
+                            shape_data.get_family() == CoreShapeFamily::C) {
+                            spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] - column.get_width() / 2 +
+                                                             minimum_column_width / 2 - protruding_width,
+                                                         column.get_coordinates()[1], column.get_coordinates()[2]}));
                         }
                         else {
-                            if (shape_data.get_family() == CoreShapeFamily::U ||
-                                shape_data.get_family() == CoreShapeFamily::UR ||
-                                shape_data.get_family() == CoreShapeFamily::C) {
-                                spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] + column.get_width() / 2 -
-                                                                 minimum_column_width / 2 + protruding_width,
-                                                             column.get_coordinates()[1], column.get_coordinates()[2]}));
-                            }
-                            else {
-                                spacer.set_coordinates(std::vector<double>({dimensions["A"] / 2 -
-                                                                 minimum_column_width / 2 + protruding_width,
-                                                             column.get_coordinates()[1], column.get_coordinates()[2]}));
-                            }
+                            spacer.set_coordinates(std::vector<double>({-dimensions["A"] / 2 +
+                                                             minimum_column_width / 2 - protruding_width,
+                                                         column.get_coordinates()[1], column.get_coordinates()[2]}));
                         }
-                        geometricalDescription.push_back(spacer);
                     }
+                    else {
+                        if (shape_data.get_family() == CoreShapeFamily::U ||
+                            shape_data.get_family() == CoreShapeFamily::UR ||
+                            shape_data.get_family() == CoreShapeFamily::C) {
+                            spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] + column.get_width() / 2 -
+                                                             minimum_column_width / 2 + protruding_width,
+                                                         column.get_coordinates()[1], column.get_coordinates()[2]}));
+                        }
+                        else {
+                            spacer.set_coordinates(std::vector<double>({dimensions["A"] / 2 -
+                                                             minimum_column_width / 2 + protruding_width,
+                                                         column.get_coordinates()[1], column.get_coordinates()[2]}));
+                        }
+                    }
+                    geometricalDescription.push_back(spacer);
                 }
             }
             break;
@@ -623,6 +648,26 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
 
     return geometricalDescription;
 }
+
+std::vector<CoreGeometricalDescriptionElement> Core::get_spacers() {
+    // ABT #1170: one place that knows a spacer is a SPACER-typed geometricalDescription
+    // element. Consumers (MVB++ SpacerBuilder, OMFEM region tagging, the painters) used to
+    // re-filter the list themselves.
+    if (!get_geometrical_description()) {
+        throw std::runtime_error("Core has no geometrical description, cannot list its spacers");
+    }
+    // get_geometrical_description() returns the optional BY VALUE: bind the vector to a named
+    // local, never iterate over a temporary's member.
+    auto elements = get_geometrical_description().value();
+    std::vector<CoreGeometricalDescriptionElement> spacers;
+    for (auto& element : elements) {
+        if (element.get_type() == CoreGeometricalDescriptionElementType::SPACER) {
+            spacers.push_back(element);
+        }
+    }
+    return spacers;
+}
+
 
 std::vector<ColumnElement> Core::find_columns_by_type(ColumnType columnType) {
     std::vector<ColumnElement> foundColumns;

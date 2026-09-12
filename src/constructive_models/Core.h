@@ -49,6 +49,11 @@ class Core : public MAS::MagneticCore {
     virtual ~Core() = default;
 
     std::optional<std::vector<CoreGeometricalDescriptionElement>> create_geometrical_description();
+    // ABT #1170: the spacer elements of the geometrical description, already filtered and
+    // typed, so no consumer has to re-scan the list for CoreGeometricalDescriptionElementType
+    // ::SPACER. Empty when the core has no additive gap. Throws if there is no geometrical
+    // description at all — an un-processed core is a caller bug, not an empty spacer list.
+    std::vector<CoreGeometricalDescriptionElement> get_spacers();
     std::vector<ColumnElement> find_columns_by_type(ColumnType columnType);
     ColumnElement find_closest_column_by_coordinates(std::vector<double> coordinates);
     int find_closest_column_index_by_coordinates(std::vector<double> coordinates);

@@ -1402,15 +1402,16 @@ TEST_CASE("E_55_21_GeometricalDescription", "[constructive-model][core][geometri
     REQUIRE(std::get<CoreMaterial>(core.get_mutable_functional_description().get_mutable_material())
               .get_mutable_volumetric_losses()["default"]
               .size() > 0);
-    REQUIRE(geometrical_description.size() == 6u);
-    REQUIRE(!geometrical_description[0].get_machining());
-    REQUIRE(!geometrical_description[1].get_machining());
-    REQUIRE(!geometrical_description[2].get_machining());
-    REQUIRE(!geometrical_description[3].get_machining());
-    REQUIRE(!geometrical_description[4].get_machining());
-    REQUIRE(!geometrical_description[5].get_machining());
+    // ABT #1170: 4 half-set pieces (2 stacks) + one spacer per COLUMN. It used to be 6,
+    // with a spacer only under the two lateral legs, while create_spacer_gapping had put an
+    // ADDITIVE gap under the centre leg too — that gap had no solid to draw.
+    REQUIRE(geometrical_description.size() == 7u);
+    for (auto& element : geometrical_description) {
+        REQUIRE(!element.get_machining());
+    }
     REQUIRE(geometrical_description[4].get_type() == CoreGeometricalDescriptionElementType::SPACER);
     REQUIRE(geometrical_description[5].get_type() == CoreGeometricalDescriptionElementType::SPACER);
+    REQUIRE(geometrical_description[6].get_type() == CoreGeometricalDescriptionElementType::SPACER);
 }
 
 TEST_CASE("T_40_24_16_2", "[constructive-model][core][geometrical-description][smoke-test]") {
