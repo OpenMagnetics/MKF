@@ -481,12 +481,19 @@ TEST_CASE("Test_Supported_Families_Are_The_Engine_Not_The_Database", "[catalog][
     }
     CHECK(supported.size() > inDatabase.size());
 
-    // Named explicitly, because these two are the whole reason the distinction exists: buildable,
-    // and carrying no catalogue shape of their own.
-    for (auto family : {CoreShapeFamily::DRUM_SEMISHIELDED, CoreShapeFamily::MOLDED}) {
+    // Named explicitly, because it is the whole reason the distinction exists: buildable, and
+    // carrying no catalogue shape of its own. DRUM_SEMISHIELDED used to sit here beside it; MAS
+    // a25fec9 (2026-09-10, the Wurth geometries) gave the family its first four catalogue shapes,
+    // so it is now an ordinary "in the database AND buildable" family, covered by the loops
+    // above. MOLDED still has none.
+    for (auto family : {CoreShapeFamily::MOLDED}) {
         CHECK(std::find(supported.begin(), supported.end(), family) != supported.end());
         CHECK(std::find(inDatabase.begin(), inDatabase.end(), family) == inDatabase.end());
     }
+    // And the family that crossed over must be seen on BOTH sides, so the crossing is a recorded
+    // fact rather than a silently relaxed check.
+    CHECK(std::find(supported.begin(), supported.end(), CoreShapeFamily::DRUM_SEMISHIELDED) != supported.end());
+    CHECK(std::find(inDatabase.begin(), inDatabase.end(), CoreShapeFamily::DRUM_SEMISHIELDED) != inDatabase.end());
 }
 
 // ABT #1007: get_shape_family_dimensions answered "what does this family need?" by scanning the
