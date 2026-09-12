@@ -677,10 +677,10 @@ TEST_CASE("expand_pinout matches the hand computation for a scraped ETD 29 pinou
             CHECK_THAT(pins[index].get_coordinates().value()[1],
                        Catch::Matchers::WithinAbs(0.01, 1e-12));
         }
-        // -(0.0113/2 + 0.00475 + 0.0045/2)
+        // -(0.0113/2 + 0.00475 + 0.0045/2) = -(0.00565 + 0.00475 + 0.00225)
         for (const auto& pin : pins) {
             CHECK_THAT(pin.get_coordinates().value()[2],
-                       Catch::Matchers::WithinAbs(-0.012850, 1e-12));
+                       Catch::Matchers::WithinAbs(-0.01265, 1e-12));
             REQUIRE(pin.get_rotation());
             CHECK(pin.get_rotation().value() == std::vector<double>({90, 0, 0}));
         }

@@ -1088,7 +1088,9 @@ std::vector<MAS::Pin> Bobbin::expand_pinout(const MAS::Pinout& pinout,
             "but no pinDescription, so the pin diameter and length are unknown. bobbin.json makes "
             "pin.dimensions required, and a pin with invented dimensions is worse than no pin.");
     }
-    const MAS::Pin& pinDescription = pinout.get_pin_description().value();
+    // BY VALUE: get_pin_description() returns the optional by value, so a reference here
+    // would bind into a temporary that dies at the end of this statement (-Wdangling-reference).
+    const MAS::Pin pinDescription = pinout.get_pin_description().value();
     if (pinDescription.get_dimensions().size() < 3) {
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
             "Pinout's pinDescription carries " + std::to_string(pinDescription.get_dimensions().size()) +
@@ -1297,7 +1299,8 @@ void Bobbin::process_data() {
     // what it describes; expand_pinout is the strict door and throws if called on it directly.
     auto functionalDescriptionForPins = get_functional_description().value();
     if (functionalDescriptionForPins.get_pinout()) {
-        const auto& pinout = functionalDescriptionForPins.get_pinout().value();
+        // BY VALUE, same reason as pinDescription above.
+        const MAS::Pinout pinout = functionalDescriptionForPins.get_pinout().value();
         auto orientation = functionalDescriptionForPins.get_orientation();
         if (pinout.get_pitch() && pinout.get_row_distance() && pinout.get_pin_description() && orientation) {
             processedDescription.set_pins(expand_pinout(pinout,
