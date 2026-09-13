@@ -125,6 +125,7 @@ def main():
     margins = defaultdict(list)                  # class -> [edge margin]
     clearances = defaultdict(list)               # (class, orientation) -> [clearance]
     pin_diameters, pin_lengths, rail_standoffs = [], [], []
+    rail_outer_walls, rail_inner_walls, rail_end_walls = [], [], []
     grid_hits = 0
     grid_total = 0
     used = 0
@@ -186,12 +187,21 @@ def main():
             pin_diameters.append(description["dimensions"][0])
             pin_lengths.append(description["dimensions"][2])
         dims = functional.get("dimensions", {})
-        # The one verified pin-rail datum (Bobbin::get_pin_rail_distance, ABT #1207): vertical PQ,
-        # rail at c - H1/2 below the column centre; its standoff beyond the core is that minus B.
-        rail = (shape["name"], json.dumps(dims.get("c")), json.dumps(dims.get("H1")))
-        if shape["family"] == "pq" and orientation == "vertical" and "c" in dims and "H1" in dims and rail not in rails:
+        # The one verified pin-rail datum (Bobbin::get_pin_rail_distance, ABT #1207 corrected by
+        # ABT #1249): vertical PQ, rail underside at H1/2 + H3 below the column centre; its standoff
+        # beyond the core is that minus half the core height. The same drawings give the rail block
+        # (a, b, b1): its walls around the pin row, measured from the pin surface.
+        rail_labels = ("H1", "H3", "a", "b", "b1")
+        rail = (shape["name"],) + tuple(json.dumps(dims.get(label)) for label in rail_labels)
+        if (shape["family"] == "pq" and orientation == "vertical" and all(label in dims for label in rail_labels)
+                and description and rail not in rails):
             rails.add(rail)
-            rail_standoffs.append(nominal(dims["c"]) - nominal(dims["H1"]) / 2 - core["height"] / 2)
+            half_row = row_distance / 2
+            pin_radius = description["dimensions"][0] / 2
+            rail_standoffs.append(nominal(dims["H1"]) / 2 + nominal(dims["H3"]) - core["height"] / 2)
+            rail_outer_walls.append(nominal(dims["b"]) / 2 - half_row - pin_radius)
+            rail_inner_walls.append(half_row - (nominal(dims["b"]) / 2 - nominal(dims["b1"])) - pin_radius)
+            rail_end_walls.append(nominal(dims["a"]) / 2 - span / 2 - pin_radius)
 
     classes = {}
     for klass, families in CLASSES.items():
@@ -250,10 +260,19 @@ def main():
             "horizontalRowClearance": "rowDistance / 2 - core window height / 2: one row per end flange (Y)",
             "pinDiameter": "pinDescription.dimensions[0] of every distinct footprint that carries one",
             "pinLength": "pinDescription.dimensions[2] of every distinct footprint that carries one",
-            "railStandoff": ("c - H1/2 - core height/2 of the vertical PQ records, one value per distinct (shape, c, H1) drawing: the pin rail's outer face beyond the core's "
-                             "outer face along the pin direction. It is the ONLY rail datum in the catalogue (ABT #1207); no "
-                             "horizontal record locates its rail, so MKF applies the same standoff beyond the core depth face "
-                             "for horizontal pins, and says so."),
+            "railStandoff": ("H1/2 + H3 - core height/2 of the vertical PQ records, one value per distinct (shape, H1, H3, a, b, b1) drawing: the pin rail's underside (the pin standoff) beyond the core's "
+                             "outer face along the pin direction. H3 (bottom flange outer face -> pin standoff) was measured at scale "
+                             "on the Miles-Platts PQ0010..PQ0080 drawings (ABT #1249; ABT #1207's c - H1/2 included the tab height). "
+                             "It is the ONLY rail datum in the catalogue; no horizontal record locates its rail, so MKF applies the "
+                             "same standoff beyond the core depth face for horizontal pins, and says so."),
+            "railOuterWall": ("b/2 - rowDistance/2 - pin diameter/2 of the same records: rail plastic between a pin's surface and the "
+                              "rail's outer edge, across the row. Bobbin::get_pin_rails sizes a quick bobbin's rail with it."),
+            "railInnerWall": ("rowDistance/2 - (b/2 - b1) - pin diameter/2 of the same records: rail plastic between a pin's surface "
+                              "and the rail's inner edge (the side facing the core), across the row."),
+            "railEndWall": ("a/2 - longest row span/2 - pin diameter/2 of the same records: rail plastic beyond the outermost pin's "
+                            "surface, along the row. A quick bobbin's rail is one block per row (its pinout has no central gap); "
+                            "the Miles-Platts rails' centre gap a1 is not carried over. Rail height: from the bottom flange's outer "
+                            "face down to the pin standoff, as on the drawings (no separate legs)."),
         },
         "grid": GRID,
         "gridEvidence": {"rowPitches": grid_total, "onHalfGridWithin": SNAP_TOLERANCE, "onHalfGrid": grid_hits},
@@ -265,6 +284,9 @@ def main():
         "pinDiameter": summary(pin_diameters),
         "pinLength": summary(pin_lengths),
         "railStandoff": summary(rail_standoffs),
+        "railOuterWall": summary(rail_outer_walls),
+        "railInnerWall": summary(rail_inner_walls),
+        "railEndWall": summary(rail_end_walls),
     }
     text = json.dumps(table, indent=4) + "\n"
     if "--check" in sys.argv:

@@ -36,7 +36,8 @@ namespace {
 
 const std::string twoChamberE20 = "Bobbin EE 20 horizontal longer-creepage 8-pin 3.81mm 2-chamber (Norwe 09991-106)";
 const std::string twoChamberEtd49 = "Bobbin ETD 49 horizontal lr 2-chamber 20-pin (Norwe 90565-186)";
-const std::string untranscribedEtd19 = "Bobbin ETD 19 horizontal lr 2-chamber 10-pin (Norwe N0002-186)";
+// MAS a392f1e (ABT #1246) transcribed the chambers of Norwe N0002-186 (ETD 19); N0013-186 is still untranscribed.
+const std::string untranscribedEtd59 = "Bobbin ETD 59 horizontal lr 2-chamber 26-pin (Norwe N0013-186)";
 
 json functional_description_of(const std::string& bobbinName) {
     auto bobbin = find_bobbin_by_name(bobbinName);
@@ -182,15 +183,15 @@ TEST_CASE("Chamber stacks built from vendor drawings (ABT #1175)", "[constructiv
 TEST_CASE("A chamber count without the walls is never split by invention (ABT #1175)", "[constructive-model][bobbin][chambers]") {
     SECTION("the catalogue keeps an untranscribed chamber former as functional data") {
         auto names = get_bobbin_names();
-        REQUIRE(std::find(names.begin(), names.end(), untranscribedEtd19) != names.end());
-        auto bobbin = find_bobbin_by_name(untranscribedEtd19);
+        REQUIRE(std::find(names.begin(), names.end(), untranscribedEtd59) != names.end());
+        auto bobbin = find_bobbin_by_name(untranscribedEtd59);
         REQUIRE(bobbin.get_functional_description());
         CHECK(bobbin.get_functional_description()->get_number_chambers() == 2);
         CHECK_FALSE(bobbin.get_processed_description());
         CHECK_THROWS_WITH(bobbin.process_data(), ContainsSubstring("carry no 'c1'"));
     }
     SECTION("a design that uses it gets the refusal") {
-        auto coilJson = flyback_coil_json(untranscribedEtd19, 20, "Round 0.25 - Grade 1", 5, "Round 0.5 - Grade 1");
+        auto coilJson = flyback_coil_json(untranscribedEtd59, 20, "Round 0.25 - Grade 1", 5, "Round 0.5 - Grade 1");
         OpenMagnetics::Coil coil(coilJson, false);
         CHECK_THROWS_WITH(coil.resolve_bobbin(), ContainsSubstring("carry no 'c1'"));
     }

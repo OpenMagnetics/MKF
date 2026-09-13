@@ -202,11 +202,14 @@ class Bobbin : public MAS::Bobbin {
      *        (the standoff the pins leave from), along the pin direction (ABT #1207).
      *
      * Read ONLY from dimensions whose meaning has been checked against the vendor drawing:
-     *   PQ, VERTICAL: `c - H1/2`. On every Miles-Platts PQ former drawing the catalogue's PQ
-     *     records come from (PQ0010..PQ0080, e.g. PQ0040 = PQ 26/25: c = 1.033 in, H1 = 0.609 in)
-     *     `c` is the overall height from the TOP flange's outer face to the pin standoff, and
-     *     `H1` the flange-to-flange height; the bobbin is centred on the column, so the top
-     *     flange face is at +H1/2 and the standoff at H1/2 - c.
+     *   PQ, VERTICAL: `H1/2 + H3` (ABT #1249). On every Miles-Platts PQ former drawing the
+     *     catalogue's PQ records come from (PQ0010..PQ0080, e.g. PQ0040 = PQ 26/25: H1 = 0.609 in,
+     *     H3 = 6.43 mm) `H1` is the flange outer face to flange outer face height and `H3` the rail
+     *     height from the bottom flange's outer face down to the pin standoff (measured at scale,
+     *     MAS docs/magnetic/coil.md "Pin rail labels"); the bobbin is centred on the column, so the
+     *     bottom flange face is at -H1/2 and the standoff at -(H1/2 + H3). `c` is NOT used: it runs
+     *     from the standoff to the top of the core-retaining tabs (c = H4 + H1 + H3), and ABT
+     *     #1207's `c - H1/2` put the pins H4 below their rail.
      * Every other family/orientation has no dimension in MAS that locates the rail (the
      * letters `a`/`b`/`c` mean different things per family and vendor - `c` on an E bobbin is
      * not an overall height), so this throws naming what is missing rather than guessing.
@@ -345,6 +348,49 @@ class Bobbin : public MAS::Bobbin {
      * @throws when the bobbin has not been processed, carries no pins, or has no such pin.
      */
     MAS::Pin get_pin(const std::string& name);
+
+    /**
+     * @brief One plastic block of a pin rail, an axis-aligned box in the bobbin frame (ABT #1249).
+     *
+     * Frame as expand_pinout: origin at the centre of the main column, column axis Y, pin rows
+     * along X, rows at z = -+ rowDistance/2 (row 0 on the negative side).
+     */
+    struct PinRailBlock {
+        std::string name;                 // "rail <row> block <k>", k counted along +X
+        size_t row;                       // 0: the row at negative Z, 1: at positive Z
+        std::vector<double> centre;       // {x, y, z}, metres
+        std::vector<double> halfExtents;  // {x, y, z}, metres
+    };
+
+    /**
+     * @brief The pin rails that hold this bobbin's pins: the plastic bars under the bottom
+     *        flange that the pins leave from (ABT #1249).
+     *
+     * Every block hangs from the bottom flange's outer face (y = -(window height/2 + wall
+     * thickness), the face the processed description puts there) down to the pin standoff, where
+     * the pins start. Nothing joins a rail to the flange but that face: the drawings show the rail
+     * moulded directly under the flange extension, with no separate legs or webs.
+     *
+     * Catalogue vertical PQ former (the rule get_pin_rail_distance reads): per row, two blocks
+     * split by the centre gap `a1`, x from a1/2 to a/2 on each side, z from b/2 - b1 to b/2 on the
+     * row's side, y from -H1/2 to -(H1/2 + H3). Labels as documented in MAS docs/magnetic/coil.md
+     * ("Pin rail labels"), measured on the Miles-Platts PQ0010..PQ0080 drawings.
+     *
+     * Quick bobbin with synthesised pins (no functional description, ABT #1220), VERTICAL pins
+     * only: one block per row, from src/data/quick_bobbin_pins.json (medians over the same PQ
+     * drawings): across the row pin diameter + railInnerWall + railOuterWall around the row's pin
+     * centres (inner wall facing the column), along the row the pin span + pin diameter +
+     * 2 railEndWall, and from the bottom flange's outer face down to the pins' top ends.
+     *
+     * A bobbin without pins has no rails (empty). A toroid base (functionalDescription.base) holds
+     * its pins in the base body itself, which is not a rail: empty too.
+     *
+     * @throws InvalidInputException when the bobbin carries pins but a label the rule needs is
+     *         missing (naming it), when a catalogue pin does not lie inside its rail block (the
+     *         labels contradict the pinout), for horizontal pins (no drawing in MAS describes a
+     *         horizontal former's rail), or for a catalogue family with no rail rule.
+     */
+    std::vector<PinRailBlock> get_pin_rails() const;
 
     bool check_if_fits(double dimension, bool isHorizontalOrRadial = true, size_t windingWindowIndex = 0);
     void set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex = 0);

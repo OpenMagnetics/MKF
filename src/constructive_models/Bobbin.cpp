@@ -1443,31 +1443,32 @@ PinRailDatum find_pin_rail_distance(const MAS::BobbinFunctionalDescription& func
     const auto dimensions = flatten_dimensions(functionalDescription.get_dimensions());
 
     if (family == MAS::BobbinFamily::PQ && orientation == MAS::OrientationEnum::VERTICAL) {
-        // Miles-Platts PQ0010..PQ0080 drawings: c = top flange outer face -> pin standoff,
-        // H1 = flange to flange. The top flange face is at +H1/2 (the former is centred on
-        // the column), so the standoff is c - H1/2 below the column centre.
+        // Miles-Platts PQ0010..PQ0080 drawings (ABT #1249): H1 = flange outer face to flange outer
+        // face, H3 = bottom flange outer face -> pin standoff (the rail underside). The former is
+        // centred on the column, so the standoff is H1/2 + H3 below the column centre. (ABT #1207
+        // used c - H1/2, but c ends on the top of the core-retaining tabs, H4 above the top flange:
+        // c = H4 + H1 + H3, and c - H1/2 put every pin H4 = 3-5 mm below its rail.)
         std::string absent;
-        for (const auto* label : {"c", "H1"}) {
+        for (const auto* label : {"H1", "H3"}) {
             if (dimensions.find(label) == dimensions.end()) {
                 absent += absent.empty() ? std::string("'") + label + "'" : std::string(" and '") + label + "'";
             }
         }
         if (!absent.empty()) {
-            datum.missing = "a vertical PQ bobbin's pin rail is located by 'c' (overall height from "
-                            "the top flange's outer face to the pin standoff) and 'H1' (flange to "
-                            "flange), and the record has no " + absent;
+            datum.missing = "a vertical PQ bobbin's pin rail is located by 'H1' (flange outer face to "
+                            "flange outer face) and 'H3' (bottom flange outer face to the pin standoff), "
+                            "and the record has no " + absent;
             return datum;
         }
-        const double c = dimensions.at("c");
         const double H1 = dimensions.at("H1");
-        if (!(c > H1)) {
-            datum.missing = "a vertical PQ bobbin's overall height 'c' (" + std::to_string(c) +
-                            " m) must exceed its flange-to-flange height 'H1' (" + std::to_string(H1) +
-                            " m) for the pin standoff to lie beyond the bottom flange; the record's "
-                            "'c' is not the overall height";
+        const double H3 = dimensions.at("H3");
+        if (!(H1 > 0) || !(H3 > 0)) {
+            datum.missing = "a vertical PQ bobbin's 'H1' (" + std::to_string(H1) + " m) and rail height 'H3' (" +
+                            std::to_string(H3) + " m) must both be positive for the pin standoff to lie "
+                            "beyond the bottom flange";
             return datum;
         }
-        datum.distance = c - H1 / 2;
+        datum.distance = H1 / 2 + H3;
         return datum;
     }
 
@@ -1475,12 +1476,12 @@ PinRailDatum find_pin_rail_distance(const MAS::BobbinFunctionalDescription& func
                     std::string(orientation == MAS::OrientationEnum::VERTICAL ? "vertical" : "horizontal") +
                     " '" + to_string(family) + "' bobbin: a " +
                     (orientation == MAS::OrientationEnum::VERTICAL
-                        ? "vertical former needs its overall height from the top flange's outer face "
-                          "to the pin standoff together with its flange-to-flange height"
+                        ? "vertical former needs its flange-to-flange height together with the rail "
+                          "height from the bottom flange's outer face to the pin standoff"
                         : "horizontal former needs the distance from the column axis to the pin "
                           "standoff (seating plane) of its end-flange rails") +
                     ", and MKF reads that only from labels checked against a vendor drawing (so far: "
-                    "'c' and 'H1' on vertical PQ). The record declares {";
+                    "'H1' and 'H3' on vertical PQ). The record declares {";
     std::string declared;
     for (const auto& [key, _] : dimensions) {
         declared += (declared.empty() ? "" : ", ") + key;
@@ -1780,6 +1781,192 @@ MAS::Pin Bobbin::get_pin(const std::string& name) {
     throw InvalidInputException(ErrorCode::INVALID_INPUT,
         "Bobbin '" + (get_name() ? get_name().value() : std::string("<unnamed>")) +
         "' has no pin named '" + name + "'. It has: " + known + ".");
+}
+
+std::vector<Bobbin::PinRailBlock> Bobbin::get_pin_rails() const {
+    const std::string bobbinName = get_name() ? get_name().value() : std::string("<unnamed>");
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin '" + bobbinName + "' has not been processed yet, so it has no pin rails");
+    }
+    const auto processed = get_processed_description().value();
+    const auto pinsOptional = processed.get_pins();
+    if (!pinsOptional || pinsOptional->empty()) {
+        return {};
+    }
+    if (get_functional_description() && get_functional_description()->get_base()) {
+        // ABT #1173: a toroid base's pins stand in the base body, which is not a rail.
+        return {};
+    }
+    const auto& pins = pinsOptional.value();
+
+    // Every pin must be a vertical one (no rotation: its length runs along -Y from the rail).
+    for (const auto& pin : pins) {
+        if (pin.get_rotation()) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Bobbin '" + bobbinName + "' carries horizontal pins (pin '" + pin.get_name().value_or("<unnamed>") +
+                "' is rotated). No drawing in MAS describes the rail of a horizontal former, so its pin rail is not modelled.");
+        }
+        if (!pin.get_coordinates() || pin.get_coordinates()->size() != 3 || pin.get_dimensions().size() < 3) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Bobbin '" + bobbinName + "': pin '" + pin.get_name().value_or("<unnamed>") +
+                "' has no 3D coordinates or no {diameter, diameter, length} dimensions, so no rail can hold it.");
+        }
+    }
+
+    // Rows: expand_pinout puts row 0 at negative Z, row 1 at positive Z, both rows at -+ rowDistance/2.
+    struct Row {
+        std::vector<const MAS::Pin*> pins;
+    };
+    Row rows[2];
+    for (const auto& pin : pins) {
+        const double z = pin.get_coordinates().value()[2];
+        if (z == 0) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Bobbin '" + bobbinName + "': pin '" + pin.get_name().value_or("<unnamed>") +
+                "' sits on the column's mid-plane (z = 0), in neither pin row, so no rail can hold it.");
+        }
+        rows[z < 0 ? 0 : 1].pins.push_back(&pin);
+    }
+
+    if (processed.get_winding_windows().empty() || !processed.get_winding_windows()[0].get_height()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "' has no main winding window height, so the bottom flange's outer face, where the "
+            "pin rails hang from, is unknown.");
+    }
+    const double flangeFace = -(processed.get_winding_windows()[0].get_height().value() / 2 + processed.get_wall_thickness());
+
+    auto pinTop = [](const MAS::Pin& pin) { return pin.get_coordinates().value()[1] + pin.get_dimensions()[2] / 2; };
+    auto pinName = [](const MAS::Pin& pin) { return pin.get_name().value_or("<unnamed>"); };
+    auto boxFromBounds = [](const std::string& name, size_t row, double x0, double x1, double y0, double y1, double z0, double z1) {
+        PinRailBlock block;
+        block.name = name;
+        block.row = row;
+        block.centre = {(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2};
+        block.halfExtents = {(x1 - x0) / 2, (y1 - y0) / 2, (z1 - z0) / 2};
+        return block;
+    };
+
+    std::vector<PinRailBlock> blocks;
+    if (!get_functional_description()) {
+        // Quick bobbin with synthesised pins (ABT #1220): the table's rail walls around each row.
+        const auto& rules = quick_bobbin_pin_rules();
+        const double outerWall = quick_bobbin_median(rules, "railOuterWall", "the table");
+        const double innerWall = quick_bobbin_median(rules, "railInnerWall", "the table");
+        const double endWall = quick_bobbin_median(rules, "railEndWall", "the table");
+        for (size_t rowIndex = 0; rowIndex < 2; ++rowIndex) {
+            const auto& rowPins = rows[rowIndex].pins;
+            if (rowPins.empty()) {
+                continue;
+            }
+            const auto& first = *rowPins.front();
+            const double diameter = first.get_dimensions()[0];
+            const double z = first.get_coordinates().value()[2];
+            const double railFace = pinTop(first);
+            double minX = std::numeric_limits<double>::max();
+            double maxX = std::numeric_limits<double>::lowest();
+            for (const auto* pin : rowPins) {
+                const auto coordinates = pin->get_coordinates().value();
+                if (std::abs(coordinates[2] - z) > 1e-9 || std::abs(pinTop(*pin) - railFace) > 1e-9 ||
+                    std::abs(pin->get_dimensions()[0] - diameter) > 1e-12) {
+                    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                        "Quick bobbin '" + bobbinName + "': pin '" + pinName(*pin) + "' is not in line with pin '" + pinName(first) +
+                        "' (same row position, top end and diameter); a synthesised row is one straight line of equal pins.");
+                }
+                minX = std::min(minX, coordinates[0]);
+                maxX = std::max(maxX, coordinates[0]);
+            }
+            if (!(railFace < flangeFace)) {
+                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                    "Quick bobbin '" + bobbinName + "': the pins of row " + std::to_string(rowIndex) + " start at y = " + format_mm(railFace) +
+                    ", not below the bottom flange's outer face at y = " + format_mm(flangeFace) + ", so there is no rail height to hang.");
+            }
+            const double halfDiameter = diameter / 2;
+            const double outward = z < 0 ? -1.0 : 1.0;
+            const double innerEdge = z - outward * (halfDiameter + innerWall);
+            const double outerEdge = z + outward * (halfDiameter + outerWall);
+            blocks.push_back(boxFromBounds("rail " + std::to_string(rowIndex) + " block 0", rowIndex,
+                                           minX - halfDiameter - endWall, maxX + halfDiameter + endWall,
+                                           railFace, flangeFace,
+                                           std::min(innerEdge, outerEdge), std::max(innerEdge, outerEdge)));
+        }
+        return blocks;
+    }
+
+    const auto functionalDescription = get_functional_description().value();
+    if (functionalDescription.get_family() != MAS::BobbinFamily::PQ ||
+        functionalDescription.get_orientation() != MAS::OrientationEnum::VERTICAL) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "' carries pins, but MKF has a pin-rail rule only for vertical PQ formers "
+            "(labels a, b, b1, a1, H1, H3 read from the Miles-Platts drawings); this record's family is '" +
+            to_string(functionalDescription.get_family()) + "'.");
+    }
+    const auto dimensions = flatten_dimensions(functionalDescription.get_dimensions());
+    std::string absent;
+    for (const auto* label : {"a", "b", "a1", "b1", "H1", "H3"}) {
+        if (dimensions.find(label) == dimensions.end()) {
+            absent += (absent.empty() ? "'" : ", '") + std::string(label) + "'";
+        }
+    }
+    if (!absent.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "' carries pins but its pin rails cannot be built: a vertical PQ former's rail blocks "
+            "are bounded by 'a' (rail length along the rows), 'b' (outer rail edge to outer rail edge), 'b1' (rail width), "
+            "'a1' (centre gap), 'H1' and 'H3' (bottom flange outer face to pin standoff), and the record has no " + absent +
+            " (MAS docs/magnetic/coil.md, \"Pin rail labels\").");
+    }
+    const double a = dimensions.at("a");
+    const double b = dimensions.at("b");
+    const double a1 = dimensions.at("a1");
+    const double b1 = dimensions.at("b1");
+    const double H1 = dimensions.at("H1");
+    const double H3 = dimensions.at("H3");
+    if (!(a > a1 && a1 > 0 && b1 > 0 && b / 2 > b1 && H3 > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "': rail labels a = " + format_mm(a) + ", a1 = " + format_mm(a1) + ", b = " + format_mm(b) +
+            ", b1 = " + format_mm(b1) + ", H3 = " + format_mm(H3) + " do not bound a rail block (need a > a1 > 0, b/2 > b1 > 0, H3 > 0).");
+    }
+    if (std::abs(-H1 / 2 - flangeFace) > 1e-9) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "': the processed bottom flange face (y = " + format_mm(flangeFace) +
+            ") is not at -H1/2 (" + format_mm(-H1 / 2) + "), so the rail labels and the processed former disagree.");
+    }
+    const double railTop = -H1 / 2;
+    const double railBottom = -(H1 / 2 + H3);
+    for (size_t rowIndex = 0; rowIndex < 2; ++rowIndex) {
+        if (rows[rowIndex].pins.empty()) {
+            continue;
+        }
+        const double side = rowIndex == 0 ? -1.0 : 1.0;
+        const double zInner = side * (b / 2 - b1);
+        const double zOuter = side * (b / 2);
+        const double z0 = std::min(zInner, zOuter);
+        const double z1 = std::max(zInner, zOuter);
+        const PinRailBlock left = boxFromBounds("rail " + std::to_string(rowIndex) + " block 0", rowIndex,
+                                                -a / 2, -a1 / 2, railBottom, railTop, z0, z1);
+        const PinRailBlock right = boxFromBounds("rail " + std::to_string(rowIndex) + " block 1", rowIndex,
+                                                 a1 / 2, a / 2, railBottom, railTop, z0, z1);
+        // Every pin of the row passes through one block: its circle lies inside the block's
+        // footprint and its top end is on the block's underside. Otherwise the labels contradict
+        // the pinout, and drawing either would be a guess.
+        for (const auto* pin : rows[rowIndex].pins) {
+            const auto coordinates = pin->get_coordinates().value();
+            const double radius = pin->get_dimensions()[0] / 2;
+            const double x = coordinates[0];
+            const double z = coordinates[2];
+            const bool insideX = (x - radius >= -a / 2 && x + radius <= -a1 / 2) || (x - radius >= a1 / 2 && x + radius <= a / 2);
+            const bool insideZ = z - radius >= z0 && z + radius <= z1;
+            if (!insideX || !insideZ || std::abs(pinTop(*pin) - railBottom) > 1e-9) {
+                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                    "Bobbin '" + bobbinName + "': pin '" + pinName(*pin) + "' at x = " + format_mm(x) + ", z = " + format_mm(z) +
+                    " (top end y = " + format_mm(pinTop(*pin)) + ") does not lie inside its rail block (x within -+[" +
+                    format_mm(a1 / 2) + ", " + format_mm(a / 2) + "], z within [" + format_mm(z0) + ", " + format_mm(z1) +
+                    "], starting at the underside y = " + format_mm(railBottom) + "): the rail labels contradict the pinout.");
+            }
+        }
+        blocks.push_back(left);
+        blocks.push_back(right);
+    }
+    return blocks;
 }
 
 void Bobbin::process_data() {

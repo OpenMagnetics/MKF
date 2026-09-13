@@ -8,21 +8,24 @@
         "horizontalRowClearance": "rowDistance / 2 - core window height / 2: one row per end flange (Y)",
         "pinDiameter": "pinDescription.dimensions[0] of every distinct footprint that carries one",
         "pinLength": "pinDescription.dimensions[2] of every distinct footprint that carries one",
-        "railStandoff": "c - H1/2 - core height/2 of the vertical PQ records, one value per distinct (shape, c, H1) drawing: the pin rail's outer face beyond the core's outer face along the pin direction. It is the ONLY rail datum in the catalogue (ABT #1207); no horizontal record locates its rail, so MKF applies the same standoff beyond the core depth face for horizontal pins, and says so."
+        "railStandoff": "H1/2 + H3 - core height/2 of the vertical PQ records, one value per distinct (shape, H1, H3, a, b, b1) drawing: the pin rail's underside (the pin standoff) beyond the core's outer face along the pin direction. H3 (bottom flange outer face -> pin standoff) was measured at scale on the Miles-Platts PQ0010..PQ0080 drawings (ABT #1249; ABT #1207's c - H1/2 included the tab height). It is the ONLY rail datum in the catalogue; no horizontal record locates its rail, so MKF applies the same standoff beyond the core depth face for horizontal pins, and says so.",
+        "railOuterWall": "b/2 - rowDistance/2 - pin diameter/2 of the same records: rail plastic between a pin's surface and the rail's outer edge, across the row. Bobbin::get_pin_rails sizes a quick bobbin's rail with it.",
+        "railInnerWall": "rowDistance/2 - (b/2 - b1) - pin diameter/2 of the same records: rail plastic between a pin's surface and the rail's inner edge (the side facing the core), across the row.",
+        "railEndWall": "a/2 - longest row span/2 - pin diameter/2 of the same records: rail plastic beyond the outermost pin's surface, along the row. A quick bobbin's rail is one block per row (its pinout has no central gap); the Miles-Platts rails' centre gap a1 is not carried over. Rail height: from the bottom flange's outer face down to the pin standoff, as on the drawings (no separate legs)."
     },
     "grid": 0.00254,
     "gridEvidence": {
-        "rowPitches": 116,
+        "rowPitches": 196,
         "onHalfGridWithin": 0.0003,
-        "onHalfGrid": 115
+        "onHalfGrid": 195
     },
     "minimumPinsPerRow": 2,
-    "recordsWithPinGeometry": 126,
-    "distinctFootprints": 58,
+    "recordsWithPinGeometry": 221,
+    "distinctFootprints": 98,
     "recordsSkipped": {
         "pin split over the rows not stated": 2,
-        "repeat of a footprint already counted": 68,
-        "shape not in core_shapes.ndjson": 8,
+        "repeat of a footprint already counted": 123,
+        "shape not in core_shapes.ndjson": 17,
         "toroid base (family t), not a former": 3
     },
     "classes": {
@@ -38,13 +41,23 @@
             "pitchBands": [
                 {
                     "minimumCoreWidth": 0.0,
+                    "maximumCoreWidth": 0.013825,
+                    "catalogueCoreWidths": [
+                        0.01,
+                        0.01265
+                    ],
+                    "footprints": 7,
+                    "pitch": 0.00254,
+                    "source": "catalogue mode"
+                },
+                {
+                    "minimumCoreWidth": 0.013825,
                     "maximumCoreWidth": 0.01785,
                     "catalogueCoreWidths": [
-                        0.01265,
                         0.015,
                         0.0161
                     ],
-                    "footprints": 9,
+                    "footprints": 15,
                     "pitch": 0.00381,
                     "source": "catalogue mode"
                 },
@@ -59,39 +72,43 @@
                         0.0285,
                         0.02855,
                         0.0298,
+                        0.0321,
                         0.0342,
                         0.0345,
                         0.035,
                         0.0391,
+                        0.04,
                         0.042,
                         0.044,
                         0.048,
                         0.0487,
+                        0.049,
+                        0.0535,
                         0.0545,
                         0.0598
                     ],
-                    "footprints": 33,
+                    "footprints": 53,
                     "pitch": 0.00508,
                     "source": "catalogue mode"
                 }
             ],
             "edgeMargin": {
-                "footprints": 42,
+                "footprints": 75,
                 "minimum": -0.00069,
-                "median": 0.00196,
-                "maximum": 0.005025
+                "median": 0.002,
+                "maximum": 0.00855
             },
             "verticalRowClearance": {
-                "footprints": 17,
+                "footprints": 29,
                 "minimum": 0.0015,
-                "median": 0.00455,
+                "median": 0.0047,
                 "maximum": 0.01125
             },
             "horizontalRowClearance": {
-                "footprints": 25,
-                "minimum": 0.0003,
-                "median": 0.0014,
-                "maximum": 0.00325
+                "footprints": 46,
+                "minimum": 0.00025,
+                "median": 0.00155,
+                "maximum": 0.004
             }
         },
         "PQ": {
@@ -101,7 +118,7 @@
             "pitchBands": [
                 {
                     "minimumCoreWidth": 0.0,
-                    "maximumCoreWidth": 0.0235,
+                    "maximumCoreWidth": 0.02055,
                     "catalogueCoreWidths": [
                         0.0205
                     ],
@@ -110,7 +127,18 @@
                     "source": "catalogue mode"
                 },
                 {
-                    "minimumCoreWidth": 0.0235,
+                    "minimumCoreWidth": 0.02055,
+                    "maximumCoreWidth": 0.02355,
+                    "catalogueCoreWidths": [
+                        0.0206
+                    ],
+                    "footprints": 1,
+                    "pitch": 0.00254,
+                    "catalogueMode": 0.00762,
+                    "source": "standard grid: fewer than 2 distinct catalogue footprints in this band, so the IEC 62317 2.54 mm grid pitch is used, not a catalogue fit"
+                },
+                {
+                    "minimumCoreWidth": 0.02355,
                     "maximumCoreWidth": 0.02925,
                     "catalogueCoreWidths": [
                         0.0265
@@ -127,22 +155,22 @@
                         0.0351,
                         0.0405
                     ],
-                    "footprints": 4,
+                    "footprints": 7,
                     "pitch": 0.00508,
                     "source": "catalogue mode"
                 }
             ],
             "edgeMargin": {
-                "footprints": 12,
-                "minimum": 9e-05,
-                "median": 0.00217,
+                "footprints": 16,
+                "minimum": -0.00494,
+                "median": 0.00203,
                 "maximum": 0.00771
             },
             "verticalRowClearance": {
-                "footprints": 12,
+                "footprints": 16,
                 "minimum": 0.0031,
-                "median": 0.00318,
-                "maximum": 0.00505
+                "median": 0.00372,
+                "maximum": 0.01223
             },
             "horizontalRowClearance": null
         },
@@ -184,37 +212,38 @@
             "pitchBands": [
                 {
                     "minimumCoreWidth": 0.0,
-                    "maximumCoreWidth": 0.0136,
+                    "maximumCoreWidth": 0.01525,
                     "catalogueCoreWidths": [
-                        0.0092
+                        0.0092,
+                        0.0115,
+                        0.0125
                     ],
-                    "footprints": 1,
+                    "footprints": 3,
                     "pitch": 0.00254,
-                    "catalogueMode": 0.00254,
-                    "source": "standard grid: fewer than 2 distinct catalogue footprints in this band, so the IEC 62317 2.54 mm grid pitch is used, not a catalogue fit"
+                    "source": "catalogue mode"
                 },
                 {
-                    "minimumCoreWidth": 0.0136,
+                    "minimumCoreWidth": 0.01525,
                     "maximumCoreWidth": null,
                     "catalogueCoreWidths": [
-                        0.018
+                        0.018,
+                        0.024
                     ],
-                    "footprints": 1,
-                    "pitch": 0.00254,
-                    "catalogueMode": 0.00508,
-                    "source": "standard grid: fewer than 2 distinct catalogue footprints in this band, so the IEC 62317 2.54 mm grid pitch is used, not a catalogue fit"
+                    "footprints": 2,
+                    "pitch": 0.00508,
+                    "source": "catalogue mode"
                 }
             ],
             "edgeMargin": {
-                "footprints": 2,
-                "minimum": 0.00138,
-                "median": 0.00172,
+                "footprints": 5,
+                "minimum": 0.00117,
+                "median": 0.00184,
                 "maximum": 0.00206
             },
             "verticalRowClearance": {
-                "footprints": 2,
+                "footprints": 5,
                 "minimum": -0.000635,
-                "median": 0.000743,
+                "median": 0.00068,
                 "maximum": 0.00212
             },
             "horizontalRowClearance": null
@@ -234,8 +263,26 @@
     },
     "railStandoff": {
         "footprints": 8,
-        "minimum": 0.005255,
-        "median": 0.00652,
-        "maximum": 0.00796
+        "minimum": 0.00179,
+        "median": 0.002372,
+        "maximum": 0.00271
+    },
+    "railOuterWall": {
+        "footprints": 8,
+        "minimum": 0.000955,
+        "median": 0.001325,
+        "maximum": 0.00145
+    },
+    "railInnerWall": {
+        "footprints": 8,
+        "minimum": 0.00233,
+        "median": 0.00283,
+        "maximum": 0.00409
+    },
+    "railEndWall": {
+        "footprints": 8,
+        "minimum": 0.000915,
+        "median": 0.001467,
+        "maximum": 0.00177
     }
 }
