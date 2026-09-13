@@ -1579,7 +1579,8 @@ static double turn_to_core_equivalent_radius(Wire wire) {
 double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRadius, double turnLength,
                                                             double wireCoatingThickness, double wireCoatingRelativePermittivity,
                                                             double airGapToCore,
-                                                            double coreCoatingThickness, double coreCoatingRelativePermittivity) {
+                                                            double coreCoatingThickness, double coreCoatingRelativePermittivity,
+                                                            double bobbinThickness, double bobbinRelativePermittivity) {
     // Capacitance of a turn to the equipotential ferrite core, after Kovacic et al.,
     // "Analytical Wideband Model of a Common-Mode Choke" (IEEE TPEL 2012), eqs (36)-(38).
     // The displacement field leaves the bare conductor surface and reaches the ferrite
@@ -1615,7 +1616,16 @@ double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRad
     const double wireRadius = conductingRadius;  // contract: conductingRadius is the radius (Dc = 2*r)
     const double enamelTerm = wireCoatingRelativePermittivity > 0 ? wireCoatingThickness / wireCoatingRelativePermittivity : 0.0;
     const double coatingTerm = coreCoatingRelativePermittivity > 0 ? coreCoatingThickness / coreCoatingRelativePermittivity : 0.0;
-    const double airEquivalentGap = enamelTerm + std::max(0.0, airGapToCore) + coatingTerm;
+    // ABT #1164: the bobbin wall is plastic, not air — it enters the series stack as its
+    // air-equivalent thickness t/eps_r, exactly as the wire enamel and the core jacket do. A
+    // bobbin-less part (toroid, bare core) passes thickness 0 and contributes nothing.
+    if (bobbinThickness > 0 && !(bobbinRelativePermittivity > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Turn-to-core capacitance was given a bobbin wall thickness with no relative"
+            " permittivity: the bobbin layer cannot enter the dielectric stack");
+    }
+    const double bobbinTerm = bobbinThickness > 0 ? bobbinThickness / bobbinRelativePermittivity : 0.0;
+    const double airEquivalentGap = enamelTerm + std::max(0.0, airGapToCore) + coatingTerm + bobbinTerm;
     if (airEquivalentGap <= 0) {
         // Bare copper on a bare conductor: the image solution diverges, and so does the physics
         // — that is a short, which the callers' geometry guards report; never a number here.
@@ -1719,26 +1729,96 @@ double StrayCapacitance::core_image_factor(const Core& core, double frequency) {
     return std::clamp(beta, 0.0, 1.0);
 }
 
+// One bounding core face as seen by one turn: how much AIR and how much BOBBIN PLASTIC lie
+// between the turn's insulation surface and the ferrite. They are separate members because they
+// are separate layers of the series dielectric stack — air enters at its own thickness, plastic
+// at t/eps_r (ABT #1164).
+struct TurnToCoreFace {
+    double airGap;
+    double bobbinThickness;
+};
+
+// ABT #1164: the bobbin plastic between the winding and the ferrite is a DIELECTRIC, not air.
+// turn_to_core_air_gaps used to hand its thickness back inside the air gap ("counted as air ...
+// the conservative side"), which is not conservative but wrong by a factor: the series stack
+// wants t/eps_r, and catalogue bobbins run eps_r 3.6-5.0, so every bobbin-wound winding-to-core
+// term came out several times too LOW.
+//
+// Mirrors resolve_core_jacket above: resolve the permittivity from the record, never invent one.
+// The material is only ever asked for when there IS plastic in the path (column/wall thickness
+// > 0), so a toroid's virtual bobbin (both thicknesses 0) never reaches here. A declared material
+// that the insulation database does not know is MISSING_DATA naming it — never silently air.
+// MKF resolves insulation materials by exact name only.
+//
+// A bobbin with real wall thickness but NO declared material resolves to
+// Defaults().defaultBobbinMaterial ("PET", src/Defaults.h:70) - the single project-wide answer
+// for an undeclared bobbin plastic, already used by Temperature.cpp:253 for the same question.
+// Counting that plastic as air instead is the very error ABT #1164 fixes, and the plastic is
+// certainly there, so a default is better than air. Two caveats a reader must have (Alf's
+// ruling, 2026-09-12, which chose this over throwing):
+//
+//   * PET is recorded at eps_r 3.0, the LOWEST of the eight bobbin plastics in the database -
+//     the others run 3.6 to 5.0 (PBT 3.6, PA66 4.0, Zen.6130L 4.0, PPS 4.2, SKYT.5220FR 4.7,
+//     A3X2G10 5.0, x2g5 5.0). So this default systematically UNDER-states the very term this
+//     ticket exists to raise. That is the conservative direction for the fix but the WRONG
+//     direction for design safety: a real PA66 bobbin's winding-to-core capacitance is reported
+//     low here, and its self-resonance correspondingly high.
+//   * It applies to 116 of the 504 catalogue bobbins (23%) - those whose record declares no
+//     material at all - plus every bobbin MKF synthesises itself (Bobbin::create_quick_bobbin
+//     sets 1 mm walls and no functional description). The declared ones are PA66 176,
+//     SKYT.5220FR 131, PET 42, PPS 14, A3X2G10 13, PBT 8, Zen.6130L 2, x2g5 2.
+//
+// The fix for both is DATA, not code: declare the material on those 116 bobbin records.
+static double resolve_bobbin_wall_relative_permittivity(Bobbin& bobbin) {
+    std::string materialName = Defaults().defaultBobbinMaterial;
+    auto functionalDescription = bobbin.get_functional_description();
+    if (functionalDescription) {
+        auto material = functionalDescription->get_material();
+        if (material) {
+            if (std::holds_alternative<MAS::InsulationMaterial>(material.value())) {
+                OpenMagnetics::InsulationMaterial resolved(std::get<MAS::InsulationMaterial>(material.value()));
+                if (!resolved.get_relative_permittivity()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA,
+                        "Bobbin material '" + resolved.get_name() + "' carries no relative permittivity:"
+                        " the bobbin wall cannot enter the turn-to-core dielectric stack");
+                }
+                return resolved.get_relative_permittivity().value();
+            }
+            materialName = std::get<std::string>(material.value());
+        }
+    }
+    auto insulationMaterial = find_insulation_material_by_name(materialName);
+    if (!insulationMaterial.get_relative_permittivity()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Bobbin material '" + materialName + "' carries no relative permittivity in the database:"
+            " the bobbin wall cannot enter the turn-to-core dielectric stack");
+    }
+    return insulationMaterial.get_relative_permittivity().value();
+}
+
 // ABT #848: the air gap between a turn's conductor surface and the core surface it faces, from
 // the coil's real geometry instead of "close-wound, 0". Toroid (round window): the first layer
 // sits on the (jacketed) core, a deeper layer sits on the layer below it, so the gap is how far
 // the turn's radial position lies inside the bore surface. Bobbin-wound (rectangular window):
 // the turn is separated from the central ferrite column by the bobbin wall and any inner
-// layers, i.e. by its distance from the ferrite column surface; the bobbin plastic in that gap
-// is counted as air (air-equivalent thickness would be t/eps_r — this is the conservative side,
-// and documented rather than invented). A bare conductor at zero gap is then only ever asked
-// for when it really is in contact, and calculate_turn_to_core_capacitance refuses it as the
-// short it is.
-static std::vector<double> turn_to_core_air_gaps(Coil& coil, const Turn& turn, Wire wire) {
-    double conductingRadius = turn_to_core_equivalent_radius(wire);
+// layers, i.e. by its distance from the ferrite column surface.
+//
+// ABT #1164: the bobbin plastic in that path (column_thickness radially, wall_thickness axially)
+// is returned SEPARATELY from the air, so the caller can put it in the stack as t/eps_r. It used
+// to be handed back as air, which under-stated every bobbin-wound term by the acosh ratio of the
+// two stacks (about 1.7-2x for a 1 mm wall at eps_r 4 under a 0.5 mm wire).
+//
+// A bare conductor at zero gap is then only ever asked for when it really is in contact, and
+// calculate_turn_to_core_capacitance refuses it as the short it is.
+static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Turn& turn, Wire wire) {
     auto bobbin = coil.resolve_bobbin();
     if (!bobbin.get_processed_description()) {
-        return {0.0};
+        return {{0.0, 0.0}};
     }
     auto processed = bobbin.get_processed_description().value();
     auto windows = processed.get_winding_windows();
     if (windows.empty()) {
-        return {0.0};
+        return {{0.0, 0.0}};
     }
     auto coordinates = turn.get_coordinates();
     if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
@@ -1764,13 +1844,17 @@ static std::vector<double> turn_to_core_air_gaps(Coil& coil, const Turn& turn, W
         // both applied, against +27,0% with the jacket alone -- but that is ONE part, and the
         // 107-choke corpus has not been re-measured since. Re-measure it before trusting toroid
         // capacitance to better than that band.
+        //
+        // A toroid's bobbin is virtual (column and wall thickness 0, BobbinTDataProcessor), so
+        // there is no plastic layer on this face — the bobbin term is 0 here by geometry, not by
+        // assumption.
         if (!windows[0].get_radial_height()) {
-            return {0.0};
+            return {{0.0, 0.0}};
         }
         double boreRadius = windows[0].get_radial_height().value();
         double turnRadius = std::hypot(coordinates[0], coordinates.size() > 1 ? coordinates[1] : 0.0);
         double turnInsulationRadius = wire.get_maximum_outer_width() / 2;
-        return {std::max(0.0, (boreRadius - turnInsulationRadius) - turnRadius)};
+        return {{std::max(0.0, (boreRadius - turnInsulationRadius) - turnRadius), 0.0}};
     }
     // Rectangular window: the ferrite column surface sits one bobbin wall inside the radial
     // INNER EDGE OF THE WINDING WINDOW, and the turn's conductor surface at |x| - r.
@@ -1804,12 +1888,17 @@ static std::vector<double> turn_to_core_air_gaps(Coil& coil, const Turn& turn, W
     // branch this corpus cannot re-measure would be an unverified change. It is recorded in
     // ABT #948 as the remaining inconsistency.
     if (!windows[0].get_coordinates() || !windows[0].get_width()) {
-        return {0.0};
+        return {{0.0, 0.0}};
     }
     double windowInnerEdge = windows[0].get_coordinates().value()[0] - windows[0].get_width().value() / 2;
-    double ferriteColumnSurface = windowInnerEdge - processed.get_column_thickness();
     double turnInsulationSurface = std::abs(coordinates[0]) - wire.get_maximum_outer_width() / 2;
-    std::vector<double> gaps = {std::max(0.0, turnInsulationSurface - ferriteColumnSurface)};
+    // ABT #1164: the plastic column wall is between the window's inner edge and the ferrite, and
+    // the air is whatever the turn stands off the window edge by. Their sum is the gap the old
+    // code returned; only the split is new.
+    double columnThickness = processed.get_column_thickness();
+    std::vector<TurnToCoreFace> faces;
+
+    faces.push_back({std::max(0.0, turnInsulationSurface - windowInnerEdge), columnThickness});
 
     // ABT #948, third correction: a turn faces the core on more than one side. A winding WINDOW
     // is by definition the space the core encloses, and for a rectangular one the two AXIAL
@@ -1828,7 +1917,8 @@ static std::vector<double> turn_to_core_air_gaps(Coil& coil, const Turn& turn, W
     // a flange) — the same approximation the radial face already makes.
     //
     // wall_thickness is the bobbin plastic between the winding and the yoke, the axial
-    // counterpart of column_thickness, and is counted as air exactly as column_thickness is.
+    // counterpart of column_thickness, and enters the stack as t/eps_r exactly as
+    // column_thickness does (ABT #1164).
     //
     // NOT included, and recorded in ABT #948 as the remaining known face: the OUTER radial
     // boundary. It is ferrite for a closed core (a shielded drum's ring, an E core's outer leg)
@@ -1839,14 +1929,14 @@ static std::vector<double> turn_to_core_air_gaps(Coil& coil, const Turn& turn, W
     if (windows[0].get_height() && windows[0].get_coordinates().value().size() > 1) {
         double windowCentreY = windows[0].get_coordinates().value()[1];
         double windowHalfHeight = windows[0].get_height().value() / 2;
-        double turnHalfHeight = wire.get_maximum_outer_height() / 2;
         double wallThickness = processed.get_wall_thickness();
-        double upperFerriteSurface = windowCentreY + windowHalfHeight + wallThickness;
-        double lowerFerriteSurface = windowCentreY - windowHalfHeight - wallThickness;
-        gaps.push_back(std::max(0.0, upperFerriteSurface - (coordinates[1] + turnHalfHeight)));
-        gaps.push_back(std::max(0.0, (coordinates[1] - turnHalfHeight) - lowerFerriteSurface));
+        double windowUpperEdge = windowCentreY + windowHalfHeight;
+        double windowLowerEdge = windowCentreY - windowHalfHeight;
+        double turnHalfHeight = wire.get_maximum_outer_height() / 2;
+        faces.push_back({std::max(0.0, windowUpperEdge - (coordinates[1] + turnHalfHeight)), wallThickness});
+        faces.push_back({std::max(0.0, (coordinates[1] - turnHalfHeight) - windowLowerEdge), wallThickness});
     }
-    return gaps;
+    return faces;
 }
 
 // One turn's total capacitance to the floating core: the parallel sum of its element against
@@ -1857,12 +1947,28 @@ static double turn_to_core_element(Coil& coil, const Turn& turn, Wire wire,
     double conductingRadius = turn_to_core_equivalent_radius(wire);
     double wireCoatingThickness = wire.get_coating_thickness();
     double wireCoatingRelativePermittivity = get_wire_insulation_relative_permittivity(wire);
+    auto faces = turn_to_core_air_gaps(coil, turn, wire);
+    // ABT #1164: resolve the bobbin plastic's permittivity once per turn, and only when there is
+    // plastic in some face's path — a toroid's virtual bobbin never asks the database for one.
+    bool hasBobbinLayer = false;
+    for (const auto& face : faces) {
+        if (face.bobbinThickness > 0) {
+            hasBobbinLayer = true;
+            break;
+        }
+    }
+    double bobbinRelativePermittivity = 1.0;
+    if (hasBobbinLayer) {
+        auto bobbin = coil.resolve_bobbin();
+        bobbinRelativePermittivity = resolve_bobbin_wall_relative_permittivity(bobbin);
+    }
     double element = 0;
-    for (double airGapToCore : turn_to_core_air_gaps(coil, turn, wire)) {
+    for (const auto& face : faces) {
         element += StrayCapacitance::calculate_turn_to_core_capacitance(
             conductingRadius, turn.get_length(),
             wireCoatingThickness, wireCoatingRelativePermittivity,
-            airGapToCore, coreCoatingThickness, coreCoatingRelativePermittivity);
+            face.airGap, coreCoatingThickness, coreCoatingRelativePermittivity,
+            face.bobbinThickness, bobbinRelativePermittivity);
     }
     return element;
 }

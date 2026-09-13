@@ -128,7 +128,8 @@ class StrayCapacitance{
         static double calculate_turn_to_core_capacitance(double conductingRadius, double turnLength,
                                                          double wireCoatingThickness, double wireCoatingRelativePermittivity,
                                                          double airGapToCore,
-                                                         double coreCoatingThickness, double coreCoatingRelativePermittivity);
+                                                         double coreCoatingThickness, double coreCoatingRelativePermittivity,
+                                                         double bobbinThickness = 0.0, double bobbinRelativePermittivity = 1.0);
 
         // Total capacitance from one winding to the (equipotential) ferrite core: the
         // parallel sum of its turns' turn-to-core elements. Two of these in series through

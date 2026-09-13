@@ -2742,3 +2742,93 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
         REQUIRE(ratio > 0);
     }
 }
+
+// ===========================================================================================
+// ABT #1164: the bobbin wall is a dielectric, not air.
+// ===========================================================================================
+
+TEST_CASE("ABT1164_Bobbin_Wall_Enters_Stack_As_Thickness_Over_Permittivity", "[physical-model][stray-capacitance][abt1164]") {
+    // The bobbin plastic between the winding and the ferrite is a dielectric layer of the
+    // series stack, not air. It must enter as its air-equivalent thickness t/eps_r: strictly
+    // MORE capacitance than counting the wall as air (the old behaviour), strictly LESS than
+    // pretending the wall is not there at all, and identical to adding t/eps_r of extra air.
+    const double conductingRadius = 0.25e-3;
+    const double turnLength = 60e-3;
+    const double enamelThickness = 25e-6;
+    const double enamelPermittivity = 3.5;
+    const double coatingThickness = 0.0;      // bare E core: no jacket
+    const double coatingPermittivity = 1.0;
+    const double wallThickness = 1.0e-3;
+    const double wallPermittivity = 4.0;      // PA66, MAS insulation_materials
+
+    double asAir = StrayCapacitance::calculate_turn_to_core_capacitance(
+        conductingRadius, turnLength, enamelThickness, enamelPermittivity,
+        wallThickness, coatingThickness, coatingPermittivity);
+    double asDielectric = StrayCapacitance::calculate_turn_to_core_capacitance(
+        conductingRadius, turnLength, enamelThickness, enamelPermittivity,
+        0.0, coatingThickness, coatingPermittivity, wallThickness, wallPermittivity);
+    double noWall = StrayCapacitance::calculate_turn_to_core_capacitance(
+        conductingRadius, turnLength, enamelThickness, enamelPermittivity,
+        0.0, coatingThickness, coatingPermittivity);
+
+    REQUIRE(std::isfinite(asDielectric));
+    REQUIRE(asDielectric > asAir);    // the whole point of ABT #1164
+    REQUIRE(asDielectric < noWall);   // but the wall is still a real layer
+
+    // Exactly equivalent to t/eps_r of air: the layer is a series air-equivalent thickness.
+    double equivalentAir = StrayCapacitance::calculate_turn_to_core_capacitance(
+        conductingRadius, turnLength, enamelThickness, enamelPermittivity,
+        wallThickness / wallPermittivity, coatingThickness, coatingPermittivity);
+    REQUIRE_THAT(asDielectric, WithinRel(equivalentAir, 1e-12));
+
+    // Monotone in the permittivity: a more polarisable wall is a thinner air-equivalent one.
+    double lowPermittivity = StrayCapacitance::calculate_turn_to_core_capacitance(
+        conductingRadius, turnLength, enamelThickness, enamelPermittivity,
+        0.0, coatingThickness, coatingPermittivity, wallThickness, 3.0);
+    double highPermittivity = StrayCapacitance::calculate_turn_to_core_capacitance(
+        conductingRadius, turnLength, enamelThickness, enamelPermittivity,
+        0.0, coatingThickness, coatingPermittivity, wallThickness, 5.0);
+    REQUIRE(highPermittivity > lowPermittivity);
+
+    // A wall thickness with no permittivity is missing data, not an assumed value.
+    CHECK_THROWS_AS(StrayCapacitance::calculate_turn_to_core_capacitance(
+        conductingRadius, turnLength, enamelThickness, enamelPermittivity,
+        0.0, coatingThickness, coatingPermittivity, wallThickness, 0.0),
+        OpenMagnetics::InvalidInputException);
+}
+
+TEST_CASE("ABT1164_Winding_To_Core_Follows_The_Bobbin_Material", "[physical-model][stray-capacitance][abt1164]") {
+    // Coil level: the same bobbin geometry, the same winding, two different declared plastics.
+    // The winding-to-core term must follow the permittivity (PA66 4.0 > PET 3.0). Before
+    // ABT #1164 the wall was counted as air and the two were bit-identical.
+    settings.reset();
+    auto core = OpenMagneticsTesting::get_quick_core("ETD 34/17/11", json::parse("[]"), 1, "3C97");
+    std::vector<OpenMagnetics::Wire> wires = {OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1")};
+
+    auto windingToCoreWithMaterial = [&](const std::string& materialName) {
+        auto bobbin = OpenMagnetics::find_bobbin_by_name("Bobbin ETD 34 concentric primary (Norwe 90695-106)");
+        json bobbinJson;
+        to_json(bobbinJson, static_cast<MAS::Bobbin>(bobbin));
+        bobbinJson["functionalDescription"]["material"] = materialName;
+        auto coil = OpenMagneticsTesting::get_quick_coil({40}, {1}, "ETD 34/17/11", 1,
+                                                          MAS::WindingOrientation::OVERLAPPING,
+                                                          MAS::WindingOrientation::OVERLAPPING,
+                                                          MAS::CoilAlignment::CENTERED,
+                                                          MAS::CoilAlignment::CENTERED,
+                                                          wires);
+        coil.set_bobbin_from_json(bobbinJson);
+        coil.wind();
+        return OpenMagnetics::StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, "winding 0");
+    };
+
+    double withPA66 = windingToCoreWithMaterial("PA66");
+    double withPET = windingToCoreWithMaterial("PET");
+    UNSCOPED_INFO("winding-to-core PA66=" << withPA66 << " PET=" << withPET);
+    REQUIRE(std::isfinite(withPA66));
+    REQUIRE(withPA66 > withPET);
+
+    // A declared plastic the insulation database does not know is MISSING_DATA naming it —
+    // never silently counted as air (no-fallbacks rule).
+    CHECK_THROWS_AS(windingToCoreWithMaterial("Unobtainium 9000"), OpenMagnetics::InvalidInputException);
+}
+
