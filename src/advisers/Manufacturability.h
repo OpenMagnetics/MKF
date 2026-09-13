@@ -140,6 +140,11 @@ class Manufacturability {
         ManufacturabilityFinding evaluate_r7_size_heuristic(Magnetic& magnetic, Inputs& inputs);
         ManufacturabilityFinding evaluate_r8_insulated_wire(Magnetic& magnetic);
         ManufacturabilityFinding evaluate_r9_margin_tape(Magnetic& magnetic);
+        /// R11 (ABT #1174): the termination protection each lead carries against what insulation
+        /// coordination requires of it. FAIL for a sleeve no requirement asks for (the costliest
+        /// protection spent for nothing) and for a required sleeve that is missing (the margin is
+        /// bridged); PASS otherwise, with the sleeved leads flagged as manual labour.
+        ManufacturabilityFinding evaluate_r11_termination_protection(Magnetic& magnetic, Inputs& inputs);
         ManufacturabilityFinding evaluate_r12_flying_leads(Magnetic& magnetic, Inputs& inputs);
         ManufacturabilityFinding evaluate_r13_manual_termination(Magnetic& magnetic);
         ManufacturabilityFinding evaluate_r15_lateral_gaps(Magnetic& magnetic, Inputs& inputs);

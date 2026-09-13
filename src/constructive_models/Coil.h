@@ -206,6 +206,12 @@ struct ConnectionReservedSpace {
     ConnectionKind kind = ConnectionKind::LAYER_SQUEEZE;
     std::string fromTurn;
     std::string toTurn;
+    // ABT #1174 (WP5, MAS-RFC 0016): the outer diameter of the sleeve over this terminal lead
+    // (inner diameter + 2 x wall x layers), empty for an unsleeved lead. A sleeved lead's edge run
+    // is reserved at this diameter, and it is the one lead the ABT #684 margin keep-out lets into
+    // the margin band (see Coil::check_lead_margin_keep_out). Stubs keep the wire's own size: the
+    // part of the sleeve reaching under the first turn (overlapIntoWinding) is not reserved in 2D.
+    std::optional<double> sleeveOuterDiameter;
 };
 
 // ABT #685: one BUMP. A return laid at `radius` makes every turn at or outside that radius on the
@@ -229,6 +235,8 @@ struct ConnectionRoute {
     int side = 0;                                  // which face the out-of-plane part routes on
     std::vector<std::vector<double>> waypoints;    // {layerAxis, turnAxis} centres, in path order
     double routedLength = 0;                       // summed copper of the route's segments
+    // ABT #1174: the sleeve's outer diameter on a sleeved TERMINAL route, empty otherwise.
+    std::optional<double> sleeveOuterDiameter;
 };
 
 // ABT #685: the whole connection layout of a wound coil — every conductor's routes, plus the ride
@@ -365,6 +373,10 @@ class Coil : public MAS::Coil {
         bool _applyConnectionBlocking = false;
         std::string coilLog;
         InsulationCoordinator _standardCoordinator = InsulationCoordinator();
+        // ABT #1174: the coordinator's lead-sleeve decision per (winding, crossesMargin), memoised
+        // because get_connection_reserved_spaces() runs inside wind()'s blocking fixpoint. Cleared by
+        // set_inputs() and at the start of every wind.
+        std::map<std::pair<std::string, bool>, std::optional<ConnectionSleeve>> _leadSleeveCache;
         std::vector<double> _currentProportionPerWinding;
         std::vector<size_t> _currentPattern;
         size_t _currentRepetitions = 1;
@@ -793,6 +805,37 @@ class Coil : public MAS::Coil {
         static std::string get_wire_name(Winding winding);
         Wire resolve_wire(size_t windingIndex);
         static Wire resolve_wire(Winding winding);
+        // ABT #1174 (WP5, MAS-RFC 0016) — lead sleeving.
+        // True when the winding's terminal leads cross a margin: some conduction section in a winding
+        // window holding this winding carries a non-zero margin on either side (AN-18: every start
+        // and finish lead of a margin-wound transformer is sleeved).
+        bool winding_leads_cross_margin(const std::string& windingName);
+        // The widest margin (either side) of any conduction section in a window holding the winding:
+        // the band its leads cross. 0 when unwound or margin-free.
+        double get_winding_lead_margin(const std::string& windingName);
+        // The sleeve recorded on the winding's connections[] for `end` (and `parallel`, or a
+        // connection naming no parallel), regardless of inputs.
+        std::optional<ConnectionSleeve> get_recorded_lead_sleeve(const std::string& windingName, End end, int64_t parallel);
+        // The sleeve on one terminated end. With inputs that carry an insulation requirement, the
+        // InsulationCoordinator decides (calculate_lead_sleeve_requirements); without them, the
+        // sleeve recorded on the winding's connections[] (matching `end`, and `parallel` or none) is
+        // replayed as data.
+        std::optional<ConnectionSleeve> resolve_lead_sleeve(const std::string& windingName, End end, int64_t parallel);
+        // Writes the coordinator's decision into every winding's connections[]: the connection for
+        // each end (start, finish) gets the sleeve, or loses a stale one; a connection is appended
+        // for an end that needs a sleeve and has none. Requires inputs with an insulation
+        // requirement (throws otherwise). Called at the end of every successful wind that has them.
+        void assign_lead_sleeves();
+        // MKF's insulation-coordination result: the standards' figures plus one LeadInsulation per
+        // winding end. Requires inputs with an insulation requirement (throws otherwise).
+        InsulationCoordinationResult calculate_insulation_coordination_result();
+        // ABT #684, conditional since ABT #1174: margin tape is reserved for tape, so an UNSLEEVED
+        // lead's run may not enter the margin band [edge, edge -/+ margin]; a sleeved one may. Throws
+        // for an unsleeved run whose band reaches into it. `edgeCoordinate` is the window edge on the
+        // turn axis, `atTop` whether that is the high side, `runCenter`/`runHeight` the run's band.
+        static void check_lead_margin_keep_out(double edgeCoordinate, double margin, bool atTop,
+                                               double runCenter, double runHeight, bool sleeved,
+                                               const std::string& leadDescription);
         std::vector<double> resolve_margin(size_t sectionIndex);
         static std::vector<double> resolve_margin(const Section& section);
         static std::vector<double> resolve_margin(const Margin& marginVariant);

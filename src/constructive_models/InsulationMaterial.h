@@ -61,6 +61,11 @@ public:
         if (insulationMaterial.get_thermal_conductivity()) {
             set_thermal_conductivity(insulationMaterial.get_thermal_conductivity().value());
         }
+        // ABT #1174: the supply form is what tells sleeve stock from tape; dropping it here made a
+        // converted sleeve material look like a tape to every consumer.
+        set_form(insulationMaterial.get_form());
+        set_cti(insulationMaterial.get_cti());
+        set_surface_resistivity(insulationMaterial.get_surface_resistivity());
     }
 
     void extract_available_thicknesses();

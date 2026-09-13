@@ -446,6 +446,7 @@ void Coil::set_strict(bool value) {
 
 void Coil::set_inputs(Inputs inputs) {
     _inputs = inputs;
+    _leadSleeveCache.clear();   // ABT #1174: the sleeve decision depends on the requirements
 }
 
 void Coil::set_interleaving_level(uint8_t interleavingLevel) {
@@ -1081,10 +1082,12 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                                        centerTurnAxis - sizeTurnAxis / 2};
         }
     }
-    auto edgeBaseY = [&](size_t windowIndex, bool atTop) -> double {
+    auto edgeMargin = [&](size_t windowIndex, bool atTop) -> double {
         const auto& margins = atTop ? topMarginPerWindow : bottomMarginPerWindow;
         auto found = margins.find(windowIndex);
-        double margin = found == margins.end() ? 0.0 : found->second;
+        return found == margins.end() ? 0.0 : found->second;
+    };
+    auto windowEdgeY = [&](size_t windowIndex, bool atTop) -> double {
         double top = windowTopY;
         double bottom = windowBottomY;
         auto extremes = windowEdgeExtremes.find(windowIndex);
@@ -1092,7 +1095,27 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             top = extremes->second.first;
             bottom = extremes->second.second;
         }
-        return atTop ? top - margin : bottom + margin;
+        return atTop ? top : bottom;
+    };
+    // ABT #1174: SLEEVED terminal leads are the one copper the ABT #684 keep-out lets into the
+    // margin band (a sleeve is what makes a lead cross a margin legitimately). They stack in their
+    // own rows from the WINDOW EDGE inward, allocated before every unsleeved run; this is how deep
+    // that stack reaches per (window, edge), 0 when nothing is sleeved there.
+    std::map<std::pair<size_t, int>, double> sleevedStackDepth;
+    // Where the UNSLEEVED rows start: the margin's inner face, or below the sleeved stack when that
+    // stack overflows the margin. With no sleeves this is exactly the ABT #684 inset.
+    auto unsleevedInset = [&](size_t windowIndex, bool atTop) -> double {
+        double inset = edgeMargin(windowIndex, atTop);
+        auto sleeved = sleevedStackDepth.find({windowIndex, atTop ? 0 : 1});
+        if (sleeved != sleevedStackDepth.end()) {
+            inset = std::max(inset, sleeved->second);
+        }
+        return inset;
+    };
+    auto edgeBaseY = [&](size_t windowIndex, bool atTop) -> double {
+        double inset = unsleevedInset(windowIndex, atTop);
+        double edge = windowEdgeY(windowIndex, atTop);
+        return atTop ? edge - inset : edge + inset;
     };
     // ABT #615: edge rows are SHARED by runs whose RADIAL SPANS don't overlap (Alf, 2026-08-09:
     // the primary's inter-section run covers the secondary's section and vice versa — disjoint
@@ -1110,6 +1133,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         std::string winding;
     };
     std::map<std::pair<size_t, int>, std::vector<EdgeRow>> edgeRows;
+    std::map<std::pair<size_t, int>, std::vector<EdgeRow>> sleevedEdgeRows;   // ABT #1174
     // ABT #615: the one shared inter-section continuation band per (window, edge) — see the
     // continuation allocation below.
     struct ContinuationBand {
@@ -1146,8 +1170,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                double spanLo, double spanHi,
                                const std::string& windingName = std::string(),
                                double attachTurnY =
-                                   std::numeric_limits<double>::quiet_NaN()) -> std::pair<double, double> {
-        auto& rows = edgeRows[{windowIndex, atTop ? 0 : 1}];
+                                   std::numeric_limits<double>::quiet_NaN(),
+                               bool sleeved = false) -> std::pair<double, double> {
+        auto& rows = sleeved ? sleevedEdgeRows[{windowIndex, atTop ? 0 : 1}]
+                             : edgeRows[{windowIndex, atTop ? 0 : 1}];
         EdgeRow* target = nullptr;
         for (auto& row : rows) {
             if (std::abs(row.height - wireHeight) > 1e-12) {
@@ -1195,7 +1221,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         // just laid: with a snapped row at a half-nm station, the next row's roundFloat landed
         // 0.5 nm inside the exact envelope, and the certified gate reported exactly 0.500 nm on
         // six designs at once.
-        double rowBaseY = edgeBaseY(windowIndex, atTop);
+        double rowBaseY = sleeved ? windowEdgeY(windowIndex, atTop) : edgeBaseY(windowIndex, atTop);
         double edgeY = atTop ? rowBaseY - target->depthBefore - wireHeight / 2
                              : rowBaseY + target->depthBefore + wireHeight / 2;
         // Scoped to the FIRST row of its edge stack (depthBefore == 0): the measured defects
@@ -1215,7 +1241,18 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 edgeY = attachTurnY;   // exact, unrounded -- the whole point (ABT #844)
             }
         }
-        return {edgeY, target->depthBefore + wireHeight};
+        // The returned depth is what the turn blocking reads (edgeDepth): how far the run reaches
+        // past the MARGIN's inner face, where the crossed layers' turns begin. For an unsleeved run
+        // that is its stack depth plus however far a sleeved stack pushed the stack's base past the
+        // margin (0 without sleeves, so unchanged); for a sleeved run it is only the part of it that
+        // overflows the margin band, 0 when it lies wholly inside the band.
+        const double margin = edgeMargin(windowIndex, atTop);
+        if (sleeved) {
+            auto& stackDepth = sleevedStackDepth[{windowIndex, atTop ? 0 : 1}];
+            stackDepth = std::max(stackDepth, target->depthBefore + wireHeight);
+            return {edgeY, std::max(0.0, target->depthBefore + wireHeight - margin)};
+        }
+        return {edgeY, (unsleevedInset(windowIndex, atTop) - margin) + target->depthBefore + wireHeight};
     };
 
     // First-wound (entrance) and last-wound (exit) turn of each (winding, parallel): each parallel of
@@ -1293,6 +1330,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         std::string windingName;
         double wireW;
         double wireH;
+        std::optional<double> sleeveOuterDiameter;   // ABT #1174: empty for an unsleeved lead
     };
     std::vector<LeadEmission> allEmissions;
     auto crossedLayerCountAndSignature = [&](const Turn& connectingTurn) {
@@ -1310,7 +1348,16 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     };
     auto addTerminalLead = [&](const std::string& windingName, double wireOuterWidth,
                            double wireOuterHeight, const Turn& connectingTurn, int64_t parallel,
-                           bool atTopEdge, bool isEntrance) {
+                           bool atTopEdge, bool isEntrance,
+                           std::optional<double> sleeveOuterDiameter) {
+        const bool sleeved = sleeveOuterDiameter.has_value();
+        // Records the sleeve on the route this lead just added (addRoute drops degenerate routes,
+        // so only a route that was actually pushed is tagged).
+        auto tagSleevedRoute = [&](size_t routesBefore) {
+            if (sleeved && routes.size() > routesBefore) {
+                routes.back().sleeveOuterDiameter = sleeveOuterDiameter;
+            }
+        };
         double turnX = connectingTurn.get_coordinates()[0];
         double turnY = connectingTurn.get_coordinates()[1];
         if (windowOuterX <= turnX) {
@@ -1351,9 +1398,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the radial run
             lead.kind = terminalKind;
             (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
+            // ABT #1174: the outermost radial exit crosses no layer and is not edge-routed, so its
+            // reservation keeps the wire's size; the sleeve is recorded for the consumers.
+            lead.sleeveOuterDiameter = sleeveOuterDiameter;
             spaces.push_back(lead);
+            size_t routesBefore = routes.size();
             addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
                              {{turnX, turnY}, {windowOuterX + wireOuterWidth / 2, turnY}});
+            tagSleevedRoute(routesBefore);
             return;
         }
 
@@ -1366,14 +1418,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         // The edge is the CALLER's decision (nearest for entrances; the travel direction for
         // exits, ABT #685) — re-deriving it here from turnY silently undid that choice.
         bool turnAtTop = atTopEdge;
+        // ABT #1174: a sleeved lead's edge run is reserved at the sleeve's outer diameter.
+        const double runHeight = sleeved ? std::max(wireOuterHeight, sleeveOuterDiameter.value()) : wireOuterHeight;
+        const size_t leadWindowIndex = windowIndexOf(connectingTurn.get_section().value_or(""));
         // The lead occupies its row from the connecting turn's stub out to the border.
         // The shared row is per (winding, SIDE): a winding's parallels are one bundle, but its
         // entrance and exit are two DIFFERENT bundles — when the exit routes to the same edge the
         // entrance uses (ABT #685's follow-the-direction rule on 14_dab), a winding-only key
         // collapsed all eight runs onto one row, and the secondary's entrance then allocated the
         // row the primary's exit should have occupied — the overlap Alf spotted in the SVG.
-        auto [edgeY, runDepth] = allocateEdgeRow(windowIndexOf(connectingTurn.get_section().value_or("")),
-                                                 turnAtTop, wireOuterHeight,
+        auto [edgeY, runDepth] = allocateEdgeRow(leadWindowIndex,
+                                                 turnAtTop, runHeight,
                                                  turnX - wireOuterWidth / 2, windowOuterX,
                                                  // A one-turn omega winding's entrance and exit
                                                  // are the SAME bundle: its two terminals leave
@@ -1383,8 +1438,18 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                                  windingName + (get_number_turns(get_winding_index_by_name(windingName)) == 1
                                                                     ? "/omega"
                                                                     : (isEntrance ? "/in" : "/out")),
-                                                 turnY);
+                                                 turnY, sleeved);
+        // ABT #684 (conditional since ABT #1174): only a sleeved lead may lie in the margin band.
+        check_lead_margin_keep_out(windowEdgeY(leadWindowIndex, turnAtTop), edgeMargin(leadWindowIndex, turnAtTop),
+                                   turnAtTop, edgeY, runHeight, sleeved,
+                                   "terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
+                                   (isEntrance ? " (start)" : " (finish)"));
         for (const Layer* crossed : crossedLayers) {
+            // ABT #1174: a sleeved run lying wholly inside the margin band squeezes no layer --
+            // the crossed layers' turns start at the margin's inner face, which it never passes.
+            if (sleeved && runDepth <= 0) {
+                continue;
+            }
             ConnectionReservedSpace space;
             space.isTerminal = true;
             space.winding = windingName;
@@ -1392,7 +1457,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             space.section = crossed->get_section().value_or("");
             space.layer = crossed->get_name();
             space.coordinates = {crossed->get_coordinates()[0], edgeY};
-            space.dimensions = {wireOuterWidth, wireOuterHeight};
+            // A sleeved run overflowing the margin squeezes the layer by the overflow only.
+            space.dimensions = {sleeved ? runHeight : wireOuterWidth, sleeved ? runDepth : wireOuterHeight};
             // ABT #240: a lead crossing a layer of ANOTHER winding must clear that winding's
             // turns by the mechanical insulation that separates the two windings — the same
             // insulation the coil already builds between them. Without it the reserved band is
@@ -1448,9 +1514,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         lead.section = connectingTurn.get_section().value_or("");
         lead.layer = "";
         lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), edgeY};
-        lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
+        lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), runHeight};
         lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the edge run to the border
         lead.edgeDepth = runDepth;
+        lead.sleeveOuterDiameter = sleeveOuterDiameter;
         lead.kind = terminalKind;
         (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
         spaces.push_back(lead);
@@ -1477,8 +1544,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         else {
             terminalRoute = {{turnX, edgeY}, {windowOuterX + wireOuterWidth / 2, edgeY}};
         }
+        size_t routesBefore = routes.size();
         addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
                          std::move(terminalRoute));
+        tagSleevedRoute(routesBefore);
     };
 
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -1591,11 +1660,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     }
                 }
                 auto [crossedCount, crossedSignature] = crossedLayerCountAndSignature(connectingTurn);
+                std::optional<double> sleeveOuterDiameter;
+                auto sleeve = resolve_lead_sleeve(windingName, entrance ? End::START : End::FINISH, parallel);
+                if (sleeve) {
+                    sleeveOuterDiameter = sleeve->get_inner_diameter() +
+                                          2 * sleeve->get_wall_thickness() * double(sleeve->get_number_layers().value_or(1));
+                }
                 allEmissions.push_back({connectingTurn, parallel, atTop, crossedSignature,
                                         crossedCount, entrance, 0,
                                         atTop ? edgeBaseY(windowIndexOf(connectingTurn.get_section().value_or("")), true) - turnY
                                               : turnY - edgeBaseY(windowIndexOf(connectingTurn.get_section().value_or("")), false),
-                                        windingName, wireOuterWidth, wireOuterHeight});
+                                        windingName, wireOuterWidth, wireOuterHeight, sleeveOuterDiameter});
             }
         }
     }
@@ -1623,10 +1698,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                              }
                              return a.edgeDistance < b.edgeDistance;
                          });
+        // ABT #1174: sleeved leads take their margin-band rows FIRST, so every unsleeved row (and
+        // every continuation band after this pass) starts below the finished sleeved stack. Stable,
+        // so with no sleeves the order is untouched.
+        std::stable_partition(allEmissions.begin(), allEmissions.end(),
+                              [](const LeadEmission& emission) { return emission.sleeveOuterDiameter.has_value(); });
         for (const auto& emission : allEmissions) {
             addTerminalLead(emission.windingName, emission.wireW, emission.wireH,
                             emission.turn, emission.parallel, emission.atTop,
-                            emission.isEntrance);
+                            emission.isEntrance, emission.sleeveOuterDiameter);
         }
     }
 
@@ -4515,7 +4595,13 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     auto recoveredWindingsSnapshot = _recoveredMarginWindings;
     auto recoveredPerWindingSnapshot = _recoveredMarginPerWinding;
     bool explicitlyClearedSnapshot = _marginsExplicitlyCleared;
+    _leadSleeveCache.clear();   // ABT #1174: margins and wires may differ from the last wind
     bool ok = wind_inner(proportionPerWinding, pattern, repetitions);
+    // ABT #1174: record the lead-sleeve decision on the connections, where MAS carries it, once
+    // the wind has placed the margins the decision depends on.
+    if (get_turns_description() && _inputs && _inputs->get_design_requirements().get_insulation()) {
+        assign_lead_sleeves();
+    }
     if (!ok && !get_turns_description()) {
         // ABT #930: a wind that produces NO turns at all is the one failure the caller cannot
         // diagnose from the result — there is nothing to inspect. wind()'s bool is discarded by
@@ -7042,6 +7128,10 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 }
 
                 for (auto& insulationMaterial : insulationMaterialDatabase) {
+                    // ABT #1174: sleeve stock is slid over leads, never wound between sections.
+                    if (insulationMaterial.second.get_form() && insulationMaterial.second.get_form().value() == Form::SLEEVE) {
+                        continue;
+                    }
                     auto auxCoilSectionInterface = _standardCoordinator.calculate_coil_section_interface_layers(inputs, wireLeftTopWinding, wireRightBottomWinding, insulationMaterial.second);
                     if (auxCoilSectionInterface) {
                         if (auxCoilSectionInterface.value().get_solid_insulation_thickness() < coilSectionInterface.get_solid_insulation_thickness()) {
@@ -15147,6 +15237,174 @@ std::vector<double> Coil::resolve_margin(size_t sectionIndex) {
     }
     auto sections = get_sections_description().value();
     return resolve_margin(sections[sectionIndex]);
+}
+
+double Coil::get_winding_lead_margin(const std::string& windingName) {
+    auto sectionsDescription = get_sections_description();
+    if (!sectionsDescription) {
+        return 0;   // not wound: no margin has been placed
+    }
+    std::set<size_t> windowsOfWinding;
+    for (const auto& section : sectionsDescription.value()) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        for (const auto& partialWinding : section.get_partial_windings()) {
+            if (partialWinding.get_winding() == windingName) {
+                windowsOfWinding.insert(resolve_section_winding_window_index(section));
+            }
+        }
+    }
+    double margin = 0;
+    for (const auto& section : sectionsDescription.value()) {
+        if (section.get_type() != ElectricalType::CONDUCTION ||
+            !windowsOfWinding.count(resolve_section_winding_window_index(section))) {
+            continue;
+        }
+        for (double sideMargin : resolve_margin(section)) {
+            margin = std::max(margin, sideMargin);
+        }
+    }
+    return margin;
+}
+
+bool Coil::winding_leads_cross_margin(const std::string& windingName) {
+    return get_winding_lead_margin(windingName) > 0;
+}
+
+std::optional<ConnectionSleeve> Coil::get_recorded_lead_sleeve(const std::string& windingName, End windingEnd, int64_t parallel) {
+    const auto& winding = get_functional_description()[get_winding_index_by_name(windingName)];
+    if (!winding.get_connections()) {
+        return std::nullopt;
+    }
+    // By value: get_connections() returns the optional by value (the ABT #650 dangling class).
+    const auto connections = winding.get_connections().value();
+    for (const auto& connection : connections) {
+        if (!connection.get_end() || connection.get_end().value() != windingEnd) {
+            continue;
+        }
+        if (connection.get_parallel() && connection.get_parallel().value() != parallel) {
+            continue;
+        }
+        if (connection.get_sleeve()) {
+            return connection.get_sleeve();
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<ConnectionSleeve> Coil::resolve_lead_sleeve(const std::string& windingName, End windingEnd, int64_t parallel) {
+    if (!_inputs || !_inputs->get_design_requirements().get_insulation()) {
+        return get_recorded_lead_sleeve(windingName, windingEnd, parallel);
+    }
+    // Both ends of a winding share its wire and its margins, so they share the decision.
+    bool crossesMargin = winding_leads_cross_margin(windingName);
+    auto key = std::make_pair(windingName, crossesMargin);
+    auto cached = _leadSleeveCache.find(key);
+    if (cached != _leadSleeveCache.end()) {
+        return cached->second;
+    }
+    auto wire = resolve_wire(get_winding_index_by_name(windingName));
+    auto sleeve = _standardCoordinator.calculate_lead_sleeve_requirements(_inputs.value(), wire, crossesMargin);
+    _leadSleeveCache[key] = sleeve;
+    return sleeve;
+}
+
+void Coil::assign_lead_sleeves() {
+    if (!_inputs || !_inputs->get_design_requirements().get_insulation()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                                    "Lead sleeves are decided by insulation coordination, and the coil has no inputs with an insulation requirement");
+    }
+    auto& functionalDescription = get_mutable_functional_description();
+    for (auto& winding : functionalDescription) {
+        std::vector<ConnectionElement> connections;
+        if (winding.get_connections()) {
+            connections = winding.get_connections().value();
+        }
+        bool changed = false;
+        for (End windingEnd : {End::START, End::FINISH}) {
+            auto sleeve = resolve_lead_sleeve(winding.get_name(), windingEnd, 0);
+            bool matched = false;
+            for (auto& connection : connections) {
+                if (connection.get_end() && connection.get_end().value() == windingEnd) {
+                    matched = true;
+                    if (connection.get_sleeve() || sleeve) {
+                        connection.set_sleeve(sleeve);
+                        changed = true;
+                    }
+                }
+            }
+            if (!matched && sleeve) {
+                ConnectionElement connection;
+                connection.set_end(windingEnd);
+                connection.set_sleeve(sleeve);
+                connections.push_back(connection);
+                changed = true;
+            }
+        }
+        if (changed) {
+            winding.set_connections(connections);
+        }
+    }
+}
+
+InsulationCoordinationResult Coil::calculate_insulation_coordination_result() {
+    if (!_inputs || !_inputs->get_design_requirements().get_insulation()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                                    "Insulation coordination needs inputs with an insulation requirement, and the coil has none");
+    }
+    auto& inputs = _inputs.value();
+    auto coordination = _standardCoordinator.calculate_insulation_coordination(inputs);
+    InsulationCoordinationResult result;
+    result.set_clearance(coordination.get_clearance());
+    result.set_creepage_distance(coordination.get_creepage_distance());
+    result.set_withstand_voltage(coordination.get_withstand_voltage());
+    result.set_distance_through_insulation(coordination.get_distance_through_insulation());
+
+    std::vector<LeadInsulation> leads;
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        auto windingName = get_functional_description()[windingIndex].get_name();
+        double margin = get_winding_lead_margin(windingName);
+        bool crossesMargin = margin > 0;
+        auto wire = resolve_wire(windingIndex);
+        // Whether the wire's own insulation already covers the requirement (no sleeve needed).
+        bool wireCovers = !_standardCoordinator.calculate_lead_sleeve_requirements(inputs, wire, crossesMargin);
+        for (End windingEnd : {End::START, End::FINISH}) {
+            LeadInsulation lead;
+            lead.winding = windingName;
+            lead.end = windingEnd;
+            lead.crossesMargin = crossesMargin;
+            // What the coil CARRIES, not what it should: a document that dropped a required sleeve
+            // reports the bridged margin.
+            lead.sleeve = get_recorded_lead_sleeve(windingName, windingEnd, 0);
+            lead.sleeved = lead.sleeve.has_value();
+            lead.requiredCreepageDistance = coordination.get_creepage_distance();
+            if (crossesMargin) {
+                lead.creepageDistance = (lead.sleeved || wireCovers) ? margin : 0.0;
+            }
+            leads.push_back(lead);
+        }
+    }
+    result.set_leads(leads);
+    return result;
+}
+
+void Coil::check_lead_margin_keep_out(double edgeCoordinate, double margin, bool atTop,
+                                      double runCenter, double runHeight, bool sleeved,
+                                      const std::string& leadDescription) {
+    if (sleeved || margin <= 0) {
+        return;
+    }
+    double outerFace = atTop ? runCenter + runHeight / 2 : runCenter - runHeight / 2;
+    double depthOfOuterFace = atTop ? edgeCoordinate - outerFace : outerFace - edgeCoordinate;
+    // 1 nm: rows are laid at exactly the margin's inner face, so anything deeper into the band than
+    // floating-point noise is a real intrusion.
+    if (depthOfOuterFace < margin - 1e-9) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "ABT #684: the " + leadDescription + " is not sleeved but its run reaches " +
+            std::to_string((margin - depthOfOuterFace) * 1e3) + " mm into the " + std::to_string(margin * 1e3) +
+            " mm margin band; only a sleeved lead may cross a margin");
+    }
 }
 
 std::vector<double> Coil::resolve_margin(const Section& section) {

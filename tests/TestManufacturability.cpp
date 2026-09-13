@@ -172,7 +172,7 @@ TEST_CASE("Test_Manufacturability_Rules_Owned_Elsewhere_Are_Honest", "[adviser][
     Manufacturability manufacturability;
     auto report = manufacturability.calculate_report(magnetic, inputs);
 
-    for (auto& ruleId : std::vector<std::string>{"R2", "R3", "R4", "R10", "R11", "R14", "R16"}) {
+    for (auto& ruleId : std::vector<std::string>{"R2", "R3", "R4", "R10", "R14", "R16"}) {
         INFO("rule " << ruleId);
         auto& finding = report.get_finding(ruleId);
         CHECK(finding.get_status() == ManufacturabilityStatus::NOT_EVALUATED);
@@ -189,7 +189,7 @@ TEST_CASE("Test_Manufacturability_Rule_Numbers_Come_From_The_Data_File", "[advis
     CHECK(rules.at("R9").at("typicalLayersPerSideMaximum").get<int>() == 20);
     CHECK(rules.at("R13").at("finestAutomaticallySolderableAwg").get<int>() == 28);
     CHECK(rules.at("R17").at("partialDischargeTestPeakVoltage").get<double>() == 750);
-    for (auto& ruleId : std::vector<std::string>{"R1", "R5", "R6", "R7", "R8", "R9", "R12", "R13", "R15", "R17"}) {
+    for (auto& ruleId : std::vector<std::string>{"R1", "R5", "R6", "R7", "R8", "R9", "R11", "R12", "R13", "R15", "R17"}) {
         INFO("rule " << ruleId);
         CHECK(!rules.at(ruleId).at("source").get<std::string>().empty());
     }

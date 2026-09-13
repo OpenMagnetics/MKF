@@ -55,6 +55,13 @@
         "windowWidthLossFailRatio": 0.50,
         "_windowWidthLoss_comment": "Fraction of the winding-window width consumed by both margins. WE report margins eating around half the window in the worst case; the WP8 proposal (rule R9) sets the warn level at 30 percent and the fail level at the 50 percent WE quote."
     },
+    "R11": {
+        "title": "Termination protection cost order",
+        "description": "Three ways protect a termination where it leaves the winding area: crossover tape (mostly manual, placement not consistent, uses the least winding window), margin tape (the best cost option if winding space allows, consistent because machines apply it, may increase leakage inductance) and tubing (sleeving: the most effective, but the highest labour cost). Tubing is also used to build a creepage distance from a non-insulated wire, from the winding area to the exposed part of the wire at the termination. MKF sleeves a lead only when its wire's own insulation does not cover the requirement where it crosses a margin (InsulationCoordinator::calculate_lead_sleeve_requirements, ABT #1174), so a sleeve where none is needed spends the costliest protection for nothing, and a margin crossed by an unsleeved lead that needs one is bridged.",
+        "source": "Wuerth Elektronik, 'Design For Manufacturing (DFM)', A. De Michiel, 2024-04-29 (youtube 9AhcsV8t4EU) 15:16-16:40",
+        "protectionCostOrder": ["crossover tape", "margin tape", "sleeving"],
+        "_protectionCostOrder_comment": "Cheapest first, as the source ranks them: crossover tape is a manual process, margin tape is applied by machines, tubing requires the highest labour cost."
+    },
     "R12": {
         "title": "Flying leads",
         "description": "Flying leads are the least preferred termination at Wuerth: the leads are damaged by the remaining winding, soldering, taping, testing and varnishing steps and by shipping and PCB insertion, they must be manually inserted into the PCB, and being unshielded they emit and absorb noise.",
@@ -94,7 +101,6 @@
         "R3": "not evaluated (owned by WP3: pin assignment)",
         "R4": "not evaluated (owned by WP3: pin assignment)",
         "R10": "not evaluated (owned by insulation coordination)",
-        "R11": "not evaluated (owned by WP5: lead sleeving)",
         "R14": "not evaluated (owned by WP3: pin assignment)",
         "R16": "not evaluated (owned by WP4: toroid base)"
     },
@@ -103,7 +109,6 @@
         "R3": "Gauge spread on one termination rail within 3 AWG",
         "R4": "Wire wrap must not protrude below the bobbin standoff",
         "R10": "Creepage and clearance targets, corner-pin loss",
-        "R11": "Termination protection cost order",
         "R14": "Shield winding terminated on pins at both ends",
         "R16": "Toroid coating, barrier and header limits"
     },
@@ -112,7 +117,6 @@
         "R3": "Wuerth Elektronik DFM 2024-04-29 18:55",
         "R4": "Wuerth Elektronik DFM 2024-04-29",
         "R10": "PSMA/APEC 2022 IS01.7, 'How Does Safety Affect Your Design?' 2021",
-        "R11": "Wuerth Elektronik DFM 2024-04-29",
         "R14": "Wuerth Elektronik 'Transformer Design for EMC' 2023 slides",
         "R16": "Wuerth Elektronik 'Transformer safety, update on IEC 61558' 2025-10-23; Custom Capabilities Catalog 2020"
     }

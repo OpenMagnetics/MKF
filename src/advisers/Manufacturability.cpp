@@ -814,6 +814,114 @@ ManufacturabilityFinding Manufacturability::evaluate_r9_margin_tape(Magnetic& ma
 }
 
 // ---------------------------------------------------------------------------------------
+// R11 - termination protection cost order
+// ---------------------------------------------------------------------------------------
+ManufacturabilityFinding Manufacturability::evaluate_r11_termination_protection(Magnetic& magnetic, Inputs& inputs) {
+    auto finding = make_finding("R11");
+    finding.set_unit("sleeved leads");
+    std::vector<std::string> costOrder;
+    for (auto& protection : rule("R11").at("protectionCostOrder")) {
+        costOrder.push_back(protection.get<std::string>());
+    }
+    const std::string costOrderText = "Cost order, cheapest first: " + join(costOrder, " < ") + ".";
+
+    if (!magnetic.has_coil()) {
+        finding.set_status(ManufacturabilityStatus::NOT_EVALUATED);
+        finding.set_reason("the magnetic carries no coil, so there are no leads to protect");
+        finding.set_message("Termination protection rule not evaluated: " + finding.get_reason().value());
+        return finding;
+    }
+    auto& coil = magnetic.get_mutable_coil();
+    if (!coil.get_sections_description()) {
+        finding.set_status(ManufacturabilityStatus::NOT_EVALUATED);
+        finding.set_reason("the coil has not been wound, so it carries no margins for its leads to cross");
+        finding.set_message("Termination protection rule not evaluated: " + finding.get_reason().value());
+        return finding;
+    }
+
+    std::vector<std::string> sleevedLeads;
+    for (auto& winding : coil.get_functional_description()) {
+        for (End windingEnd : {End::START, End::FINISH}) {
+            if (coil.get_recorded_lead_sleeve(winding.get_name(), windingEnd, 0)) {
+                sleevedLeads.push_back(winding.get_name() + (windingEnd == End::START ? " start" : " finish"));
+            }
+        }
+    }
+    finding.set_measured_value(static_cast<double>(sleevedLeads.size()));
+
+    if (!inputs.get_design_requirements().get_insulation()) {
+        if (sleevedLeads.empty()) {
+            finding.set_status(ManufacturabilityStatus::NOT_APPLICABLE);
+            finding.set_message("The design has no insulation requirement and no lead is sleeved, so no termination protection is called for.");
+            return finding;
+        }
+        finding.set_status(ManufacturabilityStatus::NOT_EVALUATED);
+        finding.set_scope(join(sleevedLeads, ", "));
+        finding.set_reason("leads are sleeved but the design states no insulation requirement to judge the sleeves against");
+        finding.set_message("Termination protection rule not evaluated: " + finding.get_reason().value());
+        return finding;
+    }
+
+    InsulationCoordinator coordinator;
+    std::vector<std::string> unnecessarySleeves;
+    std::vector<std::string> missingSleeves;
+    std::vector<std::string> marginTapeWindings;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto windingName = coil.get_functional_description()[windingIndex].get_name();
+        bool crossesMargin = coil.winding_leads_cross_margin(windingName);
+        if (crossesMargin) {
+            marginTapeWindings.push_back(windingName);
+        }
+        auto wire = coil.resolve_wire(windingIndex);
+        bool sleeveRequired = coordinator.calculate_lead_sleeve_requirements(inputs, wire, crossesMargin).has_value();
+        for (End windingEnd : {End::START, End::FINISH}) {
+            const std::string lead = windingName + (windingEnd == End::START ? " start" : " finish");
+            bool sleeved = coil.get_recorded_lead_sleeve(windingName, windingEnd, 0).has_value();
+            if (sleeved && !sleeveRequired) {
+                unnecessarySleeves.push_back(lead);
+            }
+            if (!sleeved && sleeveRequired) {
+                missingSleeves.push_back(lead);
+            }
+        }
+    }
+
+    std::vector<std::string> messages;
+    messages.push_back(costOrderText);
+    if (!marginTapeWindings.empty()) {
+        messages.push_back("Margin tape protects the windings " + join(marginTapeWindings, ", ") + ".");
+    }
+    if (!missingSleeves.empty() || !unnecessarySleeves.empty()) {
+        finding.set_status(ManufacturabilityStatus::FAIL);
+        std::vector<std::string> scope = missingSleeves;
+        scope.insert(scope.end(), unnecessarySleeves.begin(), unnecessarySleeves.end());
+        finding.set_scope(join(scope, ", "));
+        if (!missingSleeves.empty()) {
+            messages.push_back("These leads cross a margin unsleeved although their wire's own insulation does not cover the requirement, so the margin is bridged: " +
+                               join(missingSleeves, ", ") + ".");
+        }
+        if (!unnecessarySleeves.empty()) {
+            messages.push_back("These leads are sleeved although no requirement calls for it (no margin crossed, or the wire's own insulation covers it), spending the costliest protection for nothing: " +
+                               join(unnecessarySleeves, ", ") + ".");
+        }
+        finding.set_message(join(messages, " "));
+        return finding;
+    }
+
+    finding.set_status(ManufacturabilityStatus::PASS);
+    if (sleevedLeads.empty()) {
+        messages.push_back("No lead needs a sleeve.");
+    }
+    else {
+        finding.set_scope(join(sleevedLeads, ", "));
+        messages.push_back("Sleeving is used only where tape and the wire's own insulation cannot protect the lead. Manual labour: " +
+                           std::to_string(sleevedLeads.size()) + " sleeved leads (" + join(sleevedLeads, ", ") + ").");
+    }
+    finding.set_message(join(messages, " "));
+    return finding;
+}
+
+// ---------------------------------------------------------------------------------------
 // R12 - flying leads
 // ---------------------------------------------------------------------------------------
 ManufacturabilityFinding Manufacturability::evaluate_r12_flying_leads(Magnetic& magnetic, Inputs& inputs) {
@@ -1065,7 +1173,7 @@ ManufacturabilityReport Manufacturability::calculate_report(Magnetic& magnetic, 
     report.add_finding(evaluate_r8_insulated_wire(magnetic));
     report.add_finding(evaluate_r9_margin_tape(magnetic));
     report.add_finding(not_evaluated_rule("R10"));
-    report.add_finding(not_evaluated_rule("R11"));
+    report.add_finding(evaluate_r11_termination_protection(magnetic, inputs));
     report.add_finding(evaluate_r12_flying_leads(magnetic, inputs));
     report.add_finding(evaluate_r13_manual_termination(magnetic));
     report.add_finding(not_evaluated_rule("R14"));

@@ -42,6 +42,40 @@ class CoilSectionInterface {
     void set_layer_purpose(LayerPurpose value) { this->layerPurpose = value; }
 };
 
+// ABT #1174 (WP5, MAS-RFC 0016): one terminated winding end, as insulation coordination sees it.
+// Reported by Coil::calculate_insulation_coordination_result(); an MKF struct, never MAS output
+// (the RFC's leadCreepage schema field was withdrawn on 2026-09-13).
+class LeadInsulation {
+    public:
+    std::string winding;
+    End end = End::START;
+    // True when the lead leaves a margin-wound winding window: it runs across the margin band (and
+    // out through the flange) on its way to the terminal, so its own insulation is what stands
+    // between the winding and the other side of that margin.
+    bool crossesMargin = false;
+    bool sleeved = false;
+    // The creepage the construction keeps along this lead where it crosses the margin: the margin
+    // width when the lead is sleeved or its wire's own insulation covers the requirement, 0 when a
+    // bare/enamelled lead bridges the margin. Empty when the lead crosses no margin (there is no
+    // margin-borne creepage path to report).
+    std::optional<double> creepageDistance;
+    // The creepage distance the standards require (InsulationCoordinator::calculate_creepage_distance
+    // with clearance included), the figure the margin was sized to.
+    double requiredCreepageDistance = 0;
+    std::optional<ConnectionSleeve> sleeve;
+};
+
+// ABT #1174: MKF's insulation-coordination result. The MAS InsulationCoordination figures (clearance,
+// creepage, withstand voltage, distance through insulation) plus one LeadInsulation per terminated
+// winding end.
+class InsulationCoordinationResult : public InsulationCoordination {
+    private:
+    std::vector<LeadInsulation> leads;
+    public:
+    const std::vector<LeadInsulation>& get_leads() const { return leads; }
+    void set_leads(const std::vector<LeadInsulation>& value) { leads = value; }
+};
+
 class InsulationStandard {
   private:
   protected:
@@ -469,6 +503,47 @@ class InsulationCoordinator {
     InsulationCoordination calculate_insulation_coordination(Inputs& inputs);
     std::optional<CoilSectionInterface> calculate_coil_section_interface_layers(Inputs& inputs, Wire leftWire, Wire rightWire, InsulationMaterial insulationMaterial);
     static bool can_fully_insulated_wire_be_used(Inputs& inputs);
+
+    // ABT #1174 (WP5, MAS-RFC 0016): the sleeve a terminal lead of `wire` needs, or nullopt when it
+    // needs none. A sleeve is needed iff (a) the design has a SAFETY insulation requirement (basic,
+    // supplementary, double or reinforced; functional insulation is not a safety boundary), (b) the
+    // lead crosses a margin (Power Integrations AN-18: "Insulating tubing ... is used to cover all
+    // start and finish leads of a margin wound transformer"), and (c) the wire's own insulation does
+    // not already provide the layers that let the coil drop its margin
+    // (times_withstand_voltage_is_covered_by_wires: 2 for functional/basic/supplementary, 3 for
+    // double/reinforced) -- and under IEC 60335-1 / IEC 60664-1, which do not accept a fully
+    // insulated wire as that insulation (can_fully_insulated_wire_be_used), the wire never counts.
+    // The sleeve withstands the same voltage as the section interfaces. Its wall is the thinnest one
+    // on offer in insulationMaterialDatabase among materials with form == sleeve, rated at or above
+    // lead_sleeve_required_temperature, that is >= max(leadSleeveMinimumWallThickness, the distance
+    // through insulation the standards require) and whose dielectric strength at that wall
+    // withstands the voltage; a tie on wall goes to the lowest temperature class that satisfies.
+    // Throws when no material does, naming the requirement.
+    std::optional<ConnectionSleeve> calculate_lead_sleeve_requirements(Inputs& inputs, Wire wire, bool crossesMargin);
+    // The temperature a lead sleeve must be rated for, in Celsius: the highest of the design's
+    // required operating temperature (maximum), the operating points' ambient temperatures and the
+    // lead wire coating's own temperature rating, whichever are present. Throws when none is.
+    static double lead_sleeve_required_temperature(Inputs& inputs, Wire& wire);
+    // IEC 60085 thermal class to its maximum continuous temperature in Celsius (Y 90, A 105, E 120,
+    // B 130, F 155, H 180, N/200 200, R/220 220, 250 250); a numeric class is already Celsius.
+    static double temperature_class_to_celsius(const TemperatureClassUnion& temperatureClass);
+    // The diameter a sleeve has to slide over: a round or litz wire's outer diameter, the diagonal of
+    // a rectangular, foil or planar conductor's outer envelope.
+    static double lead_outer_diameter(Wire& wire);
+
+    // AN-18: "The tubing should be recognized by the applicable safety agencies, with a minimum wall
+    // thickness of 0.4 mm to meet thickness requirements for reinforced insulation." Applied to every
+    // safety class as the floor, raised by the standards' own distance through insulation.
+    static constexpr double leadSleeveMinimumWallThickness = 0.4e-3;
+    // Practice value, stated in every emitted sleeve: the sleeve's inner diameter is the lead's outer
+    // diameter plus 0.1 mm of slide clearance.
+    static constexpr double leadSleeveInnerDiameterClearance = 0.1e-3;
+    // AN-18 construction practice, stated in every emitted sleeve: the sleeve runs from the terminal
+    // across the margin and on past the margin's inner edge, about 2 mm under the first turn, so the
+    // margin's creepage path is never bridged by the bare lead.
+    static constexpr double leadSleeveOverlapIntoWinding = 2e-3;
+    // One solid sleeve layer: the wall above already carries the reinforced-insulation thickness.
+    static constexpr int64_t leadSleeveNumberLayers = 1;
     static std::vector<std::vector<WireSolidInsulationRequirements>> get_solid_insulation_requirements_for_wires(Inputs& inputs, std::vector<size_t> pattern, size_t repetitions);
     static bool needs_margin(std::vector<WireSolidInsulationRequirements> combinationSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions);
 
