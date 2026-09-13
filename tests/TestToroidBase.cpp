@@ -498,6 +498,10 @@ TEST_CASE("A common-mode choke on a real HTM base: the fixture ring fits none, a
             {{"name", name}, {"numberTurns", 10}, {"numberParallels", 1}, {"isolationSide", "primary"}, {"wire", "Round 0.80 - Grade 1"}});
     }
     OpenMagnetics::Magnetic magnetic(magneticJson);
+    // ABT #1237: autocomplete assigns pins only with coil_connect_leads_to_pins on (off by default).
+    OpenMagnetics::SettingsGuard<bool> connectLeads(OpenMagnetics::Settings::GetInstance(),
+                                                    &OpenMagnetics::Settings::get_coil_connect_leads_to_pins,
+                                                    &OpenMagnetics::Settings::set_coil_connect_leads_to_pins, true);
     auto completed = magnetic_autocomplete(magnetic);
     auto coil = completed.get_coil();
     REQUIRE(coil.get_turns_description());

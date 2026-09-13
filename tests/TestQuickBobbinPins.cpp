@@ -306,6 +306,8 @@ TEST_CASE("magnetic_autocomplete gives a Basic quick bobbin pins only when the s
     }
     SECTION("on: 16 vertical pins, every winding end on a pin") {
         settings.set_coil_quick_bobbin_generate_pins(true);
+        // ABT #1237: autocomplete connects the leads to the pins only when asked.
+        settings.set_coil_connect_leads_to_pins(true);
         auto magnetic = build();
         auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
         REQUIRE(bobbin.get_processed_description()->get_pins());

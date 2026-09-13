@@ -1352,7 +1352,6 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     // `end` cannot be told apart as start or finish, and keeps the lead at the window border as
     // before. Taps are junctions between series sections, routed inside the coil (see CoilPins.cpp).
     std::map<std::tuple<std::string, int64_t, bool>, MAS::Pin> terminalPinByConductor;
-    std::optional<double> leadFrontFaceOffsetOptional;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         const auto& pinWinding = get_functional_description()[windingIndex];
         if (!pinWinding.get_connections()) {
@@ -1365,9 +1364,6 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             }
             // Throws naming the pin when the bobbin has no pins[] or no pin of that name.
             auto pin = bobbin.get_pin(connection.get_pin_name().value());
-            if (!leadFrontFaceOffsetOptional) {
-                leadFrontFaceOffsetOptional = lead_front_face_offset(bobbin);
-            }
             const bool entrance = connection.get_end().value() == End::START;
             if (connection.get_parallel()) {
                 terminalPinByConductor[{pinWinding.get_name(), connection.get_parallel().value(), entrance}] = pin;
@@ -1379,35 +1375,38 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             }
         }
     }
-    const double leadFrontFaceOffset = leadFrontFaceOffsetOptional ? leadFrontFaceOffsetOptional.value() : 0.0;  // read only when a pin exists
-    // The run past the window border to the assigned pin, from the lead's end at the border (given
-    // in the VIRTUAL frame, transposed back to the real one here), or nothing without a pin.
-    auto pinLegFor = [&](const std::string& windingName, int64_t parallel, bool isEntrance,
-                         double borderLayerAxis, double borderTurnAxis) -> std::optional<PinLeadRoute> {
+    // ABT #1237: the runs past the window border are planned TOGETHER, after every route is
+    // recorded (they must keep clear of each other, and the ride-over lift at the exit comes from
+    // the finished routes' ride levels). Each terminal lead assigned to a pin records here the
+    // route and the reservation its run is added to.
+    struct PendingPinLead {
+        size_t routeIndex;
+        size_t spaceIndex;
+        std::string label;
+        MAS::Pin pin;
+        std::vector<double> windowExit;   // {radial, axial}, real frame
+        double diameter;
+    };
+    std::vector<PendingPinLead> pendingPinLeads;
+    auto deferPinLeg = [&](size_t routesBefore, size_t spaceIndex, const std::string& windingName, int64_t parallel,
+                           bool isEntrance, double borderLayerAxis, double borderTurnAxis, double diameter) {
         auto found = terminalPinByConductor.find({windingName, parallel, isEntrance});
         if (found == terminalPinByConductor.end()) {
-            return std::nullopt;
-        }
-        std::vector<double> windowExit = layersAreContiguous ? std::vector<double>{borderTurnAxis, borderLayerAxis}
-                                                             : std::vector<double>{borderLayerAxis, borderTurnAxis};
-        return route_lead_to_pin(found->second, windowExit, leadFrontFaceOffset);
-    };
-    // Hang the pin run on the terminal route just recorded, in the route's electrical order.
-    auto attachPinLeg = [&](size_t routesBefore, const std::optional<PinLeadRoute>& pinLeg, bool isEntrance) {
-        if (!pinLeg) {
             return;
         }
         if (routes.size() != routesBefore + 1) {
-            throw std::logic_error("A terminal lead assigned to pin '" + pinLeg->pinName +
+            throw std::logic_error("A terminal lead assigned to pin '" + found->second.get_name().value_or("?") +
                                    "' recorded no route to hang the pin run on");
         }
-        auto& route = routes.back();
-        route.pinName = pinLeg->pinName;
-        route.pinWaypoints = pinLeg->waypoints;
-        if (isEntrance) {
-            std::reverse(route.pinWaypoints.begin(), route.pinWaypoints.end());
-        }
-        route.routedLength = roundFloat(route.routedLength + pinLeg->length, 9);
+        PendingPinLead pending;
+        pending.routeIndex = routes.size() - 1;
+        pending.spaceIndex = spaceIndex;
+        pending.label = "winding '" + windingName + "' parallel " + std::to_string(parallel) + (isEntrance ? " start" : " finish");
+        pending.pin = found->second;
+        pending.windowExit = layersAreContiguous ? std::vector<double>{borderTurnAxis, borderLayerAxis}
+                                                 : std::vector<double>{borderLayerAxis, borderTurnAxis};
+        pending.diameter = diameter;
+        pendingPinLeads.push_back(pending);
     };
     auto addTerminalLead = [&](const std::string& windingName, double wireOuterWidth,
                            double wireOuterHeight, const Turn& connectingTurn, int64_t parallel,
@@ -1458,10 +1457,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             // straight, the last certified finding in the whole 40-design corpus.
             lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), turnY};
             lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
-            // ABT #1172: plus, when the end is assigned to a pin, the run from the border to it.
-            const auto radialPinLeg = pinLegFor(windingName, parallel, isEntrance, windowOuterX + wireOuterWidth / 2, turnY);
-            lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth +
-                                           (radialPinLeg ? radialPinLeg->length : 0.0), 9);  // the radial run (+ pin run)
+            // ABT #1172/#1237: plus, when the end is assigned to a pin, the run from the border to
+            // it, added once every run is planned (end of this function).
+            lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the radial run
             lead.kind = terminalKind;
             (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
             // ABT #1174: the outermost radial exit crosses no layer and is not edge-routed, so its
@@ -1472,7 +1470,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
                              {{turnX, turnY}, {windowOuterX + wireOuterWidth / 2, turnY}});
             tagSleevedRoute(routesBefore);
-            attachPinLeg(routesBefore, radialPinLeg, isEntrance);
+            deferPinLeg(routesBefore, spaces.size() - 1, windingName, parallel, isEntrance,
+                        windowOuterX + wireOuterWidth / 2, turnY,
+                        std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
             return;
         }
 
@@ -1582,15 +1582,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         lead.layer = "";
         lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), edgeY};
         lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), runHeight};
-        // ABT #1172: plus, when the end is assigned to a pin, the run from the border to it.
-        const auto edgePinLeg = pinLegFor(windingName, parallel, isEntrance, windowOuterX + wireOuterWidth / 2, edgeY);
-        lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth +
-                                       (edgePinLeg ? edgePinLeg->length : 0.0), 9);  // the edge run to the border (+ pin run)
+        // ABT #1172/#1237: plus, when the end is assigned to a pin, the run from the border to it,
+        // added once every run is planned (end of this function).
+        lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the edge run to the border
         lead.edgeDepth = runDepth;
         lead.sleeveOuterDiameter = sleeveOuterDiameter;
         lead.kind = terminalKind;
         (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
         spaces.push_back(lead);
+        const size_t edgeLeadSpaceIndex = spaces.size() - 1;
         // ABT #830: WHERE THE COPPER IS DRAWN MUST BE WHERE THE ROW RESERVED IT.
         //
         // The route is turn -> row -> border, and the stub between the first two is only DRAWN
@@ -1618,7 +1618,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
                          std::move(terminalRoute));
         tagSleevedRoute(routesBefore);
-        attachPinLeg(routesBefore, edgePinLeg, isEntrance);
+        deferPinLeg(routesBefore, edgeLeadSpaceIndex, windingName, parallel, isEntrance,
+                    windowOuterX + wireOuterWidth / 2, edgeY,
+                    std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
     };
 
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -2236,6 +2238,40 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             }
         }
     }
+    // ABT #1172/#1237: the runs from the window border to the pins, planned together so no two
+    // share copper. The exit's ride-over lift is MKF's own: the ride levels the routes just
+    // recorded impose at the exit radius, on the lead's face (the same levels get_connection_layout
+    // hands to MVB++).
+    if (!pendingPinLeads.empty()) {
+        ConnectionLayout rides;
+        rides.rideLevels = compute_ride_levels(routes);
+        std::vector<PinLeadRequest> requests;
+        for (const auto& pending : pendingPinLeads) {
+            PinLeadRequest request;
+            request.label = pending.label;
+            request.pin = pending.pin;
+            request.windowExit = pending.windowExit;
+            request.diameter = pending.diameter;
+            request.lift = rides.ride_at(pending.windowExit[0], routes[pending.routeIndex].side);
+            requests.push_back(request);
+        }
+        const auto processedBobbin = bobbin.get_processed_description().value();
+        const auto pinLegs = route_leads_to_pins(processedBobbin.get_pins().value(), requests,
+                                                 lead_front_face_offset(bobbin), pin_wrap_turns(), bobbin.get_pin_rails());
+        for (size_t index = 0; index < pendingPinLeads.size(); ++index) {
+            const auto& pending = pendingPinLeads[index];
+            const auto& pinLeg = pinLegs[index];
+            auto& route = routes[pending.routeIndex];
+            route.pinName = pinLeg.pinName;
+            route.pinWaypoints = pinLeg.waypoints;
+            if (route.kind == ConnectionKind::TERMINAL_ENTRANCE) {
+                std::reverse(route.pinWaypoints.begin(), route.pinWaypoints.end());
+            }
+            route.routedLength = roundFloat(route.routedLength + pinLeg.length, 9);
+            auto& space = spaces[pending.spaceIndex];
+            space.routedLength = roundFloat(space.routedLength.value() + pinLeg.length, 9);
+        }
+    }
     if (routesOut != nullptr) {
         *routesOut = std::move(routes);
     }
@@ -2257,13 +2293,19 @@ ConnectionLayout Coil::get_connection_layout() {
     // pitch, filar-count and sign-of-advance thresholds), the YZ painter's own copy of it, and the
     // ride accumulation each of them then ran. None of them could be right for a design whose
     // geometry happened to fall between the thresholds; the kind always is, because wind() set it.
+    layout.rideLevels = compute_ride_levels(layout.routes);
+    return layout;
+}
+
+std::vector<ConnectionRideLevel> Coil::compute_ride_levels(const std::vector<ConnectionRoute>& routes) {
+    std::vector<ConnectionRideLevel> rideLevels;
     auto wires = get_wires();
     std::map<std::string, double> odByWinding;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         odByWinding[get_functional_description()[windingIndex].get_name()] =
             wires[windingIndex].get_maximum_outer_width();
     }
-    for (const auto& route : layout.routes) {
+    for (const auto& route : routes) {
         if (route.kind != ConnectionKind::Z_DRAGBACK &&
             route.kind != ConnectionKind::EDGE_CONTINUATION) {
             continue;
@@ -2278,7 +2320,7 @@ ConnectionLayout Coil::get_connection_layout() {
         // run stands for the rest of the wind.
         const double laneRadius = route.waypoints.back()[0];
         bool merged = false;
-        for (auto& level : layout.rideLevels) {
+        for (auto& level : rideLevels) {
             if (level.side == route.side &&
                 std::abs(level.radius - laneRadius) <= 0.5 * odIt->second) {
                 level.height = std::max(level.height, odIt->second);
@@ -2287,14 +2329,14 @@ ConnectionLayout Coil::get_connection_layout() {
             }
         }
         if (!merged) {
-            layout.rideLevels.push_back({route.side, laneRadius, odIt->second});
+            rideLevels.push_back({route.side, laneRadius, odIt->second});
         }
     }
-    std::sort(layout.rideLevels.begin(), layout.rideLevels.end(),
+    std::sort(rideLevels.begin(), rideLevels.end(),
               [](const ConnectionRideLevel& a, const ConnectionRideLevel& b) {
                   return a.side != b.side ? a.side < b.side : a.radius < b.radius;
               });
-    return layout;
+    return rideLevels;
 }
 
 std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_blocked_slots_per_layer(

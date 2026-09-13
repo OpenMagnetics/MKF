@@ -3292,7 +3292,9 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     // pins keeps today's behaviour (leads end at the window border). assign_pins never overrides
     // a pinName the design gave, and throws on a plan that breaks the rows or the creepage.
     // `bobbin` is the one set on the coil above; winding does not move its pins.
-    if (magnetic.get_mutable_coil().get_turns_description() && bobbin.get_processed_description() &&
+    // ABT #1237: only when Settings coil_connect_leads_to_pins asks for it (off by default).
+    if (settings.get_coil_connect_leads_to_pins() &&
+        magnetic.get_mutable_coil().get_turns_description() && bobbin.get_processed_description() &&
         bobbin.get_processed_description()->get_pins() && !bobbin.get_processed_description()->get_pins()->empty() &&
         !magnetic.get_mutable_coil().has_complete_pin_connections()) {
         if (inputs) {

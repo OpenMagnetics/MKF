@@ -67,6 +67,12 @@ class Settings
         // _coilQuickBobbinPinsOrientation, so Coil::assign_pins has pins to assign. Default OFF:
         // quick bobbins stay pinless. A core family with no catalogue evidence throws when ON.
         bool _coilQuickBobbinGeneratePins = false;
+        // ABT #1237 (Alf, 2026-09-13): connecting winding leads to the bobbin's pins. When false
+        // (default) magnetic_autocomplete assigns no pins, so connections[] get no pinName/end from
+        // it and every terminal lead ends at the window border (its pre-WP3 length). When true it runs
+        // Coil::assign_pins and the terminal routes continue to their pins. An explicit
+        // Coil::assign_pins call, or pins the design names itself, work regardless.
+        bool _coilConnectLeadsToPins = false;
         OrientationEnum _coilQuickBobbinPinsOrientation = OrientationEnum::VERTICAL;  // Keep in sync with reset()
         // ABT #1248 (Alf, 2026-09-13): how a wound TOROID is mounted in the 3D assembly frame
         // (MVB++ reads it where the toroid geometry is built). VERTICAL (default, what most
@@ -333,6 +339,9 @@ class Settings
 
         bool get_coil_allow_horizontal_overflow() const;
         void set_coil_allow_horizontal_overflow(bool value);
+
+        bool get_coil_connect_leads_to_pins() const;
+        void set_coil_connect_leads_to_pins(bool value);
 
         bool get_coil_quick_bobbin_generate_pins() const;
         void set_coil_quick_bobbin_generate_pins(bool value);

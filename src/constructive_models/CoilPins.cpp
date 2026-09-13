@@ -299,36 +299,431 @@ std::vector<PlacedPin> Coil::place_pins(const std::vector<MAS::Pin>& pins) {
     return placed;
 }
 
-PinLeadRoute Coil::route_lead_to_pin(const MAS::Pin& pin, const std::vector<double>& windowExit, double frontFaceOffset) {
-    if (windowExit.size() < 2) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT, "route_lead_to_pin needs the window exit as {x, y}.");
+namespace {
+
+// Closest distance between segments [p0, p1] and [q0, q1] (3D). Degenerate segments are points.
+double segment_distance(const std::vector<double>& p0, const std::vector<double>& p1,
+                        const std::vector<double>& q0, const std::vector<double>& q1) {
+    double u[3], v[3], w[3];
+    for (int k = 0; k < 3; ++k) {
+        u[k] = p1[k] - p0[k];
+        v[k] = q1[k] - q0[k];
+        w[k] = p0[k] - q0[k];
     }
-    auto placed = place_pins({pin}).front();
-    // The lead leaves the coil on the core's open front face (-Z, where a two-piece core has no
-    // lateral leg and where MVB++ runs every terminal lead parallel to Z): MKF's radial exit
-    // coordinate becomes the depth -(radial + frontFaceOffset) there, its axial coordinate stays y.
-    const double ex = windowExit[0] + frontFaceOffset;
-    const double ey = windowExit[1];
-    std::vector<std::vector<double>> points;
-    if (placed.hangsAlongZ) {
-        const double zBase = placed.base[2];
-        points = {{0.0, ey, -ex}, {0.0, ey, zBase}, {0.0, placed.centre[1], zBase}, {placed.centre[0], placed.centre[1], zBase}};
+    auto dot = [](const double* x, const double* y) { return x[0] * y[0] + x[1] * y[1] + x[2] * y[2]; };
+    const double a = dot(u, u);
+    const double b = dot(u, v);
+    const double c = dot(v, v);
+    const double d = dot(u, w);
+    const double e = dot(v, w);
+    const double denominator = a * c - b * b;
+    double sN, sD = denominator, tN, tD = denominator;
+    const double small = 1e-30;
+    if (a < small && c < small) {
+        return std::sqrt(dot(w, w));
+    }
+    if (a < small) {            // p is a point
+        sN = 0; sD = 1; tN = e; tD = c;
+    }
+    else if (c < small) {       // q is a point
+        tN = 0; tD = 1; sN = -d; sD = a;
+    }
+    else if (denominator < 1e-12 * a * c) {   // parallel
+        sN = 0; sD = 1; tN = e; tD = c;
     }
     else {
-        const double yBase = placed.base[1];
-        points = {{0.0, ey, -ex}, {0.0, yBase, -ex}, {0.0, yBase, placed.centre[2]}, {placed.centre[0], yBase, placed.centre[2]}};
+        sN = b * e - c * d;
+        tN = a * e - b * d;
     }
-    PinLeadRoute route;
-    route.pinName = placed.name;
-    for (auto& point : points) {
-        if (route.waypoints.empty() || distance(route.waypoints.back(), point) > 1e-12) {
-            route.waypoints.push_back(point);
+    if (sN < 0) {
+        sN = 0; tN = e; tD = c;
+    }
+    else if (sN > sD) {
+        sN = sD; tN = e + b; tD = c;
+    }
+    if (tN < 0) {
+        tN = 0;
+        if (-d < 0) { sN = 0; }
+        else if (-d > a) { sN = sD; }
+        else { sN = -d; sD = a; }
+    }
+    else if (tN > tD) {
+        tN = tD;
+        if ((-d + b) < 0) { sN = 0; }
+        else if ((-d + b) > a) { sN = sD; }
+        else { sN = -d + b; sD = a; }
+    }
+    const double sc = std::abs(sN) < small ? 0.0 : sN / sD;
+    const double tc = std::abs(tN) < small ? 0.0 : tN / tD;
+    double dp[3];
+    for (int k = 0; k < 3; ++k) {
+        dp[k] = w[k] + sc * u[k] - tc * v[k];
+    }
+    return std::sqrt(dot(dp, dp));
+}
+
+// Smallest distance between two polylines; `skipLastOfA` leaves A's last segment out.
+double polyline_distance(const std::vector<std::vector<double>>& a, const std::vector<std::vector<double>>& b,
+                         bool skipLastOfA = false) {
+    double best = std::numeric_limits<double>::max();
+    const size_t segmentsA = a.size() < 2 ? 0 : a.size() - 1 - (skipLastOfA ? 1 : 0);
+    for (size_t i = 0; i < segmentsA; ++i) {
+        for (size_t j = 0; j + 1 < b.size(); ++j) {
+            best = std::min(best, segment_distance(a[i], a[i + 1], b[j], b[j + 1]));
         }
     }
-    for (size_t index = 0; index + 1 < route.waypoints.size(); ++index) {
-        route.length += distance(route.waypoints[index], route.waypoints[index + 1]);
+    return best;
+}
+
+struct RoutedPinLead {
+    size_t request = 0;
+    size_t pinIndex = 0;
+    double radius = 0;                              // coated radius of the lead
+    double wrapRadius = 0;                          // pin radius + lead radius (wrap centreline)
+    std::vector<std::vector<double>> points;        // window exit -> pin axis
+    std::vector<std::vector<double>> wrapAxis;      // the wrap's extent along the pin axis, {top, bottom}
+    double wrapTop = 0;                             // pin-axis coordinate of the wrap's first turn
+    double wrapBottom = 0;                          // ... and of its last
+    double dropX = 0;                               // x of the leg along the pin axis
+};
+
+}  // namespace
+
+namespace {
+
+// Distance from segment [a, b] to an axis-aligned box (0 when they touch or cross). The distance to a
+// convex set is convex along the segment, so a golden-section search finds its minimum.
+double segment_box_distance(const std::vector<double>& a, const std::vector<double>& b, const Bobbin::PinRailBlock& box) {
+    auto at = [&](double t) {
+        double d2 = 0;
+        for (int k = 0; k < 3; ++k) {
+            const double p = a[k] + t * (b[k] - a[k]);
+            const double excess = std::max(std::abs(p - box.centre[k]) - box.halfExtents[k], 0.0);
+            d2 += excess * excess;
+        }
+        return std::sqrt(d2);
+    };
+    const double golden = (std::sqrt(5.0) - 1) / 2;
+    double lo = 0, hi = 1;
+    double t1 = hi - golden * (hi - lo), t2 = lo + golden * (hi - lo);
+    double f1 = at(t1), f2 = at(t2);
+    for (int iteration = 0; iteration < 90; ++iteration) {
+        if (f1 < f2) {
+            hi = t2; t2 = t1; f2 = f1; t1 = hi - golden * (hi - lo); f1 = at(t1);
+        }
+        else {
+            lo = t1; t1 = t2; f1 = f2; t2 = lo + golden * (hi - lo); f2 = at(t2);
+        }
     }
-    return route;
+    return std::min({at(0.0), at(1.0), f1, f2});
+}
+
+}  // namespace
+
+int64_t Coil::pin_wrap_turns() {
+    static const int64_t wrapTurns = [] {
+        auto fs = cmrc::dfmData::get_filesystem();
+        auto data = fs.open("src/data/dfm_rules.json");
+        auto all = json::parse(std::string(data.begin(), data.end()));
+        if (!all.contains("R4") || !all.at("R4").contains("wrapTurns")) {
+            throw std::runtime_error("src/data/dfm_rules.json has no R4.wrapTurns (turns of wire wrapped around a pin per wire end)");
+        }
+        return all.at("R4").at("wrapTurns").get<int64_t>();
+    }();
+    return wrapTurns;
+}
+
+std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>& bobbinPins,
+                                                    const std::vector<PinLeadRequest>& leads,
+                                                    double frontFaceOffset, int64_t wrapTurns,
+                                                    const std::vector<Bobbin::PinRailBlock>& pinRails) {
+    std::vector<PinLeadRoute> result(leads.size());
+    if (leads.empty()) {
+        return result;
+    }
+    if (wrapTurns < 1) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Routing leads to pins needs at least one wrap turn per lead.");
+    }
+    const auto placedPins = place_pins(bobbinPins);
+    std::map<std::string, size_t> placedIndexByName;
+    for (size_t index = 0; index < placedPins.size(); ++index) {
+        placedIndexByName[placedPins[index].name] = index;
+    }
+    // Each row's centre along x: a lead approaches its pin from the side away from it first.
+    std::map<size_t, std::pair<double, size_t>> rowSum;
+    for (const auto& placedPin : placedPins) {
+        rowSum[placedPin.row].first += placedPin.centre[0];
+        rowSum[placedPin.row].second += 1;
+    }
+    auto row_centre = [&](size_t row) { return rowSum.at(row).first / double(rowSum.at(row).second); };
+
+    const double tolerance = 1e-9;
+    double pitch = 0;
+    std::vector<size_t> pinOfLead(leads.size());
+    for (size_t index = 0; index < leads.size(); ++index) {
+        const auto& lead = leads[index];
+        if (lead.windowExit.size() < 2) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Lead " + lead.label + " has no window exit {radial, axial}.");
+        }
+        if (!(lead.diameter > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                "Lead " + lead.label + " has no outer diameter, so its clearance to other leads and pins is unknown.");
+        }
+        if (lead.lift < 0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Lead " + lead.label + " has a negative ride-over lift.");
+        }
+        if (!lead.pin.get_name()) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Lead " + lead.label + " is assigned to a pin with no name.");
+        }
+        auto found = placedIndexByName.find(lead.pin.get_name().value());
+        if (found == placedIndexByName.end()) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Lead " + lead.label + " is assigned to pin '" + lead.pin.get_name().value() + "', which is not among the bobbin's pins.");
+        }
+        pinOfLead[index] = found->second;
+        pitch = std::max(pitch, lead.diameter);
+    }
+
+    // Inner pins first: outer leads then pass outside the inner ones (Wuerth DFM 2024-04-29 08:42).
+    std::vector<size_t> order(leads.size());
+    for (size_t index = 0; index < leads.size(); ++index) {
+        order[index] = index;
+    }
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        const auto& pinA = placedPins[pinOfLead[a]];
+        const auto& pinB = placedPins[pinOfLead[b]];
+        if (pinA.row != pinB.row) {
+            return pinA.row < pinB.row;
+        }
+        const double innerA = std::abs(pinA.centre[0] - row_centre(pinA.row));
+        const double innerB = std::abs(pinB.centre[0] - row_centre(pinB.row));
+        if (std::abs(innerA - innerB) > tolerance) {
+            return innerA < innerB;
+        }
+        return false;
+    });
+
+    const size_t numberLeads = leads.size();
+    std::vector<RoutedPinLead> routed;
+
+    auto axis_point = [](const PlacedPin& pin, size_t axisIndex, double coordinate) {
+        auto point = pin.centre;
+        point[axisIndex] = coordinate;
+        return point;
+    };
+    auto millimetres = [](double metres) { return format_millimetres(metres); };
+
+    for (size_t leadIndex : order) {
+        const auto& lead = leads[leadIndex];
+        const auto& pin = placedPins[pinOfLead[leadIndex]];
+        const size_t axisIndex = pin.hangsAlongZ ? 2 : 1;   // the coordinate the pin leaves along (decreasing)
+        const size_t rowIndex = pin.hangsAlongZ ? 1 : 2;    // the coordinate that locates its row
+        const double radius = lead.diameter / 2;
+        const double pinRadius = pin.diameter / 2;
+        const double wrapRadius = pinRadius + radius;
+        const double approach = wrapRadius + lead.diameter;   // clear of a neighbour wrap of this wire
+        const double tip = 2 * pin.centre[axisIndex] - pin.base[axisIndex];
+        const double exitDepth = -(lead.windowExit[0] + frontFaceOffset + lead.lift);
+        const double exitAxial = lead.windowExit[1];
+        const double outward = pin.centre[0] - row_centre(pin.row);
+        const double preferredSide = outward > tolerance ? 1.0 : -1.0;
+
+        // Lanes: stepping out from the exit, and stepping out from each face of every pin rail
+        // beyond the exit (a drop has to pass outside a rail it cannot pass through).
+        std::vector<double> laneDepths;
+        for (size_t lane = 0; lane <= numberLeads; ++lane) {
+            laneDepths.push_back(exitDepth - double(lane) * pitch);
+        }
+        for (const auto& rail : pinRails) {
+            if (rail.centre.size() < 3 || rail.halfExtents.size() < 3) {
+                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Pin rail '" + rail.name + "' has no 3D centre and half extents.");
+            }
+            for (double face : {rail.centre[2] - rail.halfExtents[2] - radius, rail.centre[2] + rail.halfExtents[2] + radius}) {
+                for (size_t lane = 0; lane <= numberLeads; ++lane) {
+                    if (face - double(lane) * pitch < exitDepth - tolerance) {
+                        laneDepths.push_back(face - double(lane) * pitch);
+                    }
+                }
+            }
+        }
+        std::sort(laneDepths.begin(), laneDepths.end(), std::greater<double>());
+        laneDepths.erase(std::unique(laneDepths.begin(), laneDepths.end(), [](double a, double b) { return std::abs(a - b) < 1e-12; }),
+                         laneDepths.end());
+        std::optional<std::string> directConflict;
+        std::optional<RoutedPinLead> chosen;
+        size_t candidates = 0;
+        const size_t maximumLevel = (size_t(wrapTurns) + 1) * numberLeads;
+        for (size_t level = 0; level <= maximumLevel && !chosen; ++level) {
+            const double wrapTop = pin.base[axisIndex] - radius - double(level) * pitch;
+            const double wrapBottom = wrapTop - double(wrapTurns) * lead.diameter;
+            if (wrapBottom < tip - tolerance) {
+                break;   // the wrap would run off the pin's tip
+            }
+            for (double side : {preferredSide, -preferredSide}) {
+                if (chosen) {
+                    break;
+                }
+                for (size_t besideRank = 0; besideRank <= numberLeads && !chosen; ++besideRank) {
+                const double besidePin = pin.centre[0] + side * (approach + double(besideRank) * pitch);
+                for (size_t lane = 0; lane < laneDepths.size() && !chosen; ++lane) {
+                    const double laneDepth = laneDepths[lane];
+                    for (size_t slotRank = 0; slotRank <= 2 * numberLeads && !chosen; ++slotRank) {
+                        // 0, +1, -1, +2, -2, ...
+                        const double slot = slotRank == 0 ? 0.0
+                                          : (slotRank % 2 == 1 ? double((slotRank + 1) / 2) : -double(slotRank / 2));
+                        const double exitX = slot * pitch;
+                        std::vector<std::vector<double>> raw;
+                        raw.push_back({exitX, exitAxial, exitDepth});
+                        raw.push_back({exitX, exitAxial, laneDepth});
+                        raw.push_back({besidePin, exitAxial, laneDepth});
+                        auto railPoint = raw.back();
+                        railPoint[axisIndex] = wrapTop;
+                        raw.push_back(railPoint);
+                        auto rowPoint = railPoint;
+                        rowPoint[rowIndex] = pin.centre[rowIndex];
+                        raw.push_back(rowPoint);
+                        raw.push_back(axis_point(pin, axisIndex, wrapTop));
+                        std::vector<std::vector<double>> points;
+                        for (auto& point : raw) {
+                            if (points.empty() || distance(points.back(), point) > 1e-12) {
+                                points.push_back(point);
+                            }
+                        }
+                        ++candidates;
+                        std::optional<std::string> conflict;
+                        // A leg that doubles back over the previous one is not a route.
+                        for (size_t k = 0; k + 2 < points.size() && !conflict; ++k) {
+                            double dotProduct = 0;
+                            for (int c = 0; c < 3; ++c) {
+                                dotProduct += (points[k + 1][c] - points[k][c]) * (points[k + 2][c] - points[k + 1][c]);
+                            }
+                            const double lengths = distance(points[k], points[k + 1]) * distance(points[k + 1], points[k + 2]);
+                            if (dotProduct < -0.99 * lengths) {
+                                conflict = "its own leg " + std::to_string(k) + " (it folds back on itself)";
+                            }
+                        }
+                        RoutedPinLead candidate;
+                        candidate.request = leadIndex;
+                        candidate.pinIndex = pinOfLead[leadIndex];
+                        candidate.radius = radius;
+                        candidate.wrapRadius = wrapRadius;
+                        candidate.points = points;
+                        candidate.wrapAxis = {axis_point(pin, axisIndex, wrapTop), axis_point(pin, axisIndex, wrapBottom)};
+                        candidate.wrapTop = wrapTop;
+                        candidate.wrapBottom = wrapBottom;
+                        candidate.dropX = besidePin;
+                        // Pin rails: the wire goes round and under them, never through.
+                        for (const auto& rail : pinRails) {
+                            if (conflict) {
+                                break;
+                            }
+                            for (size_t k = 0; k + 1 < points.size(); ++k) {
+                                const double found = segment_box_distance(points[k], points[k + 1], rail);
+                                if (found < radius - tolerance) {
+                                    conflict = "pin rail '" + rail.name + "': leg " + std::to_string(k) + " comes " + millimetres(found) +
+                                               " from it, a wire radius " + millimetres(radius) + " needed";
+                                    break;
+                                }
+                            }
+                        }
+                        // Pins: every pin but its own keeps the approach clearance from the whole run;
+                        // its own pin, from everything but the last leg (which ends on its axis).
+                        for (size_t pinIndex = 0; pinIndex < placedPins.size() && !conflict; ++pinIndex) {
+                            const auto& other = placedPins[pinIndex];
+                            const size_t otherAxis = other.hangsAlongZ ? 2 : 1;
+                            std::vector<std::vector<double>> pinAxis = {other.base, axis_point(other, otherAxis, 2 * other.centre[otherAxis] - other.base[otherAxis])};
+                            const bool own = pinIndex == candidate.pinIndex;
+                            const double required = other.diameter / 2 + radius + lead.diameter;
+                            const double found = polyline_distance(points, pinAxis, own);
+                            if (found < required - tolerance) {
+                                conflict = "pin '" + other.name + "': centreline " + millimetres(found) + " from its axis, " +
+                                           millimetres(required) + " needed (pin radius + wire radius + wire diameter)";
+                            }
+                        }
+                        for (const auto& placed : routed) {
+                            if (conflict) {
+                                break;
+                            }
+                            const auto& otherLabel = leads[placed.request].label;
+                            const double required = radius + placed.radius;
+                            // Every lead drops to the rail in its own plane along the flange: two drops
+                            // at one x would only be kept apart by their lanes (ABT #1237).
+                            if (std::abs(besidePin - placed.dropX) < required - tolerance) {
+                                conflict = "the drop of " + otherLabel + " at x = " + millimetres(placed.dropX) +
+                                           ": " + millimetres(std::abs(besidePin - placed.dropX)) + " apart along the flange, " +
+                                           millimetres(required) + " needed";
+                                break;
+                            }
+                            double found = polyline_distance(points, placed.points);
+                            if (found < required - tolerance) {
+                                conflict = "the run of " + otherLabel + ": centreline distance " + millimetres(found) + " < " + millimetres(required);
+                                break;
+                            }
+                            const bool samePin = placed.pinIndex == candidate.pinIndex;
+                            // This run against that wrap, and that run against this wrap.
+                            found = polyline_distance(points, placed.wrapAxis, samePin) - placed.wrapRadius;
+                            if (found < required - tolerance) {
+                                conflict = "the wrap of " + otherLabel + " on pin '" + placedPins[placed.pinIndex].name +
+                                           "': centreline distance " + millimetres(found) + " < " + millimetres(required);
+                                break;
+                            }
+                            found = polyline_distance(placed.points, candidate.wrapAxis, samePin) - wrapRadius;
+                            if (found < required - tolerance) {
+                                conflict = "the run of " + otherLabel + " against this lead's wrap on pin '" + pin.name +
+                                           "': centreline distance " + millimetres(found) + " < " + millimetres(required);
+                                break;
+                            }
+                            if (samePin) {
+                                // Two wraps on one pin (strands sharing it) are separated along the axis;
+                                // each arrival leg lies at its wrap's top, so that gap covers them too.
+                                const double gap = std::max(placed.wrapBottom - wrapTop, wrapBottom - placed.wrapTop);
+                                if (gap < required - tolerance) {
+                                    conflict = "the wrap of " + otherLabel + " on the same pin '" + pin.name + "': " +
+                                               millimetres(std::max(gap, 0.0)) + " apart along the pin, " + millimetres(required) + " needed";
+                                    break;
+                                }
+                            }
+                            else {
+                                found = segment_distance(candidate.wrapAxis[0], candidate.wrapAxis[1], placed.wrapAxis[0], placed.wrapAxis[1]) -
+                                        wrapRadius - placed.wrapRadius;
+                                if (found < required - tolerance) {
+                                    conflict = "the wrap of " + otherLabel + " on pin '" + placedPins[placed.pinIndex].name +
+                                               "' against this lead's wrap: centreline distance " + millimetres(found) + " < " + millimetres(required);
+                                    break;
+                                }
+                            }
+                        }
+                        if (!conflict) {
+                            chosen = candidate;
+                        }
+                        else if (!directConflict) {
+                            directConflict = conflict;
+                        }
+                    }
+                }
+                }
+            }
+        }
+        if (!chosen) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Cannot route " + lead.label + " to pin '" + pin.name + "' clear of the other leads and pins: all " +
+                std::to_string(candidates) + " candidate runs (wrap levels on the pin, approach sides, drop offsets, lanes, exit slots) share "
+                "copper, and the most direct one collides with " + directConflict.value_or("nothing recorded") +
+                ". Assign that end to another pin, use a thinner wire, or a former with a wider pin pitch or longer pins.");
+        }
+        routed.push_back(chosen.value());
+    }
+
+    for (const auto& lead : routed) {
+        PinLeadRoute route;
+        route.pinName = placedPins[lead.pinIndex].name;
+        route.waypoints = lead.points;
+        for (size_t index = 0; index + 1 < route.waypoints.size(); ++index) {
+            route.length += distance(route.waypoints[index], route.waypoints[index + 1]);
+        }
+        result[lead.request] = route;
+    }
+    return result;
 }
 
 double Coil::lead_front_face_offset(Bobbin bobbin) {
