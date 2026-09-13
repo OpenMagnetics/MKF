@@ -375,9 +375,23 @@ class MagneticFilterMagnetizingInductance : public MagneticFilter {
  *
  * @note Returns leakage inductance in Henries. Lower values score better when inverted.
  */
+enum class LeakageInductanceFilterMode {
+    // Score Lk/Lm, lower is better (common-mode chokes). The historical behaviour, and the default.
+    MINIMIZE_LEAKAGE_RATIO,
+    // Score the distance of Lk (source winding 0 to winding i + 1) to
+    // designRequirements.leakageInductance[i]; candidates outside the band are invalid (ABT #1176).
+    TARGET
+};
+
 class MagneticFilterLeakageInductance : public MagneticFilter {
+    private:
+        LeakageInductanceFilterMode _mode = LeakageInductanceFilterMode::MINIMIZE_LEAKAGE_RATIO;
+        std::pair<bool, double> evaluate_minimize_leakage_ratio(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs);
+        std::pair<bool, double> evaluate_target(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs);
     public:
         MagneticFilterLeakageInductance() {};
+        explicit MagneticFilterLeakageInductance(LeakageInductanceFilterMode mode) : _mode(mode) {};
+        LeakageInductanceFilterMode get_mode() const { return _mode; }
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 

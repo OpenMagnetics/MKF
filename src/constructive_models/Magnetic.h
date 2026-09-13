@@ -70,6 +70,9 @@ class Magnetic : public MAS::Magnetic {
             if (magnetic.get_manufacturer_info()) {
                 set_manufacturer_info(magnetic.get_manufacturer_info());
             }
+            // Shunts belong to the assembled magnetic (MAS-RFC 0015); dropping them here silently
+            // turned an integrated-leakage transformer into a plain one (ABT #1176).
+            set_shunts(magnetic.get_shunts());
         }
 
         // MagneticManufacturerInfo accessors (shadow MAS::Magnetic's field with the same type).
@@ -209,6 +212,7 @@ inline void from_json(const json & j, Magnetic& x) {
     x.set_distributors_info(get_stack_optional<std::vector<DistributorInfo>>(migrated, "distributorsInfo"));
     x.set_manufacturer_info(get_stack_optional<MagneticManufacturerInfo>(migrated, "manufacturerInfo"));
     x.set_rotation(get_stack_optional<std::vector<double>>(migrated, "rotation"));
+    x.set_shunts(get_stack_optional<std::vector<MagneticShunt>>(migrated, "shunts"));
 }
 
 inline void to_json(json & j, const Magnetic & x) {
@@ -222,6 +226,9 @@ inline void to_json(json & j, const Magnetic & x) {
     j["distributorsInfo"] = x.get_distributors_info();
     j["manufacturerInfo"] = x.get_manufacturer_info();
     j["rotation"] = x.get_rotation();
+    if (x.get_shunts()) {
+        j["shunts"] = x.get_shunts();
+    }
 }
 
 inline void from_json(const json& j, std::vector<Magnetic>& v) {
@@ -241,6 +248,7 @@ inline void from_json(const json& j, std::vector<Magnetic>& v) {
         x.set_distributors_info(get_stack_optional<std::vector<DistributorInfo>>(e, "distributorsInfo"));
         x.set_manufacturer_info(get_stack_optional<MagneticManufacturerInfo>(e, "manufacturerInfo"));
         x.set_rotation(get_stack_optional<std::vector<double>>(e, "rotation"));
+        x.set_shunts(get_stack_optional<std::vector<MagneticShunt>>(e, "shunts"));
         v.push_back(x);
     }
 }
@@ -258,6 +266,9 @@ inline void to_json(json& j, const std::vector<Magnetic>& v) {
         e["distributorsInfo"] = x.get_distributors_info();
         e["manufacturerInfo"] = x.get_manufacturer_info();
         e["rotation"] = x.get_rotation();
+        if (x.get_shunts()) {
+            e["shunts"] = x.get_shunts();
+        }
         j.push_back(e);
     }
 }

@@ -1,3 +1,4 @@
+#include "physical_models/MagneticShunt.h"
 #include "physical_models/MagnetizingInductance.h"
 
 #include "processors/Inputs.h"
@@ -39,8 +40,20 @@ double calculate_air_inductance(int64_t numberTurnsPrimary, Core core) {
 }
 
 std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(Magnetic magnetic, OperatingPoint* operatingPoint) {
-    auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
+    if (magnetic.get_shunts() && !magnetic.get_shunts()->empty()) {
+        // Magnetic shunts (MAS-RFC 0015, ABT #1176): a sheet lying in a column gap replaces part of
+        // that gap's air with permeable material. Sheets that do not touch a gap leave the magnetizing
+        // path alone; outsideWindow sheets throw.
+        double temperature = operatingPoint ? operatingPoint->get_conditions().get_ambient_temperature() : Defaults().ambientTemperature;
+        double frequency = Defaults().coreAdviserFrequencyReference;
+        if (operatingPoint && !operatingPoint->get_excitations_per_winding().empty()) {
+            frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
+        }
+        auto core = MagneticShuntModel::apply_shunts_to_gapping(magnetic, temperature, frequency);
+        return calculate_inductance_and_magnetic_flux_density(core, coil, operatingPoint);
+    }
+    auto core = magnetic.get_core();
     return calculate_inductance_and_magnetic_flux_density(core, coil, operatingPoint);
 }
 

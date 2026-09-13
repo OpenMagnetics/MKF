@@ -137,6 +137,25 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
             "(effective parameters/shape unresolved). Run magnetic autocomplete / process the core first.");
     }
 
+    // Magnetic shunts (MAS-RFC 0015, ABT #1176). A sheet across the window carries the leakage flux
+    // through its own reluctance network, which the air-field integral below cannot see.
+    if (magnetic.get_shunts() && !magnetic.get_shunts()->empty()) {
+        MagneticShuntModel::check_supported_placements(magnetic);
+        if (MagneticShuntModel::has_leakage_shunts(magnetic)) {
+            if (ReluctanceNetwork::has_non_main_placement(magnetic)) {
+                throw NotImplementedException("Leakage inductance with a magnetic shunt for windings placed on several columns");
+            }
+            auto shuntResult = calculate_shunt_leakage(magnetic, frequency, sourceIndex, destinationIndex, harmonicIndex);
+            LeakageInductanceOutput shuntOutput;
+            shuntOutput.set_method_used("Shunt");
+            shuntOutput.set_origin(ResultOrigin::SIMULATION);
+            DimensionWithTolerance shuntDimensionWithTolerance;
+            shuntDimensionWithTolerance.set_nominal(shuntResult.leakageInductance);
+            shuntOutput.set_leakage_inductance_per_winding({shuntDimensionWithTolerance});
+            return shuntOutput;
+        }
+    }
+
     // Multi-column winding: the window-energy method below integrates the field of ONE
     // window revolved around the main column — meaningless for a winding pair sitting
     // on different columns, whose leakage flux closes through the other window and the
@@ -210,6 +229,30 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
     return leakageInductanceOutput;
 }
 
+MagneticShuntLeakageResult LeakageInductance::calculate_shunt_leakage(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex,
+                                                                     std::optional<std::vector<double>> relativePermeabilityPerShunt) {
+    if (!magnetic.get_shunts() || magnetic.get_shunts()->empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Shunt leakage method called on a magnetic without shunts");
+    }
+    MagneticShuntModel::check_supported_placements(magnetic);
+    auto shunts = magnetic.get_shunts().value();
+    if (relativePermeabilityPerShunt && relativePermeabilityPerShunt->size() != shunts.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Shunt leakage method: " + std::to_string(relativePermeabilityPerShunt->size()) +
+                                    " relative permeabilities given for " + std::to_string(shunts.size()) + " shunts");
+    }
+
+    // The windings' own leakage, by the air-field Energy method, without the sheets.
+    Magnetic withoutShunts = magnetic;
+    withoutShunts.set_shunts(std::nullopt);
+    auto windingOutput = calculate_leakage_inductance(withoutShunts, frequency, sourceIndex, destinationIndex, harmonicIndex);
+    if (windingOutput.get_method_used() != "Energy") {
+        throw NotImplementedException("Shunt leakage method on top of the " + windingOutput.get_method_used() + " leakage method");
+    }
+    double windingLeakageInductance = windingOutput.get_leakage_inductance_per_winding()[0].get_nominal().value();
+
+    return MagneticShuntModel::assemble_leakage(magnetic, windingLeakageInductance, frequency, sourceIndex, destinationIndex, relativePermeabilityPerShunt);
+}
+
 ComplexField LeakageInductance::calculate_leakage_magnetic_field(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
     // RAII: this function never restored the flag at all — one call permanently
     // disabled fringing for every later field computation in the process.
@@ -234,7 +277,7 @@ ComplexField LeakageInductance::calculate_leakage_magnetic_field(Magnetic magnet
 LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance_all_windings(Magnetic magnetic, double frequency, size_t sourceIndex, size_t harmonicIndex) {
     LeakageInductanceOutput leakageInductanceOutput;
 
-    leakageInductanceOutput.set_method_used("Energy");
+    leakageInductanceOutput.set_method_used(MagneticShuntModel::has_leakage_shunts(magnetic) ? "Shunt" : "Energy");
     leakageInductanceOutput.set_origin(ResultOrigin::SIMULATION);
     std::vector<DimensionWithTolerance> leakageInductancePerWinding;
 
@@ -301,6 +344,9 @@ double LeakageInductance::integrate_leakage_energy(Magnetic& magnetic, ComplexFi
 }
 
 double LeakageInductance::calculate_leakage_field_energy(Magnetic magnetic, const std::vector<double>& currentsRmsSigned, double frequency, size_t harmonicIndex) {
+    if (MagneticShuntModel::has_leakage_shunts(magnetic)) {
+        throw NotImplementedException("Leakage field energy (and the leakage inductance matrix) of a magnetic with a shunt in the window");
+    }
     if (!magnetic.get_core().get_processed_description()) {
         throw CoreNotProcessedException(
             "Cannot calculate leakage field energy: the core has no processed description "

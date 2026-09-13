@@ -44,7 +44,7 @@ void from_file(std::filesystem::path filepath, Mas & x) {
         // A file whose magnetizing inductance cannot be computed is broken input;
         // loading it silently without the inductance hid real core/coil defects.
         MagnetizingInductance magnetizingInductanceModel;
-        double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance().get_nominal().value();
+        double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance().get_nominal().value();
         inputs = OpenMagnetics::Inputs(inputsJson, true, magnetizingInductance);
     }
 

@@ -74,7 +74,7 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
 }
 
 MagnetizingInductanceOutput MagneticSimulator::calculate_magnetizing_inductance(OperatingPoint& operatingPoint, Magnetic magnetic){
-    return _magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint);
+    return _magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic, &operatingPoint);
 }
 
 LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic){
@@ -148,7 +148,7 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         excitation = operatingPoint.get_excitations_per_winding()[0];
         operatingPoint.get_mutable_conditions().set_ambient_temperature(temperature);
 
-        magneticFluxDensity = _magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).second;
+        magneticFluxDensity = _magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint).second;
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
 

@@ -147,6 +147,8 @@ class CoilAdviser : public WireAdviser {
         }
 
         std::vector<Mas> get_advised_coil(Mas mas, size_t maximumNumberResults=1);
+    // ABT #1176, behind Settings::get_coil_adviser_size_magnetic_shunts().
+    void add_magnetic_shunts_for_leakage_target(std::vector<Mas>& candidates);
         std::vector<Mas> get_advised_coil(std::vector<Wire>* wires, Mas mas, size_t maximumNumberResults=1);
         std::vector<Section> get_advised_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions);
         std::vector<Section> get_advised_planar_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions);

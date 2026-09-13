@@ -1684,6 +1684,30 @@ void Painter::paint_bobbin(Magnetic magnetic) {
     }
 }
 
+void Painter::paint_shunts(Magnetic magnetic) {
+    if (!magnetic.get_shunts()) {
+        return;
+    }
+    auto shunts = magnetic.get_shunts().value();
+    for (size_t shuntIndex = 0; shuntIndex < shunts.size(); ++shuntIndex) {
+        auto& shunt = shunts[shuntIndex];
+        auto coordinates = shunt.get_coordinates();
+        auto dimensions = shunt.get_dimensions();
+        if (coordinates.size() < 2 || dimensions.size() < 2) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Painter: magnetic shunt " + std::to_string(shuntIndex) + " needs x, y coordinates and width, height");
+        }
+        double x0 = coordinates[0] - dimensions[0] / 2;
+        double x1 = coordinates[0] + dimensions[0] / 2;
+        // The 2D section shows the +x half only; a sheet lying entirely at x < 0 is not in it.
+        if (x1 <= 0) {
+            continue;
+        }
+        x0 = std::max(0.0, x0);
+        std::string label = shunt.get_name() ? shunt.get_name().value() : "Shunt " + std::to_string(shuntIndex);
+        paint_rectangle((x0 + x1) / 2, coordinates[1], x1 - x0, dimensions[1], "shunt", nullptr, 0, {0, 0}, label);
+    }
+}
+
 bool Painter::prepare_coil_canvas(Magnetic& magnetic) {
     // Sets _imageHeight for a coil paint and reports whether the coil should be
     // laid out as a toroid. When a core is present its geometry drives both, as
@@ -4757,6 +4781,7 @@ void Painter::paint_magnetic(Magnetic magnetic, PainterProjection projection) {
         paint_toroidal_turn_connections(magnetic, /*below=*/true);
         paint_core(magnetic);
         paint_bobbin(magnetic);
+        paint_shunts(magnetic);
         paint_coil_turns(magnetic);
         paint_toroidal_turn_connections(magnetic, /*below=*/false);
         paint_coil_connections(magnetic);

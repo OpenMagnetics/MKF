@@ -100,6 +100,10 @@ namespace OpenMagnetics {
         _usePowderCores = true;
         _corePerColumnWindingWindows = false;
         _coilAdviserAllowLateralPlacement = false;
+        _coilAdviserSizeMagneticShunts = false;
+        _coilAdviserMagneticShuntMaterial = "";
+        _coilAdviserMagneticShuntGapToInnerColumn = std::nullopt;
+        _coilAdviserMagneticShuntGapToOuterColumn = std::nullopt;
         _wireAdviserPenalizeOddLayerCount = false;
         _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
         _nanocrystallineStackingFactor = 0.80;
@@ -129,6 +133,7 @@ namespace OpenMagnetics {
         _painterColorPFA = "0xedbe1c";
         _painterColorSilk = "0xe7e7e8";
         _painterColorSpacer = "0x3b3b3b";
+        _painterColorShunt = "0x6a5acd";
         _painterColorLines = "0x010000";
         _painterColorText = "0x000000";
         _painterColorCurrentDensity = "0x0892D0";
@@ -384,6 +389,31 @@ namespace OpenMagnetics {
         _coilAdviserAllowLateralPlacement = value;
     }
 
+    bool Settings::get_coil_adviser_size_magnetic_shunts() const {
+        return _coilAdviserSizeMagneticShunts;
+    }
+    void Settings::set_coil_adviser_size_magnetic_shunts(bool value) {
+        _coilAdviserSizeMagneticShunts = value;
+    }
+    std::string Settings::get_coil_adviser_magnetic_shunt_material() const {
+        return _coilAdviserMagneticShuntMaterial;
+    }
+    void Settings::set_coil_adviser_magnetic_shunt_material(std::string value) {
+        _coilAdviserMagneticShuntMaterial = value;
+    }
+    std::optional<double> Settings::get_coil_adviser_magnetic_shunt_gap_to_inner_column() const {
+        return _coilAdviserMagneticShuntGapToInnerColumn;
+    }
+    void Settings::set_coil_adviser_magnetic_shunt_gap_to_inner_column(std::optional<double> value) {
+        _coilAdviserMagneticShuntGapToInnerColumn = value;
+    }
+    std::optional<double> Settings::get_coil_adviser_magnetic_shunt_gap_to_outer_column() const {
+        return _coilAdviserMagneticShuntGapToOuterColumn;
+    }
+    void Settings::set_coil_adviser_magnetic_shunt_gap_to_outer_column(std::optional<double> value) {
+        _coilAdviserMagneticShuntGapToOuterColumn = value;
+    }
+
     bool Settings::get_wire_adviser_penalize_odd_layer_count() const {
         return _wireAdviserPenalizeOddLayerCount;
     }
@@ -522,6 +552,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_painter_color_spacer(std::string value) {
         _painterColorSpacer = value;
+    }
+
+    std::string Settings::get_painter_color_shunt() const {
+        return _painterColorShunt;
+    }
+    void Settings::set_painter_color_shunt(std::string value) {
+        _painterColorShunt = value;
     }
 
     std::string Settings::get_painter_color_lines() const {

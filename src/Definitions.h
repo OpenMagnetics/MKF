@@ -534,7 +534,8 @@ enum class MagneticFilters : int {
     TEMPERATURE,         // Node-network core temperature (Temperature.cpp, coreOnly mode)
     TURN_COUNT,       // Total turns across all windings — fewer turns preferred (CMC/DMC ranking)
     DATASHEET_LIMITS,  // Gate catalogue parts by their own datasheet electrical limits; no-op when datasheetInfo absent (ABT #19)
-    WINDABILITY       // Can each wire actually be bent around the former it is wound on? IEC 60317 bend radius (ABT #959)
+    WINDABILITY,      // Can each wire actually be bent around the former it is wound on? IEC 60317 bend radius (ABT #959)
+    LEAKAGE_INDUCTANCE_TARGET  // Distance of the leakage inductance to designRequirements.leakageInductance (ABT #1176)
 };
 
 class MagneticFilterOperation {
@@ -618,6 +619,7 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Turn Count") x = MagneticFilters::TURN_COUNT;
     else if (j == "Datasheet Limits") x = MagneticFilters::DATASHEET_LIMITS;
     else if (j == "Windability") x = MagneticFilters::WINDABILITY;
+    else if (j == "Leakage Inductance Target") x = MagneticFilters::LEAKAGE_INDUCTANCE_TARGET;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
 }
 
@@ -662,6 +664,7 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::TURN_COUNT: j = "Turn Count"; break;
         case MagneticFilters::DATASHEET_LIMITS: j = "Datasheet Limits"; break;
         case MagneticFilters::WINDABILITY: j = "Windability"; break;
+        case MagneticFilters::LEAKAGE_INDUCTANCE_TARGET: j = "Leakage Inductance Target"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"MagneticFilters\": " + std::to_string(static_cast<int>(x)));
     }
 }

@@ -1,3 +1,4 @@
+#include "physical_models/MagneticShunt.h"
 #include "processors/Inputs.h"
 #include "advisers/CoilAdviser.h"
 #include "support/LibraryContext.h"
@@ -332,6 +333,41 @@ namespace OpenMagnetics {
         return validMasMagneticsWithScoring;
     }
 
+    void CoilAdviser::add_magnetic_shunts_for_leakage_target(std::vector<Mas>& candidates) {
+        auto materialName = settings.get_coil_adviser_magnetic_shunt_material();
+        auto innerGap = settings.get_coil_adviser_magnetic_shunt_gap_to_inner_column();
+        auto outerGap = settings.get_coil_adviser_magnetic_shunt_gap_to_outer_column();
+        if (materialName.empty() || !innerGap || !outerGap) {
+            throw InvalidInputException("CoilAdviser shunt sizing is on but the shunt material or its gaps to the columns are not set");
+        }
+        auto material = find_core_material_by_name(materialName);
+        for (auto& candidate : candidates) {
+            auto requirements = candidate.get_inputs().get_design_requirements().get_leakage_inductance();
+            if (!requirements || requirements->empty()) {
+                continue;
+            }
+            if (candidate.get_inputs().get_operating_points().empty()) {
+                throw InvalidInputException("CoilAdviser shunt sizing needs an operating point");
+            }
+            auto excitation = candidate.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0];
+            if (!excitation.get_current() || !excitation.get_current()->get_processed() || !excitation.get_current()->get_processed()->get_peak()) {
+                throw InvalidInputException("CoilAdviser shunt sizing needs the processed primary current peak");
+            }
+            double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
+            double target = resolve_dimensional_values(requirements.value()[0]);
+            try {
+                auto sheets = MagneticShuntModel::size_shunt_for_leakage(candidate.get_magnetic(), target, material, innerGap.value(), outerGap.value(),
+                                                                         currentPeak, excitation.get_frequency(), 0, 1);
+                candidate.get_mutable_magnetic().set_shunts(sheets);
+            }
+            catch (const InvalidInputException& e) {
+                // This candidate cannot hold a sheet that meets the target (no axial interface, target
+                // out of reach, or saturation). It stays unshunted and is judged as it is.
+                logEntry(std::string("Shunt sizing skipped for a candidate: ") + e.what(), "CoilAdviser", 2);
+            }
+        }
+    }
+
     std::vector<Mas> CoilAdviser::get_advised_coil(Mas mas, size_t maximumNumberResults){
         logEntry("Starting Coil Adviser without wires", "CoilAdviser");
         // Inside a LibraryContext scope the (possibly empty) wireDatabase IS
@@ -614,6 +650,12 @@ namespace OpenMagnetics {
         }
 
         logEntry("Found " + std::to_string(masesWithCoil.size()) + " magnetics", "CoilAdviser");
+
+        // ABT #1176: opt-in shunt sizing, so a leakage-target filter sees the shunted candidate.
+        if (settings.get_coil_adviser_size_magnetic_shunts()) {
+            add_magnetic_shunts_for_leakage_target(masesWithCoil);
+        }
+
         std::vector<std::pair<Mas, double>> invalidMagneticsWithScoring;
         auto masMagneticsWithScoring = score_magnetics(masesWithCoil, _loadedFilterFlow, &invalidMagneticsWithScoring);
 

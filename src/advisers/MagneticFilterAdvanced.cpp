@@ -79,6 +79,89 @@ std::pair<bool, double> MagnetomotiveForce::evaluate_magnetic(Magnetic* magnetic
 }
 
 std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    switch (_mode) {
+        case LeakageInductanceFilterMode::MINIMIZE_LEAKAGE_RATIO:
+            return evaluate_minimize_leakage_ratio(magnetic, inputs, outputs);
+        case LeakageInductanceFilterMode::TARGET:
+            return evaluate_target(magnetic, inputs, outputs);
+    }
+    throw InvalidInputException("MagneticFilterLeakageInductance: unknown mode");
+}
+
+std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_target(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    // Integrated-leakage designs (LLC resonant inductance in the transformer, designed flyback
+    // leakage, shunted transformers): the leakage is a target band, not something to minimise.
+    auto requirements = inputs->get_design_requirements().get_leakage_inductance();
+    if (!requirements || requirements->empty()) {
+        throw InvalidInputException("MagneticFilterLeakageInductance TARGET mode needs designRequirements.leakageInductance");
+    }
+    size_t numberWindings = magnetic->get_coil().get_functional_description().size();
+    if (numberWindings < 2 || requirements->size() > numberWindings - 1) {
+        throw InvalidInputException("MagneticFilterLeakageInductance TARGET mode: " + std::to_string(requirements->size()) +
+                                    " leakage requirements for " + std::to_string(numberWindings) + " windings");
+    }
+    if (inputs->get_operating_points().empty()) {
+        throw InvalidInputException("MagneticFilterLeakageInductance TARGET mode needs an operating point for the frequency");
+    }
+    double frequency = inputs->get_operating_points()[0].get_excitations_per_winding()[0].get_frequency();
+
+    LeakageInductance leakageModel;
+    bool valid = true;
+    double scoring = 0;
+    std::vector<DimensionWithTolerance> leakagePerWinding;
+    std::string methodUsed;
+    for (size_t requirementIndex = 0; requirementIndex < requirements->size(); ++requirementIndex) {
+        auto requirement = requirements.value()[requirementIndex];
+        auto leakageOutput = leakageModel.calculate_leakage_inductance(*magnetic, frequency, 0, requirementIndex + 1);
+        methodUsed = leakageOutput.get_method_used();
+        double leakageInductance = resolve_dimensional_values(leakageOutput.get_leakage_inductance_per_winding()[0]);
+        leakagePerWinding.push_back(leakageOutput.get_leakage_inductance_per_winding()[0]);
+
+        // Relative distance to the band: zero inside [minimum, maximum] (a missing bound is open),
+        // measured from the nearest bound outside it; with only a nominal, from the nominal.
+        double reference = resolve_dimensional_values(requirement);
+        if (!(reference > 0)) {
+            throw InvalidInputException("MagneticFilterLeakageInductance TARGET mode: leakage requirement " + std::to_string(requirementIndex) + " is not positive");
+        }
+        double distance = 0;
+        if (requirement.get_minimum() || requirement.get_maximum()) {
+            if (requirement.get_minimum() && leakageInductance < requirement.get_minimum().value()) {
+                distance = requirement.get_minimum().value() - leakageInductance;
+            }
+            else if (requirement.get_maximum() && leakageInductance > requirement.get_maximum().value()) {
+                distance = leakageInductance - requirement.get_maximum().value();
+            }
+        }
+        else {
+            distance = std::fabs(leakageInductance - reference);
+        }
+        scoring += distance / reference;
+        if (!check_requirement(requirement, leakageInductance)) {
+            valid = false;
+        }
+    }
+
+    if (outputs != nullptr) {
+        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
+            while (outputs->size() < operatingPointIndex + 1) {
+                outputs->push_back(Outputs());
+            }
+            InductanceOutput inductanceOutput;
+            if ((*outputs)[operatingPointIndex].get_inductance()) {
+                inductanceOutput = *(*outputs)[operatingPointIndex].get_inductance();
+            }
+            LeakageInductanceOutput leakageOutput;
+            leakageOutput.set_method_used(methodUsed);
+            leakageOutput.set_origin(ResultOrigin::SIMULATION);
+            leakageOutput.set_leakage_inductance_per_winding(leakagePerWinding);
+            inductanceOutput.set_leakage_inductance(leakageOutput);
+            (*outputs)[operatingPointIndex].set_inductance(inductanceOutput);
+        }
+    }
+    return {valid, scoring};
+}
+
+std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_minimize_leakage_ratio(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     // Leakage inductance filter for CMC optimization
     // For Common Mode Chokes, we want to minimize leakage inductance to maximize coupling coefficient
     // Coupling coefficient k = 1 - (Lk / Lm), where Lk is leakage and Lm is magnetizing inductance

@@ -77,6 +77,14 @@ class Settings
         // secondary wound on a lateral leg (integrated-leakage designs). Off by
         // default so the adviser surface is unchanged unless explicitly requested.
         bool _coilAdviserAllowLateralPlacement = false;
+        // Opt-in (ABT #1176): CoilAdviser sizes a betweenSections magnetic shunt on every wound
+        // candidate whose design requirements carry a leakage inductance, with
+        // MagneticShuntModel::size_shunt_for_leakage. The sheet material and its gaps to the columns
+        // have no defaults: switching this on without setting them throws.
+        bool _coilAdviserSizeMagneticShunts = false;
+        std::string _coilAdviserMagneticShuntMaterial = "";
+        std::optional<double> _coilAdviserMagneticShuntGapToInnerColumn;
+        std::optional<double> _coilAdviserMagneticShuntGapToOuterColumn;
         // ABT #1177 (WP8, DFM rule R1): when true, WireAdviser penalises a wire candidate
         // whose winding would land on an ODD number of layers in its section. An odd layer
         // count forces a drag-back (bump, window loss, extra leakage, a 45-90 degree wire
@@ -112,6 +120,7 @@ class Settings
         std::string _painterColorSilk = "0xe7e7e8";
         std::string _painterColorMargin = "0xfff05b";
         std::string _painterColorSpacer = "0x3b3b3b";
+        std::string _painterColorShunt = "0x6a5acd";
         std::string _painterColorLines = "0x010000";
         std::string _painterColorText = "0x000000";
         std::string _painterColorCurrentDensity = "0x0892D0";
@@ -323,6 +332,15 @@ class Settings
         bool get_coil_adviser_allow_lateral_placement() const;
         void set_coil_adviser_allow_lateral_placement(bool value);
 
+        bool get_coil_adviser_size_magnetic_shunts() const;
+        void set_coil_adviser_size_magnetic_shunts(bool value);
+        std::string get_coil_adviser_magnetic_shunt_material() const;
+        void set_coil_adviser_magnetic_shunt_material(std::string value);
+        std::optional<double> get_coil_adviser_magnetic_shunt_gap_to_inner_column() const;
+        void set_coil_adviser_magnetic_shunt_gap_to_inner_column(std::optional<double> value);
+        std::optional<double> get_coil_adviser_magnetic_shunt_gap_to_outer_column() const;
+        void set_coil_adviser_magnetic_shunt_gap_to_outer_column(std::optional<double> value);
+
         bool get_wire_adviser_penalize_odd_layer_count() const;
         void set_wire_adviser_penalize_odd_layer_count(bool value);
 
@@ -382,6 +400,9 @@ class Settings
 
         std::string get_painter_color_spacer() const;
         void set_painter_color_spacer(std::string value);
+
+        std::string get_painter_color_shunt() const;
+        void set_painter_color_shunt(std::string value);
 
         std::string get_painter_color_lines() const;
         void set_painter_color_lines(std::string value);

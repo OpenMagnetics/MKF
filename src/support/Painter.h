@@ -457,6 +457,7 @@ class Painter : public PainterInterface {
         _root.style(".margin").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#"));
         _root.style(".margin_translucent").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
         _root.style(".spacer").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_spacer()), std::regex("0x"), "#"));
+        _root.style(".shunt").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_shunt()), std::regex("0x"), "#"));
         _root.style(".copper").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_copper()), std::regex("0x"), "#"));
         _root.style(".copper_translucent").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_copper()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
         _root.style(".insulation").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
@@ -489,6 +490,10 @@ class Painter : public PainterInterface {
     void paint_magnetic(Magnetic magnetic, PainterProjection projection = PainterProjection::XY);
     void paint_core(Magnetic magnetic);
     void paint_bobbin(Magnetic magnetic);
+    // Magnetic shunts (MAS-RFC 0015): each sheet's rectangle in the 2D section, at its coordinates
+    // (x radial, y axial) with its width and height. Only the +x half is drawn, like the rest of the
+    // section. No-op when the magnetic has no shunts.
+    void paint_shunts(Magnetic magnetic);
     void paint_coil_sections(Magnetic magnetic);
     void paint_coil_layers(Magnetic magnetic);
     // Debug overlay: draws the space reserved by terminal/connection leads (from

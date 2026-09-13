@@ -3,6 +3,7 @@
 #include "constructive_models/Magnetic.h"
 #include "support/Utils.h"
 #include "support/CoilMesher.h"
+#include "physical_models/MagneticShunt.h"
 #include <MAS.hpp>
 
 using namespace MAS;
@@ -17,7 +18,21 @@ class LeakageInductance{
         virtual ~LeakageInductance() = default;
 
 
+    // Method selection: "ReluctanceNetwork" for windings on different columns; "Shunt" when the
+    // magnetic carries a shunt placed inWindow or betweenSections (MAS-RFC 0015); "Energy" otherwise.
+    // onColumn shunts only fill column gaps (they enter the magnetizing network, see
+    // MagnetizingInductance's Magnetic overload); outsideWindow shunts throw.
     LeakageInductanceOutput calculate_leakage_inductance(Magnetic magnetic, double frequency, size_t sourceIndex = 0, size_t destinationIndex = 1, size_t harmonicIndex = 1);
+
+    // "Shunt" method in detail (ABT #1176): the Energy method's winding leakage with the shunts
+    // removed, minus the air each sheet displaces, plus the energy of each sheet's reluctance network
+    // (MagneticShuntModel). Also returns the per-shunt flux density per ampere and, where the material
+    // has complex permeability over the frequency, the sheet losses per ampere squared.
+    // relativePermeabilityPerShunt, when given, replaces the materials' permeability (one entry per
+    // magnetic.shunts element) for design exploration or to reproduce a published case; the
+    // materials are then not read and no losses are reported.
+    MagneticShuntLeakageResult calculate_shunt_leakage(Magnetic magnetic, double frequency, size_t sourceIndex = 0, size_t destinationIndex = 1, size_t harmonicIndex = 1,
+                                                       std::optional<std::vector<double>> relativePermeabilityPerShunt = std::nullopt);
     ComplexField calculate_leakage_magnetic_field(Magnetic magnetic, double frequency, size_t sourceIndex = 0, size_t destinationIndex = 1, size_t harmonicIndex = 1);
     LeakageInductanceOutput calculate_leakage_inductance_all_windings(Magnetic magnetic, double frequency, size_t sourceIndex = 0, size_t harmonicIndex = 1);
     std::pair<ComplexField, double> calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t sourceIndex = 0, size_t destinationIndex = 1, size_t harmonicIndex = 1, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
