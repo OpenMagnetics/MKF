@@ -2919,3 +2919,77 @@ TEST_CASE("ABT1163_Outer_Layers_Are_Screened_From_The_Core", "[physical-model][s
     UNSCOPED_INFO("turn ratio=" << turnRatio << " capacitance ratio=" << capacitanceRatio);
     REQUIRE(capacitanceRatio < turnRatio / 4);
 }
+
+// ===========================================================================================
+// ABT #1163, ring-turn segments: a toroid turn encircles the ring, so a turn screened in the
+// crowded bore still faces the ferrite along its outer and flat runs.
+// ===========================================================================================
+
+TEST_CASE("ABT1163_Toroid_Turn_Screened_In_The_Bore_Still_Faces_The_Outside", "[physical-model][stray-capacitance][abt1163]") {
+    // The bore of a toroid is where layers form; the outside has about (A/B) times the room. With
+    // screening judged at the bore alone, a turn in the second bore layer lost its whole
+    // turn-to-core term. With the turn split into its bore, outer and flat runs, it keeps the part
+    // of its length that runs outside the ring, where it is still lying on the ferrite.
+    //
+    // Compared per turn, from the wound coordinates, so the result does not depend on how densely
+    // the winder packs the first layer: the capacitance added by going from one bore layer to two
+    // is split into what the extra first-layer turns explain (a full element each, the same as in
+    // the single-layer coil) and what is left for the second-layer turns. Bore-only screening
+    // leaves them ~0; the segments must return at least a tenth of an element per turn.
+    settings.reset();
+    const std::string shapeName = "T 17/10.7/6.8";
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "80");
+    std::vector<OpenMagnetics::Wire> wires = {OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1")};
+
+    struct Wound { double capacitance; size_t layers; size_t boreLayerTurns; size_t otherTurns; };
+    auto wind = [&](int64_t numberTurns) {
+        auto coil = OpenMagneticsTesting::get_quick_coil({numberTurns}, {1}, shapeName, 1,
+                                                          MAS::WindingOrientation::CONTIGUOUS,
+                                                          MAS::WindingOrientation::OVERLAPPING,
+                                                          MAS::CoilAlignment::CENTERED,
+                                                          MAS::CoilAlignment::CENTERED,
+                                                          wires, false);
+        REQUIRE(coil.get_turns_description());
+        auto turns = coil.get_turns_description().value();
+        // The bore-adjacent layer is the one lying furthest from the ring axis.
+        std::map<std::string, std::pair<double, size_t>> radiusByLayer;
+        for (const auto& turn : turns) {
+            REQUIRE(turn.get_layer());
+            auto& entry = radiusByLayer[turn.get_layer().value()];
+            entry.first += std::hypot(turn.get_coordinates()[0], turn.get_coordinates()[1]);
+            entry.second += 1;
+        }
+        std::string boreLayer;
+        double boreLayerMeanRadius = std::numeric_limits<double>::lowest();
+        for (const auto& [layerName, sumAndCount] : radiusByLayer) {
+            double meanRadius = sumAndCount.first / static_cast<double>(sumAndCount.second);
+            if (meanRadius > boreLayerMeanRadius) {
+                boreLayerMeanRadius = meanRadius;
+                boreLayer = layerName;
+            }
+        }
+        Wound wound;
+        wound.capacitance = OpenMagnetics::StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, "winding 0");
+        wound.layers = radiusByLayer.size();
+        wound.boreLayerTurns = radiusByLayer.at(boreLayer).second;
+        wound.otherTurns = turns.size() - wound.boreLayerTurns;
+        return wound;
+    };
+
+    auto single = wind(40);
+    auto twoLayer = wind(100);
+    REQUIRE(single.layers == 1);
+    REQUIRE(twoLayer.layers == 2);
+    REQUIRE(std::isfinite(single.capacitance));
+    REQUIRE(std::isfinite(twoLayer.capacitance));
+
+    double elementPerFirstLayerTurn = single.capacitance / static_cast<double>(single.boreLayerTurns);
+    double explainedByFirstLayer = elementPerFirstLayerTurn * static_cast<double>(twoLayer.boreLayerTurns);
+    double returnedPerSecondLayerTurn = (twoLayer.capacitance - explainedByFirstLayer) /
+                                        (elementPerFirstLayerTurn * static_cast<double>(twoLayer.otherTurns));
+    UNSCOPED_INFO("single: bore-layer turns=" << single.boreLayerTurns << " C=" << single.capacitance
+                  << " | two layers: bore-layer turns=" << twoLayer.boreLayerTurns
+                  << " second-layer turns=" << twoLayer.otherTurns << " C=" << twoLayer.capacitance
+                  << " | element returned per second-layer turn=" << returnedPerSecondLayerTurn);
+    REQUIRE(returnedPerSecondLayerTurn > 0.1);
+}
