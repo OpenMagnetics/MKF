@@ -244,7 +244,8 @@ struct ConnectionRoute {
     // same electrical order as `waypoints` (entrance: pin end first; exit: window exit first),
     // from the window exit to the pin AXIS, one coated radius (or a whole wrap level) beyond the
     // plane the pin leaves: the wrap starts there (ABT #1237, Coil::route_leads_to_pins). The exit
-    // carries MKF's own slot along the flange (x) and ride-over lift (z). `routedLength` includes it.
+    // carries MKF's own slot along the flange (x, Coil::terminal_exit_slots: the x the in-window
+    // run is drawn at) and ride-over lift (z). `routedLength` includes it.
     std::string pinName;
     std::vector<std::vector<double>> pinWaypoints;
 };
@@ -264,6 +265,10 @@ struct PinLeadRequest {
     std::vector<double> windowExit;    // {radial, axial}, the coil's real frame
     double diameter = 0;               // coated (or sleeve) outer diameter
     double lift = 0;                   // ride-over displacement at the exit radius (ConnectionLayout::ride_at)
+    // ABT #1237: the x along the flange (bobbin frame) at which the lead's in-window run leaves the
+    // window: MKF's exit slot, Coil::terminal_exit_slots. Required; the run starts there, never
+    // searched. A consumer drawing the in-window lead draws its run at this x.
+    std::optional<double> exitX;
 };
 
 // ABT #1172 (WP3): one pin of a bobbin's processedDescription.pins[] placed for pin assignment.
@@ -886,6 +891,35 @@ class Coil : public MAS::Coil {
         /// The pins of a bobbin placed into rows (row coordinate ascending, x ascending in a row).
         static std::vector<PlacedPin> place_pins(const std::vector<MAS::Pin>& pins);
         /**
+         * @brief The exit slot of every terminal lead: the x along the flange (bobbin frame) at which
+         * its in-window run lies where it leaves the window (ABT #1237). MKF owns it: the pin runs
+         * start there (route_leads_to_pins) and a consumer drawing the lead inside the window
+         * (MVB++) draws its run at this x.
+         *
+         * The rule, per isolation side (route.side), on lanes x = lane * pitch, pitch = the largest
+         * coated diameter of that side's terminal leads, lanes 0, 1, 2, ... (toward +x):
+         *   1. Lane 0 already holds the routes MKF draws on the connection plane: Z dragbacks and
+         *      edge continuations (against every lead) and U turnarounds / tangential links (against
+         *      other windings' leads only: a winding's leads never yield to its own links).
+         *   2. A winding's leads of one end (its ENTRANCE block, then its EXIT block; windings in
+         *      route order) are one bundle on CONSECUTIVE lanes a0, a0 + 1, ... Members are ordered as
+         *      MVB++'s fan orders a same-radius bundle (every attach radius, the smallest radial
+         *      waypoint, within the first member's coated radius of the first member's): by the
+         *      route's axial span (entrance ascending, exit descending), ties by the attach turn's
+         *      axial coordinate ascending; otherwise by parallel index.
+         *   3. The anchor a0 is the lowest lane at which no member's 2D route (radial, axial) comes
+         *      closer than the two coated radii to anything already on its lane (rule 1 plus every
+         *      bundle placed before).
+         * @param routes          the coil's connection routes (get_connection_reserved_spaces)
+         * @param diameters       coated (or sleeve) outer diameter per route, same size as routes
+         * @param attachAxial     per route, the axial coordinate of the turn a terminal route attaches to
+         *                        (ignored for other routes), same size as routes
+         * @return per route: its exit x for a TERMINAL_ENTRANCE / TERMINAL_EXIT route, empty otherwise
+         */
+        static std::vector<std::optional<double>> terminal_exit_slots(const std::vector<ConnectionRoute>& routes,
+                                                                      const std::vector<double>& diameters,
+                                                                      const std::vector<double>& attachAxial);
+        /**
          * @brief Every terminal lead's run from the window exit to its pin, planned together so no
          * two runs share copper (ABT #1172 WP3, ABT #1237).
          *
@@ -893,7 +927,7 @@ class Coil : public MAS::Coil {
          * `windowExit` is its end at the window border, {radial, axial} in the coil's real frame,
          * so it leaves the coil at depth z = -(radial + frontFaceOffset + lift) (`lift` = the
          * ride-over displacement MKF's own ride levels put on that radius). The run is, in order:
-         *   E exit slot      (x0, ey, zExit)          x0 = slot * pitch along the flange
+         *   E exit slot      (x0, ey, zExit)          x0 = the lead's exitX (terminal_exit_slots), fixed
          *   L lane           (x0, ey, zLane)          zLane = zExit - lane * pitch (outward)
          *   R beside its pin (xd, ey, zLane)          xd = xPin + side * (pinRadius + r + d + offset * pitch)
          *   D rail level     R with the pin-axis coordinate = level
@@ -905,14 +939,15 @@ class Coil : public MAS::Coil {
          *
          * Leads are planned inner pins first (Wuerth DFM: inner pins are wound first and outer
          * leads pass outside them). For each lead the candidates are tried in order wrap level,
-         * approach side (away from the row centre first), drop offset, lane, exit slot (0, +1, -1, ...), and the
-         * first one is taken whose every segment keeps (a) r_i + r_j from every other planned run,
+         * approach side (away from the row centre first), drop offset, lane, and the
+         * first one is taken whose every segment keeps (a) r_i + r_j from every other planned run
+         * and from every other lead's in-window run (x0_j, ey_j, from the window border to its exit depth),
          * (b) pinRadius + r + d from the axis of every pin but its own (so it also clears any wrap
          * of the same wire), (c) coated clearance from every planned wrap (wrapTurns x d along the
          * pin axis at radius pinRadius + r), with its own wrap on the pin, and (d) its drop at an x
          * at least r_i + r_j from every other lead's drop. When no candidate fits,
          * it throws naming the lead and what the most direct candidate collides with. Pins are not
-         * re-assigned: the candidates already cover every side, lane, slot and level a lead to
+         * re-assigned: the candidates already cover every side, lane and level a lead to
          * that pin can take, and another pin would break the RFC 0013 row conventions.
          *
          * Every segment also keeps r clear of the pin rails (Bobbin::get_pin_rails, ABT #1249): the drop

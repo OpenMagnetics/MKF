@@ -455,6 +455,7 @@ TEST_CASE("route_leads_to_pins walks beside the pin, down to the rail face and i
     lead.pin = vertical;
     lead.windowExit = {0.010, 0.003};
     lead.diameter = 0.0005;
+    lead.exitX = 0.0;
     auto routes = OpenMagnetics::Coil::route_leads_to_pins({vertical}, {lead}, 0.0, 2);
     REQUIRE(routes.size() == 1);
     auto route = routes[0];
@@ -722,7 +723,29 @@ struct PinRun {
     std::string pinName;
     std::vector<Point3> points;   // window exit -> pin axis
     double radius;
+    double slotX;                 // Coil::terminal_exit_slots for this lead, recomputed from the routes
 };
+
+// ABT #1237: the exit slots by the documented rule, recomputed from the coil's routes, turns and wires.
+std::vector<std::optional<double>> recompute_exit_slots(OpenMagnetics::Coil& coil, const std::vector<ConnectionRoute>& routes) {
+    const auto wires = coil.get_wires();
+    const auto turns = coil.get_turns_description().value();
+    std::vector<double> diameters;
+    std::vector<double> attachAxial;
+    for (const auto& route : routes) {
+        auto wire = wires[coil.get_winding_index_by_name(route.winding)];
+        diameters.push_back(std::max({wire.get_maximum_outer_width(), wire.get_maximum_outer_height(), route.sleeveOuterDiameter.value_or(0.0)}));
+        double axial = std::numeric_limits<double>::quiet_NaN();
+        const std::string& turnName = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.toTurn : route.fromTurn;
+        for (const auto& turn : turns) {
+            if (turn.get_name() == turnName) {
+                axial = turn.get_coordinates()[1];
+            }
+        }
+        attachAxial.push_back(axial);
+    }
+    return OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attachAxial);
+}
 
 struct PinRunReport {
     double smallestRunSeparationOverRequired = std::numeric_limits<double>::max();
@@ -739,8 +762,10 @@ PinRunReport check_pin_runs_share_no_copper(OpenMagnetics::Coil& coil, std::vect
     const auto wires = coil.get_wires();
     const int64_t wrapTurns = OpenMagnetics::Coil::pin_wrap_turns();
 
+    const auto slots = recompute_exit_slots(coil, routes);
     std::vector<PinRun> runs;
-    for (const auto& route : routes) {
+    for (size_t routeIndex = 0; routeIndex < routes.size(); ++routeIndex) {
+        const auto& route = routes[routeIndex];
         if (route.pinName.empty()) {
             continue;
         }
@@ -754,6 +779,8 @@ PinRunReport check_pin_runs_share_no_copper(OpenMagnetics::Coil& coil, std::vect
         auto wire = wires[coil.get_winding_index_by_name(route.winding)];
         run.radius = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height()) / 2;
         REQUIRE(run.points.size() >= 3);
+        REQUIRE(slots[routeIndex].has_value());
+        run.slotX = slots[routeIndex].value();
         runs.push_back(run);
     }
     auto pin_named = [&](const std::string& name) -> const PlacedPin& {
@@ -788,6 +815,9 @@ PinRunReport check_pin_runs_share_no_copper(OpenMagnetics::Coil& coil, std::vect
         INFO(run.label << " -> pin " << run.pinName);
         const auto& pin = pin_named(run.pinName);
         const size_t axis = pin.hangsAlongZ ? 2 : 1;
+        // The run starts at MKF's exit slot, the x the in-window lead is drawn at, and leaves along -Z.
+        CHECK_THAT(run.points[0][0], Catch::Matchers::WithinAbs(run.slotX, 1e-12));
+        CHECK_THAT(run.points[1][0], Catch::Matchers::WithinAbs(run.slotX, 1e-12));
         // Ends on its own pin's axis, resting outside the rail face, on a level last leg.
         CHECK_THAT(run.points.back()[0], Catch::Matchers::WithinAbs(pin.centre[0], 1e-12));
         CHECK(run.points.back()[axis] <= pin.base[axis] - run.radius + 1e-12);
@@ -860,6 +890,16 @@ PinRunReport check_pin_runs_share_no_copper(OpenMagnetics::Coil& coil, std::vect
     return report;
 }
 
+// ABT #1237: every run's exit x is its expected lane times its coated OD (one wire per side in these fixtures).
+void check_exit_lanes(const std::vector<PinRun>& runs, const std::map<std::string, int>& expectedLanes) {
+    CHECK(runs.size() == expectedLanes.size());
+    for (const auto& run : runs) {
+        INFO(run.label << " -> pin " << run.pinName);
+        REQUIRE(expectedLanes.count(run.label));
+        CHECK_THAT(run.points[0][0], Catch::Matchers::WithinAbs(double(expectedLanes.at(run.label)) * 2 * run.radius, 1e-12));
+    }
+}
+
 json boost_inductor_magnetic_json() {
     // MVB++ tests/mas_complete_fixtures/boost_inductor_complete.json, the magnetic (ABT #1237's reporter).
     return json::parse(R"({
@@ -900,6 +940,19 @@ TEST_CASE("The boost inductor's four runs to PQ 26/25 pins share no copper (ABT 
     auto report = check_pin_runs_share_no_copper(coil, &runs);
     CHECK(report.runs == 4);
     CHECK(report.smallestRunSeparationOverRequired >= 1 - 1e-9);
+    // The exit slots (Coil::terminal_exit_slots), coated OD 0.943 mm. The entrance bundle sits at the
+    // plane side by side; the exit bundle cannot take the plane (each exit row is 4.7 um from its own
+    // Z dragback's step-out row there), so it anchors one lane out. These are the attach slots MVB++'s
+    // fan chose itself on MKF 10533d78 (entrances 0 / 0.943 mm, exits 0.943 / 1.886 mm).
+    std::map<std::string, double> expectedSlot = {{"Primary p0 start", 0.0}, {"Primary p1 start", 0.943e-3},
+                                                  {"Primary p0 finish", 0.943e-3}, {"Primary p1 finish", 1.886e-3}};
+    for (const auto& run : runs) {
+        INFO(run.label);
+        REQUIRE(expectedSlot.count(run.label));
+        // 0.943 mm is the served litz's coated OD to the micrometre; the lane arithmetic is exact.
+        CHECK_THAT(run.points[0][0], Catch::Matchers::WithinAbs(expectedSlot.at(run.label), 1e-7));
+        CHECK_THAT(run.points[0][0] / (2 * run.radius), Catch::Matchers::WithinAbs(std::round(expectedSlot.at(run.label) / 0.943e-3), 1e-9));
+    }
 }
 
 TEST_CASE("The PQ 32/30 flyback's runs share no copper, on both rows and with strands sharing a pin (ABT #1237)",
@@ -911,23 +964,32 @@ TEST_CASE("The PQ 32/30 flyback's runs share no copper, on both rows and with st
         auto coil = make_coil({{"Primary", 40, 1, "primary", "Round 0.5 - Grade 1"},
                                {"Secondary", 6, 1, "secondary", "Round 0.5 - Grade 1"}});
         coil.assign_pins(coil.resolve_bobbin(), core);
-        auto report = check_pin_runs_share_no_copper(coil);
+        std::vector<PinRun> runs;
+        auto report = check_pin_runs_share_no_copper(coil, &runs);
         CHECK(report.runs == 4);
+        // Exit lanes (x / coated OD): the Primary's finish leaves its own dragback's plane one lane out.
+        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 1}, {"Secondary p0 start", 0}, {"Secondary p0 finish", 0}});
     }
     SECTION("two strands share each pin") {
         auto coil = make_coil({{"Primary", 20, 1, "primary", "Round 0.5 - Grade 1"},
                                {"Secondary", 4, 2, "secondary", "Round 0.3 - Grade 1"}});
         coil.assign_pins(coil.resolve_bobbin(), core);
         CHECK_FALSE(connection_of(coil, "Secondary", End::START).get_parallel().has_value());
-        auto report = check_pin_runs_share_no_copper(coil);
+        std::vector<PinRun> runs;
+        auto report = check_pin_runs_share_no_copper(coil, &runs);
         CHECK(report.runs == 6);
+        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 0}, {"Secondary p0 start", 0}, {"Secondary p1 start", 1},
+                                {"Secondary p0 finish", 0}, {"Secondary p1 finish", 1}});
     }
     SECTION("three strands on adjacent pins") {
         auto coil = make_coil({{"Primary", 20, 1, "primary", "Round 0.5 - Grade 1"},
                                {"Secondary", 4, 3, "secondary", "Round 0.5 - Grade 1"}});
         coil.assign_pins(coil.resolve_bobbin(), core);
-        auto report = check_pin_runs_share_no_copper(coil);
+        std::vector<PinRun> runs;
+        auto report = check_pin_runs_share_no_copper(coil, &runs);
         CHECK(report.runs == 8);
+        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 0}, {"Secondary p0 start", 0}, {"Secondary p1 start", 1},
+                                {"Secondary p2 start", 2}, {"Secondary p0 finish", 0}, {"Secondary p1 finish", 1}, {"Secondary p2 finish", 2}});
     }
 }
 
@@ -948,6 +1010,7 @@ TEST_CASE("A lead that cannot be routed clear throws naming what it collides wit
         lead.pin = pin;
         lead.windowExit = {0.011, axial};
         lead.diameter = 0.0006;
+        lead.exitX = 0.0;
         return lead;
     };
     SECTION("two strands on one pin too short for both wraps") {
@@ -1028,3 +1091,143 @@ TEST_CASE("With coil_connect_leads_to_pins off (default) autocomplete assigns no
     CHECK(report.runs == 4);
 }
 
+
+TEST_CASE("terminal_exit_slots: bundles on consecutive lanes, anchored clear of the plane's routes (ABT #1237)",
+          "[constructive-model][coil][pins][abt1237]") {
+    // The boost_inductor_complete geometry in miniature (mm -> m): two parallels, entrance rows at the
+    // bottom, exit rows at the top, one Z dragback per parallel stepping out at the top of the layer.
+    const double od = 0.943e-3;
+    auto route = [](const std::string& winding, int64_t parallel, ConnectionKind kind, int side,
+                    std::vector<std::vector<double>> waypoints, const std::string& turn) {
+        ConnectionRoute r;
+        r.winding = winding;
+        r.parallel = parallel;
+        r.kind = kind;
+        r.side = side;
+        r.waypoints = waypoints;
+        (kind == ConnectionKind::TERMINAL_ENTRANCE ? r.toTurn : r.fromTurn) = turn;
+        return r;
+    };
+    auto bundle = [&](const std::string& winding, int side, bool withDragback) {
+        std::vector<ConnectionRoute> routes;
+        std::vector<double> attach;
+        if (withDragback) {
+            routes.push_back(route(winding, 0, ConnectionKind::Z_DRAGBACK, side, {{8.5145e-3, 5.3794e-3}, {9.4575e-3, 5.3794e-3}, {9.4575e-3, -5.3782e-3}}, ""));
+            attach.push_back(0);
+        }
+        // Parallel 0's entrance has no stub, parallel 1's climbs one from its turn: entrance order by span ascending.
+        routes.push_back(route(winding, 1, ConnectionKind::TERMINAL_ENTRANCE, side, {{10.795e-3, -6.3231e-3}, {7.5715e-3, -6.3231e-3}, {7.5715e-3, -5.3793e-3}}, "t"));
+        attach.push_back(-5.3793e-3);
+        routes.push_back(route(winding, 0, ConnectionKind::TERMINAL_ENTRANCE, side, {{10.795e-3, -6.3231e-3}, {7.5715e-3, -6.3231e-3}}, "t"));
+        attach.push_back(-6.3231e-3);
+        routes.push_back(route(winding, 0, ConnectionKind::TERMINAL_EXIT, side, {{9.4575e-3, 5.3747e-3}, {10.795e-3, 5.3747e-3}}, "t"));
+        attach.push_back(5.3747e-3);
+        routes.push_back(route(winding, 1, ConnectionKind::TERMINAL_EXIT, side, {{9.4575e-3, 6.3216e-3}, {10.795e-3, 6.3216e-3}}, "t"));
+        attach.push_back(6.3216e-3);
+        return std::make_pair(routes, attach);
+    };
+    auto slots_of = [&](const std::vector<ConnectionRoute>& routes, const std::vector<double>& attach) {
+        return OpenMagnetics::Coil::terminal_exit_slots(routes, std::vector<double>(routes.size(), od), attach);
+    };
+
+    SECTION("entrances at the plane side by side, exits one lane out of their dragback") {
+        auto [routes, attach] = bundle("Primary", 0, true);
+        auto slots = slots_of(routes, attach);
+        CHECK_FALSE(slots[0].has_value());                         // the dragback has no exit slot
+        CHECK_THAT(slots[2].value(), Catch::Matchers::WithinAbs(0.0, 1e-15));      // entrance p0
+        CHECK_THAT(slots[1].value(), Catch::Matchers::WithinAbs(od, 1e-15));       // entrance p1
+        CHECK_THAT(slots[3].value(), Catch::Matchers::WithinAbs(od, 1e-15));       // exit p0
+        CHECK_THAT(slots[4].value(), Catch::Matchers::WithinAbs(2 * od, 1e-15));   // exit p1
+    }
+    SECTION("without the dragback the exits take the plane") {
+        auto [routes, attach] = bundle("Primary", 0, false);
+        auto slots = slots_of(routes, attach);
+        CHECK_THAT(slots[1].value(), Catch::Matchers::WithinAbs(0.0, 1e-15));   // entrance p0
+        CHECK_THAT(slots[0].value(), Catch::Matchers::WithinAbs(od, 1e-15));    // entrance p1
+        CHECK_THAT(slots[2].value(), Catch::Matchers::WithinAbs(0.0, 1e-15));   // exit p0
+        CHECK_THAT(slots[3].value(), Catch::Matchers::WithinAbs(od, 1e-15));    // exit p1
+    }
+    SECTION("exits order by span descending: a climbing exit takes the lower lane") {
+        auto [routes, attach] = bundle("Primary", 0, false);
+        routes[3].waypoints = {{9.4575e-3, 7.0e-3}, {9.4575e-3, 8.0e-3}, {10.795e-3, 8.0e-3}};   // parallel 1 exit now climbs
+        attach[3] = 7.0e-3;
+        auto slots = slots_of(routes, attach);
+        CHECK_THAT(slots[3].value(), Catch::Matchers::WithinAbs(0.0, 1e-15));   // exit p1 first
+        CHECK_THAT(slots[2].value(), Catch::Matchers::WithinAbs(od, 1e-15));    // exit p0
+    }
+    SECTION("each isolation side has its own lanes; another winding's link blocks, its own does not") {
+        auto [primary, primaryAttach] = bundle("Primary", 0, false);
+        auto [secondary, secondaryAttach] = bundle("Secondary", 1, false);
+        std::vector<ConnectionRoute> routes = primary;
+        std::vector<double> attach = primaryAttach;
+        routes.insert(routes.end(), secondary.begin(), secondary.end());
+        attach.insert(attach.end(), secondaryAttach.begin(), secondaryAttach.end());
+        // A U turnaround of the Primary through the Secondary's exit rows.
+        routes.push_back(route("Primary", 0, ConnectionKind::U_ADJACENT, 1, {{9.0e-3, 5.8e-3}, {11.0e-3, 5.8e-3}}, ""));
+        attach.push_back(0);
+        // ... and the same link on the Primary's own side, through its own exit rows.
+        routes.push_back(route("Primary", 0, ConnectionKind::U_ADJACENT, 0, {{9.0e-3, 5.8e-3}, {11.0e-3, 5.8e-3}}, ""));
+        attach.push_back(0);
+        auto slots = slots_of(routes, attach);
+        CHECK_THAT(slots[2].value(), Catch::Matchers::WithinAbs(0.0, 1e-15));        // Primary exit p0 at the plane: own link
+        CHECK_THAT(slots[3].value(), Catch::Matchers::WithinAbs(od, 1e-15));
+        CHECK_THAT(slots[4 + 1].value(), Catch::Matchers::WithinAbs(0.0, 1e-15));    // Secondary entrance p0: its own lane 0
+        CHECK_THAT(slots[4 + 2].value(), Catch::Matchers::WithinAbs(od, 1e-15));     // Secondary exit p0: pushed off the plane
+        CHECK_THAT(slots[4 + 3].value(), Catch::Matchers::WithinAbs(2 * od, 1e-15));
+    }
+    SECTION("inputs that do not match the routes throw") {
+        auto [routes, attach] = bundle("Primary", 0, true);
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::terminal_exit_slots(routes, {od}, attach), Catch::Matchers::ContainsSubstring("one diameter"));
+        attach[1] = std::numeric_limits<double>::quiet_NaN();
+        CHECK_THROWS_WITH(slots_of(routes, attach), Catch::Matchers::ContainsSubstring("no attach turn coordinate"));
+    }
+}
+
+TEST_CASE("route_leads_to_pins starts each run at its exit slot and keeps every run off the other leads' in-window runs (ABT #1237)",
+          "[constructive-model][coil][pins][abt1237]") {
+    auto make_pin = [](const std::string& name, double x) {
+        MAS::Pin pin;
+        pin.set_name(name);
+        pin.set_shape(PinShape::ROUND);
+        pin.set_type(PinDescriptionType::THT);
+        pin.set_dimensions({0.0008, 0.0008, 0.004});
+        pin.set_coordinates(std::vector<double>({x, -0.014, -0.013}));
+        return pin;
+    };
+    const std::vector<MAS::Pin> pins = {make_pin("A", -0.004), make_pin("B", -0.008)};
+    // Lead A leaves at x = 0 lifted 2 mm by the ride-over: its in-window run covers z -11 .. -13 mm.
+    // Lead B leaves the same row one OD along, unlifted, at z = -11 mm, and heads -x past x = 0.
+    PinLeadRequest a;
+    a.label = "lead A";
+    a.pin = pins[0];
+    a.windowExit = {0.011, -0.004};
+    a.diameter = 0.0006;
+    a.lift = 0.002;
+    a.exitX = 0.0;
+    PinLeadRequest b = a;
+    b.label = "lead B";
+    b.pin = pins[1];
+    b.lift = 0.0;
+    b.exitX = 0.0006;
+    const auto routes = OpenMagnetics::Coil::route_leads_to_pins(pins, {a, b}, 0.0, 2);
+    REQUIRE(routes.size() == 2);
+    CHECK_THAT(routes[0].waypoints.front()[0], Catch::Matchers::WithinAbs(0.0, 1e-15));
+    CHECK_THAT(routes[0].waypoints.front()[2], Catch::Matchers::WithinAbs(-0.013, 1e-15));
+    CHECK_THAT(routes[1].waypoints.front()[0], Catch::Matchers::WithinAbs(0.0006, 1e-15));
+    CHECK_THAT(routes[1].waypoints.front()[2], Catch::Matchers::WithinAbs(-0.011, 1e-15));
+    const std::vector<Point3> inWindowA = {{0.0, -0.004, -0.011}, {0.0, -0.004, -0.013}};
+    const std::vector<Point3> inWindowB = {{0.0006, -0.004, -0.011}, {0.0006, -0.004, -0.011}};
+    CHECK(sampled_distance(routes[1].waypoints, inWindowA) >= 0.0006 - 1e-9);
+    CHECK(sampled_distance(routes[0].waypoints, inWindowB) >= 0.0006 - 1e-9);
+    CHECK(std::min(sampled_distance(routes[0].waypoints, routes[1].waypoints), sampled_distance(routes[1].waypoints, routes[0].waypoints)) >= 0.0006 - 1e-9);
+
+    SECTION("a lead without an exit slot, or two slots sharing copper, throw") {
+        PinLeadRequest noSlot = a;
+        noSlot.exitX.reset();
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins(pins, {noSlot}, 0.0, 2), Catch::Matchers::ContainsSubstring("has no exit slot x"));
+        PinLeadRequest same = b;
+        same.exitX = 0.0003;
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins(pins, {a, same}, 0.0, 2),
+                          Catch::Matchers::ContainsSubstring("The exit slots of lead A and lead B share copper"));
+    }
+}

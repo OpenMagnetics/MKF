@@ -433,6 +433,160 @@ int64_t Coil::pin_wrap_turns() {
     return wrapTurns;
 }
 
+std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<ConnectionRoute>& routes,
+                                                             const std::vector<double>& diameters,
+                                                             const std::vector<double>& attachAxial) {
+    if (diameters.size() != routes.size() || attachAxial.size() != routes.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "terminal_exit_slots needs one diameter and one attach coordinate per route: " + std::to_string(routes.size()) +
+            " routes, " + std::to_string(diameters.size()) + " diameters, " + std::to_string(attachAxial.size()) + " attach coordinates.");
+    }
+    auto is_terminal = [](const ConnectionRoute& route) {
+        return route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT;
+    };
+    auto label_of = [](const ConnectionRoute& route) {
+        return "winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+               (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit");
+    };
+    // The routes' 2D polylines (radial, axial) lifted to 3D for the shared segment distance.
+    auto polyline_of = [](const ConnectionRoute& route) {
+        std::vector<std::vector<double>> points;
+        for (const auto& waypoint : route.waypoints) {
+            points.push_back({waypoint.at(0), waypoint.at(1), 0.0});
+        }
+        return points;
+    };
+    std::vector<std::optional<double>> slots(routes.size());
+    for (size_t index = 0; index < routes.size(); ++index) {
+        if (!is_terminal(routes[index])) {
+            continue;
+        }
+        if (!(diameters[index] > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                "The terminal lead of " + label_of(routes[index]) + " has no outer diameter, so its exit slot pitch is unknown.");
+        }
+        if (routes[index].waypoints.size() < 2) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "The terminal route of " + label_of(routes[index]) + " has no legs.");
+        }
+        if (!std::isfinite(attachAxial[index])) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "The terminal route of " + label_of(routes[index]) + " has no attach turn coordinate.");
+        }
+    }
+    const double tolerance = 1e-9;
+    std::set<int> sides;
+    for (const auto& route : routes) {
+        if (is_terminal(route)) {
+            sides.insert(route.side);
+        }
+    }
+    for (int side : sides) {
+        double pitch = 0;
+        std::vector<std::string> windingOrder;
+        for (size_t index = 0; index < routes.size(); ++index) {
+            const auto& route = routes[index];
+            if (route.side != side || !is_terminal(route)) {
+                continue;
+            }
+            pitch = std::max(pitch, diameters[index]);
+            if (std::find(windingOrder.begin(), windingOrder.end(), route.winding) == windingOrder.end()) {
+                windingOrder.push_back(route.winding);
+            }
+        }
+        struct Occupant {
+            size_t route;
+            size_t lane;
+        };
+        std::vector<Occupant> occupants;
+        for (size_t index = 0; index < routes.size(); ++index) {
+            const auto kind = routes[index].kind;
+            if (routes[index].side == side &&
+                (kind == ConnectionKind::Z_DRAGBACK || kind == ConnectionKind::EDGE_CONTINUATION ||
+                 kind == ConnectionKind::U_ADJACENT || kind == ConnectionKind::U_TANGENTIAL)) {
+                occupants.push_back({index, 0});
+            }
+        }
+        auto blocks_lead = [&](const Occupant& occupant, size_t lead) {
+            const auto& other = routes[occupant.route];
+            const bool link = other.kind == ConnectionKind::U_ADJACENT || other.kind == ConnectionKind::U_TANGENTIAL;
+            if (link && other.winding == routes[lead].winding) {
+                return false;   // a winding's leads never yield to its own links
+            }
+            const double found = polyline_distance(polyline_of(routes[lead]), polyline_of(other));
+            return found < (diameters[lead] + diameters[occupant.route]) / 2 - tolerance;
+        };
+        for (const auto& winding : windingOrder) {
+            for (auto kind : {ConnectionKind::TERMINAL_ENTRANCE, ConnectionKind::TERMINAL_EXIT}) {
+                std::vector<size_t> members;
+                for (size_t index = 0; index < routes.size(); ++index) {
+                    if (routes[index].side == side && routes[index].winding == winding && routes[index].kind == kind) {
+                        members.push_back(index);
+                    }
+                }
+                if (members.empty()) {
+                    continue;
+                }
+                std::stable_sort(members.begin(), members.end(), [&](size_t a, size_t b) { return routes[a].parallel < routes[b].parallel; });
+                auto attach_radius = [&](size_t index) {
+                    double radius = std::numeric_limits<double>::max();
+                    for (const auto& waypoint : routes[index].waypoints) {
+                        radius = std::min(radius, waypoint.at(0));
+                    }
+                    return radius;
+                };
+                auto axial_span = [&](size_t index) {
+                    double low = std::numeric_limits<double>::max();
+                    double high = std::numeric_limits<double>::lowest();
+                    for (const auto& waypoint : routes[index].waypoints) {
+                        low = std::min(low, waypoint.at(1));
+                        high = std::max(high, waypoint.at(1));
+                    }
+                    return high - low;
+                };
+                bool sameRadius = true;
+                for (size_t member : members) {
+                    if (std::abs(attach_radius(member) - attach_radius(members.front())) > diameters[members.front()] / 2) {
+                        sameRadius = false;
+                    }
+                }
+                if (sameRadius && members.size() > 1) {
+                    const bool entrance = kind == ConnectionKind::TERMINAL_ENTRANCE;
+                    std::stable_sort(members.begin(), members.end(), [&](size_t a, size_t b) {
+                        const double spanA = axial_span(a);
+                        const double spanB = axial_span(b);
+                        if (std::abs(spanA - spanB) > 1e-12) {
+                            return entrance ? spanA < spanB : spanA > spanB;
+                        }
+                        return attachAxial[a] < attachAxial[b];
+                    });
+                }
+                // Every anchor past the occupied lanes is free, so the search ends.
+                size_t anchor = 0;
+                for (;; ++anchor) {
+                    bool free = true;
+                    for (size_t position = 0; position < members.size() && free; ++position) {
+                        for (const auto& occupant : occupants) {
+                            if (occupant.lane == anchor + position && blocks_lead(occupant, members[position])) {
+                                free = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (free) {
+                        break;
+                    }
+                }
+                for (size_t position = 0; position < members.size(); ++position) {
+                    const size_t lane = anchor + position;
+                    slots[members[position]] = double(lane) * pitch;
+                    occupants.push_back({members[position], lane});
+                }
+            }
+        }
+    }
+    return slots;
+}
+
 std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>& bobbinPins,
                                                     const std::vector<PinLeadRequest>& leads,
                                                     double frontFaceOffset, int64_t wrapTurns,
@@ -472,6 +626,10 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
         if (lead.lift < 0) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Lead " + lead.label + " has a negative ride-over lift.");
         }
+        if (!lead.exitX || !std::isfinite(lead.exitX.value())) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Lead " + lead.label + " has no exit slot x (Coil::terminal_exit_slots): where its in-window run leaves the window is unknown.");
+        }
         if (!lead.pin.get_name()) {
             throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Lead " + lead.label + " is assigned to a pin with no name.");
         }
@@ -484,12 +642,25 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
         pitch = std::max(pitch, lead.diameter);
     }
 
-    // Inner pins first: outer leads then pass outside the inner ones (Wuerth DFM 2024-04-29 08:42).
+    // Planning order. A lead planned later takes a lane further out, so its leg out of the window
+    // crosses the lanes of every lead planned before it: that leg must not lie between an earlier
+    // lead's exit and its pin. So leads are planned by how far their exit slot sits TOWARD their pin
+    // (exit x for a lead heading -x, minus exit x for one heading +x), and a later lead leaves the
+    // window behind every earlier one (ABT #1237: with the exit slots fixed, the boost's parallel 1
+    // start at x = 0.943 mm planned first sent its lane over parallel 0's exit at x = 0). Ties: inner
+    // pins first, outer leads then pass outside the inner ones (Wuerth DFM 2024-04-29 08:42).
     std::vector<size_t> order(leads.size());
     for (size_t index = 0; index < leads.size(); ++index) {
         order[index] = index;
     }
+    auto toward_pin = [&](size_t index) {
+        const double exitX = leads[index].exitX.value();
+        return placedPins[pinOfLead[index]].centre[0] < exitX ? exitX : -exitX;
+    };
     std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        if (std::abs(toward_pin(a) - toward_pin(b)) > tolerance) {
+            return toward_pin(a) < toward_pin(b);
+        }
         const auto& pinA = placedPins[pinOfLead[a]];
         const auto& pinB = placedPins[pinOfLead[b]];
         if (pinA.row != pinB.row) {
@@ -505,6 +676,28 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
 
     const size_t numberLeads = leads.size();
     std::vector<RoutedPinLead> routed;
+
+    // Every lead's in-window run where it leaves the window: at its exit slot x and exit row, from the
+    // window border out to its exit depth (the ride-over lift). The in-window lead is drawn there
+    // (MKF's slot), so no other lead's run may pass through it, whichever lead is planned first.
+    std::vector<std::vector<std::vector<double>>> exitRuns(numberLeads);
+    for (size_t index = 0; index < numberLeads; ++index) {
+        const auto& lead = leads[index];
+        const double x = lead.exitX.value();
+        exitRuns[index] = {{x, lead.windowExit[1], -(lead.windowExit[0] + frontFaceOffset)},
+                           {x, lead.windowExit[1], -(lead.windowExit[0] + frontFaceOffset + lead.lift)}};
+    }
+    for (size_t i = 0; i < numberLeads; ++i) {
+        for (size_t j = i + 1; j < numberLeads; ++j) {
+            const double found = polyline_distance(exitRuns[i], exitRuns[j]);
+            const double required = (leads[i].diameter + leads[j].diameter) / 2;
+            if (found < required - 1e-9) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "The exit slots of " + leads[i].label + " and " + leads[j].label + " share copper where they leave the window: centreline distance " +
+                    format_millimetres(found) + " < " + format_millimetres(required) + ". Fix the exit slots (Coil::terminal_exit_slots).");
+            }
+        }
+    }
 
     auto axis_point = [](const PlacedPin& pin, size_t axisIndex, double coordinate) {
         auto point = pin.centre;
@@ -546,6 +739,19 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
                 }
             }
         }
+        // ... and stepping out from beyond every other lead's in-window run (a lead lifted further out
+        // than this one leaves the window across this lead's lanes).
+        for (size_t other = 0; other < numberLeads; ++other) {
+            if (other == leadIndex) {
+                continue;
+            }
+            const double beyond = exitRuns[other].back()[2] - radius - leads[other].diameter / 2;
+            for (size_t lane = 0; lane <= numberLeads; ++lane) {
+                if (beyond - double(lane) * pitch < exitDepth - tolerance) {
+                    laneDepths.push_back(beyond - double(lane) * pitch);
+                }
+            }
+        }
         std::sort(laneDepths.begin(), laneDepths.end(), std::greater<double>());
         laneDepths.erase(std::unique(laneDepths.begin(), laneDepths.end(), [](double a, double b) { return std::abs(a - b) < 1e-12; }),
                          laneDepths.end());
@@ -567,11 +773,8 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
                 const double besidePin = pin.centre[0] + side * (approach + double(besideRank) * pitch);
                 for (size_t lane = 0; lane < laneDepths.size() && !chosen; ++lane) {
                     const double laneDepth = laneDepths[lane];
-                    for (size_t slotRank = 0; slotRank <= 2 * numberLeads && !chosen; ++slotRank) {
-                        // 0, +1, -1, +2, -2, ...
-                        const double slot = slotRank == 0 ? 0.0
-                                          : (slotRank % 2 == 1 ? double((slotRank + 1) / 2) : -double(slotRank / 2));
-                        const double exitX = slot * pitch;
+                    {
+                        const double exitX = lead.exitX.value();
                         std::vector<std::vector<double>> raw;
                         raw.push_back({exitX, exitAxial, exitDepth});
                         raw.push_back({exitX, exitAxial, laneDepth});
@@ -638,6 +841,19 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
                             if (found < required - tolerance) {
                                 conflict = "pin '" + other.name + "': centreline " + millimetres(found) + " from its axis, " +
                                            millimetres(required) + " needed (pin radius + wire radius + wire diameter)";
+                            }
+                        }
+                        // Other leads' in-window runs at their exit slots, planned or not.
+                        for (size_t other = 0; other < numberLeads && !conflict; ++other) {
+                            if (other == leadIndex) {
+                                continue;
+                            }
+                            const double required = radius + leads[other].diameter / 2;
+                            const double found = polyline_distance(points, exitRuns[other]);
+                            if (found < required - tolerance) {
+                                conflict = "the in-window run of " + leads[other].label + " at its exit slot x = " +
+                                           millimetres(leads[other].exitX.value()) + ": centreline distance " + millimetres(found) + " < " +
+                                           millimetres(required);
                             }
                         }
                         for (const auto& placed : routed) {
@@ -707,7 +923,8 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
         if (!chosen) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "Cannot route " + lead.label + " to pin '" + pin.name + "' clear of the other leads and pins: all " +
-                std::to_string(candidates) + " candidate runs (wrap levels on the pin, approach sides, drop offsets, lanes, exit slots) share "
+                std::to_string(candidates) + " candidate runs from its exit slot x = " + millimetres(lead.exitX.value()) +
+                " (wrap levels on the pin, approach sides, drop offsets, lanes) share "
                 "copper, and the most direct one collides with " + directConflict.value_or("nothing recorded") +
                 ". Assign that end to another pin, use a thinner wire, or a former with a wider pin pitch or longer pins.");
         }

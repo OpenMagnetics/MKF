@@ -2245,6 +2245,35 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     if (!pendingPinLeads.empty()) {
         ConnectionLayout rides;
         rides.rideLevels = compute_ride_levels(routes);
+        // The exit slots (ABT #1237): the x each terminal lead's in-window run leaves the window at,
+        // decided here from every route on the connection plane, never by the pin-run search.
+        std::vector<double> routeDiameters(routes.size());
+        std::vector<double> attachAxial(routes.size(), std::numeric_limits<double>::quiet_NaN());
+        const auto turnsForSlots = get_turns_description().value();
+        for (size_t index = 0; index < routes.size(); ++index) {
+            const auto& route = routes[index];
+            auto wire = wires[get_winding_index_by_name(route.winding)];
+            routeDiameters[index] = std::max({wire.get_maximum_outer_width(), wire.get_maximum_outer_height(),
+                                              route.sleeveOuterDiameter.value_or(0.0)});
+            const bool terminal = route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT;
+            if (!terminal) {
+                continue;
+            }
+            const std::string& turnName = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.toTurn : route.fromTurn;
+            bool found = false;
+            for (const auto& turn : turnsForSlots) {
+                if (turn.get_name() == turnName) {
+                    attachAxial[index] = turn.get_coordinates().at(1);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                throw std::logic_error("The terminal route of winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                                       " attaches to turn '" + turnName + "', which is not among the coil's turns");
+            }
+        }
+        const auto exitSlots = terminal_exit_slots(routes, routeDiameters, attachAxial);
         std::vector<PinLeadRequest> requests;
         for (const auto& pending : pendingPinLeads) {
             PinLeadRequest request;
@@ -2253,6 +2282,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             request.windowExit = pending.windowExit;
             request.diameter = pending.diameter;
             request.lift = rides.ride_at(pending.windowExit[0], routes[pending.routeIndex].side);
+            request.exitX = exitSlots[pending.routeIndex];
             requests.push_back(request);
         }
         const auto processedBobbin = bobbin.get_processed_description().value();
