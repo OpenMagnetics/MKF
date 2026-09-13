@@ -216,6 +216,14 @@ class WireAdviser {
                                                                                                  SignalDescriptor current,
                                                                                                  double temperature);
 
+        /**
+         * @brief ABT #1177 (WP8, DFM rule R1): penalise candidates landing on an odd layer count.
+         *
+         * Only applied when Settings::get_wire_adviser_penalize_odd_layer_count() is true
+         * (default off), so the adviser ranking is unchanged unless the caller opts in.
+         */
+        std::vector<std::pair<Winding, double>> filter_by_layer_parity(std::vector<std::pair<Winding, double>>* unfilteredCoils, Section section);
+
         std::vector<std::pair<Winding, double>> filter_by_solid_insulation_requirements(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                  WireSolidInsulationRequirements wireSolidInsulationRequirements);
 

@@ -1,0 +1,119 @@
+{
+    "_comment": "Design-for-manufacturing rule pack (ABT #1177, WP8 of docs/2026-09-12_manufacturing_features_proposal.md). Every number here is a quoted statement from a public Wuerth Elektronik source; the 'source' string names it. MKF code must read the numbers from this file and never hardcode them. A rule whose inputs are missing reports 'not evaluated' with the reason - never a default.",
+    "R1": {
+        "title": "Even layer count per winding",
+        "description": "An odd layer count forces a drag-back: a bump, window loss, extra leakage, a 45-90 degree wire crossing that some safety standards forbid, and manual tape work. Adjust wire diameter and strand count to fill a layer completely and wind in even layers.",
+        "source": "Wuerth Elektronik, 'Design For Manufacturing (DFM)', A. De Michiel, 2024-04-29 (youtube 9AhcsV8t4EU) 11:37-13:03; positive retention IEC 62368-1 G.5.3.2.1",
+        "maximumLayersConsideredSingleLayer": 1,
+        "_maximumLayersConsideredSingleLayer_comment": "A winding of one layer cannot drag back, so it passes regardless of parity.",
+        "severityOddLayers": "warning"
+    },
+    "R5": {
+        "title": "Heavy wire on a surface-mount part",
+        "description": "Heavy wire on an SMT part causes coplanarity and height problems at the terminals. Split the winding into parallels and add terminals for high-current windings.",
+        "source": "Wuerth Elektronik, 'Design For Manufacturing (DFM)', A. De Michiel, 2024-04-29 (youtube 9AhcsV8t4EU) 14:32",
+        "maximumWireOuterDiameterOverPinPitch": 0.5,
+        "_maximumWireOuterDiameterOverPinPitch_comment": "Heuristic of the WP8 proposal (docs/2026-09-12_manufacturing_features_proposal.md, rule R5) encoding the qualitative WE statement: a wire whose outer diameter exceeds half the pin pitch cannot be terminated on an SMT pad without coplanarity risk."
+    },
+    "R6": {
+        "title": "Thermoset bobbin for reflow or solder bath",
+        "description": "Thermoplastic bobbins are cheaper but have a lower melting point; heat damage occurs during soldering. Parts that go through a reflow oven, such as surface-mounted parts, must use a thermoset bobbin.",
+        "source": "Wuerth Elektronik, 'Design For Manufacturing (DFM)', A. De Michiel, 2024-04-29 (youtube 9AhcsV8t4EU) 05:09 and 23:17",
+        "thermoplasticMaterials": ["PA66", "PA6", "PA9T", "PA46", "PBT", "PET", "PPS", "LCP", "PA", "NYLON", "POLYAMIDE", "POLYESTER", "POLYPHENYLENE SULFIDE", "LIQUID CRYSTAL POLYMER", "THERMOPLASTIC"],
+        "thermosetMaterials": ["PHENOLIC", "DAP", "DIALLYL PHTHALATE", "BAKELITE", "EPOXY", "THERMOSET", "THERMOSETTING"],
+        "solderBathTemperatureMinimum": 360,
+        "solderBathTemperatureMaximum": 420,
+        "_solderBathTemperature_comment": "Degrees Celsius. 'if it's enamel wire we'll solder anywhere between 360 and 420 C' - Wuerth Elektronik, 'Transformers - what characteristics are important to you?', A. Sullivan, 2022-08-18 (youtube 1VBp_ajSZmM) 29:01"
+    },
+    "R7": {
+        "title": "Insulation-strategy size heuristic",
+        "description": "EE25 / ER28 and larger is the transition size at which safety is best achieved with regular magnet wire plus margin tape. EE20 and smaller packages are almost too small to achieve the distances with margin tape, so triple-insulated wire is preferred there to maximise copper.",
+        "source": "Wuerth Elektronik, 'Transformers - what characteristics are important to you?', A. Sullivan, 2022-08-18 (youtube 1VBp_ajSZmM) 26:49-27:33",
+        "marginTapeTransitionEffectiveLength": 0.0570,
+        "_marginTapeTransitionEffectiveLength_comment": "Metres. Effective magnetic path length of an EE25 (~57 mm) - the shape-size proxy for the EE25/ER28 transition, so the rule does not depend on parsing shape names. Cores at or above this use margin tape + magnet wire; below it, insulated wire.",
+        "insulatedWireTransitionEffectiveLength": 0.0425,
+        "_insulatedWireTransitionEffectiveLength_comment": "Metres. Effective magnetic path length of an EE20 (~42.5 mm). At or below this, insulated (TIW/FIW) wire is preferred over margin tape."
+    },
+    "R8": {
+        "title": "Insulated-wire outer-diameter growth and placement",
+        "description": "Basic insulated wire is about 15 percent larger in diameter than the equivalent enamel magnet wire, supplementary about 40 percent, triple insulated about 65 percent or more. Insulated wire is billed by length, so it belongs on the lowest-turn-count winding. Triple insulated wire must not touch enamelled magnet wire without at least one tape layer between them.",
+        "source": "Wuerth Elektronik, 'How Does Safety Affect Your Design?', L. Geerdes, 2021 (youtube UCUsOcUscLM) 40:16, 42:25; PSMA/APEC 2022 IS01.7 slides 10 and 17; Custom Capabilities Catalog 2020, 'Transformer Cost - Wire Cost'",
+        "outerDiameterGrowthBasic": 0.15,
+        "outerDiameterGrowthSupplementary": 0.40,
+        "outerDiameterGrowthTripleInsulated": 0.65,
+        "outerDiameterGrowthTolerance": 0.10,
+        "_outerDiameterGrowthTolerance_comment": "Fractional slack around the quoted growth figures before the report flags the wire's outer diameter as inconsistent with its insulation grade.",
+        "minimumTapeLayersBetweenInsulatedAndEnamelledWire": 1
+    },
+    "R9": {
+        "title": "Margin tape stack",
+        "description": "A standard flyback has four windings, which means eight margin-tape operations, each 10 to 20 layers of tape. The tape stacks to the coil height, can consume a large part of the winding window and increases leakage inductance.",
+        "source": "Wuerth Elektronik, 'How Does Safety Affect Your Design?', L. Geerdes, 2021 (youtube UCUsOcUscLM) 52:23; Custom Capabilities Catalog 2020, 'Margin Tape'",
+        "typicalLayersPerSideMinimum": 10,
+        "typicalLayersPerSideMaximum": 20,
+        "windowWidthLossWarningRatio": 0.30,
+        "windowWidthLossFailRatio": 0.50,
+        "_windowWidthLoss_comment": "Fraction of the winding-window width consumed by both margins. WE report margins eating around half the window in the worst case; the WP8 proposal (rule R9) sets the warn level at 30 percent and the fail level at the 50 percent WE quote."
+    },
+    "R12": {
+        "title": "Flying leads",
+        "description": "Flying leads are the least preferred termination at Wuerth: the leads are damaged by the remaining winding, soldering, taping, testing and varnishing steps and by shipping and PCB insertion, they must be manually inserted into the PCB, and being unshielded they emit and absorb noise.",
+        "source": "Wuerth Elektronik, 'How Does Safety Affect Your Design?', L. Geerdes, 2021 (youtube UCUsOcUscLM) 37:27-38:51; Custom Capabilities Catalog 2020, 'Flying Leads and EMI'; 'Transformer Design & Midcom Capabilities', 2025-10-24",
+        "severity": "warning"
+    },
+    "R13": {
+        "title": "Manual termination",
+        "description": "Enamel and fully insulated wire are highly automatable in soldering up to 28 AWG. Extruded Teflon wire (TIW/TEX-E) has low-level automation and requires pre-stripping on a single-arbor machine. Litz needs crimp terminals or a special bobbin. The solder bath runs at 360 to 420 degrees Celsius, which limits the dwell time a thermoplastic bobbin tolerates.",
+        "source": "Wuerth Elektronik Custom Capabilities Catalog 2020, wire-type table ('Highly automated solderability (up to 28AWG)', 'Solderability: low level automation (requires pre-stripping)', 'crimp terminals, special bobbin'); 'Transformers - what characteristics are important to you?', A. Sullivan, 2022-08-18 (youtube 1VBp_ajSZmM) 29:01; 'Design For Manufacturing (DFM)', 2024-04-29, 23:17",
+        "finestAutomaticallySolderableAwg": 28,
+        "finestAutomaticallySolderableConductingDiameter": 0.000320,
+        "_finestAutomaticallySolderableConductingDiameter_comment": "Metres. Nominal bare conducting diameter of 28 AWG (0.320 mm), used when the wire record carries no AWG standard name."
+    },
+    "R15": {
+        "title": "Gap only in the centre leg",
+        "description": "An EI core style with mylar or tape used for the gap has three unshielded gaps and is an EMI problem. Good practice is a centre-leg gap only, with no gaps in the outer legs.",
+        "source": "Wuerth Elektronik, 'Transformer Design for EMC' (2022 video, 2023 slides), 'Transformers EMI - avoid EI type cores' and 'Good EMI design practice: airgap'",
+        "severity": "warning",
+        "topologiesChecked": ["FLYBACK_CONVERTER", "ACTIVE_CLAMP_FORWARD_CONVERTER", "ASYMMETRIC_HALF_BRIDGE_CONVERTER", "ISOLATED_BUCK_BOOST_CONVERTER"],
+        "_topologiesChecked_comment": "magic_enum names of MAS::Topology. The EMI rule is about gapped isolated converters whose gap carries the whole energy store; a flyback is the canonical case."
+    },
+    "R17": {
+        "title": "Production test and tolerance fields",
+        "description": "Report-only fields. The production hipot test lasts 1 to 4 seconds and the test voltage may be reduced by 10 percent. Partial-discharge testing is required for designs using FIW or TIW with a peak working voltage over 750 V. Inductance tolerance is typically plus or minus 10 percent.",
+        "source": "Wuerth Elektronik, 'Transformer safety, update on IEC 61558' webinar, 2025-10-23: hipot IEC 61558-1 clause 5.4.9.2, partial discharge amendment 1; ANP094 'EFD25 multi-output flyback'",
+        "hipotDurationMinimum": 1,
+        "hipotDurationMaximum": 4,
+        "_hipotDuration_comment": "Seconds.",
+        "hipotVoltageReduction": 0.10,
+        "partialDischargeTestPeakVoltage": 750,
+        "_partialDischargeTestPeakVoltage_comment": "Volts peak. Above this, FIW/TIW designs need a partial-discharge test.",
+        "typicalInductanceTolerance": 0.10
+    },
+    "notEvaluated": {
+        "R2": "not evaluated (owned by WP3: pin assignment)",
+        "R3": "not evaluated (owned by WP3: pin assignment)",
+        "R4": "not evaluated (owned by WP3: pin assignment)",
+        "R10": "not evaluated (owned by insulation coordination)",
+        "R11": "not evaluated (owned by WP5: lead sleeving)",
+        "R14": "not evaluated (owned by WP3: pin assignment)",
+        "R16": "not evaluated (owned by WP4: toroid base)"
+    },
+    "notEvaluatedTitles": {
+        "R2": "Start and finish rail convention, inner pins wound first",
+        "R3": "Gauge spread on one termination rail within 3 AWG",
+        "R4": "Wire wrap must not protrude below the bobbin standoff",
+        "R10": "Creepage and clearance targets, corner-pin loss",
+        "R11": "Termination protection cost order",
+        "R14": "Shield winding terminated on pins at both ends",
+        "R16": "Toroid coating, barrier and header limits"
+    },
+    "notEvaluatedSources": {
+        "R2": "Wuerth Elektronik DFM 2024-04-29; 'Transformers - what characteristics are important to you?' 2022-08-18",
+        "R3": "Wuerth Elektronik DFM 2024-04-29 18:55",
+        "R4": "Wuerth Elektronik DFM 2024-04-29",
+        "R10": "PSMA/APEC 2022 IS01.7, 'How Does Safety Affect Your Design?' 2021",
+        "R11": "Wuerth Elektronik DFM 2024-04-29",
+        "R14": "Wuerth Elektronik 'Transformer Design for EMC' 2023 slides",
+        "R16": "Wuerth Elektronik 'Transformer safety, update on IEC 61558' 2025-10-23; Custom Capabilities Catalog 2020"
+    }
+}

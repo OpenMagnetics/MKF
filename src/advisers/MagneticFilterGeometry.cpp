@@ -202,3 +202,64 @@ std::pair<bool, double> MagneticFilterLossesNoProximityTimesVolumeTimesTemperatu
 }
 
 } // namespace OpenMagnetics
+
+namespace OpenMagnetics {
+
+std::optional<size_t> MagneticFilterLayerParity::calculate_number_layers(Winding winding, Section section) {
+    auto wire = Coil::resolve_wire(winding);
+    if (section.get_dimensions().size() < 2) {
+        return std::nullopt;
+    }
+    // Overlapping (concentric) sections stack layers along x and lay turns along y.
+    double sectionLengthAlongTurns = section.get_dimensions()[1];
+    double wireDimensionAlongTurns = wire.get_maximum_outer_height();
+    if (!(sectionLengthAlongTurns > 0) || !(wireDimensionAlongTurns > 0)) {
+        return std::nullopt;
+    }
+    auto numberTurnsPerLayer = static_cast<size_t>(std::floor(sectionLengthAlongTurns / wireDimensionAlongTurns));
+    if (numberTurnsPerLayer == 0) {
+        return std::nullopt;
+    }
+    auto totalTurns = static_cast<double>(winding.get_number_turns()) * static_cast<double>(winding.get_number_parallels());
+    return static_cast<size_t>(std::ceil(totalTurns / static_cast<double>(numberTurnsPerLayer)));
+}
+
+std::pair<bool, double> MagneticFilterLayerParity::evaluate_magnetic(Winding winding, Section section) {
+    auto numberLayers = calculate_number_layers(winding, section);
+    if (!numberLayers) {
+        // Nothing to say about a candidate whose layer count cannot be worked out; it is not
+        // rejected and it is not penalised, and the caller can tell it apart from an even one
+        // only through calculate_number_layers. No default layer count is invented here.
+        return {true, 0.0};
+    }
+    if (numberLayers.value() <= 1) {
+        return {true, 0.0};
+    }
+    if ((numberLayers.value() % 2) != 0) {
+        return {true, 1.0};
+    }
+    return {true, 0.0};
+}
+
+std::pair<bool, double> MagneticFilterLayerParity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    (void)inputs;
+    (void)outputs;
+    bool valid = true;
+    double scoring = 0;
+    auto windings = magnetic->get_coil().get_functional_description();
+    for (auto& winding : windings) {
+        auto sections = magnetic->get_mutable_coil().get_sections_by_winding(winding.get_name());
+        if (sections.empty()) {
+            continue;
+        }
+        auto [auxValid, auxScoring] = evaluate_magnetic(winding, sections[0]);
+        valid &= auxValid;
+        scoring += auxScoring;
+    }
+    if (!windings.empty()) {
+        scoring /= static_cast<double>(windings.size());
+    }
+    return {valid, scoring};
+}
+
+} // namespace OpenMagnetics

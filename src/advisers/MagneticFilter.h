@@ -201,6 +201,29 @@ class MagneticFilterAreaNoParallels : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Winding winding, Section section);
 };
 
+/**
+ * @brief ABT #1177 (WP8, DFM rule R1): scores a wire candidate by the parity of the layer
+ * count its winding would land on inside the section.
+ *
+ * An odd layer count forces a drag-back - a bump, window loss, extra leakage, a 45 to 90
+ * degree wire crossing some safety standards forbid, and manual tape work. A single layer
+ * cannot drag back and is never penalised. The scoring is the penalty (0 for an acceptable
+ * candidate, 1 for an odd one), so it is inverted like every other cost-shaped filter. The
+ * filter never rejects a candidate: an odd layer count is manufacturable, just worse.
+ *
+ * The numbers behind the rule live in src/data/dfm_rules.json; the only one this filter
+ * needs is "a single layer is exempt", which is structural rather than tunable.
+ */
+class MagneticFilterLayerParity : public MagneticFilter {
+    public:
+        MagneticFilterLayerParity() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        std::pair<bool, double> evaluate_magnetic(Winding winding, Section section);
+        /// The number of layers the winding needs inside the section, or nullopt when the
+        /// section or the wire does not carry the dimensions to work it out.
+        static std::optional<size_t> calculate_number_layers(Winding winding, Section section);
+};
+
 class MagneticFilterAreaWithParallels : public MagneticFilter {
     public:
         MagneticFilterAreaWithParallels() {};

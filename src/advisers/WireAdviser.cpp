@@ -309,6 +309,30 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_proximity_factor(
     return filteredCoilsWithScoring;
 }
 
+std::vector<std::pair<Winding, double>> WireAdviser::filter_by_layer_parity(std::vector<std::pair<Winding, double>>* unfilteredCoils,
+                                                                            Section section) {
+    std::vector<std::pair<Winding, double>> filteredCoilsWithScoring;
+    std::vector<double> newScoring;
+
+    auto filter = MagneticFilterLayerParity();
+
+    for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){
+        // The parity filter never rejects a candidate: an odd layer count is manufacturable,
+        // just worse, so every candidate survives and only the scoring moves.
+        auto [valid, scoring] = filter.evaluate_magnetic((*unfilteredCoils)[coilIndex].first, section);
+        if (!valid) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "MagneticFilterLayerParity must never reject a candidate");
+        }
+        newScoring.push_back(scoring);
+        filteredCoilsWithScoring.push_back((*unfilteredCoils)[coilIndex]);
+    }
+
+    if (filteredCoilsWithScoring.size() > 0) {
+        normalize_scoring(&filteredCoilsWithScoring, &newScoring, true, "layer_parity");
+    }
+    return filteredCoilsWithScoring;
+}
+
 std::vector<std::pair<Winding, double>> WireAdviser::filter_by_solid_insulation_requirements(std::vector<std::pair<Winding, double>>* unfilteredCoils, WireSolidInsulationRequirements wireSolidInsulationRequirements) {
     std::vector<std::pair<Winding, double>> filteredCoilsWithScoring;
     std::vector<double> newScoring;
@@ -815,6 +839,13 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_wire(std::vecto
 
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.");
+
+    // ABT #1177 (WP8, DFM rule R1): opt-in, default off. Prefers a wire that fills the section
+    // in an even number of layers, so the winding does not end on a drag-back.
+    if (Settings::GetInstance().get_wire_adviser_penalize_odd_layer_count()) {
+        coilsWithScoring = filter_by_layer_parity(&coilsWithScoring, section);
+        logEntry("Scored " + std::to_string(coilsWithScoring.size()) + " wires by layer parity (DFM rule R1).");
+    }
 
     break_score_ties(&coilsWithScoring);
 

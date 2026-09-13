@@ -647,6 +647,8 @@ target_include_directories(MKF PUBLIC "${CMAKE_BINARY_DIR}/generated")
 
 cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards NAMESPACE insulationData src/data/insulation_standards/IEC_60664-1.json src/data/insulation_standards/IEC_60664-4.json src/data/insulation_standards/IEC_60664-5.json src/data/insulation_standards/IEC_62368-1.json src/data/insulation_standards/IEC_61558-1.json src/data/insulation_standards/IEC_61558-2-16.json src/data/insulation_standards/IEC_60335-1.json)
 cmrc_add_resource_library(core_losses_data ALIAS data::core_losses_data NAMESPACE coreLossesData src/data/core_losses/ciGSE_coefficients.json)
+# ABT #1177 (WP8): the design-for-manufacturing rule numbers and the Wuerth source that states each one.
+cmrc_add_resource_library(dfm_rules ALIAS data::dfm_rules NAMESPACE dfmData src/data/dfm_rules.json)
 target_link_libraries(MKF PUBLIC ${LIBS})
 
 # ABT #327: a range-for over a MAS getter's .value() (or a by-value get_*()) binds a
@@ -712,6 +714,7 @@ message(STATUS "MKF embedded MAS data files: ${DATA_LIST}")
 cmrc_add_resource_library(data ALIAS data::data NAMESPACE data ${DATA_LIST})
 target_link_libraries(MKF PUBLIC data::data)
 target_link_libraries(MKF PUBLIC data::core_losses_data)
+target_link_libraries(MKF PUBLIC data::dfm_rules)
 
 target_link_libraries(MKF PUBLIC rapidfuzz::rapidfuzz)
 target_link_libraries(MKF PRIVATE nlohmann_json::nlohmann_json)

@@ -77,6 +77,14 @@ class Settings
         // secondary wound on a lateral leg (integrated-leakage designs). Off by
         // default so the adviser surface is unchanged unless explicitly requested.
         bool _coilAdviserAllowLateralPlacement = false;
+        // ABT #1177 (WP8, DFM rule R1): when true, WireAdviser penalises a wire candidate
+        // whose winding would land on an ODD number of layers in its section. An odd layer
+        // count forces a drag-back (bump, window loss, extra leakage, a 45-90 degree wire
+        // crossing some safety standards forbid, manual tape work) - see
+        // src/data/dfm_rules.json rule R1. Default OFF: the adviser ranking is unchanged
+        // unless the caller explicitly opts in, because whether DFM should outrank losses is
+        // a product decision, not this work package's.
+        bool _wireAdviserPenalizeOddLayerCount = false;
         EffectiveParameterStandard _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
         double _nanocrystallineStackingFactor = 0.80;  // Stacking factor for tape-wound nanocrystalline cores (0.75-0.85 typical)
 
@@ -314,6 +322,9 @@ class Settings
 
         bool get_coil_adviser_allow_lateral_placement() const;
         void set_coil_adviser_allow_lateral_placement(bool value);
+
+        bool get_wire_adviser_penalize_odd_layer_count() const;
+        void set_wire_adviser_penalize_odd_layer_count(bool value);
 
     EffectiveParameterStandard get_effective_parameter_standard() const;
     void set_effective_parameter_standard(EffectiveParameterStandard value);
