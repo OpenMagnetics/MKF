@@ -106,7 +106,7 @@ class Bobbin : public MAS::Bobbin {
     /**
      * @brief Expand a catalogue pinout into the individual pins it describes (WP2, ABT #1171).
      *
-     * A `pinout` is a footprint recipe - "14 pins, 6 and 8 to a row, rows 10.16 mm apart,
+     * A `pinout` is a footprint recipe - "14 pins, 6 and 8 to a row, rows 20.32 mm apart,
      * pitch 3.81 and 2.54, 5.08 between the middle pair" - and nothing downstream can draw,
      * export or simulate a recipe. This turns it into `MAS::Pin`s carrying real coordinates,
      * referred to the centre of the main column, exactly as `bobbin.json` `$defs/pin` defines.

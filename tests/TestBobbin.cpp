@@ -465,7 +465,7 @@ MAS::Pinout miles_platts_pq2016_pinout() {
     json pinout = json::parse(R"({
         "numberPins": 14,
         "numberPinsPerRow": [6, 8],
-        "rowDistance": 0.01016,
+        "rowDistance": 0.02032,
         "pitch": [0.00381, 0.00254],
         "centralPitch": 0.00508,
         "pinDescription": {"shape": "round", "type": "tht", "dimensions": [0.00071, 0.00071, 0.00508]}
@@ -497,8 +497,11 @@ TEST_CASE("expand_pinout places the Miles-Platts PQ 20/16 footprint (ABT #1171)"
     REQUIRE(cataloguePinout.get_number_pins_per_row());
     CHECK(cataloguePinout.get_number_pins_per_row().value() == std::vector<int64_t>({6, 8}));
     REQUIRE(cataloguePinout.get_row_distance());
+    // ABT #1209: the Miles-Platts PQ0010 drawing (manufacturerInfo.datasheetUrl, top view) dimensions
+    // the two pin rows 0.800 in = 20.32 mm apart, centre to centre. MAS stored half of that
+    // (10.16 mm) until MAS 901af03; rowDistance is the FULL row-to-row distance.
     CHECK_THAT(cataloguePinout.get_row_distance().value(),
-               Catch::Matchers::WithinAbs(0.01016, 1e-9));
+               Catch::Matchers::WithinAbs(0.02032, 1e-9));
     REQUIRE(cataloguePinout.get_central_pitch());
     CHECK_THAT(cataloguePinout.get_central_pitch().value(),
                Catch::Matchers::WithinAbs(0.00508, 1e-9));
@@ -536,7 +539,7 @@ TEST_CASE("expand_pinout places the Miles-Platts PQ 20/16 footprint (ABT #1171)"
         CHECK_THAT(pin_x(pins, std::to_string(index + 1)),
                    Catch::Matchers::WithinAbs(expectedRow0[index], 1e-9));
         CHECK_THAT(pins[index].get_coordinates().value()[2],
-                   Catch::Matchers::WithinAbs(-0.00508, 1e-9));
+                   Catch::Matchers::WithinAbs(-0.01016, 1e-9));
     }
     const std::vector<double> expectedRow1({0.01016, 0.00762, 0.00508, 0.00254,
                                             -0.00254, -0.00508, -0.00762, -0.01016});
@@ -544,7 +547,7 @@ TEST_CASE("expand_pinout places the Miles-Platts PQ 20/16 footprint (ABT #1171)"
         CHECK_THAT(pin_x(pins, std::to_string(index + 7)),
                    Catch::Matchers::WithinAbs(expectedRow1[index], 1e-9));
         CHECK_THAT(pins[6 + index].get_coordinates().value()[2],
-                   Catch::Matchers::WithinAbs(0.00508, 1e-9));
+                   Catch::Matchers::WithinAbs(0.01016, 1e-9));
     }
 
     // Vertical: the pins hang from the pin rail's outer face, centred half a pin lower:
@@ -764,7 +767,9 @@ TEST_CASE("Catalogue PQ 26/25 pins lie wholly outside the PQ 26/25 core (ABT #12
     // Even the TOLERANCE-MAXIMUM core (B max 12.5 mm) ends above the rail.
     CHECK(pinRailDistance > 0.0125);
 
-    // Same x/z footprint and names as before ABT #1207: only y moved.
+    // x and names as before ABT #1207. z: the rows sit at -+ rowDistance/2 = -+12.7 mm, from the
+    // Miles-Platts PQ0040 drawing's 1.000 in (25.4 mm) row-to-row dimension (ABT #1209; MAS held
+    // half of it, 12.7 mm, which put the rows at -+6.35 mm, inside the core's depth).
     const std::vector<double> expectedX({-0.01143, -0.00762, -0.00381, 0.00381, 0.00762, 0.01143,
                                           0.01143, 0.00762, 0.00381, -0.00381, -0.00762, -0.01143});
     for (size_t index = 0; index < pins.size(); ++index) {
@@ -774,7 +779,10 @@ TEST_CASE("Catalogue PQ 26/25 pins lie wholly outside the PQ 26/25 core (ABT #12
         const auto coordinates = pin.get_coordinates().value();
         const auto dimensions = pin.get_dimensions();
         CHECK_THAT(coordinates[0], Catch::Matchers::WithinAbs(expectedX[index], 1e-9));
-        CHECK_THAT(coordinates[2], Catch::Matchers::WithinAbs(index < 6 ? -0.00635 : 0.00635, 1e-9));
+        CHECK_THAT(coordinates[2], Catch::Matchers::WithinAbs(index < 6 ? -0.0127 : 0.0127, 1e-9));
+        // The rows lie outside the core's depth as well: the pin's near edge |z| - d/2 =
+        // 12.7 - 0.455 = 12.245 mm against C/2 = 9.5 mm, a 2.745 mm margin.
+        CHECK(std::abs(coordinates[2]) - dimensions[0] / 2 > coreHalfDepth + 0.0025);
         // Old: y = -(H2/2 + wall + L/2) = -0.01142, hung from the bottom flange inside the core
         // window. New:
         // -(0.018505 + 0.00737/2) = -0.02219.
@@ -817,9 +825,10 @@ TEST_CASE("Catalogue ETD 59/31/22 horizontal pinout has no rail datum and says s
 TEST_CASE("A horizontal pin clears a core by construction when its rail is given (ABT #1207)",
           "[constructive-model][bobbin][pins][abt1207]") {
     // The mirrored branch: the same rail distance, along -Z. ETD 59/31/22 core, depth C max 22.1
-    // mm; a rail 27.7 mm from the column axis (the SW-59A drawing scaled), 4.4 mm pins.
+    // mm; a rail 27.7 mm from the column axis (the test's own, scaled off the SW-59A drawing), 4.4 mm
+    // pins. rowDistance 50.8 mm is the drawing's 50.8(M), pin 12 centre to pin 13 centre (ABT #1209).
     json footprint = json::parse(R"({
-        "numberPins": 24, "numberPinsPerRow": [12, 12], "rowDistance": 0.0556, "pitch": 0.00508,
+        "numberPins": 24, "numberPinsPerRow": [12, 12], "rowDistance": 0.0508, "pitch": 0.00508,
         "pinDescription": {"shape": "round", "type": "tht", "dimensions": [0.001, 0.001, 0.0044]}
     })");
     MAS::Pinout pinout;
@@ -832,7 +841,7 @@ TEST_CASE("A horizontal pin clears a core by construction when its rail is given
     for (const auto& pin : pins) {
         const auto coordinates = pin.get_coordinates().value();
         CHECK_THAT(coordinates[2], Catch::Matchers::WithinAbs(-(0.0277 + 0.0022), 1e-12));
-        CHECK_THAT(std::abs(coordinates[1]), Catch::Matchers::WithinAbs(0.0278, 1e-12));
+        CHECK_THAT(std::abs(coordinates[1]), Catch::Matchers::WithinAbs(0.0254, 1e-12));
         // Horizontal pins run along Z: the extent nearest the core is the rail face.
         const double pinNearEnd = coordinates[2] + pin.get_dimensions()[2] / 2;
         CHECK(pinNearEnd < -coreHalfDepth);
