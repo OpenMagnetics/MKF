@@ -96,6 +96,7 @@ namespace OpenMagnetics {
         _coilAllowHorizontalOverflow = false;
         _coilQuickBobbinGeneratePins = false;
         _coilQuickBobbinPinsOrientation = OrientationEnum::VERTICAL;
+        _toroidMounting = OrientationEnum::VERTICAL;
         _coilMaximumLayersPlanar = 32;
 
         _useOnlyCoresInStock = true;
@@ -367,6 +368,12 @@ namespace OpenMagnetics {
     }
     void Settings::set_coil_quick_bobbin_pins_orientation(OrientationEnum value) {
         _coilQuickBobbinPinsOrientation = value;
+    }
+    OrientationEnum Settings::get_toroid_mounting() const {
+        return _toroidMounting;
+    }
+    void Settings::set_toroid_mounting(OrientationEnum value) {
+        _toroidMounting = value;
     }
 
     size_t Settings::get_coil_maximum_layers_planar() const {

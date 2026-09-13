@@ -68,6 +68,17 @@ class Settings
         // quick bobbins stay pinless. A core family with no catalogue evidence throws when ON.
         bool _coilQuickBobbinGeneratePins = false;
         OrientationEnum _coilQuickBobbinPinsOrientation = OrientationEnum::VERTICAL;  // Keep in sync with reset()
+        // ABT #1248 (Alf, 2026-09-13): how a wound TOROID is mounted in the 3D assembly frame
+        // (MVB++ reads it where the toroid geometry is built). VERTICAL (default, what most
+        // toroidal inductors and 2-winding CMCs look like, e.g. WE-CMB/WE-TI): the ring stands on
+        // its rim, hole axis horizontal (Z), ring plane XY with Y up; it is turned about the hole
+        // axis so every winding's start and finish sit at the bottom, and each terminal lead leaves
+        // its crossing straight down (-Y) to one common XZ plane below the ring. HORIZONTAL: the
+        // ring lies flat, hole axis along Y; each lead runs out past the rim and drops -Y to the
+        // same kind of common XZ plane. Both mountings put every toroid terminal cap in an XZ plane
+        // with normal -Y. A toroid base record's own base.mounting overrides this setting.
+        // The MKF-side terminal-lead route/length (ABT #1217) must follow this geometry.
+        OrientationEnum _toroidMounting = OrientationEnum::VERTICAL;  // Keep in sync with reset()
         size_t _coilMaximumLayersPlanar = 32;  // Keep in sync with reset()
 
         bool _useOnlyCoresInStock = true;
@@ -327,6 +338,8 @@ class Settings
         void set_coil_quick_bobbin_generate_pins(bool value);
         OrientationEnum get_coil_quick_bobbin_pins_orientation() const;
         void set_coil_quick_bobbin_pins_orientation(OrientationEnum value);
+        OrientationEnum get_toroid_mounting() const;
+        void set_toroid_mounting(OrientationEnum value);
 
         size_t get_coil_maximum_layers_planar() const;
         void set_coil_maximum_layers_planar(size_t value);
