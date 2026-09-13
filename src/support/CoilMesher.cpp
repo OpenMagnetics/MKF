@@ -296,6 +296,48 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
 }
 
 
+std::pair<Field, double> CoilMesher::generate_mesh_core_winding_window_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY) {
+    if (numberPointsX == 0 || numberPointsY == 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Core winding window grid needs at least one point per axis");
+    }
+    auto core = magnetic.get_core();
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException("Core winding window grid: the core has no processed description");
+    }
+    if (core.get_shape_family() == CoreShapeFamily::T) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core winding window grid: toroidal windows are not rectangular");
+    }
+    auto windingWindows = core.get_processed_description()->get_winding_windows();
+    if (windingWindows.size() != 1) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core winding window grid: expected a single winding window, the core has " + std::to_string(windingWindows.size()));
+    }
+    if (!windingWindows[0].get_width() || !windingWindows[0].get_height()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core winding window grid: the winding window has no width or height");
+    }
+    // Same frame as CoilMesherCenterModel's single-window image lattice: the window starts at the main column
+    // face and is centred vertically.
+    double windowLeftEdgeX = core.get_columns()[0].get_width() / 2;
+    double windowWidth = windingWindows[0].get_width().value();
+    double windowHeight = windingWindows[0].get_height().value();
+    double pixelXDimension = windowWidth / static_cast<double>(numberPointsX);
+    double pixelYDimension = windowHeight / static_cast<double>(numberPointsY);
+
+    std::vector<FieldPoint> points;
+    points.reserve(numberPointsX * numberPointsY);
+    for (size_t j = 0; j < numberPointsY; ++j) {
+        double y = -windowHeight / 2 + (static_cast<double>(j) + 0.5) * pixelYDimension;
+        for (size_t i = 0; i < numberPointsX; ++i) {
+            FieldPoint fieldPoint;
+            fieldPoint.set_point(std::vector<double>{windowLeftEdgeX + (static_cast<double>(i) + 0.5) * pixelXDimension, y});
+            points.push_back(fieldPoint);
+        }
+    }
+    Field inducedField;
+    inducedField.set_data(points);
+    inducedField.set_frequency(frequency);
+    return {inducedField, pixelXDimension * pixelYDimension};
+}
+
 std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
@@ -535,6 +577,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
 
     int M = mirroringDimension;
     int N = mirroringDimension;
+    bool completeCells = settings.get_magnetic_field_mirroring_complete_cells();
 
     double corePermeability = core.get_initial_permeability(defaults.ambientTemperature);
     if (!core.get_processed_description()) {
@@ -588,12 +631,40 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
                                       double frameLeftEdgeX, double frameBottomY, double signMultiplier) {
             double crossingA = crossingPoint[0] - frameLeftEdgeX;
             double crossingB = crossingPoint[1] - frameBottomY;
-            for (int m = -M; m <= M; ++m)
+            // Image index m places the conductor at m*A + a (m even) or m*A + A - a (m odd), |m| reflections
+            // away. The symmetric range [-M, M] cuts the 2A x 2B mirror cell in two, so the lattice keeps a net
+            // dipole and its sum does not converge to the enclosed-window field: on side-by-side windings
+            // (field crossing the whole window) the leakage energy read 0.68-0.85 of OMFEM 2D (ABT #1240).
+            // Complete cells, m in [-2Kx-1, 2Kx], pair every image with its mirror, so the remainder decays as
+            // a quadrupole lattice. That remainder is set by the lattice's physical extent, so the short side of
+            // the window gets proportionally more cells: Kx = M ceil(B/A), Ky = M ceil(A/B). On a two-chamber
+            // ETD 49 (B/A = 3.5) Kx = Ky = 1 read 0.86 of the converged lattice; Kx = 4 is within 1 %.
+            int cellsX = M;
+            int cellsY = N;
+            if (completeCells) {
+                cellsX = M * static_cast<int>(std::max(1.0, std::ceil(frameB / frameA)));
+                cellsY = N * static_cast<int>(std::max(1.0, std::ceil(frameA / frameB)));
+            }
+            int mMinimum = completeCells && cellsX > 0 ? -2 * cellsX - 1 : -cellsX;
+            int mMaximum = completeCells && cellsX > 0 ? 2 * cellsX : cellsX;
+            int nMinimum = completeCells && cellsY > 0 ? -2 * cellsY - 1 : -cellsY;
+            int nMaximum = completeCells && cellsY > 0 ? 2 * cellsY : cellsY;
+            for (int m = mMinimum; m <= mMaximum; ++m)
             {
-                for (int n = -N; n <= N; ++n)
+                for (int n = nMinimum; n <= nMaximum; ++n)
                 {
                     FieldPoint mirroredFieldPoint;
-                    double currentMultiplier = (corePermeability - std::max(fabs(m), fabs(n))) / (corePermeability + std::max(fabs(m), fabs(n)));
+                    double currentMultiplier;
+                    if (completeCells) {
+                        // A line current reflected in a permeable half-space has the image I (mu - 1) / (mu + 1);
+                        // the image at (m, n) is |m| + |n| reflections away and carries that factor as many times.
+                        // The legacy factor below turns negative once max(|m|, |n|) exceeds mu, which the larger
+                        // complete-cell lattices reach on low-permeability cores.
+                        currentMultiplier = std::pow((corePermeability - 1.0) / (corePermeability + 1.0), std::abs(m) + std::abs(n));
+                    }
+                    else {
+                        currentMultiplier = (corePermeability - std::max(fabs(m), fabs(n))) / (corePermeability + std::max(fabs(m), fabs(n)));
+                    }
                     mirroredFieldPoint.set_value(signMultiplier * currentMultiplier);  // Will be multiplied later
                     if (turnLength) {
                         mirroredFieldPoint.set_turn_length(turnLength.value());

@@ -202,7 +202,7 @@ bool is_inside_turns(std::vector<Turn> turns, FieldPoint inducedFieldPoint, std:
     return false;
 }
 
-bool is_inside_core(FieldPoint inducedFieldPoint, double coreColumnWidth, double coreWidth, CoreShapeFamily coreShapeFamily) {
+bool is_inside_core(const FieldPoint& inducedFieldPoint, double coreColumnWidth, double coreWidth, CoreShapeFamily coreShapeFamily) {
     if (coreShapeFamily != CoreShapeFamily::T) {
         return false;
     }
@@ -669,9 +669,20 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             }
         }
 
+        // Loop invariants of the point-pair sum below, hoisted: the inducing point's winding (a name lookup)
+        // and, per induced point, whether it lies inside a toroidal core.
+        const auto& inducingData = inducingFields[harmonicIndex].get_data();
+        std::vector<std::optional<size_t>> windingIndexPerInducingPoint(inducingData.size(), std::nullopt);
+        for (size_t inducingIndex = 0; inducingIndex < inducingData.size(); ++inducingIndex) {
+            if (inducingData[inducingIndex].get_turn_index()) {
+                windingIndexPerInducingPoint[inducingIndex] = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingData[inducingIndex].get_turn_index().value()].get_winding());
+            }
+        }
+
         for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
             double totalInducedFieldX = 0;
             double totalInducedFieldY = 0;
+            bool inducedPointInsideCore = is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily);
 
             // ROSHEN and SULLIVAN fringing are computed per-point in this loop (not via equivalent current loops)
             // Skip if using ALBACH H-field model since fringing is already added in the ALBACH branch above
@@ -759,7 +770,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             bool fringingOnlyPoint = inducedFieldPoint.get_label() &&
                                      inducedFieldPoint.get_label().value() == "widthsample";
 
-            for (auto& inducingFieldPoint : inducingFields[harmonicIndex].get_data()) {
+            for (size_t inducingIndex = 0; inducingIndex < inducingData.size(); ++inducingIndex) {
+                const auto& inducingFieldPoint = inducingData[inducingIndex];
                 // Multi-column winding: the main column magnetically screens the two
                 // window sides from each other (the mirror-image walls). A turn on one
                 // side does not directly induce field on the other side; its influence
@@ -774,7 +786,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     if (fringingOnlyPoint) {
                         continue;
                     }
-                    windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingFieldPoint.get_turn_index().value()].get_winding());
+                    windingIndex = windingIndexPerInducingPoint[inducingIndex];
                 }
                 if (inducingFieldPoint.get_turn_index()) {
                     if (inducedFieldPoint.get_turn_index()) {
@@ -788,19 +800,19 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     // else if (is_inside_turns(turns, inducedFieldPoint, _wirePerWinding, magnetic)) {
                     //     continue;
                     // }
-                    else if (is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
+                    else if (inducedPointInsideCore) {
                         continue;
                     }
                 }
 
-                auto complexFieldPoint = _model->get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint, windingIndex);
+                auto [inducedFieldX, inducedFieldY] = _model->get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, windingIndex);
 
-                totalInducedFieldX += complexFieldPoint.get_real();
-                totalInducedFieldY += complexFieldPoint.get_imaginary();
-                if (std::isnan(complexFieldPoint.get_real())) {
+                totalInducedFieldX += inducedFieldX;
+                totalInducedFieldY += inducedFieldY;
+                if (std::isnan(inducedFieldX)) {
                     throw NaNResultException("NaN found in magnetic field calculation");
                 }
-                if (std::isnan(complexFieldPoint.get_imaginary())) {
+                if (std::isnan(inducedFieldY)) {
                     throw NaNResultException("NaN found in magnetic field calculation");
                 }
             }
@@ -826,7 +838,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     return windingWindowMagneticStrengthFieldOutput;
 }
 
-ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
+ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
     double Hx = 0;
     double Hy = 0;
     if (!inducingWireIndex) {
@@ -995,7 +1007,7 @@ ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_be
     return complexFieldPoint;   
 }
 
-ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
+std::pair<double, double> MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_components_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
     double Hx;
     double Hy;
 
@@ -1010,15 +1022,12 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         }
         else {
             double wireRadius = _wireMaxOuterWidth[inducingWireIndex.value()] / 2;
-            if (hypot(distanceX, distanceY) < wireRadius) {
-                Hx = 0;
-                Hy = 0;
-            }
-            else { 
-                double divisor = 2 * std::numbers::pi * (pow(distanceY, 2) + pow(distanceX, 2));
-                Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
-                Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
-            }
+            // Inside the wire the current enclosed at radius r is I r^2 / R^2 (uniform density), so the
+            // field is I r / (2 pi R^2). It was zeroed, which dropped the conductor's own stored energy from
+            // the leakage integral (ABT #1240).
+            double divisor = 2 * std::numbers::pi * std::max(pow(distanceY, 2) + pow(distanceX, 2), wireRadius * wireRadius);
+            Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
+            Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
             if (std::isnan(Hx) || std::isnan(Hy)) {
                 throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
             }
@@ -1053,85 +1062,27 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
             y = modulo * sin(totalAngle);
         }
 
-        double r1 = hypot(y + b, x - a);
-        double r2 = hypot(y + b, x + a);
-        double r3 = hypot(y - b, x + a);
-        double r4 = hypot(y - b, x - a);
-
-        double tetha1 = atan((y + b) / (x - a));
-        double tetha2 = atan((y + b) / (x + a));
-        double tetha3 = atan((y - b) / (x + a));
-        double tetha4 = atan((y - b) / (x - a));
-        // The 0-field branches (inside the conductor, degenerate corner thetas) must NOT
-        // fall through to the field computation below: they used to set Hx=Hy=0 and then
-        // be overwritten by the unconditional recompute at the end, so inside-conductor
-        // points got the formula with unadjusted quadrant thetas (garbage) and NaN-theta
-        // points threw instead of the intended graceful 0 (the round-wire path returns 0
-        // inside the wire for the same reason).
-        if (fabs(x) < a && fabs(y) < b) {
-            Hx = 0;
-            Hy = 0;
-        }
-        else if (std::isnan(tetha1) || std::isnan(tetha2) || std::isnan(tetha3) || std::isnan(tetha4)) {
-            Hx = 0;
-            Hy = 0;
-        }
-        else {
-            if (x == a) {
-                if ((y + b) > 0) {
-                    tetha1 = std::numbers::pi / 2;
-                }
-                else {
-                    tetha1 = -std::numbers::pi / 2;
-                }
-                if ((y - b) > 0) {
-                    tetha4 = std::numbers::pi / 2;
-                }
-                else {
-                    tetha4 = -std::numbers::pi / 2;
-                }
-            }
-
-            if (x > a && -b < y && y < b) {
-
-            }
-            else {
-                if (x > a && y < -b) {
-                    tetha1 += 2 * std::numbers::pi;
-                }
-                else if (x < a || y < -b) {
-                    tetha1 += std::numbers::pi;
-                }
-
-                if (x > -a && y < -b) {
-                    tetha2 += 2 * std::numbers::pi;
-                }
-                else if (x < -a || y < -b) {
-                    tetha2 += std::numbers::pi;
-                }
-
-                if (x > -a && y < b) {
-                    tetha3 += 2 * std::numbers::pi;
-                }
-                else if (x < -a || y < b) {
-                    tetha3 += std::numbers::pi;
-                }
-
-                if (x > a && y < b) {
-                    tetha4 += 2 * std::numbers::pi;
-                }
-                else if (x < a || y < b) {
-                    tetha4 += std::numbers::pi;
-                }
-            }
-
-            double common_part = inducingFieldPoint.get_value() / (8.0 * std::numbers::pi * a * b);
-            Hx = common_part * ((y + b) * (tetha1 - tetha2) - (y - b) * (tetha4 - tetha3) + (x + a) * log(r2 / r3) - (x - a) * log(r1 / r4));
-
-            Hy = -common_part * ((x + a) * (tetha2 - tetha3) - (x - a) * (tetha1 - tetha4) + (y + b) * log(r2 / r1) - (y - b) * log(r3 / r4));
-            if (std::isnan(Hx) || std::isnan(Hy)) {
-                throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
-            }
+        // Field of a uniform current I over the rectangle |x'| < a, |y'| < b, from the double integral of the
+        // line-current kernel. With u = x - x', v = y - y' and P(u, v) = u ln(u^2 + v^2) / 2 + v atan(u / v), a
+        // primitive of v / (u^2 + v^2) du dv, Hx = J/(2 pi) S(u, v) and Hy = -J/(2 pi) S(v, u) in this model's sign
+        // convention (the filament branch above), S being P summed over the four corners. It is exact inside the
+        // conductor too. The previous atan/log form with quadrant corrections (identical outside, to 1e-6 on 2e4
+        // random points) zeroed the field in the copper, which dropped the tracks' own energy from the planar
+        // leakage integral (ABT #1240).
+        auto primitive = [](double u, double v) {
+            double squaredRadius = u * u + v * v;
+            double logarithmTerm = squaredRadius > 0 ? 0.5 * u * log(squaredRadius) : 0.0;
+            double arctangentTerm = v != 0 ? v * atan(u / v) : 0.0;
+            return logarithmTerm + arctangentTerm;
+        };
+        auto cornerSum = [&primitive](double u1, double u2, double v1, double v2) {
+            return primitive(u2, v2) - primitive(u1, v2) - primitive(u2, v1) + primitive(u1, v1);
+        };
+        double currentDensityOver2Pi = inducingFieldPoint.get_value() / (4.0 * a * b) / (2.0 * std::numbers::pi);
+        Hx = currentDensityOver2Pi * cornerSum(x - a, x + a, y - b, y + b);
+        Hy = -currentDensityOver2Pi * cornerSum(y - b, y + b, x - a, x + a);
+        if (std::isnan(Hx) || std::isnan(Hy)) {
+            throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
         }
     }
 
@@ -1151,6 +1102,11 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         }
     }
 
+    return {Hx, Hy};
+}
+
+ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
+    auto [Hx, Hy] = get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, inducingWireIndex);
     ComplexFieldPoint complexFieldPoint;
     complexFieldPoint.set_imaginary(Hy);
     complexFieldPoint.set_point(inducedFieldPoint.get_point());
@@ -1174,7 +1130,7 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
 // along y (axial), which is Dowell's own arrangement, so the step is taken on the x coordinate
 // and the field is returned on y. Toroidal/other layouts are not Dowell's geometry and the
 // caller should choose a two-dimensional model there.
-ComplexFieldPoint MagneticFieldStrengthDowellModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
+ComplexFieldPoint MagneticFieldStrengthDowellModel::get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
     ComplexFieldPoint magneticFieldStrengthPoint;
     magneticFieldStrengthPoint.set_point(inducedFieldPoint.get_point());
     if (inducedFieldPoint.get_label()) {
@@ -1211,7 +1167,7 @@ ComplexFieldPoint MagneticFieldStrengthDowellModel::get_magnetic_field_strength_
     return magneticFieldStrengthPoint;
 }
 
-ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
+ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
     double Hx;
     double Hy;
 
@@ -1371,8 +1327,8 @@ ComplexFieldPoint MagneticFieldStrengthRoshenModel::get_magnetic_field_strength_
 // ============================================================================
 
 ComplexFieldPoint MagneticFieldStrengthAlbach2DModel::get_magnetic_field_strength_between_two_points(
-    FieldPoint inducingFieldPoint, 
-    FieldPoint inducedFieldPoint, 
+    const FieldPoint& inducingFieldPoint,
+    const FieldPoint& inducedFieldPoint, 
     std::optional<size_t> inducingWireIndex
 ) {
     // ALBACH model calculates field from all turns at once via calculateTotalFieldAtPoint()

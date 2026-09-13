@@ -37,6 +37,12 @@ class CoilMesher {
     // NOT use it — its revolution bookkeeping already accounts for the full turn from
     // one window's cross-section, so meshing both sides would double-count energy.
     static std::pair<Field, double> generate_mesh_induced_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY, bool ignoreTurns = false, bool includeInsideTurns = true, bool meshAllWindows = false);
+    // Uniform cell-centred grid over the WHOLE core winding window of a single-window core with a rectangular
+    // window: x from the main column face to the lateral column face, y over the window height, conductors
+    // included. The leakage energy integral needs every point where the field stores energy: the copper, the
+    // space between separated sections, and the bobbin walls and clearances beyond the bobbin window
+    // (ABT #1240). Throws for toroids and multi-window cores, whose windows this frame does not describe.
+    static std::pair<Field, double> generate_mesh_core_winding_window_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY);
 };
 
 class CoilMesherModel {

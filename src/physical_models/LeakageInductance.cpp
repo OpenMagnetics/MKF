@@ -66,7 +66,36 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
     auto [numberPointsX, numberPointsY] = calculate_grid_points(magnetic, frequency);
 
-    auto meshResult = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY);
+    // ABT #1240. The window field is the exact 2-D field of the conductors (true cross-section, true
+    // current, uniform density) inside the high-permeability window, built from a complete image lattice,
+    // and its energy is integrated over the WHOLE core winding window. Measured against OMFEM 2D, each of
+    // the removed shortcuts under-read the leakage: copper excluded from the grid (planar), points far from
+    // every turn dropped (tall windows, separated sections), the grid stopping at the bobbin window edge,
+    // the Wang two-filament planar mesh (no images), the truncated [-M, M] lattice (side-by-side sections
+    // 0.68-0.85) and the zeroed in-conductor field.
+    SettingsGuard<bool> completeCellsGuard(settings, &Settings::get_magnetic_field_mirroring_complete_cells, &Settings::set_magnetic_field_mirroring_complete_cells, true);
+    auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+    bool singleRectangularWindow = bobbin.get_winding_window_shape() == WindingWindowShape::RECTANGULAR &&
+                                   magnetic.get_mutable_core().get_shape_family() != CoreShapeFamily::T &&
+                                   magnetic.get_mutable_core().get_winding_windows().size() == 1;
+    std::pair<Field, double> meshResult;
+    if (singleRectangularWindow) {
+        // The point counts resolve the bobbin window (window 0, a single chamber on a sectioned bobbin); keep
+        // that pitch over the larger core window.
+        auto bobbinWindowDimensions = bobbin.get_winding_window_dimensions();
+        auto coreWindingWindow = magnetic.get_mutable_core().get_winding_windows()[0];
+        if (!coreWindingWindow.get_width() || !coreWindingWindow.get_height()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Cannot calculate leakage inductance: the core winding window has no width or height");
+        }
+        double coreWindowWidth = coreWindingWindow.get_width().value();
+        double coreWindowHeight = coreWindingWindow.get_height().value();
+        size_t coreNumberPointsX = static_cast<size_t>(std::ceil(static_cast<double>(numberPointsX) * coreWindowWidth / bobbinWindowDimensions[0]));
+        size_t coreNumberPointsY = static_cast<size_t>(std::ceil(static_cast<double>(numberPointsY) * coreWindowHeight / bobbinWindowDimensions[1]));
+        meshResult = CoilMesher::generate_mesh_core_winding_window_grid(magnetic, frequency, coreNumberPointsX, coreNumberPointsY);
+    }
+    else {
+        meshResult = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY);
+    }
     Field inducedField = meshResult.first;
 
         if (inducedField.get_data().size() == 0) {
@@ -92,8 +121,9 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
 
     ComplexField field;
     {
-        CoilMesherModels modelToUse = select_mesh_model(magnetic);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, customCurrentDirectionPerWinding, modelToUse);
+        // Every conductor as its true cross-section with its images (CENTER); the Wang mesh splits a planar
+        // track into two full-current filaments without images, a proximity-loss construction.
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, customCurrentDirectionPerWinding, CoilMesherModels::CENTER);
         field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
     }
     auto turns = magnetic.get_coil().get_turns_description().value();
@@ -549,23 +579,6 @@ OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magne
     OperatingPoint operatingPoint;
     operatingPoint.set_excitations_per_winding(excitationPerWinding);
     return operatingPoint;
-}
-
-CoilMesherModels LeakageInductance::select_mesh_model(Magnetic& magnetic) {
-    auto isPlanar = magnetic.get_wires()[0].get_type() == WireType::PLANAR;
-
-    if (isPlanar) {
-        double minimumRatio = DBL_MAX;
-        for (auto wire : magnetic.get_wires()) {
-            minimumRatio = std::min(minimumRatio, wire.get_maximum_conducting_width() / wire.get_maximum_conducting_height());
-        }
-        auto isThickPlanar = minimumRatio < PLANAR_THICKNESS_RATIO_THRESHOLD;
-        if (!isThickPlanar) {
-            return CoilMesherModels::WANG;
-        }
-    }
-
-    return CoilMesherModels::CENTER;
 }
 
 std::pair<size_t, size_t> LeakageInductance::calculate_grid_points(Magnetic& magnetic, double frequency) {

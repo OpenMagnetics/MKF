@@ -58,7 +58,6 @@ class LeakageInductance{
 
     private:
         static constexpr double NEGLIGIBLE_CURRENT = 1e-9;
-        static constexpr double PLANAR_THICKNESS_RATIO_THRESHOLD = 10.0;
         static constexpr double SINUSOIDAL_PEAK_TO_PEAK = 2.0;
         static constexpr double SINUSOIDAL_DUTY_CYCLE = 0.5;
         static constexpr double SINUSOIDAL_OFFSET = 0.0;
@@ -75,7 +74,6 @@ class LeakageInductance{
         // Peak amplitude of the excitation's current harmonic at the frequency the field was solved at:
         // the amplitude the field model drove the turns with (throws when there is none).
         static double harmonic_peak_current_at_field_frequency(const OperatingPointExcitation& excitation, double fieldFrequency);
-        CoilMesherModels select_mesh_model(Magnetic& magnetic);
         std::pair<size_t, size_t> calculate_grid_points(Magnetic& magnetic, double frequency);
 
 };

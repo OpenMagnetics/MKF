@@ -562,9 +562,11 @@ TEST_CASE("Leakage of a flyback rises when its windings go side by side into two
     // Pass/fail reference: OMFEM 2D (axisymmetric, round post with a functional gap) energy-method leakage of these
     // two magnetics serialized from MKF, `omfem_leakage <fixture>.json` (OMFEM 0e6ee2a tools/omfem_leakage.cpp,
     // MVB++ 7239be7): chambered 2223 uH, single window 149.7 uH. McLyman's 1-D formula above is a sanity note only.
-    // The single window agrees (MKF 152.6 uH). The chambered value is 0.61 of OMFEM since ABT #1211 corrected the
-    // Energy normalisation (it read 2689 uH, +21 %, before): the air-field model under-estimates the field of
-    // side-by-side sections (ABT #1240). Red until that is fixed.
+    // ABT #1211 corrected the Energy normalisation (chambered 2689 uH -> 1355 uH, 0.61 of OMFEM). ABT #1240 found the
+    // side-by-side under-estimate in the field model (image lattice cut through its mirror cell, grid pruned away
+    // from the turns and stopped at the bobbin window, in-wire field zeroed): chambered 2349 uH (+5.7 %), single
+    // window 149.9 uH (+0.1 %). The chambered residual is the Cartesian field weighted by 2 pi r: a radial field
+    // crossing the window falls as 1/r in the axisymmetric solution, and r_mean ln(r2/r1)/(r2 - r1) = 1.054 here.
     double omfemChamberedLeakage = 2223e-6;
     double omfemSingleLeakage = 149.7e-6;
     CHECK_THAT(singleLeakage, WithinRel(omfemSingleLeakage, 0.15));

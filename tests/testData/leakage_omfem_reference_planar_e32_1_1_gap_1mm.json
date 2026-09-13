@@ -1,0 +1,2165 @@
+{
+  "magnetic": {
+    "coil": {
+      "bobbin": {
+        "distributorsInfo": null,
+        "functionalDescription": null,
+        "manufacturerInfo": null,
+        "name": null,
+        "processedDescription": {
+          "columnCornerRadius": null,
+          "columnDepth": 0.0101625,
+          "columnShape": "rectangular",
+          "columnThickness": 0.0,
+          "columnWidth": 0.003175,
+          "coordinates": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "dividers": null,
+          "pins": null,
+          "wallThickness": 0.0,
+          "windingWindows": [
+            {
+              "angle": null,
+              "area": 6.080125e-05,
+              "column": null,
+              "coordinates": [
+                0.0079625,
+                0.0,
+                0.0
+              ],
+              "height": 0.00635,
+              "radialHeight": null,
+              "sectionsAlignment": null,
+              "sectionsOrientation": "contiguous",
+              "shape": "rectangular",
+              "width": 0.009575,
+              "windingOrder": null
+            }
+          ]
+        }
+      },
+      "functionalDescription": [
+        {
+          "connections": null,
+          "isolationSide": "primary",
+          "name": "Primary",
+          "numberParallels": 1,
+          "numberTurns": 1,
+          "windingWindow": null,
+          "wire": {
+            "coating": null,
+            "conductingArea": null,
+            "conductingDiameter": null,
+            "conductingHeight": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 7e-05,
+              "unit": null
+            },
+            "conductingWidth": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.009395,
+              "unit": null
+            },
+            "edgeRadius": null,
+            "manufacturerInfo": null,
+            "material": "copper",
+            "name": null,
+            "numberConductors": 1,
+            "outerDiameter": null,
+            "outerHeight": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 7e-05,
+              "unit": null
+            },
+            "outerWidth": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.009395,
+              "unit": null
+            },
+            "standard": null,
+            "standardName": null,
+            "strand": null,
+            "twistPitch": null,
+            "type": "planar"
+          },
+          "woundWith": null
+        },
+        {
+          "connections": null,
+          "isolationSide": "secondary",
+          "name": "Secondary",
+          "numberParallels": 1,
+          "numberTurns": 1,
+          "windingWindow": null,
+          "wire": {
+            "coating": null,
+            "conductingArea": null,
+            "conductingDiameter": null,
+            "conductingHeight": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 7e-05,
+              "unit": null
+            },
+            "conductingWidth": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.009395,
+              "unit": null
+            },
+            "edgeRadius": null,
+            "manufacturerInfo": null,
+            "material": "copper",
+            "name": null,
+            "numberConductors": 1,
+            "outerDiameter": null,
+            "outerHeight": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 7e-05,
+              "unit": null
+            },
+            "outerWidth": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.009395,
+              "unit": null
+            },
+            "standard": null,
+            "standardName": null,
+            "strand": null,
+            "twistPitch": null,
+            "type": "planar"
+          },
+          "woundWith": null
+        }
+      ],
+      "groupsDescription": [
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.0079625,
+            0.0
+          ],
+          "dimensions": [
+            0.009575,
+            0.0011399999999999997
+          ],
+          "name": "Default group",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0
+              ],
+              "winding": "Primary"
+            },
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "pcb": null,
+          "sectionsOrientation": "overlapping",
+          "type": "printed",
+          "windingWindow": null
+        }
+      ],
+      "layersDescription": [
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.0079625,
+            0.0005349999999999999
+          ],
+          "dimensions": [
+            0.009575,
+            7e-05
+          ],
+          "fillingFactor": 0.02567628901198116,
+          "insulationMaterial": null,
+          "name": "Primary layer 0",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "section": "Primary section 0",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.0079625,
+            0.0
+          ],
+          "dimensions": [
+            0.009575,
+            0.001
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 0 and 1",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 0 and 1",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.0079625,
+            -0.0005349999999999999
+          ],
+          "dimensions": [
+            0.009575,
+            7e-05
+          ],
+          "fillingFactor": 0.02567628901198116,
+          "insulationMaterial": null,
+          "name": "Secondary layer 0",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "section": "Secondary section 0",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        }
+      ],
+      "sectionsDescription": [
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.0079625,
+            0.0005349999999999999
+          ],
+          "dimensions": [
+            0.009575,
+            7e-05
+          ],
+          "fillingFactor": 0.02567628901198116,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 0",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.0079625,
+            0.0
+          ],
+          "dimensions": [
+            0.009575,
+            0.001
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 0 and 1",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.0079625,
+            -0.0005349999999999999
+          ],
+          "dimensions": [
+            0.009575,
+            7e-05
+          ],
+          "fillingFactor": 0.02567628901198116,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 0",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        }
+      ],
+      "turnsDescription": [
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.0079625,
+            0.0005349999999999999
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.009395,
+            7e-05
+          ],
+          "layer": "Primary layer 0",
+          "length": 0.08343074965812226,
+          "name": "Primary parallel 0 turn 0",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Primary section 0",
+          "winding": "Primary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.0079625,
+            -0.0005349999999999999
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.009395,
+            7e-05
+          ],
+          "layer": "Secondary layer 0",
+          "length": 0.08343074965812226,
+          "name": "Secondary parallel 0 turn 0",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Secondary section 0",
+          "winding": "Secondary"
+        }
+      ]
+    },
+    "core": {
+      "distributorsInfo": null,
+      "functionalDescription": {
+        "coating": null,
+        "gapping": [
+          {
+            "area": 0.000129064,
+            "coordinates": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "distanceClosestNormalSurface": 0.003035,
+            "distanceClosestParallelSurface": 0.009575,
+            "length": 0.00028,
+            "sectionDimensions": [
+              0.00635,
+              0.020325
+            ],
+            "shape": "rectangular",
+            "type": "additive"
+          },
+          {
+            "area": 6.3516e-05,
+            "coordinates": [
+              0.0143125,
+              0.0,
+              0.0
+            ],
+            "distanceClosestNormalSurface": 0.003035,
+            "distanceClosestParallelSurface": 0.009575,
+            "length": 0.00028,
+            "sectionDimensions": [
+              0.003125,
+              0.020325
+            ],
+            "shape": "rectangular",
+            "type": "additive"
+          },
+          {
+            "area": 6.3516e-05,
+            "coordinates": [
+              -0.0143125,
+              0.0,
+              0.0
+            ],
+            "distanceClosestNormalSurface": 0.003035,
+            "distanceClosestParallelSurface": 0.009575,
+            "length": 0.00028,
+            "sectionDimensions": [
+              0.003125,
+              0.020325
+            ],
+            "shape": "rectangular",
+            "type": "additive"
+          }
+        ],
+        "material": {
+          "alternatives": null,
+          "application": [
+            "power"
+          ],
+          "bhCycle": null,
+          "coerciveForce": [
+            {
+              "magneticField": 35.0,
+              "magneticFluxDensity": 0.0,
+              "temperature": 100.0
+            },
+            {
+              "magneticField": 45.0,
+              "magneticFluxDensity": 0.0,
+              "temperature": 25.0
+            }
+          ],
+          "commercialName": null,
+          "curieTemperature": 280.0,
+          "density": 4750.0,
+          "family": "3F",
+          "heatCapacity": {
+            "excludeMaximum": null,
+            "excludeMinimum": null,
+            "maximum": 800.0,
+            "minimum": 700.0,
+            "nominal": null,
+            "unit": null
+          },
+          "heatConductivity": {
+            "excludeMaximum": null,
+            "excludeMinimum": null,
+            "maximum": 5.0,
+            "minimum": 3.5,
+            "nominal": null,
+            "unit": null
+          },
+          "manufacturerInfo": {
+            "datasheetUrl": "https://www.ferroxcube.com/upload/media/product/file/MDS/3f46.pdf",
+            "description": null,
+            "family": null,
+            "name": "Ferroxcube",
+            "orderCode": null,
+            "reference": null,
+            "series": null,
+            "spiceModel": null,
+            "status": null
+          },
+          "massLosses": null,
+          "material": "ferrite",
+          "materialComposition": "MnZn",
+          "name": "3F46",
+          "permeability": {
+            "amplitude": null,
+            "complex": {
+              "imaginary": [
+                {
+                  "frequency": 100000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 4.987
+                },
+                {
+                  "frequency": 120000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 4.84
+                },
+                {
+                  "frequency": 150000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 4.1785
+                },
+                {
+                  "frequency": 200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 3.5365
+                },
+                {
+                  "frequency": 250000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 3.7055
+                },
+                {
+                  "frequency": 300000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 3.557
+                },
+                {
+                  "frequency": 450000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 4.141
+                },
+                {
+                  "frequency": 400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 4.029999999999999
+                },
+                {
+                  "frequency": 500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 4.356
+                },
+                {
+                  "frequency": 550000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 4.565
+                },
+                {
+                  "frequency": 600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 4.839
+                },
+                {
+                  "frequency": 650000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 5.175
+                },
+                {
+                  "frequency": 700000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 5.583
+                },
+                {
+                  "frequency": 750000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 6.0305
+                },
+                {
+                  "frequency": 800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 6.3805
+                },
+                {
+                  "frequency": 850000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 6.916499999999999
+                },
+                {
+                  "frequency": 900000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 7.4105
+                },
+                {
+                  "frequency": 950000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 7.859500000000001
+                },
+                {
+                  "frequency": 1000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 8.529499999999999
+                },
+                {
+                  "frequency": 1100000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 9.465499999999999
+                },
+                {
+                  "frequency": 1200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 10.629999999999999
+                },
+                {
+                  "frequency": 1300000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 11.975
+                },
+                {
+                  "frequency": 1400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 13.45
+                },
+                {
+                  "frequency": 1500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 15.1
+                },
+                {
+                  "frequency": 1600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 16.915
+                },
+                {
+                  "frequency": 1700000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 18.9
+                },
+                {
+                  "frequency": 1800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 21.055
+                },
+                {
+                  "frequency": 1900000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 23.42
+                },
+                {
+                  "frequency": 2000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 26.04
+                },
+                {
+                  "frequency": 2200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 32.045
+                },
+                {
+                  "frequency": 2400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 39.455
+                },
+                {
+                  "frequency": 2600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 48.614999999999995
+                },
+                {
+                  "frequency": 2800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 60.004999999999995
+                },
+                {
+                  "frequency": 3000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 74.32
+                },
+                {
+                  "frequency": 3500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 131.55
+                },
+                {
+                  "frequency": 4000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 256.65
+                },
+                {
+                  "frequency": 4500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 600.5
+                },
+                {
+                  "frequency": 5000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1784.5
+                },
+                {
+                  "frequency": 6000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1073.0
+                },
+                {
+                  "frequency": 7000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 603.7
+                },
+                {
+                  "frequency": 8000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 478.55
+                },
+                {
+                  "frequency": 9000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 419.15
+                },
+                {
+                  "frequency": 10000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 368.1
+                },
+                {
+                  "frequency": 15000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 218.10000000000002
+                },
+                {
+                  "frequency": 20000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 148.3
+                },
+                {
+                  "frequency": 25000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 110.0
+                },
+                {
+                  "frequency": 30000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 86.59
+                }
+              ],
+              "real": [
+                {
+                  "frequency": 100000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 792.7
+                },
+                {
+                  "frequency": 120000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 792.45
+                },
+                {
+                  "frequency": 150000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 792.5999999999999
+                },
+                {
+                  "frequency": 200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 792.25
+                },
+                {
+                  "frequency": 250000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 792.65
+                },
+                {
+                  "frequency": 300000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 793.35
+                },
+                {
+                  "frequency": 450000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 796.1
+                },
+                {
+                  "frequency": 400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 794.9
+                },
+                {
+                  "frequency": 500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 796.9
+                },
+                {
+                  "frequency": 550000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 798.0
+                },
+                {
+                  "frequency": 600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 799.1500000000001
+                },
+                {
+                  "frequency": 650000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 800.6
+                },
+                {
+                  "frequency": 700000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 802.1
+                },
+                {
+                  "frequency": 750000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 803.6500000000001
+                },
+                {
+                  "frequency": 800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 805.4
+                },
+                {
+                  "frequency": 850000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 807.1
+                },
+                {
+                  "frequency": 900000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 809.1
+                },
+                {
+                  "frequency": 950000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 811.0
+                },
+                {
+                  "frequency": 1000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 813.2
+                },
+                {
+                  "frequency": 1100000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 817.8
+                },
+                {
+                  "frequency": 1200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 822.85
+                },
+                {
+                  "frequency": 1300000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 828.55
+                },
+                {
+                  "frequency": 1400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 834.65
+                },
+                {
+                  "frequency": 1500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 841.6500000000001
+                },
+                {
+                  "frequency": 1600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 848.7
+                },
+                {
+                  "frequency": 1700000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 856.95
+                },
+                {
+                  "frequency": 1800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 865.2
+                },
+                {
+                  "frequency": 1900000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 874.7
+                },
+                {
+                  "frequency": 2000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 884.5999999999999
+                },
+                {
+                  "frequency": 2200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 906.9
+                },
+                {
+                  "frequency": 2400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 932.5
+                },
+                {
+                  "frequency": 2600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 963.05
+                },
+                {
+                  "frequency": 2800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 997.75
+                },
+                {
+                  "frequency": 3000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1038.5
+                },
+                {
+                  "frequency": 3500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1176.5
+                },
+                {
+                  "frequency": 4000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1395.5
+                },
+                {
+                  "frequency": 4500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1752.0
+                },
+                {
+                  "frequency": 5000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1993.0
+                },
+                {
+                  "frequency": 6000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -612.4000000000001
+                },
+                {
+                  "frequency": 7000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -133.6
+                },
+                {
+                  "frequency": 8000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -53.465
+                },
+                {
+                  "frequency": 9000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -32.495
+                },
+                {
+                  "frequency": 10000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -27.89
+                },
+                {
+                  "frequency": 15000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -17.825000000000003
+                },
+                {
+                  "frequency": 20000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -7.604000000000001
+                },
+                {
+                  "frequency": 25000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1.3649
+                },
+                {
+                  "frequency": 30000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 8.166500000000001
+                }
+              ]
+            },
+            "incremental": null,
+            "initial": [
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": -40.0,
+                "tolerance": null,
+                "value": 720.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": -30.0,
+                "tolerance": null,
+                "value": 732.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": -20.0,
+                "tolerance": null,
+                "value": 743.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": -10.0,
+                "tolerance": null,
+                "value": 752.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 0.0,
+                "tolerance": null,
+                "value": 761.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 10.0,
+                "tolerance": null,
+                "value": 769.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 20.0,
+                "tolerance": null,
+                "value": 776.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 30.0,
+                "tolerance": null,
+                "value": 868.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 40.0,
+                "tolerance": null,
+                "value": 874.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 50.0,
+                "tolerance": null,
+                "value": 881.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 60.0,
+                "tolerance": null,
+                "value": 887.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 70.0,
+                "tolerance": null,
+                "value": 841.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 80.0,
+                "tolerance": null,
+                "value": 846.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 90.0,
+                "tolerance": null,
+                "value": 850.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 100.0,
+                "tolerance": null,
+                "value": 854.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 110.0,
+                "tolerance": null,
+                "value": 915.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 120.0,
+                "tolerance": null,
+                "value": 914.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 130.0,
+                "tolerance": null,
+                "value": 913.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 140.0,
+                "tolerance": null,
+                "value": 911.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 150.0,
+                "tolerance": null,
+                "value": 858.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 160.0,
+                "tolerance": null,
+                "value": 860.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 170.0,
+                "tolerance": null,
+                "value": 861.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 180.0,
+                "tolerance": null,
+                "value": 862.0
+              }
+            ],
+            "reversible": null
+          },
+          "permittivity": null,
+          "recommendations": {
+            "maximumFrequency": 3000000.0,
+            "maximumMagneticFluxDensity": null,
+            "maximumOperatingTemperature": null,
+            "minimumFrequency": 500000.0,
+            "typicalApplications": null,
+            "typicalTopologies": null
+          },
+          "remanence": [
+            {
+              "magneticField": 0.0,
+              "magneticFluxDensity": 0.06,
+              "temperature": 100.0
+            },
+            {
+              "magneticField": 0.0,
+              "magneticFluxDensity": 0.06,
+              "temperature": 25.0
+            }
+          ],
+          "resistivity": [
+            {
+              "temperature": 25.0,
+              "value": 5.0
+            }
+          ],
+          "saturation": [
+            {
+              "magneticField": 1200.0,
+              "magneticFluxDensity": 0.43,
+              "temperature": 100.0
+            },
+            {
+              "magneticField": 1200.0,
+              "magneticFluxDensity": 0.52,
+              "temperature": 25.0
+            }
+          ],
+          "type": "commercial",
+          "volumetricLosses": {
+            "default": [
+              {
+                "a": null,
+                "b": null,
+                "c": null,
+                "coefficients": null,
+                "d": null,
+                "factors": null,
+                "method": "steinmetz",
+                "ranges": [
+                  {
+                    "alpha": 1.673115569042998,
+                    "beta": 3.569747677854493,
+                    "ct0": 1.0990862948979954,
+                    "ct1": 0.0067401511188646575,
+                    "ct2": 0.00011106797291779364,
+                    "k": 0.9236231652130215,
+                    "maximumFrequency": 1000000.0,
+                    "minimumFrequency": 200000.0
+                  },
+                  {
+                    "alpha": 2.8547360891861757,
+                    "beta": 2.466110583932874,
+                    "ct0": 0.9844063701173357,
+                    "ct1": 0.0013696458576628013,
+                    "ct2": 7.973564211877492e-05,
+                    "k": 2.03939775718301e-09,
+                    "maximumFrequency": 3000000.0,
+                    "minimumFrequency": 1000000.0
+                  }
+                ],
+                "referenceVolumetricLosses": null
+              },
+              {
+                "a": null,
+                "b": null,
+                "c": null,
+                "coefficients": null,
+                "d": null,
+                "factors": null,
+                "method": "roshen",
+                "ranges": null,
+                "referenceVolumetricLosses": null
+              }
+            ]
+          }
+        },
+        "numberStacks": 1,
+        "shape": {
+          "aliases": [
+            "ELP 32/6/20",
+            "E 32/13"
+          ],
+          "dimensions": {
+            "A": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0324,
+              "minimum": 0.0311,
+              "nominal": null,
+              "unit": null
+            },
+            "B": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0065,
+              "minimum": 0.0062,
+              "nominal": null,
+              "unit": null
+            },
+            "C": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.02075,
+              "minimum": 0.0199,
+              "nominal": null,
+              "unit": null
+            },
+            "D": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0034,
+              "minimum": 0.00295,
+              "nominal": null,
+              "unit": null
+            },
+            "E": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0261,
+              "minimum": 0.0249,
+              "nominal": null,
+              "unit": null
+            },
+            "F": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0065,
+              "minimum": 0.0062,
+              "nominal": null,
+              "unit": null
+            }
+          },
+          "family": "planarE",
+          "familySubtype": null,
+          "magneticCircuit": "open",
+          "name": "E 32/6/20",
+          "type": "standard"
+        },
+        "type": "twoPieceSet"
+      },
+      "geometricalDescription": [
+        {
+          "coordinates": [
+            0.0,
+            0.00014,
+            -0.0
+          ],
+          "dimensions": null,
+          "insulationMaterial": null,
+          "machining": null,
+          "material": "3F46",
+          "rotation": [
+            3.141592653589793,
+            3.141592653589793,
+            0.0
+          ],
+          "shape": {
+            "aliases": [
+              "ELP 32/6/20",
+              "E 32/13"
+            ],
+            "dimensions": {
+              "A": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0324,
+                "minimum": 0.0311,
+                "nominal": null,
+                "unit": null
+              },
+              "B": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0065,
+                "minimum": 0.0062,
+                "nominal": null,
+                "unit": null
+              },
+              "C": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.02075,
+                "minimum": 0.0199,
+                "nominal": null,
+                "unit": null
+              },
+              "D": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0034,
+                "minimum": 0.00295,
+                "nominal": null,
+                "unit": null
+              },
+              "E": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0261,
+                "minimum": 0.0249,
+                "nominal": null,
+                "unit": null
+              },
+              "F": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0065,
+                "minimum": 0.0062,
+                "nominal": null,
+                "unit": null
+              }
+            },
+            "family": "planarE",
+            "familySubtype": null,
+            "magneticCircuit": "open",
+            "name": "E 32/6/20",
+            "type": "standard"
+          },
+          "type": "halfSet"
+        },
+        {
+          "coordinates": [
+            0.0,
+            -0.00014,
+            -0.0
+          ],
+          "dimensions": null,
+          "insulationMaterial": null,
+          "machining": null,
+          "material": "3F46",
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": {
+            "aliases": [
+              "ELP 32/6/20",
+              "E 32/13"
+            ],
+            "dimensions": {
+              "A": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0324,
+                "minimum": 0.0311,
+                "nominal": null,
+                "unit": null
+              },
+              "B": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0065,
+                "minimum": 0.0062,
+                "nominal": null,
+                "unit": null
+              },
+              "C": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.02075,
+                "minimum": 0.0199,
+                "nominal": null,
+                "unit": null
+              },
+              "D": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0034,
+                "minimum": 0.00295,
+                "nominal": null,
+                "unit": null
+              },
+              "E": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0261,
+                "minimum": 0.0249,
+                "nominal": null,
+                "unit": null
+              },
+              "F": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0065,
+                "minimum": 0.0062,
+                "nominal": null,
+                "unit": null
+              }
+            },
+            "family": "planarE",
+            "familySubtype": null,
+            "magneticCircuit": "open",
+            "name": "E 32/6/20",
+            "type": "standard"
+          },
+          "type": "halfSet"
+        },
+        {
+          "coordinates": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "dimensions": [
+            0.007619999999999999,
+            0.00028,
+            0.02439
+          ],
+          "insulationMaterial": "plastic",
+          "machining": null,
+          "material": null,
+          "rotation": null,
+          "shape": null,
+          "type": "spacer"
+        },
+        {
+          "coordinates": [
+            0.01475,
+            0.0,
+            0.0
+          ],
+          "dimensions": [
+            0.003749999999999999,
+            0.00028,
+            0.02439
+          ],
+          "insulationMaterial": "plastic",
+          "machining": null,
+          "material": null,
+          "rotation": null,
+          "shape": null,
+          "type": "spacer"
+        },
+        {
+          "coordinates": [
+            -0.01475,
+            0.0,
+            0.0
+          ],
+          "dimensions": [
+            0.003749999999999999,
+            0.00028,
+            0.02439
+          ],
+          "insulationMaterial": "plastic",
+          "machining": null,
+          "material": null,
+          "rotation": null,
+          "shape": null,
+          "type": "spacer"
+        }
+      ],
+      "manufacturerInfo": null,
+      "name": null,
+      "processedDescription": {
+        "columns": [
+          {
+            "area": 0.000129064,
+            "coordinates": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "cornerRadius": null,
+            "depth": 0.020325,
+            "height": 0.00635,
+            "minimumDepth": null,
+            "minimumWidth": null,
+            "name": null,
+            "shape": "rectangular",
+            "type": "central",
+            "width": 0.00635
+          },
+          {
+            "area": 6.3516e-05,
+            "coordinates": [
+              0.0143125,
+              0.0,
+              0.0
+            ],
+            "cornerRadius": null,
+            "depth": 0.020325,
+            "height": 0.00635,
+            "minimumDepth": null,
+            "minimumWidth": null,
+            "name": null,
+            "shape": "rectangular",
+            "type": "lateral",
+            "width": 0.003125
+          },
+          {
+            "area": 6.3516e-05,
+            "coordinates": [
+              -0.0143125,
+              0.0,
+              0.0
+            ],
+            "cornerRadius": null,
+            "depth": 0.020325,
+            "height": 0.00635,
+            "minimumDepth": null,
+            "minimumWidth": null,
+            "name": null,
+            "shape": "rectangular",
+            "type": "lateral",
+            "width": 0.003125
+          }
+        ],
+        "depth": 0.020325000000000003,
+        "effectiveParameters": {
+          "effectiveArea": 0.00012862563059484205,
+          "effectiveLength": 0.04178383427382982,
+          "effectiveVolume": 5.374472032141734e-06,
+          "minimumArea": 0.00012703125
+        },
+        "height": 0.0127,
+        "thermalResistance": null,
+        "width": 0.03175,
+        "windingWindows": [
+          {
+            "angle": null,
+            "area": 6.080125e-05,
+            "column": null,
+            "coordinates": [
+              0.0079625,
+              0.0
+            ],
+            "height": 0.00635,
+            "radialHeight": null,
+            "sectionsAlignment": null,
+            "sectionsOrientation": null,
+            "shape": null,
+            "width": 0.009575,
+            "windingOrder": null
+          }
+        ]
+      }
+    },
+    "distributorsInfo": null,
+    "manufacturerInfo": null,
+    "rotation": null
+  }
+}

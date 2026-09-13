@@ -1,0 +1,3998 @@
+{
+  "magnetic": {
+    "coil": {
+      "bobbin": {
+        "distributorsInfo": null,
+        "functionalDescription": null,
+        "manufacturerInfo": null,
+        "name": null,
+        "processedDescription": {
+          "columnCornerRadius": null,
+          "columnDepth": 0.01,
+          "columnShape": "round",
+          "columnThickness": 0.0,
+          "columnWidth": 0.01,
+          "coordinates": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "dividers": null,
+          "pins": null,
+          "wallThickness": 0.0,
+          "windingWindows": [
+            {
+              "angle": null,
+              "area": 0.00010791,
+              "column": null,
+              "coordinates": [
+                0.015450000000000002,
+                0.0,
+                0.0
+              ],
+              "height": 0.009899999999999999,
+              "radialHeight": null,
+              "sectionsAlignment": null,
+              "sectionsOrientation": "contiguous",
+              "shape": "rectangular",
+              "width": 0.010900000000000002,
+              "windingOrder": null
+            }
+          ]
+        }
+      },
+      "functionalDescription": [
+        {
+          "connections": null,
+          "isolationSide": "primary",
+          "name": "Primary",
+          "numberParallels": 1,
+          "numberTurns": 8,
+          "windingWindow": null,
+          "wire": {
+            "coating": null,
+            "conductingArea": null,
+            "conductingDiameter": null,
+            "conductingHeight": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.00013919,
+              "unit": null
+            },
+            "conductingWidth": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.0109,
+              "unit": null
+            },
+            "edgeRadius": null,
+            "manufacturerInfo": null,
+            "material": "copper",
+            "name": "Planar 139.19 um",
+            "numberConductors": 1,
+            "outerDiameter": null,
+            "outerHeight": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.00013919,
+              "unit": null
+            },
+            "outerWidth": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.0109,
+              "unit": null
+            },
+            "standard": "IPC-6012",
+            "standardName": "4 oz.",
+            "strand": null,
+            "twistPitch": null,
+            "type": "planar"
+          },
+          "woundWith": null
+        },
+        {
+          "connections": null,
+          "isolationSide": "secondary",
+          "name": "Secondary",
+          "numberParallels": 1,
+          "numberTurns": 8,
+          "windingWindow": null,
+          "wire": {
+            "coating": null,
+            "conductingArea": null,
+            "conductingDiameter": null,
+            "conductingHeight": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.00013919,
+              "unit": null
+            },
+            "conductingWidth": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.0109,
+              "unit": null
+            },
+            "edgeRadius": null,
+            "manufacturerInfo": null,
+            "material": "copper",
+            "name": "Planar 139.19 um",
+            "numberConductors": 1,
+            "outerDiameter": null,
+            "outerHeight": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.00013919,
+              "unit": null
+            },
+            "outerWidth": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": null,
+              "minimum": null,
+              "nominal": 0.0109,
+              "unit": null
+            },
+            "standard": "IPC-6012",
+            "standardName": "4 oz.",
+            "strand": null,
+            "twistPitch": null,
+            "type": "planar"
+          },
+          "woundWith": null
+        }
+      ],
+      "groupsDescription": [
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.015450000000000002,
+            2.168404344971009e-19
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.005977040000000001
+          ],
+          "name": "Default group",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0
+              ],
+              "winding": "Primary"
+            },
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "pcb": null,
+          "sectionsOrientation": "contiguous",
+          "type": "printed",
+          "windingWindow": null
+        }
+      ],
+      "layersDescription": [
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.002918925000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Primary layer 0",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "section": "Primary section 0",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.002724330000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 0 and 1",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 0 and 1",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.002529735000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Primary layer 1",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "section": "Primary section 1",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0023351400000000007
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 1 and 2",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 1 and 2",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0021405450000000006
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Primary layer 2",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "section": "Primary section 2",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0019459500000000005
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 2 and 3",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 2 and 3",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0017513550000000004
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Primary layer 3",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "section": "Primary section 3",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0015567600000000003
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 3 and 4",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 3 and 4",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0013621650000000003
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Primary layer 4",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "section": "Primary section 4",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0011675700000000002
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 4 and 5",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 4 and 5",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0009729750000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Primary layer 5",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "section": "Primary section 5",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0007783800000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 5 and 6",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 5 and 6",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0005837850000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Primary layer 6",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "section": "Primary section 6",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0003891900000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 6 and 7",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 6 and 7",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0001945950000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Primary layer 7",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "section": "Primary section 7",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            1.0842021724855044e-19
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 7 and 8",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 7 and 8",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.00019459499999999988
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Secondary layer 0",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "section": "Secondary section 0",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.00038918999999999987
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 8 and 9",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 8 and 9",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0005837849999999999
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Secondary layer 1",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "section": "Secondary section 1",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0007783799999999998
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 9 and 10",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 9 and 10",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0009729749999999998
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Secondary layer 2",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "section": "Secondary section 2",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0011675699999999997
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 10 and 11",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 10 and 11",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0013621649999999998
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Secondary layer 3",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "section": "Secondary section 3",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.00155676
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 11 and 12",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 11 and 12",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.001751355
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Secondary layer 4",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "section": "Secondary section 4",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0019459500000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 12 and 13",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 12 and 13",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.002140545
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Secondary layer 5",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "section": "Secondary section 5",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0023351400000000003
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 13 and 14",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 13 and 14",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0025297350000000004
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Secondary layer 6",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "section": "Secondary section 6",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0027243300000000005
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "insulationMaterial": "FR4",
+          "name": "Insulation layer between stack index 14 and 15",
+          "orientation": "contiguous",
+          "partialWindings": [],
+          "section": "Insulation section between stack index 14 and 15",
+          "turnsAlignment": null,
+          "type": "insulation",
+          "windingStyle": null
+        },
+        {
+          "additionalCoordinates": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0029189250000000006
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "insulationMaterial": null,
+          "name": "Secondary layer 7",
+          "orientation": "contiguous",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "section": "Secondary section 7",
+          "turnsAlignment": "spread",
+          "type": "conduction",
+          "windingStyle": "windByConsecutiveParallels"
+        }
+      ],
+      "sectionsDescription": [
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.002918925000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 0",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.002724330000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 0 and 1",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.002529735000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 1",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0023351400000000007
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 1 and 2",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0021405450000000006
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 2",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0019459500000000005
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 2 and 3",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0017513550000000004
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 3",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0015567600000000003
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 3 and 4",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0013621650000000003
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 4",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0011675700000000002
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 4 and 5",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0009729750000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 5",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0007783800000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 5 and 6",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0005837850000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 6",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0003891900000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 6 and 7",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            0.0001945950000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 7",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            1.0842021724855044e-19
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 7 and 8",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.00019459499999999988
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 0",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.00038918999999999987
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 8 and 9",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0005837849999999999
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 1",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0007783799999999998
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 9 and 10",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0009729749999999998
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 2",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0011675699999999997
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 10 and 11",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0013621649999999998
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 3",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.00155676
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 11 and 12",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.001751355
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 4",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0019459500000000001
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 12 and 13",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.002140545
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 5",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0023351400000000003
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 13 and 14",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0025297350000000004
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 6",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0027243300000000005
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00025
+          ],
+          "fillingFactor": 1.0,
+          "group": null,
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Insulation section between stack index 14 and 15",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01545,
+            -0.0029189250000000006
+          ],
+          "dimensions": [
+            0.010700000000000001,
+            0.00013919
+          ],
+          "fillingFactor": 0.3688889294126589,
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 7",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.125
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        }
+      ],
+      "turnsDescription": [
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            0.002918925000000001
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Primary layer 0",
+          "length": 0.09833185005736053,
+          "name": "Primary parallel 0 turn 0",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Primary section 0",
+          "winding": "Primary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            0.002529735000000001
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Primary layer 1",
+          "length": 0.09833185005736053,
+          "name": "Primary parallel 0 turn 1",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Primary section 1",
+          "winding": "Primary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            0.0021405450000000006
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Primary layer 2",
+          "length": 0.09833185005736053,
+          "name": "Primary parallel 0 turn 2",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Primary section 2",
+          "winding": "Primary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            0.0017513550000000004
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Primary layer 3",
+          "length": 0.09833185005736053,
+          "name": "Primary parallel 0 turn 3",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Primary section 3",
+          "winding": "Primary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            0.0013621650000000003
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Primary layer 4",
+          "length": 0.09833185005736053,
+          "name": "Primary parallel 0 turn 4",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Primary section 4",
+          "winding": "Primary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            0.0009729750000000001
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Primary layer 5",
+          "length": 0.09833185005736053,
+          "name": "Primary parallel 0 turn 5",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Primary section 5",
+          "winding": "Primary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            0.0005837850000000001
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Primary layer 6",
+          "length": 0.09833185005736053,
+          "name": "Primary parallel 0 turn 6",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Primary section 6",
+          "winding": "Primary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            0.0001945950000000001
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Primary layer 7",
+          "length": 0.09833185005736053,
+          "name": "Primary parallel 0 turn 7",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Primary section 7",
+          "winding": "Primary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            -0.00019459499999999988
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Secondary layer 0",
+          "length": 0.09833185005736053,
+          "name": "Secondary parallel 0 turn 0",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Secondary section 0",
+          "winding": "Secondary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            -0.0005837849999999999
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Secondary layer 1",
+          "length": 0.09833185005736053,
+          "name": "Secondary parallel 0 turn 1",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Secondary section 1",
+          "winding": "Secondary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            -0.0009729749999999998
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Secondary layer 2",
+          "length": 0.09833185005736053,
+          "name": "Secondary parallel 0 turn 2",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Secondary section 2",
+          "winding": "Secondary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            -0.0013621649999999998
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Secondary layer 3",
+          "length": 0.09833185005736053,
+          "name": "Secondary parallel 0 turn 3",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Secondary section 3",
+          "winding": "Secondary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            -0.001751355
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Secondary layer 4",
+          "length": 0.09833185005736053,
+          "name": "Secondary parallel 0 turn 4",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Secondary section 4",
+          "winding": "Secondary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            -0.002140545
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Secondary layer 5",
+          "length": 0.09833185005736053,
+          "name": "Secondary parallel 0 turn 5",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Secondary section 5",
+          "winding": "Secondary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            -0.0025297350000000004
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Secondary layer 6",
+          "length": 0.09833185005736053,
+          "name": "Secondary parallel 0 turn 6",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Secondary section 6",
+          "winding": "Secondary"
+        },
+        {
+          "additionalCoordinates": null,
+          "angle": null,
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.01565,
+            -0.0029189250000000006
+          ],
+          "crossSectionalShape": "rectangular",
+          "dimensions": [
+            0.0109,
+            0.00013919
+          ],
+          "layer": "Secondary layer 7",
+          "length": 0.09833185005736053,
+          "name": "Secondary parallel 0 turn 7",
+          "orientation": "clockwise",
+          "parallel": 0,
+          "rotation": 0.0,
+          "section": "Secondary section 7",
+          "winding": "Secondary"
+        }
+      ]
+    },
+    "core": {
+      "distributorsInfo": null,
+      "functionalDescription": {
+        "coating": null,
+        "gapping": [
+          {
+            "area": 0.000314159,
+            "coordinates": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "distanceClosestNormalSurface": 0.0049475000000000005,
+            "distanceClosestParallelSurface": 0.010900000000000002,
+            "length": 5e-06,
+            "sectionDimensions": [
+              0.02,
+              0.02
+            ],
+            "shape": "round",
+            "type": "residual"
+          },
+          {
+            "area": 0.00017526,
+            "coordinates": [
+              0.0232,
+              0.0,
+              0.0
+            ],
+            "distanceClosestNormalSurface": 0.0049475000000000005,
+            "distanceClosestParallelSurface": 0.010900000000000002,
+            "length": 5e-06,
+            "sectionDimensions": [
+              0.0046,
+              0.0381
+            ],
+            "shape": "irregular",
+            "type": "residual"
+          },
+          {
+            "area": 0.00017526,
+            "coordinates": [
+              -0.0232,
+              0.0,
+              0.0
+            ],
+            "distanceClosestNormalSurface": 0.0049475000000000005,
+            "distanceClosestParallelSurface": 0.010900000000000002,
+            "length": 5e-06,
+            "sectionDimensions": [
+              0.0046,
+              0.0381
+            ],
+            "shape": "irregular",
+            "type": "residual"
+          }
+        ],
+        "material": {
+          "alternatives": null,
+          "application": null,
+          "bhCycle": null,
+          "coerciveForce": [
+            {
+              "magneticField": 10.0,
+              "magneticFluxDensity": 0.0,
+              "temperature": 100.0
+            },
+            {
+              "magneticField": 16.0,
+              "magneticFluxDensity": 0.0,
+              "temperature": 25.0
+            }
+          ],
+          "commercialName": null,
+          "curieTemperature": 240.0,
+          "density": 4800.0,
+          "family": "3C",
+          "heatCapacity": {
+            "excludeMaximum": null,
+            "excludeMinimum": null,
+            "maximum": 800.0,
+            "minimum": 700.0,
+            "nominal": null,
+            "unit": null
+          },
+          "heatConductivity": {
+            "excludeMaximum": null,
+            "excludeMinimum": null,
+            "maximum": 5.0,
+            "minimum": 3.5,
+            "nominal": null,
+            "unit": null
+          },
+          "manufacturerInfo": {
+            "datasheetUrl": "https://www.ferroxcube.com/upload/media/product/file/MDS/3c96.pdf",
+            "description": null,
+            "family": null,
+            "name": "Ferroxcube",
+            "orderCode": null,
+            "reference": null,
+            "series": null,
+            "spiceModel": null,
+            "status": null
+          },
+          "massLosses": null,
+          "material": "ferrite",
+          "materialComposition": "MnZn",
+          "name": "3C96",
+          "permeability": {
+            "amplitude": null,
+            "complex": {
+              "imaginary": [
+                {
+                  "frequency": 100000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 13.635
+                },
+                {
+                  "frequency": 120000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 14.82
+                },
+                {
+                  "frequency": 150000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 15.7
+                },
+                {
+                  "frequency": 200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 18.32
+                },
+                {
+                  "frequency": 250000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 22.005
+                },
+                {
+                  "frequency": 300000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 26.4
+                },
+                {
+                  "frequency": 450000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 43.315
+                },
+                {
+                  "frequency": 400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 36.95
+                },
+                {
+                  "frequency": 500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 51.025000000000006
+                },
+                {
+                  "frequency": 550000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 60.445
+                },
+                {
+                  "frequency": 600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 71.995
+                },
+                {
+                  "frequency": 650000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 86.66499999999999
+                },
+                {
+                  "frequency": 700000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 105.45
+                },
+                {
+                  "frequency": 750000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 130.25
+                },
+                {
+                  "frequency": 800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 163.55
+                },
+                {
+                  "frequency": 850000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 208.35
+                },
+                {
+                  "frequency": 900000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 268.95
+                },
+                {
+                  "frequency": 950000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 350.2
+                },
+                {
+                  "frequency": 1000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 456.85
+                },
+                {
+                  "frequency": 1100000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 754.6
+                },
+                {
+                  "frequency": 1200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1147.0
+                },
+                {
+                  "frequency": 1300000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1573.5
+                },
+                {
+                  "frequency": 1400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1979.0
+                },
+                {
+                  "frequency": 1500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2324.0
+                },
+                {
+                  "frequency": 1600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2582.5
+                },
+                {
+                  "frequency": 1700000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2738.5
+                },
+                {
+                  "frequency": 1800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2791.5
+                },
+                {
+                  "frequency": 1900000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2753.0
+                },
+                {
+                  "frequency": 2000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2649.0
+                },
+                {
+                  "frequency": 2200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2347.5
+                },
+                {
+                  "frequency": 2400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2034.5
+                },
+                {
+                  "frequency": 2600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1764.5
+                },
+                {
+                  "frequency": 2800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1543.5
+                },
+                {
+                  "frequency": 3000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1363.0
+                },
+                {
+                  "frequency": 3500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1037.0
+                },
+                {
+                  "frequency": 4000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 823.8
+                },
+                {
+                  "frequency": 4500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 675.65
+                },
+                {
+                  "frequency": 5000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 568.25
+                },
+                {
+                  "frequency": 6000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 424.70000000000005
+                },
+                {
+                  "frequency": 7000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 335.05
+                },
+                {
+                  "frequency": 8000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 275.25
+                },
+                {
+                  "frequency": 9000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 233.35
+                },
+                {
+                  "frequency": 10000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 202.8
+                },
+                {
+                  "frequency": 15000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 125.65
+                },
+                {
+                  "frequency": 20000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 91.215
+                },
+                {
+                  "frequency": 25000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 71.175
+                },
+                {
+                  "frequency": 30000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 58.115
+                }
+              ],
+              "real": [
+                {
+                  "frequency": 100000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2043.0
+                },
+                {
+                  "frequency": 120000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2043.0
+                },
+                {
+                  "frequency": 150000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2046.5
+                },
+                {
+                  "frequency": 200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2054.5
+                },
+                {
+                  "frequency": 250000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2066.0
+                },
+                {
+                  "frequency": 300000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2081.5
+                },
+                {
+                  "frequency": 450000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2151.5
+                },
+                {
+                  "frequency": 400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2122.5
+                },
+                {
+                  "frequency": 500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2181.5
+                },
+                {
+                  "frequency": 550000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2217.5
+                },
+                {
+                  "frequency": 600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2259.0
+                },
+                {
+                  "frequency": 650000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2308.0
+                },
+                {
+                  "frequency": 700000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2364.0
+                },
+                {
+                  "frequency": 750000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2428.0
+                },
+                {
+                  "frequency": 800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2501.0
+                },
+                {
+                  "frequency": 850000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2584.0
+                },
+                {
+                  "frequency": 900000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2674.5
+                },
+                {
+                  "frequency": 950000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2771.0
+                },
+                {
+                  "frequency": 1000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2869.5
+                },
+                {
+                  "frequency": 1100000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 3038.5
+                },
+                {
+                  "frequency": 1200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 3115.0
+                },
+                {
+                  "frequency": 1300000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 3062.5
+                },
+                {
+                  "frequency": 1400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2884.0
+                },
+                {
+                  "frequency": 1500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2603.0
+                },
+                {
+                  "frequency": 1600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2248.5
+                },
+                {
+                  "frequency": 1700000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1854.0
+                },
+                {
+                  "frequency": 1800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1458.0
+                },
+                {
+                  "frequency": 1900000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 1092.5
+                },
+                {
+                  "frequency": 2000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 779.8499999999999
+                },
+                {
+                  "frequency": 2200000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 332.3
+                },
+                {
+                  "frequency": 2400000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 74.545
+                },
+                {
+                  "frequency": 2600000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -67.345
+                },
+                {
+                  "frequency": 2800000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -145.15
+                },
+                {
+                  "frequency": 3000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -187.25
+                },
+                {
+                  "frequency": 3500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -220.10000000000002
+                },
+                {
+                  "frequency": 4000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -212.1
+                },
+                {
+                  "frequency": 4500000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -192.45
+                },
+                {
+                  "frequency": 5000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -170.55
+                },
+                {
+                  "frequency": 6000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -130.1
+                },
+                {
+                  "frequency": 7000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -97.32
+                },
+                {
+                  "frequency": 8000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -71.505
+                },
+                {
+                  "frequency": 9000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -51.475
+                },
+                {
+                  "frequency": 10000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": -35.945
+                },
+                {
+                  "frequency": 15000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 2.36
+                },
+                {
+                  "frequency": 20000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 15.265
+                },
+                {
+                  "frequency": 25000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 21.86
+                },
+                {
+                  "frequency": 30000000.0,
+                  "magneticFieldDcBias": null,
+                  "magneticFieldPeak": null,
+                  "magneticFluxDensityPeak": null,
+                  "modifiers": null,
+                  "temperature": null,
+                  "tolerance": null,
+                  "value": 25.975
+                }
+              ]
+            },
+            "incremental": null,
+            "initial": [
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": -40.0,
+                "tolerance": null,
+                "value": 1297.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": -30.0,
+                "tolerance": null,
+                "value": 1367.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": -20.0,
+                "tolerance": null,
+                "value": 1476.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": -10.0,
+                "tolerance": null,
+                "value": 1584.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 0.0,
+                "tolerance": null,
+                "value": 1706.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 10.0,
+                "tolerance": null,
+                "value": 1852.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 20.0,
+                "tolerance": null,
+                "value": 2007.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 30.0,
+                "tolerance": null,
+                "value": 2193.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 40.0,
+                "tolerance": null,
+                "value": 2398.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 50.0,
+                "tolerance": null,
+                "value": 2623.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 60.0,
+                "tolerance": null,
+                "value": 2873.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 70.0,
+                "tolerance": null,
+                "value": 3149.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 80.0,
+                "tolerance": null,
+                "value": 3385.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 90.0,
+                "tolerance": null,
+                "value": 3632.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 100.0,
+                "tolerance": null,
+                "value": 3871.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 110.0,
+                "tolerance": null,
+                "value": 4092.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 120.0,
+                "tolerance": null,
+                "value": 4043.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 130.0,
+                "tolerance": null,
+                "value": 3907.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 140.0,
+                "tolerance": null,
+                "value": 3780.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 150.0,
+                "tolerance": null,
+                "value": 3569.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 160.0,
+                "tolerance": null,
+                "value": 3533.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 170.0,
+                "tolerance": null,
+                "value": 3533.0
+              },
+              {
+                "frequency": 10000.0,
+                "magneticFieldDcBias": null,
+                "magneticFieldPeak": null,
+                "magneticFluxDensityPeak": null,
+                "modifiers": null,
+                "temperature": 180.0,
+                "tolerance": null,
+                "value": 3561.0
+              }
+            ],
+            "reversible": null
+          },
+          "permittivity": null,
+          "recommendations": null,
+          "remanence": [
+            {
+              "magneticField": 0.0,
+              "magneticFluxDensity": 0.09,
+              "temperature": 100.0
+            },
+            {
+              "magneticField": 0.0,
+              "magneticFluxDensity": 0.155,
+              "temperature": 25.0
+            }
+          ],
+          "resistivity": [
+            {
+              "temperature": 25.0,
+              "value": 5.0
+            }
+          ],
+          "saturation": [
+            {
+              "magneticField": 1200.0,
+              "magneticFluxDensity": 0.44,
+              "temperature": 100.0
+            },
+            {
+              "magneticField": 1200.0,
+              "magneticFluxDensity": 0.55,
+              "temperature": 25.0
+            }
+          ],
+          "type": "commercial",
+          "volumetricLosses": {
+            "default": [
+              {
+                "a": null,
+                "b": null,
+                "c": null,
+                "coefficients": {
+                  "excessLossesCoefficient": 9.196506099999998e-21,
+                  "resistivityFrequencyCoefficient": 1.17643023e-08,
+                  "resistivityMagneticFluxDensityCoefficient": 1.8479269600000004e-18,
+                  "resistivityOffset": 0.17118840200000002,
+                  "resistivityTemperatureCoefficient": 0.00120729847
+                },
+                "d": null,
+                "factors": null,
+                "method": "roshen",
+                "ranges": null,
+                "referenceVolumetricLosses": null
+              },
+              {
+                "a": null,
+                "b": null,
+                "c": null,
+                "coefficients": null,
+                "d": null,
+                "factors": null,
+                "method": "steinmetz",
+                "ranges": [
+                  {
+                    "alpha": 1.4144440418033288,
+                    "beta": 2.9475325801057086,
+                    "ct0": 4.811827805747442,
+                    "ct1": 0.07459401066585998,
+                    "ct2": 0.00036766252941208176,
+                    "k": 2.6265182055751994,
+                    "maximumFrequency": 150000.0,
+                    "minimumFrequency": 1.0
+                  },
+                  {
+                    "alpha": 2.1633098186182043,
+                    "beta": 2.3336390716892716,
+                    "ct0": 0.9263109288686966,
+                    "ct1": -0.018333530450676903,
+                    "ct2": -0.00017822861783269977,
+                    "k": 0.00010031978215337035,
+                    "maximumFrequency": 1000000.0,
+                    "minimumFrequency": 150000.0
+                  },
+                  {
+                    "alpha": 2.5089048712180357,
+                    "beta": 2.057832696109937,
+                    "ct0": 1.4181286867644727,
+                    "ct1": 0.01009509706460918,
+                    "ct2": 6.663713837530712e-05,
+                    "k": 3.5288294964311646e-07,
+                    "maximumFrequency": 1000000000.0,
+                    "minimumFrequency": 1000000.0
+                  }
+                ],
+                "referenceVolumetricLosses": null
+              }
+            ]
+          }
+        },
+        "numberStacks": 1,
+        "shape": {
+          "aliases": [
+            "ER 51"
+          ],
+          "dimensions": {
+            "A": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.052,
+              "minimum": 0.05,
+              "nominal": 0.051,
+              "unit": null
+            },
+            "B": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.01031,
+              "minimum": 0.01001,
+              "nominal": null,
+              "unit": null
+            },
+            "C": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0388,
+              "minimum": 0.0374,
+              "nominal": null,
+              "unit": null
+            },
+            "D": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0051,
+              "minimum": 0.0048,
+              "nominal": null,
+              "unit": null
+            },
+            "E": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0426,
+              "minimum": 0.041,
+              "nominal": null,
+              "unit": null
+            },
+            "F": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0204,
+              "minimum": 0.0196,
+              "nominal": null,
+              "unit": null
+            },
+            "G": {
+              "excludeMaximum": null,
+              "excludeMinimum": null,
+              "maximum": 0.0426,
+              "minimum": 0.041,
+              "nominal": null,
+              "unit": null
+            }
+          },
+          "family": "er",
+          "familySubtype": null,
+          "magneticCircuit": "open",
+          "name": "ER 51/10/38",
+          "type": "standard"
+        },
+        "type": "twoPieceSet"
+      },
+      "geometricalDescription": [
+        {
+          "coordinates": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "dimensions": null,
+          "insulationMaterial": null,
+          "machining": null,
+          "material": "3C96",
+          "rotation": [
+            3.141592653589793,
+            3.141592653589793,
+            0.0
+          ],
+          "shape": {
+            "aliases": [
+              "ER 51"
+            ],
+            "dimensions": {
+              "A": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.052,
+                "minimum": 0.05,
+                "nominal": 0.051,
+                "unit": null
+              },
+              "B": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.01031,
+                "minimum": 0.01001,
+                "nominal": null,
+                "unit": null
+              },
+              "C": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0388,
+                "minimum": 0.0374,
+                "nominal": null,
+                "unit": null
+              },
+              "D": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0051,
+                "minimum": 0.0048,
+                "nominal": null,
+                "unit": null
+              },
+              "E": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0426,
+                "minimum": 0.041,
+                "nominal": null,
+                "unit": null
+              },
+              "F": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0204,
+                "minimum": 0.0196,
+                "nominal": null,
+                "unit": null
+              },
+              "G": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0426,
+                "minimum": 0.041,
+                "nominal": null,
+                "unit": null
+              }
+            },
+            "family": "er",
+            "familySubtype": null,
+            "magneticCircuit": "open",
+            "name": "ER 51/10/38",
+            "type": "standard"
+          },
+          "type": "halfSet"
+        },
+        {
+          "coordinates": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "dimensions": null,
+          "insulationMaterial": null,
+          "machining": null,
+          "material": "3C96",
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": {
+            "aliases": [
+              "ER 51"
+            ],
+            "dimensions": {
+              "A": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.052,
+                "minimum": 0.05,
+                "nominal": 0.051,
+                "unit": null
+              },
+              "B": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.01031,
+                "minimum": 0.01001,
+                "nominal": null,
+                "unit": null
+              },
+              "C": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0388,
+                "minimum": 0.0374,
+                "nominal": null,
+                "unit": null
+              },
+              "D": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0051,
+                "minimum": 0.0048,
+                "nominal": null,
+                "unit": null
+              },
+              "E": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0426,
+                "minimum": 0.041,
+                "nominal": null,
+                "unit": null
+              },
+              "F": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0204,
+                "minimum": 0.0196,
+                "nominal": null,
+                "unit": null
+              },
+              "G": {
+                "excludeMaximum": null,
+                "excludeMinimum": null,
+                "maximum": 0.0426,
+                "minimum": 0.041,
+                "nominal": null,
+                "unit": null
+              }
+            },
+            "family": "er",
+            "familySubtype": null,
+            "magneticCircuit": "open",
+            "name": "ER 51/10/38",
+            "type": "standard"
+          },
+          "type": "halfSet"
+        }
+      ],
+      "manufacturerInfo": null,
+      "name": "custom",
+      "processedDescription": {
+        "columns": [
+          {
+            "area": 0.000314159,
+            "coordinates": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "cornerRadius": null,
+            "depth": 0.02,
+            "height": 0.0099,
+            "minimumDepth": null,
+            "minimumWidth": null,
+            "name": null,
+            "shape": "round",
+            "type": "central",
+            "width": 0.02
+          },
+          {
+            "area": 0.00017526,
+            "coordinates": [
+              0.0232,
+              0.0,
+              0.0
+            ],
+            "cornerRadius": null,
+            "depth": 0.0381,
+            "height": 0.0099,
+            "minimumDepth": null,
+            "minimumWidth": 0.0046,
+            "name": null,
+            "shape": "irregular",
+            "type": "lateral",
+            "width": 0.0046
+          },
+          {
+            "area": 0.00017526,
+            "coordinates": [
+              -0.0232,
+              0.0,
+              0.0
+            ],
+            "cornerRadius": null,
+            "depth": 0.0381,
+            "height": 0.0099,
+            "minimumDepth": null,
+            "minimumWidth": 0.0046,
+            "name": null,
+            "shape": "irregular",
+            "type": "lateral",
+            "width": 0.0046
+          }
+        ],
+        "depth": 0.0381,
+        "effectiveParameters": {
+          "effectiveArea": 0.00036009289809535336,
+          "effectiveLength": 0.06233713737886723,
+          "effectiveVolume": 2.2447160457724483e-05,
+          "minimumArea": 0.0003141592653589793
+        },
+        "height": 0.020319999999999998,
+        "thermalResistance": null,
+        "width": 0.051,
+        "windingWindows": [
+          {
+            "angle": null,
+            "area": 0.00010791,
+            "column": null,
+            "coordinates": [
+              0.01,
+              0.0
+            ],
+            "height": 0.009899999999999999,
+            "radialHeight": null,
+            "sectionsAlignment": null,
+            "sectionsOrientation": null,
+            "shape": null,
+            "width": 0.010900000000000002,
+            "windingOrder": null
+          }
+        ]
+      }
+    },
+    "distributorsInfo": null,
+    "manufacturerInfo": {
+      "datasheetInfo": null,
+      "datasheetUrl": null,
+      "description": null,
+      "family": null,
+      "name": "OpenMagnetics",
+      "orderCode": null,
+      "reference": "My custom magnetic",
+      "series": null,
+      "spiceModel": null,
+      "status": null
+    },
+    "rotation": null
+  }
+}

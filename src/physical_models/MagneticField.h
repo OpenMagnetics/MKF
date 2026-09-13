@@ -31,7 +31,13 @@ class MagneticFieldStrengthModel {
         // Dowell's one-dimensional field is assumed uniform (H = enclosed MMF / b). Only the
         // Dowell model reads it; the point-to-point models derive everything from the two points.
         double _windingWindowBreadth = 0;
-        virtual ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt) = 0;
+        virtual ComplexFieldPoint get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt) = 0;
+        // (Hx, Hy) only: the point-pair sum calls this for every inducing/induced pair, and building a
+        // ComplexFieldPoint (a heap-allocated point copy) per pair dominated its cost.
+        virtual std::pair<double, double> get_magnetic_field_strength_components_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt) {
+            auto complexFieldPoint = get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint, inducingWireIndex);
+            return {complexFieldPoint.get_real(), complexFieldPoint.get_imaginary()};
+        }
 };
 
 class MagneticFieldStrengthFringingEffectModel {
@@ -96,7 +102,7 @@ class MagneticField {
 class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
     public:
         std::string methodName = "Dowell";
-        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
+        ComplexFieldPoint get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
 };
 
 
@@ -106,7 +112,7 @@ class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
 class MagneticFieldStrengthWangModel : public MagneticFieldStrengthModel {
     public:
         std::string methodName = "Wang";
-        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
+        ComplexFieldPoint get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
 };
 
 
@@ -116,7 +122,8 @@ class MagneticFieldStrengthWangModel : public MagneticFieldStrengthModel {
 class MagneticFieldStrengthBinnsLawrensonModel : public MagneticFieldStrengthModel {
     public:
         std::string methodName = "BinnsLawrenson";
-        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
+        ComplexFieldPoint get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
+        std::pair<double, double> get_magnetic_field_strength_components_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt) override;
 };
 
 
@@ -125,7 +132,7 @@ class MagneticFieldStrengthBinnsLawrensonModel : public MagneticFieldStrengthMod
 class MagneticFieldStrengthLammeranerModel : public MagneticFieldStrengthModel {
     public:
         std::string methodName = "Lammeraner";
-        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
+        ComplexFieldPoint get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
 };
 
 
@@ -277,8 +284,8 @@ public:
      * This per-turn-pair method should not be called and will throw an error.
      */
     ComplexFieldPoint get_magnetic_field_strength_between_two_points(
-        FieldPoint inducingFieldPoint, 
-        FieldPoint inducedFieldPoint, 
+        const FieldPoint& inducingFieldPoint,
+        const FieldPoint& inducedFieldPoint, 
         std::optional<size_t> inducingWireIndex = std::nullopt
     ) override;
     

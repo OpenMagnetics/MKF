@@ -161,6 +161,10 @@ class Settings
         size_t _magneticFieldNumberPointsX = 25;
         size_t _magneticFieldNumberPointsY = 50;
         int _magneticFieldMirroringDimension;
+        // Image lattice of the rectangular-window field models (CoilMesherCenterModel). false: images
+        // m, n in [-M, M] (M = mirroring dimension), the historical lattice used by the loss models.
+        // true: M complete 2A x 2B mirror cells on each side, m, n in [-2M-1, 2M] (ABT #1240).
+        bool _magneticFieldMirroringCompleteCells = false;
         bool _magneticFieldIncludeFringing = true;
 
         double _coilMesherInsideTurnsFactor = 1.05;
@@ -511,6 +515,9 @@ class Settings
 
         int get_magnetic_field_mirroring_dimension() const;
         void set_magnetic_field_mirroring_dimension(int value);
+
+        bool get_magnetic_field_mirroring_complete_cells() const;
+        void set_magnetic_field_mirroring_complete_cells(bool value);
 
         size_t get_coil_adviser_maximum_number_wires() const;
         void set_coil_adviser_maximum_number_wires(size_t value);
