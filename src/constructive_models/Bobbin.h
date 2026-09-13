@@ -107,10 +107,11 @@ class Bobbin : public MAS::Bobbin {
      *
      * FRAME (MVB++ concentric frame, proposal section 0.7): the column axis is Y, the winding
      * window is radial in X and deep in Z.
-     *   VERTICAL  (column axis normal to the board): the pins leave the BOTTOM flange along -Y.
+     *   VERTICAL  (column axis normal to the board): the pins leave the pin rail below the
+     *             bottom flange along -Y.
      *             A row runs along X; the rows sit at z = -+ rowDistance/2.
      *   HORIZONTAL(column axis parallel to the board): the part lies on its side and the pins
-     *             leave the two END flanges downwards, along -Z. A row runs along X; the rows
+     *             leave the rails of the two END flanges downwards, along -Z. A row runs along X; the rows
      *             sit at y = -+ rowDistance/2, i.e. one row per flange, which is why a
      *             horizontal bobbin's row distance scales with the core's window HEIGHT
      *             (ETD 44 -> 35.8 mm, ETD 49 -> 40.4 mm) and a vertical one's with its depth.
@@ -126,13 +127,17 @@ class Bobbin : public MAS::Bobbin {
      * a missing `pinDescription`: `pin.dimensions` is required by the schema, and a pin needs
      * its diameter and length to be a solid.
      *
-     * @param pinout        the catalogue pinout
-     * @param orientation   mounting orientation; it alone decides which way the pins leave
-     * @param windingWindow the bobbin's first winding window (its height and width place the
-     *                      flange faces the pins hang from)
-     * @param wallThickness the flange thickness, so the pin starts at the flange's OUTER face
-     * @param columnDepth   the central column's depth including its wall; with the window width
-     *                      it gives the outer surface a horizontal bobbin's pins hang from
+     * WHERE THE PINS START (ABT #1207): at the outer face of the bobbin's PIN RAIL (the
+     * standoff), never at a flange face. A flange face lies INSIDE the core window, so a pin
+     * hung from it runs straight through the core's back plate; the rail is the part of the
+     * former that reaches past the core, and only the record's own dimensions say where it is.
+     * `get_pin_rail_distance` reads that from the record, and throws when it cannot.
+     *
+     * @param pinout           the catalogue pinout
+     * @param orientation      mounting orientation; it alone decides which way the pins leave
+     * @param pinRailDistance  distance from the centre of the main column to the pin rail's
+     *                         outer face, measured along the direction the pins leave (-Y for
+     *                         vertical, -Z for horizontal); the pin starts there
      * @return the pins, in name order "1".."N"
      *
      * The proposal's draft signature also took `columnWidth`; nothing in the placement reads it
@@ -141,9 +146,26 @@ class Bobbin : public MAS::Bobbin {
      */
     static std::vector<MAS::Pin> expand_pinout(const MAS::Pinout& pinout,
                                                MAS::OrientationEnum orientation,
-                                               const MAS::WindingWindowElement& windingWindow,
-                                               double wallThickness,
-                                               double columnDepth);
+                                               double pinRailDistance);
+
+    /**
+     * @brief Distance from the centre of the main column to the outer face of the pin rail
+     *        (the standoff the pins leave from), along the pin direction (ABT #1207).
+     *
+     * Read ONLY from dimensions whose meaning has been checked against the vendor drawing:
+     *   PQ, VERTICAL: `c - H1/2`. On every Miles-Platts PQ former drawing the catalogue's PQ
+     *     records come from (PQ0010..PQ0080, e.g. PQ0040 = PQ 26/25: c = 1.033 in, H1 = 0.609 in)
+     *     `c` is the overall height from the TOP flange's outer face to the pin standoff, and
+     *     `H1` the flange-to-flange height; the bobbin is centred on the column, so the top
+     *     flange face is at +H1/2 and the standoff at H1/2 - c.
+     * Every other family/orientation has no dimension in MAS that locates the rail (the
+     * letters `a`/`b`/`c` mean different things per family and vendor - `c` on an E bobbin is
+     * not an overall height), so this throws naming what is missing rather than guessing.
+     *
+     * @throws InvalidInputException when the record has no orientation, lacks a label the rule
+     *         needs, or belongs to a family/orientation with no verified rule.
+     */
+    static double get_pin_rail_distance(const MAS::BobbinFunctionalDescription& functionalDescription);
 
     /**
      * @brief The processed pin with this name, e.g. "7".

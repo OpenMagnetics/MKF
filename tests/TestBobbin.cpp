@@ -475,15 +475,6 @@ MAS::Pinout miles_platts_pq2016_pinout() {
     return parsed;
 }
 
-MAS::WindingWindowElement test_winding_window(double height, double width) {
-    MAS::WindingWindowElement windingWindow;
-    windingWindow.set_height(height);
-    windingWindow.set_width(width);
-    windingWindow.set_area(height * width);
-    windingWindow.set_coordinates(std::vector<double>({width / 2, 0}));
-    return windingWindow;
-}
-
 double pin_x(const std::vector<MAS::Pin>& pins, const std::string& name) {
     for (const auto& pin : pins) {
         if (pin.get_name() && pin.get_name().value() == name) {
@@ -518,14 +509,15 @@ TEST_CASE("expand_pinout places the Miles-Platts PQ 20/16 footprint (ABT #1171)"
     CHECK_THAT(cataloguePitches[0], Catch::Matchers::WithinAbs(0.00381, 1e-9));
     CHECK_THAT(cataloguePitches[1], Catch::Matchers::WithinAbs(0.00254, 1e-9));
 
-    // PQ 20/16: window 0.0116 high, wall 0.0007, column depth 0.0106 — the numbers only
-    // move the pins along the column axis, so the row/pitch assertions do not depend on them.
-    const double wallThickness = 0.0007;
-    const double columnDepth = 0.0106;
-    auto windingWindow = test_winding_window(0.0116, 0.0035);
+    // ABT #1207: the pins start at the record's own pin rail, c - H1/2 below the column
+    // centre: 0.01824 - 0.00973/2 = 0.013375 m. The rail only moves the pins along the column
+    // axis, so the row/pitch assertions below do not depend on it.
+    const double pinRailDistance = OpenMagnetics::Bobbin::get_pin_rail_distance(
+        catalogueBobbin.get_functional_description().value());
+    CHECK_THAT(pinRailDistance, Catch::Matchers::WithinAbs(0.013375, 1e-12));
     auto pins = OpenMagnetics::Bobbin::expand_pinout(miles_platts_pq2016_pinout(),
                                                      MAS::OrientationEnum::VERTICAL,
-                                                     windingWindow, wallThickness, columnDepth);
+                                                     pinRailDistance);
 
     REQUIRE(pins.size() == 14);
     for (size_t index = 0; index < pins.size(); ++index) {
@@ -555,8 +547,9 @@ TEST_CASE("expand_pinout places the Miles-Platts PQ 20/16 footprint (ABT #1171)"
                    Catch::Matchers::WithinAbs(0.00508, 1e-9));
     }
 
-    // Vertical: the pins hang below the bottom flange's OUTER face, centred half a pin lower.
-    const double expectedY = -(0.0116 / 2 + wallThickness + 0.00508 / 2);
+    // Vertical: the pins hang from the pin rail's outer face, centred half a pin lower:
+    // -(0.013375 + 0.00508/2) = -0.015915.
+    const double expectedY = -0.015915;
     for (const auto& pin : pins) {
         CHECK_THAT(pin.get_coordinates().value()[1], Catch::Matchers::WithinAbs(expectedY, 1e-9));
         CHECK_FALSE(pin.get_rotation());
@@ -565,18 +558,16 @@ TEST_CASE("expand_pinout places the Miles-Platts PQ 20/16 footprint (ABT #1171)"
 
 TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
           "[constructive-model][bobbin][pins][abt1171]") {
-    auto windingWindow = test_winding_window(0.0116, 0.0035);
-
     SECTION("a pin count with no pitch and no row distance") {
         // 342 of the 504 catalogue records looked exactly like this before WP2.
         json onlyCount = json::parse(R"({"numberPins": 6})");
         MAS::Pinout pinout;
         MAS::from_json(onlyCount, pinout);
         CHECK_THROWS_AS(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
-                                                             windingWindow, 0.0007, 0.0106),
+                                                             0.0134),
                         OpenMagnetics::InvalidInputException);
         CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
-                                                               windingWindow, 0.0007, 0.0106),
+                                                               0.0134),
                           Catch::Matchers::ContainsSubstring("no pitch"));
     }
 
@@ -585,7 +576,7 @@ TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
         MAS::Pinout pinout;
         MAS::from_json(noRowDistance, pinout);
         CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
-                                                               windingWindow, 0.0007, 0.0106),
+                                                               0.0134),
                           Catch::Matchers::ContainsSubstring("no rowDistance"));
     }
 
@@ -595,7 +586,7 @@ TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
         MAS::Pinout pinout;
         MAS::from_json(noPinDescription, pinout);
         CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
-                                                               windingWindow, 0.0007, 0.0106),
+                                                               0.0134),
                           Catch::Matchers::ContainsSubstring("no pinDescription"));
     }
 
@@ -608,7 +599,7 @@ TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
         MAS::Pinout pinout;
         MAS::from_json(oddRow, pinout);
         CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
-                                                               windingWindow, 0.0007, 0.0106),
+                                                               0.0134),
                           Catch::Matchers::ContainsSubstring("two MIDDLE pins"));
     }
 
@@ -620,7 +611,7 @@ TEST_CASE("expand_pinout refuses a pinout that is only a pin count (ABT #1171)",
         MAS::Pinout pinout;
         MAS::from_json(odd, pinout);
         CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
-                                                               windingWindow, 0.0007, 0.0106),
+                                                               0.0134),
                           Catch::Matchers::ContainsSubstring("numberPinsPerRow"));
     }
 }
@@ -638,14 +629,12 @@ TEST_CASE("expand_pinout matches the hand computation for a scraped ETD 29 pinou
     MAS::Pinout pinout;
     MAS::from_json(scraped, pinout);
 
-    // ETD 29/16/10 bobbin: window 0.0195 high and 0.00475 wide, wall 0.0008, column depth 0.0113.
-    const double wallThickness = 0.0008;
-    const double columnDepth = 0.0113;
-    auto windingWindow = test_winding_window(0.0195, 0.00475);
+    // The rail distance is the test's own too (an ETD record carries none, ABT #1207): 15 mm.
+    const double pinRailDistance = 0.015;
 
     SECTION("vertical: pins under the bottom flange, rows across the depth") {
         auto pins = OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::VERTICAL,
-                                                         windingWindow, wallThickness, columnDepth);
+                                                         pinRailDistance);
         REQUIRE(pins.size() == 12);
         // Six pins to a row, 5 mm apart, centred: -0.0125 .. +0.0125 by hand.
         const std::vector<double> expectedRow0({-0.0125, -0.0075, -0.0025, 0.0025, 0.0075, 0.0125});
@@ -654,9 +643,9 @@ TEST_CASE("expand_pinout matches the hand computation for a scraped ETD 29 pinou
                        Catch::Matchers::WithinAbs(expectedRow0[index], 1e-12));
             CHECK_THAT(pins[index].get_coordinates().value()[2],
                        Catch::Matchers::WithinAbs(-0.01, 1e-12));
-            // -(0.0195/2 + 0.0008 + 0.0045/2)
+            // -(0.015 + 0.0045/2)
             CHECK_THAT(pins[index].get_coordinates().value()[1],
-                       Catch::Matchers::WithinAbs(-0.012800, 1e-12));
+                       Catch::Matchers::WithinAbs(-0.01725, 1e-12));
         }
         // Pin 7 turns the corner: same end of the board as pin 6, on the other row.
         CHECK_THAT(pins[6].get_coordinates().value()[0], Catch::Matchers::WithinAbs(0.0125, 1e-12));
@@ -667,7 +656,7 @@ TEST_CASE("expand_pinout matches the hand computation for a scraped ETD 29 pinou
 
     SECTION("horizontal: pins off the two end flanges, rows along the column axis") {
         auto pins = OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::HORIZONTAL,
-                                                         windingWindow, wallThickness, columnDepth);
+                                                         pinRailDistance);
         REQUIRE(pins.size() == 12);
         for (size_t index = 0; index < 6; ++index) {
             CHECK_THAT(pins[index].get_coordinates().value()[1],
@@ -677,10 +666,10 @@ TEST_CASE("expand_pinout matches the hand computation for a scraped ETD 29 pinou
             CHECK_THAT(pins[index].get_coordinates().value()[1],
                        Catch::Matchers::WithinAbs(0.01, 1e-12));
         }
-        // -(0.0113/2 + 0.00475 + 0.0045/2) = -(0.00565 + 0.00475 + 0.00225)
+        // -(0.015 + 0.0045/2): the same rail distance, now along -Z.
         for (const auto& pin : pins) {
             CHECK_THAT(pin.get_coordinates().value()[2],
-                       Catch::Matchers::WithinAbs(-0.01265, 1e-12));
+                       Catch::Matchers::WithinAbs(-0.01725, 1e-12));
             REQUIRE(pin.get_rotation());
             CHECK(pin.get_rotation().value() == std::vector<double>({90, 0, 0}));
         }
@@ -689,16 +678,17 @@ TEST_CASE("expand_pinout matches the hand computation for a scraped ETD 29 pinou
 
 TEST_CASE("A processed bobbin carries its pins and can be asked for one by name (ABT #1171)",
           "[constructive-model][bobbin][pins][abt1171]") {
-    // A record with the full footprint AND the mounting orientation: the four things
-    // process_data needs before it will place a pin.
+    // A record with the full footprint, the mounting orientation AND the dimensions that
+    // locate its pin rail (ABT #1207): everything process_data needs before it places a pin.
+    // The Miles-Platts PQ 26/25 former's own numbers.
     json bobbinJson = json::parse(R"({
         "name": "Bobbin WP2 Fixture",
         "functionalDescription": {
-            "type": "standard", "family": "etd", "shape": "ETD 29/16/10",
+            "type": "standard", "family": "pq", "shape": "PQ 26/25",
             "orientation": "vertical",
-            "dimensions": {"d1": {"nominal": 0.0212}, "d2": {"nominal": 0.0113},
-                           "d3": {"nominal": 0.0102}, "h1": {"nominal": 0.0212},
-                           "h2": {"nominal": 0.0195}, "s": {"nominal": 0.0008}},
+            "dimensions": {"a": {"nominal": 0.02649}, "b": {"nominal": 0.02921}, "c": {"nominal": 0.02624},
+                           "H2": {"nominal": 0.01359}, "H1": {"nominal": 0.01547},
+                           "D1": {"nominal": 0.02159}, "D2": {"nominal": 0.0142}, "D3": {"nominal": 0.0125}},
             "pinout": {
                 "numberPins": 12, "numberRows": 2, "rowDistance": 0.02032, "pitch": 0.00508,
                 "pinDescription": {"shape": "round", "type": "tht",
@@ -714,6 +704,8 @@ TEST_CASE("A processed bobbin carries its pins and can be asked for one by name 
     auto pin = bobbin.get_pin("7");
     REQUIRE(pin.get_coordinates());
     CHECK_THAT(pin.get_coordinates().value()[2], Catch::Matchers::WithinAbs(0.01016, 1e-12));
+    // -(c - H1/2 + L/2) = -(0.02624 - 0.007735 + 0.00225) = -0.020755
+    CHECK_THAT(pin.get_coordinates().value()[1], Catch::Matchers::WithinAbs(-0.020755, 1e-12));
     CHECK_THROWS_WITH(bobbin.get_pin("13"), Catch::Matchers::ContainsSubstring("no pin named '13'"));
 
     SECTION("the same record without an orientation places nothing rather than guessing") {
@@ -724,4 +716,127 @@ TEST_CASE("A processed bobbin carries its pins and can be asked for one by name 
         CHECK_FALSE(unoriented.get_processed_description()->get_pins());
         CHECK_THROWS_WITH(unoriented.get_pin("1"), Catch::Matchers::ContainsSubstring("has no pins"));
     }
+
+    SECTION("the same record without 'c' has no rail, places nothing, and says which label is missing") {
+        json noRail = bobbinJson;
+        noRail["functionalDescription"]["dimensions"].erase("c");
+        OpenMagnetics::Bobbin railless(noRail);
+        REQUIRE(railless.get_processed_description());
+        CHECK_FALSE(railless.get_processed_description()->get_pins());
+        CHECK_THROWS_WITH(railless.get_pin("1"), Catch::Matchers::ContainsSubstring("the record has no 'c'"));
+        CHECK_THROWS_AS(OpenMagnetics::Bobbin::get_pin_rail_distance(railless.get_functional_description().value()),
+                        OpenMagnetics::InvalidInputException);
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin::get_pin_rail_distance(railless.get_functional_description().value()),
+                          Catch::Matchers::ContainsSubstring("the record has no 'c'"));
+    }
+}
+
+// ============================================================================
+// ABT #1207 — pins start at the pin RAIL and clear the core by construction
+//
+// expand_pinout used to hang a vertical pin from the bottom flange's outer face,
+// -(windowHeight/2 + wall): that face is INSIDE the core window, so every pin of
+// the PQ 26/25 former ran ~2.9 mm^3 into the core's back plate (MVB++ [pins] gate).
+// ============================================================================
+
+TEST_CASE("Catalogue PQ 26/25 pins lie wholly outside the PQ 26/25 core (ABT #1207)",
+          "[constructive-model][bobbin][pins][abt1207]") {
+    auto bobbin = OpenMagnetics::find_bobbin_by_name("Bobbin PQ 26/25");
+    REQUIRE(bobbin.get_processed_description());
+    REQUIRE(bobbin.get_processed_description()->get_pins());
+    const auto pins = bobbin.get_processed_description()->get_pins().value();
+    REQUIRE(pins.size() == 12);
+
+    // Rail from the record: c - H1/2 = 0.02624 - 0.01547/2 = 0.018505 m below the column centre.
+    const double pinRailDistance = OpenMagnetics::Bobbin::get_pin_rail_distance(
+        bobbin.get_functional_description().value());
+    CHECK_THAT(pinRailDistance, Catch::Matchers::WithinAbs(0.018505, 1e-12));
+
+    // The core, from MKF's own processed dimensions. Its bounding volume is centred on the main
+    // column: |x| <= width/2, |y| <= height/2, |z| <= depth/2. Nominal PQ 26/25: 26.5 x 24.75 x 19.
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 26/25", OpenMagneticsTesting::get_ground_gap(0.001), 1, "3C97");
+    const double coreHalfWidth = core.get_width() / 2;
+    const double coreHalfHeight = core.get_height() / 2;
+    const double coreHalfDepth = core.get_depth() / 2;
+    CHECK_THAT(coreHalfWidth, Catch::Matchers::WithinAbs(0.01325, 1e-6));
+    CHECK_THAT(coreHalfHeight, Catch::Matchers::WithinAbs(0.012375, 1e-6));
+    CHECK_THAT(coreHalfDepth, Catch::Matchers::WithinAbs(0.0095, 1e-6));
+    // Even the TOLERANCE-MAXIMUM core (B max 12.5 mm) ends above the rail.
+    CHECK(pinRailDistance > 0.0125);
+
+    // Same x/z footprint and names as before ABT #1207: only y moved.
+    const std::vector<double> expectedX({-0.01143, -0.00762, -0.00381, 0.00381, 0.00762, 0.01143,
+                                          0.01143, 0.00762, 0.00381, -0.00381, -0.00762, -0.01143});
+    for (size_t index = 0; index < pins.size(); ++index) {
+        const auto& pin = pins[index];
+        REQUIRE(pin.get_name());
+        CHECK(pin.get_name().value() == std::to_string(index + 1));
+        const auto coordinates = pin.get_coordinates().value();
+        const auto dimensions = pin.get_dimensions();
+        CHECK_THAT(coordinates[0], Catch::Matchers::WithinAbs(expectedX[index], 1e-9));
+        CHECK_THAT(coordinates[2], Catch::Matchers::WithinAbs(index < 6 ? -0.00635 : 0.00635, 1e-9));
+        // Old: y = -(H2/2 + wall + L/2) = -0.01142, hung from the bottom flange inside the core
+        // window. New:
+        // -(0.018505 + 0.00737/2) = -0.02219.
+        CHECK_THAT(coordinates[1], Catch::Matchers::WithinAbs(-0.02219, 1e-9));
+        CHECK_FALSE(pin.get_rotation());
+
+        // Extent of the vertical pin: its length runs along Y.
+        const double pinTop = coordinates[1] + dimensions[2] / 2;
+        const double pinBottom = coordinates[1] - dimensions[2] / 2;
+        INFO("pin " << pin.get_name().value() << " spans y [" << pinBottom << ", " << pinTop
+             << "], core spans y [" << -coreHalfHeight << ", " << coreHalfHeight << "]");
+        CHECK_THAT(pinTop, Catch::Matchers::WithinAbs(-pinRailDistance, 1e-12));
+        // Both centre and the whole extent lie outside the core's bounding volume.
+        CHECK(coordinates[1] < -coreHalfHeight);
+        CHECK(pinTop < -coreHalfHeight);
+        CHECK(pinBottom < -coreHalfHeight);
+    }
+}
+
+TEST_CASE("Catalogue ETD 59/31/22 horizontal pinout has no rail datum and says so (ABT #1207)",
+          "[constructive-model][bobbin][pins][abt1207]") {
+    // The Swarm SW-59A drawing locates its rail only through dimensions MAS does not carry
+    // (H = 23.2 core cavity, U = 7.0, F = 12.0); the record's a/b/c/d1/d2/d3/h1/h2 do not put
+    // the standoff anywhere relative to the column axis. So: no pins, and a loud reason.
+    auto bobbin = OpenMagnetics::find_bobbin_by_name("Bobbin ETD 59/31/22");
+    REQUIRE(bobbin.get_functional_description());
+    REQUIRE(bobbin.get_functional_description()->get_orientation());
+    CHECK(bobbin.get_functional_description()->get_orientation().value() == MAS::OrientationEnum::HORIZONTAL);
+    REQUIRE(bobbin.get_functional_description()->get_pinout());
+    REQUIRE(bobbin.get_functional_description()->get_pinout()->get_pin_description());
+    REQUIRE(bobbin.get_processed_description());
+    CHECK_FALSE(bobbin.get_processed_description()->get_pins());
+    CHECK_THROWS_WITH(OpenMagnetics::Bobbin::get_pin_rail_distance(bobbin.get_functional_description().value()),
+                      Catch::Matchers::ContainsSubstring("horizontal former needs the distance from the column axis "
+                                                         "to the pin standoff"));
+    CHECK_THROWS_WITH(bobbin.get_pin("1"),
+                      Catch::Matchers::ContainsSubstring("no dimension in the record locates the pin rail"));
+}
+
+TEST_CASE("A horizontal pin clears a core by construction when its rail is given (ABT #1207)",
+          "[constructive-model][bobbin][pins][abt1207]") {
+    // The mirrored branch: the same rail distance, along -Z. ETD 59/31/22 core, depth C max 22.1
+    // mm; a rail 27.7 mm from the column axis (the SW-59A drawing scaled), 4.4 mm pins.
+    json footprint = json::parse(R"({
+        "numberPins": 24, "numberPinsPerRow": [12, 12], "rowDistance": 0.0556, "pitch": 0.00508,
+        "pinDescription": {"shape": "round", "type": "tht", "dimensions": [0.001, 0.001, 0.0044]}
+    })");
+    MAS::Pinout pinout;
+    MAS::from_json(footprint, pinout);
+    auto core = OpenMagneticsTesting::get_quick_core("ETD 59/31/22", OpenMagneticsTesting::get_ground_gap(0.001), 1, "3C97");
+    const double coreHalfDepth = core.get_depth() / 2;
+    const double pinRailDistance = 0.0277;
+    auto pins = OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::HORIZONTAL, pinRailDistance);
+    REQUIRE(pins.size() == 24);
+    for (const auto& pin : pins) {
+        const auto coordinates = pin.get_coordinates().value();
+        CHECK_THAT(coordinates[2], Catch::Matchers::WithinAbs(-(0.0277 + 0.0022), 1e-12));
+        CHECK_THAT(std::abs(coordinates[1]), Catch::Matchers::WithinAbs(0.0278, 1e-12));
+        // Horizontal pins run along Z: the extent nearest the core is the rail face.
+        const double pinNearEnd = coordinates[2] + pin.get_dimensions()[2] / 2;
+        CHECK(pinNearEnd < -coreHalfDepth);
+    }
+    CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::HORIZONTAL, 0.0),
+                      Catch::Matchers::ContainsSubstring("must be positive"));
 }

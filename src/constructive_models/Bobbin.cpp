@@ -1064,11 +1064,89 @@ std::vector<double> row_positions(int64_t numberPinsInRow,
 
 }  // namespace
 
+namespace {
+
+// ABT #1207: the pin rail datum, or the reason the record does not give one. Kept apart from
+// get_pin_rail_distance so process_data can tell "no rail datum" from a malformed one without
+// a try/catch, and get_pin can repeat the reason to whoever asks the bobbin for a pin.
+struct PinRailDatum {
+    std::optional<double> distance;
+    std::string missing;
+};
+
+PinRailDatum find_pin_rail_distance(const MAS::BobbinFunctionalDescription& functionalDescription) {
+    PinRailDatum datum;
+    if (!functionalDescription.get_orientation()) {
+        datum.missing = "the record states no orientation, so it is unknown which way the pins "
+                        "leave and which face of the former is the pin rail";
+        return datum;
+    }
+    const auto orientation = functionalDescription.get_orientation().value();
+    const auto family = functionalDescription.get_family();
+    const auto dimensions = flatten_dimensions(functionalDescription.get_dimensions());
+
+    if (family == MAS::BobbinFamily::PQ && orientation == MAS::OrientationEnum::VERTICAL) {
+        // Miles-Platts PQ0010..PQ0080 drawings: c = top flange outer face -> pin standoff,
+        // H1 = flange to flange. The top flange face is at +H1/2 (the former is centred on
+        // the column), so the standoff is c - H1/2 below the column centre.
+        std::string absent;
+        for (const auto* label : {"c", "H1"}) {
+            if (dimensions.find(label) == dimensions.end()) {
+                absent += absent.empty() ? std::string("'") + label + "'" : std::string(" and '") + label + "'";
+            }
+        }
+        if (!absent.empty()) {
+            datum.missing = "a vertical PQ bobbin's pin rail is located by 'c' (overall height from "
+                            "the top flange's outer face to the pin standoff) and 'H1' (flange to "
+                            "flange), and the record has no " + absent;
+            return datum;
+        }
+        const double c = dimensions.at("c");
+        const double H1 = dimensions.at("H1");
+        if (!(c > H1)) {
+            datum.missing = "a vertical PQ bobbin's overall height 'c' (" + std::to_string(c) +
+                            " m) must exceed its flange-to-flange height 'H1' (" + std::to_string(H1) +
+                            " m) for the pin standoff to lie beyond the bottom flange; the record's "
+                            "'c' is not the overall height";
+            return datum;
+        }
+        datum.distance = c - H1 / 2;
+        return datum;
+    }
+
+    datum.missing = "no dimension in the record locates the pin rail of a " +
+                    std::string(orientation == MAS::OrientationEnum::VERTICAL ? "vertical" : "horizontal") +
+                    " '" + to_string(family) + "' bobbin: a " +
+                    (orientation == MAS::OrientationEnum::VERTICAL
+                        ? "vertical former needs its overall height from the top flange's outer face "
+                          "to the pin standoff together with its flange-to-flange height"
+                        : "horizontal former needs the distance from the column axis to the pin "
+                          "standoff (seating plane) of its end-flange rails") +
+                    ", and MKF reads that only from labels checked against a vendor drawing (so far: "
+                    "'c' and 'H1' on vertical PQ). The record declares {";
+    std::string declared;
+    for (const auto& [key, _] : dimensions) {
+        declared += (declared.empty() ? "" : ", ") + key;
+    }
+    datum.missing += declared + "}";
+    return datum;
+}
+
+}  // namespace
+
+double Bobbin::get_pin_rail_distance(const MAS::BobbinFunctionalDescription& functionalDescription) {
+    auto datum = find_pin_rail_distance(functionalDescription);
+    if (!datum.distance) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Cannot place pins: " + datum.missing + ". A pin hung from a flange face instead runs "
+            "through the core's back plate (ABT #1207), and an invented standoff is worse than no pin.");
+    }
+    return datum.distance.value();
+}
+
 std::vector<MAS::Pin> Bobbin::expand_pinout(const MAS::Pinout& pinout,
                                             MAS::OrientationEnum orientation,
-                                            const MAS::WindingWindowElement& windingWindow,
-                                            double wallThickness,
-                                            double columnDepth) {
+                                            double pinRailDistance) {
     const int64_t numberPins = pinout.get_number_pins();
     if (numberPins <= 0) {
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
@@ -1167,22 +1245,17 @@ std::vector<MAS::Pin> Bobbin::expand_pinout(const MAS::Pinout& pinout,
             "Pinout has " + std::to_string(pinsPerRow.size()) + " rows but a rowDistance of " +
             std::to_string(rowDistance) + " m, which would stack them on top of each other.");
     }
-    if (!windingWindow.get_height()) {
+    if (!(pinRailDistance > 0)) {
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
-            "The bobbin's winding window has no height, so the flange the pins hang from has no "
-            "position.");
-    }
-    if (!windingWindow.get_width()) {
-        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
-            "The bobbin's winding window has no width, so the outer surface a horizontal "
-            "bobbin's pins hang from has no position.");
+            "Pin rail distance is " + std::to_string(pinRailDistance) + " m; the pins start at the "
+            "rail's outer face, which lies outside the column, so it must be positive.");
     }
 
-    // The face the pins start at, and the coordinate of a pin's CENTRE half a pin further out.
-    const double flangeOuterY = windingWindow.get_height().value() / 2 + wallThickness;
-    const double bobbinOuterZ = columnDepth / 2 + windingWindow.get_width().value();
-    const double pinCentreY = -(flangeOuterY + pinLength / 2);
-    const double pinCentreZ = -(bobbinOuterZ + pinLength / 2);
+    // ABT #1207: a pin starts at the pin rail's outer face (the standoff) and its CENTRE is
+    // half a pin further out. Vertical pins leave along -Y, horizontal ones along -Z; the same
+    // rail distance places both, measured along the direction the pin leaves.
+    const double pinCentreY = -(pinRailDistance + pinLength / 2);
+    const double pinCentreZ = -(pinRailDistance + pinLength / 2);
 
     std::vector<MAS::Pin> pins;
     int64_t pinNumber = 1;
@@ -1222,9 +1295,20 @@ MAS::Pin Bobbin::get_pin(const std::string& name) {
     }
     auto pins = get_processed_description()->get_pins();
     if (!pins || pins->empty()) {
+        std::string reason = "its pinout states no pitch, row distance or pin dimensions";
+        if (get_functional_description()) {
+            const auto functionalDescription = get_functional_description().value();
+            const auto pinout = functionalDescription.get_pinout();
+            const auto railDatum = find_pin_rail_distance(functionalDescription);
+            if (pinout && pinout->get_pitch() && pinout->get_row_distance() && pinout->get_pin_description() &&
+                !railDatum.distance) {
+                // The footprint is complete; the rail is what is missing (ABT #1207).
+                reason = railDatum.missing;
+            }
+        }
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
             "Bobbin '" + (get_name() ? get_name().value() : std::string("<unnamed>")) +
-            "' has no pins; its pinout states no pitch, row distance or pin dimensions.");
+            "' has no pins; " + reason + ".");
     }
     for (const auto& pin : pins.value()) {
         if (pin.get_name() && pin.get_name().value() == name) {
@@ -1302,12 +1386,13 @@ void Bobbin::process_data() {
         // BY VALUE, same reason as pinDescription above.
         const MAS::Pinout pinout = functionalDescriptionForPins.get_pinout().value();
         auto orientation = functionalDescriptionForPins.get_orientation();
-        if (pinout.get_pitch() && pinout.get_row_distance() && pinout.get_pin_description() && orientation) {
-            processedDescription.set_pins(expand_pinout(pinout,
-                                                        orientation.value(),
-                                                        processedDescription.get_winding_windows()[0],
-                                                        processedDescription.get_wall_thickness(),
-                                                        processedDescription.get_column_depth()));
+        // ABT #1207: and the record must also locate its pin RAIL. Without it the only faces
+        // left to hang a pin from are inside the core window. Such a record keeps no pins, like
+        // one without a pinDescription; get_pin repeats exactly which label is missing.
+        const auto railDatum = find_pin_rail_distance(functionalDescriptionForPins);
+        if (pinout.get_pitch() && pinout.get_row_distance() && pinout.get_pin_description() && orientation &&
+            railDatum.distance) {
+            processedDescription.set_pins(expand_pinout(pinout, orientation.value(), railDatum.distance.value()));
         }
     }
 
