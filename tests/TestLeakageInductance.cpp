@@ -22,6 +22,15 @@ using Catch::Matchers::WithinRel;
 using Catch::Matchers::WithinAbs;
 
 static double maximumError = 0.3;
+
+// Reference values (ABT #1211). Until 2026-09-13 the Energy method divided the peak stored energy by
+// I_rms^2 and doubled every result; the constants below were snapshots of that output. They are now
+// OMFEM 2D energy-method leakage values of the SAME fixture, serialized from MKF as {"magnetic": ...}
+// and run with `omfem_leakage <fixture>.json` (OMFEM 0e6ee2a tools/omfem_leakage.cpp, meshed by MVB++
+// 7239be7). Round-post cores with a functional gap are solved axisymmetric: the printed L_leak_uH is
+// the reference. E cores (and ungapped round posts with two outer legs) are solved Cartesian over the
+// core depth, so the reference is L_leak x MLT / (2 x depth), MLT the mean MKF turn length: the same
+// 2D-to-turn extrusion the Energy method applies. The tolerance stays at 30 %.
 static auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
 static bool plot = false;
 
@@ -46,7 +55,8 @@ TEST_CASE("Calculate leakage inductance for a E core with same number of turns",
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 6.7e-6;
+    // OMFEM Cartesian 2.709 uH, MLT 65.8 mm, depth 19.6 mm (was 6.7e-6, pre-#1211 output)
+    double expectedLeakageInductance = 4.548e-6;
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
     settings.reset();
@@ -71,7 +81,8 @@ TEST_CASE("Calculate leakage inductance for a E core with different number of tu
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 13e-6;
+    // OMFEM Cartesian 6.093 uH, MLT 65.6 mm, depth 19.6 mm (was 13e-6, pre-#1211 output)
+    double expectedLeakageInductance = 10.20e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -98,7 +109,8 @@ TEST_CASE("Calculate leakage inductance for a E core with different number of tu
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 4e-6;
+    // OMFEM Cartesian 1.610 uH, MLT 70.7 mm, depth 19.6 mm (was 4e-6, pre-#1211 output)
+    double expectedLeakageInductance = 2.903e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -141,7 +153,8 @@ TEST_CASE("Calculate leakage inductance for a larger E core with different numbe
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 9e-6;
+    // OMFEM Cartesian 3.150 uH, MLT 117.1 mm, depth 27.0 mm (was 9e-6, pre-#1211 output)
+    double expectedLeakageInductance = 6.830e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -169,7 +182,8 @@ TEST_CASE("Calculate leakage inductance for a PQ core with with several parallel
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 9e-6;
+    // OMFEM axisymmetric 4.725 uH (was 9e-6, pre-#1211 output)
+    double expectedLeakageInductance = 4.725e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -214,7 +228,8 @@ TEST_CASE("Calculate leakage inductance for a PQ core with with several parallel
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 5e-6;
+    // OMFEM axisymmetric 2.808 uH (was 5e-6, pre-#1211 output)
+    double expectedLeakageInductance = 2.808e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     auto leakageMagneticField = LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency);
@@ -257,7 +272,8 @@ TEST_CASE("Calculate leakage inductance for a ETD core", "[physical-model][leaka
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 40e-6;
+    // OMFEM axisymmetric 18.90 uH (was 40e-6, pre-#1211 output)
+    double expectedLeakageInductance = 18.90e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -291,7 +307,8 @@ TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding or
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 86e-6;
+    // OMFEM axisymmetric 74.98 uH (was 86e-6, pre-#1211 output)
+    double expectedLeakageInductance = 74.98e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
 
@@ -337,7 +354,8 @@ TEST_CASE("Calculate leakage inductance for a PQ core with overlapping winding o
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 9.9e-6;
+    // OMFEM axisymmetric 4.693 uH (was 9.9e-6, pre-#1211 output)
+    double expectedLeakageInductance = 4.693e-6;
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
     settings.reset();
@@ -370,7 +388,8 @@ TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding or
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    double expectedLeakageInductance = 52e-6;
+    // OMFEM axisymmetric 47.63 uH; the old 52e-6 was within 10 % of it and is replaced by the reference
+    double expectedLeakageInductance = 47.63e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
 
@@ -477,7 +496,10 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     // 0.82%. Contiguous two-sector toroidal windings are the common-mode-choke topology, for
     // which vendor datasheets quote stray/leakage inductance at 0.5-2% of L_CM — the new value
     // sits inside that band, the old one well above it.
-    double expectedLeakageInductance = 1.81288e-3;
+    // ABT #1211: halved with the rest of the Energy method (old pin 1.81288e-3 / (2 a^2), a = 0.99598 the unit
+    // sinusoid's fundamental amplitude). No independent 2D reference exists for a contiguous toroid; this remains
+    // an MKF characterization value. 0.41 % of the 222 mH self-inductance.
+    double expectedLeakageInductance = 0.9138e-3;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -534,7 +556,8 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     // Here leakage is referred to winding 0 (10 turns), self-inductance 0.556 mH. The old pin is
     // 6.6% of that, the new value 1.13% — again inside the 0.5-2% band vendors quote for the
     // contiguous two-sector (common-mode-choke) toroidal topology.
-    double expectedLeakageInductance = 6.27273e-6;
+    // ABT #1211: halved as above (6.27273e-6 / (2 a^2)); characterization value, no independent reference. 0.57 %.
+    double expectedLeakageInductance = 3.1617e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -560,7 +583,9 @@ TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physic
     auto magnetic = mas.get_magnetic();
 
     double frequency = 100000;
-    double expectedLeakageInductance = 1.4e-6;
+    // OMFEM axisymmetric 1.174 uH, Primary/Secondary only (omfem_leakage drives every winding it is not told
+    // about, so the Tertiary was removed from the fixture; it carries no current here). Was 1.4e-6.
+    double expectedLeakageInductance = 1.174e-6;
     // settings.set_magnetic_field_number_points_x(100);
     // settings.set_magnetic_field_number_points_y(100);
     std::vector<double> turnsRatios = magnetic.get_turns_ratios();
@@ -654,7 +679,9 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web", "[p
     OpenMagnetics::Magnetic magnetic(json::parse(json_file_631));
 
     double frequency = 150000;
-    double expectedLeakageInductance = 1.4e-6;
+    // OMFEM axisymmetric 1.174 uH, Primary/Secondary only (omfem_leakage drives every winding it is not told
+    // about, so the Tertiary was removed from the fixture; it carries no current here). Was 1.4e-6.
+    double expectedLeakageInductance = 1.174e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -670,7 +697,9 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 2", "
     std::ifstream json_file_644(json_path_644);
     OpenMagnetics::Inputs inputs(json::parse(json_file_644));
 
-    double expectedLeakageInductance = 1.4e-6;
+    // OMFEM axisymmetric 1.174 uH, Primary/Secondary only (omfem_leakage drives every winding it is not told
+    // about, so the Tertiary was removed from the fixture; it carries no current here). Was 1.4e-6.
+    double expectedLeakageInductance = 1.174e-6;
 
     OpenMagnetics::MagneticSimulator magneticSimulator;
     auto mas = magneticSimulator.simulate(inputs, magnetic);
@@ -696,7 +725,8 @@ TEST_CASE("Calculate leakage inductance for a simple planar magnetic", "[physica
     auto magnetic = mas.get_magnetic();
 
     double frequency = 100000;
-    double expectedLeakageInductance = 2e-9;
+    // OMFEM axisymmetric 1.546 nH (was 2e-9, pre-#1211 output)
+    double expectedLeakageInductance = 1.546e-9;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -714,6 +744,9 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 3", "
     auto magnetic = mas.get_magnetic();
 
     double frequency = 100000;
+    // Kept at 1.5e-6: OMFEM Cartesian 0.5877 uH, MLT 98.3 mm, depth 20 mm gives 1.445 uH, within 4 % of it.
+    // MKF reads 0.77 uH here since ABT #1211: the old 1.53 uH agreed only because the doubled normalisation
+    // cancelled a planar field under-estimate on this stack (ABT #1240). This check is red until that is fixed.
     double expectedLeakageInductance = 1.5e-6;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
@@ -742,9 +775,10 @@ TEST_CASE("Leakage inductance H-field model comparison study", "[physical-model]
     settings.reset();
     
     std::vector<LeakageTestCase> testCases = {
-        {"E42 16:6 Litz", "E 42/33/20", {16, 6}, {1, 1}, 50, {370, 666}, 100000, 4e-6},
-        {"E42 69:69 Litz", "E 42/33/20", {69, 69}, {1, 1}, 50, {25, 25}, 100000, 6.7e-6},
-        {"E42 64:20 Litz", "E 42/33/20", {64, 20}, {1, 1}, 50, {25, 225}, 100000, 13e-6},
+        // OMFEM references (see the top of this file); the E65 12:6 and PQ40 10:10 values are unreferenced.
+        {"E42 16:6 Litz", "E 42/33/20", {16, 6}, {1, 1}, 50, {370, 666}, 100000, 2.903e-6},
+        {"E42 69:69 Litz", "E 42/33/20", {69, 69}, {1, 1}, 50, {25, 25}, 100000, 4.548e-6},
+        {"E42 64:20 Litz", "E 42/33/20", {64, 20}, {1, 1}, 50, {25, 225}, 100000, 10.20e-6},
         {"E65 12:6 Litz", "E 65/32/27", {12, 6}, {1, 1}, 50, {450, 450}, 100000, 9e-6},
         {"PQ40 10:10 Litz x2par", "PQ 40/40", {10, 10}, {2, 2}, 100, {150, 150}, 100000, 5e-6},
     };
@@ -1037,6 +1071,51 @@ TEST_CASE("Test_Leakage_Inductance_New_Core_Families",
         if (label == "drumRing" || label == "drumSemishielded") {
             CHECK(leakageInductance < magnetizingInductance);
         }
+    }
+    settings.reset();
+}
+
+// ABT #1211: the Energy method against OMFEM 2D energy-method leakage on the same geometry. The field model
+// drives the turns with the PEAK current harmonic, so L = 2 W / I_peak^2; the method used I_rms^2 and read
+// twice these references (38.7 uH and 6.32 uH). Fixtures are MKF-serialized magnetics; reference commands:
+//   omfem_leakage tests/testData/leakage_omfem_reference_etd39_60_59.json
+//     -> {"N_p":60,"N_s":59,"L_leak_uH":18.9}      (round post, subtractive gap: axisymmetric, direct)
+//   omfem_leakage tests/testData/leakage_omfem_reference_planar_e32_8_4.json
+//     -> {"N_p":8,"N_s":4,"L_leak_uH":1.574}       (E 32/6/20: Cartesian over the 20.325 mm core depth)
+// omfem_leakage: OMFEM 0e6ee2a tools/omfem_leakage.cpp meshed by MVB++ 7239be7, both 2026-09-12. The planar
+// fixture is the Li 2018 stack without its shunt (8:4, 4 + 4 layers of 70 um copper on 0.25 mm, 4.1 mm
+// apart); its reference is 1.574 uH x MLT / (2 x depth) with the fixture's mean turn length, the extrusion
+// the Energy method itself applies.
+TEST_CASE("Energy leakage matches OMFEM 2D on a round-post and a planar E design", "[physical-model][leakage-inductance][omfem-reference]") {
+    settings.reset();
+    auto load = [](const std::string& name) {
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), name);
+        std::ifstream file(path);
+        return OpenMagnetics::Magnetic(json::parse(file)["magnetic"]);
+    };
+    double referenceTolerance = 0.10;
+
+    SECTION("ETD 39, 60:59 litz, axisymmetric") {
+        auto magnetic = load("leakage_omfem_reference_etd39_60_59.json");
+        double omfemLeakage = 18.9e-6;
+        double leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, 100000).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        INFO("MKF " << leakageInductance << " H, OMFEM " << omfemLeakage << " H");
+        CHECK(std::fabs(leakageInductance - omfemLeakage) / omfemLeakage <= referenceTolerance);
+    }
+    SECTION("E 32/6/20 planar 8:4, Cartesian") {
+        auto magnetic = load("leakage_omfem_reference_planar_e32_8_4.json");
+        double meanTurnLength = 0;
+        auto turns = magnetic.get_coil().get_turns_description().value();
+        for (auto& turn : turns) {
+            meanTurnLength += turn.get_length();
+        }
+        meanTurnLength /= static_cast<double>(turns.size());
+        double coreDepth = magnetic.get_mutable_core().get_columns()[0].get_depth();
+        REQUIRE_THAT(coreDepth, WithinRel(20.325e-3, 1e-9));
+        double omfemLeakage = 1.574e-6 * meanTurnLength / (2 * coreDepth);
+        double leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, 1e6).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        INFO("MKF " << leakageInductance << " H, OMFEM extruded " << omfemLeakage << " H (MLT " << meanTurnLength << " m)");
+        CHECK(std::fabs(leakageInductance - omfemLeakage) / omfemLeakage <= referenceTolerance);
     }
     settings.reset();
 }

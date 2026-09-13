@@ -558,6 +558,15 @@ TEST_CASE("Leakage of a flyback rises when its windings go side by side into two
               << " H, McLyman 17-5 " << mcLyman << " H (MLT " << meanTurnLengthCm << " cm, a " << primaryWidthCm << " + "
               << secondaryWidthCm << " cm, c " << gapCm << " cm, b " << buildCm << " cm)" << std::endl;
     CHECK(chamberedLeakage > singleLeakage);
-    CHECK_THAT(chamberedLeakage, WithinRel(mcLyman, 0.15));
+    // Pass/fail reference: OMFEM 2D (axisymmetric, round post with a functional gap) energy-method leakage of these
+    // two magnetics serialized from MKF, `omfem_leakage <fixture>.json` (OMFEM 0e6ee2a tools/omfem_leakage.cpp,
+    // MVB++ 7239be7): chambered 2223 uH, single window 149.7 uH. McLyman's 1-D formula above is a sanity note only.
+    // The single window agrees (MKF 152.6 uH). The chambered value is 0.61 of OMFEM since ABT #1211 corrected the
+    // Energy normalisation (it read 2689 uH, +21 %, before): the air-field model under-estimates the field of
+    // side-by-side sections (ABT #1240). Red until that is fixed.
+    double omfemChamberedLeakage = 2223e-6;
+    double omfemSingleLeakage = 149.7e-6;
+    CHECK_THAT(singleLeakage, WithinRel(omfemSingleLeakage, 0.15));
+    CHECK_THAT(chamberedLeakage, WithinRel(omfemChamberedLeakage, 0.15));
     settings.reset();
 }

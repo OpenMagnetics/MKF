@@ -55,8 +55,11 @@ namespace {
 
 // CMC Lk/Lm score of the LEAKAGE_INDUCTANCE filter on the T 36/23/15 3C90 12:12 fixture below, measured
 // with the filter files as they were before ABT #1176 (base 137a2485, MagneticFilter.h/.cpp and
-// MagneticFilterAdvanced.cpp restored, same binary otherwise): 0.0010388323822073957.
-const double kCmcLeakageRatioBeforeAbt1176 = 0.0010388323822073957;
+// MagneticFilterAdvanced.cpp restored, same binary otherwise): 0.0010388323822073957. ABT #1211 corrected the
+// Energy method's normalisation (L = 2 W / I_peak^2, was 2 W / I_rms^2), which divides every Energy leakage by
+// 2 a^2 = 1.98395, a = 0.99598 the fundamental amplitude of the unit sinusoid; the score followed exactly
+// (0.0010388323822073957 / 0.00052362259152796784 = 1.98393). Filter code unchanged since the #1176 pin.
+const double kCmcLeakageRatioBeforeAbt1176 = 0.00052362259152796784;
 
 // Relative error against a published measurement, referred to the measurement (Catch's WithinRel
 // refers to the larger of the two values, which is looser when the model overshoots).
@@ -139,12 +142,22 @@ OpenMagnetics::Magnetic make_planar_shunt_transformer(const PlanarShuntCase& spe
     double stackHeight = static_cast<double>(spec.primaryLayers + spec.secondaryLayers) * spec.copperThickness +
                          static_cast<double>(spec.primaryLayers - 1) * spec.primaryInsulation +
                          static_cast<double>(spec.secondaryLayers - 1) * spec.secondaryInsulation + spec.interfaceDistance;
-    double coreToLayerDistance = (windowHeight - stackHeight) / 2;
-    REQUIRE(coreToLayerDistance > 0);
+    REQUIRE(stackHeight < windowHeight);
     settings.set_coil_wind_even_if_not_fit(true);
     coil.set_section_alignment(CoilAlignment::CENTERED);
-    coil.wind_planar(stackUp, border, {{0, wireToWire}, {1, wireToWire}}, insulation, coreToLayerDistance);
+    // wind_planar's last argument is the column-side (horizontal) inset of the copper region, not a
+    // vertical offset: the CENTERED section alignment centres the stack vertically. The tracks are
+    // sized to the full window width, so the inset is zero (ABT #1211: passing the vertical margin here
+    // shifted every track by that margin toward the outer leg, 2.1 mm into it on Li 2018).
+    coil.wind_planar(stackUp, border, {{0, wireToWire}, {1, wireToWire}}, insulation, 0);
     REQUIRE(coil.get_turns_description());
+    double windowInnerEdge = bobbin.get_processed_description()->get_winding_windows()[0].get_coordinates().value()[0] - windowWidth / 2;
+    auto windingTurns = coil.get_turns_description().value();
+    for (auto& turn : windingTurns) {
+        REQUIRE(turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2 >= windowInnerEdge - 1e-9);
+        REQUIRE(turn.get_coordinates()[0] + turn.get_dimensions().value()[0] / 2 <= windowInnerEdge + windowWidth + 1e-9);
+        REQUIRE(std::fabs(turn.get_coordinates()[1]) + turn.get_dimensions().value()[1] / 2 <= windowHeight / 2 + 1e-9);
+    }
 
     OpenMagnetics::Magnetic magnetic;
     magnetic.set_core(core);

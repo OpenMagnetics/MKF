@@ -216,8 +216,12 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
 
     double energy = integrate_leakage_energy(magnetic, field, dA);
 
-    double currentRms = operatingPoint.get_excitations_per_winding()[sourceIndex].get_current()->get_processed()->get_rms().value();
-    double leakageInductance = 2.0 / pow(currentRms, 2) * energy;
+    // The field model drives every turn with the PEAK amplitude of the current harmonic
+    // (CoilMesher::generate_mesh_inducing_coil), so |H|^2 is a peak-squared field and the
+    // integral is the peak stored energy W = L I_peak^2 / 2. Normalise by the same peak
+    // amplitude. Dividing by I_rms^2 (as before ABT #1211) doubled every Energy-method result.
+    double sourceCurrentPeak = harmonic_peak_current_at_field_frequency(operatingPoint.get_excitations_per_winding()[sourceIndex], field.get_frequency());
+    double leakageInductance = 2.0 * energy / (sourceCurrentPeak * sourceCurrentPeak);
     LeakageInductanceOutput leakageInductanceOutput;
 
     leakageInductanceOutput.set_method_used("Energy");
@@ -405,25 +409,52 @@ std::vector<std::vector<double>> LeakageInductance::calculate_leakage_inductance
     }
 
     std::vector<std::vector<double>> leakageMatrix(numberWindings, std::vector<double>(numberWindings, 0.0));
-    // Diagonal: Λ_aa = 4·W(e_a). The factor 4 = 2/I_rms² with the unit reference current's
-    // RMS of 1/sqrt(2), matching calculate_leakage_inductance's 2·energy/I_rms² convention.
+    // The unit reference excitation is a sinusoid of 1 A peak; the field (and so W) is built from
+    // the peak amplitude of its fundamental harmonic, a. With W = 1/2 i^T Λ i for peak currents:
+    //   Λ_aa = 2·W(e_a)/a²,   Λ_ab = [W(e_a+e_b) − W(e_a) − W(e_b)]/a²
+    // (ABT #1211: this used 4·W and 2·[...], the I_rms normalisation that doubled every value).
+    std::vector<double> unitCurrents(numberWindings, 0.0);
+    unitCurrents[0] = 1.0;
+    auto unitOperatingPoint = create_excitation_operating_point(magnetic, unitCurrents, frequency);
+    double referencePeak = harmonic_peak_current_at_field_frequency(unitOperatingPoint.get_excitations_per_winding()[0], frequency);
+    double referencePeakSquared = referencePeak * referencePeak;
     for (size_t a = 0; a < numberWindings; ++a) {
-        leakageMatrix[a][a] = 4.0 * selfEnergy[a];
+        leakageMatrix[a][a] = 2.0 * selfEnergy[a] / referencePeakSquared;
     }
-    // Off-diagonal via polarization: Λ_ab = 2·[W(e_a+e_b) − W(e_a) − W(e_b)].
+    // Off-diagonal via polarization.
     for (size_t a = 0; a < numberWindings; ++a) {
         for (size_t b = a + 1; b < numberWindings; ++b) {
             std::vector<double> currents(numberWindings, 0.0);
             currents[a] = 1.0;
             currents[b] = 1.0;
             double pairEnergy = calculate_leakage_field_energy(magnetic, currents, frequency, harmonicIndex);
-            double mutualLeakage = 2.0 * (pairEnergy - selfEnergy[a] - selfEnergy[b]);
+            double mutualLeakage = (pairEnergy - selfEnergy[a] - selfEnergy[b]) / referencePeakSquared;
             leakageMatrix[a][b] = mutualLeakage;
             leakageMatrix[b][a] = mutualLeakage;
         }
     }
 
     return leakageMatrix;
+}
+
+double LeakageInductance::harmonic_peak_current_at_field_frequency(const OperatingPointExcitation& excitation, double fieldFrequency) {
+    if (!excitation.get_current() || !excitation.get_current()->get_harmonics()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Leakage inductance: the source excitation has no current harmonics");
+    }
+    auto harmonics = excitation.get_current()->get_harmonics().value();
+    auto& frequencies = harmonics.get_frequencies();
+    auto& amplitudes = harmonics.get_amplitudes();
+    for (size_t harmonicIndex = 0; harmonicIndex < frequencies.size(); ++harmonicIndex) {
+        if (frequencies[harmonicIndex] > 0 && std::abs(frequencies[harmonicIndex] - fieldFrequency) <= 1e-9 * fieldFrequency) {
+            if (!(amplitudes[harmonicIndex] > 0)) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Leakage inductance: the source current harmonic at " +
+                                           std::to_string(fieldFrequency) + " Hz has no amplitude");
+            }
+            return amplitudes[harmonicIndex];
+        }
+    }
+    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Leakage inductance: the source current has no harmonic at the field frequency " +
+                               std::to_string(fieldFrequency) + " Hz");
 }
 
 OperatingPoint LeakageInductance::create_excitation_operating_point(Magnetic& magnetic, const std::vector<double>& currentsRmsSigned, double frequency) {
