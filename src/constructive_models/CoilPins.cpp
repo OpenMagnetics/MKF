@@ -28,7 +28,7 @@
 //
 // Deliberate limits, each of which throws or is reported rather than guessed:
 //   * Round winding windows (toroids on a family `t` base, WP4 / ABT #1173) follow the toroid rule in
-//     assign_pins_on_toroid_base: winding k takes side k of the base.
+//     assign_pins_on_toroid_base: each winding takes the base side its half of the ring faces.
 //   * Role tags (switched-node end, primary return shared with a shield) do not exist in MAS, so
 //     rule 5's "switched node is the start" cannot be applied; the first-wound end is the start.
 //   * Removable pins are read but change nothing: unused pins are never counted as a creepage
@@ -151,6 +151,13 @@ struct WindingPinPlan {
     bool isShield = false;
     bool legacy = false;              // connections carry pinNames but no `end`: validated, not planned
     double firstTurnY = 0;
+    // Toroid base only (ABT #1173), MKF ring frame (x, y); the base's rows stand at z = -+rowDistance/2 in
+    // the MVB++ toroid frame, where a turn's y is drawn as z. meanTurnY is the y-centroid of the winding's
+    // turns (which half of the ring it occupies), first/lastTurnX the x of parallel 0's first and last turn
+    // (which end of a row its start and finish leads leave towards).
+    double meanTurnY = 0;
+    double firstTurnX = 0;
+    double lastTurnX = 0;
     std::vector<ConnectionElement> originalConnections;
     std::vector<PinSlot> slots;
 };
@@ -385,8 +392,9 @@ bool Coil::has_complete_pin_connections() const {
 namespace {
 
 // ABT #1173 (WP4): the toroid rule of RFC 0013 ("Toroids on a base"). A toroid base's pins stand in a
-// rectangle, two rows, one per side of the base. Winding k (in the order the design lists them) takes
-// the pins of side k - row k - and all windings start at the same angular side: every row is walked
+// rectangle, two rows, one per side of the base. Each of two windings takes the side its half of the ring
+// faces (design order only when neither side faces one winding more than the other), and walks that row
+// from the end its first turn lies towards. For windings with no such preference every row is walked
 // from -X, so on the counter-clockwise numbering of Bobbin::expand_pinout a common-mode choke on a
 // 4-pin base reads winding 1 = pins 1 (start) and 2 (finish), winding 2 = pins 4 (start) and 3
 // (finish), the WE-CMB footprint "1 2 / 4 3". Two windings wound on opposite halves of the ring thus
@@ -495,12 +503,19 @@ void assign_pins_on_toroid_base(std::vector<WindingPinPlan>& plans, const std::v
             (plans[planIndex].avoidCorners ? " (its insulated or margin-wound leads may not take a corner pin, RFC 0013 rule 7)" : std::string("")) +
             ". Use a base with more pins, or fewer separate strands and taps.");
     };
-    // Starts and finishes on one side: the start half towards -X, the finish half towards +X, inner first.
+    // Starts and finishes on one side: the start half towards the end of the row the winding's first turn
+    // lies towards, the finish half towards the other, inner first. A winding whose first turn is further
+    // along +X than its last walks the row from +X, so neither lead crosses the other on its way to the row
+    // (ABT #1173; a winding that starts and finishes at the same x keeps the -X walk).
+    const double sameEnd = 1e-6;
     auto place_on_one_side = [&](size_t planIndex, size_t row) {
         auto& plan = plans[planIndex];
         auto startSlots = slots_of(plan, true);
         auto finishSlots = slots_of(plan, false);
         auto freeWalk = free_pins(row);
+        if (plan.firstTurnX > plan.lastTurnX + sameEnd) {
+            std::reverse(freeWalk.begin(), freeWalk.end());
+        }
         const size_t demand = startSlots.size() + finishSlots.size();
         if (demand > freeWalk.size()) {
             throw row_too_small(planIndex, row, demand, freeWalk.size());
@@ -573,6 +588,22 @@ void assign_pins_on_toroid_base(std::vector<WindingPinPlan>& plans, const std::v
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "Windings '" + plans[planned[0]].name + "' and '" + plans[planned[1]].name + "' both have user pins on side " +
             std::to_string(rowOfPlan.at(planned[0])) + " of toroid base '" + bobbinName + "'; each winding takes a side of its own.");
+    }
+    // Without user pins each winding takes the side its half of the ring faces (ABT #1173): a common-mode
+    // choke wound on opposite halves otherwise sends both windings' leads across the ring to the far row.
+    // A row's side is the sign of its pins' z; a winding's half is the sign of its turns' y centroid (MKF's
+    // y is the MVB++ z). Only when the two windings do not sit on opposite halves (stacked in one sector, or
+    // straddling the rows' axis) does neither side face one more than the other, and design order decides.
+    if (rowOfPlan.empty()) {
+        const double rowZ0 = placedPins[rowWalk[0].front()].centre[2];
+        const double rowZ1 = placedPins[rowWalk[1].front()].centre[2];
+        const double y0 = plans[planned[0]].meanTurnY;
+        const double y1 = plans[planned[1]].meanTurnY;
+        if ((rowZ0 < 0) != (rowZ1 < 0) && std::abs(y0) > sameEnd && std::abs(y1) > sameEnd && (y0 < 0) != (y1 < 0)) {
+            const size_t rowForNegative = rowZ0 < 0 ? 0 : 1;
+            rowOfPlan[planned[0]] = y0 < 0 ? rowForNegative : 1 - rowForNegative;
+            rowOfPlan[planned[1]] = 1 - rowOfPlan[planned[0]];
+        }
     }
     for (size_t k = 0; k < planned.size(); ++k) {
         if (rowOfPlan.count(planned[k])) {
@@ -708,6 +739,31 @@ PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
         }
         if (!firstTurnFound) {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Winding '" + plan.name + "' has no turns; pin assignment runs after winding.");
+        }
+        if (toroidBase) {
+            double sumY = 0;
+            size_t count = 0;
+            bool firstOfParallel0 = true;
+            for (const auto& turn : turns) {
+                if (turn.get_winding() != plan.name) {
+                    continue;
+                }
+                if (turn.get_coordinate_system() && turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "Turn '" + turn.get_name() + "' of toroidal winding '" + plan.name + "' is not in cartesian coordinates; "
+                        "the toroid base rule reads which half of the ring each winding occupies from them.");
+                }
+                sumY += turn.get_coordinates()[1];
+                ++count;
+                if (turn.get_parallel() == 0) {
+                    if (firstOfParallel0) {
+                        plan.firstTurnX = turn.get_coordinates()[0];
+                        firstOfParallel0 = false;
+                    }
+                    plan.lastTurnX = turn.get_coordinates()[0];
+                }
+            }
+            plan.meanTurnY = sumY / static_cast<double>(count);
         }
         auto wire = resolve_wire(windingIndex);
         plan.avoidCorners = is_insulated_wire(wire) || marginWound;

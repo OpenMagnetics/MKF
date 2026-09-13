@@ -138,6 +138,10 @@ def main():
         pinout = functional.get("pinout") or {}
         if pinout.get("pitch") is None or pinout.get("rowDistance") is None:
             continue
+        if functional.get("base") is not None:
+            # ABT #1173: a toroid base (family t) is not a former; its pins stand on the base, not on a rail.
+            skipped["toroid base (family t), not a former"] += 1
+            continue
         shape = shapes.get(functional.get("shape"))
         if shape is None:
             skipped["shape not in core_shapes.ndjson"] += 1

@@ -22,7 +22,8 @@
     "recordsSkipped": {
         "pin split over the rows not stated": 2,
         "repeat of a footprint already counted": 68,
-        "shape not in core_shapes.ndjson": 8
+        "shape not in core_shapes.ndjson": 8,
+        "toroid base (family t), not a former": 3
     },
     "classes": {
         "E-type": {
@@ -39,7 +40,7 @@
                     "minimumCoreWidth": 0.0,
                     "maximumCoreWidth": 0.01785,
                     "catalogueCoreWidths": [
-                        0.0127,
+                        0.01265,
                         0.015,
                         0.0161
                     ],
@@ -55,7 +56,7 @@
                         0.0201,
                         0.0244,
                         0.02505,
-                        0.028,
+                        0.0285,
                         0.02855,
                         0.0298,
                         0.0342,
@@ -90,7 +91,7 @@
                 "footprints": 25,
                 "minimum": 0.0003,
                 "median": 0.0014,
-                "maximum": 0.00965
+                "maximum": 0.00325
             }
         },
         "PQ": {

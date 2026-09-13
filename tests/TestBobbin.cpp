@@ -896,11 +896,13 @@ TEST_CASE("Catalogue E-family bobbins carry the column depth of their own labels
         CHECK(processed.get_column_depth() > 0.0036 / 2);
     }
     SECTION("ER via E: a round column, one tube radius both ways") {
-        // c = f = 11.6 mm, s1 = 0.5 mm; core EER 35 column C = F = 11.3 mm (CorePieceEr: ROUND).
+        // c = f = 11.6 mm, s1 = 1.0 mm; core EER 35 column C = F = 11.3 mm (CorePieceEr: ROUND).
+        // s1 was 0.5 mm until MAS 2acaf9b (ABT #1244) re-read the Norwe 90298-186 drawing, which gives
+        // s1 = 1.0 mm; c and f are unchanged.
         auto processed = OpenMagnetics::find_bobbin_by_name("Bobbin EER 35 horizontal 16-pin (Norwe 90298-186)").get_processed_description().value();
         CHECK(processed.get_column_shape() == ColumnShape::ROUND);
-        CHECK_THAT(processed.get_column_width().value(), Catch::Matchers::WithinAbs(0.0116 / 2 + 0.0005, 1e-12));
-        CHECK_THAT(processed.get_column_depth(), Catch::Matchers::WithinAbs(0.0116 / 2 + 0.0005, 1e-12));
+        CHECK_THAT(processed.get_column_width().value(), Catch::Matchers::WithinAbs(0.0116 / 2 + 0.001, 1e-12));
+        CHECK_THAT(processed.get_column_depth(), Catch::Matchers::WithinAbs(0.0116 / 2 + 0.001, 1e-12));
     }
     // The catalogue has no EL, P or U bobbin; these use the E42/15 labels under those families.
     SECTION("EL via E: an oblong column, depth is the long axis c") {
