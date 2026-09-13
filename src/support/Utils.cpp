@@ -3047,13 +3047,18 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     }
 
     Bobbin bobbin;
+    // ABT #1220: a quick bobbin built here carries synthesised pins only when the setting asks.
+    std::optional<OrientationEnum> quickBobbinPins;
+    if (settings.get_coil_quick_bobbin_generate_pins()) {
+        quickBobbinPins = settings.get_coil_quick_bobbin_pins_orientation();
+    }
 
     if (std::holds_alternative<std::string>(magnetic.get_mutable_coil().get_bobbin())) {
         if (std::get<std::string>(magnetic.get_mutable_coil().get_bobbin()) == "Basic") {
-            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false);
+            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false, quickBobbinPins);
         }
         else if (std::get<std::string>(magnetic.get_mutable_coil().get_bobbin()) == "Dummy" || std::get<std::string>(magnetic.get_mutable_coil().get_bobbin()) == "None") {
-            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), true);
+            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), true, quickBobbinPins);
         }
         else {
             bobbin = magnetic.get_mutable_coil().resolve_bobbin();
@@ -3065,10 +3070,10 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
 
     if (!bobbin.get_functional_description() && !bobbin.get_processed_description()) {
         if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET && magnetic.get_wire(0).get_type() != WireType::RECTANGULAR && magnetic.get_wire(0).get_type() != WireType::PLANAR) {
-            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false);
+            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false, quickBobbinPins);
         }
         else {
-            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), true);
+            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), true, quickBobbinPins);
         }
 
     }

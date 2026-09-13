@@ -94,6 +94,8 @@ namespace OpenMagnetics {
         _coilUseRealWindingGeometry = false;
         _coilAllowCoatingSquish = false;
         _coilAllowHorizontalOverflow = false;
+        _coilQuickBobbinGeneratePins = false;
+        _coilQuickBobbinPinsOrientation = OrientationEnum::VERTICAL;
         _coilMaximumLayersPlanar = 32;
 
         _useOnlyCoresInStock = true;
@@ -352,6 +354,19 @@ namespace OpenMagnetics {
     }
     void Settings::set_coil_allow_horizontal_overflow(bool value) {
         _coilAllowHorizontalOverflow = value;
+    }
+
+    bool Settings::get_coil_quick_bobbin_generate_pins() const {
+        return _coilQuickBobbinGeneratePins;
+    }
+    void Settings::set_coil_quick_bobbin_generate_pins(bool value) {
+        _coilQuickBobbinGeneratePins = value;
+    }
+    OrientationEnum Settings::get_coil_quick_bobbin_pins_orientation() const {
+        return _coilQuickBobbinPinsOrientation;
+    }
+    void Settings::set_coil_quick_bobbin_pins_orientation(OrientationEnum value) {
+        _coilQuickBobbinPinsOrientation = value;
     }
 
     size_t Settings::get_coil_maximum_layers_planar() const {

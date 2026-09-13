@@ -62,6 +62,12 @@ class Settings
         // turn axis (y) stays strict. Lets over-full example designs wind with real-winding
         // blocking applied instead of silently skipping it. Default OFF.
         bool _coilAllowHorizontalOverflow = false;
+        // ABT #1220: when magnetic_autocomplete builds a quick bobbin from the core, also give it
+        // a synthesised two-row THT pinout (Bobbin::synthesise_quick_bobbin_pinout) mounted in
+        // _coilQuickBobbinPinsOrientation, so Coil::assign_pins has pins to assign. Default OFF:
+        // quick bobbins stay pinless. A core family with no catalogue evidence throws when ON.
+        bool _coilQuickBobbinGeneratePins = false;
+        OrientationEnum _coilQuickBobbinPinsOrientation = OrientationEnum::VERTICAL;  // Keep in sync with reset()
         size_t _coilMaximumLayersPlanar = 32;  // Keep in sync with reset()
 
         bool _useOnlyCoresInStock = true;
@@ -316,6 +322,11 @@ class Settings
 
         bool get_coil_allow_horizontal_overflow() const;
         void set_coil_allow_horizontal_overflow(bool value);
+
+        bool get_coil_quick_bobbin_generate_pins() const;
+        void set_coil_quick_bobbin_generate_pins(bool value);
+        OrientationEnum get_coil_quick_bobbin_pins_orientation() const;
+        void set_coil_quick_bobbin_pins_orientation(OrientationEnum value);
 
         size_t get_coil_maximum_layers_planar() const;
         void set_coil_maximum_layers_planar(size_t value);
