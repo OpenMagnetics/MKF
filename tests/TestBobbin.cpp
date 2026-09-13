@@ -1,5 +1,8 @@
 #include <source_location>
 #include "constructive_models/Bobbin.h"
+#include "constructive_models/BobbinFamilyGeometry.h"
+#include "constructive_models/Coil.h"
+#include "support/Settings.h"
 #include "constructive_models/Core.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
@@ -12,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
+#include <numbers>
 #include <thread>
 #include <vector>
 using json = nlohmann::json;
@@ -439,8 +443,12 @@ TEST_CASE("process_data on a bobbin with no functionalDescription throws, determ
         auto functionalDescription = eBobbin.get_functional_description().value();
         functionalDescription.set_family(BobbinFamily::ETD);
         eBobbin.set_functional_description(functionalDescription);
+        // ABT #1210: the processors now ask for each label they read, so the refusal comes one step
+        // earlier than the zero-area guard and names a missing label instead (which one comes first
+        // depends on operand evaluation order, so the assertion does not name it).
         CHECK_THROWS_WITH(eBobbin.process_data(),
-                          Catch::Matchers::ContainsSubstring("zero area"));
+                          Catch::Matchers::ContainsSubstring("(family 'etd') has no dimension 'd") &&
+                          Catch::Matchers::ContainsSubstring("the record declares {c, e, f, k, l2, s1, s2}"));
     }
 }
 
@@ -848,4 +856,132 @@ TEST_CASE("A horizontal pin clears a core by construction when its rail is given
     }
     CHECK_THROWS_WITH(OpenMagnetics::Bobbin::expand_pinout(pinout, MAS::OrientationEnum::HORIZONTAL, 0.0),
                       Catch::Matchers::ContainsSubstring("must be positive"));
+}
+
+// ABT #1210: the E and EFD processors (and ER/EL/P/U, which read the E label set) set the column
+// width but never the column depth, a plain double in the generated description, so every turn on
+// those bobbins read an indeterminate depth (observed 0). References below are the catalogue
+// labels themselves (MAS bobbins.ndjson), with the core column they wrap as a physical sanity
+// bound. Asserted against the hand value, not "non-zero": an uninitialised read can land anywhere.
+namespace {
+json bobbin_json_as_family(const std::string& catalogueName, const std::string& family, const std::string& newName) {
+    auto bobbin = OpenMagnetics::find_bobbin_by_name(catalogueName);
+    json functionalDescription;
+    to_json(functionalDescription, bobbin.get_functional_description().value());
+    functionalDescription["family"] = family;
+    functionalDescription.erase("pinout");
+    json bobbinJson;
+    bobbinJson["name"] = newName;
+    bobbinJson["functionalDescription"] = functionalDescription;
+    return bobbinJson;
+}
+}  // namespace
+
+TEST_CASE("Catalogue E-family bobbins carry the column depth of their own labels (ABT #1210)",
+          "[constructive-model][bobbin][abt1210]") {
+    SECTION("E: Bobbin E42/15, depth c/2 + s1 differs from width f/2 + s1") {
+        // c = 15.7 mm, f = 12.6 mm, s1 = 0.9 mm; core E 42/21/15 column C = 14.95 mm, F = 11.95 mm.
+        auto processed = OpenMagnetics::find_bobbin_by_name("Bobbin E42/15").get_processed_description().value();
+        CHECK(processed.get_column_shape() == ColumnShape::RECTANGULAR);
+        CHECK_THAT(processed.get_column_width().value(), Catch::Matchers::WithinAbs(0.0126 / 2 + 0.0009, 1e-12));
+        CHECK_THAT(processed.get_column_depth(), Catch::Matchers::WithinAbs(0.0157 / 2 + 0.0009, 1e-12));
+        CHECK(processed.get_column_depth() > 0.01495 / 2);
+    }
+    SECTION("EFD: Bobbin EFD 20/10/7, a flat column, depth f3/2 + S1") {
+        // f1 = 9.2 mm, f3 = 3.8 mm, S1 = 0.4 mm; core EFD 20/10/7 column F = 8.9 mm, F2 = 3.6 mm.
+        auto processed = OpenMagnetics::find_bobbin_by_name("Bobbin EFD 20/10/7").get_processed_description().value();
+        CHECK(processed.get_column_shape() == ColumnShape::RECTANGULAR);
+        CHECK_THAT(processed.get_column_width().value(), Catch::Matchers::WithinAbs(0.0092 / 2 + 0.0004, 1e-12));
+        CHECK_THAT(processed.get_column_depth(), Catch::Matchers::WithinAbs(0.0038 / 2 + 0.0004, 1e-12));
+        CHECK(processed.get_column_depth() > 0.0036 / 2);
+    }
+    SECTION("ER via E: a round column, one tube radius both ways") {
+        // c = f = 11.6 mm, s1 = 0.5 mm; core EER 35 column C = F = 11.3 mm (CorePieceEr: ROUND).
+        auto processed = OpenMagnetics::find_bobbin_by_name("Bobbin EER 35 horizontal 16-pin (Norwe 90298-186)").get_processed_description().value();
+        CHECK(processed.get_column_shape() == ColumnShape::ROUND);
+        CHECK_THAT(processed.get_column_width().value(), Catch::Matchers::WithinAbs(0.0116 / 2 + 0.0005, 1e-12));
+        CHECK_THAT(processed.get_column_depth(), Catch::Matchers::WithinAbs(0.0116 / 2 + 0.0005, 1e-12));
+    }
+    // The catalogue has no EL, P or U bobbin; these use the E42/15 labels under those families.
+    SECTION("EL via E: an oblong column, depth is the long axis c") {
+        OpenMagnetics::Bobbin bobbin(bobbin_json_as_family("Bobbin E42/15", "el", "E42/15 labels as EL"));
+        auto processed = bobbin.get_processed_description().value();
+        CHECK(processed.get_column_shape() == ColumnShape::OBLONG);
+        CHECK_THAT(processed.get_column_width().value(), Catch::Matchers::WithinAbs(0.0126 / 2 + 0.0009, 1e-12));
+        CHECK_THAT(processed.get_column_depth(), Catch::Matchers::WithinAbs(0.0157 / 2 + 0.0009, 1e-12));
+    }
+    SECTION("U via E: a rectangular leg") {
+        OpenMagnetics::Bobbin bobbin(bobbin_json_as_family("Bobbin E42/15", "u", "E42/15 labels as U"));
+        auto processed = bobbin.get_processed_description().value();
+        CHECK(processed.get_column_shape() == ColumnShape::RECTANGULAR);
+        CHECK_THAT(processed.get_column_depth(), Catch::Matchers::WithinAbs(0.0157 / 2 + 0.0009, 1e-12));
+    }
+    SECTION("P via E: a round column whose openings differ is not round, and says so") {
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin(bobbin_json_as_family("Bobbin E42/15", "p", "E42/15 labels as P")),
+                          Catch::Matchers::ContainsSubstring("round central column"));
+    }
+}
+
+TEST_CASE("A family bobbin without its column depth label throws, naming the label (ABT #1210)",
+          "[constructive-model][bobbin][abt1210]") {
+    SECTION("E without c") {
+        auto bobbinJson = bobbin_json_as_family("Bobbin E42/15", "e", "E42/15 without c");
+        bobbinJson["functionalDescription"]["dimensions"].erase("c");
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin(bobbinJson), Catch::Matchers::ContainsSubstring("has no dimension 'c'"));
+    }
+    SECTION("EFD without f3") {
+        auto bobbinJson = bobbin_json_as_family("Bobbin EFD 20/10/7", "efd", "EFD 20/10/7 without f3");
+        bobbinJson["functionalDescription"]["dimensions"].erase("f3");
+        CHECK_THROWS_WITH(OpenMagnetics::Bobbin(bobbinJson), Catch::Matchers::ContainsSubstring("has no dimension 'f3'"));
+    }
+    SECTION("a processor that leaves the depth unset cannot return a description") {
+        OpenMagnetics::BobbinFamilyGeometry geometry;
+        geometry.columnShape = ColumnShape::RECTANGULAR;
+        geometry.columnThickness = 0.0009;
+        geometry.wallThickness = 0.001;
+        geometry.columnWidth = 0.0072;
+        WindingWindowElement window;
+        window.set_width(0.008);
+        window.set_height(0.027);
+        window.set_area(0.008 * 0.027);
+        window.set_coordinates(std::vector<double>({0.0112, 0}));
+        geometry.windingWindow = window;
+        CHECK_THROWS_WITH(OpenMagnetics::assemble_bobbin_processed_description(geometry, "e", "forgetful"),
+                          Catch::Matchers::ContainsSubstring("without setting columnDepth"));
+        geometry.columnDepth = 0.00875;
+        CHECK_THAT(OpenMagnetics::assemble_bobbin_processed_description(geometry, "e", "complete").get_column_depth(),
+                   Catch::Matchers::WithinAbs(0.00875, 1e-15));
+    }
+}
+
+TEST_CASE("A turn on a catalogue E bobbin wraps the whole column (ABT #1210)",
+          "[constructive-model][coil][bobbin][abt1210]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    REQUIRE_FALSE(settings.get_coil_use_real_winding_geometry());
+    json coilJson;
+    coilJson["bobbin"] = "Bobbin E42/15";
+    coilJson["functionalDescription"] = json::array({json{{"name", "Primary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                          {"isolationSide", "primary"}, {"wire", "Round 0.5 - Grade 1"}}});
+    OpenMagnetics::Coil coil(coilJson, false);
+    REQUIRE(coil.wind());
+    // Column half-extents from the labels: w = f/2 + s1 = 7.2 mm, d = c/2 + s1 = 8.75 mm.
+    const double w = 0.0126 / 2 + 0.0009;
+    const double d = 0.0157 / 2 + 0.0009;
+    auto turns = coil.get_turns_description().value();
+    REQUIRE(!turns.empty());
+    // Classic model (Coil::get_turn_length_in_frame): a rectangle of 2w x 2d whose corners are
+    // quarter circles of the turn's standoff r = x - w, i.e. 2*(2w + 2d) + 2*pi*r.
+    const auto& turn = turns.front();
+    const double x = turn.get_coordinates()[0];
+    const double standoff = x - w;
+    INFO("x = " << x << " m, standoff = " << standoff << " m, length = " << turn.get_length() << " m");
+    // The first turn sits on the column: its standoff is about half the wire's outer diameter.
+    CHECK(standoff > 0.0002);
+    CHECK(standoff < 0.0005);
+    const double handLength = 4 * w + 4 * d + 2 * std::numbers::pi * standoff;
+    CHECK_THAT(turn.get_length(), Catch::Matchers::WithinRel(handLength, 1e-9));
+    // The column perimeter alone, 2 * (14.4 + 17.5) mm = 63.8 mm, is a floor no turn can go under.
+    CHECK(turn.get_length() > 2 * (2 * w + 2 * d));
+    settings.reset();
 }

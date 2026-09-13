@@ -1,5 +1,6 @@
 #include "support/Utils.h"
 #include "constructive_models/Bobbin.h"
+#include "constructive_models/BobbinFamilyGeometry.h"
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -31,264 +32,226 @@ CMRC_DECLARE(dfmData);
 
 namespace OpenMagnetics {
 
-class BobbinEDataProcessor : public BobbinDataProcessor{
+// ABT #1210: every family processor fills a BobbinFamilyGeometry and this one assembles it, so no
+// processor can return a description with a member left to its (indeterminate) default.
+class FamilyBobbinDataProcessor : public BobbinDataProcessor {
     public:
-        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
-            CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
-            processedDescription.set_column_thickness(dimensions["s1"]);
-            processedDescription.set_wall_thickness(dimensions["s2"]);
-            WindingWindowElement windingWindowElement;
-            // ABT #107: coordinates[0] is the winding-window CENTER (consumers do
-            // left = coords[0] - width/2). The window starts at the central-column
-            // surface (inner edge = f/2 + column thickness s1) and spans `windowWidth`,
-            // so the centre is innerEdge + windowWidth/2 — matching create_quick_bobbin.
-            double windowWidth = (dimensions["e"] - dimensions["f"] - 2 * dimensions["s1"]) / 2;
-            double innerEdge = dimensions["f"] / 2 + dimensions["s1"];
-            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
-            windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(dimensions["l2"] - 2 * dimensions["s2"]);
-            windingWindowElement.set_width(windowWidth);
-            windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
-            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
-            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
-            // column surface half-extent including the bobbin wall, the same convention
-            // create_quick_bobbin uses (core half-width + columnThickness). Every family
-            // processor computed it and threw it away, and paint_bobbin (among others)
-            // then died on the empty optional for every database bobbin.
-            processedDescription.set_column_width(innerEdge);
-            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
-            return processedDescription;
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) final {
+            BobbinLabelledDimensions dimensions(bobbin);
+            return assemble_bobbin_processed_description(describe(dimensions), dimensions.family_name(), dimensions.bobbin_name());
         }
+
+    protected:
+        virtual BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) = 0;
 };
 
-class BobbinRmDataProcessor : public BobbinDataProcessor{
+// Rectangular winding window whose centre sits windowWidth/2 beyond the column surface.
+// ABT #107: coordinates[0] is the winding-window CENTER (consumers do left = coords[0] - width/2).
+static WindingWindowElement rectangular_bobbin_window(double innerEdge, double windowWidth, double windowHeight) {
+    WindingWindowElement windingWindowElement;
+    windingWindowElement.set_coordinates(std::vector<double>({innerEdge + windowWidth / 2, 0}));
+    windingWindowElement.set_height(windowHeight);
+    windingWindowElement.set_width(windowWidth);
+    windingWindowElement.set_area(windowHeight * windowWidth);
+    return windingWindowElement;
+}
+
+// ABT #685 (Alf, 2026-08-16): columnWidth is the column surface half-extent including the bobbin
+// wall, the same convention create_quick_bobbin uses (core half-width + columnThickness).
+
+class BobbinEDataProcessor : public FamilyBobbinDataProcessor{
     public:
-        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
-            CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_shape(ColumnShape::ROUND);
-            processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
-            processedDescription.set_wall_thickness(dimensions["H5"]);
-            WindingWindowElement windingWindowElement;
-            // ABT #107: coordinates[0] is the winding-window CENTER. Inner edge is the
-            // column surface radius D2/2; window spans windowWidth outward.
-            double windowWidth = (dimensions["D1"] - dimensions["D2"]) / 2;
-            double innerEdge = dimensions["D2"] / 2;
-            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
-            windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(dimensions["H2"] - dimensions["H4"] - dimensions["H5"]);
-            windingWindowElement.set_width(windowWidth);
-            windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
-            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
-            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
-            // column surface half-extent including the bobbin wall, the same convention
-            // create_quick_bobbin uses (core half-width + columnThickness). Every family
-            // processor computed it and threw it away, and paint_bobbin (among others)
-            // then died on the empty optional for every database bobbin.
-            processedDescription.set_column_width(innerEdge);
+        // The E label set (IEC 62317-8 coil formers) is also read for ER, EL, P and U records. The
+        // labels do not say what the central column looks like, so the processor is told: it is the
+        // shape of the central column of the core family the former is for, as CorePiece models it
+        // (the rule create_quick_bobbin applies to a former built from the core).
+        explicit BobbinEDataProcessor(ColumnShape columnShape) : _columnShape(columnShape) {}
+
+    protected:
+        BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) override {
+            BobbinFamilyGeometry geometry;
+            const double s1 = dimensions("s1");
+            geometry.columnShape = _columnShape;
+            geometry.columnThickness = s1;
+            geometry.wallThickness = dimensions("s2");
+            // The window starts at the column surface (inner edge = f/2 + column thickness s1).
+            double windowWidth = (dimensions("e") - dimensions("f") - 2 * s1) / 2;
+            double innerEdge = dimensions("f") / 2 + s1;
+            geometry.windingWindow = rectangular_bobbin_window(innerEdge, windowWidth, dimensions("l2") - 2 * dimensions("s2"));
+            geometry.columnWidth = innerEdge;
+
+            // ABT #1210: f is the inner opening of the former along the core's width (x), c the inner
+            // opening along the core's depth (z). In the catalogue, E 8.3/4 (core F = 1.8 mm, C = 3.6 mm)
+            // carries f = 2.15 mm, c = 3.95 mm; every square-column E record carries c == f. The column
+            // depth half-extent mirrors the width: c/2 plus the same column wall s1.
+            const double c = dimensions("c");
+            const double f = dimensions("f");
+            // Both labels are transcribed from the same drawing; 1 nm is far below any drawing's
+            // resolution and only absorbs the double parse of the same decimal.
+            const double drawingResolution = 1e-9;
+            switch (_columnShape) {
+                case ColumnShape::RECTANGULAR:
+                    break;
+                case ColumnShape::ROUND:
+                    // A round column is one tube radius in every direction, so its opening must
+                    // read the same along both axes; a record that says otherwise is not round.
+                    if (std::abs(c - f) > drawingResolution) {
+                        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                            "Bobbin '" + dimensions.bobbin_name() + "' (family '" + dimensions.family_name() +
+                            "') is for a round central column, but its openings differ: f = " + std::to_string(f) +
+                            " m, c = " + std::to_string(c) + " m.");
+                    }
+                    break;
+                case ColumnShape::OBLONG:
+                    // A stadium's depth is its long axis (CorePieceEl: width F, depth F2 > F).
+                    if (c < f) {
+                        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                            "Bobbin '" + dimensions.bobbin_name() + "' (family '" + dimensions.family_name() +
+                            "') is for an oblong central column, whose depth c must not be shorter than its width f; "
+                            "f = " + std::to_string(f) + " m, c = " + std::to_string(c) + " m.");
+                    }
+                    break;
+                default:
+                    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                        "The E bobbin processor has no rule for a central column of shape " + to_string(_columnShape));
+            }
+            geometry.columnDepth = c / 2 + s1;
+            return geometry;
+        }
+
+    private:
+        ColumnShape _columnShape;
+};
+
+class BobbinRmDataProcessor : public FamilyBobbinDataProcessor{
+    protected:
+        BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) override {
+            BobbinFamilyGeometry geometry;
+            geometry.columnShape = ColumnShape::ROUND;
+            geometry.columnThickness = (dimensions("D2") - dimensions("D3")) / 2;
+            geometry.wallThickness = dimensions("H5");
+            // Inner edge is the column surface radius D2/2; window spans windowWidth outward.
+            double windowWidth = (dimensions("D1") - dimensions("D2")) / 2;
+            double innerEdge = dimensions("D2") / 2;
+            geometry.windingWindow = rectangular_bobbin_window(innerEdge, windowWidth, dimensions("H2") - dimensions("H4") - dimensions("H5"));
+            geometry.columnWidth = innerEdge;
             // Round column: the depth equals the width (both are the tube radius).
-            processedDescription.set_column_depth(innerEdge);
-            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
-            return processedDescription;
+            geometry.columnDepth = innerEdge;
+            return geometry;
         }
 };
 
-class BobbinEpDataProcessor : public BobbinDataProcessor{
-    public:
-        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
-            CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_shape(ColumnShape::ROUND);
-            processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
-            processedDescription.set_wall_thickness(dimensions["s"]);
-            WindingWindowElement windingWindowElement;
-            // ABT #107: coordinates[0] is the winding-window CENTER (inner edge d2/2 + half width).
-            double windowWidth = (dimensions["d1"] - dimensions["d2"]) / 2;
-            double innerEdge = dimensions["d2"] / 2;
-            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
-            windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(dimensions["h"] - 2 * dimensions["s"]);
-            windingWindowElement.set_width(windowWidth);
-            windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
-            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
-            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
-            // column surface half-extent including the bobbin wall, the same convention
-            // create_quick_bobbin uses (core half-width + columnThickness). Every family
-            // processor computed it and threw it away, and paint_bobbin (among others)
-            // then died on the empty optional for every database bobbin.
-            processedDescription.set_column_width(innerEdge);
+class BobbinEpDataProcessor : public FamilyBobbinDataProcessor{
+    protected:
+        BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) override {
+            BobbinFamilyGeometry geometry;
+            geometry.columnShape = ColumnShape::ROUND;
+            geometry.columnThickness = (dimensions("d2") - dimensions("d3")) / 2;
+            geometry.wallThickness = dimensions("s");
+            double windowWidth = (dimensions("d1") - dimensions("d2")) / 2;
+            double innerEdge = dimensions("d2") / 2;
+            geometry.windingWindow = rectangular_bobbin_window(innerEdge, windowWidth, dimensions("h") - 2 * dimensions("s"));
+            geometry.columnWidth = innerEdge;
             // Round column: the depth equals the width (both are the tube radius).
-            processedDescription.set_column_depth(innerEdge);
-
-            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
-            return processedDescription;
+            geometry.columnDepth = innerEdge;
+            return geometry;
         }
 };
 
-class BobbinEtdDataProcessor : public BobbinDataProcessor{
-    public:
-        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
-            CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_shape(ColumnShape::ROUND);
-            processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
-            processedDescription.set_wall_thickness((dimensions["h1"] - dimensions["h2"]) / 2);
-            WindingWindowElement windingWindowElement;
-            // ABT #107: coordinates[0] is the winding-window CENTER. This branch
-            // previously stored the FULL diameter d2 (twice the inner-edge radius d2/2,
-            // placing the window centre beyond its own outer edge). Inner edge is the
-            // column surface radius d2/2; centre is d2/2 + windowWidth/2.
-            double windowWidth = (dimensions["d1"] - dimensions["d2"]) / 2;
-            double innerEdge = dimensions["d2"] / 2;
-            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
-            windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(dimensions["h2"]);
-            windingWindowElement.set_width(windowWidth);
-            windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
-            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
-            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
-            // column surface half-extent including the bobbin wall, the same convention
-            // create_quick_bobbin uses (core half-width + columnThickness). Every family
-            // processor computed it and threw it away, and paint_bobbin (among others)
-            // then died on the empty optional for every database bobbin.
-            processedDescription.set_column_width(innerEdge);
+class BobbinEtdDataProcessor : public FamilyBobbinDataProcessor{
+    protected:
+        BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) override {
+            BobbinFamilyGeometry geometry;
+            geometry.columnShape = ColumnShape::ROUND;
+            geometry.columnThickness = (dimensions("d2") - dimensions("d3")) / 2;
+            geometry.wallThickness = (dimensions("h1") - dimensions("h2")) / 2;
+            // ABT #107: this branch once stored the FULL diameter d2 as the window position.
+            double windowWidth = (dimensions("d1") - dimensions("d2")) / 2;
+            double innerEdge = dimensions("d2") / 2;
+            geometry.windingWindow = rectangular_bobbin_window(innerEdge, windowWidth, dimensions("h2"));
+            geometry.columnWidth = innerEdge;
             // Round column: the depth equals the width (both are the tube radius).
-            processedDescription.set_column_depth(innerEdge);
-
-            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
-            return processedDescription;
+            geometry.columnDepth = innerEdge;
+            return geometry;
         }
 };
 
-class BobbinPmDataProcessor : public BobbinDataProcessor{
-    public:
-        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
-            CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_shape(ColumnShape::ROUND);
-            processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
-            processedDescription.set_wall_thickness(dimensions["s1"]);
-            WindingWindowElement windingWindowElement;
-            // ABT #107: coordinates[0] is the winding-window CENTER (inner edge d2/2 + half width).
-            double windowWidth = (dimensions["d1"] - dimensions["d2"]) / 2;
-            double innerEdge = dimensions["d2"] / 2;
-            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
-            windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(dimensions["h"] - dimensions["s1"] - dimensions["s2"]);
-            windingWindowElement.set_width(windowWidth);
-            windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
-            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
-            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
-            // column surface half-extent including the bobbin wall, the same convention
-            // create_quick_bobbin uses (core half-width + columnThickness). Every family
-            // processor computed it and threw it away, and paint_bobbin (among others)
-            // then died on the empty optional for every database bobbin.
-            processedDescription.set_column_width(innerEdge);
+class BobbinPmDataProcessor : public FamilyBobbinDataProcessor{
+    protected:
+        BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) override {
+            BobbinFamilyGeometry geometry;
+            geometry.columnShape = ColumnShape::ROUND;
+            geometry.columnThickness = (dimensions("d2") - dimensions("d3")) / 2;
+            geometry.wallThickness = dimensions("s1");
+            double windowWidth = (dimensions("d1") - dimensions("d2")) / 2;
+            double innerEdge = dimensions("d2") / 2;
+            geometry.windingWindow = rectangular_bobbin_window(innerEdge, windowWidth, dimensions("h") - dimensions("s1") - dimensions("s2"));
+            geometry.columnWidth = innerEdge;
             // Round column: the depth equals the width (both are the tube radius).
-            processedDescription.set_column_depth(innerEdge);
-            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
-            return processedDescription;
+            geometry.columnDepth = innerEdge;
+            return geometry;
         }
 };
 
-class BobbinPqDataProcessor : public BobbinDataProcessor{
-    public:
-        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
-            CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_shape(ColumnShape::ROUND);
-            processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
-            processedDescription.set_wall_thickness((dimensions["H1"] - dimensions["H2"]) / 2);
-            WindingWindowElement windingWindowElement;
-            // ABT #107: coordinates[0] is the winding-window CENTER. Previously stored the
-            // FULL diameter D2 (twice the inner-edge radius). Centre is D2/2 + windowWidth/2.
-            double windowWidth = (dimensions["D1"] - dimensions["D2"]) / 2;
-            double innerEdge = dimensions["D2"] / 2;
-            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
-            windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(dimensions["H2"]);
-            windingWindowElement.set_width(windowWidth);
-            windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
-            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
-            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
-            // column surface half-extent including the bobbin wall, the same convention
-            // create_quick_bobbin uses (core half-width + columnThickness). Every family
-            // processor computed it and threw it away, and paint_bobbin (among others)
-            // then died on the empty optional for every database bobbin.
-            processedDescription.set_column_width(innerEdge);
+class BobbinPqDataProcessor : public FamilyBobbinDataProcessor{
+    protected:
+        BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) override {
+            BobbinFamilyGeometry geometry;
+            geometry.columnShape = ColumnShape::ROUND;
+            geometry.columnThickness = (dimensions("D2") - dimensions("D3")) / 2;
+            geometry.wallThickness = (dimensions("H1") - dimensions("H2")) / 2;
+            double windowWidth = (dimensions("D1") - dimensions("D2")) / 2;
+            double innerEdge = dimensions("D2") / 2;
+            geometry.windingWindow = rectangular_bobbin_window(innerEdge, windowWidth, dimensions("H2"));
+            geometry.columnWidth = innerEdge;
             // Round column: the depth equals the width (both are the tube radius).
-            processedDescription.set_column_depth(innerEdge);
-            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
-            return processedDescription;
+            geometry.columnDepth = innerEdge;
+            return geometry;
         }
 };
 
-class BobbinEcDataProcessor : public BobbinDataProcessor{
-    public:
-        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
-            CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_shape(ColumnShape::ROUND);
-            processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
-            processedDescription.set_wall_thickness((dimensions["H1"] - dimensions["H2"]) / 2);
-            WindingWindowElement windingWindowElement;
-            // ABT #107: coordinates[0] is the winding-window CENTER. Previously stored the
-            // FULL diameter D2 (twice the inner-edge radius). Centre is D2/2 + windowWidth/2.
-            double windowWidth = (dimensions["D1"] - dimensions["D2"]) / 2;
-            double innerEdge = dimensions["D2"] / 2;
-            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
-            windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(dimensions["H2"]);
-            windingWindowElement.set_width(windowWidth);
-            windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
-            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
-            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
-            // column surface half-extent including the bobbin wall, the same convention
-            // create_quick_bobbin uses (core half-width + columnThickness). Every family
-            // processor computed it and threw it away, and paint_bobbin (among others)
-            // then died on the empty optional for every database bobbin.
-            processedDescription.set_column_width(innerEdge);
+class BobbinEcDataProcessor : public FamilyBobbinDataProcessor{
+    protected:
+        BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) override {
+            BobbinFamilyGeometry geometry;
+            geometry.columnShape = ColumnShape::ROUND;
+            geometry.columnThickness = (dimensions("D2") - dimensions("D3")) / 2;
+            geometry.wallThickness = (dimensions("H1") - dimensions("H2")) / 2;
+            double windowWidth = (dimensions("D1") - dimensions("D2")) / 2;
+            double innerEdge = dimensions("D2") / 2;
+            geometry.windingWindow = rectangular_bobbin_window(innerEdge, windowWidth, dimensions("H2"));
+            geometry.columnWidth = innerEdge;
             // Round column: the depth equals the width (both are the tube radius).
-            processedDescription.set_column_depth(innerEdge);
-            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
-            return processedDescription;
+            geometry.columnDepth = innerEdge;
+            return geometry;
         }
 };
 
-class BobbinEfdDataProcessor : public BobbinDataProcessor{
-    public:
-        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
-            CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
-            processedDescription.set_column_thickness(dimensions["S1"]);
-            processedDescription.set_wall_thickness(dimensions["S2"]);
-            WindingWindowElement windingWindowElement;
-            // ABT #107: coordinates[0] is the winding-window CENTER (inner edge f1/2 + S1, + half width).
-            double windowWidth = (dimensions["e"] - dimensions["f1"] - 2 * dimensions["S1"]) / 2;
-            double innerEdge = dimensions["f1"] / 2 + dimensions["S1"];
-            std::vector<double> coordinates({innerEdge + windowWidth / 2, 0});
-            windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(dimensions["d"] - 2 * dimensions["S2"]);
-            windingWindowElement.set_width(windowWidth);
-            windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
-            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
-            // ABT #685 (Alf, 2026-08-16): store the column width — innerEdge IS the
-            // column surface half-extent including the bobbin wall, the same convention
-            // create_quick_bobbin uses (core half-width + columnThickness). Every family
-            // processor computed it and threw it away, and paint_bobbin (among others)
-            // then died on the empty optional for every database bobbin.
-            processedDescription.set_column_width(innerEdge);
-            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
-            return processedDescription;
+class BobbinEfdDataProcessor : public FamilyBobbinDataProcessor{
+    protected:
+        BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) override {
+            BobbinFamilyGeometry geometry;
+            const double s1 = dimensions("S1");
+            geometry.columnShape = ColumnShape::RECTANGULAR;
+            geometry.columnThickness = s1;
+            geometry.wallThickness = dimensions("S2");
+            // Inner edge f1/2 + S1, window spans windowWidth outward.
+            double windowWidth = (dimensions("e") - dimensions("f1") - 2 * s1) / 2;
+            double innerEdge = dimensions("f1") / 2 + s1;
+            geometry.windingWindow = rectangular_bobbin_window(innerEdge, windowWidth, dimensions("d") - 2 * dimensions("S2"));
+            geometry.columnWidth = innerEdge;
+            // ABT #1210: the EFD column is a flat rectangle, so width and depth differ. f1 is the
+            // former's inner opening along the core's column width F, f3 along its depth F2
+            // (EFD 20/10/7: F = 8.9 mm, F2 = 3.6 mm; f1 = 9.2 mm, f3 = 3.8 mm). The depth half-extent
+            // mirrors the width: f3/2 plus the same column wall S1.
+            geometry.columnDepth = dimensions("f3") / 2 + s1;
+            return geometry;
         }
 };
 
-class BobbinTDataProcessor : public BobbinDataProcessor{
-    public:
-        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
+class BobbinTDataProcessor : public FamilyBobbinDataProcessor{
+    protected:
+        BobbinFamilyGeometry describe(const BobbinLabelledDimensions& dimensions) override {
             // Toroidal "virtual" bobbin: the winding is held directly on the core
             // ring with no physical former. Column and wall thicknesses are 0.
             // ABT #1173 (WP4): a toroid base (functionalDescription.base) changes none of this - the
@@ -297,23 +260,21 @@ class BobbinTDataProcessor : public BobbinDataProcessor{
             // with Bobbin::get_base().
             // Dimensions A (outer diameter), B (inner diameter), C (height) match
             // the ring-core shape dimensions (see CorePieceT::process_winding_window).
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
-            CoreBobbinProcessedDescription processedDescription;
-            double columnWidth = (dimensions["A"] - dimensions["B"]) / 2;
-            processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
-            processedDescription.set_column_thickness(0);
-            processedDescription.set_wall_thickness(0);
-            processedDescription.set_column_depth(dimensions["C"] / 2);
-            processedDescription.set_column_width(columnWidth / 2);
+            BobbinFamilyGeometry geometry;
+            double columnWidth = (dimensions("A") - dimensions("B")) / 2;
+            geometry.columnShape = ColumnShape::RECTANGULAR;
+            geometry.columnThickness = 0;
+            geometry.wallThickness = 0;
+            geometry.columnDepth = dimensions("C") / 2;
+            geometry.columnWidth = columnWidth / 2;
             WindingWindowElement windingWindowElement;
             windingWindowElement.set_shape(WindingWindowShape::ROUND);
-            windingWindowElement.set_radial_height(dimensions["B"] / 2);
+            windingWindowElement.set_radial_height(dimensions("B") / 2);
             windingWindowElement.set_angle(360);
-            windingWindowElement.set_area(std::numbers::pi * pow(dimensions["B"] / 2, 2));
-            windingWindowElement.set_coordinates(std::vector<double>({dimensions["B"] / 2, 0, 0}));
-            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
-            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
-            return processedDescription;
+            windingWindowElement.set_area(std::numbers::pi * pow(dimensions("B") / 2, 2));
+            windingWindowElement.set_coordinates(std::vector<double>({dimensions("B") / 2, 0, 0}));
+            geometry.windingWindow = windingWindowElement;
+            return geometry;
         }
 };
 
@@ -339,7 +300,7 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
 
     auto family = bobbin.get_functional_description()->get_family();
     if (family == BobbinFamily::E) {
-        return std::make_shared<BobbinEDataProcessor>();
+        return std::make_shared<BobbinEDataProcessor>(ColumnShape::RECTANGULAR);
     }
     else if (family == BobbinFamily::RM) {
         return std::make_shared<BobbinRmDataProcessor>();
@@ -365,16 +326,19 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
     else if (family == BobbinFamily::T) {
         return std::make_shared<BobbinTDataProcessor>();
     }
-    // ER, EL share E-style geometry (round/elliptical centre column on a
-    // rectangular winding window), so the BobbinEDataProcessor is the right
-    // dimensions interpreter. P, U are different geometries but are treated
-    // as E-like here as a non-blocking fallback so the adviser doesn't reject
-    // entire core families.
-    else if (family == BobbinFamily::ER ||
-             family == BobbinFamily::EL ||
-             family == BobbinFamily::P  ||
-             family == BobbinFamily::U) {
-        return std::make_shared<BobbinEDataProcessor>();
+    // ER, EL, P and U formers are described with the E label set (rectangular winding window
+    // around the central column). ABT #1210: their central column, however, is not the E core's
+    // rectangle -- it is the one CorePiece models for their core family (CorePieceEr/CorePieceP:
+    // ROUND, CorePieceEl: OBLONG, CorePieceU: RECTANGULAR), which is also the shape
+    // create_quick_bobbin gives a former built from those cores.
+    else if (family == BobbinFamily::ER || family == BobbinFamily::P) {
+        return std::make_shared<BobbinEDataProcessor>(ColumnShape::ROUND);
+    }
+    else if (family == BobbinFamily::EL) {
+        return std::make_shared<BobbinEDataProcessor>(ColumnShape::OBLONG);
+    }
+    else if (family == BobbinFamily::U) {
+        return std::make_shared<BobbinEDataProcessor>(ColumnShape::RECTANGULAR);
     }
     else
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
