@@ -1796,6 +1796,24 @@ static double resolve_bobbin_wall_relative_permittivity(Bobbin& bobbin) {
     return insulationMaterial.get_relative_permittivity().value();
 }
 
+// The turn's OUTER (insulation) half-extents, from the wound geometry. Every turn the winder
+// produces carries them; a turn without them cannot be placed against a core face at all, and
+// per the no-fallbacks rule that is an error rather than an assumed size.
+static std::pair<double, double> turn_outer_half_extents(const Turn& turn) {
+    if (!turn.get_dimensions()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Turn '" + turn.get_name() + "' has no dimensions: its line of sight to the core"
+            " faces cannot be established");
+    }
+    auto dimensions = turn.get_dimensions().value();
+    if (dimensions.size() < 2) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Turn '" + turn.get_name() + "' has fewer than two dimensions: its line of sight to"
+            " the core faces cannot be established");
+    }
+    return {dimensions[0] / 2, dimensions[1] / 2};
+}
+
 // ABT #848: the air gap between a turn's conductor surface and the core surface it faces, from
 // the coil's real geometry instead of "close-wound, 0". Toroid (round window): the first layer
 // sits on the (jacketed) core, a deeper layer sits on the layer below it, so the gap is how far
@@ -1808,9 +1826,21 @@ static double resolve_bobbin_wall_relative_permittivity(Bobbin& bobbin) {
 // to be handed back as air, which under-stated every bobbin-wound term by the acosh ratio of the
 // two stacks (about 1.7-2x for a 1 mm wall at eps_r 4 under a 0.5 mm wire).
 //
+// ABT #1163: only the turn immediately adjacent to a given core face contributes against it.
+// Outer layers are electrostatically SCREENED by the inner one (Biela/Kolar review; Massarini):
+// their field toward the core terminates on the inner-layer turns, which the model already
+// counts as turn-to-turn energy, so charging them against the core as well is a double count.
+// It is not a small one — 2*pi*eps0/acosh(h/r) decays only logarithmically, so a layer-2 turn
+// still carried ~14% of a layer-1 turn and a layer-3 turn ~11%, and the error grew with layer
+// count and with turns per layer (every turn of a stack was charged against the top flange, not
+// just the topmost). The test below is exactly that statement geometrically: a face is returned
+// only when no other turn lies between this turn and it, per face, so a turn can be screened
+// radially and still face a flange.
+//
 // A bare conductor at zero gap is then only ever asked for when it really is in contact, and
 // calculate_turn_to_core_capacitance refuses it as the short it is.
-static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Turn& turn, Wire wire) {
+static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Turn& turn, Wire wire,
+                                                         const std::vector<Turn>& allTurns) {
     auto bobbin = coil.resolve_bobbin();
     if (!bobbin.get_processed_description()) {
         return {{0.0, 0.0}};
@@ -1821,6 +1851,8 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Turn&
         return {{0.0, 0.0}};
     }
     auto coordinates = turn.get_coordinates();
+    auto [turnHalfWidth, turnHalfHeight] = turn_outer_half_extents(turn);
+
     if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
         // Bore radius of the surface the first layer rests on; the turn's radius from the axis.
         //
@@ -1854,6 +1886,31 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Turn&
         double boreRadius = windows[0].get_radial_height().value();
         double turnRadius = std::hypot(coordinates[0], coordinates.size() > 1 ? coordinates[1] : 0.0);
         double turnInsulationRadius = wire.get_maximum_outer_width() / 2;
+        // ABT #1163, round window: the face is the bore surface and "outward" means a LARGER
+        // radius from the bore axis (the gap shrinks as the radius grows). Another turn screens
+        // this one when it lies entirely further out AND blocks the radial line of sight, i.e.
+        // their transverse separation measured as an arc at the screening turn's radius is less
+        // than the two turns' half-widths together — the polar form of the overlap test the
+        // rectangular branch makes in x and y.
+        double turnAngle = std::atan2(coordinates.size() > 1 ? coordinates[1] : 0.0, coordinates[0]);
+        double turnOuterRadius = std::max(turnHalfWidth, turnHalfHeight);
+        for (const auto& otherTurn : allTurns) {
+            if (otherTurn.get_name() == turn.get_name()) {
+                continue;
+            }
+            auto otherCoordinates = otherTurn.get_coordinates();
+            auto [otherHalfWidth, otherHalfHeight] = turn_outer_half_extents(otherTurn);
+            double otherOuterRadius = std::max(otherHalfWidth, otherHalfHeight);
+            double otherRadius = std::hypot(otherCoordinates[0], otherCoordinates.size() > 1 ? otherCoordinates[1] : 0.0);
+            if (otherRadius - otherOuterRadius < turnRadius + turnOuterRadius) {
+                continue;  // not further out than this turn: it cannot stand between it and the bore
+            }
+            double otherAngle = std::atan2(otherCoordinates.size() > 1 ? otherCoordinates[1] : 0.0, otherCoordinates[0]);
+            double angleDifference = std::abs(std::remainder(otherAngle - turnAngle, 2 * std::numbers::pi));
+            if (otherRadius * angleDifference < otherOuterRadius + turnOuterRadius) {
+                return {};  // screened: no line of sight from this turn to the bore
+            }
+        }
         return {{std::max(0.0, (boreRadius - turnInsulationRadius) - turnRadius), 0.0}};
     }
     // Rectangular window: the ferrite column surface sits one bobbin wall inside the radial
@@ -1898,7 +1955,26 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Turn&
     double columnThickness = processed.get_column_thickness();
     std::vector<TurnToCoreFace> faces;
 
-    faces.push_back({std::max(0.0, turnInsulationSurface - windowInnerEdge), columnThickness});
+    // ABT #1163, radial-inner face: another turn screens this one when it lies entirely closer
+    // to the column (smaller |x|) and overlaps it axially, so it stands in the line of sight.
+    bool screenedRadially = false;
+    for (const auto& otherTurn : allTurns) {
+        if (otherTurn.get_name() == turn.get_name()) {
+            continue;
+        }
+        auto otherCoordinates = otherTurn.get_coordinates();
+        auto [otherHalfWidth, otherHalfHeight] = turn_outer_half_extents(otherTurn);
+        if (std::abs(otherCoordinates[0]) + otherHalfWidth > std::abs(coordinates[0]) - turnHalfWidth) {
+            continue;  // not inside this turn radially
+        }
+        if (std::abs(otherCoordinates[1] - coordinates[1]) < otherHalfHeight + turnHalfHeight) {
+            screenedRadially = true;
+            break;
+        }
+    }
+    if (!screenedRadially) {
+        faces.push_back({std::max(0.0, turnInsulationSurface - windowInnerEdge), columnThickness});
+    }
 
     // ABT #948, third correction: a turn faces the core on more than one side. A winding WINDOW
     // is by definition the space the core encloses, and for a rectangular one the two AXIAL
@@ -1920,6 +1996,10 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Turn&
     // counterpart of column_thickness, and enters the stack as t/eps_r exactly as
     // column_thickness does (ABT #1164).
     //
+    // ABT #1163: and exactly as on the radial face, only the turn adjacent to each flange faces
+    // it — the turns below the topmost one are screened from the upper yoke by it, and their
+    // field toward it terminates on that turn as turn-to-turn energy the model already has.
+    //
     // NOT included, and recorded in ABT #948 as the remaining known face: the OUTER radial
     // boundary. It is ferrite for a closed core (a shielded drum's ring, an E core's outer leg)
     // and air for an open one, and nothing in the bobbin record distinguishes the two — the
@@ -1932,22 +2012,46 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Turn&
         double wallThickness = processed.get_wall_thickness();
         double windowUpperEdge = windowCentreY + windowHalfHeight;
         double windowLowerEdge = windowCentreY - windowHalfHeight;
-        double turnHalfHeight = wire.get_maximum_outer_height() / 2;
-        faces.push_back({std::max(0.0, windowUpperEdge - (coordinates[1] + turnHalfHeight)), wallThickness});
-        faces.push_back({std::max(0.0, (coordinates[1] - turnHalfHeight) - windowLowerEdge), wallThickness});
+
+        bool screenedAbove = false;
+        bool screenedBelow = false;
+        for (const auto& otherTurn : allTurns) {
+            if (otherTurn.get_name() == turn.get_name()) {
+                continue;
+            }
+            auto otherCoordinates = otherTurn.get_coordinates();
+            auto [otherHalfWidth, otherHalfHeight] = turn_outer_half_extents(otherTurn);
+            if (std::abs(otherCoordinates[0] - coordinates[0]) >= otherHalfWidth + turnHalfWidth) {
+                continue;  // no radial overlap: it stands beside this turn, not between it and a yoke
+            }
+            if (otherCoordinates[1] - otherHalfHeight >= coordinates[1] + turnHalfHeight) {
+                screenedAbove = true;
+            }
+            if (otherCoordinates[1] + otherHalfHeight <= coordinates[1] - turnHalfHeight) {
+                screenedBelow = true;
+            }
+        }
+        if (!screenedAbove) {
+            faces.push_back({std::max(0.0, windowUpperEdge - (coordinates[1] + turnHalfHeight)), wallThickness});
+        }
+        if (!screenedBelow) {
+            faces.push_back({std::max(0.0, (coordinates[1] - turnHalfHeight) - windowLowerEdge), wallThickness});
+        }
     }
     return faces;
 }
 
 // One turn's total capacitance to the floating core: the parallel sum of its element against
-// every core surface bounding its winding window (ABT #948). Shared by the three callers so the
-// self, inter-winding and whole-winding paths cannot drift apart on which faces they count.
+// every core surface bounding its winding window that it is not screened from by another turn
+// (ABT #948, ABT #1163). Shared by the three callers so the self, inter-winding and whole-winding
+// paths cannot drift apart on which faces they count.
 static double turn_to_core_element(Coil& coil, const Turn& turn, Wire wire,
-                                   double coreCoatingThickness, double coreCoatingRelativePermittivity) {
+                                   double coreCoatingThickness, double coreCoatingRelativePermittivity,
+                                   const std::vector<Turn>& allTurns) {
     double conductingRadius = turn_to_core_equivalent_radius(wire);
     double wireCoatingThickness = wire.get_coating_thickness();
     double wireCoatingRelativePermittivity = get_wire_insulation_relative_permittivity(wire);
-    auto faces = turn_to_core_air_gaps(coil, turn, wire);
+    auto faces = turn_to_core_air_gaps(coil, turn, wire, allTurns);
     // ABT #1164: resolve the bobbin plastic's permittivity once per turn, and only when there is
     // plastic in some face's path — a toroid's virtual bobbin never asks the database for one.
     bool hasBobbinLayer = false;
@@ -2007,7 +2111,7 @@ double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core c
             continue;
         }
         windingToCore += imageFactor * turn_to_core_element(
-            coil, turn, wire, coreCoatingThickness, coreCoatingRelativePermittivity);
+            coil, turn, wire, coreCoatingThickness, coreCoatingRelativePermittivity, turns);
     }
     return windingToCore;
 }
@@ -2058,7 +2162,7 @@ double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core
         // Bare-conductor radius for the image solution; flat conductors
         // use an area-equivalent radius (see turn_to_core_equivalent_radius).
         double capacitance = imageFactor * turn_to_core_element(
-            coil, turns[turnIndex], wire, coreCoatingThickness, coreCoatingRelativePermittivity);
+            coil, turns[turnIndex], wire, coreCoatingThickness, coreCoatingRelativePermittivity, turns);
         double potential = sign * voltagesPerTurn[turnIndex];
 
         turnCoreCapacitance.push_back(capacitance);
@@ -2121,7 +2225,7 @@ double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core c
         }
         auto wire = wirePerWinding[coil.get_winding_index_by_name(windingName)];
         double capacitance = imageFactor * turn_to_core_element(
-            coil, turns[turnIndex], wire, coreCoatingThickness, coreCoatingRelativePermittivity);
+            coil, turns[turnIndex], wire, coreCoatingThickness, coreCoatingRelativePermittivity, turns);
         turnCoreCapacitance.push_back(capacitance);
         turnPotential.push_back(voltagesPerTurn[turnIndex]);
         sumCV += capacitance * voltagesPerTurn[turnIndex];

@@ -2832,3 +2832,90 @@ TEST_CASE("ABT1164_Winding_To_Core_Follows_The_Bobbin_Material", "[physical-mode
     CHECK_THROWS_AS(windingToCoreWithMaterial("Unobtainium 9000"), OpenMagnetics::InvalidInputException);
 }
 
+// ===========================================================================================
+// ABT #1163: outer layers are screened from the core by the layer adjacent to it.
+// ===========================================================================================
+
+TEST_CASE("ABT1163_ABT1164_measurement", "[physical-model][stray-capacitance][abt1163-1164-measure]") {
+    // Reporting harness, not an assertion: prints the winding-to-core term for a few
+    // representative parts so the effect of each change can be read off. Runs under the
+    // MKF_STRAYCAP_NO_SCREENING / MKF_STRAYCAP_BOBBIN_AS_AIR switches to give the four variants.
+    settings.reset();
+    struct Case { std::string shape; int64_t turns; std::string wire; };
+    std::vector<Case> cases = {
+        {"ETD 34/17/11", 10, "Round 0.5 - Grade 1"},
+        {"ETD 34/17/11", 60, "Round 0.5 - Grade 1"},
+        {"ETD 34/17/11", 200, "Round 0.5 - Grade 1"},
+        {"E 20/10/5", 40, "Round 0.355 - Grade 1"},
+        {"PQ 20/20", 80, "Round 0.4 - Grade 1"},
+    };
+    for (const auto& testCase : cases) {
+        auto core = OpenMagneticsTesting::get_quick_core(testCase.shape, json::parse("[]"), 1, "3C97");
+        std::vector<OpenMagnetics::Wire> wires = {OpenMagnetics::find_wire_by_name(testCase.wire)};
+        auto coil = OpenMagneticsTesting::get_quick_coil({testCase.turns}, {1}, testCase.shape, 1,
+                                                         MAS::WindingOrientation::OVERLAPPING,
+                                                         MAS::WindingOrientation::OVERLAPPING,
+                                                         MAS::CoilAlignment::CENTERED,
+                                                         MAS::CoilAlignment::CENTERED,
+                                                         wires);
+        if (!coil.get_turns_description()) {
+            std::cout << "  " << testCase.shape << " N=" << testCase.turns << "  UNWOUND\n";
+            continue;
+        }
+        auto layers = coil.get_layers_description_conduction();
+        double windingToCore = OpenMagnetics::StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, "winding 0");
+        std::cout << "  MEASURE " << std::setw(14) << std::left << testCase.shape
+                  << " N=" << std::setw(5) << testCase.turns
+                  << " layers=" << std::setw(4) << layers.size()
+                  << " turns=" << std::setw(5) << coil.get_turns_description().value().size()
+                  << " Cwc=" << windingToCore << "\n";
+        REQUIRE(std::isfinite(windingToCore));
+    }
+}
+
+TEST_CASE("ABT1163_Outer_Layers_Are_Screened_From_The_Core", "[physical-model][stray-capacitance][abt1163]") {
+    // Only the turn adjacent to a core face charges against it; the layers outside it are
+    // screened, and their field toward the core terminates on the inner layer, which the model
+    // already counts as turn-to-turn energy. So piling extra LAYERS onto a winding must NOT
+    // multiply the winding-to-core term: the layer facing the column is unchanged, and the two
+    // flanges still see one turn each.
+    //
+    // Before ABT #1163 every turn was charged against every face, so the term grew almost
+    // linearly with turn count and this ratio was close to the turn-count ratio.
+    settings.reset();
+    auto core = OpenMagneticsTesting::get_quick_core("ETD 34/17/11", json::parse("[]"), 1, "3C97");
+    std::vector<OpenMagnetics::Wire> wires = {OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1")};
+
+    auto windingToCore = [&](int64_t numberTurns, size_t* layerCount, size_t* turnCount) {
+        auto coil = OpenMagneticsTesting::get_quick_coil({numberTurns}, {1}, "ETD 34/17/11", 1,
+                                                          MAS::WindingOrientation::OVERLAPPING,
+                                                          MAS::WindingOrientation::OVERLAPPING,
+                                                          MAS::CoilAlignment::CENTERED,
+                                                          MAS::CoilAlignment::CENTERED,
+                                                          wires);
+        REQUIRE(coil.get_turns_description());
+        auto turns = coil.get_turns_description().value();
+        *layerCount = coil.get_layers_description_conduction().size();
+        *turnCount = turns.size();
+        return OpenMagnetics::StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, "winding 0");
+    };
+
+    size_t singleLayerLayers = 0, singleLayerTurns = 0, manyLayerLayers = 0, manyLayerTurns = 0;
+    double singleLayer = windingToCore(10, &singleLayerLayers, &singleLayerTurns);
+    double manyLayer = windingToCore(200, &manyLayerLayers, &manyLayerTurns);
+
+    UNSCOPED_INFO("single: layers=" << singleLayerLayers << " turns=" << singleLayerTurns << " C=" << singleLayer
+                  << " | many: layers=" << manyLayerLayers << " turns=" << manyLayerTurns << " C=" << manyLayer);
+    REQUIRE(singleLayerLayers == 1);
+    REQUIRE(manyLayerLayers > 3);
+    REQUIRE(std::isfinite(singleLayer));
+    REQUIRE(std::isfinite(manyLayer));
+
+    // The winding-to-core term must grow far more slowly than the turn count. The turn count
+    // grows 20x here; screened, only the first layer's turns and the two flange-adjacent turns
+    // are added, so the term must stay well under a quarter of the unscreened growth.
+    double turnRatio = static_cast<double>(manyLayerTurns) / static_cast<double>(singleLayerTurns);
+    double capacitanceRatio = manyLayer / singleLayer;
+    UNSCOPED_INFO("turn ratio=" << turnRatio << " capacitance ratio=" << capacitanceRatio);
+    REQUIRE(capacitanceRatio < turnRatio / 4);
+}
