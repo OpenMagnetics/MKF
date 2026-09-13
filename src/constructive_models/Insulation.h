@@ -26,8 +26,16 @@ class CoilSectionInterface {
     double solidInsulationThickness = 0;
     size_t numberLayersInsulation = 0;
     LayerPurpose layerPurpose;
+    std::optional<size_t> barrierDividerIndex;
 
     public:
+
+    // ABT #1175: set when this interface is not a tape but a bobbin DIVIDER - the two windings sit
+    // in different chambers of a split former and the wall between them is the barrier. Then the
+    // interface carries no insulation layers and no margin tape, and this names the divider (its
+    // index in the bobbin's processedDescription.dividers) that provides the separation.
+    std::optional<size_t> get_barrier_divider_index() const { return barrierDividerIndex; }
+    void set_barrier_divider_index(std::optional<size_t> value) { this->barrierDividerIndex = value; }
 
     double get_total_margin_tape_distance() const { return totalMarginTapeDistance; }
     void set_total_margin_tape_distance(const double & value) { this->totalMarginTapeDistance = value; }

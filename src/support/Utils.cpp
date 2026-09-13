@@ -566,6 +566,25 @@ void load_wires(std::optional<std::string> fileToLoad) {
     });
 }
 
+// ABT #1175: a catalogue row that declares numberChambers > 1 without the chamber labels is valid
+// MAS data (the count is stated, the walls are not transcribed yet), but Bobbin::process_data
+// refuses to split its window by invention. The catalogue keeps such a row as functional data, and
+// asks BEFORE processing rather than throwing and catching: an exceptionless (WASM) build would
+// otherwise lose the whole catalogue to its first untranscribed chamber former. Using the row in a
+// design processes it, and that is where the refusal is reported.
+static Bobbin load_catalogue_bobbin(const json& jf) {
+    // Asked on the raw row, before any parse: the catalogue is loaded on every clear_databases,
+    // and a second from_json per row just to ask this question is not free.
+    if (jf.contains("functionalDescription") && jf["functionalDescription"].contains("numberChambers") &&
+        jf["functionalDescription"]["numberChambers"].get<int64_t>() > 1) {
+        Bobbin unprocessed(jf, false);
+        if (!Bobbin::has_chamber_geometry(unprocessed.get_functional_description().value())) {
+            return unprocessed;
+        }
+    }
+    return Bobbin(jf);
+}
+
 void load_bobbins() {
     throw_if_databases_frozen("load_bobbins");
     if (!_addInternalData) {
@@ -573,8 +592,7 @@ void load_bobbins() {
     }
     std::string database = load_ndjson_data("MAS/data/bobbins.ndjson");
     parse_ndjson(database, [](const json& jf) {
-        Bobbin bobbin(jf);
-        bobbinDatabase[jf["name"]] = bobbin;
+        bobbinDatabase[jf["name"]] = load_catalogue_bobbin(jf);
     });
 }
 
@@ -688,8 +706,7 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
 
     for (auto& element : data["bobbins"].items()) {
         json jf = element.value();
-        Bobbin bobbin(jf);
-        bobbinDatabase[jf["name"]] = bobbin;
+        bobbinDatabase[jf["name"]] = load_catalogue_bobbin(jf);
     }
 
     for (auto& element : data["insulationMaterials"].items()) {

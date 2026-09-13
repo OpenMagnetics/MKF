@@ -22,6 +22,7 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Exceptions.h"
 #include "support/Logger.h"
+#include <magic_enum.hpp>
 
 using json = nlohmann::json;
 
@@ -5085,6 +5086,14 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
     // space reserved by connection leads is layered on afterwards (filling factors, Painter, losses)
     // so it never changes whether the ideal winding fit.
     bool result = are_sections_and_layers_fitting() && bool(get_turns_description());
+    // ABT #1175: a wound coil on a chambered bobbin whose windings have to cross a wall must have a
+    // route over it; get_chamber_crossovers throws when a wall offers none.
+    if (result && get_groups_description()) {
+        auto crossoverBobbin = resolve_bobbin();
+        if (crossoverBobbin.get_processed_description() && crossoverBobbin.get_number_chambers() > 1) {
+            get_chamber_crossovers();
+        }
+    }
     // ABT #650: asking for real winding and silently not getting it is the worst outcome — the
     // caller receives a layout with none of the connection corridors reserved and nothing says so.
     // Real winding is applied only when the IDEAL wind fits (see below); when it does not, say it
@@ -7163,6 +7172,23 @@ bool Coil::calculate_insulation(bool simpleMode) {
         }
     }
 
+    // ABT #1175: on a multi-chamber bobbin, two windings that never share a chamber are separated
+    // by the bobbin's own wall, not by tape. The winders place tape only between sections of ONE
+    // chamber, so such a pair gets no inter-winding tape section and no margin; what has to hold is
+    // that the wall is a barrier: at least as thick as the required distance through insulation,
+    // and reaching as far as the flanges (so the surface path between the chambers runs over the
+    // wall's full height, not around a short wall). That is recorded on the pair's interface
+    // (CoilSectionInterface::barrier_divider_index). A wall that is not a barrier between two
+    // isolation sides cannot be fixed by tape that cannot be placed across it: throw.
+    auto chamberBobbin = bobbin;
+    const bool chamberedBobbin = chamberBobbin.get_number_chambers() > 1;
+    std::vector<std::set<size_t>> windowsPerWinding;
+    double requiredDistanceThroughInsulation = 0;
+    if (chamberedBobbin) {
+        windowsPerWinding = get_winding_windows_per_winding();
+        requiredDistanceThroughInsulation = _standardCoordinator.calculate_distance_through_insulation(inputs);
+    }
+
     for (size_t leftTopWindingIndex = 0; leftTopWindingIndex < get_functional_description().size(); ++leftTopWindingIndex) {
         for (size_t rightBottomWindingIndex = 0; rightBottomWindingIndex < get_functional_description().size(); ++rightBottomWindingIndex) {
             if (leftTopWindingIndex == rightBottomWindingIndex) {
@@ -7171,6 +7197,75 @@ bool Coil::calculate_insulation(bool simpleMode) {
             auto wireLeftTopWinding = wirePerWinding[leftTopWindingIndex];
             auto wireRightBottomWinding = wirePerWinding[rightBottomWindingIndex];
             auto windingsMapKey = std::pair<size_t, size_t>{leftTopWindingIndex, rightBottomWindingIndex};
+
+            if (chamberedBobbin) {
+                const auto& leftWindows = windowsPerWinding[leftTopWindingIndex];
+                const auto& rightWindows = windowsPerWinding[rightBottomWindingIndex];
+                bool shareChamber = false;
+                for (auto window : leftWindows) {
+                    shareChamber = shareChamber || rightWindows.contains(window);
+                }
+                if (!shareChamber && !leftWindows.empty() && !rightWindows.empty()) {
+                    bool differentSides = get_functional_description()[leftTopWindingIndex].get_isolation_side() !=
+                                          get_functional_description()[rightBottomWindingIndex].get_isolation_side();
+                    std::optional<size_t> barrierDividerIndex;
+                    auto dividers = chamberBobbin.get_dividers();
+                    for (auto leftWindow : leftWindows) {
+                        for (auto rightWindow : rightWindows) {
+                            auto between = chamberBobbin.get_dividers_between_windows(leftWindow, rightWindow);
+                            if (between.empty()) {
+                                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                                    "Windings " + get_name(leftTopWindingIndex) + " and " + get_name(rightBottomWindingIndex) +
+                                    " are in winding windows " + std::to_string(leftWindow) + " and " + std::to_string(rightWindow) +
+                                    " of a chambered bobbin with no divider between them.");
+                            }
+                            std::optional<size_t> pairBarrier;
+                            std::string shortfall;
+                            for (auto dividerIndex : between) {
+                                const auto& divider = dividers[dividerIndex];
+                                double chamberDepth = std::min(chamberBobbin.get_winding_window_width(leftWindow),
+                                                               chamberBobbin.get_winding_window_width(rightWindow));
+                                bool fullHeight = !divider.get_height() || divider.get_height().value() + 1e-9 >= chamberDepth;
+                                bool thickEnough = divider.get_thickness() + 1e-12 >= requiredDistanceThroughInsulation;
+                                if (fullHeight && thickEnough) {
+                                    pairBarrier = dividerIndex;
+                                    break;
+                                }
+                                shortfall += " divider " + std::to_string(dividerIndex) + ": thickness " +
+                                             std::to_string(divider.get_thickness()) + " m" +
+                                             (fullHeight ? std::string() : ", height " + std::to_string(divider.get_height().value()) +
+                                                                            " m short of the " + std::to_string(chamberDepth) + " m chamber depth") + ";";
+                            }
+                            if (!pairBarrier) {
+                                if (differentSides) {
+                                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                                        "Windings " + get_name(leftTopWindingIndex) + " and " + get_name(rightBottomWindingIndex) +
+                                        " are on different isolation sides in different chambers, but no wall between them is a "
+                                        "barrier (at least " + std::to_string(requiredDistanceThroughInsulation) +
+                                        " m thick, the required distance through insulation, and reaching the flanges):" + shortfall +
+                                        " Tape cannot be placed across a chamber wall; place the windings in one chamber or use a "
+                                        "former with a thicker wall.");
+                                }
+                                pairBarrier = between.front();
+                            }
+                            if (!barrierDividerIndex) {
+                                barrierDividerIndex = pairBarrier;
+                            }
+                        }
+                    }
+                    CoilSectionInterface dividerInterface;
+                    dividerInterface.set_layer_purpose(differentSides ? CoilSectionInterface::LayerPurpose::INSULATING
+                                                                      : CoilSectionInterface::LayerPurpose::MECHANICAL);
+                    dividerInterface.set_solid_insulation_thickness(0);
+                    dividerInterface.set_number_layers_insulation(0);
+                    dividerInterface.set_total_margin_tape_distance(0);
+                    dividerInterface.set_barrier_divider_index(barrierDividerIndex);
+                    _coilSectionInterfaces[windingsMapKey] = dividerInterface;
+                    _insulationSections.erase(windingsMapKey);
+                    _insulationInterSectionsLayers.erase(windingsMapKey);
+                    continue;
+                }
+            }
 
             CoilSectionInterface coilSectionInterface;
             coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::INSULATING);
@@ -7854,10 +7949,19 @@ bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, doubl
 
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
 
+    // ABT #1175: a multi-chamber bobbin (windows stacked on one column, separated by dividers)
+    // distributes the windings by isolation side, one side per chamber, instead of piling them
+    // all into window 0: that pile would put tape where the former's wall is meant to be.
+    const bool chamberedBobbin = bobbin.get_number_chambers() > 1;
+    std::vector<size_t> defaultChamberPerWinding;
+    if (chamberedBobbin) {
+        defaultChamberPerWinding = get_default_chamber_per_winding(bobbin);
+    }
+
     // Distribute the windings by their functional placement: each winding goes to
     // the winding window its windingWindow field names, defaulting to window 0 (the
     // schema-documented default when the field is absent).
-    double numberWindings = get_functional_description().size();
+    size_t numberWindings = get_functional_description().size();
     std::vector<std::vector<PartialWinding>> partialWindingsPerWindow(windingWindows.size());
     bool anyExplicitPlacement = false;
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -7871,7 +7975,8 @@ bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, doubl
                     std::to_string(windingWindows.size()) + " winding windows");
             }
         }
-        size_t windowIndex = requestedWindow ? static_cast<size_t>(requestedWindow.value()) : 0;
+        size_t windowIndex = requestedWindow ? static_cast<size_t>(requestedWindow.value())
+                                             : (chamberedBobbin ? defaultChamberPerWinding[windingIndex] : 0);
         PartialWinding partialWinding;
         partialWinding.set_winding(get_name(windingIndex));
         partialWinding.set_parallels_proportion(std::vector<double>(get_number_parallels(windingIndex), 1));
@@ -7881,7 +7986,7 @@ bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, doubl
     std::vector<Group> groups;
     for (size_t i = 0; i < windingWindows.size(); ++i) {
         Group g;
-        g.set_name("Column " + std::to_string(i));
+        g.set_name((chamberedBobbin ? "Chamber " : "Column ") + std::to_string(i));
         g.set_winding_window(static_cast<int64_t>(i));
         g.set_coordinates({windingWindows[i].get_coordinates().value()[0], windingWindows[i].get_coordinates().value()[1]});
         if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
@@ -7900,13 +8005,264 @@ bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, doubl
     split_shared_window_groups(groups, windingWindows);
     set_groups_description(groups);
 
-    if (!anyExplicitPlacement) {
+    if (!anyExplicitPlacement && !chamberedBobbin) {
         OM_WARNING("Multi-column bobbin detected (" + std::to_string(windingWindows.size()) +
                    " winding windows) and no winding carries a windingWindow placement. All windings "
                    "placed in window 0 by default. Set windingWindow on the windings or call "
                    "assign_windings_to_columns() to distribute.");
     }
     return true;
+}
+
+std::vector<size_t> Coil::get_default_chamber_per_winding(Bobbin bobbin) {
+    if (!bobbin.get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed, cannot distribute windings over its chambers");
+    }
+    auto windingWindows = bobbin.get_processed_description()->get_winding_windows();
+    size_t numberChambers = bobbin.get_number_chambers();
+    if (numberChambers < 2) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "get_default_chamber_per_winding called on a bobbin with no dividers; it has no chambers to distribute over");
+    }
+    if (windingWindows.size() != numberChambers) {
+        throw NotImplementedException("Bobbin has " + std::to_string(numberChambers) + " chambers but " +
+            std::to_string(windingWindows.size()) + " winding windows; chambers mixed with windows on other columns "
+            "have no default distribution");
+    }
+    for (size_t windowIndex = 1; windowIndex < windingWindows.size(); ++windowIndex) {
+        if (!bobbin.are_windows_chambers_of_same_column(0, windowIndex)) {
+            throw NotImplementedException("Winding window " + std::to_string(windowIndex) +
+                " wraps a different column than window 0 on a chambered bobbin; chambers mixed with lateral windows "
+                "have no default distribution");
+        }
+    }
+
+    // Isolation sides in build order, the PRIMARY side first: the primary-referenced winding
+    // takes chamber 0 whatever position it was declared in.
+    const auto& windings = get_functional_description();
+    std::vector<IsolationSide> sidesInChamberOrder;
+    for (const auto& winding : windings) {
+        if (winding.get_isolation_side() == IsolationSide::PRIMARY) {
+            sidesInChamberOrder.push_back(IsolationSide::PRIMARY);
+            break;
+        }
+    }
+    for (const auto& winding : windings) {
+        if (std::find(sidesInChamberOrder.begin(), sidesInChamberOrder.end(), winding.get_isolation_side()) == sidesInChamberOrder.end()) {
+            sidesInChamberOrder.push_back(winding.get_isolation_side());
+        }
+    }
+
+    std::vector<size_t> chamberPerWinding;
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        auto requestedWindow = windings[windingIndex].get_winding_window();
+        if (requestedWindow) {
+            if (requestedWindow.value() < 0 || static_cast<size_t>(requestedWindow.value()) >= windingWindows.size()) {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                    "Winding " + windings[windingIndex].get_name() + " requests winding window " +
+                    std::to_string(requestedWindow.value()) + " but the bobbin has " +
+                    std::to_string(windingWindows.size()) + " chambers");
+            }
+            chamberPerWinding.push_back(static_cast<size_t>(requestedWindow.value()));
+            continue;
+        }
+        size_t sideOrder = static_cast<size_t>(std::distance(sidesInChamberOrder.begin(),
+            std::find(sidesInChamberOrder.begin(), sidesInChamberOrder.end(), windings[windingIndex].get_isolation_side())));
+        if (sideOrder >= numberChambers) {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                "Winding " + windings[windingIndex].get_name() + " is on isolation side '" +
+                std::string(magic_enum::enum_name(windings[windingIndex].get_isolation_side())) + "', the " +
+                std::to_string(sideOrder + 1) + "th side of the coil, but the bobbin has only " +
+                std::to_string(numberChambers) + " chambers. Two isolation sides in one chamber need the tape the "
+                "chambers exist to avoid; place the windings explicitly with windingWindow.");
+        }
+        chamberPerWinding.push_back(sideOrder);
+    }
+    return chamberPerWinding;
+}
+
+std::vector<std::set<size_t>> Coil::get_winding_windows_per_winding() {
+    size_t numberWindings = get_functional_description().size();
+    std::vector<std::set<size_t>> windowsPerWinding(numberWindings);
+    if (get_groups_description()) {
+        const auto groups = get_groups_description().value();
+        for (const auto& group : groups) {
+            size_t windowIndex = find_window_index_for_group(group.get_name());
+            for (const auto& partialWinding : group.get_partial_windings()) {
+                windowsPerWinding[get_winding_index_by_name(partialWinding.get_winding())].insert(windowIndex);
+            }
+        }
+        return windowsPerWinding;
+    }
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_processed_description() && bobbin.get_number_chambers() > 1) {
+        auto chamberPerWinding = get_default_chamber_per_winding(bobbin);
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            windowsPerWinding[windingIndex].insert(chamberPerWinding[windingIndex]);
+        }
+        return windowsPerWinding;
+    }
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        auto requestedWindow = get_functional_description()[windingIndex].get_winding_window();
+        windowsPerWinding[windingIndex].insert(requestedWindow ? static_cast<size_t>(requestedWindow.value()) : 0);
+    }
+    return windowsPerWinding;
+}
+
+std::optional<CoilSectionInterface> Coil::get_coil_section_interface(size_t firstWindingIndex, size_t secondWindingIndex) const {
+    auto found = _coilSectionInterfaces.find({firstWindingIndex, secondWindingIndex});
+    if (found == _coilSectionInterfaces.end()) {
+        return std::nullopt;
+    }
+    return found->second;
+}
+
+std::vector<ChamberCrossover> Coil::get_chamber_crossovers() {
+    std::vector<ChamberCrossover> crossovers;
+    auto bobbin = resolve_bobbin();
+    if (!bobbin.get_processed_description() || bobbin.get_number_chambers() < 2) {
+        return crossovers;
+    }
+    if (!get_groups_description()) {
+        throw CoilNotProcessedException("Coil has no groups; wind it before asking for its chamber crossovers");
+    }
+    auto processedDescription = bobbin.get_processed_description().value();
+    auto windingWindows = processedDescription.get_winding_windows();
+    auto dividers = bobbin.get_dividers();
+    auto windowsPerWinding = get_winding_windows_per_winding();
+    auto wires = get_wires();
+    const auto& windings = get_functional_description();
+
+    // The pins a junction may land on: a shared pinName that names a bobbin pin is two leads to one
+    // pin, each leaving its own chamber - no wire crosses the wall. A shared pinName that is NOT a
+    // pin of the bobbin is a junction in the wire itself, which does.
+    std::set<std::string> bobbinPinNames;
+    if (processedDescription.get_pins()) {
+        const auto pins = processedDescription.get_pins().value();
+        for (const auto& pin : pins) {
+            if (pin.get_name()) {
+                bobbinPinNames.insert(pin.get_name().value());
+            }
+        }
+    }
+
+    auto addCrossover = [&](size_t fromWindingIndex, size_t toWindingIndex, size_t fromWindow, size_t toWindow) {
+        for (auto dividerIndex : bobbin.get_dividers_between_windows(fromWindow, toWindow)) {
+            const auto& divider = dividers[dividerIndex];
+            const auto& window = windingWindows[fromWindow];
+            double windowCenterX = window.get_coordinates().value()[0];
+            double windowWidth = window.get_width().value();
+            double columnSurfaceX = windowCenterX - windowWidth / 2;
+            double flangeReachX = windowCenterX + windowWidth / 2;
+            double dividerRimX = divider.get_height() ? columnSurfaceX + divider.get_height().value() : flangeReachX;
+            double wireOuterWidth = wires[fromWindingIndex].get_maximum_outer_width();
+            double dividerY = divider.get_coordinates()[1];
+            double thickness = divider.get_thickness();
+            const double fitTolerance = 1e-9;
+
+            ChamberCrossover crossover;
+            crossover.fromWinding = windings[fromWindingIndex].get_name();
+            crossover.toWinding = windings[toWindingIndex].get_name();
+            crossover.fromWindingWindow = fromWindow;
+            crossover.toWindingWindow = toWindow;
+            crossover.dividerIndex = dividerIndex;
+            double crossingX;
+            if (divider.get_crossing_slot()) {
+                auto slot = divider.get_crossing_slot().value();
+                if (!slot.get_width() || !slot.get_depth()) {
+                    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                        "Divider " + std::to_string(dividerIndex) + " has a crossingSlot without " +
+                        std::string(slot.get_width() ? "depth" : "width") + "; the crossover from " + crossover.fromWinding +
+                        " to " + crossover.toWinding + " cannot be reserved in a slot of unknown size.");
+                }
+                if (slot.get_width().value() + fitTolerance < wireOuterWidth || slot.get_depth().value() + fitTolerance < wireOuterWidth) {
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                        "The crossover from " + crossover.fromWinding + " to " + crossover.toWinding + " needs a " +
+                        std::to_string(wireOuterWidth) + " m wire through divider " + std::to_string(dividerIndex) +
+                        "'s crossingSlot, which is " + std::to_string(slot.get_width().value()) + " m wide and " +
+                        std::to_string(slot.get_depth().value()) + " m deep.");
+                }
+                crossingX = dividerRimX - slot.get_depth().value() + wireOuterWidth / 2;
+                crossover.throughSlot = true;
+                crossover.slotAngle = slot.get_angle();
+            }
+            else if (dividerRimX + wireOuterWidth <= flangeReachX + fitTolerance) {
+                crossingX = dividerRimX + wireOuterWidth / 2;
+                crossover.throughSlot = false;
+            }
+            else {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                    "Winding " + crossover.fromWinding + " (chamber " + std::to_string(fromWindow) + ") continues into " +
+                    crossover.toWinding + " (chamber " + std::to_string(toWindow) + "), but divider " +
+                    std::to_string(dividerIndex) + " between them reaches the flanges and has no crossingSlot: the wire has "
+                    "no route from one chamber to the other. Give the divider its crossingSlot, or terminate both ends on a pin.");
+            }
+            bool fromIsAbove = window.get_coordinates().value()[1] > windingWindows[toWindow].get_coordinates().value()[1];
+            double fromFaceY = fromIsAbove ? dividerY + thickness / 2 : dividerY - thickness / 2;
+            double toFaceY = fromIsAbove ? dividerY - thickness / 2 : dividerY + thickness / 2;
+            crossover.coordinates = {crossingX, dividerY};
+            crossover.dimensions = {wireOuterWidth, thickness};
+            crossover.waypoints = {{crossingX, fromFaceY}, {crossingX, toFaceY}};
+            crossover.routedLength = thickness;
+            crossovers.push_back(crossover);
+        }
+    };
+
+    // A winding whose sections sit in several chambers crosses every wall between consecutive ones.
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        std::vector<size_t> windows(windowsPerWinding[windingIndex].begin(), windowsPerWinding[windingIndex].end());
+        for (size_t k = 1; k < windows.size(); ++k) {
+            addCrossover(windingIndex, windingIndex, windows[k - 1], windows[k]);
+        }
+    }
+    // Two windings in different chambers joined by a junction that is not a bobbin pin.
+    for (size_t firstIndex = 0; firstIndex < windings.size(); ++firstIndex) {
+        for (size_t secondIndex = firstIndex + 1; secondIndex < windings.size(); ++secondIndex) {
+            if (!windings[firstIndex].get_connections() || !windings[secondIndex].get_connections()) {
+                continue;
+            }
+            bool joined = false;
+            const auto firstConnections = windings[firstIndex].get_connections().value();
+            const auto secondConnections = windings[secondIndex].get_connections().value();
+            for (const auto& first : firstConnections) {
+                for (const auto& second : secondConnections) {
+                    if (first.get_pin_name() && second.get_pin_name() &&
+                        first.get_pin_name().value() == second.get_pin_name().value() &&
+                        !bobbinPinNames.contains(first.get_pin_name().value())) {
+                        joined = true;
+                    }
+                }
+            }
+            if (!joined) {
+                continue;
+            }
+            const auto& firstWindows = windowsPerWinding[firstIndex];
+            const auto& secondWindows = windowsPerWinding[secondIndex];
+            bool shareChamber = false;
+            for (auto window : firstWindows) {
+                shareChamber = shareChamber || secondWindows.contains(window);
+            }
+            if (shareChamber || firstWindows.empty() || secondWindows.empty()) {
+                continue;
+            }
+            // The junction joins the nearest pair of chambers the two windings occupy.
+            size_t bestFrom = *firstWindows.begin();
+            size_t bestTo = *secondWindows.begin();
+            size_t fewestDividers = std::numeric_limits<size_t>::max();
+            for (auto fromWindow : firstWindows) {
+                for (auto toWindow : secondWindows) {
+                    size_t count = bobbin.get_dividers_between_windows(fromWindow, toWindow).size();
+                    if (count < fewestDividers) {
+                        fewestDividers = count;
+                        bestFrom = fromWindow;
+                        bestTo = toWindow;
+                    }
+                }
+            }
+            addCrossover(firstIndex, secondIndex, bestFrom, bestTo);
+        }
+    }
+    return crossovers;
 }
 
 void Coil::split_shared_window_groups(std::vector<Group>& groups, const std::vector<WindingWindowElement>& windingWindows) {
@@ -8247,8 +8603,20 @@ void Coil::apply_group_window_sides(bool inverse) {
     // are new with this machinery and their consumers are gated (e.g. the
     // LeakageInductance round-window guard). Toroids keep their own
     // outer-return machinery untouched.
+    // ABT #1175: the second crossings belong to LATERAL windows (a window wrapping a different
+    // column than window 0). Chambers of a split bobbin are several windows on ONE column; their
+    // turns cross the drawing plane exactly like a single-window coil's, so they get none — keying
+    // this on windingWindows.size() > 1 gave every two-chamber design phantom conductors.
+    bool anyLateralWindow = false;
+    for (size_t windowIndex = 1; windowIndex < windingWindows.size(); ++windowIndex) {
+        auto columnEdge = windingWindows[windowIndex].get_column();
+        auto mainEdge = windingWindows[0].get_column();
+        if (columnEdge && (!mainEdge || columnEdge.value() != mainEdge.value())) {
+            anyLateralWindow = true;
+        }
+    }
     bool wantsBothCrossings = settings.get_coil_include_additional_coordinates() && !inverse
-        && windingWindows.size() > 1
+        && anyLateralWindow
         && bobbinResolved.get_winding_window_shape() == WindingWindowShape::RECTANGULAR;
     if (windingWindows.size() <= 1 && !wantsBothCrossings) {
         return;
@@ -9537,6 +9905,11 @@ void Coil::remove_insulation_if_margin_is_enough(const std::vector<std::pair<siz
         }
 
         auto windingsMapKey = std::pair<size_t, size_t>{leftWindingIndex, rightWindingIndex};
+        // ABT #1175: an interface provided by a bobbin divider has no tape to remove and no margin.
+        auto barrierInterface = _coilSectionInterfaces.find(windingsMapKey);
+        if (barrierInterface != _coilSectionInterfaces.end() && barrierInterface->second.get_barrier_divider_index()) {
+            continue;
+        }
         double totalMargin = 0;
         if (_insulationSections.contains(windingsMapKey)) {
             // find, not operator[]: the custom-insulation path fills _insulationSections
@@ -14187,6 +14560,13 @@ Bobbin Coil::resolve_bobbin() {
             throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Bobbin is dummy");
 
         _bobbin = find_bobbin_by_name(std::get<std::string>(bobbinDataOrNameUnion));
+        // ABT #1175: the catalogue keeps a chamber former whose walls are not transcribed as
+        // functional data only (load_catalogue_bobbin). Using it is where it gets processed, and
+        // Bobbin::process_data refuses to split its window — the refusal belongs to the design that
+        // asked for this former, not to the catalogue load.
+        if (_bobbin.get_functional_description() && !_bobbin.get_processed_description()) {
+            _bobbin.process_data();
+        }
     }
     else {
         _bobbin = Bobbin(std::get<Bobbin>(bobbinDataOrNameUnion));

@@ -309,6 +309,32 @@ struct ConnectionLayout {
     }
 };
 
+// ABT #1175: the wire that crosses from one chamber of a split bobbin to the next. Two windings
+// placed in different chambers and connected in series (they share a pinName: one's finish/output
+// is the other's start/input, or both are `tap`s of one junction), or one winding whose sections
+// sit in two chambers, have to pass the divider between them. The crossover reserves the divider's
+// crossingSlot when the divider has one, or the gap over a divider that stops short of the flanges;
+// a full-height divider with no slot has no route and Coil::get_chamber_crossovers throws. MVB++
+// replays `waypoints`; it never invents a route over a wall.
+struct ChamberCrossover {
+    std::string fromWinding;                        // winding (or the winding itself) whose end leaves chamber `fromWindingWindow`
+    std::string toWinding;                          // winding that continues in chamber `toWindingWindow`
+    size_t fromWindingWindow = 0;
+    size_t toWindingWindow = 0;
+    size_t dividerIndex = 0;                        // index in bobbin processedDescription.dividers
+    bool throughSlot = false;                       // true: through crossingSlot; false: over a short divider
+    // Reserved rectangle in the winding-window cross-section, cartesian {x, y} centre and
+    // {x extent, y extent}: one wire wide radially, the divider's thickness along the column.
+    std::vector<double> coordinates;
+    std::vector<double> dimensions;
+    std::optional<double> slotAngle;                // degrees from +x around the column, when through a slot
+    // {x, y} path from the leaving chamber's face of the divider to the entering one, at the
+    // reserved radius. The legs from the last/first turn to these points belong to the terminal
+    // leads of the two sections and are not duplicated here.
+    std::vector<std::vector<double>> waypoints;
+    double routedLength = 0;
+};
+
 // The column a section's turns are wound around, in the winding frame (+x side of
 // the main column). Follows the bobbin scalar convention: columnWidth/columnDepth are
 // HALF the physical column dimension plus any bobbin/coating thickness, and axisX is
@@ -553,6 +579,23 @@ class Coil : public MAS::Coil {
         // groupsDescription. Must be called BEFORE wind_by_sections() if you
         // want non-default column placement.
         void assign_windings_to_columns(const std::vector<std::vector<size_t>>& windingIndicesPerColumn);
+        // ABT #1175: default chamber of each winding on a multi-chamber bobbin (windows sharing one
+        // column, separated by dividers) when the winding declares no windingWindow. Isolation sides
+        // take one chamber each: the PRIMARY side chamber 0 (the top of the stack), then every
+        // other side in the build order its first winding appears in. A winding's own windingWindow
+        // always wins. Throws when there are more isolation sides than chambers (two sides in one
+        // chamber need tape the chamber was bought to avoid; the caller must place them).
+        std::vector<size_t> get_default_chamber_per_winding(Bobbin bobbin);
+        // ABT #1175: winding windows each winding is placed in, from the groups when they exist,
+        // else from windingWindow / the default chamber distribution / window 0.
+        std::vector<std::set<size_t>> get_winding_windows_per_winding();
+        // ABT #1175: the coordination record of a winding pair (see CoilSectionInterface), if the
+        // insulation pass produced one.
+        std::optional<CoilSectionInterface> get_coil_section_interface(size_t firstWindingIndex, size_t secondWindingIndex) const;
+        // ABT #1175: every chamber-to-chamber crossover the wound coil needs, with its reserved
+        // slot (see ChamberCrossover). Empty for a bobbin without dividers. Throws when a crossover
+        // is needed and the divider offers no route, or the slot is narrower than the wire.
+        std::vector<ChamberCrossover> get_chamber_crossovers();
         // Multi-column winding support: inject the core's columns so turn lengths
         // around non-main columns can be computed (the bobbin only describes the
         // main column). Callers that hold the core (autocomplete, advisers) must

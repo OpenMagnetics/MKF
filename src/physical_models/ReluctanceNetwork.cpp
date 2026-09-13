@@ -160,7 +160,44 @@ std::vector<size_t> ReluctanceNetwork::resolve_winding_column_indexes(Magnetic m
     auto windingWindows = core.get_winding_windows();
     size_t mainColumnIndex = core.get_main_column_index();
     std::vector<size_t> columnIndexPerWinding;
+    // ABT #1175: a winding-window index on a winding or section indexes the GOVERNING processed
+    // description, which is the bobbin's when the coil has one. The chambers of a split bobbin are
+    // several bobbin windows on ONE core window; each carries the column it wraps (absent = the
+    // main column), and that edge - not the core's window list - says where the MMF goes.
+    auto coilForBobbin = magnetic.get_coil();
+    std::optional<std::vector<WindingWindowElement>> chamberWindows;
+    {
+        auto bobbin = coilForBobbin.resolve_bobbin();
+        if (bobbin.get_processed_description() && bobbin.get_number_chambers() > 1) {
+            chamberWindows = bobbin.get_processed_description()->get_winding_windows();
+        }
+    }
     for (auto& winding : magnetic.get_coil().get_functional_description()) {
+        if (chamberWindows) {
+            std::set<int64_t> windows = resolve_distinct_windows_from_sections(magnetic.get_coil(), winding.get_name());
+            if (winding.get_winding_window()) {
+                windows.insert(winding.get_winding_window().value());
+            }
+            std::optional<size_t> columnIndex;
+            for (auto window : windows) {
+                if (window < 0 || static_cast<size_t>(window) >= chamberWindows->size()) {
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                                                "Winding " + winding.get_name() + " references winding window " +
+                                                    std::to_string(window) + " but the bobbin has " +
+                                                    std::to_string(chamberWindows->size()) + " winding windows");
+                }
+                auto columnEdge = chamberWindows->at(static_cast<size_t>(window)).get_column();
+                size_t windowColumn = columnEdge ? static_cast<size_t>(columnEdge.value()) : mainColumnIndex;
+                if (columnIndex && columnIndex.value() != windowColumn) {
+                    throw NotImplementedException(
+                        "Winding " + winding.get_name() + " has sections on more than one column: the reluctance network "
+                        "attributes a winding's whole MMF to a single column");
+                }
+                columnIndex = windowColumn;
+            }
+            columnIndexPerWinding.push_back(columnIndex ? columnIndex.value() : mainColumnIndex);
+            continue;
+        }
         auto windowIndex = winding.get_winding_window();
         if (!windowIndex) {
             // The placement may live on the SECTIONS instead of the winding

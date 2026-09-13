@@ -90,6 +90,12 @@ class Bobbin : public MAS::Bobbin {
     double get_winding_window_area(size_t windingWindowIndex = 0);
     WindingWindowShape get_winding_window_shape(size_t windingWindowIndex = 0);
     std::vector<double> get_winding_window_coordinates(size_t windingWindowIndex = 0);
+    /**
+     * @brief Column thickness and the thickness of the wall bounding the given window along the
+     *        column axis. For a plain former that is the flange; for a chamber it is the THINNER
+     *        of its two bounding walls (a flange or a divider), which is the one that limits the
+     *        barrier. Throws when the index does not name a winding window.
+     */
     std::pair<double, double> get_column_and_wall_thickness(size_t windingWindowIndex = 0);
     WindingOrientation get_winding_window_sections_orientation(size_t windingWindowIndex = 0);
     CoilAlignment get_winding_window_sections_alignment(size_t windingWindowIndex = 0);
@@ -166,6 +172,63 @@ class Bobbin : public MAS::Bobbin {
      *         needs, or belongs to a family/orientation with no verified rule.
      */
     static double get_pin_rail_distance(const MAS::BobbinFunctionalDescription& functionalDescription);
+
+    /**
+     * @brief Split a family processor's single winding window into the chambers of a
+     *        multi-chamber former (MAS-RFC 0014 part A, ABT #1175).
+     *
+     * Reads the chamber labels documented in MAS docs/magnetic/coil.md from the functional
+     * description's dimensions: `c1..cN` chamber widths and `w1..w(N-1)` wall thicknesses, all
+     * along the column axis, numbered from the POSITIVE end of the column axis (the top of the
+     * window in MKF's frame, where a window's first section is placed). The stack
+     * `c1 + w1 + ... + cN` is the drawing's winding length between the flange faces; it is
+     * centred where the envelope window was centred.
+     *
+     * Emits N `WindingWindowElement`s that share the envelope's width, radial centre and `column`
+     * (stacked chambers, per MAS core.md), heights = chamber widths, and N-1 `dividers` with their
+     * thickness and centre `{0, y, 0}` (on the column axis). A divider's `height` is left absent:
+     * the labels describe walls that reach as far as the flanges, which is what absent means.
+     *
+     * @return the stack envelope window (height = the stack, between the two flange faces).
+     * @throws InvalidInputException when any label is missing, non-positive or extra, when the
+     *         stack does not fit between the outer faces of the flanges, or when the envelope is
+     *         not a single rectangular window. Never splits a window by invention.
+     */
+    static WindingWindowElement split_winding_window_into_chambers(CoreBobbinProcessedDescription& processedDescription,
+                                                                    const BobbinFunctionalDescription& functionalDescription,
+                                                                    const std::string& bobbinName);
+
+    /**
+     * @brief True when the functional description is a plain former (numberChambers absent or 1)
+     *        or carries the full chamber label set, i.e. when process_data can process it.
+     *
+     * Database loading asks this BEFORE processing, instead of throwing and catching, so an
+     * exceptionless (WASM) build keeps the record as functional data rather than aborting the load.
+     */
+    static bool has_chamber_geometry(const BobbinFunctionalDescription& functionalDescription);
+
+    /**
+     * @brief Number of chambers the processed bobbin is split into (1 for a plain former).
+     */
+    size_t get_number_chambers();
+
+    /**
+     * @brief The processed dividers, in column order (empty for a plain former).
+     */
+    std::vector<BobbinDivider> get_dividers();
+
+    /**
+     * @brief Indexes of the processed dividers that lie between two winding windows of the SAME
+     *        column (two chambers), in column order. Empty when the windows are the same window,
+     *        wrap different columns, or are not separated by a divider.
+     */
+    std::vector<size_t> get_dividers_between_windows(size_t firstWindingWindowIndex, size_t secondWindingWindowIndex);
+
+    /**
+     * @brief True when the two winding windows are chambers of one column: both wrap the same
+     *        column (an absent `column` is the main column) and the bobbin carries dividers.
+     */
+    bool are_windows_chambers_of_same_column(size_t firstWindingWindowIndex, size_t secondWindingWindowIndex);
 
     /**
      * @brief The processed pin with this name, e.g. "7".

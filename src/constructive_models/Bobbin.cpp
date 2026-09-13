@@ -438,12 +438,21 @@ void load_interpolators() {
                 unusableBobbins.push_back(datum.first + " -> core shape '" + coreShapeName + "' is not in the shape database");
                 continue;
             }
-            if (!datum.second.get_processed_description() ||
-                datum.second.get_processed_description()->get_winding_windows().empty()) {
+            // ABT #1175: a chambered former contributes its ENVELOPE (the family processor's single
+            // window, before the chamber split), exactly as every catalogue row did before chambers
+            // were modelled. The interpolators estimate how much of a core window a former leaves for
+            // winding; they are unchanged by whether the former's walls have been transcribed, and a
+            // chamber record without walls (kept unprocessed, see load_bobbins) still counts.
+            std::optional<CoreBobbinProcessedDescription> scannedDescription = datum.second.get_processed_description();
+            auto scannedFunctionalDescription = datum.second.get_functional_description().value();
+            if (scannedFunctionalDescription.get_number_chambers() && scannedFunctionalDescription.get_number_chambers().value() > 1) {
+                scannedDescription = BobbinDataProcessor::factory(datum.second)->process_data(datum.second);
+            }
+            if (!scannedDescription || scannedDescription->get_winding_windows().empty()) {
                 unusableBobbins.push_back(datum.first + " (no processed winding window)");
                 continue;
             }
-            auto bobbinWindingWindow = datum.second.get_processed_description()->get_winding_windows()[0];
+            auto bobbinWindingWindow = scannedDescription->get_winding_windows()[0];
             if (!bobbinWindingWindow.get_area() || !bobbinWindingWindow.get_width() || !bobbinWindingWindow.get_height()) {
                 unusableBobbins.push_back(datum.first + " (winding window has no area/width/height)");
                 continue;
@@ -459,11 +468,11 @@ void load_interpolators() {
                     continue;
                 }
 
-                auto bobbinWindingWindowArea = datum.second.get_processed_description()->get_winding_windows()[0].get_area().value();
+                auto bobbinWindingWindowArea = bobbinWindingWindow.get_area().value();
                 auto coreShapeWindingWindowArea = corePiece->get_winding_window().get_area().value() * 2; // Because if we are using a bobbin we have a two piece set
                 double bobbinFillingFactor = bobbinWindingWindowArea / coreShapeWindingWindowArea;
-                double bobbinWindingWindowWidth = datum.second.get_processed_description()->get_winding_windows()[0].get_width().value();
-                double bobbinWindingWindowHeight = datum.second.get_processed_description()->get_winding_windows()[0].get_height().value();
+                double bobbinWindingWindowWidth = bobbinWindingWindow.get_width().value();
+                double bobbinWindingWindowHeight = bobbinWindingWindow.get_height().value();
                 double coreWindingWindowWidth = corePiece->get_winding_window().get_width().value();
                 double coreWindingWindowHeight = corePiece->get_winding_window().get_height().value() * 2; // Because if we are using a bobbin we have a two piece set
                 double bobbinWindingWindowWidthProportion = bobbinWindingWindowWidth / coreWindingWindowWidth;
@@ -472,7 +481,7 @@ void load_interpolators() {
                 // Track minimum real-world wall/column thicknesses. Prefer the bobbin's
                 // own processedDescription values (already populated by the family-specific
                 // BobbinDataProcessor); fall back to (core - bobbin) leftover otherwise.
-                auto bobbinPd = datum.second.get_processed_description();
+                auto bobbinPd = scannedDescription;
                 double sampleWallThickness = bobbinPd->get_wall_thickness();
                 if (!(sampleWallThickness > 0)) {
                     sampleWallThickness = (coreWindingWindowHeight - bobbinWindingWindowHeight) / 2;
@@ -948,10 +957,221 @@ std::pair<double, double> Bobbin::get_column_and_wall_thickness(size_t windingWi
         throw CoilNotProcessedException("Bobbin not processed");
     }
     auto bobbinProcessedDescription = get_processed_description().value();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+    if (windingWindowIndex >= windingWindows.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) +
+                                    ", bobbin only has " + std::to_string(windingWindows.size()) + " winding windows.");
+    }
 
     double columnThickness = bobbinProcessedDescription.get_column_thickness();
     double wallThickness = bobbinProcessedDescription.get_wall_thickness();
+    // ABT #1175: a chamber is bounded along the column axis by a flange or by a divider. The
+    // divider(s) touching this window are the ones whose faces coincide with the window's top or
+    // bottom edge; the thinner bounding wall is the one that limits the barrier.
+    auto dividers = bobbinProcessedDescription.get_dividers();
+    if (dividers && !dividers->empty()) {
+        const auto& window = windingWindows[windingWindowIndex];
+        if (!window.get_coordinates() || !window.get_height()) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Winding window " + std::to_string(windingWindowIndex) + " of a chambered bobbin has no coordinates or height.");
+        }
+        double top = window.get_coordinates().value()[1] + window.get_height().value() / 2;
+        double bottom = window.get_coordinates().value()[1] - window.get_height().value() / 2;
+        const double touchTolerance = 1e-9;
+        for (const auto& divider : dividers.value()) {
+            double dividerTop = divider.get_coordinates()[1] + divider.get_thickness() / 2;
+            double dividerBottom = divider.get_coordinates()[1] - divider.get_thickness() / 2;
+            if (std::abs(dividerBottom - top) < touchTolerance || std::abs(dividerTop - bottom) < touchTolerance) {
+                wallThickness = std::min(wallThickness, divider.get_thickness());
+            }
+        }
+    }
     return {columnThickness, wallThickness};
+}
+
+bool Bobbin::has_chamber_geometry(const BobbinFunctionalDescription& functionalDescription) {
+    auto numberChambers = functionalDescription.get_number_chambers();
+    if (!numberChambers || numberChambers.value() <= 1) {
+        return true;
+    }
+    auto dimensions = functionalDescription.get_dimensions();
+    for (int64_t chamberIndex = 1; chamberIndex <= numberChambers.value(); ++chamberIndex) {
+        if (!dimensions.contains("c" + std::to_string(chamberIndex))) {
+            return false;
+        }
+        if (chamberIndex < numberChambers.value() && !dimensions.contains("w" + std::to_string(chamberIndex))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+WindingWindowElement Bobbin::split_winding_window_into_chambers(CoreBobbinProcessedDescription& processedDescription,
+                                                                const BobbinFunctionalDescription& functionalDescription,
+                                                                const std::string& bobbinName) {
+    if (!functionalDescription.get_number_chambers()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "' has no numberChambers, so there are no chambers to split its window into.");
+    }
+    const int64_t numberChambers = functionalDescription.get_number_chambers().value();
+    if (numberChambers < 2) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "' declares numberChambers " + std::to_string(numberChambers) +
+            "; only a former with two or more chambers has a window to split.");
+    }
+    auto windingWindows = processedDescription.get_winding_windows();
+    if (windingWindows.size() != 1) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "': its family processor produced " + std::to_string(windingWindows.size()) +
+            " winding windows; a chamber split starts from exactly one envelope window.");
+    }
+    const WindingWindowElement envelope = windingWindows[0];
+    if (!envelope.get_width() || !envelope.get_height() || !envelope.get_coordinates() ||
+        (envelope.get_shape() && envelope.get_shape().value() != WindingWindowShape::RECTANGULAR)) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "' declares " + std::to_string(numberChambers) +
+            " chambers but its winding window is not a rectangular window with width, height and coordinates; "
+            "chambers stack along a column axis, which a toroidal window does not have.");
+    }
+
+    // Every label, positive, and nothing beyond the declared count: a record that names a c3 on a
+    // two-chamber former contradicts itself, and picking one reading would be a guess.
+    auto dimensions = flatten_dimensions(functionalDescription.get_dimensions());
+    auto readLabel = [&](const std::string& label) {
+        auto found = dimensions.find(label);
+        if (found == dimensions.end()) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Bobbin '" + bobbinName + "' declares numberChambers " + std::to_string(numberChambers) +
+                " but its dimensions carry no '" + label + "'. A chambered window is split only from the "
+                "drawing's chamber widths c1..cN and wall thicknesses w1..w(N-1) (MAS docs/magnetic/coil.md); "
+                "without them the walls are unknown and the window is not split by invention.");
+        }
+        if (!(found->second > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Bobbin '" + bobbinName + "': chamber label '" + label + "' is " + std::to_string(found->second) +
+                " m; chamber widths and wall thicknesses must be positive.");
+        }
+        return found->second;
+    };
+    std::vector<double> chamberWidths;
+    std::vector<double> wallThicknesses;
+    for (int64_t chamberIndex = 1; chamberIndex <= numberChambers; ++chamberIndex) {
+        chamberWidths.push_back(readLabel("c" + std::to_string(chamberIndex)));
+        if (chamberIndex < numberChambers) {
+            wallThicknesses.push_back(readLabel("w" + std::to_string(chamberIndex)));
+        }
+    }
+    for (const auto& label : {std::string("c") + std::to_string(numberChambers + 1), std::string("w") + std::to_string(numberChambers)}) {
+        if (dimensions.contains(label)) {
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                "Bobbin '" + bobbinName + "' declares numberChambers " + std::to_string(numberChambers) +
+                " but also carries '" + label + "', which belongs to a former with more chambers.");
+        }
+    }
+
+    double stack = 0;
+    for (auto width : chamberWidths) {
+        stack += width;
+    }
+    for (auto thickness : wallThicknesses) {
+        stack += thickness;
+    }
+    // The stack is the drawing's winding length between the flange faces, so it has to fit
+    // between the OUTER faces of the flanges the family dimensions describe.
+    double outerLength = envelope.get_height().value() + 2 * processedDescription.get_wall_thickness();
+    const double fitTolerance = 1e-9;
+    if (stack > outerLength + fitTolerance) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + bobbinName + "': its chambers and walls stack to " + std::to_string(stack) +
+            " m along the column, longer than the " + std::to_string(outerLength) +
+            " m between the outer faces of its flanges. The chamber labels and the family dimensions contradict each other.");
+    }
+
+    double centerX = envelope.get_coordinates().value()[0];
+    double centerY = envelope.get_coordinates().value()[1];
+    double width = envelope.get_width().value();
+    std::vector<WindingWindowElement> chambers;
+    std::vector<BobbinDivider> dividers;
+    double cursor = centerY + stack / 2;
+    for (size_t chamberIndex = 0; chamberIndex < chamberWidths.size(); ++chamberIndex) {
+        WindingWindowElement chamber = envelope;
+        double chamberWidth = chamberWidths[chamberIndex];
+        chamber.set_height(chamberWidth);
+        chamber.set_coordinates(std::vector<double>{centerX, cursor - chamberWidth / 2});
+        chamber.set_area(width * chamberWidth);
+        chambers.push_back(chamber);
+        cursor -= chamberWidth;
+        if (chamberIndex < wallThicknesses.size()) {
+            BobbinDivider divider;
+            divider.set_thickness(wallThicknesses[chamberIndex]);
+            divider.set_coordinates(std::vector<double>{0, cursor - wallThicknesses[chamberIndex] / 2, 0});
+            dividers.push_back(divider);
+            cursor -= wallThicknesses[chamberIndex];
+        }
+    }
+    processedDescription.set_winding_windows(chambers);
+    processedDescription.set_dividers(dividers);
+
+    WindingWindowElement stackEnvelope = envelope;
+    stackEnvelope.set_height(stack);
+    stackEnvelope.set_area(width * stack);
+    return stackEnvelope;
+}
+
+size_t Bobbin::get_number_chambers() {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    auto dividers = get_processed_description()->get_dividers();
+    return dividers ? dividers->size() + 1 : 1;
+}
+
+std::vector<BobbinDivider> Bobbin::get_dividers() {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    auto dividers = get_processed_description()->get_dividers();
+    return dividers ? dividers.value() : std::vector<BobbinDivider>{};
+}
+
+bool Bobbin::are_windows_chambers_of_same_column(size_t firstWindingWindowIndex, size_t secondWindingWindowIndex) {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    auto windingWindows = get_processed_description()->get_winding_windows();
+    if (firstWindingWindowIndex >= windingWindows.size() || secondWindingWindowIndex >= windingWindows.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Invalid winding window index " +
+            std::to_string(std::max(firstWindingWindowIndex, secondWindingWindowIndex)) + ", bobbin only has " +
+            std::to_string(windingWindows.size()) + " winding windows.");
+    }
+    if (get_dividers().empty()) {
+        return false;
+    }
+    // Schema default: an absent column is the main column, the same for every window.
+    auto firstColumn = windingWindows[firstWindingWindowIndex].get_column();
+    auto secondColumn = windingWindows[secondWindingWindowIndex].get_column();
+    return bool(firstColumn) == bool(secondColumn) && (!firstColumn || firstColumn.value() == secondColumn.value());
+}
+
+std::vector<size_t> Bobbin::get_dividers_between_windows(size_t firstWindingWindowIndex, size_t secondWindingWindowIndex) {
+    std::vector<size_t> between;
+    if (firstWindingWindowIndex == secondWindingWindowIndex ||
+        !are_windows_chambers_of_same_column(firstWindingWindowIndex, secondWindingWindowIndex)) {
+        return between;
+    }
+    auto windingWindows = get_processed_description()->get_winding_windows();
+    double firstY = windingWindows[firstWindingWindowIndex].get_coordinates().value()[1];
+    double secondY = windingWindows[secondWindingWindowIndex].get_coordinates().value()[1];
+    double low = std::min(firstY, secondY);
+    double high = std::max(firstY, secondY);
+    auto dividers = get_dividers();
+    for (size_t dividerIndex = 0; dividerIndex < dividers.size(); ++dividerIndex) {
+        double dividerY = dividers[dividerIndex].get_coordinates()[1];
+        if (dividerY > low && dividerY < high) {
+            between.push_back(dividerIndex);
+        }
+    }
+    return between;
 }
 
 WindingOrientation Bobbin::get_winding_window_sections_orientation(size_t windingWindowIndex) {
@@ -1381,7 +1601,14 @@ void Bobbin::process_data() {
     // - pitch, row distance, pin dimensions AND the mounting orientation that decides which way
     // the pins leave. A record that states a pin count and nothing else keeps no pins, which is
     // what it describes; expand_pinout is the strict door and throws if called on it directly.
+    // ABT #1175: a multi-chamber former is split into its chambers here, once, for every family
+    // (the family processors describe the envelope). The pins start at the pin rail (ABT #1207),
+    // which the split does not move.
     auto functionalDescriptionForPins = get_functional_description().value();
+    if (functionalDescriptionForPins.get_number_chambers() && functionalDescriptionForPins.get_number_chambers().value() > 1) {
+        split_winding_window_into_chambers(processedDescription, functionalDescriptionForPins,
+                                           get_name() ? get_name().value() : std::string("<unnamed>"));
+    }
     if (functionalDescriptionForPins.get_pinout()) {
         // BY VALUE, same reason as pinDescription above.
         const MAS::Pinout pinout = functionalDescriptionForPins.get_pinout().value();
