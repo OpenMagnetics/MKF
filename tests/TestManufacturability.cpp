@@ -172,12 +172,14 @@ TEST_CASE("Test_Manufacturability_Rules_Owned_Elsewhere_Are_Honest", "[adviser][
     Manufacturability manufacturability;
     auto report = manufacturability.calculate_report(magnetic, inputs);
 
-    for (auto& ruleId : std::vector<std::string>{"R10", "R16"}) {
+    for (auto& ruleId : std::vector<std::string>{"R10"}) {
         INFO("rule " << ruleId);
         auto& finding = report.get_finding(ruleId);
         CHECK(finding.get_status() == ManufacturabilityStatus::NOT_EVALUATED);
         CHECK_THAT(finding.get_message(), Catch::Matchers::ContainsSubstring("not evaluated (owned by"));
     }
+    // ABT #1173: WP4 owns R16 (toroids) and evaluates it now; an E core is not a toroid.
+    CHECK(report.get_finding("R16").get_status() == ManufacturabilityStatus::NOT_APPLICABLE);
     // ABT #1172: WP3 owns R2, R3, R4 and R14 and evaluates them now. This fixture's quick bobbin
     // has no pins, so the pin rules say exactly that, and it has no shield.
     for (auto& ruleId : std::vector<std::string>{"R2", "R3", "R4"}) {

@@ -211,6 +211,23 @@ std::vector<CoreMaterial> get_materials(std::optional<std::string> manufacturer=
 std::vector<CoreShape> get_shapes(bool includeToroidal = true);
 std::vector<Wire> get_wires(std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt);
 std::vector<Bobbin> get_bobbins();
+/**
+ * @brief Catalogue toroid bases (family t bobbins with a `base`, MAS-RFC 0014 part B) that hold this
+ *        toroidal core (ABT #1173, WP4).
+ *
+ * The ring a base holds is the COATED ring: outer diameter A + 2 t and height C x stacks + 2 t, with
+ * t = Core::get_coating_thickness(). A base is returned when
+ *   - its mounting equals `mounting` (when given),
+ *   - the ring's outer diameter is within `maximumCoreOuterDiameter`, or, for a horizontal base that
+ *     states no such limit, within the minimum of `pocketInnerDiameter`; a base stating neither says
+ *     nothing about which ring fits and is NOT returned,
+ *   - the ring's height is within `maximumCoreHeight` when stated, and, on a vertical base, within the
+ *     minimum `boatWidth` when stated.
+ * @throws InvalidInputException when the core is not toroidal or its shape lacks A or C.
+ */
+std::vector<Bobbin> find_toroid_bases_for_core(Core core, std::optional<OrientationEnum> mounting = std::nullopt);
+// Same filter over the given candidates instead of the catalogue (records that are not toroid bases are skipped).
+std::vector<Bobbin> find_toroid_bases_for_core(Core core, const std::vector<Bobbin>& candidates, std::optional<OrientationEnum> mounting = std::nullopt);
 std::vector<InsulationMaterial> get_insulation_materials();
 std::vector<WireMaterial> get_wire_materials();
 

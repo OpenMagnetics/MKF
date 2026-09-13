@@ -153,6 +153,7 @@ class Manufacturability {
         ManufacturabilityFinding evaluate_r12_flying_leads(Magnetic& magnetic, Inputs& inputs);
         ManufacturabilityFinding evaluate_r13_manual_termination(Magnetic& magnetic);
         ManufacturabilityFinding evaluate_r15_lateral_gaps(Magnetic& magnetic, Inputs& inputs);
+        ManufacturabilityFinding evaluate_r16_toroid_insulation_and_header(Magnetic& magnetic, Inputs& inputs);
         ManufacturabilityFinding evaluate_r17_production_tests(Magnetic& magnetic, Inputs& inputs);
 
         /// The stub finding for a rule owned by another work package.

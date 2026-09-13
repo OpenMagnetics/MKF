@@ -575,6 +575,16 @@ void load_wires(std::optional<std::string> fileToLoad) {
 static Bobbin load_catalogue_bobbin(const json& jf) {
     // Asked on the raw row, before any parse: the catalogue is loaded on every clear_databases,
     // and a second from_json per row just to ask this question is not free.
+    // ABT #1173: a catalogue toroid base (family t, a base, no ring dimensions) holds no ring yet, so it
+    // has no winding window to process; it stays functional data until a core is seated in it
+    // (Bobbin::create_toroid_bobbin_on_base). Asked on the raw row for the same reason as below.
+    if (jf.contains("functionalDescription") && jf["functionalDescription"].contains("base") &&
+        jf["functionalDescription"].contains("family") && jf["functionalDescription"]["family"] == "t") {
+        Bobbin unprocessed(jf, false);
+        if (Bobbin::is_toroid_base_record(unprocessed.get_functional_description().value())) {
+            return unprocessed;
+        }
+    }
     if (jf.contains("functionalDescription") && jf["functionalDescription"].contains("numberChambers") &&
         jf["functionalDescription"]["numberChambers"].get<int64_t>() > 1) {
         Bobbin unprocessed(jf, false);
@@ -1175,6 +1185,64 @@ std::vector<Bobbin> get_bobbins() {
     return bobbins;
 }
 
+
+std::vector<Bobbin> find_toroid_bases_for_core(Core core, std::optional<OrientationEnum> mounting) {
+    return find_toroid_bases_for_core(core, get_bobbins(), mounting);
+}
+
+std::vector<Bobbin> find_toroid_bases_for_core(Core core, const std::vector<Bobbin>& candidates, std::optional<OrientationEnum> mounting) {
+    if (core.get_shape_family() != CoreShapeFamily::T) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Toroid bases hold toroidal cores; core shape '" + core.get_shape_name() + "' is not toroidal.");
+    }
+    if (!core.get_processed_description()) {
+        core.process_data();
+    }
+    const auto shapeDimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+    for (const auto* label : {"A", "C"}) {
+        if (!shapeDimensions.count(label) || !(shapeDimensions.at(label) > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Toroidal shape '" + core.get_shape_name() + "' has no dimension '" + label + "'.");
+        }
+    }
+    // The base holds the COATED ring: the coating is what touches the pocket, the boat and the limits.
+    const double coating = core.get_coating_thickness();
+    const double ringOuterDiameter = shapeDimensions.at("A") + 2 * coating;
+    const double ringHeight = shapeDimensions.at("C") * static_cast<double>(core.get_number_stacks()) + 2 * coating;
+
+    std::vector<Bobbin> bases;
+    for (const auto& bobbin : candidates) {
+        if (!bobbin.get_functional_description() || !Bobbin::is_toroid_base_record(bobbin.get_functional_description().value())) {
+            continue;
+        }
+        const auto base = bobbin.get_base();
+        if (mounting && base.get_mounting() != mounting.value()) {
+            continue;
+        }
+        // Outer diameter: the stated limit, else the pocket a horizontal base drops the ring into. A base
+        // that states neither says nothing about which ring fits, and is not offered.
+        std::optional<double> outerDiameterLimit;
+        if (base.get_maximum_core_outer_diameter()) {
+            outerDiameterLimit = base.get_maximum_core_outer_diameter().value();
+        }
+        else if (base.get_mounting() == OrientationEnum::HORIZONTAL && base.get_pocket_inner_diameter()) {
+            outerDiameterLimit = resolve_dimensional_values(base.get_pocket_inner_diameter().value(), DimensionalValues::MINIMUM);
+        }
+        if (!outerDiameterLimit || ringOuterDiameter > outerDiameterLimit.value()) {
+            continue;
+        }
+        // Height: the stated limit, and on a vertical base the boat the ring stands in.
+        if (base.get_maximum_core_height() && ringHeight > base.get_maximum_core_height().value()) {
+            continue;
+        }
+        if (base.get_mounting() == OrientationEnum::VERTICAL && base.get_boat_width() &&
+            ringHeight > resolve_dimensional_values(base.get_boat_width().value(), DimensionalValues::MINIMUM)) {
+            continue;
+        }
+        bases.push_back(bobbin);
+    }
+    return bases;
+}
 
 std::vector<InsulationMaterial> get_insulation_materials() {
     if (insulationMaterialDatabase.empty()) {

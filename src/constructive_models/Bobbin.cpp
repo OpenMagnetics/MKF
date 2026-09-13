@@ -287,6 +287,10 @@ class BobbinTDataProcessor : public BobbinDataProcessor{
         CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
             // Toroidal "virtual" bobbin: the winding is held directly on the core
             // ring with no physical former. Column and wall thicknesses are 0.
+            // ABT #1173 (WP4): a toroid base (functionalDescription.base) changes none of this - the
+            // base holds the wound ring from outside, so the window stays the ring's. Its pins are
+            // placed by process_data (get_toroid_base_pin_rail_distance) and the base itself is read
+            // with Bobbin::get_base().
             // Dimensions A (outer diameter), B (inner diameter), C (height) match
             // the ring-core shape dimensions (see CorePieceT::process_winding_window).
             auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
@@ -430,6 +434,11 @@ void load_interpolators() {
             // or shape is given by NAME in the browser. Ask whether the row is usable.
             if (!datum.second.get_functional_description()) {
                 unusableBobbins.push_back(datum.first + " (no functionalDescription)");
+                continue;
+            }
+            if (Bobbin::is_toroid_base_record(datum.second.get_functional_description().value())) {
+                // ABT #1173: a toroid base is not a former around a core window; it says nothing about
+                // how much of a window a former leaves for winding.
                 continue;
             }
             auto coreShapeName = datum.second.get_functional_description()->get_shape();
@@ -1364,6 +1373,104 @@ double Bobbin::get_pin_rail_distance(const MAS::BobbinFunctionalDescription& fun
     return datum.distance.value();
 }
 
+bool Bobbin::has_base() const {
+    return get_functional_description() && get_functional_description()->get_base().has_value();
+}
+
+MAS::BobbinBase Bobbin::get_base() const {
+    if (!has_base()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + get_name().value_or("<unnamed>") + "' has no toroid base (functionalDescription.base).");
+    }
+    return get_functional_description()->get_base().value();
+}
+
+bool Bobbin::is_toroid_base_record(const BobbinFunctionalDescription& functionalDescription) {
+    if (functionalDescription.get_family() != BobbinFamily::T || !functionalDescription.get_base()) {
+        return false;
+    }
+    const auto& dimensions = functionalDescription.get_dimensions();
+    return !dimensions.count("A") && !dimensions.count("B") && !dimensions.count("C");
+}
+
+MAS::OrientationEnum Bobbin::get_toroid_base_pin_orientation(const MAS::BobbinBase& base) {
+    // Ring flat (horizontal mounting): pins along -Y, which is expand_pinout's VERTICAL placement.
+    // Ring on edge (vertical mounting): pins along -Z, expand_pinout's HORIZONTAL placement.
+    return base.get_mounting() == MAS::OrientationEnum::HORIZONTAL ? MAS::OrientationEnum::VERTICAL
+                                                                   : MAS::OrientationEnum::HORIZONTAL;
+}
+
+double Bobbin::get_toroid_base_pin_rail_distance(const MAS::BobbinFunctionalDescription& functionalDescription) {
+    if (functionalDescription.get_family() != BobbinFamily::T) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "A toroid base's pin rail is asked of a family '" + to_string(functionalDescription.get_family()) +
+            "' bobbin; only family t carries a toroid base.");
+    }
+    if (!functionalDescription.get_base()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "The family t bobbin has no base (functionalDescription.base), so nothing holds the ring above the board "
+            "and there is no seating plane to start pins from.");
+    }
+    const auto base = functionalDescription.get_base().value();
+    const auto dimensions = flatten_dimensions(functionalDescription.get_dimensions());
+    const bool flat = base.get_mounting() == MAS::OrientationEnum::HORIZONTAL;
+    const std::string label = flat ? "C" : "A";
+    if (!functionalDescription.get_dimensions().count(label) || !(dimensions.at(label) > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            std::string("The toroid base is mounted ") + (flat ? "horizontally" : "vertically") +
+            ", so its seating plane lies " + (flat ? "half the ring's HEIGHT" : "half the ring's OUTER DIAMETER") +
+            " plus the standoff below the ring's centre, but the bobbin states no ring dimension '" + label +
+            "'. Seat a core in the base (Bobbin::create_toroid_bobbin_on_base) before placing its pins.");
+    }
+    const double standoff = resolve_dimensional_values(base.get_standoff());
+    if (standoff < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "The toroid base states a negative standoff (" + std::to_string(standoff) + " m).");
+    }
+    return dimensions.at(label) / 2 + standoff;
+}
+
+Bobbin Bobbin::create_toroid_bobbin_on_base(Core core, const Bobbin& base) {
+    if (core.get_shape_family() != CoreShapeFamily::T) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Only a toroidal core sits on a toroid base; core '" + core.get_shape_name() + "' is not toroidal.");
+    }
+    if (!base.get_functional_description() || !is_toroid_base_record(base.get_functional_description().value())) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + base.get_name().value_or("<unnamed>") + "' is not a catalogue toroid base (family t with a "
+            "base and no ring dimensions A, B, C).");
+    }
+    if (!core.get_processed_description()) {
+        core.process_data();
+    }
+    auto shape = flatten_dimensions(core.resolve_shape());
+    const auto shapeDimensions = flatten_dimensions(shape.get_dimensions().value());
+    for (const auto* label : {"A", "B", "C"}) {
+        if (!shapeDimensions.count(label) || !(shapeDimensions.at(label) > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Toroidal shape '" + core.get_shape_name() + "' has no dimension '" + label + "'.");
+        }
+    }
+    const double coating = core.get_coating_thickness();
+    const double stacks = static_cast<double>(core.get_number_stacks());
+
+    auto functionalDescription = base.get_functional_description().value();
+    functionalDescription.set_shape(core.get_shape_name());
+    std::map<std::string, Dimension> ring;
+    ring["A"] = shapeDimensions.at("A") + 2 * coating;
+    ring["B"] = shapeDimensions.at("B") - 2 * coating;
+    ring["C"] = shapeDimensions.at("C") * stacks + 2 * coating;
+    functionalDescription.set_dimensions(ring);
+
+    Bobbin bobbin;
+    bobbin.set_name(base.get_name());
+    bobbin.set_manufacturer_info(base.get_manufacturer_info());
+    bobbin.set_distributors_info(base.get_distributors_info());
+    bobbin.set_functional_description(functionalDescription);
+    bobbin.process_data();
+    return bobbin;
+}
+
 std::vector<MAS::Pin> Bobbin::expand_pinout(const MAS::Pinout& pinout,
                                             MAS::OrientationEnum orientation,
                                             double pinRailDistance) {
@@ -1560,6 +1667,12 @@ void Bobbin::process_data() {
             "object all arrive here as an empty bobbin.");
     }
 
+    if (is_toroid_base_record(get_functional_description().value())) {
+        // ABT #1173: a catalogue toroid base holds no ring yet, so there is no winding window to take.
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Bobbin '" + get_name().value_or("<unnamed>") + "' is a toroid base with no ring seated in it (no "
+            "dimensions A, B, C). Seat a toroidal core in it with Bobbin::create_toroid_bobbin_on_base.");
+    }
     auto processor = BobbinDataProcessor::factory(*this);
     auto processedDescription = (*processor).process_data(*this);
 
@@ -1616,10 +1729,23 @@ void Bobbin::process_data() {
         // ABT #1207: and the record must also locate its pin RAIL. Without it the only faces
         // left to hang a pin from are inside the core window. Such a record keeps no pins, like
         // one without a pinDescription; get_pin repeats exactly which label is missing.
-        const auto railDatum = find_pin_rail_distance(functionalDescriptionForPins);
-        if (pinout.get_pitch() && pinout.get_row_distance() && pinout.get_pin_description() && orientation &&
-            railDatum.distance) {
-            processedDescription.set_pins(expand_pinout(pinout, orientation.value(), railDatum.distance.value()));
+        if (functionalDescriptionForPins.get_family() == BobbinFamily::T && functionalDescriptionForPins.get_base()) {
+            // ABT #1173 / WP4: a toroid base owns the pins. Its mounting, not `orientation` (the former's
+            // meaning), says which way they leave, and the seating plane is the rail. An incomplete
+            // footprint keeps no pins, as on a former; a base whose ring dimension is missing throws in
+            // get_toroid_base_pin_rail_distance, because the footprint is complete and only the ring is not.
+            if (pinout.get_pitch() && pinout.get_row_distance() && pinout.get_pin_description()) {
+                const auto base = functionalDescriptionForPins.get_base().value();
+                processedDescription.set_pins(expand_pinout(pinout, get_toroid_base_pin_orientation(base),
+                                                            get_toroid_base_pin_rail_distance(functionalDescriptionForPins)));
+            }
+        }
+        else {
+            const auto railDatum = find_pin_rail_distance(functionalDescriptionForPins);
+            if (pinout.get_pitch() && pinout.get_row_distance() && pinout.get_pin_description() && orientation &&
+                railDatum.distance) {
+                processedDescription.set_pins(expand_pinout(pinout, orientation.value(), railDatum.distance.value()));
+            }
         }
     }
 

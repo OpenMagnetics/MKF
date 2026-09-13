@@ -1178,7 +1178,7 @@ ManufacturabilityReport Manufacturability::calculate_report(Magnetic& magnetic, 
     report.add_finding(evaluate_r13_manual_termination(magnetic));
     report.add_finding(evaluate_r14_shield_terminations(magnetic));
     report.add_finding(evaluate_r15_lateral_gaps(magnetic, inputs));
-    report.add_finding(not_evaluated_rule("R16"));
+    report.add_finding(evaluate_r16_toroid_insulation_and_header(magnetic, inputs));
     report.add_finding(evaluate_r17_production_tests(magnetic, inputs));
     return report;
 }

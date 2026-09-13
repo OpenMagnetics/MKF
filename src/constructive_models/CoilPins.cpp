@@ -27,7 +27,8 @@
 //     spare pin exists, else the finish is a buried FLYING_LEAD (rule 5 as amended by WP8 R14).
 //
 // Deliberate limits, each of which throws or is reported rather than guessed:
-//   * Round winding windows (toroids on a family `t` base) are WP4's and throw here.
+//   * Round winding windows (toroids on a family `t` base, WP4 / ABT #1173) follow the toroid rule in
+//     assign_pins_on_toroid_base: winding k takes side k of the base.
 //   * Role tags (switched-node end, primary return shared with a shield) do not exist in MAS, so
 //     rule 5's "switched node is the start" cannot be applied; the first-wound end is the start.
 //   * Removable pins are read but change nothing: unused pins are never counted as a creepage
@@ -381,6 +382,212 @@ bool Coil::has_complete_pin_connections() const {
     return true;
 }
 
+namespace {
+
+// ABT #1173 (WP4): the toroid rule of RFC 0013 ("Toroids on a base"). A toroid base's pins stand in a
+// rectangle, two rows, one per side of the base. Winding k (in the order the design lists them) takes
+// the pins of side k - row k - and all windings start at the same angular side: every row is walked
+// from -X, so on the counter-clockwise numbering of Bobbin::expand_pinout a common-mode choke on a
+// 4-pin base reads winding 1 = pins 1 (start) and 2 (finish), winding 2 = pins 4 (start) and 3
+// (finish), the WE-CMB footprint "1 2 / 4 3". Two windings wound on opposite halves of the ring thus
+// land on opposite sides of the base. Inside a row the pins are allocated as on a former's row: the
+// start half towards -X, the finish half towards +X, inner pins first (adjacent start and finish),
+// strands per rule 4 (already decided in the plan), never a corner pin for insulated or margin-wound
+// leads (rule 7). A single winding whose ends do not fit one side puts its starts (and taps) on side 0
+// and its finishes on side 1. More windings than sides, a winding with user pins on both sides, or two
+// windings claiming one side throw. The creepage between isolation sides is checked by the caller,
+// exactly as on a former.
+void assign_pins_on_toroid_base(std::vector<WindingPinPlan>& plans, const std::vector<PlacedPin>& placedPins,
+                                const std::vector<std::vector<size_t>>& rowWalk,
+                                const std::map<std::string, size_t>& placedIndexByName,
+                                std::vector<std::optional<std::pair<size_t, std::string>>>& pinOwner,
+                                const std::string& bobbinName) {
+    const size_t numberRows = rowWalk.size();
+    if (numberRows != 2) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Toroid base '" + bobbinName + "' has " + std::to_string(numberRows) + " pin rows. The toroid rule gives each "
+            "winding one of the base's two sides (RFC 0013, 'Toroids on a base'), so the pins must stand in two rows.");
+    }
+    auto known_pins_text = [&]() {
+        std::string text;
+        for (const auto& placedPin : placedPins) {
+            text += (text.empty() ? "" : ", ") + placedPin.name;
+        }
+        return text;
+    };
+
+    // --- user pins: exist, one owner each, and the side they put their winding on ------------------
+    std::map<size_t, std::set<size_t>> userRowsByPlan;
+    for (size_t planIndex = 0; planIndex < plans.size(); ++planIndex) {
+        for (auto& slot : plans[planIndex].slots) {
+            if (!slot.userPin) {
+                continue;
+            }
+            auto found = placedIndexByName.find(slot.pinName.value());
+            if (found == placedIndexByName.end()) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Winding '" + plans[planIndex].name + "' terminates on pin '" + slot.pinName.value() +
+                    "', which the toroid base '" + bobbinName + "' does not have. It has: " + known_pins_text() + ".");
+            }
+            const size_t pinIndex = found->second;
+            if (pinOwner[pinIndex] && pinOwner[pinIndex]->first != planIndex) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Pin '" + slot.pinName.value() + "' of toroid base '" + bobbinName + "' is given to winding '" +
+                    pinOwner[pinIndex]->second + "' and to winding '" + plans[planIndex].name + "'.");
+            }
+            pinOwner[pinIndex] = std::make_pair(planIndex, plans[planIndex].name);
+            userRowsByPlan[planIndex].insert(placedPins[pinIndex].row);
+        }
+    }
+
+    // --- windings in the order the design lists them ------------------------------------------------
+    std::vector<size_t> planned;
+    for (size_t planIndex = 0; planIndex < plans.size(); ++planIndex) {
+        if (!plans[planIndex].legacy) {
+            planned.push_back(planIndex);
+        }
+    }
+    std::stable_sort(planned.begin(), planned.end(),
+                     [&](size_t a, size_t b) { return plans[a].windingIndex < plans[b].windingIndex; });
+    if (planned.size() > numberRows) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "The coil has " + std::to_string(planned.size()) + " windings to terminate on toroid base '" + bobbinName +
+            "', which has two sides; the toroid rule gives each winding a side of its own (RFC 0013, 'Toroids on a "
+            "base'). Use a base per winding pair or terminate the extra windings as flying leads.");
+    }
+
+    // --- one winding's slots onto pins --------------------------------------------------------------
+    auto free_pins = [&](size_t row) {
+        std::vector<size_t> freeWalk;
+        for (auto pinIndex : rowWalk[row]) {
+            if (!pinOwner[pinIndex]) {
+                freeWalk.push_back(pinIndex);
+            }
+        }
+        return freeWalk;
+    };
+    auto slots_of = [&](WindingPinPlan& plan, bool startHalf) {
+        std::vector<PinSlot*> slots;
+        for (auto& slot : plan.slots) {
+            if (!slot.userPin && !slot.offPin && slot.startHalf == startHalf) {
+                slots.push_back(&slot);
+            }
+        }
+        return slots;
+    };
+    auto give = [&](size_t planIndex, PinSlot* slot, size_t pinIndex) {
+        slot->pinName = placedPins[pinIndex].name;
+        pinOwner[pinIndex] = std::make_pair(planIndex, plans[planIndex].name);
+    };
+    auto usable = [&](size_t planIndex, const std::vector<size_t>& pins) {
+        std::vector<size_t> result;
+        for (auto pinIndex : pins) {
+            if (!(plans[planIndex].avoidCorners && placedPins[pinIndex].corner)) {
+                result.push_back(pinIndex);
+            }
+        }
+        return result;
+    };
+    auto row_too_small = [&](size_t planIndex, size_t row, size_t demand, size_t available) {
+        return InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Side " + std::to_string(row) + " of toroid base '" + bobbinName + "' has " + std::to_string(available) +
+            " free pins for winding '" + plans[planIndex].name + "', which needs " + std::to_string(demand) +
+            (plans[planIndex].avoidCorners ? " (its insulated or margin-wound leads may not take a corner pin, RFC 0013 rule 7)" : std::string("")) +
+            ". Use a base with more pins, or fewer separate strands and taps.");
+    };
+    // Starts and finishes on one side: the start half towards -X, the finish half towards +X, inner first.
+    auto place_on_one_side = [&](size_t planIndex, size_t row) {
+        auto& plan = plans[planIndex];
+        auto startSlots = slots_of(plan, true);
+        auto finishSlots = slots_of(plan, false);
+        auto freeWalk = free_pins(row);
+        const size_t demand = startSlots.size() + finishSlots.size();
+        if (demand > freeWalk.size()) {
+            throw row_too_small(planIndex, row, demand, freeWalk.size());
+        }
+        const size_t startHalfSize = startSlots.size() + (freeWalk.size() - demand) / 2;
+        std::vector<size_t> startHalf(freeWalk.begin(), freeWalk.begin() + startHalfSize);
+        std::vector<size_t> finishHalf(freeWalk.begin() + startHalfSize, freeWalk.end());
+        std::reverse(startHalf.begin(), startHalf.end());  // inner first
+        startHalf = usable(planIndex, startHalf);
+        finishHalf = usable(planIndex, finishHalf);
+        if (startHalf.size() < startSlots.size() || finishHalf.size() < finishSlots.size()) {
+            throw row_too_small(planIndex, row, demand, std::min(startHalf.size(), startSlots.size()) + std::min(finishHalf.size(), finishSlots.size()));
+        }
+        // Inner to outer on the start half: the last tap first, so the row reads start, tap 1, ... from -X.
+        std::reverse(startSlots.begin(), startSlots.end());
+        for (size_t index = 0; index < startSlots.size(); ++index) {
+            give(planIndex, startSlots[index], startHalf[index]);
+        }
+        for (size_t index = 0; index < finishSlots.size(); ++index) {
+            give(planIndex, finishSlots[index], finishHalf[index]);
+        }
+    };
+    // All of one half on a side of its own, centred along the row, in slot order from -X.
+    auto place_centred = [&](size_t planIndex, size_t row, std::vector<PinSlot*> slots) {
+        auto candidates = usable(planIndex, free_pins(row));
+        if (slots.size() > candidates.size()) {
+            throw row_too_small(planIndex, row, slots.size(), candidates.size());
+        }
+        const size_t offset = (candidates.size() - slots.size()) / 2;
+        for (size_t index = 0; index < slots.size(); ++index) {
+            give(planIndex, slots[index], candidates[offset + index]);
+        }
+    };
+
+    if (planned.size() == 1) {
+        const size_t planIndex = planned.front();
+        auto& plan = plans[planIndex];
+        std::optional<size_t> userRow;
+        if (userRowsByPlan.count(planIndex) && userRowsByPlan.at(planIndex).size() == 1) {
+            userRow = *userRowsByPlan.at(planIndex).begin();
+        }
+        const size_t demand = slots_of(plan, true).size() + slots_of(plan, false).size();
+        const bool spansBothSides = userRowsByPlan.count(planIndex) && userRowsByPlan.at(planIndex).size() > 1;
+        const size_t row = userRow.value_or(0);
+        if (!spansBothSides && demand <= usable(planIndex, free_pins(row)).size()) {
+            place_on_one_side(planIndex, row);
+        }
+        else {
+            place_centred(planIndex, 0, slots_of(plan, true));
+            place_centred(planIndex, 1, slots_of(plan, false));
+        }
+        return;
+    }
+
+    // Two windings: winding k on side k, unless its user pins already put it on the other side.
+    std::map<size_t, size_t> rowOfPlan;
+    for (auto planIndex : planned) {
+        if (!userRowsByPlan.count(planIndex)) {
+            continue;
+        }
+        const auto& rows = userRowsByPlan.at(planIndex);
+        if (rows.size() > 1) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Winding '" + plans[planIndex].name + "' has user pins on both sides of toroid base '" + bobbinName +
+                "'; with two windings on the base, each winding takes the two ends of one side (RFC 0013, 'Toroids on a base').");
+        }
+        rowOfPlan[planIndex] = *rows.begin();
+    }
+    if (rowOfPlan.size() == 2 && rowOfPlan.at(planned[0]) == rowOfPlan.at(planned[1])) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Windings '" + plans[planned[0]].name + "' and '" + plans[planned[1]].name + "' both have user pins on side " +
+            std::to_string(rowOfPlan.at(planned[0])) + " of toroid base '" + bobbinName + "'; each winding takes a side of its own.");
+    }
+    for (size_t k = 0; k < planned.size(); ++k) {
+        if (rowOfPlan.count(planned[k])) {
+            continue;
+        }
+        const size_t other = planned[1 - k];
+        rowOfPlan[planned[k]] = rowOfPlan.count(other) ? 1 - rowOfPlan.at(other) : k;
+    }
+    for (auto planIndex : planned) {
+        place_on_one_side(planIndex, rowOfPlan.at(planIndex));
+    }
+}
+
+}  // namespace
+
 PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
     PinAssignmentResult result;
     Bobbin bobbinCopy = bobbin;
@@ -393,10 +600,8 @@ PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
         result.skippedReason = "the bobbin has no processedDescription.pins[], so winding ends stay at the window border";
         return result;
     }
-    if (bobbinCopy.get_winding_window_shape() == WindingWindowShape::ROUND) {
-        throw NotImplementedException("Pin assignment on a round winding window (a toroid on a family t base, RFC 0013 "
-                                      "'Toroids on a base', WP4)");
-    }
+    // ABT #1173 (WP4): a round window is a toroid on a family t base; its pins go by the toroid rule below.
+    const bool toroidBase = bobbinCopy.get_winding_window_shape() == WindingWindowShape::ROUND;
     if (!get_sections_description() || !get_turns_description()) {
         throw CoilNotProcessedException("assign_pins runs after winding: the coil has no sections or turns yet");
     }
@@ -420,7 +625,8 @@ PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
     }
     for (size_t rowIndex = 0; rowIndex < numberRows; ++rowIndex) {
         // Horizontal: every row starts at -X. Vertical: row 0 at -X, row 1 at +X (diagonal).
-        if (!horizontal && rowIndex % 2 == 1) {
+        // Toroid base: every row from -X, so all windings start at the same angular side.
+        if (!horizontal && !toroidBase && rowIndex % 2 == 1) {
             std::reverse(rowWalk[rowIndex].begin(), rowWalk[rowIndex].end());
         }
     }
@@ -632,7 +838,7 @@ PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
         return a.buildRank < b.buildRank;
     });
 
-    // --- user pins: exist, and one owner each -----------------------------------------------
+    // --- owners, sides, required creepage (shared by the former and the toroid base) ---------
     std::vector<std::optional<std::pair<size_t, std::string>>> pinOwner(placedPins.size());  // plan index, what
     std::vector<IsolationSide> sidesInBuildOrder;
     for (const auto& plan : plans) {
@@ -640,130 +846,7 @@ PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
             sidesInBuildOrder.push_back(plan.side);
         }
     }
-    std::vector<std::string> knownPins;
-    for (const auto& placedPin : placedPins) {
-        knownPins.push_back(placedPin.name);
-    }
-    auto known_pins_text = [&]() {
-        std::string text;
-        for (const auto& name : knownPins) {
-            text += (text.empty() ? "" : ", ") + name;
-        }
-        return text;
-    };
-    std::map<IsolationSide, std::set<size_t>> userRowsBySide;
-    std::map<IsolationSide, std::pair<std::string, std::string>> firstUserPinBySide;  // pin, winding
-    for (size_t planIndex = 0; planIndex < plans.size(); ++planIndex) {
-        auto& plan = plans[planIndex];
-        for (auto& slot : plan.slots) {
-            if (!slot.userPin) {
-                continue;
-            }
-            auto found = placedIndexByName.find(slot.pinName.value());
-            if (found == placedIndexByName.end()) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                    "Winding '" + plan.name + "' terminates on pin '" + slot.pinName.value() + "', which the bobbin '" +
-                    bobbinCopy.get_name().value_or("<unnamed>") + "' does not have. It has: " + known_pins_text() + ".");
-            }
-            size_t pinIndex = found->second;
-            if (pinOwner[pinIndex] && plans[pinOwner[pinIndex]->first].side != plan.side) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                    "Pin '" + slot.pinName.value() + "' is given to winding '" + plans[pinOwner[pinIndex]->first].name +
-                    "' and to winding '" + plan.name + "', which are on different isolation sides.");
-            }
-            pinOwner[pinIndex] = std::make_pair(planIndex, plan.name);
-            userRowsBySide[plan.side].insert(placedPins[pinIndex].row);
-            if (!firstUserPinBySide.count(plan.side)) {
-                firstUserPinBySide[plan.side] = {slot.pinName.value(), plan.name};
-            }
-        }
-    }
-
-    // --- rule 1: rows are isolation groups ----------------------------------------------------
     const size_t numberSides = sidesInBuildOrder.size();
-    std::map<IsolationSide, size_t> rowOfSide;
-    std::vector<std::vector<IsolationSide>> sidesOfRow(numberRows);
-    auto pin_on_row_text = [&](IsolationSide side) {
-        auto [pinName, windingName] = firstUserPinBySide.at(side);
-        return "pin '" + pinName + "' (winding '" + windingName + "', side " + side_name(side) + ")";
-    };
-    for (auto side : sidesInBuildOrder) {
-        if (!userRowsBySide.count(side)) {
-            continue;
-        }
-        const auto& rows = userRowsBySide.at(side);
-        if (rows.size() > 1 && numberSides <= numberRows) {
-            // A side spread over two rows while every side could have its own row.
-            std::string rowList;
-            for (auto row : rows) {
-                rowList += (rowList.empty() ? "" : " and ") + std::to_string(row);
-            }
-            throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                "Isolation side " + side_name(side) + " has user pins on rows " + rowList + " of bobbin '" +
-                bobbinCopy.get_name().value_or("<unnamed>") + "' (" + pin_on_row_text(side) + " among them); rows are "
-                "isolation groups (RFC 0013 rule 1), so one side's pins belong on one row.");
-        }
-        size_t row = *rows.begin();
-        if (numberSides <= numberRows && !sidesOfRow[row].empty()) {
-            auto other = sidesOfRow[row].front();
-            throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                "Wrong row: " + pin_on_row_text(side) + " is on row " + std::to_string(row) + ", which already holds " +
-                pin_on_row_text(other) + ". The bobbin has " + std::to_string(numberRows) + " rows for " +
-                std::to_string(numberSides) + " isolation sides, so each side gets a row of its own (RFC 0013 rule 1).");
-        }
-        rowOfSide[side] = row;
-        sidesOfRow[row].push_back(side);
-    }
-    for (auto side : sidesInBuildOrder) {
-        if (rowOfSide.count(side)) {
-            continue;
-        }
-        // First-wound winding of this side decides which flange-side row is nearer on a
-        // horizontal former (rows sit one per end flange, at y = -+rowDistance/2).
-        double firstTurnY = 0;
-        for (const auto& plan : plans) {
-            if (plan.side == side) {
-                firstTurnY = plan.firstTurnY;
-                break;
-            }
-        }
-        std::optional<size_t> chosen;
-        for (size_t row = 0; row < numberRows; ++row) {
-            if (numberSides <= numberRows && !sidesOfRow[row].empty()) {
-                continue;
-            }
-            if (!chosen) {
-                chosen = row;
-                continue;
-            }
-            // More sides than rows: fewest sides first. Otherwise, on a horizontal former, the
-            // row nearer the flange the winding starts at; ties keep the lower row.
-            if (numberSides > numberRows) {
-                if (sidesOfRow[row].size() < sidesOfRow[chosen.value()].size()) {
-                    chosen = row;
-                }
-            }
-            else if (horizontal) {
-                double rowY = placedPins[rowWalk[row].front()].centre[1];
-                double chosenY = placedPins[rowWalk[chosen.value()].front()].centre[1];
-                if (std::abs(rowY - firstTurnY) < std::abs(chosenY - firstTurnY) - pinCoordinateTolerance) {
-                    chosen = row;
-                }
-            }
-        }
-        if (!chosen) {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT, "No row is left for isolation side " + side_name(side) + ".");
-        }
-        rowOfSide[side] = chosen.value();
-        sidesOfRow[chosen.value()].push_back(side);
-    }
-    // Keep each row's sides in build order.
-    for (auto& rowSides : sidesOfRow) {
-        std::stable_sort(rowSides.begin(), rowSides.end(), [&](IsolationSide a, IsolationSide b) {
-            return std::find(sidesInBuildOrder.begin(), sidesInBuildOrder.end(), a) <
-                   std::find(sidesInBuildOrder.begin(), sidesInBuildOrder.end(), b);
-        });
-    }
 
     // Required creepage between isolation sides.
     if (numberSides < 2) {
@@ -783,8 +866,10 @@ PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
         throw CoreNotProcessedException("assign_pins needs the processed core for the through-core creepage path");
     }
     const double halfWidth = core.get_width() / 2;
-    const double halfHeight = core.get_height() / 2;
-    const double halfDepth = core.get_depth() / 2;
+    // A toroid's pins are in the MVB++ toroid frame (ring axis Y, ring in XZ), while the processed core
+    // is MKF's ring frame (ring in XY, width = height = outer diameter, depth = ring height): swap.
+    const double halfHeight = toroidBase ? core.get_depth() / 2 : core.get_height() / 2;
+    const double halfDepth = toroidBase ? core.get_height() / 2 : core.get_depth() / 2;
     auto creepage_between = [&](size_t pinA, size_t pinB) {
         PinCreepagePath path;
         path.pinA = placedPins[pinA].name;
@@ -795,181 +880,313 @@ PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
         return path;
     };
 
-    // --- shield finishes: on a spare pin when one exists, else buried --------------------------
-    auto pins_needed_on_row = [&](size_t row, bool withShieldFinishes) {
-        size_t needed = 0;
-        for (const auto& plan : plans) {
-            if (plan.legacy || rowOfSide.at(plan.side) != row) {
-                continue;
-            }
-            for (const auto& slot : plan.slots) {
-                if (slot.userPin || slot.offPin) {
-                    continue;
-                }
-                if (plan.isShield && slot.end == End::FINISH && !withShieldFinishes) {
-                    continue;
-                }
-                ++needed;
-            }
-        }
-        return needed;
-    };
-    auto free_pins_on_row = [&](size_t row) {
-        size_t freePins = 0;
-        for (auto pinIndex : rowWalk[row]) {
-            if (!pinOwner[pinIndex]) {
-                ++freePins;
-            }
-        }
-        return freePins;
-    };
-    for (size_t row = 0; row < numberRows; ++row) {
-        if (pins_needed_on_row(row, true) <= free_pins_on_row(row)) {
-            continue;
-        }
-        for (auto& plan : plans) {
-            if (!plan.isShield || plan.legacy || rowOfSide.at(plan.side) != row) {
-                continue;
-            }
-            for (auto& slot : plan.slots) {
-                if (slot.end == End::FINISH && !slot.userPin && !slot.offPin) {
-                    slot.offPin = true;
-                    result.notes.push_back("Shield winding '" + plan.name + "' has no spare pin on row " + std::to_string(row) +
-                                           ", so its finish is buried as a flying lead (WP8 R14 prefers both ends on pins).");
-                }
-            }
-        }
+    if (toroidBase) {
+        assign_pins_on_toroid_base(plans, placedPins, rowWalk, placedIndexByName, pinOwner,
+                                   bobbinCopy.get_name().value_or("<unnamed>"));
     }
-
-    // --- allocate, row by row, block by block ------------------------------------------------
-    for (size_t row = 0; row < numberRows; ++row) {
-        const auto& rowSides = sidesOfRow[row];
-        if (rowSides.empty()) {
-            continue;
+    else {
+        // --- user pins: exist, and one owner each -----------------------------------------------
+        std::vector<std::string> knownPins;
+        for (const auto& placedPin : placedPins) {
+            knownPins.push_back(placedPin.name);
         }
-        const auto& walk = rowWalk[row];
-        // Free pins of the row in walk order, and each side's demand.
-        std::vector<size_t> demand;
-        for (auto side : rowSides) {
-            size_t sideDemand = 0;
-            for (const auto& plan : plans) {
-                if (plan.legacy || plan.side != side) {
+        auto known_pins_text = [&]() {
+            std::string text;
+            for (const auto& name : knownPins) {
+                text += (text.empty() ? "" : ", ") + name;
+            }
+            return text;
+        };
+        std::map<IsolationSide, std::set<size_t>> userRowsBySide;
+        std::map<IsolationSide, std::pair<std::string, std::string>> firstUserPinBySide;  // pin, winding
+        for (size_t planIndex = 0; planIndex < plans.size(); ++planIndex) {
+            auto& plan = plans[planIndex];
+            for (auto& slot : plan.slots) {
+                if (!slot.userPin) {
                     continue;
                 }
-                for (const auto& slot : plan.slots) {
-                    if (!slot.userPin && !slot.offPin) {
-                        ++sideDemand;
-                    }
-                }
-            }
-            demand.push_back(sideDemand);
-        }
-        std::vector<size_t> freeWalk;
-        for (auto pinIndex : walk) {
-            if (!pinOwner[pinIndex]) {
-                freeWalk.push_back(pinIndex);
-            }
-        }
-        size_t totalDemand = 0;
-        for (auto sideDemand : demand) {
-            totalDemand += sideDemand;
-        }
-        if (totalDemand > freeWalk.size()) {
-            std::string sideList;
-            for (size_t sideIndex = 0; sideIndex < rowSides.size(); ++sideIndex) {
-                sideList += (sideList.empty() ? "" : ", ") + side_name(rowSides[sideIndex]) + " needs " + std::to_string(demand[sideIndex]);
-            }
-            throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                "Row " + std::to_string(row) + " of bobbin '" + bobbinCopy.get_name().value_or("<unnamed>") + "' has " +
-                std::to_string(freeWalk.size()) + " free pins but " + sideList + " (" + std::to_string(totalDemand) +
-                " in all). Use a former with more pins or fewer separate strands and taps.");
-        }
-        // Blocks along the row, sides in build order, the spare pins spread over the gaps so the
-        // sides sit as far apart as the row allows.
-        size_t spare = freeWalk.size() - totalDemand;
-        size_t numberGaps = rowSides.size() - 1;
-        std::vector<std::pair<size_t, size_t>> blocks;  // [first, last+1) into freeWalk
-        size_t cursor = 0;
-        for (size_t sideIndex = 0; sideIndex < rowSides.size(); ++sideIndex) {
-            size_t blockSize = demand[sideIndex];
-            if (rowSides.size() == 1) {
-                blockSize = freeWalk.size();  // a row of its own: the whole row is the block
-            }
-            blocks.push_back({cursor, cursor + blockSize});
-            cursor += blockSize;
-            if (sideIndex < numberGaps) {
-                // Pin COUNTS: the spare pins split over the gaps, the remainder to the first gaps.
-                size_t gap = spare / numberGaps + (sideIndex < spare % numberGaps ? 1 : 0);
-                cursor += gap;
-            }
-        }
-        for (size_t sideIndex = 0; sideIndex < rowSides.size(); ++sideIndex) {
-            auto side = rowSides[sideIndex];
-            std::vector<size_t> block(freeWalk.begin() + blocks[sideIndex].first, freeWalk.begin() + blocks[sideIndex].second);
-            // Demand per half, over this side's windings.
-            size_t startDemand = 0;
-            size_t finishDemand = 0;
-            for (const auto& plan : plans) {
-                if (plan.legacy || plan.side != side) {
-                    continue;
-                }
-                for (const auto& slot : plan.slots) {
-                    if (slot.userPin || slot.offPin) {
-                        continue;
-                    }
-                    (slot.startHalf ? startDemand : finishDemand) += 1;
-                }
-            }
-            // Split the block so the used pins sit centred in it: the spare pins go half to
-            // each outer end (pin counts, the odd one to the finish end).
-            size_t blockSpare = block.size() - startDemand - finishDemand;
-            size_t startHalfSize = startDemand + blockSpare / 2;
-            std::vector<size_t> startHalf(block.begin(), block.begin() + startHalfSize);   // walk order
-            std::vector<size_t> finishHalf(block.begin() + startHalfSize, block.end());     // walk order
-            std::reverse(startHalf.begin(), startHalf.end());  // inner (centre) first
-            size_t startCursor = 0;
-            size_t finishCursor = 0;
-            for (auto& plan : plans) {
-                if (plan.legacy || plan.side != side) {
-                    continue;
-                }
-                // Start half, inner to outer: the last tap first, the first start last, so that
-                // walking the row from its start end reads start, tap 1, ..., tap K-1.
-                std::vector<PinSlot*> startOrder;
-                std::vector<PinSlot*> finishOrder;
-                for (auto& slot : plan.slots) {
-                    if (slot.userPin || slot.offPin) {
-                        continue;
-                    }
-                    (slot.startHalf ? startOrder : finishOrder).push_back(&slot);
-                }
-                std::reverse(startOrder.begin(), startOrder.end());
-                auto take = [&](std::vector<size_t>& half, size_t& halfCursor, PinSlot* slot, const std::string& halfName) {
-                    while (halfCursor < half.size()) {
-                        size_t pinIndex = half[halfCursor];
-                        ++halfCursor;
-                        if (plan.avoidCorners && placedPins[pinIndex].corner) {
-                            continue;  // rule 7: left free, never given to a stripped/margin lead
-                        }
-                        slot->pinName = placedPins[pinIndex].name;
-                        pinOwner[pinIndex] = std::make_pair(&plan - plans.data(), plan.name);
-                        return;
-                    }
+                auto found = placedIndexByName.find(slot.pinName.value());
+                if (found == placedIndexByName.end()) {
                     throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                        "Row " + std::to_string(row) + " of bobbin '" + bobbinCopy.get_name().value_or("<unnamed>") +
-                        "' has no free pin left on its " + halfName + " half for the " + end_name(slot->end) +
-                        " of winding '" + plan.name + "'" +
-                        (plan.avoidCorners ? " (its insulated or margin-wound leads may not take a corner pin, RFC 0013 rule 7)" : std::string("")) +
-                        ". Nesting windings from the inner pins outward keeps leads from crossing (rule 6), so the pins cannot be borrowed from the other half.");
-                };
-                for (auto* slot : startOrder) {
-                    take(startHalf, startCursor, slot, "start");
+                        "Winding '" + plan.name + "' terminates on pin '" + slot.pinName.value() + "', which the bobbin '" +
+                        bobbinCopy.get_name().value_or("<unnamed>") + "' does not have. It has: " + known_pins_text() + ".");
                 }
-                for (auto* slot : finishOrder) {
-                    take(finishHalf, finishCursor, slot, "finish");
+                size_t pinIndex = found->second;
+                if (pinOwner[pinIndex] && plans[pinOwner[pinIndex]->first].side != plan.side) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "Pin '" + slot.pinName.value() + "' is given to winding '" + plans[pinOwner[pinIndex]->first].name +
+                        "' and to winding '" + plan.name + "', which are on different isolation sides.");
+                }
+                pinOwner[pinIndex] = std::make_pair(planIndex, plan.name);
+                userRowsBySide[plan.side].insert(placedPins[pinIndex].row);
+                if (!firstUserPinBySide.count(plan.side)) {
+                    firstUserPinBySide[plan.side] = {slot.pinName.value(), plan.name};
                 }
             }
         }
+
+        // --- rule 1: rows are isolation groups ----------------------------------------------------
+        std::map<IsolationSide, size_t> rowOfSide;
+        std::vector<std::vector<IsolationSide>> sidesOfRow(numberRows);
+        auto pin_on_row_text = [&](IsolationSide side) {
+            auto [pinName, windingName] = firstUserPinBySide.at(side);
+            return "pin '" + pinName + "' (winding '" + windingName + "', side " + side_name(side) + ")";
+        };
+        for (auto side : sidesInBuildOrder) {
+            if (!userRowsBySide.count(side)) {
+                continue;
+            }
+            const auto& rows = userRowsBySide.at(side);
+            if (rows.size() > 1 && numberSides <= numberRows) {
+                // A side spread over two rows while every side could have its own row.
+                std::string rowList;
+                for (auto row : rows) {
+                    rowList += (rowList.empty() ? "" : " and ") + std::to_string(row);
+                }
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Isolation side " + side_name(side) + " has user pins on rows " + rowList + " of bobbin '" +
+                    bobbinCopy.get_name().value_or("<unnamed>") + "' (" + pin_on_row_text(side) + " among them); rows are "
+                    "isolation groups (RFC 0013 rule 1), so one side's pins belong on one row.");
+            }
+            size_t row = *rows.begin();
+            if (numberSides <= numberRows && !sidesOfRow[row].empty()) {
+                auto other = sidesOfRow[row].front();
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Wrong row: " + pin_on_row_text(side) + " is on row " + std::to_string(row) + ", which already holds " +
+                    pin_on_row_text(other) + ". The bobbin has " + std::to_string(numberRows) + " rows for " +
+                    std::to_string(numberSides) + " isolation sides, so each side gets a row of its own (RFC 0013 rule 1).");
+            }
+            rowOfSide[side] = row;
+            sidesOfRow[row].push_back(side);
+        }
+        for (auto side : sidesInBuildOrder) {
+            if (rowOfSide.count(side)) {
+                continue;
+            }
+            // First-wound winding of this side decides which flange-side row is nearer on a
+            // horizontal former (rows sit one per end flange, at y = -+rowDistance/2).
+            double firstTurnY = 0;
+            for (const auto& plan : plans) {
+                if (plan.side == side) {
+                    firstTurnY = plan.firstTurnY;
+                    break;
+                }
+            }
+            std::optional<size_t> chosen;
+            for (size_t row = 0; row < numberRows; ++row) {
+                if (numberSides <= numberRows && !sidesOfRow[row].empty()) {
+                    continue;
+                }
+                if (!chosen) {
+                    chosen = row;
+                    continue;
+                }
+                // More sides than rows: fewest sides first. Otherwise, on a horizontal former, the
+                // row nearer the flange the winding starts at; ties keep the lower row.
+                if (numberSides > numberRows) {
+                    if (sidesOfRow[row].size() < sidesOfRow[chosen.value()].size()) {
+                        chosen = row;
+                    }
+                }
+                else if (horizontal) {
+                    double rowY = placedPins[rowWalk[row].front()].centre[1];
+                    double chosenY = placedPins[rowWalk[chosen.value()].front()].centre[1];
+                    if (std::abs(rowY - firstTurnY) < std::abs(chosenY - firstTurnY) - pinCoordinateTolerance) {
+                        chosen = row;
+                    }
+                }
+            }
+            if (!chosen) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "No row is left for isolation side " + side_name(side) + ".");
+            }
+            rowOfSide[side] = chosen.value();
+            sidesOfRow[chosen.value()].push_back(side);
+        }
+        // Keep each row's sides in build order.
+        for (auto& rowSides : sidesOfRow) {
+            std::stable_sort(rowSides.begin(), rowSides.end(), [&](IsolationSide a, IsolationSide b) {
+                return std::find(sidesInBuildOrder.begin(), sidesInBuildOrder.end(), a) <
+                       std::find(sidesInBuildOrder.begin(), sidesInBuildOrder.end(), b);
+            });
+        }
+
+        // --- shield finishes: on a spare pin when one exists, else buried --------------------------
+        auto pins_needed_on_row = [&](size_t row, bool withShieldFinishes) {
+            size_t needed = 0;
+            for (const auto& plan : plans) {
+                if (plan.legacy || rowOfSide.at(plan.side) != row) {
+                    continue;
+                }
+                for (const auto& slot : plan.slots) {
+                    if (slot.userPin || slot.offPin) {
+                        continue;
+                    }
+                    if (plan.isShield && slot.end == End::FINISH && !withShieldFinishes) {
+                        continue;
+                    }
+                    ++needed;
+                }
+            }
+            return needed;
+        };
+        auto free_pins_on_row = [&](size_t row) {
+            size_t freePins = 0;
+            for (auto pinIndex : rowWalk[row]) {
+                if (!pinOwner[pinIndex]) {
+                    ++freePins;
+                }
+            }
+            return freePins;
+        };
+        for (size_t row = 0; row < numberRows; ++row) {
+            if (pins_needed_on_row(row, true) <= free_pins_on_row(row)) {
+                continue;
+            }
+            for (auto& plan : plans) {
+                if (!plan.isShield || plan.legacy || rowOfSide.at(plan.side) != row) {
+                    continue;
+                }
+                for (auto& slot : plan.slots) {
+                    if (slot.end == End::FINISH && !slot.userPin && !slot.offPin) {
+                        slot.offPin = true;
+                        result.notes.push_back("Shield winding '" + plan.name + "' has no spare pin on row " + std::to_string(row) +
+                                               ", so its finish is buried as a flying lead (WP8 R14 prefers both ends on pins).");
+                    }
+                }
+            }
+        }
+
+        // --- allocate, row by row, block by block ------------------------------------------------
+        for (size_t row = 0; row < numberRows; ++row) {
+            const auto& rowSides = sidesOfRow[row];
+            if (rowSides.empty()) {
+                continue;
+            }
+            const auto& walk = rowWalk[row];
+            // Free pins of the row in walk order, and each side's demand.
+            std::vector<size_t> demand;
+            for (auto side : rowSides) {
+                size_t sideDemand = 0;
+                for (const auto& plan : plans) {
+                    if (plan.legacy || plan.side != side) {
+                        continue;
+                    }
+                    for (const auto& slot : plan.slots) {
+                        if (!slot.userPin && !slot.offPin) {
+                            ++sideDemand;
+                        }
+                    }
+                }
+                demand.push_back(sideDemand);
+            }
+            std::vector<size_t> freeWalk;
+            for (auto pinIndex : walk) {
+                if (!pinOwner[pinIndex]) {
+                    freeWalk.push_back(pinIndex);
+                }
+            }
+            size_t totalDemand = 0;
+            for (auto sideDemand : demand) {
+                totalDemand += sideDemand;
+            }
+            if (totalDemand > freeWalk.size()) {
+                std::string sideList;
+                for (size_t sideIndex = 0; sideIndex < rowSides.size(); ++sideIndex) {
+                    sideList += (sideList.empty() ? "" : ", ") + side_name(rowSides[sideIndex]) + " needs " + std::to_string(demand[sideIndex]);
+                }
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Row " + std::to_string(row) + " of bobbin '" + bobbinCopy.get_name().value_or("<unnamed>") + "' has " +
+                    std::to_string(freeWalk.size()) + " free pins but " + sideList + " (" + std::to_string(totalDemand) +
+                    " in all). Use a former with more pins or fewer separate strands and taps.");
+            }
+            // Blocks along the row, sides in build order, the spare pins spread over the gaps so the
+            // sides sit as far apart as the row allows.
+            size_t spare = freeWalk.size() - totalDemand;
+            size_t numberGaps = rowSides.size() - 1;
+            std::vector<std::pair<size_t, size_t>> blocks;  // [first, last+1) into freeWalk
+            size_t cursor = 0;
+            for (size_t sideIndex = 0; sideIndex < rowSides.size(); ++sideIndex) {
+                size_t blockSize = demand[sideIndex];
+                if (rowSides.size() == 1) {
+                    blockSize = freeWalk.size();  // a row of its own: the whole row is the block
+                }
+                blocks.push_back({cursor, cursor + blockSize});
+                cursor += blockSize;
+                if (sideIndex < numberGaps) {
+                    // Pin COUNTS: the spare pins split over the gaps, the remainder to the first gaps.
+                    size_t gap = spare / numberGaps + (sideIndex < spare % numberGaps ? 1 : 0);
+                    cursor += gap;
+                }
+            }
+            for (size_t sideIndex = 0; sideIndex < rowSides.size(); ++sideIndex) {
+                auto side = rowSides[sideIndex];
+                std::vector<size_t> block(freeWalk.begin() + blocks[sideIndex].first, freeWalk.begin() + blocks[sideIndex].second);
+                // Demand per half, over this side's windings.
+                size_t startDemand = 0;
+                size_t finishDemand = 0;
+                for (const auto& plan : plans) {
+                    if (plan.legacy || plan.side != side) {
+                        continue;
+                    }
+                    for (const auto& slot : plan.slots) {
+                        if (slot.userPin || slot.offPin) {
+                            continue;
+                        }
+                        (slot.startHalf ? startDemand : finishDemand) += 1;
+                    }
+                }
+                // Split the block so the used pins sit centred in it: the spare pins go half to
+                // each outer end (pin counts, the odd one to the finish end).
+                size_t blockSpare = block.size() - startDemand - finishDemand;
+                size_t startHalfSize = startDemand + blockSpare / 2;
+                std::vector<size_t> startHalf(block.begin(), block.begin() + startHalfSize);   // walk order
+                std::vector<size_t> finishHalf(block.begin() + startHalfSize, block.end());     // walk order
+                std::reverse(startHalf.begin(), startHalf.end());  // inner (centre) first
+                size_t startCursor = 0;
+                size_t finishCursor = 0;
+                for (auto& plan : plans) {
+                    if (plan.legacy || plan.side != side) {
+                        continue;
+                    }
+                    // Start half, inner to outer: the last tap first, the first start last, so that
+                    // walking the row from its start end reads start, tap 1, ..., tap K-1.
+                    std::vector<PinSlot*> startOrder;
+                    std::vector<PinSlot*> finishOrder;
+                    for (auto& slot : plan.slots) {
+                        if (slot.userPin || slot.offPin) {
+                            continue;
+                        }
+                        (slot.startHalf ? startOrder : finishOrder).push_back(&slot);
+                    }
+                    std::reverse(startOrder.begin(), startOrder.end());
+                    auto take = [&](std::vector<size_t>& half, size_t& halfCursor, PinSlot* slot, const std::string& halfName) {
+                        while (halfCursor < half.size()) {
+                            size_t pinIndex = half[halfCursor];
+                            ++halfCursor;
+                            if (plan.avoidCorners && placedPins[pinIndex].corner) {
+                                continue;  // rule 7: left free, never given to a stripped/margin lead
+                            }
+                            slot->pinName = placedPins[pinIndex].name;
+                            pinOwner[pinIndex] = std::make_pair(&plan - plans.data(), plan.name);
+                            return;
+                        }
+                        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                            "Row " + std::to_string(row) + " of bobbin '" + bobbinCopy.get_name().value_or("<unnamed>") +
+                            "' has no free pin left on its " + halfName + " half for the " + end_name(slot->end) +
+                            " of winding '" + plan.name + "'" +
+                            (plan.avoidCorners ? " (its insulated or margin-wound leads may not take a corner pin, RFC 0013 rule 7)" : std::string("")) +
+                            ". Nesting windings from the inner pins outward keeps leads from crossing (rule 6), so the pins cannot be borrowed from the other half.");
+                    };
+                    for (auto* slot : startOrder) {
+                        take(startHalf, startCursor, slot, "start");
+                    }
+                    for (auto* slot : finishOrder) {
+                        take(finishHalf, finishCursor, slot, "finish");
+                    }
+                }
+            }
+        }
+
     }
 
     // --- creepage between every pair of sides ----------------------------------------------

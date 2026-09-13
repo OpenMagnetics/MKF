@@ -174,6 +174,73 @@ class Bobbin : public MAS::Bobbin {
     static double get_pin_rail_distance(const MAS::BobbinFunctionalDescription& functionalDescription);
 
     /**
+     * @brief True when this bobbin carries a toroid base (`functionalDescription.base`, MAS-RFC 0014
+     *        part B; decision D1: a toroid base is a bobbin of family `t`).
+     */
+    bool has_base() const;
+
+    /**
+     * @brief The toroid base of this bobbin.
+     * @throws InvalidInputException when the bobbin has no functional description or no base.
+     */
+    MAS::BobbinBase get_base() const;
+
+    /**
+     * @brief True when the functional description is a catalogue toroid base on its own: family `t`,
+     *        a `base`, and none of the ring dimensions A, B, C (no ring is seated in it yet).
+     *
+     * Such a record is a base, not yet a bobbin: there is no ring to take a winding window from, so
+     * the catalogue keeps it unprocessed and `create_toroid_bobbin_on_base` seats a core in it.
+     */
+    static bool is_toroid_base_record(const BobbinFunctionalDescription& functionalDescription);
+
+    /**
+     * @brief Direction the pins of a toroid base leave, expressed as the `expand_pinout` orientation.
+     *
+     * FRAME (MVB++ toroid frame, proposal section 0.7): the ring axis is Y and the ring lies in XZ,
+     * where Z is MKF's in-plane y (MVB++ maps a toroid turn at MKF (x, y) to (x, 0, y)).
+     *   mounting HORIZONTAL (ring lying flat, axis normal to the board): the board is below the ring
+     *     along -Y, so the pins leave along -Y - expand_pinout's VERTICAL placement (rows at
+     *     z = -+ rowDistance/2, a row along X).
+     *   mounting VERTICAL (ring on edge, axis parallel to the board): the board is below the ring
+     *     along -Z, so the pins leave along -Z - expand_pinout's HORIZONTAL placement (rows at
+     *     y = -+ rowDistance/2, i.e. the two rows straddle the ring's thickness, a row along X).
+     */
+    static MAS::OrientationEnum get_toroid_base_pin_orientation(const MAS::BobbinBase& base);
+
+    /**
+     * @brief Distance from the centre of the ring to the base's seating plane, along the direction
+     *        the pins leave (WP4, ABT #1173). The pins start there.
+     *
+     * The base holds the ring `standoff` above the board (bobbin.json: "Distance the base holds the
+     * wound part above the mounting surface"), and the ring is centred on the frame origin, so:
+     *   mounting HORIZONTAL: C / 2 + standoff   (C = height of the ring the base holds)
+     *   mounting VERTICAL:   A / 2 + standoff   (A = outer diameter of the ring the base holds)
+     * A and C are the functional description's ring dimensions, which `create_toroid_bobbin_on_base`
+     * writes as the COATED ring (the coating is what rests on the base). `height` of the base is not
+     * needed: the pins start at the seating plane whatever the base's top does.
+     *
+     * @throws InvalidInputException when the description is not family `t`, has no base, or lacks the
+     *         ring dimension the mounting needs (named in the message).
+     */
+    static double get_toroid_base_pin_rail_distance(const MAS::BobbinFunctionalDescription& functionalDescription);
+
+    /**
+     * @brief Seat a toroidal core in a catalogue toroid base: a family `t` bobbin whose winding window
+     *        is the ring's (zero-thickness, as `BobbinTDataProcessor` gives it), with the base and its
+     *        pins.
+     *
+     * The functional description is the base record's (name, manufacturerInfo, base, pinout, material)
+     * with `shape` = the core's shape name and `dimensions` A, B, C = the COATED ring: outer diameter
+     * + 2 t, inner diameter - 2 t, height + 2 t, t = Core::get_coating_thickness(). The processed
+     * description comes from `process_data`, so a round trip through json gives the same bobbin.
+     *
+     * @throws InvalidInputException when the core is not toroidal, the base record is not a toroid
+     *         base, or its pinout cannot be placed (expand_pinout's own messages).
+     */
+    static Bobbin create_toroid_bobbin_on_base(Core core, const Bobbin& base);
+
+    /**
      * @brief Split a family processor's single winding window into the chambers of a
      *        multi-chamber former (MAS-RFC 0014 part A, ABT #1175).
      *

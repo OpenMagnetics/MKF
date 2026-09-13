@@ -111,6 +111,12 @@
         "topologiesChecked": ["FLYBACK_CONVERTER", "ACTIVE_CLAMP_FORWARD_CONVERTER", "ASYMMETRIC_HALF_BRIDGE_CONVERTER", "ISOLATED_BUCK_BOOST_CONVERTER"],
         "_topologiesChecked_comment": "magic_enum names of MAS::Topology. The EMI rule is about gapped isolated converters whose gap carries the whole energy store; a flyback is the canonical case."
     },
+    "R16": {
+        "title": "Toroid coating, barrier and header limits",
+        "description": "A toroid wound for safety insulation relies on the core coating for the basic insulation between core and wire, needs a mechanical separation between primary and secondary, and reaches double or reinforced insulation only with triple-insulated or fully insulated wire on one side. The header (toroid base) limits the wound core's outer diameter and height.",
+        "source": "Wuerth Elektronik, 'Transformer safety, update on IEC 61558', 2025-10-23, slides 16-17 ('Construction with toroidal core and TIW / FIW / TIW/FIW': 'Toroid core needs coating for basic insulation', 'Mechanical separation for basic insulation'; double/reinforced constructions: enamelled primary with TIW secondary, basic FIW primary with reinforced FIW secondary, basic TIW primary with reinforced FIW secondary); Custom Capabilities Catalog 2020, 'Toroid Headers' tables (columns 'Creepage', 'OD max.', 'Cavity Depth')",
+        "_comment": "No number: every check is structural. The header columns 'Creepage' and 'Cavity Depth' have no field in MAS bobbin.json base and are reported as not evaluated; 'OD max.' is base.maximumCoreOuterDiameter."
+    },
     "R17": {
         "title": "Production test and tolerance fields",
         "description": "Report-only fields. The production hipot test lasts 1 to 4 seconds and the test voltage may be reduced by 10 percent. Partial-discharge testing is required for designs using FIW or TIW with a peak working voltage over 750 V. Inductance tolerance is typically plus or minus 10 percent.",
@@ -132,15 +138,12 @@
         "_thickRoundConductingDiameter_comment": "Metres. Round enamelled wire of at least this conducting diameter allows maximumWiresPerPinThickRound wires on one pin, finer wire maximumWiresPerPinFineRound. Strands of non-round wire never share a pin: RFC 0013 gives them no count."
     },
     "notEvaluated": {
-        "R10": "not evaluated (owned by insulation coordination)",
-        "R16": "not evaluated (owned by WP4: toroid base)"
+        "R10": "not evaluated (owned by insulation coordination)"
     },
     "notEvaluatedTitles": {
-        "R10": "Creepage and clearance targets, corner-pin loss",
-        "R16": "Toroid coating, barrier and header limits"
+        "R10": "Creepage and clearance targets, corner-pin loss"
     },
     "notEvaluatedSources": {
-        "R10": "PSMA/APEC 2022 IS01.7, 'How Does Safety Affect Your Design?' 2021",
-        "R16": "Wuerth Elektronik 'Transformer safety, update on IEC 61558' 2025-10-23; Custom Capabilities Catalog 2020"
+        "R10": "PSMA/APEC 2022 IS01.7, 'How Does Safety Affect Your Design?' 2021"
     }
 }
