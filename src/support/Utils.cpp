@@ -3196,6 +3196,21 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
                                  : ". " + reason));
     }
 
+    // ABT #1172 (WP3, MAS RFC 0013): winding ends terminate on the bobbin's pins. After winding,
+    // when the turn positions are final, and before anything reads a connection length; only
+    // when the bobbin carries pins[] and some winding end is not on a pin yet. A bobbin without
+    // pins keeps today's behaviour (leads end at the window border). assign_pins never overrides
+    // a pinName the design gave, and throws on a plan that breaks the rows or the creepage.
+    // `bobbin` is the one set on the coil above; winding does not move its pins.
+    if (magnetic.get_mutable_coil().get_turns_description() && bobbin.get_processed_description() &&
+        bobbin.get_processed_description()->get_pins() && !bobbin.get_processed_description()->get_pins()->empty() &&
+        !magnetic.get_mutable_coil().has_complete_pin_connections()) {
+        if (inputs) {
+            magnetic.get_mutable_coil().set_inputs(inputs.value());
+        }
+        magnetic.get_mutable_coil().assign_pins(bobbin, magnetic.get_mutable_core());
+    }
+
     if (magnetic.get_mutable_coil().get_layers_description()) {
         auto layers = magnetic.get_mutable_coil().get_layers_description().value();
         for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {

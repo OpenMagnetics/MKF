@@ -1346,6 +1346,68 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         }
         return std::make_pair(count, signature);
     };
+    // ABT #1172 (WP3, RFC 0013): the pin each terminal lead ends at, keyed by (winding, parallel,
+    // entrance). Only connections that say which END they terminate count: a legacy pinName without
+    // `end` cannot be told apart as start or finish, and keeps the lead at the window border as
+    // before. Taps are junctions between series sections, routed inside the coil (see CoilPins.cpp).
+    std::map<std::tuple<std::string, int64_t, bool>, MAS::Pin> terminalPinByConductor;
+    std::optional<double> leadFrontFaceOffsetOptional;
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        const auto& pinWinding = get_functional_description()[windingIndex];
+        if (!pinWinding.get_connections()) {
+            continue;
+        }
+        const auto windingConnections = pinWinding.get_connections().value();  // by value: the getter returns the optional by value
+        for (const auto& connection : windingConnections) {
+            if (!connection.get_pin_name() || !connection.get_end() || connection.get_end().value() == End::TAP) {
+                continue;
+            }
+            // Throws naming the pin when the bobbin has no pins[] or no pin of that name.
+            auto pin = bobbin.get_pin(connection.get_pin_name().value());
+            if (!leadFrontFaceOffsetOptional) {
+                leadFrontFaceOffsetOptional = lead_front_face_offset(bobbin);
+            }
+            const bool entrance = connection.get_end().value() == End::START;
+            if (connection.get_parallel()) {
+                terminalPinByConductor[{pinWinding.get_name(), connection.get_parallel().value(), entrance}] = pin;
+            }
+            else {
+                for (int64_t parallel = 0; parallel < int64_t(get_number_parallels(windingIndex)); ++parallel) {
+                    terminalPinByConductor[{pinWinding.get_name(), parallel, entrance}] = pin;
+                }
+            }
+        }
+    }
+    const double leadFrontFaceOffset = leadFrontFaceOffsetOptional ? leadFrontFaceOffsetOptional.value() : 0.0;  // read only when a pin exists
+    // The run past the window border to the assigned pin, from the lead's end at the border (given
+    // in the VIRTUAL frame, transposed back to the real one here), or nothing without a pin.
+    auto pinLegFor = [&](const std::string& windingName, int64_t parallel, bool isEntrance,
+                         double borderLayerAxis, double borderTurnAxis) -> std::optional<PinLeadRoute> {
+        auto found = terminalPinByConductor.find({windingName, parallel, isEntrance});
+        if (found == terminalPinByConductor.end()) {
+            return std::nullopt;
+        }
+        std::vector<double> windowExit = layersAreContiguous ? std::vector<double>{borderTurnAxis, borderLayerAxis}
+                                                             : std::vector<double>{borderLayerAxis, borderTurnAxis};
+        return route_lead_to_pin(found->second, windowExit, leadFrontFaceOffset);
+    };
+    // Hang the pin run on the terminal route just recorded, in the route's electrical order.
+    auto attachPinLeg = [&](size_t routesBefore, const std::optional<PinLeadRoute>& pinLeg, bool isEntrance) {
+        if (!pinLeg) {
+            return;
+        }
+        if (routes.size() != routesBefore + 1) {
+            throw std::logic_error("A terminal lead assigned to pin '" + pinLeg->pinName +
+                                   "' recorded no route to hang the pin run on");
+        }
+        auto& route = routes.back();
+        route.pinName = pinLeg->pinName;
+        route.pinWaypoints = pinLeg->waypoints;
+        if (isEntrance) {
+            std::reverse(route.pinWaypoints.begin(), route.pinWaypoints.end());
+        }
+        route.routedLength = roundFloat(route.routedLength + pinLeg->length, 9);
+    };
     auto addTerminalLead = [&](const std::string& windingName, double wireOuterWidth,
                            double wireOuterHeight, const Turn& connectingTurn, int64_t parallel,
                            bool atTopEdge, bool isEntrance,
@@ -1395,7 +1457,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             // straight, the last certified finding in the whole 40-design corpus.
             lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), turnY};
             lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), wireOuterHeight};
-            lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the radial run
+            // ABT #1172: plus, when the end is assigned to a pin, the run from the border to it.
+            const auto radialPinLeg = pinLegFor(windingName, parallel, isEntrance, windowOuterX + wireOuterWidth / 2, turnY);
+            lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth +
+                                           (radialPinLeg ? radialPinLeg->length : 0.0), 9);  // the radial run (+ pin run)
             lead.kind = terminalKind;
             (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
             // ABT #1174: the outermost radial exit crosses no layer and is not edge-routed, so its
@@ -1406,6 +1471,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
                              {{turnX, turnY}, {windowOuterX + wireOuterWidth / 2, turnY}});
             tagSleevedRoute(routesBefore);
+            attachPinLeg(routesBefore, radialPinLeg, isEntrance);
             return;
         }
 
@@ -1515,7 +1581,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         lead.layer = "";
         lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), edgeY};
         lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), runHeight};
-        lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);  // the edge run to the border
+        // ABT #1172: plus, when the end is assigned to a pin, the run from the border to it.
+        const auto edgePinLeg = pinLegFor(windingName, parallel, isEntrance, windowOuterX + wireOuterWidth / 2, edgeY);
+        lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth +
+                                       (edgePinLeg ? edgePinLeg->length : 0.0), 9);  // the edge run to the border (+ pin run)
         lead.edgeDepth = runDepth;
         lead.sleeveOuterDiameter = sleeveOuterDiameter;
         lead.kind = terminalKind;
@@ -1548,6 +1617,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
                          std::move(terminalRoute));
         tagSleevedRoute(routesBefore);
+        attachPinLeg(routesBefore, edgePinLeg, isEntrance);
     };
 
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {

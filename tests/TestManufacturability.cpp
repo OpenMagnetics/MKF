@@ -172,12 +172,22 @@ TEST_CASE("Test_Manufacturability_Rules_Owned_Elsewhere_Are_Honest", "[adviser][
     Manufacturability manufacturability;
     auto report = manufacturability.calculate_report(magnetic, inputs);
 
-    for (auto& ruleId : std::vector<std::string>{"R2", "R3", "R4", "R10", "R14", "R16"}) {
+    for (auto& ruleId : std::vector<std::string>{"R10", "R16"}) {
         INFO("rule " << ruleId);
         auto& finding = report.get_finding(ruleId);
         CHECK(finding.get_status() == ManufacturabilityStatus::NOT_EVALUATED);
         CHECK_THAT(finding.get_message(), Catch::Matchers::ContainsSubstring("not evaluated (owned by"));
     }
+    // ABT #1172: WP3 owns R2, R3, R4 and R14 and evaluates them now. This fixture's quick bobbin
+    // has no pins, so the pin rules say exactly that, and it has no shield.
+    for (auto& ruleId : std::vector<std::string>{"R2", "R3", "R4"}) {
+        INFO("rule " << ruleId);
+        auto& finding = report.get_finding(ruleId);
+        CHECK(finding.get_status() == ManufacturabilityStatus::NOT_EVALUATED);
+        REQUIRE(finding.get_reason());
+        CHECK_THAT(finding.get_reason().value(), Catch::Matchers::ContainsSubstring("pin"));
+    }
+    CHECK(report.get_finding("R14").get_status() == ManufacturabilityStatus::NOT_APPLICABLE);
 }
 
 TEST_CASE("Test_Manufacturability_Rule_Numbers_Come_From_The_Data_File", "[adviser][manufacturability]") {

@@ -237,6 +237,58 @@ struct ConnectionRoute {
     double routedLength = 0;                       // summed copper of the route's segments
     // ABT #1174: the sleeve's outer diameter on a sleeved TERMINAL route, empty otherwise.
     std::optional<double> sleeveOuterDiameter;
+    // ABT #1172 (WP3, RFC 0013): a TERMINAL route whose winding end is assigned to a bobbin pin
+    // continues past the window border to that pin. `pinName` names it (empty = no pin, the
+    // route ends at the border as before); `pinWaypoints` is that continuation as 3D points in
+    // the bobbin frame (MVB++ concentric frame: column axis Y, leads on the -Z front face), in the
+    // same electrical order as `waypoints` (entrance: pin base first; exit: window exit first),
+    // from the window exit to the pin BASE. `routedLength` includes it.
+    std::string pinName;
+    std::vector<std::vector<double>> pinWaypoints;
+};
+
+// ABT #1172 (WP3): the lead's run from the window exit to its assigned pin, see
+// Coil::route_lead_to_pin.
+struct PinLeadRoute {
+    std::string pinName;
+    std::vector<std::vector<double>> waypoints;    // 3D, bobbin frame, window exit -> pin base
+    double length = 0;
+};
+
+// ABT #1172 (WP3): one pin of a bobbin's processedDescription.pins[] placed for pin assignment.
+struct PlacedPin {
+    std::string name;
+    bool hangsAlongZ = false;          // false: vertical pin along -Y; true: horizontal pin along -Z
+    std::vector<double> centre;        // pin centre, bobbin frame
+    std::vector<double> base;          // where the pin leaves the flange face (centre + length/2 back)
+    double diameter = 0;               // pin dimensions[0]
+    double length = 0;                 // pin dimensions[2]
+    size_t row = 0;                    // row index, rows sorted by their row coordinate
+    size_t indexAlongRow = 0;          // position along the row, sorted by x ascending
+    bool corner = false;               // first or last pin of its row
+    bool removable = false;
+    MAS::PinDescriptionType type = MAS::PinDescriptionType::THT;
+};
+
+// ABT #1172 (WP3): the smallest creepage path found between two pins of different isolation sides.
+struct PinCreepagePath {
+    std::string sideA;
+    std::string sideB;
+    std::string pinA;
+    std::string pinB;
+    double surfaceDistance = 0;        // straight pin base to pin base (a lower bound on the surface path)
+    double throughCoreDistance = 0;    // pin base -> nearest core surface + core surface -> pin base
+    double get_path() const { return std::min(surfaceDistance, throughCoreDistance); }
+};
+
+// ABT #1172 (WP3): what Coil::assign_pins did, beyond the connections it wrote.
+struct PinAssignmentResult {
+    bool skipped = false;              // the bobbin has no pins[]: nothing assigned (today's behaviour)
+    std::string skippedReason;
+    std::optional<double> requiredCreepage;   // from InsulationCoordinator; absent when not checkable
+    std::string creepageNotCheckedReason;     // why requiredCreepage is absent
+    std::optional<PinCreepagePath> worstPath; // absent when fewer than two isolation sides use pins
+    std::vector<std::string> notes;           // design notes, e.g. "shorted on PCB", "buried shield end"
 };
 
 // ABT #685: the whole connection layout of a wound coil — every conductor's routes, plus the ride
@@ -755,6 +807,46 @@ class Coil : public MAS::Coil {
         void set_number_turns(std::vector<uint64_t> numberTurns);
         std::vector<IsolationSide> get_isolation_sides() const;
         void set_isolation_sides(std::vector<IsolationSide> isolationSides);
+
+        /**
+         * @brief Assign every winding end to a bobbin pin (ABT #1172, WP3, MAS RFC 0013 section 3).
+         *
+         * Runs after winding (turn positions final) and before connection lengths are read. Fills
+         * `connections[]` per winding with `pinName`, `end` (start/finish/tap), `parallel` (when
+         * the strands take separate pins), `type` (THT/SMT from the pin) and `diameter`. It never
+         * overrides a user-given `pinName`; it validates it and throws on a name the bobbin does
+         * not have, on a pin on a row that belongs to another isolation side, and on a creepage
+         * shortfall (naming the pin pair and the shortfall in mm).
+         *
+         * A bobbin without processedDescription.pins[] is skipped (result.skipped), which is the
+         * behaviour of every design before WP3: leads end at the window border.
+         *
+         * @param bobbin the processed bobbin carrying pins[]
+         * @param core   the processed core: its bounding box gives the through-core creepage path
+         */
+        PinAssignmentResult assign_pins(const Bobbin& bobbin, const Core& core);
+        /// True when every winding already terminates on named pins at both ends (nothing to assign).
+        bool has_complete_pin_connections() const;
+        /// The pins of a bobbin placed into rows (row coordinate ascending, x ascending in a row).
+        static std::vector<PlacedPin> place_pins(const std::vector<MAS::Pin>& pins);
+        /**
+         * @brief The lead's run from the window exit to a pin (ABT #1172, WP3).
+         *
+         * `windowExit` is the terminal lead's end at the window border, {radial, axial} in the
+         * coil's real frame. The lead leaves the coil on the core's open front face (-Z, where
+         * MVB++ runs every terminal lead parallel to Z), so the exit sits at (0, ey, -ex) with
+         * ex = radial + frontFaceOffset (see lead_front_face_offset). The run
+         * is a Manhattan polyline over the bobbin envelope, window exit -> the flange face the pin
+         * leaves from -> along it to the pin base:
+         *   vertical pin (-Y):   (0, ey, -ex) -> (0, yBase, -ex) -> (0, yBase, zPin) -> (xPin, yBase, zPin)
+         *   horizontal pin (-Z): (0, ey, -ex) -> (0, ey, zBase) -> (0, yPin, zBase) -> (xPin, yPin, zBase)
+         * Its length is the copper the lead adds past the border.
+         */
+        static PinLeadRoute route_lead_to_pin(const MAS::Pin& pin, const std::vector<double>& windowExit,
+                                              double frontFaceOffset);
+        /// How much deeper the front face lies than MKF's radial coordinate: 0 for a round column,
+        /// columnDepth - columnWidth (half dimensions) for a rectangular one, as MVB++ maps it.
+        static double lead_front_face_offset(Bobbin bobbin);
         std::vector<uint64_t> get_number_parallels() const;
         uint64_t get_number_parallels(size_t windingIndex) const;
         void set_number_parallels(std::vector<uint64_t> numberParallels);

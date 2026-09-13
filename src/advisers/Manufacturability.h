@@ -135,6 +135,11 @@ class Manufacturability {
 
         // One method per standalone rule, so each can be tested (and reverted) on its own.
         ManufacturabilityFinding evaluate_r1_layer_parity(Magnetic& magnetic);
+        // ABT #1172 (WP3): the rules that read the pin assignment (ManufacturabilityPins.cpp).
+        ManufacturabilityFinding evaluate_r2_pin_order(Magnetic& magnetic);
+        ManufacturabilityFinding evaluate_r3_rail_gauge_spread(Magnetic& magnetic);
+        ManufacturabilityFinding evaluate_r4_wrap_height(Magnetic& magnetic);
+        ManufacturabilityFinding evaluate_r14_shield_terminations(Magnetic& magnetic);
         ManufacturabilityFinding evaluate_r5_smt_heavy_wire(Magnetic& magnetic, Inputs& inputs);
         ManufacturabilityFinding evaluate_r6_thermoset_bobbin(Magnetic& magnetic, Inputs& inputs);
         ManufacturabilityFinding evaluate_r7_size_heuristic(Magnetic& magnetic, Inputs& inputs);

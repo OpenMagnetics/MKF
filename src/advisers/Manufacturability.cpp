@@ -1164,9 +1164,9 @@ ManufacturabilityFinding Manufacturability::evaluate_r17_production_tests(Magnet
 ManufacturabilityReport Manufacturability::calculate_report(Magnetic& magnetic, Inputs& inputs) {
     ManufacturabilityReport report;
     report.add_finding(evaluate_r1_layer_parity(magnetic));
-    report.add_finding(not_evaluated_rule("R2"));
-    report.add_finding(not_evaluated_rule("R3"));
-    report.add_finding(not_evaluated_rule("R4"));
+    report.add_finding(evaluate_r2_pin_order(magnetic));
+    report.add_finding(evaluate_r3_rail_gauge_spread(magnetic));
+    report.add_finding(evaluate_r4_wrap_height(magnetic));
     report.add_finding(evaluate_r5_smt_heavy_wire(magnetic, inputs));
     report.add_finding(evaluate_r6_thermoset_bobbin(magnetic, inputs));
     report.add_finding(evaluate_r7_size_heuristic(magnetic, inputs));
@@ -1176,7 +1176,7 @@ ManufacturabilityReport Manufacturability::calculate_report(Magnetic& magnetic, 
     report.add_finding(evaluate_r11_termination_protection(magnetic, inputs));
     report.add_finding(evaluate_r12_flying_leads(magnetic, inputs));
     report.add_finding(evaluate_r13_manual_termination(magnetic));
-    report.add_finding(not_evaluated_rule("R14"));
+    report.add_finding(evaluate_r14_shield_terminations(magnetic));
     report.add_finding(evaluate_r15_lateral_gaps(magnetic, inputs));
     report.add_finding(not_evaluated_rule("R16"));
     report.add_finding(evaluate_r17_production_tests(magnetic, inputs));

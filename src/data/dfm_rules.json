@@ -8,6 +8,27 @@
         "_maximumLayersConsideredSingleLayer_comment": "A winding of one layer cannot drag back, so it passes regardless of parity.",
         "severityOddLayers": "warning"
     },
+    "R2": {
+        "title": "Start and finish rail convention, inner pins first",
+        "description": "Horizontal packages put all the starts on one end of the rails and all the finishes on the other end; vertical packages put the starts in one diagonal corner and the finishes in the other. The first windings are wound on the internal bobbin pins, then the outer ones, so that no lead crosses another termination.",
+        "source": "Wuerth Elektronik, 'Transformers - what characteristics are important to you?', A. Sullivan, 2022-08-18 (youtube 1VBp_ajSZmM) 14:40-15:22; 'Design For Manufacturing (DFM)', A. De Michiel, 2024-04-29 (youtube 9AhcsV8t4EU) 06:35-08:42",
+        "severity": "warning"
+    },
+    "R3": {
+        "title": "Gauge spread on one termination rail within 3 AWG",
+        "description": "Avoid heavy or litz wire together with fine wire on the same bobbin rail: a large strand needs more heat and time to solder, which damages the fine wire's insulation. Windings on the same rail should be within three gauges, for example 28 and 30 AWG; otherwise soldering takes two operations.",
+        "source": "Wuerth Elektronik, 'Design For Manufacturing (DFM)', A. De Michiel, 2024-04-29 (youtube 9AhcsV8t4EU) 18:13-18:55",
+        "maximumGaugeSpreadAwg": 3,
+        "_maximumGaugeSpreadAwg_comment": "American Wire Gauge steps. A non-round wire is compared by the gauge of the round wire of the same copper area.",
+        "severity": "warning"
+    },
+    "R4": {
+        "title": "Wire wrap must not protrude below the bobbin standoff",
+        "description": "The part must sit on the plastic standoff of the bobbin, not on the wire terminations. When the wire knobs exceed the standoff, use a thinner wire or a bobbin with more pins and split the wire over several pins.",
+        "source": "Wuerth Elektronik, 'Design For Manufacturing (DFM)', A. De Michiel, 2024-04-29 (youtube 9AhcsV8t4EU) 17:29-18:13",
+        "wrapTurns": 2,
+        "_wrapTurns_comment": "Turns of wire wrapped around a pin per wire end, as MVB++ draws them for WP3 (docs/2026-09-12_manufacturing_features_proposal.md, WP3: '2 turns of the wire as a helix ... pitch 2 wireRadius'). Wrap height = wires on the pin x wrapTurns x wire outer diameter."
+    },
     "R5": {
         "title": "Heavy wire on a surface-mount part",
         "description": "Heavy wire on an SMT part causes coplanarity and height problems at the terminals. Split the winding into parallels and add terminals for high-current windings.",
@@ -76,6 +97,12 @@
         "finestAutomaticallySolderableConductingDiameter": 0.000320,
         "_finestAutomaticallySolderableConductingDiameter_comment": "Metres. Nominal bare conducting diameter of 28 AWG (0.320 mm), used when the wire record carries no AWG standard name."
     },
+    "R14": {
+        "title": "Shield winding terminated on pins at both ends",
+        "description": "Wire-wound shields can terminate both ends on pins, which the winding machine automates; burying one end, or a foil shield, is manual work.",
+        "source": "Wuerth Elektronik, 'Transformer Design for EMC', 2022 video and 2023 slides",
+        "severity": "warning"
+    },
     "R15": {
         "title": "Gap only in the centre leg",
         "description": "An EI core style with mylar or tape used for the gap has three unshielded gaps and is an EMI problem. Good practice is a centre-leg gap only, with no gaps in the outer legs.",
@@ -96,28 +123,24 @@
         "_partialDischargeTestPeakVoltage_comment": "Volts peak. Above this, FIW/TIW designs need a partial-discharge test.",
         "typicalInductanceTolerance": 0.10
     },
+    "pinAssignment": {
+        "_comment": "Numbers of MAS RFC 0013 section 3 (lead-to-pin assignment), read by Coil::assign_pins (ABT #1172, WP3).",
+        "source": "MAS/proposals/0013-pin-assignment.md section 3 rule 4, from Mini-Circuits AN40-010 / IPC-A-610 wrap counts and Lodestone Pacific bobbin application notes",
+        "maximumWiresPerPinThickRound": 2,
+        "maximumWiresPerPinFineRound": 3,
+        "thickRoundConductingDiameter": 0.0005,
+        "_thickRoundConductingDiameter_comment": "Metres. Round enamelled wire of at least this conducting diameter allows maximumWiresPerPinThickRound wires on one pin, finer wire maximumWiresPerPinFineRound. Strands of non-round wire never share a pin: RFC 0013 gives them no count."
+    },
     "notEvaluated": {
-        "R2": "not evaluated (owned by WP3: pin assignment)",
-        "R3": "not evaluated (owned by WP3: pin assignment)",
-        "R4": "not evaluated (owned by WP3: pin assignment)",
         "R10": "not evaluated (owned by insulation coordination)",
-        "R14": "not evaluated (owned by WP3: pin assignment)",
         "R16": "not evaluated (owned by WP4: toroid base)"
     },
     "notEvaluatedTitles": {
-        "R2": "Start and finish rail convention, inner pins wound first",
-        "R3": "Gauge spread on one termination rail within 3 AWG",
-        "R4": "Wire wrap must not protrude below the bobbin standoff",
         "R10": "Creepage and clearance targets, corner-pin loss",
-        "R14": "Shield winding terminated on pins at both ends",
         "R16": "Toroid coating, barrier and header limits"
     },
     "notEvaluatedSources": {
-        "R2": "Wuerth Elektronik DFM 2024-04-29; 'Transformers - what characteristics are important to you?' 2022-08-18",
-        "R3": "Wuerth Elektronik DFM 2024-04-29 18:55",
-        "R4": "Wuerth Elektronik DFM 2024-04-29",
         "R10": "PSMA/APEC 2022 IS01.7, 'How Does Safety Affect Your Design?' 2021",
-        "R14": "Wuerth Elektronik 'Transformer Design for EMC' 2023 slides",
         "R16": "Wuerth Elektronik 'Transformer safety, update on IEC 61558' 2025-10-23; Custom Capabilities Catalog 2020"
     }
 }
