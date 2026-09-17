@@ -2219,6 +2219,387 @@ static std::vector<double> turn_to_core_elements(Coil& coil, const Core& core, s
 
 // ONE winding against the core, re-weighting precomputed elements
 // (the physics is documented on StrayCapacitance::calculate_winding_to_core_self_energy).
+// ===================== ABT #1166 BEGIN (air gap in the through-core path) =====================
+// Self-contained: the classification and the gap element live here, and the only thing
+// calculate_through_core_capacitance does with them is one call before its per-turn loop and one
+// branch after it (both under an ABT #1166 banner there).
+
+// Fringing on a gap between two ferrite faces, as a multiplier on the parallel-plate eps0*A/g.
+//
+// A gap of length g between two faces of area A and perimeter P stores more than eps0*A/g: the
+// field spills outside the footprint. Palmer's edge correction adds an effective rim of width
+//     d = (g/pi) * (1 + ln(2*pi*a/g)),   a = a representative face half-dimension,
+// i.e. a relative excess P*d/A. Worked on an ETD49 centre post (round, r = 8.1 mm,
+// A = 2.06 cm^2, P = 50.9 mm) that is +10% at g = 0.2 mm, +22% at 0.5 mm, +42% at 1 mm and
+// +67% at 2 mm. The correction is therefore strongly gap-dependent and a single constant can
+// only be right in the middle of the range; 1.30 is the value at g ~ 0.7 mm, the gap an offline
+// flyback of this size actually runs, and it sits inside the 20-50% band the design note quotes.
+// It is deliberately a NAMED CONSTANT and an explicit argument to gap_capacitance rather than a
+// number buried in the formula, so a future gap-shape-aware correction replaces it in one place.
+// Note the design note's own worked table (19 pF at 0.2 mm on A = 4.2 cm^2) carries NO fringing,
+// so these results sit ~30% above it in Cgap and ~10-20% above it in the series total; the
+// TREND -- and the series behaviour, which is what the note is demonstrating -- is identical.
+static constexpr double kGapFringingFactor = 1.30;
+
+// A gap whose two faces lie within this multiple of the gap length of a common plane counts as
+// being IN that plane. Two core halves mating on one surface have all their gaps at the same
+// axial height by construction; anything further apart is not a clean two-body split and is left
+// on the historical single-node model rather than guessed at.
+static constexpr double kGapPlaneToleranceInGapLengths = 1.0;
+
+// Relative permittivity of whatever fills the gap, from the core's own record.
+//
+// The GAP record (MAS core/gap.json) carries no filler field -- but the spacer does not live on
+// the gap, it is a GEOMETRICAL ELEMENT of the core: core.json's geometricalDescription items are a
+// oneOf of core/piece.json OR core/spacer.json, and core/spacer.json REQUIRES insulationMaterial,
+// an InsulationMaterialDataOrNameUnion resolving (by record or by name, through
+// find_insulation_material_by_name) into data/insulation_materials.ndjson, which carries
+// relativePermittivity. So a properly recorded spacer-gapped core states its dielectric, and that
+// is what is used here. A solid spacer at eps_r 3-4 multiplies Cgap by that and gives most of the
+// ungapped inter-winding capacitance back, so this is not a detail: reading it wrong is a 3-4x
+// error on the term.
+//
+// WHETHER the gap has a filler at all is decided by the GAP TYPE in the functional description, not
+// by whether a geometrical description happens to have been built:
+//   - SUBTRACTIVE (ground) gaps only -> 1.0, air. Correct by construction: a ground gap is material
+//     removed from the core and no spacer exists. Not a fallback.
+//   - any ADDITIVE gap -> a spacer is shimmed between the halves and MUST be recorded. Its
+//     insulationMaterial is resolved; a core with no geometrical description, or one with no
+//     spacer element, THROWS naming the core and the gap, because required data is missing.
+//     Treating a missing record as air would understate Cgap by the 3-4x above.
+// A spacer that declares no insulationMaterial, or one the database does not carry, THROWS naming
+// it (insulationMaterial is schema-REQUIRED). MKF's own synthesised spacers carry
+// Defaults().defaultSpacerMaterial (PET, ABT #1200), and saved designs with MKF's older spacer
+// forms are migrated to it on load (MasMigration), so these fire only on a malformed record.
+// What a spacer IS comes from Core::get_spacers() (ABT #1170), the single place that knows.
+static double gap_relative_permittivity(Core& core, const std::vector<const CoreGap*>& nonResidualGaps) {
+    const CoreGap* additiveGap = nullptr;
+    for (const auto* gap : nonResidualGaps) {
+        if (gap->get_type() == GapType::ADDITIVE) {
+            additiveGap = gap;
+            break;
+        }
+    }
+    if (!additiveGap) {
+        return 1.0;  // ground gaps only: material removed, no spacer exists -- air by construction
+    }
+
+    auto describeCoreAndGap = [&]() {
+        std::ostringstream description;
+        description << "core '" << (core.get_name() ? core.get_name().value() : std::string("<unnamed>"))
+                    << "', additive gap of length " << additiveGap->get_length() << " m";
+        if (additiveGap->get_coordinates()) {
+            auto coordinates = additiveGap->get_coordinates().value();
+            description << " at (";
+            for (size_t index = 0; index < coordinates.size(); ++index) {
+                description << (index ? ", " : "") << coordinates[index];
+            }
+            description << ")";
+        }
+        return description.str();
+    };
+    if (!core.get_geometrical_description()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "The " + describeCoreAndGap() + " is a spacer shimmed between the halves, but the core has"
+            " no geometrical description, so the spacer and its insulationMaterial are missing. The gap"
+            " capacitance (ABT #1166) depends directly on that dielectric and it will not be assumed air");
+    }
+    auto spacers = core.get_spacers();
+    if (spacers.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "The " + describeCoreAndGap() + " is a spacer shimmed between the halves, but the core's"
+            " geometrical description has no spacer element for it. The gap capacitance (ABT #1166)"
+            " depends directly on the spacer's dielectric and it will not be assumed air");
+    }
+
+    bool haveSpacer = false;
+    double relativePermittivity = 0;
+    for (const auto& spacer : spacers) {
+        if (!spacer.get_insulation_material()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "A spacer in the geometrical description of the " + describeCoreAndGap() +
+                " declares no insulationMaterial, which core/spacer.json requires. The gap capacitance"
+                " (ABT #1166) depends directly on the spacer's relative permittivity and it will not be"
+                " guessed: record the spacer material");
+        }
+        auto materialUnion = spacer.get_insulation_material().value();
+        InsulationMaterial material = std::holds_alternative<MAS::InsulationMaterial>(materialUnion)
+            ? InsulationMaterial(std::get<MAS::InsulationMaterial>(materialUnion))
+            : find_insulation_material_by_name(std::get<std::string>(materialUnion));
+        if (!material.get_relative_permittivity()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Spacer insulation material '" + material.get_name() + "' of the " + describeCoreAndGap() +
+                " has no relative permittivity in the database, so the gap capacitance (ABT #1166)"
+                " cannot be computed");
+        }
+        double thisPermittivity = material.get_relative_permittivity().value();
+        if (haveSpacer && thisPermittivity != relativePermittivity) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "The spacers of the " + describeCoreAndGap() + " declare different insulation materials;"
+                " which dielectric the gap capacitance (ABT #1166) should use is ambiguous and will not be"
+                " picked");
+        }
+        relativePermittivity = thisPermittivity;
+        haveSpacer = true;
+    }
+    return relativePermittivity;
+}
+
+double StrayCapacitance::gap_capacitance(double totalGappedArea, double gapLength,
+                                         double gapRelativePermittivity, double fringingFactor) {
+    if (!(totalGappedArea > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Gap capacitance asked for a gapped cross-section of " + std::to_string(totalGappedArea) +
+            " m^2: the core gapping carries no usable area, and an area cannot be invented");
+    }
+    if (!(gapLength > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Gap capacitance asked for a gap length of " + std::to_string(gapLength) +
+            " m: the core gapping carries no usable length, and a length cannot be invented");
+    }
+    if (!(gapRelativePermittivity > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Gap capacitance asked for a relative permittivity of " +
+            std::to_string(gapRelativePermittivity) + ": not a dielectric");
+    }
+    if (!(fringingFactor > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Gap capacitance asked for a fringing factor of " + std::to_string(fringingFactor));
+    }
+    // Every factor is a double: no integer division anywhere in A / g.
+    return fringingFactor * Constants().vacuumPermittivity * gapRelativePermittivity *
+           (totalGappedArea / gapLength);
+}
+
+StrayCapacitance::ThroughCoreGapSplit StrayCapacitance::core_gap_topology(
+        Core core, Coil coil, const std::string& firstWindingName, const std::string& secondWindingName) {
+    return core_gap_topology(core, coil, nullptr, firstWindingName, secondWindingName);
+}
+
+StrayCapacitance::ThroughCoreGapSplit StrayCapacitance::core_gap_topology(
+        Core& core, Coil& coil, const std::vector<Turn>* windingTurns,
+        const std::string& firstWindingName, const std::string& secondWindingName) {
+    ThroughCoreGapSplit split;  // defaults to SHARED_CORE_NODE: the historical behaviour
+
+    // ---- 1. every column carries a non-residual gap? (else case A: the ungapped legs still
+    //         join the two halves into one body) ----
+    const auto& gapping = core.get_gapping();
+    if (gapping.empty()) {
+        return split;
+    }
+    // Read once: the MAS getter returns the optional BY VALUE, so every call is a full copy.
+    const auto processedDescription = core.get_processed_description();
+    if (!processedDescription) {
+        // Nothing says how many columns the core has, so "all legs gapped" cannot be
+        // established. Not a physical quantity to default -- a classification that cannot be
+        // made -- so the model stays where it was.
+        return split;
+    }
+    const auto& columns = processedDescription->get_columns();
+    if (columns.empty()) {
+        return split;
+    }
+
+    // One non-residual gap per column, all in one plane, is what a two-body split means. More
+    // than one gap on a column (a distributed gapping) makes more than two bodies and is not
+    // this model; it stays on the single-node path.
+    std::vector<int> nonResidualGapsPerColumn(columns.size(), 0);
+    double planeSum = 0;
+    double planeMinimum = std::numeric_limits<double>::max();
+    double planeMaximum = std::numeric_limits<double>::lowest();
+    double totalArea = 0;
+    double shortestGap = std::numeric_limits<double>::max();
+    double longestGap = std::numeric_limits<double>::lowest();
+    size_t countedGaps = 0;
+    std::vector<const CoreGap*> nonResidualGaps;  // into `gapping`, which outlives this function body
+    for (const auto& gap : gapping) {
+        if (gap.get_type() == GapType::RESIDUAL) {
+            continue;
+        }
+        nonResidualGaps.push_back(&gap);
+        if (!gap.get_coordinates() || gap.get_coordinates()->size() < 2) {
+            // Which column this gap is on cannot be established, so neither can "all legs
+            // gapped". Historical model, no invented geometry.
+            return split;
+        }
+        auto coordinates = gap.get_coordinates().value();
+        int columnIndex = Core::find_closest_column_index_by_coordinates(columns, coordinates);
+        if (columnIndex < 0 || static_cast<size_t>(columnIndex) >= columns.size()) {
+            return split;
+        }
+        nonResidualGapsPerColumn[static_cast<size_t>(columnIndex)] += 1;
+        planeSum += coordinates[1];
+        planeMinimum = std::min(planeMinimum, coordinates[1]);
+        planeMaximum = std::max(planeMaximum, coordinates[1]);
+        shortestGap = std::min(shortestGap, gap.get_length());
+        longestGap = std::max(longestGap, gap.get_length());
+        countedGaps += 1;
+        // The area is only demanded once the core is already known to be case C -- see below --
+        // so a case A/B core with an area-less gap is not made to throw by this work.
+        if (gap.get_area()) {
+            totalArea += gap.get_area().value();
+        }
+        else {
+            totalArea = std::numeric_limits<double>::quiet_NaN();
+        }
+    }
+    if (countedGaps == 0) {
+        return split;  // residual gapping only: the halves are in contact
+    }
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        if (nonResidualGapsPerColumn[columnIndex] != 1) {
+            // A column with no non-residual gap still joins the halves (case A); a column with
+            // several is a distributed gapping, which is more than two bodies.
+            return split;
+        }
+    }
+    double gapPlane = planeSum / static_cast<double>(countedGaps);
+    if (planeMaximum - planeMinimum > kGapPlaneToleranceInGapLengths * longestGap) {
+        return split;  // the gaps are not one mating surface
+    }
+
+    // ---- 2. do the two windings sit on OPPOSITE sides of that plane? (else case B: each
+    //         winding faces both halves and the couplings shunt the gap) ----
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    auto bobbin = coil.resolve_bobbin();
+    if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
+        // A round (toroidal) window's turn coordinates are polar -- coordinates[1] is an angle,
+        // not an axial height -- so the plane test below is meaningless there. Toroids are
+        // ungapped anyway; this guard makes that explicit rather than incidental.
+        return split;
+    }
+
+    // The caller's turns when it has them (no copy); otherwise this coil's own, held by value --
+    // MAS getters return by value, so a reference would bind into a temporary optional that dies
+    // at the end of the statement (the dangling-reference trap).
+    std::vector<Turn> ownTurns;
+    if (!windingTurns) {
+        ownTurns = coil.get_turns_description().value();
+        windingTurns = &ownTurns;
+    }
+    const std::vector<Turn>& turns = *windingTurns;
+    double firstMinimum = std::numeric_limits<double>::max();
+    double firstMaximum = std::numeric_limits<double>::lowest();
+    double secondMinimum = std::numeric_limits<double>::max();
+    double secondMaximum = std::numeric_limits<double>::lowest();
+    size_t firstTurns = 0;
+    size_t secondTurns = 0;
+    for (const auto& turn : turns) {
+        const auto& coordinates = turn.get_coordinates();  // a reference into the live turn
+        if (coordinates.size() < 2) {
+            return split;
+        }
+        double axial = coordinates[1];
+        if (turn.get_winding() == firstWindingName) {
+            firstMinimum = std::min(firstMinimum, axial);
+            firstMaximum = std::max(firstMaximum, axial);
+            firstTurns += 1;
+        }
+        else if (turn.get_winding() == secondWindingName) {
+            secondMinimum = std::min(secondMinimum, axial);
+            secondMaximum = std::max(secondMaximum, axial);
+            secondTurns += 1;
+        }
+    }
+    if (firstTurns == 0 || secondTurns == 0) {
+        return split;
+    }
+    // Strictly on opposite sides. Concentric (overlapping) windings both straddle the plane and
+    // fail this on both orderings, which is exactly case B. Two windings stacked in the SAME
+    // half also fail it -- correctly, since the gap then cuts neither of them off from the other.
+    bool firstAbove = firstMinimum > gapPlane && secondMaximum < gapPlane;
+    bool firstBelow = firstMaximum < gapPlane && secondMinimum > gapPlane;
+    if (!firstAbove && !firstBelow) {
+        return split;
+    }
+
+    // ---- 3. case C. Now, and only now, the gap's area and length are required inputs. ----
+    if (!(totalArea > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "An all-legs-gapped core with side-by-side windings puts the gap in series with the"
+            " inter-winding path (ABT #1166), but at least one of its gaps carries no area: the"
+            " gap capacitance cannot be computed and will not be guessed");
+    }
+    if (!(shortestGap > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "An all-legs-gapped core with side-by-side windings puts the gap in series with the"
+            " inter-winding path (ABT #1166), but its gap length is not positive");
+    }
+    // The gaps of the different columns are in PARALLEL between the two core bodies, so the
+    // total gapped cross-section is what enters; the length is the one plane's thickness, and
+    // the columns of a spacer/ground gapping share it. Where they differ (a ground gapping
+    // grinds the centre leg only, and the lateral gaps are then shorter), the SHORTEST gap is
+    // the one that would have to be bridged and using it is the conservative -- largest-Cgap,
+    // smallest-correction -- choice.
+    //
+    // What fills the gap is decided by the gap type: ground gaps are air by construction, an
+    // additive gap's spacer is read from the core's geometrical description (its schema-required
+    // insulationMaterial) and is never assumed. See gap_relative_permittivity above.
+    const double gapRelativePermittivity = gap_relative_permittivity(core, nonResidualGaps);
+    split.topology = ThroughCoreGapTopology::SPLIT_CORE_NODES;
+    split.totalGappedArea = totalArea;
+    split.gapLength = shortestGap;
+    split.gapPlaneAxialCoordinate = gapPlane;
+    split.gapCapacitance = gap_capacitance(totalArea, shortestGap, gapRelativePermittivity,
+                                           kGapFringingFactor);
+    return split;
+}
+
+// Energy stored in the turn-to-core elements when the core is TWO floating bodies joined by
+// Cgap, body 0 facing the first winding and body 1 the second (case C above).
+//
+// Charge balance on the two floating nodes, with CA = sum of body-0 elements, SA = sum C_i V_i
+// over body 0 (CB, SB likewise):
+//     (CA + Cg) Va -        Cg  Vb = SA
+//         - Cg   Va + (CB + Cg) Vb = SB
+// and W = 0.5 sum_A C_i (V_i - Va)^2 + 0.5 sum_B C_j (V_j - Vb)^2 + 0.5 Cg (Va - Vb)^2.
+//
+// This is exactly the series network the design note describes: with every turn of a winding at
+// one potential (Cpc = Csc = C, +-V/2) it reduces analytically to C*Cg/(C + 2*Cg), i.e.
+// 1/Ctot = 1/Cpc + 1/Cgap + 1/Csc -- and to the single-node answer Cpc/2 as Cg -> infinity, so
+// it degrades continuously into the behaviour it replaces.
+static double through_core_split_core_energy(const std::vector<double>& turnCoreCapacitance,
+                                             const std::vector<double>& turnPotential,
+                                             const std::vector<bool>& turnOnFirstBody,
+                                             double gapCapacitance) {
+    double capacitanceFirstBody = 0;
+    double capacitanceSecondBody = 0;
+    double chargeFirstBody = 0;
+    double chargeSecondBody = 0;
+    for (size_t k = 0; k < turnCoreCapacitance.size(); ++k) {
+        if (turnOnFirstBody[k]) {
+            capacitanceFirstBody += turnCoreCapacitance[k];
+            chargeFirstBody += turnCoreCapacitance[k] * turnPotential[k];
+        }
+        else {
+            capacitanceSecondBody += turnCoreCapacitance[k];
+            chargeSecondBody += turnCoreCapacitance[k] * turnPotential[k];
+        }
+    }
+    if (!(capacitanceFirstBody > 0) || !(capacitanceSecondBody > 0) || !(gapCapacitance > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "The split-core through-core path (ABT #1166) needs a positive turn-to-core"
+            " capacitance on each core body and a positive gap capacitance");
+    }
+    double determinant = capacitanceFirstBody * capacitanceSecondBody +
+                         gapCapacitance * (capacitanceFirstBody + capacitanceSecondBody);
+    double potentialFirstBody = (chargeFirstBody * (capacitanceSecondBody + gapCapacitance) +
+                                 gapCapacitance * chargeSecondBody) / determinant;
+    double potentialSecondBody = (chargeSecondBody * (capacitanceFirstBody + gapCapacitance) +
+                                  gapCapacitance * chargeFirstBody) / determinant;
+
+    double energy = 0;
+    for (size_t k = 0; k < turnCoreCapacitance.size(); ++k) {
+        double bodyPotential = turnOnFirstBody[k] ? potentialFirstBody : potentialSecondBody;
+        energy += 0.5 * turnCoreCapacitance[k] * std::pow(turnPotential[k] - bodyPotential, 2);
+    }
+    energy += 0.5 * gapCapacitance * std::pow(potentialFirstBody - potentialSecondBody, 2);
+    return energy;
+}
+// ====================== ABT #1166 END ======================
+
 static double winding_to_core_self_energy_from_elements(const std::vector<Turn>& turns,
         const std::vector<double>& elements, const std::string& windingName,
         const std::vector<double>& voltagesPerTurn, std::optional<double> fixedCorePotential) {
@@ -2258,7 +2639,8 @@ static double winding_to_core_self_energy_from_elements(const std::vector<Turn>&
 static double winding_pair_to_core_energy_from_elements(const std::vector<Turn>& turns,
         const std::vector<double>& elements, const std::string& firstWindingName,
         const std::string& secondWindingName, const std::vector<double>& voltagesPerTurn,
-        double firstWindingPotentialOffset) {
+        double firstWindingPotentialOffset,
+        const StrayCapacitance::ThroughCoreGapSplit& gapSplit) {
     if (firstWindingName == secondWindingName) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "calculate_winding_pair_to_core_energy asked for a pair of one winding ('" +
@@ -2266,6 +2648,8 @@ static double winding_pair_to_core_energy_from_elements(const std::vector<Turn>&
     }
     std::vector<double> turnCoreCapacitance;
     std::vector<double> turnPotential;
+    // ABT #1166: which of the two core bodies each turn faces, used only in case C below.
+    std::vector<bool> turnOnFirstBody;
     double sumCV = 0;
     double sumC = 0;
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
@@ -2283,11 +2667,22 @@ static double winding_pair_to_core_energy_from_elements(const std::vector<Turn>&
         double capacitance = elements[turnIndex];
         turnCoreCapacitance.push_back(capacitance);
         turnPotential.push_back(potential);
+        // Case C puts each winding on one core body: the classification established that the
+        // two windings sit on opposite sides of the gap plane, so winding identity IS the body.
+        turnOnFirstBody.push_back(windingName == firstWindingName);
         sumCV += capacitance * potential;
         sumC += capacitance;
     }
     if (sumC <= 0) {
         return 0;
+    }
+    // ----- ABT #1166: case C -- the gap cuts every conductive route between the two windings'
+    // footprints, so the core is two floating bodies joined by Cgap instead of one node. Same
+    // turn elements and the same per-turn potentials; only the energy changes. Cases A and B
+    // never enter here and are bit-for-bit unchanged. -----
+    if (gapSplit.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES) {
+        return through_core_split_core_energy(turnCoreCapacitance, turnPotential, turnOnFirstBody,
+                                              gapSplit.gapCapacitance);
     }
     double corePotential = sumCV / sumC;
     double energy = 0;
@@ -2362,8 +2757,11 @@ double StrayCapacitance::calculate_winding_pair_to_core_energy(Coil coil, Core c
     // point builds them for its own call, the orchestration loop builds them once for all pairs.
     auto elements = turn_to_core_elements(coil, core, frequency);
     auto turns = coil.get_turns_description().value();
+    // ABT #1166: an all-legs gap with the two windings on opposite sides of the gap plane puts
+    // Cgap in series with this path; anything else keeps the single shared core node.
+    auto gapSplit = core_gap_topology(core, coil, &turns, firstWindingName, secondWindingName);
     return winding_pair_to_core_energy_from_elements(turns, elements, firstWindingName, secondWindingName,
-                                                     voltagesPerTurn, firstWindingPotentialOffset);
+                                                     voltagesPerTurn, firstWindingPotentialOffset, gapSplit);
 }
 
 double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core,
@@ -2774,6 +3172,15 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
             double minVoltageInSecondWinding = std::numeric_limits<double>::max();
             double maxVoltageInSecondWinding = std::numeric_limits<double>::lowest();
 
+            // ABT #1166: the gap classification is pure geometry -- the gapping, the columns and
+            // where the two windings sit relative to the gap plane -- so it is the same on every
+            // V3 iteration and for every turn pair. Computed once per winding pair, here.
+            StrayCapacitance::ThroughCoreGapSplit gapSplit;
+            if (core && firstWindingName != secondWindingName) {
+                gapSplit = core_gap_topology(core.value(), coil, &turnsFacingCore,
+                                             firstWindingName, secondWindingName);
+            }
+
             double V3 = 0;
             double V3calculated = 0;
             bool firstConvergenceIteration = true;
@@ -2863,8 +3270,11 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coi
                     // (already carried by the self term above, evaluated at the fixed potential).
                     // So a grounded or tied core diverts exactly the term #1165 adds.
                     else if (!fixedCorePotential) {
+                        // ABT #1166: the gap classification is geometry, so it is the same on
+                        // every V3 iteration; it is computed once per pair, outside the loop.
                         energyInBetweenTheseWindings += winding_pair_to_core_energy_from_elements(
-                            turnsFacingCore, turnCoreElements, firstWindingName, secondWindingName, voltagesPerTurn, V3);
+                            turnsFacingCore, turnCoreElements, firstWindingName, secondWindingName, voltagesPerTurn, V3,
+                            gapSplit);
                     }
                 }
 

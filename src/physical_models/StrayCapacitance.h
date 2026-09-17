@@ -208,6 +208,78 @@ class StrayCapacitance{
         // scaled by it when a frequency is given; with no frequency they keep beta = 1.
         static double core_image_factor(const Core& core, double frequency);
 
+        // ===================== ABT #1166 BEGIN (air gap in the through-core path) =====================
+        // The through-core path (turn -> core -> turn) above treats the ferrite as ONE floating
+        // equipotential node. An air gap breaks metal-to-metal continuity and inserts
+        // eps0*eps_r*A/g into that path -- but ONLY where the gap cuts EVERY conductive route
+        // between the two windings' footprints. Design note "Transformer Stray Capacitance"
+        // (2026-09-09) §13-§15 classifies the three cases, all decidable from MAS data:
+        //
+        //   A  centre-leg gap only .................. the outer legs still touch, the core is still
+        //                                             one body                     -> SHARED_CORE_NODE
+        //   B  all legs gapped, CONCENTRIC windings .. each winding faces BOTH halves and those
+        //                                             couplings shunt the gap      -> SHARED_CORE_NODE
+        //   C  all legs gapped AND the two windings sit on OPPOSITE sides of the gap plane
+        //      (side-by-side / split bobbin, each facing one half) .............. -> SPLIT_CORE_NODES
+        //
+        // In case C the gap capacitance is IN SERIES with Cpc and Csc and, being the smallest
+        // element, sets the total: the common offline-flyback split-bobbin construction, whose
+        // inter-winding term drives its common-mode noise model, so the single-node answer is
+        // about an order of magnitude high at a 1 mm gap.
+        //
+        // What the gap does NOT change: the INTRA-winding (self) term. Each core half is still
+        // locally equipotential below the ferrite's dielectric relaxation frequency, so a
+        // winding's own terminal shunt through the core -- calculate_winding_to_core_self_energy
+        // -- is unaffected, and it is deliberately left alone. The gap moves the common-mode path
+        // BETWEEN the windings only.
+        //
+        // Powder / distributed-gap materials (MPP, Kool Mu, iron powder), like NiZn, are
+        // high-resistivity THROUGHOUT, so the single-node picture fails for them for a different
+        // reason -- imaging, not continuity. That is core_image_factor's job and it is not
+        // re-done here: a distributed-gap core carries no discrete non-residual gapping, so it
+        // never reaches SPLIT_CORE_NODES and the two effects cannot double-count.
+        enum class ThroughCoreGapTopology { SHARED_CORE_NODE, SPLIT_CORE_NODES };
+
+        struct ThroughCoreGapSplit {
+            ThroughCoreGapTopology topology = ThroughCoreGapTopology::SHARED_CORE_NODE;
+            // Series capacitance joining the two core bodies, F. Only meaningful (and only
+            // strictly positive) when topology == SPLIT_CORE_NODES.
+            double gapCapacitance = 0;
+            // Axial coordinate of the common gap plane, in the core-centred frame the turn and
+            // bobbin coordinates use. Only meaningful when topology == SPLIT_CORE_NODES.
+            double gapPlaneAxialCoordinate = 0;
+            // Total gapped cross-section summed over the columns, m^2, and the (single) gap
+            // length, m -- reported for diagnostics and for the tests.
+            double totalGappedArea = 0;
+            double gapLength = 0;
+        };
+
+        // Cgap = fringingFactor * eps0 * eps_r * A / g, with A the TOTAL gapped cross-section
+        // across all the gapped columns (the columns' gaps are in parallel between the two core
+        // bodies) and g the gap length. THROWS on a non-positive area, length or permittivity --
+        // a gap whose area or length the record does not carry is a missing input, not a number
+        // to invent.
+        static double gap_capacitance(double totalGappedArea, double gapLength,
+                                      double gapRelativePermittivity, double fringingFactor);
+
+        // Classifies the core+coil into case A/B (SHARED_CORE_NODE, the historical behaviour) or
+        // case C (SPLIT_CORE_NODES, with the gap capacitance filled in). Purely geometric and
+        // free of the capacitance model, so it can be exercised on its own.
+        static ThroughCoreGapSplit core_gap_topology(Core core, Coil coil,
+                                                     const std::string& firstWindingName,
+                                                     const std::string& secondWindingName);
+        // The same classification for a caller that already holds the core, the wound coil and its
+        // turns (the through-core path): nothing is copied again. windingTurns may be null, in which
+        // case the coil is wound if needed and its turns read, exactly as the by-value form does.
+        // Identical result either way; this exists because the classification runs inside every
+        // through-core evaluation, and copying the coil and its turns twice more per call cost up
+        // to 57% of that call's runtime (ABT #1200).
+        static ThroughCoreGapSplit core_gap_topology(Core& core, Coil& coil,
+                                                     const std::vector<Turn>* windingTurns,
+                                                     const std::string& firstWindingName,
+                                                     const std::string& secondWindingName);
+        // ====================== ABT #1166 END ======================
+
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
         // The optional core supplies the through-core inter-winding capacitance for

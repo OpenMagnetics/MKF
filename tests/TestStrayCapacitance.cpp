@@ -2744,7 +2744,7 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
 }
 
 // ====================================================================================// ABT #1164: the bobbin wall is a dielectric, not air.
-// ===========================================================================================
+// ====================================================================================
 
 TEST_CASE("ABT1164_Bobbin_Wall_Enters_Stack_As_Thickness_Over_Permittivity", "[physical-model][stray-capacitance][abt1164]") {
     // The bobbin plastic between the winding and the ferrite is a dielectric layer of the
@@ -3261,5 +3261,461 @@ TEST_CASE("On a real CMC the bonded core diverts exactly what the through-core p
         // reduction is then literally the standalone through-core expression.
         CHECK(floatingCore == Catch::Approx(throughCore).epsilon(1e-12));
         CHECK(bondedCore == 0.0);
+    }
+}
+
+// ============================================================================================
+// ABT #1166 -- the air gap in the through-core inter-winding path.
+//
+// MKF treated the core as ONE floating equipotential node for turn -> core -> turn. A gap breaks
+// metal-to-metal continuity and inserts eps0*eps_r*A/g -- but only where it cuts EVERY conductive
+// route between the two windings' footprints (design note "Transformer Stray Capacitance" §13-15):
+//   A  centre-leg gap only ................................. outer legs touch -> one node
+//   B  all legs gapped, CONCENTRIC (overlapping) windings ... both face both halves -> one node
+//   C  all legs gapped, SPLIT-BOBBIN (contiguous) windings .. Cgap in series -> two bodies
+// Cases A and B must be bit-for-bit unchanged; case C is the offline-flyback construction whose
+// inter-winding term drives the common-mode noise model.
+// ============================================================================================
+
+// The idealisation the design note works in: every turn of a winding at the same potential, the
+// two windings at +V/2 and -V/2. calculate_through_core_capacitance applies the sign flip to the
+// second winding itself, so handing it +V/2 for EVERY turn produces exactly that. In this
+// idealisation the model must reduce ANALYTICALLY to the series network -- CA in series with CB
+// when the core is one node, and CA-Cgap-CB when the gap splits it -- which is what makes the
+// checks below exact identities rather than tolerance bands.
+static std::vector<double> abt1166_uniform_voltages(OpenMagnetics::Coil coil, double halfVoltage) {
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    auto turns = coil.get_turns_description().value();
+    return std::vector<double>(turns.size(), halfVoltage);
+}
+
+// A real MAS spacer-gapped core records the spacer as a GEOMETRICAL ELEMENT carrying its
+// schema-required insulationMaterial (core/spacer.json), and that is where the gap's dielectric
+// comes from. MKF's own create_geometrical_description stamps a synthesised spacer with
+// Defaults().defaultSpacerMaterial (PET, ABT #1200), so these helpers put the record into the
+// other states a record can be in: a different declared material, no spacer at all (a genuinely
+// empty gap), or -- for the refusal test -- a malformed spacer that declares nothing.
+static void abt1166_declare_spacer_material(OpenMagnetics::Core& core, const std::string& materialName) {
+    auto elements = core.get_geometrical_description().value();
+    size_t stamped = 0;
+    for (auto& element : elements) {
+        if (element.get_type() == CoreGeometricalDescriptionElementType::SPACER) {
+            element.set_insulation_material(InsulationMaterialDataOrNameUnion(materialName));
+            stamped += 1;
+        }
+    }
+    REQUIRE(stamped > 0);
+    core.set_geometrical_description(elements);
+}
+
+// A MALFORMED record: spacer elements present but carrying no insulationMaterial. Built explicitly,
+// because MKF no longer produces this state itself (ABT #1170 / #1200).
+static void abt1166_undeclare_spacer_material(OpenMagnetics::Core& core) {
+    auto elements = core.get_geometrical_description().value();
+    size_t cleared = 0;
+    for (auto& element : elements) {
+        if (element.get_type() == CoreGeometricalDescriptionElementType::SPACER) {
+            element.set_insulation_material(std::nullopt);
+            cleared += 1;
+        }
+    }
+    REQUIRE(cleared > 0);
+    core.set_geometrical_description(elements);
+}
+
+// An all-legs GROUND gap: every column ground by the same length. Subtractive gaps remove core
+// material and no spacer exists, so this is the AIR gap, by construction.
+// Each gap is PLACED on its column: a bare list of subtractive gaps is processed as a distributed
+// gap stacked on the centre leg (with residual laterals), which is not an all-legs gap at all. The
+// columns' coordinates are taken from the same shape built with a spacer gap of the same length,
+// so the air core has exactly the gapped areas, length and plane of its spacer twin.
+static json abt1166_all_legs_ground_gap(double gapLength) {
+    auto spacerTwin = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(gapLength), 1, "N87");
+    auto gapping = json::array();
+    for (const auto& gap : spacerTwin.get_gapping()) {
+        REQUIRE(gap.get_coordinates());
+        gapping.push_back(json{{"type", "subtractive"}, {"length", gapLength}, {"coordinates", gap.get_coordinates().value()}});
+    }
+    REQUIRE(gapping.size() == 3);
+    return gapping;
+}
+
+// A MALFORMED additive-gap record: the gap is a spacer, but no spacer element is recorded for it.
+static void abt1166_empty_the_gap(OpenMagnetics::Core& core) {
+    if (!core.get_geometrical_description()) {
+        return;
+    }
+    auto elements = core.get_geometrical_description().value();
+    std::vector<CoreGeometricalDescriptionElement> withoutSpacers;
+    for (const auto& element : elements) {
+        if (element.get_type() != CoreGeometricalDescriptionElementType::SPACER) {
+            withoutSpacers.push_back(element);
+        }
+    }
+    core.set_geometrical_description(withoutSpacers);
+}
+
+static double abt1166_series(double first, double second) {
+    return first * second / (first + second);
+}
+
+TEST_CASE("ABT #1166: the gap element is eps0 eps_r A / g with fringing, and refuses missing data",
+          "[physical-model][stray-capacitance][abt1166]") {
+    settings.reset();
+    const double vacuumPermittivity = Constants().vacuumPermittivity;
+    const double area = 4.2e-4;      // the design note's ETD49, all three legs
+    const double fringing = 1.30;    // kGapFringingFactor
+
+    // Parallel-plate value, which is what the note's table quotes (it carries no fringing).
+    for (double gapLength : {0.2e-3, 0.5e-3, 1.0e-3, 2.0e-3}) {
+        double expected = fringing * vacuumPermittivity * (area / gapLength);
+        CHECK_THAT(StrayCapacitance::gap_capacitance(area, gapLength, 1.0, fringing),
+                   WithinRel(expected, 1e-12));
+    }
+    // The note's own numbers, fringing divided back out: 19 / 7.4 / 3.7 / 1.9 pF.
+    CHECK_THAT(StrayCapacitance::gap_capacitance(area, 0.2e-3, 1.0, 1.0) * 1e12, WithinRel(18.6, 0.05));
+    CHECK_THAT(StrayCapacitance::gap_capacitance(area, 0.5e-3, 1.0, 1.0) * 1e12, WithinRel(7.44, 0.05));
+    CHECK_THAT(StrayCapacitance::gap_capacitance(area, 1.0e-3, 1.0, 1.0) * 1e12, WithinRel(3.72, 0.05));
+    CHECK_THAT(StrayCapacitance::gap_capacitance(area, 2.0e-3, 1.0, 1.0) * 1e12, WithinRel(1.86, 0.05));
+
+    // A / g is a ratio of doubles end to end: halving the gap doubles the element exactly.
+    CHECK_THAT(StrayCapacitance::gap_capacitance(area, 0.5e-3, 1.0, 1.0),
+               WithinRel(2.0 * StrayCapacitance::gap_capacitance(area, 1.0e-3, 1.0, 1.0), 1e-12));
+    // A solid spacer gives eps_r of it back.
+    CHECK_THAT(StrayCapacitance::gap_capacitance(area, 1.0e-3, 3.5, 1.0),
+               WithinRel(3.5 * StrayCapacitance::gap_capacitance(area, 1.0e-3, 1.0, 1.0), 1e-12));
+
+    // No fallbacks: a missing area or length is a missing input, not a number to invent.
+    CHECK_THROWS(StrayCapacitance::gap_capacitance(0.0, 1.0e-3, 1.0, 1.0));
+    CHECK_THROWS(StrayCapacitance::gap_capacitance(-1.0, 1.0e-3, 1.0, 1.0));
+    CHECK_THROWS(StrayCapacitance::gap_capacitance(area, 0.0, 1.0, 1.0));
+    CHECK_THROWS(StrayCapacitance::gap_capacitance(area, -1.0e-3, 1.0, 1.0));
+    CHECK_THROWS(StrayCapacitance::gap_capacitance(area, 1.0e-3, 0.0, 1.0));
+    CHECK_THROWS(StrayCapacitance::gap_capacitance(area, 1.0e-3, 1.0, 0.0));
+}
+
+TEST_CASE("ABT #1166: case A -- a centre-leg gap leaves the core one node",
+          "[physical-model][stray-capacitance][abt1166]") {
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING);
+    // Split bobbin -- the arrangement that WOULD be case C -- but only the centre leg is ground.
+    // The two outer legs still touch, so the two halves are still one conductive body.
+    auto core = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87");
+    auto split = StrayCapacitance::core_gap_topology(core, coil, "winding 0", "winding 1");
+    CHECK(split.topology == StrayCapacitance::ThroughCoreGapTopology::SHARED_CORE_NODE);
+
+    // and the answer is the single-node series of the two winding-to-core capacitances, exactly
+    // as before this work.
+    auto voltages = abt1166_uniform_voltages(coil, 0.5);
+    double primaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, "winding 0");
+    double secondaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, "winding 1");
+    double throughCore = StrayCapacitance::calculate_through_core_capacitance(coil, core, "winding 0", "winding 1", voltages);
+    CHECK_THAT(throughCore, WithinRel(abt1166_series(primaryToCore, secondaryToCore), 1e-9));
+}
+
+TEST_CASE("ABT #1166: case B -- all legs gapped but concentric windings leave the core one node",
+          "[physical-model][stray-capacitance][abt1166]") {
+    settings.reset();
+    // OVERLAPPING sections = concentric: both windings span the whole window height, so each
+    // faces BOTH core halves and those couplings shunt the gap.
+    auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::OVERLAPPING);
+    auto core = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(0.001), 1, "N87");
+    auto split = StrayCapacitance::core_gap_topology(core, coil, "winding 0", "winding 1");
+    CHECK(split.topology == StrayCapacitance::ThroughCoreGapTopology::SHARED_CORE_NODE);
+
+    auto voltages = abt1166_uniform_voltages(coil, 0.5);
+    double primaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, "winding 0");
+    double secondaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, "winding 1");
+    double throughCore = StrayCapacitance::calculate_through_core_capacitance(coil, core, "winding 0", "winding 1", voltages);
+    CHECK_THAT(throughCore, WithinRel(abt1166_series(primaryToCore, secondaryToCore), 1e-9));
+}
+
+TEST_CASE("ABT #1166: case C -- all legs gapped with a split bobbin puts Cgap in series",
+          "[physical-model][stray-capacitance][abt1166]") {
+    settings.reset();
+    // CONTIGUOUS sections = side by side along the window height: the primary sits in one half
+    // of the bobbin and the secondary in the other, each facing one core half. The bobbin is
+    // built from the shape, so it is IDENTICAL for every gap length below -- the per-turn
+    // elements CA and CB do not move and the only thing that changes is Cgap.
+    auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING);
+    auto voltages = abt1166_uniform_voltages(coil, 0.5);
+
+    auto ungappedCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_residual_gap(), 1, "N87");
+    double primaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, ungappedCore, "winding 0");
+    double secondaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, ungappedCore, "winding 1");
+    double ungapped = StrayCapacitance::calculate_through_core_capacitance(coil, ungappedCore, "winding 0", "winding 1", voltages);
+    // Residual gaps only: the halves are in contact, still one node.
+    CHECK(StrayCapacitance::core_gap_topology(ungappedCore, coil, "winding 0", "winding 1").topology ==
+          StrayCapacitance::ThroughCoreGapTopology::SHARED_CORE_NODE);
+    CHECK_THAT(ungapped, WithinRel(abt1166_series(primaryToCore, secondaryToCore), 1e-9));
+
+    std::cout << "\n=== ABT #1166, ETD 49/25/16, all three legs gapped, split bobbin (20+20 turns) ===\n";
+    std::cout << "    Cpc = " << primaryToCore * 1e12 << " pF, Csc = " << secondaryToCore * 1e12
+              << " pF, ungapped series total = " << ungapped * 1e12 << " pF\n";
+    std::cout << "    gap[mm]   A[cm2]   Cgap[pF]   total[pF]   vs ungapped\n";
+
+    double previousTotal = std::numeric_limits<double>::max();
+    for (double gapLength : {0.2e-3, 0.5e-3, 1.0e-3, 2.0e-3}) {
+        // The design note's worked table is an AIR gap: a ground gap on every leg, no spacer.
+        auto core = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", abt1166_all_legs_ground_gap(gapLength), 1, "N87");
+        auto split = StrayCapacitance::core_gap_topology(core, coil, "winding 0", "winding 1");
+        REQUIRE(split.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES);
+        CHECK_THAT(split.gapLength, WithinRel(gapLength, 1e-9));
+        CHECK(split.gapCapacitance > 0);
+
+        double total = StrayCapacitance::calculate_through_core_capacitance(coil, core, "winding 0", "winding 1", voltages);
+
+        // The exact identity the two-body solve must satisfy in this idealisation:
+        //     1/Ctot = 1/Cpc + 1/Cgap + 1/Csc
+        double series = 1.0 / (1.0 / primaryToCore + 1.0 / split.gapCapacitance + 1.0 / secondaryToCore);
+        CHECK_THAT(total, WithinRel(series, 1e-9));
+
+        // Monotone in the gap, and always below the ungapped answer.
+        CHECK(total < ungapped);
+        CHECK(total < previousTotal);
+        previousTotal = total;
+
+        std::cout << "    " << std::setw(6) << gapLength * 1e3
+                  << "   " << std::setw(6) << split.totalGappedArea * 1e4
+                  << "   " << std::setw(8) << split.gapCapacitance * 1e12
+                  << "   " << std::setw(9) << total * 1e12
+                  << "   " << std::setw(6) << ungapped / total << "x\n";
+    }
+    std::cout << "\n";
+
+    // The magnitude the design note is about: at 1 mm the single-node model is several times
+    // too high. (Its worked ETD49, Cpc = Csc = 50 pF, gives 7.7x; the ratio here is set by this
+    // coil's own Cpc/Csc, but it must be a large factor, not a rounding correction.)
+    auto core = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", abt1166_all_legs_ground_gap(0.001), 1, "N87");
+    double atOneMillimetre = StrayCapacitance::calculate_through_core_capacitance(coil, core, "winding 0", "winding 1", voltages);
+    CHECK(ungapped / atOneMillimetre > 2.0);
+}
+
+TEST_CASE("ABT #1166: the gap does not touch a winding's own through-core self term",
+          "[physical-model][stray-capacitance][abt1166]") {
+    settings.reset();
+    // Each core half is still locally equipotential, so a winding's own terminal shunt through
+    // the core is unaffected by the gap. Same coil, same voltages, gapped and ungapped.
+    auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING);
+    auto voltages = abt1166_uniform_voltages(coil, 0.5);
+    auto ungappedCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_residual_gap(), 1, "N87");
+    auto gappedCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(0.001), 1, "N87");
+    double ungappedSelf = StrayCapacitance::calculate_winding_to_core_self_energy(coil, ungappedCore, "winding 0", voltages);
+    double gappedSelf = StrayCapacitance::calculate_winding_to_core_self_energy(coil, gappedCore, "winding 0", voltages);
+    CHECK_THAT(gappedSelf, WithinRel(ungappedSelf, 1e-12));
+}
+
+TEST_CASE("ABT #1166: a solid spacer gives its own eps_r back, read from the core's spacer element",
+          "[physical-model][stray-capacitance][abt1166]") {
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING);
+    auto voltages = abt1166_uniform_voltages(coil, 0.5);
+    const double gapLength = 0.001;
+
+    // Same gap three ways: a ground (air) gap on every leg, and the same gap as a spacer of two
+    // different recorded materials. Cgap scales LINEARLY in eps_r, so the gap elements must be in
+    // exactly the ratio of the materials' relative permittivities -- that is the clean analytic
+    // check. (The inter-winding TOTAL does not scale linearly: it is a series network, so it
+    // rises sub-linearly toward the ungapped value. Asserting eps_r on the total would be wrong,
+    // which is why the ratio is taken on the gap element and the total is checked against the
+    // series identity instead.)
+    auto airCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", abt1166_all_legs_ground_gap(gapLength), 1, "N87");
+    auto kaptonCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(gapLength), 1, "N87");
+    abt1166_declare_spacer_material(kaptonCore, "Kapton HN");   // relativePermittivity 3.4
+    auto fr4Core = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(gapLength), 1, "N87");
+    abt1166_declare_spacer_material(fr4Core, "FR4");            // relativePermittivity 4.4
+
+    const double kaptonPermittivity = find_insulation_material_by_name("Kapton HN").get_relative_permittivity().value();
+    const double fr4Permittivity = find_insulation_material_by_name("FR4").get_relative_permittivity().value();
+    REQUIRE(kaptonPermittivity > 1.0);
+    REQUIRE(fr4Permittivity > kaptonPermittivity);
+
+    auto airSplit = StrayCapacitance::core_gap_topology(airCore, coil, "winding 0", "winding 1");
+    auto kaptonSplit = StrayCapacitance::core_gap_topology(kaptonCore, coil, "winding 0", "winding 1");
+    auto fr4Split = StrayCapacitance::core_gap_topology(fr4Core, coil, "winding 0", "winding 1");
+    REQUIRE(airSplit.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES);
+    REQUIRE(kaptonSplit.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES);
+    REQUIRE(fr4Split.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES);
+
+    // Cgap(spacer) / Cgap(air) == eps_r of the spacer, exactly.
+    CHECK_THAT(kaptonSplit.gapCapacitance / airSplit.gapCapacitance, WithinRel(kaptonPermittivity, 1e-9));
+    CHECK_THAT(fr4Split.gapCapacitance / airSplit.gapCapacitance, WithinRel(fr4Permittivity, 1e-9));
+    CHECK_THAT(fr4Split.gapCapacitance / kaptonSplit.gapCapacitance,
+               WithinRel(fr4Permittivity / kaptonPermittivity, 1e-9));
+
+    // and the inter-winding total follows the series identity with each of them, so a spacer
+    // really does give most of the ungapped capacitance back.
+    double primaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, airCore, "winding 0");
+    double secondaryToCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, airCore, "winding 1");
+    double airTotal = StrayCapacitance::calculate_through_core_capacitance(coil, airCore, "winding 0", "winding 1", voltages);
+    double kaptonTotal = StrayCapacitance::calculate_through_core_capacitance(coil, kaptonCore, "winding 0", "winding 1", voltages);
+    double fr4Total = StrayCapacitance::calculate_through_core_capacitance(coil, fr4Core, "winding 0", "winding 1", voltages);
+    for (auto [total, split] : std::vector<std::pair<double, StrayCapacitance::ThroughCoreGapSplit>>{
+             {airTotal, airSplit}, {kaptonTotal, kaptonSplit}, {fr4Total, fr4Split}}) {
+        double series = 1.0 / (1.0 / primaryToCore + 1.0 / split.gapCapacitance + 1.0 / secondaryToCore);
+        CHECK_THAT(total, WithinRel(series, 1e-9));
+    }
+    CHECK(kaptonTotal > airTotal);
+    CHECK(fr4Total > kaptonTotal);
+
+    std::cout << "\n=== ABT #1166, ETD 49/25/16, 1 mm all-legs gap, split bobbin: what fills the gap ===\n";
+    std::cout << "    air (ground gap, no spacer)  eps_r 1.0            Cgap " << airSplit.gapCapacitance * 1e12
+              << " pF   total " << airTotal * 1e12 << " pF\n";
+    std::cout << "    spacer 'Kapton HN'        eps_r " << kaptonPermittivity << "            Cgap "
+              << kaptonSplit.gapCapacitance * 1e12 << " pF   total " << kaptonTotal * 1e12
+              << " pF   (" << kaptonTotal / airTotal << "x air)\n";
+    std::cout << "    spacer 'FR4'              eps_r " << fr4Permittivity << "            Cgap "
+              << fr4Split.gapCapacitance * 1e12 << " pF   total " << fr4Total * 1e12
+              << " pF   (" << fr4Total / airTotal << "x air)\n\n";
+}
+
+TEST_CASE("ABT #1166: a spacer that does not say what it is made of refuses to be guessed",
+          "[physical-model][stray-capacitance][abt1166]") {
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING);
+
+    // insulationMaterial is schema-REQUIRED on core/spacer.json, so a spacer element without one
+    // is a malformed record, not a statement that the gap is empty -- and reading it as air would
+    // understate Cgap by the spacer's eps_r, a 3-4x error. It throws instead.
+    // (Before ABT #1170 this was the state MKF left its own synthesised spacers in. It no longer
+    // does, so the state is built here.)
+    auto undeclaredCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(0.001), 1, "N87");
+    abt1166_undeclare_spacer_material(undeclaredCore);
+    CHECK_THROWS(StrayCapacitance::core_gap_topology(undeclaredCore, coil, "winding 0", "winding 1"));
+
+    // A declared material the database does not carry is named, not defaulted.
+    auto unknownCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(0.001), 1, "N87");
+    abt1166_declare_spacer_material(unknownCore, "Unobtainium 9000");
+    CHECK_THROWS(StrayCapacitance::core_gap_topology(unknownCore, coil, "winding 0", "winding 1"));
+
+    // Cases A and B never reach the dielectric at all, so an undeclared spacer cannot make a
+    // concentric build throw -- the classification decides first.
+    auto concentricCoil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                              WindingOrientation::OVERLAPPING,
+                                                              WindingOrientation::OVERLAPPING);
+    CHECK_NOTHROW(StrayCapacitance::core_gap_topology(undeclaredCore, concentricCoil, "winding 0", "winding 1"));
+}
+
+// ABT #1200: a spacer MKF synthesises for an additive gap is a schema-valid core/spacer.json record,
+// so it carries insulationMaterial -- Alf's ruling (2026-09-13): PET -- and not the piece's
+// `material` field, which that schema forbids. Its dielectric therefore reaches the gap capacitance
+// with no hand-editing of the record: Cgap is linear in eps_r, so against the same core with the
+// gap emptied the ratio is PET's relative permittivity exactly.
+TEST_CASE("ABT #1200: MKF's synthesised spacer is PET and feeds the gap capacitance",
+          "[physical-model][stray-capacitance][abt1166][abt1200]") {
+    settings.reset();
+    auto core = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(0.001), 1, "N87");
+    auto elements = core.get_geometrical_description().value();
+    size_t spacers = 0;
+    for (const auto& element : elements) {
+        if (element.get_type() != CoreGeometricalDescriptionElementType::SPACER) {
+            continue;
+        }
+        spacers += 1;
+        CHECK_FALSE(element.get_material());
+        REQUIRE(element.get_insulation_material());
+        auto materialUnion = element.get_insulation_material().value();
+        REQUIRE(std::holds_alternative<std::string>(materialUnion));
+        CHECK(std::get<std::string>(materialUnion) == Defaults().defaultSpacerMaterial);
+    }
+    REQUIRE(spacers > 0);
+    CHECK(Defaults().defaultSpacerMaterial == "PET");
+
+    auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING);
+    auto airCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", abt1166_all_legs_ground_gap(0.001), 1, "N87");
+    auto pet = StrayCapacitance::core_gap_topology(core, coil, "winding 0", "winding 1");
+    auto air = StrayCapacitance::core_gap_topology(airCore, coil, "winding 0", "winding 1");
+    REQUIRE(pet.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES);
+    REQUIRE(air.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES);
+    double petPermittivity = find_insulation_material_by_name("PET").get_relative_permittivity().value();
+    CHECK(petPermittivity == 3.0);
+    CHECK_THAT(pet.gapCapacitance / air.gapCapacitance, WithinRel(petPermittivity, 1e-9));
+}
+
+
+// ABT #1200: spacer versus air is decided by the GAP TYPE in the functional description, never by
+// whether a geometrical description happens to exist.
+//   ground (subtractive) -> air, by construction: no spacer exists, and a core whose geometry was
+//                           never built must not be made to throw for it;
+//   additive              -> a spacer must be recorded: no geometrical description, or no spacer
+//                           element, throws naming the core and the gap.
+TEST_CASE("ABT #1200: spacer or air is decided by the gap type, not by the geometry",
+          "[physical-model][stray-capacitance][abt1166][abt1200]") {
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING);
+    const double gapLength = 0.001;
+
+    SECTION("ground gaps are air, with or without a geometrical description") {
+        auto groundCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", abt1166_all_legs_ground_gap(gapLength), 1, "N87");
+        REQUIRE(groundCore.get_geometrical_description());
+        auto withGeometry = StrayCapacitance::core_gap_topology(groundCore, coil, "winding 0", "winding 1");
+        REQUIRE(withGeometry.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES);
+
+        auto noGeometry = groundCore;
+        noGeometry.set_geometrical_description(std::nullopt);
+        StrayCapacitance::ThroughCoreGapSplit withoutGeometry;
+        REQUIRE_NOTHROW(withoutGeometry = StrayCapacitance::core_gap_topology(noGeometry, coil, "winding 0", "winding 1"));
+        REQUIRE(withoutGeometry.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES);
+        CHECK_THAT(withoutGeometry.gapCapacitance, WithinRel(withGeometry.gapCapacitance, 1e-12));
+
+        // ...and that value is the air one: the same gap as a PET spacer is exactly eps_r(PET) larger.
+        auto spacerCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(gapLength), 1, "N87");
+        auto spacer = StrayCapacitance::core_gap_topology(spacerCore, coil, "winding 0", "winding 1");
+        REQUIRE(spacer.topology == StrayCapacitance::ThroughCoreGapTopology::SPLIT_CORE_NODES);
+        CHECK_THAT(spacer.gapCapacitance / withoutGeometry.gapCapacitance,
+                   WithinRel(find_insulation_material_by_name("PET").get_relative_permittivity().value(), 1e-9));
+    }
+
+    SECTION("an additive gap with no geometrical description throws, naming the core and the gap") {
+        auto spacerCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(gapLength), 1, "N87");
+        spacerCore.set_name("abt1200 spacer core");
+        spacerCore.set_geometrical_description(std::nullopt);
+        std::string message;
+        try {
+            StrayCapacitance::core_gap_topology(spacerCore, coil, "winding 0", "winding 1");
+        }
+        catch (const std::exception& exception) {
+            message = exception.what();
+        }
+        INFO(message);
+        CHECK(message.find("no geometrical description") != std::string::npos);
+        CHECK(message.find("abt1200 spacer core") != std::string::npos);
+        CHECK(message.find("additive gap") != std::string::npos);
+    }
+
+    SECTION("an additive gap with no spacer element throws, naming the core and the gap") {
+        auto spacerCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(gapLength), 1, "N87");
+        spacerCore.set_name("abt1200 spacer core");
+        abt1166_empty_the_gap(spacerCore);
+        REQUIRE(spacerCore.get_geometrical_description());
+        std::string message;
+        try {
+            StrayCapacitance::core_gap_topology(spacerCore, coil, "winding 0", "winding 1");
+        }
+        catch (const std::exception& exception) {
+            message = exception.what();
+        }
+        INFO(message);
+        CHECK(message.find("no spacer element") != std::string::npos);
+        CHECK(message.find("abt1200 spacer core") != std::string::npos);
+        CHECK(message.find("additive gap") != std::string::npos);
     }
 }
