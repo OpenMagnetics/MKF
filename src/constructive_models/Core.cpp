@@ -449,7 +449,14 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                     // piece field: setting it made the element validate against neither branch
                     // of the geometricalDescription oneOf. Same for `rotation`, which spacer.json
                     // does not define at all (the box is axis-aligned by construction).
-                    spacer.set_insulation_material(std::string("plastic"));
+                    // WHICH dielectric is Alf's ruling (2026-09-13, ABT #1200): PET, through its own
+                    // Defaults constant. It was "plastic", which is not a name in
+                    // data/insulation_materials.ndjson, so nothing downstream could resolve it and the
+                    // gap capacitance (ABT #1166) threw on every spacer MKF generated. At eps_r 3.0 PET
+                    // is the lowest of the catalogue bobbin plastics, so a synthesised spacer
+                    // UNDER-states the gap capacitance relative to a Kapton or FR4 sheet -- the same
+                    // caveat accepted for bobbins. Record the real spacer material to do better.
+                    spacer.set_insulation_material(Defaults().defaultSpacerMaterial);
 
                     double minimum_column_width;
                     double minimum_column_depth;
@@ -687,13 +694,17 @@ std::vector<ColumnElement> Core::find_columns_by_type(ColumnType columnType) {
 }
 
 int Core::find_closest_column_index_by_coordinates(std::vector<double> coordinates) {
+    auto processedDescription = get_processed_description().value();
+    return find_closest_column_index_by_coordinates(processedDescription.get_columns(), coordinates);
+}
+
+int Core::find_closest_column_index_by_coordinates(const std::vector<ColumnElement>& columns,
+                                                   const std::vector<double>& coordinates) {
     double closestDistance = std::numeric_limits<double>::infinity();
     int closestColumnIndex = -1;
-    auto processedDescription = get_processed_description().value();
-    auto columns = processedDescription.get_columns();
     for (size_t index = 0; index < columns.size(); ++index) {
         double distance = 0;
-        auto columnCoordinates = columns[index].get_coordinates();
+        const auto& columnCoordinates = columns[index].get_coordinates();
         for (size_t i = 0; i < columnCoordinates.size(); ++i) {
             if (i != 1) { // We don't care about how high in the column the gap is, just about its projection, with are
                           // axis X and Z

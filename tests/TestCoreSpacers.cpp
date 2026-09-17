@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "constructive_models/Core.h"
+#include "support/Utils.h"
 #include "Constants.h"
 #include "Fixtures.h"
 #include "TestingUtils.h"
@@ -153,7 +154,10 @@ TEST_CASE("Core_Additive_Gap_Spacers_Are_Schema_Valid_And_One_Per_Column",
 
         // core/spacer.json REQUIRES insulationMaterial and defines no `material`/`rotation`.
         REQUIRE(spacer.get_insulation_material());
-        CHECK(std::get<std::string>(spacer.get_insulation_material().value()) == "plastic");
+        // ABT #1200: the dielectric is Alf's ruling, PET (was "plastic", a name the insulation
+        // database does not carry). It must also RESOLVE there, or nothing downstream can use it.
+        CHECK(std::get<std::string>(spacer.get_insulation_material().value()) == Defaults().defaultSpacerMaterial);
+        CHECK_NOTHROW(find_insulation_material_by_name(std::get<std::string>(spacer.get_insulation_material().value())));
         CHECK(!spacer.get_material());
         CHECK(!spacer.get_rotation());
         CHECK(!spacer.get_shape());

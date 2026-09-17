@@ -4,6 +4,7 @@
 // C++ port of MAS/scripts/migrate-to-1.0.py.
 
 #include "constructive_models/MasMigration.h"
+#include "Defaults.h"
 
 #include <string>
 #include <unordered_map>
@@ -160,6 +161,44 @@ void migrate_pre_1_0(nlohmann::json& j) {
             j = it->second;
         }
     } else if (j.is_object()) {
+        // Core spacers written by older MKF, both rewritten to the dielectric MKF now stamps --
+        // Defaults().defaultSpacerMaterial, PET, Alf's ruling (2026-09-13, ABT #1200):
+        //   1. before ABT #1170: {"type": "spacer", "material": "plastic"} with no
+        //      insulationMaterial -- the piece-only `material` key, which core/spacer.json forbids
+        //      (additionalProperties: false), and no insulationMaterial, which it requires;
+        //   2. between ABT #1170 and #1200: {"type": "spacer", "insulationMaterial": "plastic"} --
+        //      schema-valid, but "plastic" is not a name in data/insulation_materials.ndjson. The
+        //      same value can arrive as an inline record, {"insulationMaterial": {"name": "plastic",
+        //      ...}}, once a design has been round-tripped through a serialiser; that too is mapped,
+        //      but ONLY when the record carries no relativePermittivity of its own. A record that does
+        //      is real data -- the gap-dielectric resolver uses an inline record's own values -- and
+        //      overriding it with PET would be exactly the guess the no-fallbacks rule forbids.
+        // Matched on those EXACT legacy forms and nothing broader: any other spacer material, or a
+        // spacer missing one, is a malformed record, is left untouched, and throws when its
+        // dielectric is needed.
+        const auto type = j.find("type");
+        if (type != j.end() && type->is_string() && type->get<std::string>() == "spacer") {
+            const auto material = j.find("material");
+            const auto insulationMaterial = j.find("insulationMaterial");
+            const bool legacyPieceMaterial = material != j.end() && material->is_string() &&
+                                             material->get<std::string>() == "plastic" &&
+                                             (insulationMaterial == j.end() || insulationMaterial->is_null());
+            const bool legacyInsulationMaterial = insulationMaterial != j.end() && insulationMaterial->is_string() &&
+                                                  insulationMaterial->get<std::string>() == "plastic";
+            const bool legacyInsulationRecord = insulationMaterial != j.end() && insulationMaterial->is_object() &&
+                                                insulationMaterial->contains("name") &&
+                                                insulationMaterial->at("name").is_string() &&
+                                                insulationMaterial->at("name").get<std::string>() == "plastic" &&
+                                                (!insulationMaterial->contains("relativePermittivity") ||
+                                                 insulationMaterial->at("relativePermittivity").is_null());
+            if (legacyPieceMaterial) {
+                j["insulationMaterial"] = Defaults().defaultSpacerMaterial;
+                j.erase("material");
+            }
+            else if (legacyInsulationMaterial || legacyInsulationRecord) {
+                j["insulationMaterial"] = Defaults().defaultSpacerMaterial;
+            }
+        }
         for (auto it = j.begin(); it != j.end(); ++it) {
             // Current schema: distributorInfo.cost is a {value, currency} object (CurrencyAmount).
             // Normalize legacy forms UP to it so old data still loads:

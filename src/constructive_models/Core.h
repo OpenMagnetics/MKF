@@ -57,6 +57,11 @@ class Core : public MAS::MagneticCore {
     std::vector<ColumnElement> find_columns_by_type(ColumnType columnType);
     ColumnElement find_closest_column_by_coordinates(std::vector<double> coordinates);
     int find_closest_column_index_by_coordinates(std::vector<double> coordinates);
+    // The same search over a column list the caller already holds, so a hot path that has read the
+    // processed description once does not copy it again per query (ABT #1200). The member form
+    // delegates here: one implementation.
+    static int find_closest_column_index_by_coordinates(const std::vector<ColumnElement>& columns,
+                                                        const std::vector<double>& coordinates);
     int find_exact_column_index_by_coordinates(std::vector<double> coordinates);
     std::vector<CoreGap> find_gaps_by_type(GapType gappingType);
     std::vector<CoreGap> find_gaps_by_column(ColumnElement column);

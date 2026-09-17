@@ -68,6 +68,10 @@ struct Defaults {
     const std::string defaultConductorMaterial = "copper";
     const std::string defaultPcbInsulationMaterial = "FR4";
     const std::string defaultBobbinMaterial = "PET";
+    // Dielectric of a spacer MKF synthesises for an additive gap (Core::create_geometrical_description).
+    // Its own constant, not defaultBobbinMaterial: the two are different components that share a
+    // default today and must be able to diverge.
+    const std::string defaultSpacerMaterial = "PET";
     // Core coating thickness per surface, in m, used when a core's coating is given
     // only by name (epoxy/parylene) with no explicit thickness — the bulk of the
     // catalogue. Datasheet-sourced (see memory/core-coating-thicknesses.md):
