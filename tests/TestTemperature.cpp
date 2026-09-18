@@ -3508,57 +3508,31 @@ TEST_CASE("Temperature: concentric_flyback_rectangular_column", "[temperature][s
     }
     
     SECTION("Individual turn temperatures from Icepak export") {
-        // Validate specific turn temperatures exported from Icepak
-        // Primary_Parallel_0_Turn_3_copper: 523.63°C (Icepak)
-        // Check if turn W0_Turn_3 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_3") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_3"), Catch::Matchers::WithinRel(523.63, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_12_copper: 300.51°C (Icepak)
-        // Check if turn W0_Turn_12 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_12") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_12"), Catch::Matchers::WithinRel(300.51, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_21_copper: 326.85°C (Icepak)
-        // Check if turn W0_Turn_21 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_21") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_21"), Catch::Matchers::WithinRel(326.85, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_4_copper: 525.20°C (Icepak)
-        // Check if turn W0_Turn_4 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_4") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_4"), Catch::Matchers::WithinRel(525.20, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_15_copper: 445.24°C (Icepak)
-        // Check if turn W0_Turn_15 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_15") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_15"), Catch::Matchers::WithinRel(445.24, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_18_copper: 550.86°C (Icepak)
-        // Check if turn W0_Turn_18 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_18") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_18"), Catch::Matchers::WithinRel(550.86, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_11_copper: 328.13°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_11 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_11") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_11"), Catch::Matchers::WithinRel(328.13, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_19_copper: 551.13°C (Icepak)
-        // Check if turn W0_Turn_19 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_19") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_19"), Catch::Matchers::WithinRel(551.13, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_20_copper: 328.04°C (Icepak)
-        // Check if turn W0_Turn_20 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_20") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_20"), Catch::Matchers::WithinRel(328.04, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_23_copper: 188.64°C (Icepak)
-        // Check if turn W0_Turn_23 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_23") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_23"), Catch::Matchers::WithinRel(188.64, 0.25)); // 25% tolerance
-        }
+        // ABT #838: these lookups used the key "Turn_W0_Turn_N" (and, after a botched
+        // find-and-replace, "Turn_Wecondary_0_Warallel_0_Turn_0"), which getTemperaturePerTurn
+        // never emits -- its keys are "<winding> parallel <p> turn <n>". Every assertion sat
+        // behind an `if (find(...) != end())` that was never true, so the whole section ran
+        // green while asserting nothing at all. The keys are now the real ones and each one is
+        // REQUIREd to exist, so a naming change fails loudly instead of going quiet again.
+        //
+        // These comparisons are EXPECTED TO FAIL today, and that failure is the point: it is
+        // the only per-turn measurement in the repository, and it is how far the winding side
+        // of the thermal model is from Icepak. Do not widen the bracket to make it pass --
+        // fix the winding model (ABT #838). Alf, 2026-09-17: "repair them and let them fail".
+        auto checkIcepakTurn = [&](const std::string& key, double icepakTemperature) {
+            REQUIRE(tempsPerTurn.count(key) == 1);
+            CHECK_THAT(tempsPerTurn.at(key), Catch::Matchers::WithinRel(icepakTemperature, 0.25));
+        };
+        checkIcepakTurn("Primary parallel 0 turn 3", 523.63);
+        checkIcepakTurn("Primary parallel 0 turn 12", 300.51);
+        checkIcepakTurn("Primary parallel 0 turn 21", 326.85);
+        checkIcepakTurn("Primary parallel 0 turn 4", 525.20);
+        checkIcepakTurn("Primary parallel 0 turn 15", 445.24);
+        checkIcepakTurn("Primary parallel 0 turn 18", 550.86);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 11", 328.13);
+        checkIcepakTurn("Primary parallel 0 turn 19", 551.13);
+        checkIcepakTurn("Primary parallel 0 turn 20", 328.04);
+        checkIcepakTurn("Primary parallel 0 turn 23", 188.64);
     }
     
     SECTION("Winding temperature by index") {
@@ -3634,97 +3608,39 @@ TEST_CASE("Temperature: concentric_transformer_contiguous_rectangular_wire", "[t
     }
     
     SECTION("Individual turn temperatures from Icepak export") {
-        // Validate specific turn temperatures exported from Icepak
-        // Primary_Parallel_0_Turn_3_copper: 395.37°C (Icepak)
-        // Check if turn W0_Turn_3 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_3") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_3"), Catch::Matchers::WithinRel(395.37, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_21_copper: 244.07°C (Icepak)
-        // Check if turn W0_Turn_21 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_21") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_21"), Catch::Matchers::WithinRel(244.07, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_18_copper: 305.77°C (Icepak)
-        // Check if turn W0_Turn_18 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_18") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_18"), Catch::Matchers::WithinRel(305.77, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_0_copper: 242.76°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_0 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_0") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_0"), Catch::Matchers::WithinRel(242.76, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_8_copper: 243.86°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_8 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_8") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_8"), Catch::Matchers::WithinRel(243.86, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_1_copper: 301.11°C (Icepak)
-        // Check if turn W0_Turn_1 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_1") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_1"), Catch::Matchers::WithinRel(301.11, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_4_copper: 394.95°C (Icepak)
-        // Check if turn W0_Turn_4 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_4") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_4"), Catch::Matchers::WithinRel(394.95, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_16_copper: 232.31°C (Icepak)
-        // Check if turn W0_Turn_16 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_16") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_16"), Catch::Matchers::WithinRel(232.31, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_7_copper: 395.20°C (Icepak)
-        // Check if turn W0_Turn_7 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_7") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_7"), Catch::Matchers::WithinRel(395.20, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_19_copper: 267.48°C (Icepak)
-        // Check if turn W0_Turn_19 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_19") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_19"), Catch::Matchers::WithinRel(267.48, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_1_copper: 242.76°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_1 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_1") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_1"), Catch::Matchers::WithinRel(242.76, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_3_copper: 243.77°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_3 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_3") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_3"), Catch::Matchers::WithinRel(243.77, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_4_copper: 243.47°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_4 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_4") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_4"), Catch::Matchers::WithinRel(243.47, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_6_copper: 281.72°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_6 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_6") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_6"), Catch::Matchers::WithinRel(281.72, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_7_copper: 243.46°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_7 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_7") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_7"), Catch::Matchers::WithinRel(243.46, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_11_copper: 232.11°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_11 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_11") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_11"), Catch::Matchers::WithinRel(232.11, 0.25)); // 25% tolerance
-        }
-        // Secondary_0_Parallel_0_Turn_12_copper: 243.87°C (Icepak)
-        // Check if turn Wecondary_0_Warallel_0_Turn_12 exists in results
-        if (tempsPerTurn.find("Turn_Wecondary_0_Warallel_0_Turn_12") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_Wecondary_0_Warallel_0_Turn_12"), Catch::Matchers::WithinRel(243.87, 0.25)); // 25% tolerance
-        }
-        // Primary_Parallel_0_Turn_14_copper: 232.22°C (Icepak)
-        // Check if turn W0_Turn_14 exists in results
-        if (tempsPerTurn.find("Turn_W0_Turn_14") != tempsPerTurn.end()) {
-            REQUIRE_THAT(tempsPerTurn.at("Turn_W0_Turn_14"), Catch::Matchers::WithinRel(232.22, 0.25)); // 25% tolerance
-        }
+        // ABT #838: these lookups used the key "Turn_W0_Turn_N" (and, after a botched
+        // find-and-replace, "Turn_Wecondary_0_Warallel_0_Turn_0"), which getTemperaturePerTurn
+        // never emits -- its keys are "<winding> parallel <p> turn <n>". Every assertion sat
+        // behind an `if (find(...) != end())` that was never true, so the whole section ran
+        // green while asserting nothing at all. The keys are now the real ones and each one is
+        // REQUIREd to exist, so a naming change fails loudly instead of going quiet again.
+        //
+        // These comparisons are EXPECTED TO FAIL today, and that failure is the point: it is
+        // the only per-turn measurement in the repository, and it is how far the winding side
+        // of the thermal model is from Icepak. Do not widen the bracket to make it pass --
+        // fix the winding model (ABT #838). Alf, 2026-09-17: "repair them and let them fail".
+        auto checkIcepakTurn = [&](const std::string& key, double icepakTemperature) {
+            REQUIRE(tempsPerTurn.count(key) == 1);
+            CHECK_THAT(tempsPerTurn.at(key), Catch::Matchers::WithinRel(icepakTemperature, 0.25));
+        };
+        checkIcepakTurn("Primary parallel 0 turn 3", 395.37);
+        checkIcepakTurn("Primary parallel 0 turn 21", 244.07);
+        checkIcepakTurn("Primary parallel 0 turn 18", 305.77);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 0", 242.76);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 8", 243.86);
+        checkIcepakTurn("Primary parallel 0 turn 1", 301.11);
+        checkIcepakTurn("Primary parallel 0 turn 4", 394.95);
+        checkIcepakTurn("Primary parallel 0 turn 16", 232.31);
+        checkIcepakTurn("Primary parallel 0 turn 7", 395.20);
+        checkIcepakTurn("Primary parallel 0 turn 19", 267.48);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 1", 242.76);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 3", 243.77);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 4", 243.47);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 6", 281.72);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 7", 243.46);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 11", 232.11);
+        checkIcepakTurn("Secondary 0 parallel 0 turn 12", 243.87);
+        checkIcepakTurn("Primary parallel 0 turn 14", 232.22);
     }
     
     SECTION("Winding temperature by index") {
