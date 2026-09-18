@@ -106,6 +106,12 @@ namespace ThermalDefaults {
     
     // Convection & Radiation
     constexpr double kConvection_DefaultEmissivity = 0.9;      // [-] dark/matte
+    // ABT #838: BARE metal is not a dark matte surface. Rolled/oxidised copper radiates at
+    // 0.03-0.07 (Incropera, Table A.11; 0.07 is the oxidised end and the conservative one
+    // here), so charging an uncoated foil or bare conductor the 0.9 above overstates its
+    // radiation by more than an order of magnitude. Enamelled wire, insulation wrap and
+    // ferrite keep 0.9 -- they genuinely are dark matte dielectrics.
+    constexpr double kRadiation_BareCopperEmissivity = 0.07;   // [-] oxidised rolled copper
     constexpr double kConvection_InitialDeltaT = 30.0;         // [°C] initial estimate
     constexpr double kConvection_MinNaturalH = 2.0;            // [W/(m²·K)] IMP-7
     constexpr double kConvection_MinForcedH = 10.0;            // [W/(m²·K)]

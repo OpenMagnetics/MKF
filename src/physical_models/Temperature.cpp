@@ -3703,10 +3703,34 @@ void Temperature::createConvectionConnections() {
                     }
                 }
 
+                // ABT #838: the emissivity of THIS surface, not one value for the whole part.
+                // An insulation wrap is the dark matte dielectric the 0.9 default describes; so
+                // is enamelled wire. A turn whose winding declares NO coating is bare metal, and
+                // rolled copper radiates ~0.07 -- better than an order of magnitude less. Read
+                // from the winding's own wire record: absent coating is what MAS says about the
+                // wire, not a value invented here.
+                double surfaceEmissivity = _config.surfaceEmissivity;
+                if (sourcePart == ThermalNodePartType::TURN && sourceNode.windingIndex) {
+                    auto wirePropsIt = _perWindingWireProps.find(sourceNode.windingIndex.value());
+                    if (wirePropsIt != _perWindingWireProps.end()) {
+                        // MAS says "bare" with a coating record of type BARE (this is how every
+                        // foil winding in the corpus is written), and an absent coating says the
+                        // same thing. Both are the metal surface; anything else -- enamel, served,
+                        // insulated, extruded -- is the dark matte dielectric.
+                        const auto& coating = wirePropsIt->second.wireCoating;
+                        const bool isBareMetal =
+                            !coating || (coating->get_type() &&
+                                         coating->get_type().value() == InsulationWireCoatingType::BARE);
+                        if (isBareMetal) {
+                            surfaceEmissivity = ThermalDefaults::kRadiation_BareCopperEmissivity;
+                        }
+                    }
+                }
+
                 // Initial guess: surface at surfaceTemp, core at ambient. The iterative
                 // solver replaces this with both converged endpoint temperatures.
                 double h_rad = ThermalResistance::calculateRadiationCoefficient(
-                    surfaceTemp, _config.ambientTemperature, _config.surfaceEmissivity);
+                    surfaceTemp, _config.ambientTemperature, surfaceEmissivity);
                 if (h_rad <= 0) continue;
 
                 // Split the turn's radiating area by what each share of the wrap faces.
@@ -3720,6 +3744,7 @@ void Temperature::createConvectionConnections() {
                     radiationResistor.nodeToId = nearestCoreIdx;
                     radiationResistor.quadrantTo = ThermalNodeFace::NONE;
                     radiationResistor.type = HeatTransferType::RADIATION;
+                    radiationResistor.emissivity = surfaceEmissivity;
                     radiationResistor.area = coreFacingArea;
                     radiationResistor.orientation = convectionResistor.orientation;
                     radiationResistor.resistance = 1.0 / (h_rad * coreFacingArea);
@@ -3732,6 +3757,7 @@ void Temperature::createConvectionConnections() {
                     radiationResistor.nodeToId = ambientIdx;
                     radiationResistor.quadrantTo = ThermalNodeFace::NONE;
                     radiationResistor.type = HeatTransferType::RADIATION;
+                    radiationResistor.emissivity = surfaceEmissivity;
                     radiationResistor.area = roomFacingArea;
                     radiationResistor.orientation = convectionResistor.orientation;
                     radiationResistor.resistance = 1.0 / (h_rad * roomFacingArea);
@@ -4011,7 +4037,7 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                                  HeatTransferType::FORCED_CONVECTION : 
                                  HeatTransferType::NATURAL_CONVECTION;
                         r.resistance = q->calculateConvectionResistance(h_conv);
-                        r.area = q->surfaceArea;  // Store area for forced convection calculation
+                        r.area = q->surfaceArea * q->surfaceCoverage;
                         _resistances.push_back(r);
                     }
                 }
@@ -4054,7 +4080,7 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                                  HeatTransferType::FORCED_CONVECTION :
                                  HeatTransferType::NATURAL_CONVECTION;
                         r.resistance = q->calculateConvectionResistance(h_conv);
-                        r.area = q->surfaceArea;  // Store area so recalc updates this face (mirrors RADIAL_OUTER)
+                        r.area = q->surfaceArea * q->surfaceCoverage;
                         _resistances.push_back(r);
                     }
                 }
@@ -4109,7 +4135,7 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                              HeatTransferType::FORCED_CONVECTION : 
                              HeatTransferType::NATURAL_CONVECTION;
                     r.resistance = q->calculateConvectionResistance(h_conv);
-                    r.area = q->surfaceArea;  // Store area for forced convection calculation
+                    r.area = q->surfaceArea * q->surfaceCoverage;
                     _resistances.push_back(r);
                     if (THERMAL_DEBUG) {
                     }
@@ -4130,7 +4156,7 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                              HeatTransferType::FORCED_CONVECTION : 
                              HeatTransferType::NATURAL_CONVECTION;
                     r.resistance = q->calculateConvectionResistance(h_conv);
-                    r.area = q->surfaceArea;  // Store area for forced convection calculation
+                    r.area = q->surfaceArea * q->surfaceCoverage;
                     _resistances.push_back(r);
                     if (THERMAL_DEBUG) {
                     }
@@ -4249,7 +4275,7 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                         HeatTransferType::FORCED_CONVECTION :
                         HeatTransferType::NATURAL_CONVECTION;
                     r.resistance = turnQuad->calculateConvectionResistance(h_conv);
-                    r.area = turnQuad->surfaceArea;
+                    r.area = turnQuad->surfaceArea * turnQuad->surfaceCoverage;
                     _resistances.push_back(r);
 
                     continue;  // Skip FR4 connection for this quadrant
@@ -4266,7 +4292,7 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                         HeatTransferType::FORCED_CONVECTION :
                         HeatTransferType::NATURAL_CONVECTION;
                     r.resistance = turnQuad->calculateConvectionResistance(h_conv);
-                    r.area = turnQuad->surfaceArea;
+                    r.area = turnQuad->surfaceArea * turnQuad->surfaceCoverage;
                     _resistances.push_back(r);
 
                     continue;  // Skip FR4 connection for this quadrant
@@ -4465,7 +4491,7 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                     HeatTransferType::FORCED_CONVECTION :
                     HeatTransferType::NATURAL_CONVECTION;
                 r.resistance = coreQuad->calculateConvectionResistance(h_conv);
-                r.area = coreQuad->surfaceArea;
+                r.area = coreQuad->surfaceArea * coreQuad->surfaceCoverage;
                 _resistances.push_back(r);
 
             }
@@ -4633,7 +4659,7 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
                                  HeatTransferType::FORCED_CONVECTION : 
                                  HeatTransferType::NATURAL_CONVECTION;
                         r.resistance = q->calculateConvectionResistance(h_conv);
-                        r.area = q->surfaceArea;  // Store area for forced convection calculation
+                        r.area = q->surfaceArea * q->surfaceCoverage;
                         _resistances.push_back(r);
                     }
                 }
@@ -4951,8 +4977,19 @@ void Temperature::recalculateConvectionResistances(const std::vector<double>& te
                 surfaceTemp, ambientTemp, characteristicLength, res.orientation);
             if (h_new > 0) res.resistance = 1.0 / (h_new * res.area);
         } else if (res.type == HeatTransferType::FORCED_CONVECTION && res.area > 0) {
-            double h_new = ThermalResistance::calculateForcedConvectionCoefficient(
+            // ABT #838: MIXED convection, the same law applyForcedConvectionCooling uses when it
+            // builds these resistors -- h = (h_natural^3 + h_forced^3)^(1/3). This used to be pure
+            // forced convection, a SECOND and independent implementation, so the blend survived
+            // only until the first recalculation and buoyancy was then dropped for the rest of the
+            // solve. At low airflow the two differ by tens of percent (they converge only once
+            // forced dominates), and the natural term is the one that carries the surface's own
+            // temperature rise. One law, evaluated here every iteration from the current
+            // temperatures, is what the two callers now share.
+            double h_forced = ThermalResistance::calculateForcedConvectionCoefficient(
                 _config.airVelocity, characteristicLength, surfaceTemp);
+            double h_natural = ThermalResistance::calculateNaturalConvectionCoefficient(
+                surfaceTemp, ambientTemp, characteristicLength, res.orientation);
+            double h_new = CoolingUtils::calculateMixedConvectionCoefficient(h_natural, h_forced);
             if (h_new > 0) res.resistance = 1.0 / (h_new * res.area);
         } else if (res.type == HeatTransferType::RADIATION && res.area > 0) {
             // Radiation connects a winding surface to the facing core node (not ambient),
@@ -4961,7 +4998,7 @@ void Temperature::recalculateConvectionResistances(const std::vector<double>& te
                                    ? temperatures[res.nodeToId]
                                    : _config.ambientTemperature;
             double h_rad = ThermalResistance::calculateRadiationCoefficient(
-                surfaceTemp, otherTemp, _config.surfaceEmissivity);
+                surfaceTemp, otherTemp, res.emissivity);  // ABT #838: this surface's own value
             if (h_rad > 0) res.resistance = 1.0 / (h_rad * res.area);
         }
     }

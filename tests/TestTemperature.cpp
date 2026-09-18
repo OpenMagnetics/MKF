@@ -4236,3 +4236,225 @@ TEST_CASE("Test_Thermal_Floating_Island_Is_Reported_Not_Just_Degree_Zero_Nodes",
     REQUIRE(withColdPlate == std::vector<size_t>{5});
     REQUIRE(Temperature::nodesWithoutPathToRoots(3, {link(0, 1), link(1, 2)}, {0}).empty());
 }
+
+// ============================================================================================
+// ABT #838 — three build-time values that the per-iteration recalculation used to overwrite.
+//
+// recalculateConvectionResistances() rebuilds every convection and radiation resistance from the
+// current temperatures on each pass, so anything folded into the resistance at BUILD time and not
+// carried on the resistor itself survives exactly one iteration. Radiation was lost this way once
+// already (it was lumped into h_conv); these three were the remaining instances.
+// ============================================================================================
+
+TEST_CASE("ABT838_Convection_Resistor_Carries_The_Exposed_Area_Not_The_Bare_One",
+          "[temperature][abt838]") {
+    // A quadrant's convection resistance is built from surfaceArea * surfaceCoverage, so a face a
+    // winding lies against convects less than a bare one. The resistor stored the BARE area, and
+    // the recalculation then rebuilt the resistance as 1/(h * area) — handing the covered face its
+    // full area back and making a wound surface convect as if nothing were wound on it.
+    std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() / "testData" /
+                                     "concentric_round_wire_insulation_layers.json";
+    std::ifstream file(testFile);
+    REQUIRE(file.good());
+    json j;
+    file >> j;
+    OpenMagnetics::Inputs inputs(j["inputs"]);
+    OpenMagnetics::Magnetic magnetic(j["magnetic"]);
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    REQUIRE(losses.windingLossesOutput.has_value());
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = false;
+
+    Temperature temperature(magnetic, config);
+    auto result = temperature.calculateTemperatures();
+    REQUIRE(result.converged);
+
+    // The invariant: every convection resistor is built with the SAME h_conv, so 1/(R * area)
+    // must come out identical for all of them. That is exactly what the bug broke -- a covered
+    // face's resistance came from surfaceArea*coverage while its stored area was the bare
+    // surfaceArea, so its implied h was off by 1/coverage (a factor of 24 on the face below).
+    // It is also immune to the half-core symmetry correction, which scales resistance and area
+    // together and therefore leaves the implied h alone.
+    const auto& nodes = temperature.getNodes();
+    std::vector<double> exposedFaceCoefficients;
+    std::vector<std::pair<double, double>> coveredFaceCoefficients;   // (coverage, implied h)
+    size_t checkedCovered = 0;
+    for (const auto& resistor : temperature.getResistances()) {
+        if (resistor.type != HeatTransferType::NATURAL_CONVECTION &&
+            resistor.type != HeatTransferType::FORCED_CONVECTION) {
+            continue;
+        }
+        if (resistor.nodeFromId >= nodes.size() || resistor.quadrantFrom == ThermalNodeFace::NONE) {
+            continue;
+        }
+        const auto* quadrant = nodes[resistor.nodeFromId].getQuadrant(resistor.quadrantFrom);
+        if (!quadrant || quadrant->surfaceArea <= 0 || resistor.area <= 0 || resistor.resistance <= 0) {
+            continue;
+        }
+        double impliedCoefficient = 1.0 / (resistor.resistance * resistor.area);
+        if (quadrant->surfaceCoverage < 1.0) {
+            ++checkedCovered;
+            coveredFaceCoefficients.emplace_back(quadrant->surfaceCoverage, impliedCoefficient);
+            UNSCOPED_INFO("covered face on node " << resistor.nodeFromId << ": coverage "
+                          << quadrant->surfaceCoverage << ", surfaceArea " << quadrant->surfaceArea
+                          << ", stored area " << resistor.area << ", implied h " << impliedCoefficient);
+            // The stored area is the EXPOSED one (the symmetry correction may double it), never
+            // the bare face.
+            CHECK(resistor.area < quadrant->surfaceArea * 2.0);
+        }
+        else {
+            exposedFaceCoefficients.push_back(impliedCoefficient);
+        }
+    }
+    // A design with no partially covered face would prove nothing, so say so rather than pass.
+    REQUIRE(checkedCovered > 0);
+    REQUIRE(!exposedFaceCoefficients.empty());
+    std::sort(exposedFaceCoefficients.begin(), exposedFaceCoefficients.end());
+    const double exposedReference = exposedFaceCoefficients[exposedFaceCoefficients.size() / 2];
+    REQUIRE(exposedReference > 0);
+    // Every face is built with the same h_conv, so a covered face's implied h must land near the
+    // fully exposed ones. It does not land EXACTLY there (series terms such as an insulation layer
+    // add resistance, spreading the implied value by a few per cent), so the bar here is the SIZE
+    // OF THE BUG rather than an exact equality: storing the bare area divides a covered face's
+    // implied h by its coverage -- a factor of 24 on the 4% face in this design, and never less
+    // than 2 on any face covered by more than half.
+    for (const auto& [coverage, impliedCoefficient] : coveredFaceCoefficients) {
+        UNSCOPED_INFO("coverage " << coverage << ": implied h " << impliedCoefficient
+                      << " against the exposed-face reference " << exposedReference);
+        CHECK(impliedCoefficient > exposedReference / 2.0);
+        CHECK(impliedCoefficient < exposedReference * 2.0);
+    }
+}
+
+TEST_CASE("ABT838_Forced_Convection_Keeps_Its_Buoyancy_Term_Through_The_Iteration",
+          "[temperature][abt838][cooling]") {
+    // applyForcedConvectionCooling builds these resistors with the mixed law
+    // h = (h_natural^3 + h_forced^3)^(1/3); the recalculation used to rebuild them from PURE
+    // forced convection, a second implementation, so buoyancy was dropped after iteration one.
+    // At low airflow the natural term is a large share of the total, so a part cooled by a gentle
+    // breeze must come out COOLER than pure forced convection alone would make it.
+    std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() / "testData" /
+                                     "concentric_round_wire_insulation_layers.json";
+    std::ifstream file(testFile);
+    REQUIRE(file.good());
+    json j;
+    file >> j;
+    OpenMagnetics::Inputs inputs(j["inputs"]);
+    OpenMagnetics::Magnetic magnetic(j["magnetic"]);
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+
+    auto solve = [&](std::optional<double> velocity) {
+        TemperatureConfig config;
+        config.ambientTemperature = losses.ambientTemperature;
+        config.coreLosses = losses.coreLosses;
+        REQUIRE(losses.windingLossesOutput.has_value());
+        config.windingLosses = losses.windingLosses;
+        config.windingLossesOutput = losses.windingLossesOutput.value();
+        config.plotSchematic = false;
+        if (velocity) {
+            MAS::Cooling cooling;
+            cooling.set_temperature(losses.ambientTemperature);
+            cooling.set_velocity(std::vector<double>{velocity.value(), 0.0, 0.0});
+            config.masCooling = cooling;
+        }
+        return Temperature(magnetic, config).calculateTemperatures().maximumTemperature;
+    };
+
+    const double natural = solve(std::nullopt);
+    const double barelyMoving = solve(0.02);  // the discriminating case, see below
+    const double strongFlow = solve(3.0);
+
+    UNSCOPED_INFO("natural " << natural << " C, 0.02 m/s " << barelyMoving
+                  << " C, 3 m/s " << strongFlow << " C");
+    // THE point of the blend: at a velocity this low the FORCED correlation alone returns a
+    // smaller coefficient than buoyancy does, so a model that keeps only the forced term reports
+    // that stirring the air HEATS the part. Physically, air that barely moves can do no worse
+    // than still air. Mixed convection is what guarantees it -- (h_nat^3 + h_forced^3)^(1/3) is
+    // never below h_nat -- and with the recalculation overwriting the blend with pure forced
+    // convection, this is the assertion that goes red.
+    CHECK(barelyMoving <= natural);
+    // Real airflow still helps more than a whisper of it.
+    CHECK(strongFlow < barelyMoving);
+}
+
+TEST_CASE("ABT838_Bare_Copper_Does_Not_Radiate_Like_A_Matte_Dielectric", "[temperature][abt838]") {
+    // One emissivity of 0.9 was charged to every surface: right for enamelled wire, insulation
+    // wrap and ferrite, wrong by more than an order of magnitude for bare copper (0.03-0.07).
+    // This fixture has a served litz primary and a FOIL secondary whose coating is declared
+    // "bare" -- how MAS writes bare metal -- so the two windings must come out with different
+    // emissivities, and the value has to survive recalculateConvectionResistances, which is
+    // where the single config-wide value used to be re-imposed every iteration.
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(),
+                                                            "concentric_litz_foil.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    auto magnetic = mas.get_magnetic();
+    auto operatingPoint = mas.get_inputs().get_operating_points()[0];
+    auto losses = getLossesFromSimulation(magnetic, mas.get_mutable_inputs());
+
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    REQUIRE(losses.windingLossesOutput.has_value());
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = false;
+
+    Temperature temperature(magnetic, config);
+    auto result = temperature.calculateTemperatures();
+    REQUIRE(result.converged);
+
+    // Read the SOLVED resistances, not just the field: a value stamped on the resistor that the
+    // iteration then ignores is exactly the bug being fixed, and a test that only inspects the
+    // field passes in both states. h_rad follows from R and the area, and it is proportional to
+    // the emissivity, so the bare winding's radiating surfaces must come out far weaker than the
+    // coated one's.
+    const auto& nodes = temperature.getNodes();
+    std::vector<double> bareCoefficients;
+    std::vector<double> coatedCoefficients;
+    for (const auto& resistor : temperature.getResistances()) {
+        if (resistor.type != HeatTransferType::RADIATION) {
+            continue;
+        }
+        if (resistor.nodeFromId >= nodes.size() || resistor.area <= 0 || resistor.resistance <= 0) {
+            continue;
+        }
+        const auto& node = nodes[resistor.nodeFromId];
+        if (node.part != ThermalNodePartType::TURN || !node.windingIndex) {
+            continue;
+        }
+        const double impliedCoefficient = 1.0 / (resistor.resistance * resistor.area);
+        // Winding 0 is the served litz, winding 1 the bare foil.
+        if (node.windingIndex.value() == 1) {
+            bareCoefficients.push_back(impliedCoefficient);
+            CHECK_THAT(resistor.emissivity,
+                       Catch::Matchers::WithinRel(OpenMagnetics::ThermalDefaults::kRadiation_BareCopperEmissivity, 1e-12));
+        }
+        else {
+            coatedCoefficients.push_back(impliedCoefficient);
+            CHECK_THAT(resistor.emissivity,
+                       Catch::Matchers::WithinRel(OpenMagnetics::ThermalDefaults::kConvection_DefaultEmissivity, 1e-12));
+        }
+    }
+    // Both kinds must actually be present, or the test is asserting nothing.
+    REQUIRE(!bareCoefficients.empty());
+    REQUIRE(!coatedCoefficients.empty());
+    std::sort(bareCoefficients.begin(), bareCoefficients.end());
+    std::sort(coatedCoefficients.begin(), coatedCoefficients.end());
+    const double bareMedian = bareCoefficients[bareCoefficients.size() / 2];
+    const double coatedMedian = coatedCoefficients[coatedCoefficients.size() / 2];
+    UNSCOPED_INFO("implied h_rad: bare foil " << bareMedian << " W/m2K, coated litz " << coatedMedian);
+    // The emissivities differ by 12.9x; the surfaces sit at different temperatures, so the
+    // coefficients do not differ by exactly that. A factor of 5 is far beyond any temperature
+    // spread and far below 12.9 -- it separates "the fix is live" from "every surface got 0.9".
+    CHECK(bareMedian < coatedMedian / 5.0);
+    // The size of the error this removes: bare metal radiates more than ten times less than the
+    // matte dielectric value every surface used to be charged.
+    CHECK(OpenMagnetics::ThermalDefaults::kRadiation_BareCopperEmissivity <
+          OpenMagnetics::ThermalDefaults::kConvection_DefaultEmissivity / 10.0);
+}
+

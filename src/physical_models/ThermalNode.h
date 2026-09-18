@@ -75,6 +75,7 @@
 #include <optional>
 #include <array>
 #include <MAS.hpp>
+#include "Constants.h"   // ABT #838: ThermalDefaults for the per-surface emissivity default
 
 using json = nlohmann::json;
 using namespace MAS;  // For TurnCrossSectionalShape, InsulationWireCoating, etc.
@@ -681,6 +682,12 @@ struct ThermalResistanceElement {
     double length = 0.0;            // Conduction path length in m
     double thermalConductivity = 0.0; // Material thermal conductivity W/(m·K)
     SurfaceOrientation orientation = SurfaceOrientation::VERTICAL;
+
+    // ABT #838: the emissivity of THIS surface. Radiation used to read one config-wide value,
+    // which is right for enamelled wire, insulation wrap and ferrite but not for bare copper.
+    // Set when the resistor is built and re-read by recalculateConvectionResistances, so the
+    // per-surface value survives the iteration instead of being overwritten by the global one.
+    double emissivity = ThermalDefaults::kConvection_DefaultEmissivity;
     
     // Backward compatibility: transferType maps to type
     HeatTransferType getTransferType() const { return type; }

@@ -50,7 +50,16 @@ class MagneticSimulator {
         // TemperatureConfig::fromSimulatedOutput (ABT #906) — the same config the temperature-map
         // plot wrappers use, so the exported MAS and the UI can never disagree.
         TemperatureOutput calculate_temperature(OperatingPoint& operatingPoint, Magnetic magnetic, const Outputs& output);
-        CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic);
+        // ABT #838: `knownWindingLosses`, when given, is the winding-loss result of the pass just
+        // run for this operating point. The core-loss loop needs the CORE's temperature, and the
+        // winding heats the core: without it the loop solves a core-only network with core losses
+        // alone, so on a winding-dominated design the core sits cooler than it really does and its
+        // losses are read off the material curve at the wrong temperature. With it, the loop uses
+        // the full network (turn nodes carry the winding power) exactly as the exported
+        // temperature does. Absent = the historical core-only behaviour, which is also the first
+        // pass, when no winding-loss result exists yet.
+        CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
+                                               std::optional<WindingLossesOutput> knownWindingLosses = std::nullopt);
         LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
         static LeakageInductanceOutput calculate_leakage_inductance(Magnetic magnetic, double frequency);
         MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);

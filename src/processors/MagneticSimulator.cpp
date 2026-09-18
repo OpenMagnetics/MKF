@@ -59,6 +59,14 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
         output.set_core_losses(calculate_core_losses(operatingPoint, magnetic));
         output.set_winding_losses(calculate_winding_losses(operatingPoint, magnetic, operatingPoint.get_conditions().get_ambient_temperature()));
         if (!fastMode) {
+            // ABT #838: one corrective pass. The core-loss loop above ran before any winding
+            // result existed, so it converged the core's temperature on core losses alone; now
+            // that the winding's losses are known, re-run it with them and let the core losses
+            // settle at the temperature the whole part actually reaches. Skipped in fast mode,
+            // where the advisers call this per candidate and pay for every extra network solve.
+            output.set_core_losses(calculate_core_losses(operatingPoint, magnetic, output.get_winding_losses()));
+        }
+        if (!fastMode) {
             // Full-network hot-spot from the losses just simulated, so the exported MAS
             // carries the same temperature the UI's temperature map shows (ABT #906).
             output.set_temperature(calculate_temperature(operatingPoint, magnetic, output));
@@ -131,7 +139,8 @@ TemperatureOutput MagneticSimulator::calculate_temperature(OperatingPoint& opera
     return temperatureOutput;
 }
 
-CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic) {
+CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
+                                                          std::optional<WindingLossesOutput> knownWindingLosses) {
     OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
     if (!excitation.get_current()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current in operating point");
@@ -160,7 +169,17 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         TemperatureConfig temperatureConfig;
         temperatureConfig.ambientTemperature = operatingPoint.get_conditions().get_ambient_temperature();
         temperatureConfig.coreLosses = coreLossesOutput.get_core_losses();
-        temperatureConfig.coreOnly = true;
+        // ABT #838: with the winding's losses in hand, solve the FULL network — the winding is
+        // typically as large a heat source as the core, and it warms the core through the bobbin.
+        // Core-only with core losses alone is the first pass, before any winding result exists.
+        if (knownWindingLosses) {
+            temperatureConfig.windingLosses = knownWindingLosses->get_winding_losses();
+            temperatureConfig.windingLossesOutput = knownWindingLosses;
+            temperatureConfig.coreOnly = false;
+        }
+        else {
+            temperatureConfig.coreOnly = true;
+        }
         temperatureConfig.plotSchematic = false;
         temperatureConfig.masCooling = operatingPoint.get_conditions().get_cooling();
         temperatureAfterLosses = Temperature(magnetic, temperatureConfig).calculateTemperatures().maximumTemperature;
