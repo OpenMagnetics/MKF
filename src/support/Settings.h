@@ -154,6 +154,18 @@ class Settings
         // std::source_location::current().file_name() — the BUILD machine's
         // absolute path — into the value, which broke relocated wheels/WASM.
         std::optional<std::string> _painterCciCoordinatesPath = std::nullopt;
+
+        // ABT #1172: the bend a CONSUMER will draw at the corners of a pin run. MKF plans the run
+        // as straight legs meeting at right angles, but MVB++ (and any other 3D consumer) sweeps
+        // each corner with a finite centreline radius, and a rounded corner cuts the INSIDE of the
+        // bend — which is the obstacle edge the run turns around. Planning the legs exactly one
+        // wire radius off both faces therefore puts copper inside the pin rail. These two carry
+        // the consumer's own bend so MKF can plan for the corner that will actually be drawn:
+        // effectiveBend = max(factor * coated radius, minimum). Both unset = sharp corners, which
+        // is the historical geometry, and the route then records r so the mismatch surfaces at the
+        // consumer instead of hiding.
+        std::optional<double> _coilLeadBendRadiusFactor = std::nullopt;   // multiplies the coated radius
+        std::optional<double> _coilLeadMinimumBendRadius = std::nullopt;  // metres, absolute floor
         std::string _painterColorMagneticFieldMinimum = "0x2b35f5";
         std::string _painterColorMagneticFieldMaximum = "0xe84922";
         std::optional<MagneticFieldStrengthModels> _painterMagneticFieldStrengthModel = std::nullopt;
@@ -457,6 +469,15 @@ class Settings
         // the catalog keep calling get_painter_cci_coordinates_path(), which throws.
         std::optional<std::string> try_get_painter_cci_coordinates_path() const;
         std::string get_painter_cci_coordinates_path() const;
+
+        std::optional<double> get_coil_lead_bend_radius_factor() const;
+        void set_coil_lead_bend_radius_factor(std::optional<double> value);
+        std::optional<double> get_coil_lead_minimum_bend_radius() const;
+        void set_coil_lead_minimum_bend_radius(std::optional<double> value);
+        // The bend radius a lead of this coated radius will be drawn with, and the leg offset that
+        // keeps a bend of that radius clear of the edge it turns around. See ABT #1172.
+        static double resolve_lead_bend_radius(double coatedRadius);
+        static double lead_leg_clearance(double coatedRadius, double turnAngle);
         void set_painter_cci_coordinates_path(std::string value);
 
         std::string get_painter_color_enamel() const;

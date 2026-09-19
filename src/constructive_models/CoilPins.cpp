@@ -712,6 +712,11 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
         const size_t axisIndex = pin.hangsAlongZ ? 2 : 1;   // the coordinate the pin leaves along (decreasing)
         const size_t rowIndex = pin.hangsAlongZ ? 1 : 2;    // the coordinate that locates its row
         const double radius = lead.diameter / 2;
+        // ABT #1172: every corner of a pin run turns 90 degrees around an obstacle edge (the rail,
+        // the flange, the core), so one clearance serves them all. Equals `radius` when no bend is
+        // declared, which is the historical geometry.
+        const double legClearance = Settings::lead_leg_clearance(radius, std::numbers::pi / 2);
+        const double plannedBendRadius = Settings::resolve_lead_bend_radius(radius);
         const double pinRadius = pin.diameter / 2;
         const double wrapRadius = pinRadius + radius;
         const double approach = wrapRadius + lead.diameter;   // clear of a neighbour wrap of this wire
@@ -731,7 +736,11 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
             if (rail.centre.size() < 3 || rail.halfExtents.size() < 3) {
                 throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Pin rail '" + rail.name + "' has no 3D centre and half extents.");
             }
-            for (double face : {rail.centre[2] - rail.halfExtents[2] - radius, rail.centre[2] + rail.halfExtents[2] + radius}) {
+            // ABT #1172: step off the face by the BEND clearance, not the bare wire radius. The
+            // drop turns 90 degrees around the rail's edge, and a corner drawn with a centreline
+            // radius R cuts the inside of that turn; d >= R - (R - r)/sqrt(2) keeps the copper out
+            // of the rail. With no bend declared this is exactly r and the geometry is unchanged.
+            for (double face : {rail.centre[2] - rail.halfExtents[2] - legClearance, rail.centre[2] + rail.halfExtents[2] + legClearance}) {
                 for (size_t lane = 0; lane <= numberLeads; ++lane) {
                     if (face - double(lane) * pitch < exitDepth - tolerance) {
                         laneDepths.push_back(face - double(lane) * pitch);
@@ -760,7 +769,9 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
         size_t candidates = 0;
         const size_t maximumLevel = (size_t(wrapTurns) + 1) * numberLeads;
         for (size_t level = 0; level <= maximumLevel && !chosen; ++level) {
-            const double wrapTop = pin.base[axisIndex] - radius - double(level) * pitch;
+            // ABT #1172: same clearance on the leg that runs under the rail — it is the other
+            // half of the same corner.
+            const double wrapTop = pin.base[axisIndex] - legClearance - double(level) * pitch;
             const double wrapBottom = wrapTop - double(wrapTurns) * lead.diameter;
             if (wrapBottom < tip - tolerance) {
                 break;   // the wrap would run off the pin's tip
@@ -935,6 +946,10 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
         PinLeadRoute route;
         route.pinName = placedPins[lead.pinIndex].name;
         route.waypoints = lead.points;
+        // ABT #1172: the bend this run's corners were planned for. Taken from the lead's own
+        // coated radius, so a run of thicker wire records a larger radius than a thinner one
+        // beside it.
+        route.plannedBendRadius = Settings::resolve_lead_bend_radius(leads[lead.request].diameter / 2);
         for (size_t index = 0; index + 1 < route.waypoints.size(); ++index) {
             route.length += distance(route.waypoints[index], route.waypoints[index + 1]);
         }

@@ -1231,3 +1231,107 @@ TEST_CASE("route_leads_to_pins starts each run at its exit slot and keeps every 
                           Catch::Matchers::ContainsSubstring("The exit slots of lead A and lead B share copper"));
     }
 }
+
+// ABT #1172: a pin run's corners are planned for the bend a CONSUMER will draw. MKF plans straight
+// legs meeting at right angles around an obstacle edge (the pin rail, here), but MVB++ sweeps each
+// corner with a centreline radius R > r, and a rounded corner cuts the INSIDE of the bend — which
+// is the edge. With the legs one wire radius off both faces the copper ends up inside the rail:
+// measured on the boost PQ 26/25 as 0.001526 mm^3 of overlap. The legs now stand off by
+// d >= R - (R - r) sin(theta/2) instead.
+TEST_CASE("route_leads_to_pins clears the rail edge for the bend a consumer will draw (ABT #1172)",
+          "[constructive-model][coil][pins][abt1172]") {
+    auto make_pin = [](const std::string& name, double x) {
+        MAS::Pin pin;
+        pin.set_name(name);
+        pin.set_shape(PinShape::ROUND);
+        pin.set_type(PinDescriptionType::THT);
+        pin.set_dimensions({0.0008, 0.0008, 0.004});
+        pin.set_coordinates(std::vector<double>({x, -0.014, -0.013}));
+        return pin;
+    };
+    const std::vector<MAS::Pin> pins = {make_pin("A", -0.004)};
+    PinLeadRequest lead;
+    lead.label = "lead A";
+    lead.pin = pins[0];
+    lead.windowExit = {0.011, -0.004};
+    lead.diameter = 0.000943;       // the boost PQ 26/25 lead: r = 0.4715 mm
+    lead.lift = 0.0;
+    lead.exitX = 0.0;
+    const double coatedRadius = lead.diameter / 2;
+
+    // A rail the run has to pass under, in the plane of the drop.
+    OpenMagnetics::Bobbin::PinRailBlock rail;
+    rail.name = "rail 0 block 0";
+    rail.centre = {-0.004, -0.0145, -0.0115};
+    rail.halfExtents = {0.006, 0.0005, 0.0015};
+
+    SECTION("geometry: the required stand-off is exactly R - (R - r) sin(theta/2)") {
+        // Checked against the closed form, independently of the routing code.
+        for (double factor : {1.0, 1.05, 1.5}) {
+            settings.reset();
+            if (factor > 1.0) {
+                settings.set_coil_lead_bend_radius_factor(factor);
+            }
+            const double bendRadius = OpenMagnetics::Settings::resolve_lead_bend_radius(coatedRadius);
+            const double clearance = OpenMagnetics::Settings::lead_leg_clearance(coatedRadius, std::numbers::pi / 2);
+            CHECK_THAT(bendRadius, Catch::Matchers::WithinRel(factor * coatedRadius, 1e-12));
+            CHECK_THAT(clearance,
+                       Catch::Matchers::WithinRel(bendRadius - (bendRadius - coatedRadius) / std::sqrt(2.0), 1e-12));
+            // The arc of a bend of THIS radius, with legs at THIS stand-off, clears the edge by at
+            // least the wire's own radius — which is the whole point.
+            const double closestApproach = bendRadius - (bendRadius - clearance) * std::sqrt(2.0);
+            CHECK(closestApproach >= coatedRadius - 1e-12);
+        }
+        settings.reset();
+    }
+
+    SECTION("unset: sharp corners, the historical geometry, and the route says so") {
+        settings.reset();
+        const auto routes = OpenMagnetics::Coil::route_leads_to_pins(pins, {lead}, 0.0, 2, {rail});
+        REQUIRE(routes.size() == 1);
+        REQUIRE(routes[0].waypoints.size() >= 2);
+        // No bend declared -> planned for sharp corners -> the recorded radius is the wire's own,
+        // so a consumer that rounds its corners can see MKF did not plan for one.
+        CHECK_THAT(routes[0].plannedBendRadius, Catch::Matchers::WithinRel(coatedRadius, 1e-12));
+    }
+
+    SECTION("with a bend declared the run moves OUT, and records the radius it was planned for") {
+        settings.reset();
+        const auto sharpRoutes = OpenMagnetics::Coil::route_leads_to_pins(pins, {lead}, 0.0, 2, {rail});
+        REQUIRE(sharpRoutes.size() == 1);
+        const double railUnderside = rail.centre[1] - rail.halfExtents[1];
+
+        settings.set_coil_lead_bend_radius_factor(1.05);      // MVB++'s kRoundCornerBendFactor
+        const auto roundedRoutes = OpenMagnetics::Coil::route_leads_to_pins(pins, {lead}, 0.0, 2, {rail});
+        REQUIRE(roundedRoutes.size() == 1);
+        CHECK_THAT(roundedRoutes[0].plannedBendRadius,
+                   Catch::Matchers::WithinRel(1.05 * coatedRadius, 1e-12));
+
+        // The planned run MOVES when a bend is declared, and moves by exactly the extra
+        // stand-off the arc needs: d(R) - d(r) = (R - r)(1 - 1/sqrt(2)), which is 6.9 um for this
+        // lead at R = 1.05 r. Asserted on the waypoints themselves rather than on a distance to a
+        // synthetic rail, so the check does not depend on where this test happens to put the rail.
+        const double expectedShift = (1.05 * coatedRadius - coatedRadius) * (1 - 1 / std::sqrt(2.0));
+        REQUIRE(sharpRoutes[0].waypoints.size() == roundedRoutes[0].waypoints.size());
+        double largestShift = 0;
+        for (size_t index = 0; index < sharpRoutes[0].waypoints.size(); ++index) {
+            for (size_t axis = 0; axis < 3; ++axis) {
+                largestShift = std::max(largestShift, std::fabs(roundedRoutes[0].waypoints[index][axis] -
+                                                                sharpRoutes[0].waypoints[index][axis]));
+            }
+        }
+        UNSCOPED_INFO("largest waypoint shift " << largestShift * 1e6 << " um, expected "
+                      << expectedShift * 1e6 << " um");
+        // Reverting the clearance makes this zero: the two runs would be identical.
+        CHECK(largestShift > 0);
+        CHECK_THAT(largestShift, Catch::Matchers::WithinRel(expectedShift, 1e-9));
+        settings.reset();
+    }
+
+    SECTION("a bend tighter than the wire is refused, not silently accepted") {
+        settings.reset();
+        CHECK_THROWS_WITH(settings.set_coil_lead_bend_radius_factor(0.9),
+                          Catch::Matchers::ContainsSubstring("cannot be below 1"));
+        settings.reset();
+    }
+}

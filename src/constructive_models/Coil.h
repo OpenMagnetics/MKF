@@ -256,6 +256,14 @@ struct PinLeadRoute {
     std::string pinName;
     std::vector<std::vector<double>> waypoints;    // 3D, bobbin frame, window exit -> the pin axis at the wrap's start
     double length = 0;
+    // ABT #1172: the centreline bend radius this run's corners were PLANNED for, metres. A
+    // consumer that rounds the corners must draw this radius or refuse: the legs are placed
+    // d >= R - (R - r)/sqrt(2) off each obstacle face so that a bend of exactly this R clears the
+    // edge, and a larger one cuts into it. Equals the lead's own coated radius when no bend was
+    // declared (Settings::set_coil_lead_bend_radius_factor / _minimum_bend_radius), which says
+    // MKF planned SHARP corners — so a consumer drawing a rounded corner can see the mismatch
+    // instead of silently producing copper inside the rail.
+    double plannedBendRadius = 0;
 };
 
 // ABT #1237: one terminal lead to route to its pin, see Coil::route_leads_to_pins.

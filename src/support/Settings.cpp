@@ -142,6 +142,11 @@ namespace OpenMagnetics {
         _painterColorText = "0x000000";
         _painterColorCurrentDensity = "0x0892D0";
         _painterCciCoordinatesPath = std::nullopt;  // resolved at use time, see get_painter_cci_coordinates_path
+        // ABT #1172: these MUST be reset. They are consumer-declared geometry, and leaking one
+        // test's bend radius into the next silently moves every pin run that follows — the same
+        // leak this reset() was extended for before (adviser settings, ABT #842).
+        _coilLeadBendRadiusFactor = std::nullopt;
+        _coilLeadMinimumBendRadius = std::nullopt;
         _painterColorMagneticFieldMinimum = "0x2b35f5";
         _painterColorMagneticFieldMaximum = "0xe84922";
         _painterMagneticFieldStrengthModel = std::nullopt;
@@ -667,6 +672,70 @@ namespace OpenMagnetics {
         }
         return path.value();
     }
+    std::optional<double> Settings::get_coil_lead_bend_radius_factor() const {
+        return _coilLeadBendRadiusFactor;
+    }
+    void Settings::set_coil_lead_bend_radius_factor(std::optional<double> value) {
+        if (value && !(value.value() >= 1.0)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "The lead bend radius factor multiplies the wire's own coated radius, so it cannot be "
+                "below 1: a centreline bend tighter than the wire radius is not a bend a wire can take "
+                "(and OCC cannot sweep it -- it degenerates to a horn torus). Got " +
+                std::to_string(value.value()));
+        }
+        _coilLeadBendRadiusFactor = value;
+    }
+
+    std::optional<double> Settings::get_coil_lead_minimum_bend_radius() const {
+        return _coilLeadMinimumBendRadius;
+    }
+    void Settings::set_coil_lead_minimum_bend_radius(std::optional<double> value) {
+        if (value && !(value.value() > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "The minimum lead bend radius is a length in metres and must be positive, got " +
+                std::to_string(value.value()));
+        }
+        _coilLeadMinimumBendRadius = value;
+    }
+
+    double Settings::resolve_lead_bend_radius(double coatedRadius) {
+        if (!(coatedRadius > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                "A lead needs a positive coated radius to plan its bends, got " + std::to_string(coatedRadius));
+        }
+        auto& settings = Settings::GetInstance();
+        const auto factor = settings.get_coil_lead_bend_radius_factor();
+        const auto minimum = settings.get_coil_lead_minimum_bend_radius();
+        if (!factor && !minimum) {
+            // Nothing declared: plan SHARP corners, which is what MKF has always done. No invented
+            // default -- the route records this radius, so a consumer drawing a rounded corner sees
+            // that MKF did not plan for one and can refuse (ABT #1172).
+            return coatedRadius;
+        }
+        double radius = factor ? factor.value() * coatedRadius : coatedRadius;
+        if (minimum) {
+            radius = std::max(radius, minimum.value());
+        }
+        return radius;
+    }
+
+    double Settings::lead_leg_clearance(double coatedRadius, double turnAngle) {
+        // ABT #1172. Two legs meet at an obstacle edge with the edge on the bisector. For a
+        // centreline bend of radius R with each leg a distance d from its face, the arc centre
+        // sits (R - d) / sin(theta/2) beyond the edge and the arc's closest approach to it is
+        //     R - (R - d) / sin(theta/2)
+        // so keeping the copper clear by its own radius requires
+        //     d >= R - (R - r) sin(theta/2)
+        // At theta = 90 degrees this is d >= R - (R - r)/sqrt(2), and at R = r it collapses to
+        // d >= r, the sharp-corner geometry. theta is the angle BETWEEN the legs.
+        if (!(turnAngle > 0) || !(turnAngle < std::numbers::pi)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "A lead corner turns through an angle strictly between 0 and pi, got " + std::to_string(turnAngle));
+        }
+        const double bendRadius = resolve_lead_bend_radius(coatedRadius);
+        return bendRadius - (bendRadius - coatedRadius) * sin(turnAngle / 2);
+    }
+
     void Settings::set_painter_cci_coordinates_path(std::string value) {
         _painterCciCoordinatesPath = value;
     }
