@@ -14811,57 +14811,70 @@ void Coil::try_rewind() {
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "totalExtraSpaceNeeded cannot be negative or nan: " + std::to_string(totalExtraSpaceNeeded));
     }
 
+    // ABT #1194: get_ordered_sections splits a winding's proportion EQUALLY over its sections and
+    // add_insulation_to_sections then carves each insulation out of its two neighbours, so an
+    // interleaved winding's sections do not all lose the same: an edge section loses half an
+    // insulation, an interior one a whole one. The space a winding must claim to get every one of
+    // its sections back at its current size is therefore (number of its sections) x (the largest
+    // of its per-section spaces), not their sum. The sum under-claims by exactly the carving
+    // difference: on MVB++'s cm37 (E16, 22x2 + 22x2 interleaved P-S-P-S, 25 um tape) the interior
+    // primary section came back 0.61575 mm for two 0.311 mm layers, dropped to one layer and
+    // the design stopped fitting once ABT #1060 removed the over-claim that used to hide it. For a
+    // winding with a single section the two are equal, so nothing else moves.
+    std::vector<double> currentSpacePerWinding(static_cast<size_t>(numberWindings), 0);
+    std::vector<double> extraSpaceNeededPerWinding(static_cast<size_t>(numberWindings), 0);
+    double spaceClaimedForEqualSplit = 0;
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         // Windings grouped via wound_with share sections; only the group's
         // representative (minimum index) accumulates the shared space. Non-
         // representatives contribute zero so that virtualize_proportion_per_winding
         // doesn't double-count the shared sections when collapsing the group.
         if (get_winding_group_minimum_index(windingIndex) != windingIndex) {
-            newProportions.push_back(0.0);
             continue;
         }
-        // double currentProportion = _currentProportionPerWinding[windingIndex];
-        double currentSpace = 0;
+        std::vector<double> spacePerSectionThisWinding;
         double extraSpaceNeededThisWinding = 0;
 
         for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
             for (auto & winding : sections[sectionIndex].get_partial_windings()) {
                 if (winding.get_winding() == get_functional_description()[windingIndex].get_name()) {
+                    double sectionSpace = 0;
                     if (sectionOrientation == WindingOrientation::OVERLAPPING) {
-                        currentSpace += sections[sectionIndex].get_dimensions()[0];
+                        sectionSpace += sections[sectionIndex].get_dimensions()[0];
 
                         // We need to add half the insulation space after it, in case there is
                         if (sectionIndex + 1 < sections.size()) {
                             if (sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
                                 // throw std::runtime_error("Consecutive layer to CONDUCTION must always be INSULATION");
                                 if (sectionIndex == 0) {
-                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[0] / 2;
+                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[0] / 2;
                                 }
                                 else if (sectionIndex == sections.size() - 2) {
-                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[0] * 3 / 2;
+                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[0] * 3 / 2;
                                 }
                                 else {
-                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[0];
+                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[0];
                                 }
                             }
                         }
                     }
                     else {
-                        currentSpace += sections[sectionIndex].get_dimensions()[1];
+                        sectionSpace += sections[sectionIndex].get_dimensions()[1];
 
                         // We need to add half the insulation space after it, in case there is
                         if (sectionIndex + 1 < sections.size()) {
                             if (sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
                                 // throw std::runtime_error("Consecutive layer to CONDUCTION must always be INSULATION");
                                 if (sectionIndex == 0 || sectionIndex == sections.size() - 2) {
-                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[1] / 2;
+                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[1] / 2;
                                 }
                                 else {
-                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[1];
+                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[1];
                                 }
                             }
                         }
                     }
+                    spacePerSectionThisWinding.push_back(sectionSpace);
 
                     extraSpaceNeededThisWinding += extraSpaceNeededPerSection[sectionIndex];
                     continue;
@@ -14871,8 +14884,35 @@ void Coil::try_rewind() {
         if (extraSpaceNeededThisWinding < 0 || std::isnan(extraSpaceNeededThisWinding)) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "extraSpaceNeededThisWinding cannot be negative or nan: " + std::to_string(extraSpaceNeededThisWinding));
         }
+        double summedSpace = 0;
+        double largestSectionSpace = 0;
+        for (auto sectionSpace : spacePerSectionThisWinding) {
+            summedSpace += sectionSpace;
+            largestSectionSpace = std::max(largestSectionSpace, sectionSpace);
+        }
+        const double currentSpace = static_cast<double>(spacePerSectionThisWinding.size()) * largestSectionSpace;
+        spaceClaimedForEqualSplit += currentSpace - summedSpace;
+        currentSpacePerWinding[windingIndex] = currentSpace;
+        extraSpaceNeededPerWinding[windingIndex] = extraSpaceNeededThisWinding;
+    }
+
+    // The equal split's extra claim comes out of the space left to hand out. When nothing is left,
+    // re-proportioning cannot make these sections fit: keep the layout as wound, the same way the
+    // no-space-left check above does.
+    const double spaceLeftToDistribute = windingWindowRemainingRestrictiveDimensionAccordingToSections - spaceClaimedForEqualSplit;
+    if (spaceLeftToDistribute <= 0) {
+        return;
+    }
+
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        if (get_winding_group_minimum_index(windingIndex) != windingIndex) {
+            newProportions.push_back(0.0);
+            continue;
+        }
+        const double currentSpace = currentSpacePerWinding[windingIndex];
+        const double extraSpaceNeededThisWinding = extraSpaceNeededPerWinding[windingIndex];
         // double proportionOfNeededForThisWinding = extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
-        double extraSpaceGottenByThisWinding = windingWindowRemainingRestrictiveDimensionAccordingToSections * extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
+        double extraSpaceGottenByThisWinding = spaceLeftToDistribute * extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double newSpaceGottenByThisWinding = currentSpace + extraSpaceGottenByThisWinding;
         // ABT #1060: a proportion is a share of the FULL window -- get_ordered_sections hands out
         // spaceForSections x proportion and add_insulation_to_sections then carves each insulation
