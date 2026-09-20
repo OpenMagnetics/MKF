@@ -631,7 +631,13 @@ namespace TestWindingLossesFoil {
         // dissipate P/l = breadth * rho / delta * H^2 * G(t/delta) per unit
         // length (Dowell 1966 / Lammeraner & Stafl 1966) — no cross-section
         // prefactor (the old c*h form under-predicted by ~2500x at t = 0.4 mm).
+        //
+        // ABT #1188: this pins WANG's slab form specifically, so it must SELECT Wang rather than
+        // read the default. Reading the default would silently turn a model-specific unit pin
+        // into a test of whichever model happens to be default.
         settings.reset();
+        settings.set_coil_enable_user_winding_losses_models(true);
+        settings.set_winding_proximity_effect_losses_model(WindingProximityEffectLossesModels::WANG);
         clear_databases();
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_foil_proximity_ih_transformer.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
@@ -823,26 +829,32 @@ namespace TestWindingLossesPlanar {
             maximumError, false);  // includeFringing = false
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing", "[physical-model][winding-losses][planar][smoke-test]") {
-        // MKF snapshot (July 2026, width-resolved gap-fringing kernel, C=8 FEM-calibrated).
-        // Cross-checked against 2D FEM (OMFEM, mesh-converged) at the length-independent
-        // R_ac/R_dc level (OMFEM approximates the racetrack turn as circular, so absolute
-        // watts differ by the turn-length ratio):
-        //   f       MKF R_ac/R_dc   OMFEM
-        //   10 kHz      2.63         4.12   (LF bridge under-predicts ~35%)
-        //   100 kHz     8.97         9.70
-        //   500 kHz    19.2         19.05
-        //   1 MHz      26.8         27.3
-        //   1.5 MHz    32.7         34.0
-        // The previous pinned values (128 W ... 2.5 MW, ~f^2) came from an unskinned
-        // analytical benchmark, not FEM: 355 kW at 500 kHz vs 991 W actual FEM.
+    TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing", "[physical-model][winding-losses][planar]") {
+        // ABT #1274 / #139: these expectations are 2D OMFEM (omfem_mas, full-geometry P_cu),
+        // NOT an MKF snapshot. Alf's ruling 2026-09-20: trust OMFEM for these pins.
+        //
+        // THIS TEST IS EXPECTED TO FAIL until ABT #1274 is fixed, and that is the point. The
+        // values it replaced were an MKF snapshot running 1.15x (10 kHz) to 1.82x (400 kHz) above
+        // FEM, so the test was holding MKF to its own output rather than to the physics. Against
+        // FEM, MKF is now measurably wrong here and says so.
+        //
+        // Do NOT re-pin these back to whatever MKF computes. The gap is the finding: MKF reports
+        // a field component normal to a planar trace's wide face that two independent models
+        // (MARTINEZ, DOWELL) turn into 679x the FEM loss on the sibling 16-parallel fixture. The
+        // WANG default lands closer only because its c*h prefactor divides by h ~ 1e-4.
+        //
+        // References: /home/alf/OpenMagnetics/.mkf-fem/fem_repin.json (20 points, one_turn_fringing).
+        // (The July 2026 note that stood here described the MKF snapshot these values replace,
+        // and its R_ac/R_dc cross-check was against a CIRCULAR-turn OMFEM approximation, so it
+        // could not compare absolute watts. omfem_mas meshes the real geometry, so these are
+        // directly comparable in watts.)
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json", 22,
-            {{10000, 245.47}, {20000, 375.20}, {30000, 467.47}, {40000, 541.06},
-             {50000, 603.70}, {60000, 659.07}, {70000, 709.21}, {80000, 755.39},
-             {90000, 798.40}, {100000, 838.84}, {200000, 1160.4}, {300000, 1404.5},
-             {400000, 1609.9}, {500000, 1790.9}, {600000, 1954.7}, {700000, 2105.5},
-             {800000, 2246.0}, {900000, 2378.3}, {1000000, 2503.6}, {1500000, 3054.9}},
+            {{10000, 214.34}, {20000, 285.87}, {30000, 333.2}, {40000, 369.27},
+             {50000, 398.92}, {60000, 424.44}, {70000, 447.1}, {80000, 467.71},
+             {90000, 486.85}, {100000, 504.61}, {200000, 651.06}, {300000, 774.08},
+             {400000, 885.5}, {500000, 987.94}, {600000, 1082.4}, {700000, 1171},
+             {800000, 1254.7}, {900000, 1334.9}, {1000000, 1405.7}, {1500000, 1742.7}},
             maximumError, true);  // includeFringing = true
     }
 

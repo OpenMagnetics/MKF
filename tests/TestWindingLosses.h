@@ -557,8 +557,20 @@ namespace WindingLossesTestData {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0001);
             wire.set_nominal_value_conducting_height(0.0016);
-            wire.set_nominal_value_outer_width(0.00015);
-            wire.set_nominal_value_outer_height(0.00165);
+            // ABT #1264: same defect as the PQ fixture above -- no coating declared while the outer
+            // size (0.15 x 1.65 mm) exceeded the 0.1 x 1.6 mm conductor, which MKF's validation
+            // refuses, and the 50 um corridor matches no IEC grade. Grade 1 on this conductor gives
+            // 0.10425 x 1.685 mm from the standard.
+            InsulationWireCoating coating;
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            coating.set_grade(1);
+            wire.set_coating(coating);
+            // The outer sizes come FROM the standard for that grade, not from hand-typed
+            // numbers, so wire and coating cannot drift apart again.
+            wire.set_nominal_value_outer_width(
+                OpenMagnetics::Wire::get_outer_width_rectangular(0.0001, 1, WireStandard::IEC_60317));
+            wire.set_nominal_value_outer_height(
+                OpenMagnetics::Wire::get_outer_height_rectangular(0.0016, 1, WireStandard::IEC_60317));
             wire.set_number_conductors(1);
             wire.set_material("copper");
             wire.set_type(WireType::RECTANGULAR);
@@ -627,8 +639,23 @@ namespace WindingLossesTestData {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0038);
             wire.set_nominal_value_conducting_height(0.00076);
-            wire.set_nominal_value_outer_height(0.0007676);
-            wire.set_nominal_value_outer_width(0.003838);
+            // ABT #1264: this wire declared NO coating while its outer size exceeded the
+            // conductor (0.003838 x 0.0007676 against 0.0038 x 0.00076), which MKF's own validation
+            // refuses -- 'states no coating, but its outer size exceeds its conductor'. The
+            // hand-typed corridor was not a coating either: it was asymmetric, and no IEC
+            // grade produces it. Declare the enamel the sizes imply and let the STANDARD set
+            // the outer dimensions, as the catalogue's own 'Rectangular 4x0.90 - Grade 1'
+            // does (it stores no outer size at all).
+            InsulationWireCoating coating;
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            coating.set_grade(1);
+            wire.set_coating(coating);
+            // The outer sizes come FROM the standard for that grade, not from hand-typed
+            // numbers, so wire and coating cannot drift apart again.
+            wire.set_nominal_value_outer_width(
+                OpenMagnetics::Wire::get_outer_width_rectangular(0.0038, 1, WireStandard::IEC_60317));
+            wire.set_nominal_value_outer_height(
+                OpenMagnetics::Wire::get_outer_height_rectangular(0.00076, 1, WireStandard::IEC_60317));
             wire.set_number_conductors(1);
             wire.set_material("copper");
             wire.set_type(WireType::RECTANGULAR);
@@ -1515,8 +1542,23 @@ namespace WindingLossesTestData {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.004);
             wire.set_nominal_value_conducting_height(0.0009);
-            wire.set_nominal_value_outer_height(0.000909);
-            wire.set_nominal_value_outer_width(0.00404);
+            // ABT #1264: this wire declared NO coating while its outer size exceeded the
+            // conductor (0.00404 x 0.000909 against 0.004 x 0.0009), which MKF's own validation
+            // refuses -- 'states no coating, but its outer size exceeds its conductor'. The
+            // hand-typed corridor was not a coating either: it was asymmetric, and no IEC
+            // grade produces it. Declare the enamel the sizes imply and let the STANDARD set
+            // the outer dimensions, as the catalogue's own 'Rectangular 4x0.90 - Grade 1'
+            // does (it stores no outer size at all).
+            InsulationWireCoating coating;
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            coating.set_grade(1);
+            wire.set_coating(coating);
+            // The outer sizes come FROM the standard for that grade, not from hand-typed
+            // numbers, so wire and coating cannot drift apart again.
+            wire.set_nominal_value_outer_width(
+                OpenMagnetics::Wire::get_outer_width_rectangular(0.004, 1, WireStandard::IEC_60317));
+            wire.set_nominal_value_outer_height(
+                OpenMagnetics::Wire::get_outer_height_rectangular(0.0009, 1, WireStandard::IEC_60317));
             wire.set_number_conductors(1);
             wire.set_material("copper");
             wire.set_type(WireType::RECTANGULAR);
@@ -1578,8 +1620,23 @@ namespace WindingLossesTestData {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.004);
             wire.set_nominal_value_conducting_height(0.0009);
-            wire.set_nominal_value_outer_height(0.000909);
-            wire.set_nominal_value_outer_width(0.00404);
+            // ABT #1264: this wire declared NO coating while its outer size exceeded the
+            // conductor (0.00404 x 0.000909 against 0.004 x 0.0009), which MKF's own validation
+            // refuses -- 'states no coating, but its outer size exceeds its conductor'. The
+            // hand-typed corridor was not a coating either: it was asymmetric, and no IEC
+            // grade produces it. Declare the enamel the sizes imply and let the STANDARD set
+            // the outer dimensions, as the catalogue's own 'Rectangular 4x0.90 - Grade 1'
+            // does (it stores no outer size at all).
+            InsulationWireCoating coating;
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            coating.set_grade(1);
+            wire.set_coating(coating);
+            // The outer sizes come FROM the standard for that grade, not from hand-typed
+            // numbers, so wire and coating cannot drift apart again.
+            wire.set_nominal_value_outer_width(
+                OpenMagnetics::Wire::get_outer_width_rectangular(0.004, 1, WireStandard::IEC_60317));
+            wire.set_nominal_value_outer_height(
+                OpenMagnetics::Wire::get_outer_height_rectangular(0.0009, 1, WireStandard::IEC_60317));
             wire.set_number_conductors(1);
             wire.set_material("copper");
             wire.set_type(WireType::RECTANGULAR);

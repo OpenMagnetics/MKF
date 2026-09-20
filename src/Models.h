@@ -90,7 +90,15 @@ enum class WindingProximityEffectLossesModels : int {
     WOJDA,
     SULLIVAN,
     BARTOLI,
-    VANDELAC
+    VANDELAC,
+    // ABT #1188: proximity loss with FIELD EXCLUSION. Every other model here treats a conductor
+    // as transparent to the field that drives it; this one treats it as a body that excludes the
+    // field once it is more than a skin depth thick, which is what a real conductor does.
+    MARTINEZ,
+    // Ewald & Biela, EPE'23 (ETH Zurich): "Eddy currents in rectangular conductors: Analytical 2D
+    // loss model in the context of magnetic component design". The closest published state of the
+    // art for rectangular conductors, implemented here so MKF can be measured against it.
+    EWALD
 };
 
 

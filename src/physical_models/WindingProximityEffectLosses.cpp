@@ -4,9 +4,11 @@
 #include "physical_models/Resistivity.h"
 #include "Defaults.h"
 
+#include <Eigen/Dense>
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <mutex>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -18,6 +20,224 @@
 #include "support/Logger.h"
 
 namespace OpenMagnetics {
+
+// ABT #1188: the edge-crowding factor C(a, b) derived above — the surface integral for a
+// perfectly conducting ellipse of semi-axes a (wide/2) and b (thin/2) in a transverse field,
+// normalised by the wide dimension so it enters the loss expression where the fitted constant
+// used to sit. Integrated numerically with fixed-count Simpson over a quarter period (the
+// integrand is even and pi-periodic), which is deterministic and needs no elliptic-integral
+// special functions; 400 intervals converges to better than 1e-9 for every aspect ratio the
+// wire catalogue contains, and the result is a pure function of the two dimensions.
+// ============================================================================
+// ABT #1188: the EXCLUSION FACTOR of a conductor's own cross-section.
+//
+// A conductor thicker than a skin depth excludes the field: the eddy currents it induces cancel
+// the incident field inside the metal and crowd the remainder onto the surface, concentrated at
+// the edges. The loss is then the surface-resistance integral over the contour,
+//     P = 1/2 (rho/delta) * CONTOUR-INTEGRAL H_s^2 dl
+// and normalising by the wide dimension gives a dimensionless factor C that depends ONLY on the
+// conductor's aspect ratio (verified scale-invariant to 1e-9).
+//
+// THE CONTOUR IS THE STADIUM, which is the cross-section real rectangular magnet wire has -- a
+// rectangle with semicircular ends, the rounded-edge geometry the MAS wire table records as
+// edgeRadius. It is NOT the confocal ellipse: the ellipse has a closed form and was used first
+// for that reason, but its radius of curvature at the tip is thin^2/(2*wide), i.e. ASPECT times
+// sharper than the stadium's fixed thin/2 cap, so it over-crowds the edges by a margin that grows
+// as fast as the aspect ratio. Measured against 2D FEM (OMFEM, stadium mesh, uniform transverse
+// field): the ellipse form reads 1.00 of FEM at 2:1 but 1.31 at 96:1, while the stadium below
+// reads 1.03 to 0.92 over the same range. A planar trace is ~96:1, so the ellipse is not usable
+// there and this is not a refinement.
+//
+// The stadium has no closed form, so the exterior problem is solved directly: Hess-Smith
+// constant-strength source panels for the 2D exterior Neumann problem (H = -grad phi,
+// laplacian phi = 0 outside, dphi/dn = 0 on a perfect flux excluder), with the influence of each
+// panel integrated EXACTLY in panel-local coordinates. Validated against the two cases whose
+// answer is known independently: a circle returns 2*pi to four decimals, and an ellipse mesh
+// returns the closed-form ellipse integral to 3e-5 relative.
+//
+// NO CONSTANT HERE IS FITTED TO ANYTHING. This replaces a hard-coded 8.0 that had been
+// calibrated against a single FEM run on a single 20 x 0.209 mm planar trace; FEM is used to
+// CHECK this factor, never to set it.
+// ============================================================================
+namespace {
+
+// Panels graded two ways, because getting only one right diverges at high aspect:
+//  - the CAPS carry all the crowding and need a fixed panel count regardless of aspect (uniform
+//    arclength sampling starves them: a 96:1 stadium is 98% straight face);
+//  - the FLATS must transition SMOOTHLY into the cap panel size, or adjacent panels differ by
+//    ~100x at the junction and collocation loses conditioning exactly where the field turns.
+std::vector<std::pair<double, double>> stadium_contour(double aspect, size_t capPanels, double growth) {
+    const double r = 0.5;                    // unit thin dimension; C is scale-invariant
+    const double flat = aspect - 1.0;        // wide = aspect, so each face is (wide - thin)
+    const double capPanel = std::numbers::pi * r / double(capPanels);
+    std::vector<double> edges{0.0};
+    if (flat > 0) {
+        const double half = flat / 2;
+        std::vector<double> sizes;
+        double s = capPanel, total = 0;
+        while (total < half && sizes.size() < 4000) {
+            sizes.push_back(s); total += s; s *= growth;
+        }
+        double cum = 0;
+        const double scale = half / total;
+        for (double size : sizes) { cum += size * scale; edges.push_back(cum); }
+    }
+    std::vector<std::pair<double, double>> v;
+    const double half = flat / 2;
+    auto face = [&](double xStart, double direction, double y) {
+        for (size_t i = 0; i + 1 < edges.size(); ++i) {
+            v.emplace_back(xStart + direction * edges[i], y);
+        }
+        for (size_t i = edges.size() - 1; i > 0; --i) {
+            v.emplace_back(xStart + direction * (flat - edges[i]), y);
+        }
+    };
+    face(-half, +1, -r);
+    for (size_t i = 0; i < capPanels; ++i) {
+        const double a = -std::numbers::pi / 2 + double(i) / double(capPanels) * std::numbers::pi;
+        v.emplace_back(half + r * cos(a), r * sin(a));
+    }
+    face(+half, -1, +r);
+    for (size_t i = 0; i < capPanels; ++i) {
+        const double a = std::numbers::pi / 2 + double(i) / double(capPanels) * std::numbers::pi;
+        v.emplace_back(-half + r * cos(a), r * sin(a));
+    }
+    // Drop coincident vertices: a zero-length panel makes the whole solve NaN.
+    std::vector<std::pair<double, double>> out;
+    for (const auto& p : v) {
+        if (out.empty() || hypot(p.first - out.back().first, p.second - out.back().second) > 1e-12) {
+            out.push_back(p);
+        }
+    }
+    return out;
+}
+
+double solve_exclusion_factor(double aspect, bool fieldAlongWide, size_t capPanels = 200) {
+    const auto verts = stadium_contour(aspect, capPanels, 1.12);
+    const size_t n = verts.size();
+    if (n < 8) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "The stadium contour for aspect " + std::to_string(aspect) + " has too few panels");
+    }
+    Eigen::MatrixXd tangentX(n, 1), tangentY(n, 1), normalX(n, 1), normalY(n, 1), length(n, 1);
+    Eigen::MatrixXd midX(n, 1), midY(n, 1), startX(n, 1), startY(n, 1);
+    for (size_t i = 0; i < n; ++i) {
+        const auto& p1 = verts[i];
+        const auto& p2 = verts[(i + 1) % n];
+        const double dx = p2.first - p1.first, dy = p2.second - p1.second;
+        const double len = hypot(dx, dy);
+        length(i) = len;
+        tangentX(i) = dx / len; tangentY(i) = dy / len;
+        normalX(i) = tangentY(i); normalY(i) = -tangentX(i);     // outward for a CCW contour
+        midX(i) = 0.5 * (p1.first + p2.first); midY(i) = 0.5 * (p1.second + p2.second);
+        startX(i) = p1.first; startY(i) = p1.second;
+    }
+    const double ex = fieldAlongWide ? 1.0 : 0.0;
+    const double ey = fieldAlongWide ? 0.0 : 1.0;
+
+    Eigen::MatrixXd influence(n, n);
+    Eigen::MatrixXd tangentialInfluence(n, n);
+    Eigen::VectorXd rhs(n);
+    for (size_t i = 0; i < n; ++i) {
+        rhs(i) = -(normalX(i) * ex + normalY(i) * ey);
+        for (size_t j = 0; j < n; ++j) {
+            double gx, gy;
+            if (i == j) {
+                gx = 0.5 * normalX(j);          // self term: u_local = 0, v_local = 1/2
+                gy = 0.5 * normalY(j);
+            }
+            else {
+                const double dx = midX(i) - startX(j), dy = midY(i) - startY(j);
+                const double xl = dx * tangentX(j) + dy * tangentY(j);
+                const double yl = dx * normalX(j) + dy * normalY(j);
+                const double r1 = hypot(xl, yl);
+                const double r2 = hypot(xl - length(j), yl);
+                const double uLocal = log(r1 / r2) / (2 * std::numbers::pi);
+                const double vLocal = (atan2(yl, xl - length(j)) - atan2(yl, xl)) / (2 * std::numbers::pi);
+                gx = uLocal * tangentX(j) + vLocal * normalX(j);
+                gy = uLocal * tangentY(j) + vLocal * normalY(j);
+            }
+            influence(i, j) = gx * normalX(i) + gy * normalY(i);
+            tangentialInfluence(i, j) = gx * tangentX(i) + gy * tangentY(i);
+        }
+    }
+    const Eigen::VectorXd sigma = influence.partialPivLu().solve(rhs);
+    const Eigen::VectorXd induced = tangentialInfluence * sigma;
+    double integral = 0;
+    for (size_t i = 0; i < n; ++i) {
+        const double tangential = (tangentX(i) * ex + tangentY(i) * ey) + induced(i);
+        integral += tangential * tangential * length(i);
+    }
+    return integral / aspect;               // normalised by the wide dimension (thin == 1)
+}
+
+
+// The factor depends ONLY on the aspect ratio (scale-invariant to 1e-9, verified), and is smooth
+// in log(aspect), so a 25-point table over 1..200 interpolates to +-0.05%. That keeps the per-call
+// cost a lookup rather than a 200x200 solve: the WireAdviser sweeps many wire sizes, each its own
+// aspect, and a solve per size would dominate the sweep. Aspects beyond the table solve directly.
+double stadium_exclusion_factor(double wideDimension, double thinDimension, bool fieldAlongWide) {
+    if (!(wideDimension > 0) || !(thinDimension > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "The exclusion factor needs both conductor dimensions to be positive, got " +
+            std::to_string(wideDimension) + " x " + std::to_string(thinDimension) + " m");
+    }
+    // The two arguments are the conductor's dimensions IN THE CALLER'S ORIENTATION, not sorted by
+    // size: callers pass the dimension along the wide FACE first (height for a foil, width
+    // otherwise), and a tall-thin rectangular wire legitimately has that dimension the SMALLER of
+    // the two. The stadium's caps always sit on the ends of its LONG axis, so map the caller's
+    // orientation onto the geometry instead of assuming an ordering (97 tests threw on that
+    // assumption before it was fixed).
+    const double longDimension = std::max(wideDimension, thinDimension);
+    const double shortDimension = std::min(wideDimension, thinDimension);
+    const bool firstIsLong = wideDimension >= thinDimension;
+    const bool fieldAlongLong = firstIsLong ? fieldAlongWide : !fieldAlongWide;
+    const double aspect = longDimension / shortDimension;
+    // solve_exclusion_factor normalises the contour integral by the LONG dimension, while the
+    // caller multiplies the result back by the dimension it passed FIRST. Re-normalise so the
+    // product is the same integral either way.
+    const double renormalise = longDimension / wideDimension;
+    constexpr double kMinAspect = 1.0;
+    constexpr double kMaxAspect = 200.0;
+    constexpr size_t kPoints = 25;
+    if (aspect > kMaxAspect) {
+        return renormalise * solve_exclusion_factor(aspect, fieldAlongLong);
+    }
+    struct Table { std::vector<double> logAspect, perpendicular, parallel; };
+    static Table table;
+    static std::once_flag built;
+    std::call_once(built, [&]() {
+        for (size_t i = 0; i < kPoints; ++i) {
+            const double la = log(kMinAspect) + double(i) / double(kPoints - 1) * (log(kMaxAspect) - log(kMinAspect));
+            table.logAspect.push_back(la);
+            table.perpendicular.push_back(solve_exclusion_factor(exp(la), false));
+            table.parallel.push_back(solve_exclusion_factor(exp(la), true));
+        }
+    });
+    const auto& values = fieldAlongLong ? table.parallel : table.perpendicular;
+    const double la = log(aspect);
+    auto upper = std::upper_bound(table.logAspect.begin(), table.logAspect.end(), la);
+    if (upper == table.logAspect.begin()) { return renormalise * values.front(); }
+    if (upper == table.logAspect.end()) { return renormalise * values.back(); }
+    const size_t hi = size_t(upper - table.logAspect.begin());
+    const size_t lo = hi - 1;
+    const double t = (la - table.logAspect[lo]) / (table.logAspect[hi] - table.logAspect[lo]);
+    return renormalise * (values[lo] + t * (values[hi] - values[lo]));
+}
+
+}  // namespace
+
+
+static double fringing_edge_crowding_factor(double wideDimension, double thinDimension) {
+    // ABT #1188: the edge-crowding coefficient of the gap-fringing kernel IS the exclusion factor
+    // of the conductor's own cross-section, so it comes from the same stadium solve. It replaced a
+    // hard-coded 8.0 calibrated to one FEM run on one 20 x 0.209 mm planar trace -- a constant
+    // cannot be right here, because edge crowding depends on the aspect ratio: this returns 5.83
+    // for a 2:1 bar and 7.09 for that 96:1 trace. Against 2D OMFEM on the One_Turn_Planar fixture
+    // at 200 kHz it moves MKF from 1.78x FEM to 1.25x.
+    return stadium_exclusion_factor(wideDimension, thinDimension, false);
+}
+
 
 
 // PERF-003: Cached ResistivityModel to avoid repeated factory() calls
@@ -48,6 +268,12 @@ std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLosses
     }
     else if (modelName == WindingProximityEffectLossesModels::LAMMERANER) {
         return std::make_shared<WindingProximityEffectLossesLammeranerModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::MARTINEZ) {
+        return std::make_shared<WindingProximityEffectLossesMartinezModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::EWALD) {
+        return std::make_shared<WindingProximityEffectLossesEwaldModel>();
     }
     else if (modelName == WindingProximityEffectLossesModels::DOWELL) {
         return std::make_shared<WindingProximityEffectLossesDowellModel>();
@@ -93,6 +319,19 @@ std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses:
         case WireType::LITZ: {
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
         }
+        // ABT #1188: these stay WANG, and the reason is worth recording because the single-
+        // conductor evidence pointed the other way. On 26 points against 2D FEM (ONE rectangular
+        // conductor in a uniform transverse field, aspect 2:1 to 96:1, both orientations, 100 kHz
+        // and 1 MHz) MARTINEZ was the only model inside +-10% everywhere:
+        //     MARTINEZ 0.903-1.064 (median 0.990)   WANG     0.468-1.026 (median 0.959)
+        //     DOWELL   0.517-1.586                  VANDELAC 0.276-0.848
+        //     FERREIRA 0.259-0.793                  ALBACH   0.255-0.783
+        // That does NOT transfer to wound geometry. On the 16-parallel planar fixture at 10 kHz,
+        // 2D OMFEM says 14.92 W; MARTINEZ says 10134 W and DOWELL 10122 W -- both 679x, because
+        // MKF hands them a ~16 kA/m field normal to the trace's wide face, which a 20 x 0.07 mm
+        // strip would indeed turn into ~900 W. WANG lands near the truth only because its c*h
+        // prefactor divides by h ~ 1e-4. The field is the bug (ABT #139); until it is fixed, the
+        // model that is accidentally right beats the models that are faithfully wrong.
         case WireType::PLANAR: {
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::WANG);
         }
@@ -612,9 +851,31 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
         // and -33% at 20 kHz for the canonical 3 mm gap; sub-mm gaps under-predict
         // 2-3.3x because the analytical fringing field decays faster with distance
         // than the FEM field (image/core-guidance effects) — field-level follow-up.
-        constexpr double fringingLossCalibration = 8.0;
+        // ABT #1188: C IS DERIVED, NOT FITTED (it used to be a bare 8.0 obtained by fitting one
+        // planar trace, 20 x 0.209 mm, against one FEM run — and a constant cannot be right,
+        // because edge crowding depends on the conductor's ASPECT RATIO).
+        //
+        // At strong skin effect the conductor EXCLUDES the perpendicular field, so the exterior
+        // problem is a perfectly conducting cross-section in a transverse field. Taking that
+        // cross-section as the ellipse with the conductor's own semi-axes a = wide/2, b = thin/2
+        // (the strip's edge-singularity-free equivalent: a true rectangle's surface current
+        // diverges at the corners, an ellipse's does not), the surface field is
+        //     H_s(v) = H0 (a + b) |cos v| / sqrt(a^2 sin^2 v + b^2 cos^2 v)
+        // — zero at the middle of the wide faces, peaking at the edges with the classical
+        // (1 + a/b) enhancement. The loss per unit length is the surface integral
+        //     P = 1/2 (rho/delta) * H0^2 (a + b)^2 * INTEGRAL_0^2pi cos^2 v dv / sqrt(...)
+        // and dividing by the wide dimension puts it in the same form as the expression below,
+        // so C is that integral rather than a number:
+        //     C(a, b) = (a + b)^2 / wide * INTEGRAL_0^2pi cos^2 v dv / sqrt(a^2 sin^2 v + b^2 cos^2 v)
+        //
+        // What it gives: 10.10 for the 20 x 0.209 mm trace C was fitted on (the fit was 8.0, so
+        // the derivation reproduces the one case it was tuned to within 26%), 6.04 for a
+        // 3.0 x 0.5 mm rectangular wire, 5.82 for 4.0 x 0.9, 11.48 for 20 x 0.1 foil, and 35.94
+        // for a 0.1 x 1.6 mm tall strip — a factor of 4.5 above the constant, which is the size
+        // of the error a fitted C carries onto a geometry it was never fitted for.
         double wideDimension = (wire.get_type() == WireType::FOIL) ? h : c;
         double thinDimension = (wire.get_type() == WireType::FOIL) ? c : h;
+        const double fringingLossCalibration = fringing_edge_crowding_factor(wideDimension, thinDimension);
         size_t numberSamples = widthSamplesHPerpendicular.size();
         double sampleStep = wideDimension / double(numberSamples);
         double vacuumPermeability = Constants().vacuumPermeability;
@@ -862,6 +1123,7 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
  * @param temperature Operating temperature [K]
  * @return Proximity effect losses for this turn [W]
  */
+
 double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
     auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
@@ -1003,6 +1265,252 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
     factor = 2.0 * std::numbers::pi * resistivity * pow(wireConductingDimension / skinDepth, 4) / 4;
 
     return factor;
+}
+
+
+// ============================================================================================
+// MARTINEZ MODEL (ABT #1188) — proximity loss with field exclusion. See the header for the
+// derivation; the short version is that a conductor thicker than a skin depth excludes the
+// field rather than letting it through, and the loss is then a surface integral over the
+// excluded (edge-crowded) field instead of a volume integral over a field that is not there.
+// ============================================================================================
+
+
+// ============================================================================================
+// EWALD & BIELA (EPE'23) — the published analytical 2D model for rectangular conductors.
+// Implemented from the paper's equation (7), external term only (the internal term is the inner
+// skin effect, which MKF accounts for in WindingSkinEffectLosses).
+// ============================================================================================
+double WindingProximityEffectLossesEwaldModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    if (data.empty()) {
+        return 0;
+    }
+    if (wire.get_type() != WireType::RECTANGULAR && wire.get_type() != WireType::PLANAR &&
+        wire.get_type() != WireType::FOIL) {
+        throw ModelNotAvailableException(
+            "The Ewald model is derived for conductors of rectangular cross-section only.");
+    }
+    auto& resistivityModel = get_cached_resistivity_model();
+    const double resistivity = resistivityModel->get_resistivity(wire.resolve_material(), temperature);
+    const double skinDepth = sqrt(resistivity / (std::numbers::pi * frequency * Constants().vacuumPermeability));
+    if (!(skinDepth > 0)) {
+        return 0;
+    }
+    // The paper's w is the conductor width (x) and h its height (y), figure 3.
+    const double width = wire.get_maximum_conducting_width();
+    const double height = wire.get_maximum_conducting_height();
+    if (!(width > 0) || !(height > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "The Ewald model needs both conducting dimensions of the rectangular wire");
+    }
+
+    // Mean external field on the conductor, by component. get_real() is Hx, get_imaginary() is Hy.
+    // Width samples are skipped: this model takes ONE homogeneous field per surface by
+    // construction (section II-C), which is exactly the assumption under test.
+    double sumFieldX = 0;
+    double sumFieldY = 0;
+    size_t count = 0;
+    for (const auto& point : data) {
+        if (point.get_label() && point.get_label().value() == "widthsample") {
+            continue;
+        }
+        sumFieldX += point.get_real();
+        sumFieldY += point.get_imaginary();
+        ++count;
+    }
+    if (count == 0) {
+        return 0;
+    }
+    const double fieldX = sumFieldX / double(count);
+    const double fieldY = sumFieldY / double(count);
+
+    const std::complex<double> gamma = std::complex<double>(1.0, 1.0) / skinDepth;
+    const std::complex<double> psiX = gamma * width * std::tanh(gamma * height / 2.0);
+    const std::complex<double> psiY = gamma * height * std::tanh(gamma * width / 2.0);
+    // Equation (7), external term. MKF's field points are PEAK harmonic amplitudes and its other
+    // models take the 1/2 for the time average explicitly; the paper's (7) already carries the
+    // 1/2 of Poynting's theorem (its low-frequency limit (8) reproduces the classical result for
+    // peak amplitudes without a further factor), so none is applied here.
+    const double losses = resistivity * std::real(psiX * fieldX * fieldX + psiY * fieldY * fieldY);
+    return std::max(0.0, losses);
+}
+
+double WindingProximityEffectLossesMartinezModel::calculate_exclusion_factor(double wideDimension, double thinDimension, bool fieldAlongWide) {
+    return stadium_exclusion_factor(wideDimension, thinDimension, fieldAlongWide);
+}
+
+double WindingProximityEffectLossesMartinezModel::calculate_edge_crowding_factor(double wideDimension, double thinDimension) {
+    return calculate_exclusion_factor(wideDimension, thinDimension, false);
+}
+
+
+
+double WindingProximityEffectLossesMartinezModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    if (data.empty()) {
+        return 0;
+    }
+    auto& resistivityModel = get_cached_resistivity_model();
+    const double resistivity = resistivityModel->get_resistivity(wire.resolve_material(), temperature);
+    const double skinDepth = sqrt(resistivity / (std::numbers::pi * frequency * Constants().vacuumPermeability));
+    if (!(skinDepth > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Martinez model: non-positive skin depth at " + std::to_string(frequency) + " Hz");
+    }
+
+    // RECTANGULAR-SECTION WIRES ONLY (Alf, 2026-09-19). A round conductor is not this model's
+    // to claim: Ferreira 1994 is the EXACT Bessel solution for an isolated cylinder in a
+    // transverse AC field, so it already carries the field exclusion this model derives and it
+    // is exact at every frequency rather than bridged between two asymptotes. Round and litz
+    // wire keep Ferreira; sending them here would be a step backwards, so it throws instead of
+    // silently giving a worse answer.
+    if (wire.get_type() != WireType::RECTANGULAR && wire.get_type() != WireType::PLANAR &&
+        wire.get_type() != WireType::FOIL) {
+        throw ModelNotAvailableException(
+            "The Martinez proximity model is for rectangular-section wires (rectangular, planar, "
+            "foil); round and litz conductors are served exactly by Ferreira's Bessel solution.");
+    }
+
+    double wideDimension;
+    double thinDimension;
+    if (wire.get_type() == WireType::FOIL) {
+        wideDimension = wire.get_maximum_conducting_height();
+        thinDimension = wire.get_maximum_conducting_width();
+    }
+    else {
+        wideDimension = wire.get_maximum_conducting_width();
+        thinDimension = wire.get_maximum_conducting_height();
+    }
+    if (!(wideDimension > 0) || !(thinDimension > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "Martinez model: the wire carries no usable conducting dimensions");
+    }
+
+    // DECOMPOSE THE FIELD. This is the heart of the model and the thing a magnitude-only
+    // treatment gets wrong: the two field components are excluded by the conductor in completely
+    // different geometries.
+    //
+    //   PARALLEL to the wide face (Hx on a rectangular wire): the field runs along the face. It
+    //   is not excluded sideways and there is no edge crowding — the conductor simply presents
+    //   two wide faces to it, each dissipating the surface-resistance loss 1/2 (rho/delta) H^2.
+    //   Two faces, so the coefficient is 2, and it is geometry-independent.
+    //
+    //   PERPENDICULAR to the wide face (Hy): the field is driven INTO the face and the conductor
+    //   excludes it, so the induced surface current has to run round the section and crowds at
+    //   the edges. That is where the ellipse solution and its aspect-ratio factor belong.
+    //
+    // In a winding window the parallel component usually dominates; near a gap the perpendicular
+    // one does. Charging the perpendicular treatment to the total magnitude over-predicts the
+    // ordinary window field by the ratio of the two coefficients — measured at 2.6x on the
+    // ABT #832 rectangular fixtures before this decomposition was put in.
+    const bool wideAlongY = (wire.get_type() == WireType::FOIL);
+    std::vector<double> perpendicularProfile;
+    double parallelFieldSquaredSum = 0;
+    size_t parallelCount = 0;
+    double edgeFieldSquaredSum = 0;
+    size_t edgeCount = 0;
+    for (const auto& point : data) {
+        if (!point.get_label()) {
+            continue;
+        }
+        const auto label = point.get_label().value();
+        // get_real() is Hx and get_imaginary() is Hy: these are field components, not a phasor.
+        const double fieldX = point.get_real();
+        const double fieldY = point.get_imaginary();
+        if (label == "widthsample") {
+            perpendicularProfile.push_back(wideAlongY ? fieldX : fieldY);
+        }
+        else if (label == "top" || label == "bottom") {
+            // The wide faces of a rectangular wire; the flat faces of a foil are left/right.
+            parallelFieldSquaredSum += (wideAlongY ? fieldY : fieldX) * (wideAlongY ? fieldY : fieldX);
+            ++parallelCount;
+        }
+        else if (label == "left" || label == "right") {
+            if (wideAlongY) {
+                // A foil's wide faces ARE left/right, so these carry its parallel field.
+                parallelFieldSquaredSum += fieldY * fieldY;
+                ++parallelCount;
+            }
+            else {
+                // The short ends of a rectangular wire. They carry the PERPENDICULAR component,
+                // and they are the only source of it when no width samples were meshed (fringing
+                // disabled). Dropping them made the model return exactly zero for a field normal
+                // to the wide face — caught against Ewald & Biela's benchmark, where a purely
+                // perpendicular 250 A/m field gave 0 W/m.
+                edgeFieldSquaredSum += fieldY * fieldY;
+                ++edgeCount;
+            }
+        }
+    }
+
+    // INTEGRAL Hperp^2 dx along the wide face, resolved where width samples exist.
+    double integralPerpendicularSquared = 0;
+    std::vector<double> profile = perpendicularProfile;
+    if (profile.empty() && edgeCount > 0) {
+        // No width-resolved samples: take the perpendicular field as uniform across the face, at
+        // the level the short ends report.
+        profile.assign(8, sqrt(edgeFieldSquaredSum / double(edgeCount)));
+    }
+    if (!profile.empty()) {
+        const double sampleStep = wideDimension / double(profile.size());
+        for (double fieldValue : profile) {
+            integralPerpendicularSquared += fieldValue * fieldValue * sampleStep;
+        }
+    }
+
+    // EACH COMPONENT GETS ITS OWN LOW/HIGH-FREQUENCY BRIDGE, and the two are summed. Bridging the
+    // COMBINED loss is wrong: a turn in a purely parallel field has no perpendicular asymptote at
+    // all, and a single bridge then collapses the whole result to zero. (Both zero cases showed up
+    // on Ewald & Biela's benchmark — first perpendicular, then parallel after a partial fix.)
+    const double surfaceResistance = resistivity / skinDepth;
+    const double angularFrequency = 2 * std::numbers::pi * frequency;
+    const double vacuumPermeability = Constants().vacuumPermeability;
+    const double meanParallelSquared = parallelCount > 0 ? parallelFieldSquaredSum / double(parallelCount) : 0.0;
+
+    // ---- parallel to the wide face: excluded too, and crowded by the inverse aspect ratio ----
+    // HF: the surface-resistance loss on each of the two wide faces.
+    // LF: the classical slab limit, sigma omega^2 mu0^2 H^2 t^3 w / 24, which is exactly the
+    //     x-term of Ewald & Biela's equation (8).
+    // ABT #1188: the field ALONG the wide face is excluded too, so its coefficient is the ellipse
+    // solution for that axis (4.03 on a 2:1 wire), not the 2.0 of "two flat faces". 2D FEM on the
+    // real conductor measured the difference as 2.016x, and the derived factor closes it.
+    const double parallelExclusionFactor = calculate_exclusion_factor(wideDimension, thinDimension, true);
+    const double highFrequencyParallel = 0.5 * parallelExclusionFactor * surfaceResistance *
+                                         meanParallelSquared * wideDimension;
+    const double lowFrequencyParallel = pow(angularFrequency, 2) * pow(vacuumPermeability, 2) *
+                                        meanParallelSquared * pow(thinDimension, 3) * wideDimension /
+                                        (24 * resistivity);
+    double lossParallel = 0;
+    if (lowFrequencyParallel > 0 && highFrequencyParallel > 0) {
+        lossParallel = 1.0 / (1.0 / lowFrequencyParallel + 1.0 / highFrequencyParallel);
+    }
+
+    // ---- perpendicular to the wide face: excluded, and edge-crowded by the aspect ratio ----
+    double lossPerpendicular = 0;
+    if (!profile.empty()) {
+        const double edgeCrowdingFactor = calculate_edge_crowding_factor(wideDimension, thinDimension);
+        const double highFrequencyPerpendicular = 0.5 * edgeCrowdingFactor * surfaceResistance * integralPerpendicularSquared;
+        // LF: the vector-potential variance across the face (omega^2), which for a uniform field
+        // reduces to the y-term of the same equation (8).
+        const double sampleStep = wideDimension / double(profile.size());
+        std::vector<double> fluxFunction(profile.size());
+        double cumulativeFlux = 0;
+        for (size_t i = 0; i < profile.size(); ++i) {
+            cumulativeFlux += -vacuumPermeability * profile[i] * sampleStep;
+            fluxFunction[i] = cumulativeFlux;
+        }
+        const double fluxMean = std::accumulate(fluxFunction.begin(), fluxFunction.end(), 0.0) / double(fluxFunction.size());
+        double integralFluxVariance = 0;
+        for (double flux : fluxFunction) {
+            integralFluxVariance += pow(flux - fluxMean, 2) * sampleStep;
+        }
+        const double lowFrequencyPerpendicular = pow(angularFrequency, 2) * thinDimension /
+                                                 (2 * resistivity) * integralFluxVariance;
+        if (lowFrequencyPerpendicular > 0 && highFrequencyPerpendicular > 0) {
+            lossPerpendicular = 1.0 / (1.0 / lowFrequencyPerpendicular + 1.0 / highFrequencyPerpendicular);
+        }
+    }
+
+    return lossParallel + lossPerpendicular;
 }
 
 double WindingProximityEffectLossesLammeranerModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
