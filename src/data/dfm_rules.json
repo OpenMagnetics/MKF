@@ -40,8 +40,32 @@
         "title": "Thermoset bobbin for reflow or solder bath",
         "description": "Thermoplastic bobbins are cheaper but have a lower melting point; heat damage occurs during soldering. Parts that go through a reflow oven, such as surface-mounted parts, must use a thermoset bobbin.",
         "source": "Wuerth Elektronik, 'Design For Manufacturing (DFM)', A. De Michiel, 2024-04-29 (youtube 9AhcsV8t4EU) 05:09 and 23:17",
-        "thermoplasticMaterials": ["PA66", "PA6", "PA9T", "PA46", "PBT", "PET", "PPS", "LCP", "PA", "NYLON", "POLYAMIDE", "POLYESTER", "POLYPHENYLENE SULFIDE", "LIQUID CRYSTAL POLYMER", "THERMOPLASTIC"],
-        "thermosetMaterials": ["PHENOLIC", "DAP", "DIALLYL PHTHALATE", "BAKELITE", "EPOXY", "THERMOSET", "THERMOSETTING"],
+        "thermoplasticMaterials": [
+            "PA66",
+            "PA6",
+            "PA9T",
+            "PA46",
+            "PBT",
+            "PET",
+            "PPS",
+            "LCP",
+            "PA",
+            "NYLON",
+            "POLYAMIDE",
+            "POLYESTER",
+            "POLYPHENYLENE SULFIDE",
+            "LIQUID CRYSTAL POLYMER",
+            "THERMOPLASTIC"
+        ],
+        "thermosetMaterials": [
+            "PHENOLIC",
+            "DAP",
+            "DIALLYL PHTHALATE",
+            "BAKELITE",
+            "EPOXY",
+            "THERMOSET",
+            "THERMOSETTING"
+        ],
         "solderBathTemperatureMinimum": 360,
         "solderBathTemperatureMaximum": 420,
         "_solderBathTemperature_comment": "Degrees Celsius. 'if it's enamel wire we'll solder anywhere between 360 and 420 C' - Wuerth Elektronik, 'Transformers - what characteristics are important to you?', A. Sullivan, 2022-08-18 (youtube 1VBp_ajSZmM) 29:01"
@@ -50,7 +74,7 @@
         "title": "Insulation-strategy size heuristic",
         "description": "EE25 / ER28 and larger is the transition size at which safety is best achieved with regular magnet wire plus margin tape. EE20 and smaller packages are almost too small to achieve the distances with margin tape, so triple-insulated wire is preferred there to maximise copper.",
         "source": "Wuerth Elektronik, 'Transformers - what characteristics are important to you?', A. Sullivan, 2022-08-18 (youtube 1VBp_ajSZmM) 26:49-27:33",
-        "marginTapeTransitionEffectiveLength": 0.0570,
+        "marginTapeTransitionEffectiveLength": 0.057,
         "_marginTapeTransitionEffectiveLength_comment": "Metres. Effective magnetic path length of an EE25 (~57 mm) - the shape-size proxy for the EE25/ER28 transition, so the rule does not depend on parsing shape names. Cores at or above this use margin tape + magnet wire; below it, insulated wire.",
         "insulatedWireTransitionEffectiveLength": 0.0425,
         "_insulatedWireTransitionEffectiveLength_comment": "Metres. Effective magnetic path length of an EE20 (~42.5 mm). At or below this, insulated (TIW/FIW) wire is preferred over margin tape."
@@ -60,9 +84,9 @@
         "description": "Basic insulated wire is about 15 percent larger in diameter than the equivalent enamel magnet wire, supplementary about 40 percent, triple insulated about 65 percent or more. Insulated wire is billed by length, so it belongs on the lowest-turn-count winding. Triple insulated wire must not touch enamelled magnet wire without at least one tape layer between them.",
         "source": "Wuerth Elektronik, 'How Does Safety Affect Your Design?', L. Geerdes, 2021 (youtube UCUsOcUscLM) 40:16, 42:25; PSMA/APEC 2022 IS01.7 slides 10 and 17; Custom Capabilities Catalog 2020, 'Transformer Cost - Wire Cost'",
         "outerDiameterGrowthBasic": 0.15,
-        "outerDiameterGrowthSupplementary": 0.40,
+        "outerDiameterGrowthSupplementary": 0.4,
         "outerDiameterGrowthTripleInsulated": 0.65,
-        "outerDiameterGrowthTolerance": 0.10,
+        "outerDiameterGrowthTolerance": 0.1,
         "_outerDiameterGrowthTolerance_comment": "Fractional slack around the quoted growth figures before the report flags the wire's outer diameter as inconsistent with its insulation grade.",
         "minimumTapeLayersBetweenInsulatedAndEnamelledWire": 1
     },
@@ -72,15 +96,19 @@
         "source": "Wuerth Elektronik, 'How Does Safety Affect Your Design?', L. Geerdes, 2021 (youtube UCUsOcUscLM) 52:23; Custom Capabilities Catalog 2020, 'Margin Tape'",
         "typicalLayersPerSideMinimum": 10,
         "typicalLayersPerSideMaximum": 20,
-        "windowWidthLossWarningRatio": 0.30,
-        "windowWidthLossFailRatio": 0.50,
+        "windowWidthLossWarningRatio": 0.3,
+        "windowWidthLossFailRatio": 0.5,
         "_windowWidthLoss_comment": "Fraction of the winding-window width consumed by both margins. WE report margins eating around half the window in the worst case; the WP8 proposal (rule R9) sets the warn level at 30 percent and the fail level at the 50 percent WE quote."
     },
     "R11": {
         "title": "Termination protection cost order",
         "description": "Three ways protect a termination where it leaves the winding area: crossover tape (mostly manual, placement not consistent, uses the least winding window), margin tape (the best cost option if winding space allows, consistent because machines apply it, may increase leakage inductance) and tubing (sleeving: the most effective, but the highest labour cost). Tubing is also used to build a creepage distance from a non-insulated wire, from the winding area to the exposed part of the wire at the termination. MKF sleeves a lead only when its wire's own insulation does not cover the requirement where it crosses a margin (InsulationCoordinator::calculate_lead_sleeve_requirements, ABT #1174), so a sleeve where none is needed spends the costliest protection for nothing, and a margin crossed by an unsleeved lead that needs one is bridged.",
         "source": "Wuerth Elektronik, 'Design For Manufacturing (DFM)', A. De Michiel, 2024-04-29 (youtube 9AhcsV8t4EU) 15:16-16:40",
-        "protectionCostOrder": ["crossover tape", "margin tape", "sleeving"],
+        "protectionCostOrder": [
+            "crossover tape",
+            "margin tape",
+            "sleeving"
+        ],
         "_protectionCostOrder_comment": "Cheapest first, as the source ranks them: crossover tape is a manual process, margin tape is applied by machines, tubing requires the highest labour cost."
     },
     "R12": {
@@ -94,7 +122,7 @@
         "description": "Enamel and fully insulated wire are highly automatable in soldering up to 28 AWG. Extruded Teflon wire (TIW/TEX-E) has low-level automation and requires pre-stripping on a single-arbor machine. Litz needs crimp terminals or a special bobbin. The solder bath runs at 360 to 420 degrees Celsius, which limits the dwell time a thermoplastic bobbin tolerates.",
         "source": "Wuerth Elektronik Custom Capabilities Catalog 2020, wire-type table ('Highly automated solderability (up to 28AWG)', 'Solderability: low level automation (requires pre-stripping)', 'crimp terminals, special bobbin'); 'Transformers - what characteristics are important to you?', A. Sullivan, 2022-08-18 (youtube 1VBp_ajSZmM) 29:01; 'Design For Manufacturing (DFM)', 2024-04-29, 23:17",
         "finestAutomaticallySolderableAwg": 28,
-        "finestAutomaticallySolderableConductingDiameter": 0.000320,
+        "finestAutomaticallySolderableConductingDiameter": 0.00032,
         "_finestAutomaticallySolderableConductingDiameter_comment": "Metres. Nominal bare conducting diameter of 28 AWG (0.320 mm), used when the wire record carries no AWG standard name."
     },
     "R14": {
@@ -108,7 +136,12 @@
         "description": "An EI core style with mylar or tape used for the gap has three unshielded gaps and is an EMI problem. Good practice is a centre-leg gap only, with no gaps in the outer legs.",
         "source": "Wuerth Elektronik, 'Transformer Design for EMC' (2022 video, 2023 slides), 'Transformers EMI - avoid EI type cores' and 'Good EMI design practice: airgap'",
         "severity": "warning",
-        "topologiesChecked": ["FLYBACK_CONVERTER", "ACTIVE_CLAMP_FORWARD_CONVERTER", "ASYMMETRIC_HALF_BRIDGE_CONVERTER", "ISOLATED_BUCK_BOOST_CONVERTER"],
+        "topologiesChecked": [
+            "FLYBACK_CONVERTER",
+            "ACTIVE_CLAMP_FORWARD_CONVERTER",
+            "ASYMMETRIC_HALF_BRIDGE_CONVERTER",
+            "ISOLATED_BUCK_BOOST_CONVERTER"
+        ],
         "_topologiesChecked_comment": "magic_enum names of MAS::Topology. The EMI rule is about gapped isolated converters whose gap carries the whole energy store; a flyback is the canonical case."
     },
     "R16": {
@@ -124,10 +157,10 @@
         "hipotDurationMinimum": 1,
         "hipotDurationMaximum": 4,
         "_hipotDuration_comment": "Seconds.",
-        "hipotVoltageReduction": 0.10,
+        "hipotVoltageReduction": 0.1,
         "partialDischargeTestPeakVoltage": 750,
         "_partialDischargeTestPeakVoltage_comment": "Volts peak. Above this, FIW/TIW designs need a partial-discharge test.",
-        "typicalInductanceTolerance": 0.10
+        "typicalInductanceTolerance": 0.1
     },
     "pinAssignment": {
         "_comment": "Numbers of MAS RFC 0013 section 3 (lead-to-pin assignment), read by Coil::assign_pins (ABT #1172, WP3).",
@@ -145,5 +178,11 @@
     },
     "notEvaluatedSources": {
         "R10": "PSMA/APEC 2022 IS01.7, 'How Does Safety Affect Your Design?' 2021"
+    },
+    "leadSleeve": {
+        "_comment": "ABT #1269. The sleeve over a terminal lead (InsulationCoordinator::calculate_lead_sleeve_requirements, ABT #1174). Its WALL is the standards' distance through insulation plus the withstand check, not a number from here. Its EXTENT has two parts, and neither is a rule of thumb: (1) WHERE IT MUST REACH is a creepage requirement -- the lead is bare enamelled wire, so the sleeve has to cover it across the whole margin band, i.e. end at or past the margin's INNER face, which is what AN-18 states as 'from the transformer pin to inside of the margin barrier' and what Coil publishes per route as marginInnerFace; (2) HOW FAR PAST it is mechanical retention, not a safety distance -- the end has to be held down so it cannot retract into the margin, and what holds it is the winding lying over it. One full turn over the end is the least that does that, so the overlap is one turn PITCH, which for a terminal lead is its own outer diameter. No fixed length is used, and none is available: no standard or workmanship spec found states one (checked 2026-09-20: AN-18; IEC 62368-1 5.4.4.2 and G.5.1-G.5.3 for wound components; IEC 60950-1; MIL-STD-981C; NASA-STD-8739; UL's wound-component brief; vendor and coil-winding guides). The clauses govern what the sleeve IS, not how far it reaches.",
+        "source": "Power Integrations AN-18, 'TOPSwitch Flyback Transformer Construction Guide' 7/96 p.3: 'This insulation should extend from the transformer pin to inside of the margin barrier, as shown in Figure 4.' Margins there are creepage-derived: 'one half the required creepage distance, or 1.25 to 1.5 mm for 115 VAC input supplies, and 2.5 to 3 mm for 230 VAC or universal input supplies.' Wall: IEC 62368-1 5.4.4.2 (0,4 mm for reinforced, none for basic) via the distance-through-insulation models.",
+        "captureTurnsIntoWinding": 1,
+        "_captureTurnsIntoWinding_comment": "How many full turns must lie over the sleeve's end for it to be held down; the overlap past the margin's inner face is this many turn pitches, and a terminal lead's pitch is its own outer diameter. One turn is the least that captures the end. It is a mechanical statement, so it scales with the wire instead of fixing a length: a 0,34 mm lead is held by 0,34 mm of winding, a litz bundle by its own diameter. Raise it only with a reason."
     }
 }

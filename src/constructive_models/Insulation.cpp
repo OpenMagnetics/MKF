@@ -4,6 +4,9 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include <cfloat>
 #include "support/Exceptions.h"
+#include <cmrc/cmrc.hpp>
+
+CMRC_DECLARE(dfmData);   // ABT #1269: the lead-sleeve overlap is rule data (src/data/dfm_rules.json)
 
 
 namespace OpenMagnetics {
@@ -390,6 +393,38 @@ double InsulationCoordinator::lead_sleeve_required_temperature(Inputs& inputs, W
     return requiredTemperature;
 }
 
+// ABT #1269: how far the sleeve reaches PAST the margin's inner face. Reaching the inner face is the
+// creepage requirement; going past it is mechanical retention, and what retains the end is the
+// winding lying over it -- so the overlap is the turn pitch the end is captured under, which for a
+// terminal lead is its own outer diameter. The number of capturing turns is rule data
+// (src/data/dfm_rules.json "leadSleeve"), and missing rule data throws: the flat 2 mm this replaced
+// was in no standard, and a length nobody can source is not a default to fall back on.
+double InsulationCoordinator::lead_sleeve_overlap_into_winding(Wire& wire) {
+    static const json rules = [] {
+        auto fs = cmrc::dfmData::get_filesystem();
+        auto data = fs.open("src/data/dfm_rules.json");
+        return json::parse(std::string(data.begin(), data.end()));
+    }();
+    auto number = [](const json& block, const std::string& key) {
+        if (!block.contains(key)) {
+            throw std::runtime_error("src/data/dfm_rules.json leadSleeve has no number '" + key + "'");
+        }
+        return block.at(key).get<double>();
+    };
+    if (!rules.contains("leadSleeve")) {
+        throw std::runtime_error("src/data/dfm_rules.json has no leadSleeve block; the sleeve's overlap "
+                                 "into the winding is rule data, not a constant (ABT #1269)");
+    }
+    const auto& block = rules.at("leadSleeve");
+    const double turns = number(block, "captureTurnsIntoWinding");
+    if (turns <= 0) {
+        throw std::runtime_error("src/data/dfm_rules.json leadSleeve: captureTurnsIntoWinding must be "
+                                 "positive; a sleeve end no turn lies over is not held down");
+    }
+    // The turns ride at the lead's own outer diameter, so that is the pitch its end is captured under.
+    return turns * lead_outer_diameter(wire);
+}
+
 std::optional<ConnectionSleeve> InsulationCoordinator::calculate_lead_sleeve_requirements(Inputs& inputs, Wire wire, bool crossesMargin) {
     if (!inputs.get_design_requirements().get_insulation()) {
         return std::nullopt;
@@ -421,7 +456,10 @@ std::optional<ConnectionSleeve> InsulationCoordinator::calculate_lead_sleeve_req
         }
     }
 
-    double requiredWall = std::max(leadSleeveMinimumWallThickness, calculate_distance_through_insulation(inputs));
+    // ABT #1269: the standards' distance through insulation IS the wall requirement (0.4 mm for
+    // supplementary/reinforced above the ES2 limit, none for basic); the withstand check below rejects
+    // a wall too thin to hold the voltage whatever the standard asks for thickness.
+    double requiredWall = calculate_distance_through_insulation(inputs);
     double requiredTemperature = lead_sleeve_required_temperature(inputs, wire);
 
     if (insulationMaterialDatabase.empty()) {
@@ -477,7 +515,7 @@ std::optional<ConnectionSleeve> InsulationCoordinator::calculate_lead_sleeve_req
     sleeve.set_material(InsulationMaterialDataOrNameUnion(chosenMaterial.value()));
     sleeve.set_wall_thickness(chosenWall);
     sleeve.set_inner_diameter(lead_outer_diameter(wire) + leadSleeveInnerDiameterClearance);
-    sleeve.set_overlap_into_winding(leadSleeveOverlapIntoWinding);
+    sleeve.set_overlap_into_winding(lead_sleeve_overlap_into_winding(wire));
     sleeve.set_number_layers(leadSleeveNumberLayers);
     return sleeve;
 }
@@ -811,7 +849,9 @@ double InsulationIEC60664Model::get_clearance_over_30kHz(double ratedVoltagePeak
 }
 
 double InsulationIEC60664Model::calculate_distance_through_insulation(Inputs& inputs) {
-    double maximumVoltageRms = inputs.get_maximum_voltage_rms();
+    // ABT #1269: the voltage across the barrier, mains included; the field-strength rule below is
+    // only as right as the voltage it is handed.
+    double maximumVoltageRms = working_voltage_across_barrier(inputs);
     double maximumFrequency = inputs.get_maximum_frequency();
     double distanceThroughInsulation = 0;
     if (maximumFrequency > iec60664Part1MaximumFrequency) {
@@ -1225,7 +1265,15 @@ double InsulationIEC62368Model::calculate_withstand_voltage(Inputs& inputs) {
 double InsulationIEC62368Model::calculate_distance_through_insulation(Inputs& inputs) {
     double maximumFrequency = inputs.get_maximum_frequency();
     double es2VoltageLimit = get_es2_voltage_limit(maximumFrequency);
-    double workingVoltageRms = get_working_voltage_rms(inputs);
+    // ABT #1269: THE VOLTAGE THIS INSULATION SEPARATES, not the winding's own excitation.
+    // get_working_voltage_rms returns the design's maximum winding voltage; for a MAINS-SUPPLIED
+    // part the safeguard being sized stands between the mains and the secondary, so the voltage
+    // across it is at least the mains supply. Comparing only the winding voltage let a mains
+    // flyback (250 V mains, 123.1 V rms windings at 85 kHz, ES2 limit 126.5 V there) read as an
+    // ES2 source and return NO distance through insulation for REINFORCED insulation, where
+    // 5.4.4.2 asks for 0,4 mm. The ES2 gate itself is right -- below ES2 there is no hazardous
+    // source to separate -- it was being handed the wrong voltage.
+    double workingVoltageRms = working_voltage_across_barrier(inputs);
     auto insulationType = inputs.get_insulation_type();
 
     if (workingVoltageRms <= es2VoltageLimit) {
@@ -1520,7 +1568,7 @@ double InsulationIEC61558Model::calculate_distance_through_insulation(Inputs& in
     if (mainSupplyVoltage > iec61558MaximumSupplyVoltage) {
         throw std::invalid_argument("Too much supply voltage for IEC 61558-1: " + std::to_string(mainSupplyVoltage));
     }
-    double workingVoltage = get_working_voltage_rms(inputs);
+    double workingVoltage = working_voltage_across_barrier(inputs);   // ABT #1269: mains included
     auto insulationType = inputs.get_insulation_type();
 
     if (insulationType == IsolationClass::FUNCTIONAL) {

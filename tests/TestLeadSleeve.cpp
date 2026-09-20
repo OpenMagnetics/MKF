@@ -95,8 +95,14 @@ TEST_CASE("Test_Lead_Sleeve_Enamelled_Lead_Crossing_A_Margin_Is_Sleeved", "[cons
     CHECK_THAT(sleeve->get_wall_thickness(), Catch::Matchers::WithinAbs(0.41e-3, 1e-12));
     CHECK(sleeve_material_name(sleeve.value()) == "Polyolefin heat-shrink tubing");
     CHECK_THAT(sleeve->get_inner_diameter(), Catch::Matchers::WithinAbs(wire.get_maximum_outer_width() + 0.1e-3, 1e-12));
+    // ABT #1269: the overlap past the margin's inner face is ONE TURN PITCH, which for a terminal
+    // lead is its own outer diameter -- the winding lying over the end is what stops it retracting.
+    // It was a flat 2 mm, which no standard states (AN-18 gives the end condition only: the tubing
+    // runs "from the transformer pin to inside of the margin barrier"). Asserted against the wire,
+    // not against a number, so the rule is what is under test.
     REQUIRE(sleeve->get_overlap_into_winding());
-    CHECK(sleeve->get_overlap_into_winding().value() == 2e-3);
+    CHECK_THAT(sleeve->get_overlap_into_winding().value(),
+               Catch::Matchers::WithinAbs(InsulationCoordinator::lead_outer_diameter(wire), 1e-12));
     REQUIRE(sleeve->get_number_layers());
     CHECK(sleeve->get_number_layers().value() == 1);
 }
@@ -368,4 +374,65 @@ TEST_CASE("Test_Lead_Sleeve_R11_Fails_On_A_Missing_Or_Unneeded_Sleeve", "[advise
         CHECK_THAT(finding.get_message(), Catch::Matchers::ContainsSubstring("costliest protection for nothing"));
     }
     settings.reset();
+}
+
+// ---------------------------------------------------------------------------------------------
+// ABT #1269: the numbers come from the standards and from physics, not from practice constants
+// ---------------------------------------------------------------------------------------------
+
+// The voltage a safeguard is sized against is the one ACROSS IT. Inputs::get_maximum_voltage_rms()
+// is the largest WINDING excitation, and sizing on that let a mains part read as harmless: the
+// margin flyback works at 123.1 V rms at 85 kHz, under 62368-1's ES2 limit of 126.5 V at that
+// frequency, so its REINFORCED barrier got no distance through insulation at all -- while standing
+// between 250 V mains and the secondary. Every standard now sizes on max(winding, declared mains).
+TEST_CASE("Test_Lead_Sleeve_Barrier_Voltage_Includes_The_Mains", "[constructive-model][insulation][lead-sleeve][abt1269]") {
+    settings.reset();
+    clear_databases();
+    // The MAS margin-wound flyback, which is the design that exposed this: its windings work well
+    // below the mains it is supplied from. (The synthetic fixture above drives 400 V windings from a
+    // 250 V mains, so it cannot show the difference.)
+    auto mas = autocomplete_flyback();
+    auto inputs = mas.get_mutable_inputs();
+
+    const double windingVoltage = inputs.get_maximum_voltage_rms();
+    const double mains = resolve_dimensional_values(inputs.get_main_supply_voltage());
+    INFO("winding " << windingVoltage << " V rms, mains " << mains << " V");
+    REQUIRE(mains > windingVoltage);   // the fixture is the case that exposed it
+    CHECK_THAT(InsulationStandard::working_voltage_across_barrier(inputs),
+               Catch::Matchers::WithinAbs(mains, 1e-9));
+
+    // ... and with the mains counted, 62368-1 5.4.4.2 asks 0,4 mm for reinforced.
+    InsulationIEC62368Model model62368;
+    CHECK_THAT(model62368.calculate_distance_through_insulation(inputs),
+               Catch::Matchers::WithinAbs(0.4e-3, 1e-12));
+}
+
+// IEC 62368-1 5.4.4.2: no minimum thickness for BASIC insulation. MKF used to floor every sleeve at
+// AN-18's 0.4 mm, which is stated for REINFORCED, so a basic lead was given a wall no standard asks
+// for. The withstand check still decides whether a thin wall may be used.
+TEST_CASE("Test_Lead_Sleeve_Basic_Insulation_Has_No_Thickness_Floor", "[constructive-model][insulation][lead-sleeve][abt1269]") {
+    clear_databases();
+    DimensionWithTolerance altitude;
+    altitude.set_maximum(2000);
+    DimensionWithTolerance mainSupplyVoltage;
+    mainSupplyVoltage.set_maximum(250);
+    auto inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, Cti::GROUP_II, IsolationClass::BASIC,
+                                                                   mainSupplyVoltage, OvervoltageCategory::II,
+                                                                   PollutionDegree::PD2,
+                                                                   {InsulationStandards::IEC_623681}, 400, 600, 100000,
+                                                                   WiringTechnology::WOUND);
+    inputs.get_mutable_operating_points()[0].get_mutable_conditions().set_ambient_temperature(55);
+    InsulationIEC62368Model model62368;
+    CHECK(model62368.calculate_distance_through_insulation(inputs) == 0);
+}
+
+// The overlap is a turn pitch, so it follows the wire instead of being a length: a thicker lead is
+// held down by more winding, a finer one by less. Nothing is clamped -- a clamp would be a number
+// nobody can source.
+TEST_CASE("Test_Lead_Sleeve_Overlap_Is_One_Turn_Pitch_Of_Its_Own_Lead", "[constructive-model][insulation][lead-sleeve][abt1269]") {
+    clear_databases();
+    auto fine = find_wire_by_name(enamelledWireName);
+    const double fineOverlap = InsulationCoordinator::lead_sleeve_overlap_into_winding(fine);
+    CHECK_THAT(fineOverlap, Catch::Matchers::WithinAbs(InsulationCoordinator::lead_outer_diameter(fine), 1e-12));
+    CHECK(fineOverlap > 0);
 }

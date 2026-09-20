@@ -1418,6 +1418,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         auto tagSleevedRoute = [&](size_t routesBefore) {
             if (sleeved && routes.size() > routesBefore) {
                 routes.back().sleeveOuterDiameter = sleeveOuterDiameter;
+                // ABT #1269: the sleeve's end condition -- where this lead leaves the margin band and
+                // enters the winding area. The overlap past it is ConnectionSleeve::overlapIntoWinding.
+                const size_t sleeveWindowIndex = windowIndexOf(connectingTurn.get_section().value_or(""));
+                const double sleeveMargin = edgeMargin(sleeveWindowIndex, atTopEdge);
+                if (sleeveMargin > 0) {
+                    const double edge = windowEdgeY(sleeveWindowIndex, atTopEdge);
+                    routes.back().marginInnerFace = atTopEdge ? edge - sleeveMargin : edge + sleeveMargin;
+                }
             }
         };
         double turnX = connectingTurn.get_coordinates()[0];
