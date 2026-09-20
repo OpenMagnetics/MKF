@@ -134,7 +134,14 @@ TEST_CASE("A toroid base missing its height is refused (ABT #1173)", "[construct
 TEST_CASE("A ring seated on a horizontal base gets the base's pins on the seating plane (ABT #1173)",
           "[constructive-model][bobbin][pins][abt1173]") {
     auto core = buck_core();
-    const double coating = core.get_coating_thickness();
+    // ABT #1253 (Alf: "only a declared coating"). This fixture's core declares NO coating, so the
+    // ring it seats is the BARE ring — the same ring the quick (Basic) bobbin builds. The
+    // expectations used to be written against Core::get_coating_thickness(), which answers with a
+    // DEFAULT parylene thickness for an uncoated core, and create_toroid_bobbin_on_base counted
+    // that default too, so the two agreed on a ring that does not exist. The declared-coating case
+    // is pinned separately below.
+    REQUIRE_FALSE(core.get_functional_description().get_coating());
+    const double coating = 0.0;
     auto bobbin = OpenMagnetics::Bobbin::create_toroid_bobbin_on_base(core, base_bobbin(base_record("fixture base", "horizontal", 3, 0.00254, 0.0102, 0.0015, 0.0117)));
     REQUIRE(bobbin.has_base());
     auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
@@ -172,7 +179,14 @@ TEST_CASE("A ring seated on a horizontal base gets the base's pins on the seatin
 TEST_CASE("A ring on a vertical base has its pins along -Z, rows straddling the ring thickness (ABT #1173)",
           "[constructive-model][bobbin][pins][abt1173]") {
     auto core = cmc_core();
-    const double coating = core.get_coating_thickness();
+    // ABT #1253 (Alf: "only a declared coating"). This fixture's core declares NO coating, so the
+    // ring it seats is the BARE ring — the same ring the quick (Basic) bobbin builds. The
+    // expectations used to be written against Core::get_coating_thickness(), which answers with a
+    // DEFAULT parylene thickness for an uncoated core, and create_toroid_bobbin_on_base counted
+    // that default too, so the two agreed on a ring that does not exist. The declared-coating case
+    // is pinned separately below.
+    REQUIRE_FALSE(core.get_functional_description().get_coating());
+    const double coating = 0.0;
     auto bobbin = OpenMagnetics::Bobbin::create_toroid_bobbin_on_base(core, base_bobbin(base_record("fixture vertical", "vertical", 2, 0.0125, 0.0075, 0.001, 0.03)));
     auto pins = bobbin.get_processed_description()->get_pins().value();
     REQUIRE(pins.size() == 4);
@@ -183,6 +197,35 @@ TEST_CASE("A ring on a vertical base has its pins along -Z, rows straddling the 
         REQUIRE(pin.get_rotation());
         CHECK(pin.get_rotation()->at(0) == 90);
     }
+}
+
+// ABT #1253: the other half of "only a declared coating" — a core that DOES declare one still has
+// it counted, on every side of the ring, exactly as create_quick_bobbin counts it.
+TEST_CASE("A seated ring counts a DECLARED coating and only a declared one (ABT #1253)",
+          "[constructive-model][bobbin][abt1253]") {
+    auto bare = buck_core();
+    REQUIRE_FALSE(bare.get_functional_description().get_coating());
+    json coatedJson;
+    to_json(coatedJson, bare);
+    coatedJson["functionalDescription"]["coating"] = {{"type", "epoxy"}, {"thickness", 0.0002}};
+    OpenMagnetics::Core coated(coatedJson, true);
+    const double coating = coated.get_coating_thickness();
+    REQUIRE_THAT(coating, Catch::Matchers::WithinAbs(0.0002, 1e-12));
+
+    auto record = base_record("fixture base", "horizontal", 3, 0.00254, 0.0102, 0.0015, 0.0117);
+    auto bareRing = flatten_dimensions(
+        OpenMagnetics::Bobbin::create_toroid_bobbin_on_base(bare, base_bobbin(record))
+            .get_functional_description()->get_dimensions());
+    auto coatedRing = flatten_dimensions(
+        OpenMagnetics::Bobbin::create_toroid_bobbin_on_base(coated, base_bobbin(record))
+            .get_functional_description()->get_dimensions());
+
+    CHECK_THAT(bareRing.at("A"), Catch::Matchers::WithinAbs(0.010, 1e-9));
+    CHECK_THAT(bareRing.at("B"), Catch::Matchers::WithinAbs(0.006, 1e-9));
+    CHECK_THAT(bareRing.at("C"), Catch::Matchers::WithinAbs(0.004, 1e-9));
+    CHECK_THAT(coatedRing.at("A"), Catch::Matchers::WithinAbs(0.010 + 2 * coating, 1e-9));
+    CHECK_THAT(coatedRing.at("B"), Catch::Matchers::WithinAbs(0.006 - 2 * coating, 1e-9));
+    CHECK_THAT(coatedRing.at("C"), Catch::Matchers::WithinAbs(0.004 + 2 * coating, 1e-9));
 }
 
 TEST_CASE("The pin rail of a base without the ring dimension its mounting needs throws naming it (ABT #1173)",

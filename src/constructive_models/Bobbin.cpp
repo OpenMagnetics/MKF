@@ -1580,7 +1580,14 @@ Bobbin Bobbin::create_toroid_bobbin_on_base(Core core, const Bobbin& base) {
                 "Toroidal shape '" + core.get_shape_name() + "' has no dimension '" + label + "'.");
         }
     }
-    const double coating = core.get_coating_thickness();
+    // ABT #1253 (Alf: "only a declared coating"). Core::get_coating_thickness() answers with a
+    // DEFAULT parylene/epoxy thickness when the core declares NO coating, so seating an uncoated
+    // core on a base silently shrank its winding window — the same core on a quick (Basic) bobbin
+    // keeps the bare window, and the two therefore wound differently for no physical reason
+    // (buck_inductor_complete: 2.9 mm seated against 3.0 mm bare). create_quick_bobbin already
+    // counts a coating only when the core declares one; match it. No silent default.
+    const double coating =
+        core.get_functional_description().get_coating() ? core.get_coating_thickness() : 0.0;
     const double stacks = static_cast<double>(core.get_number_stacks());
 
     auto functionalDescription = base.get_functional_description().value();

@@ -14225,6 +14225,107 @@ TEST_CASE("Test_Molded_Cavity_Turn_Placement", "[constructive-model][coil][molde
     settings.reset();
 }
 
+// ABT #1253: WHERE THE NEXT RING STARTS. A toroidal winding that spills into a second ring makes
+// one ring-to-ring hop per parallel. align_blocked_ring_turns used to anchor every ring on its own
+// widest corridor and take its slots in azimuth order, so the two rings of one winding could end up
+// ~180 deg apart: each parallel's hop was then nearly a full diameter, and because the hops keep the
+// parallels in the same order at both ends they are rotated copies of one near-diametral chord,
+// which must cross. MVB++'s toroid corner certifier refuses exactly that, so buck_inductor_complete
+// could not be realized in 3D at all.
+//
+// Alf's ruling: the transition follows MKF's existing U/Z winding order — ring N+1 starts where
+// ring N closed. Pinned here as the two properties that fact produces, on a design that spills into
+// two rings with THREE parallels on a bare window (9 turns x 3 parallels of Round 0.63 on a
+// T 10/6/4): every hop is no longer than a couple of ordinary turn-to-turn steps, and no two hops
+// cross. Measured before the fix: hops of 179.4 / 183.0 / 186.5 deg, all three pairs crossing.
+TEST_CASE("Test_Toroidal_Ring_To_Ring_Hops_Are_Short_And_Do_Not_Cross", "[coil][toroidal][real-geometry]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil({9}, {3}, "T 10/6/4", 1,
+                                                     MAS::WindingOrientation::OVERLAPPING,
+                                                     MAS::WindingOrientation::OVERLAPPING,
+                                                     MAS::CoilAlignment::CENTERED,
+                                                     MAS::CoilAlignment::CENTERED,
+                                                     {OpenMagnetics::find_wire_by_name("Round 0.63 - Grade 1")});
+    REQUIRE(coil.get_turns_description());
+    // The turns vector is the winder's emission order, which IS the wound sequence.
+    auto turns = coil.get_turns_description().value();
+
+    auto azimuth = [](const std::vector<double>& coordinates) {
+        double degrees = std::atan2(coordinates[1], coordinates[0]) * 180.0 / std::numbers::pi;
+        return degrees < 0 ? degrees + 360.0 : degrees;
+    };
+    auto signedAngularStep = [](double from, double to) {
+        return std::fmod(to - from + 540.0, 360.0) - 180.0;   // (-180, 180]
+    };
+    // Ring identity by radius, quantized well below the wire diameter (0.7 mm outer) and well
+    // above the 1 nm coordinate grid.
+    auto ringKey = [](const std::vector<double>& coordinates) {
+        return static_cast<int>(std::round(std::hypot(coordinates[0], coordinates[1]) * 1e4));
+    };
+
+    std::map<int, size_t> turnsPerRing;
+    for (const auto& turn : turns) {
+        turnsPerRing[ringKey(turn.get_coordinates())]++;
+    }
+    // Not a multi-ring layout => this test measures nothing. Fail loudly rather than pass empty.
+    REQUIRE(turnsPerRing.size() >= 2);
+
+    struct Hop { int64_t parallel; double fromX, fromY, toX, toY; double angularStep; int fromRing, toRing; };
+    std::vector<Hop> hops;
+    std::map<int64_t, const Turn*> previousTurnOfParallel;
+    for (const auto& turn : turns) {
+        const int64_t parallel = turn.get_parallel();
+        auto previous = previousTurnOfParallel.find(parallel);
+        if (previous != previousTurnOfParallel.end()) {
+            const auto& before = previous->second->get_coordinates();
+            const auto& after = turn.get_coordinates();
+            if (ringKey(before) != ringKey(after)) {
+                hops.push_back({parallel, before[0], before[1], after[0], after[1],
+                                signedAngularStep(azimuth(before), azimuth(after)),
+                                ringKey(before), ringKey(after)});
+            }
+        }
+        previousTurnOfParallel[parallel] = &turn;
+    }
+    // One hop per parallel per ring boundary: three parallels over two rings.
+    REQUIRE(hops.size() >= 3);
+
+    for (const auto& hop : hops) {
+        UNSCOPED_INFO("parallel " << hop.parallel << " ring-to-ring hop " << hop.angularStep << " deg");
+    }
+
+    // No two parallels' hops may cross. This is the property MVB++'s corner certifier enforces in
+    // 3D, and it is the whole of the defect: a hop's LENGTH on its own is not, because a ring may
+    // legitimately have to step over the angular corridor reserved for the terminal leads (on this
+    // fixture that corridor is 109 deg wide and one hop is 91 deg long, with the other two under
+    // 19 deg). What must never happen is two parallels' hops interpenetrating, which is what a
+    // pair of rings anchored a long way apart guarantees.
+    auto cross = [](double ax, double ay, double bx, double by) { return ax * by - ay * bx; };
+    auto segmentsProperlyIntersect = [&](const Hop& first, const Hop& second) {
+        const double d1x = first.toX - first.fromX, d1y = first.toY - first.fromY;
+        const double d2x = second.toX - second.fromX, d2y = second.toY - second.fromY;
+        const double o1 = cross(d1x, d1y, second.fromX - first.fromX, second.fromY - first.fromY);
+        const double o2 = cross(d1x, d1y, second.toX - first.fromX, second.toY - first.fromY);
+        const double o3 = cross(d2x, d2y, first.fromX - second.fromX, first.fromY - second.fromY);
+        const double o4 = cross(d2x, d2y, first.toX - second.fromX, first.toY - second.fromY);
+        return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0);
+    };
+    for (size_t i = 0; i < hops.size(); ++i) {
+        for (size_t j = i + 1; j < hops.size(); ++j) {
+            if (hops[i].parallel == hops[j].parallel) {
+                continue;
+            }
+            INFO("parallel " << hops[i].parallel << " hop (" << hops[i].fromX * 1000 << "," << hops[i].fromY * 1000
+                 << ")->(" << hops[i].toX * 1000 << "," << hops[i].toY * 1000 << ") mm vs parallel "
+                 << hops[j].parallel << " hop (" << hops[j].fromX * 1000 << "," << hops[j].fromY * 1000
+                 << ")->(" << hops[j].toX * 1000 << "," << hops[j].toY * 1000 << ") mm");
+            CHECK_FALSE(segmentsProperlyIntersect(hops[i], hops[j]));
+        }
+    }
+    settings.reset();
+}
+
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
 // at the inner surface, and it is not what MKF winds: the toroidal winder fills concentric rings

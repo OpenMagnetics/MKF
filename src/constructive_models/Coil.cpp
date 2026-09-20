@@ -4249,7 +4249,6 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 referenceAngle = normalizeAngle(widest->first + widest->second);
             }
             double spacing = totalFree / double(turnIdxs.size());
-
             // Ring turns in cyclic order starting just after the reference angle.
             std::vector<size_t> orderedTurns(turnIdxs.begin(), turnIdxs.end());
             std::sort(orderedTurns.begin(), orderedTurns.end(), [&](size_t a, size_t b) {
@@ -12298,6 +12297,7 @@ bool Coil::wind_by_round_turns() {
     // Per-winding ordinal of each conduction layer in wound order, so U winding alternates direction
     // continuously across the whole winding (see the rectangular winder for the rationale).
     std::map<std::string, int64_t> windingLayerOrderCount;
+    bool loggedToroidalZFallback = false;   // ABT #1253: said once per wind, not once per ring
     std::vector<Turn> turns;
     for (auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION) {
@@ -12420,11 +12420,55 @@ bool Coil::wind_by_round_turns() {
             // order, every other conduction layer in a section starts from the last forward
             // position and winds back. Radial height and angle both advance with += here, so a
             // single formula reverses both.
+            //
+            // ABT #1253: Z DOES NOT SURVIVE ON A TOROIDAL RING, so under real winding it falls
+            // back to U here. A Z ring would start back at the winding's start azimuth, a whole
+            // ring away from where the previous one CLOSED; each parallel's ring-to-ring hop was
+            // then a trip across the toroid, and because the hops keep the parallels in the same
+            // order at both ends they are rotated copies of one long chord, which must cross.
+            // MVB++'s toroid corner certifier refuses exactly that ("the two FACE CHORDS cross
+            // ... fix the crossing azimuths in MKF"), so buck_inductor_complete could not be
+            // realized in 3D at all; measured on a bare 3.0 mm window at 9 turns x 3 parallels of
+            // Round 0.63, the three hops were 108/108/119 deg and all three pairs crossed.
+            //
+            // A correct Z would need a reserved angular RETURN corridor — the analogue of the
+            // concentric Z return run — which toroidal geometry does not model: nothing reserves
+            // the arc, so the return would be one unrouted diagonal per parallel straight across
+            // the ring, i.e. the very geometry this removes. Rather than alias Z to U silently,
+            // say so once per wind. U itself is unchanged: it already turns the winding around at
+            // the end of the ring, which is what "ring N+1 starts where ring N closed" means on a
+            // closed loop, and it leaves the ring's OCCUPIED AZIMUTHS untouched — only which turn
+            // sits at which station changes, so the corridor and crossing machinery downstream
+            // sees the same stations it saw before.
+            //
+            // Real winding only, like the corridor blocker and the spread above: the ideal 2D
+            // layout is a separate contract, and the hop is a property of the realized geometry.
             std::string windingNameForOrder = layer.get_partial_windings()[0].get_winding();
             int64_t windingLayerOrdinal = windingLayerOrderCount[windingNameForOrder]++;
-            if (get_winding_order(layer.get_section().value()) == WindingOrder::U && (windingLayerOrdinal % 2 == 1)) {
-                currentTurnCenterRadialHeight = roundFloat(currentTurnCenterRadialHeight + (int64_t(physicalTurnsInLayer) - 1) * currentTurnRadialHeightIncrement, 9);
-                currentTurnCenterAngle = roundFloat(currentTurnCenterAngle + (int64_t(physicalTurnsInLayer) - 1) * currentTurnAngleIncrement, 9);
+            bool toroidalRingsWindAsU =
+                get_winding_order(layer.get_section().value()) == WindingOrder::U;
+            if (!toroidalRingsWindAsU && settings.get_coil_use_real_winding_geometry() &&
+                !std::getenv("MKF_NO_TOROIDAL_U_FALLBACK")) {
+                toroidalRingsWindAsU = true;
+                if (!loggedToroidalZFallback && windingLayerOrdinal > 0) {
+                    loggedToroidalZFallback = true;
+                    logEntry("Toroidal winding order Z on section '" + layer.get_section().value() +
+                                 "': a Z ring-to-ring return needs a reserved angular return "
+                                 "corridor, which toroidal geometry does not model yet. Winding "
+                                 "the rings as U instead — each ring starts where the previous one "
+                                 "closed (ABT #1253).",
+                             "Coil", 1);
+                }
+            }
+            if (toroidalRingsWindAsU && (windingLayerOrdinal % 2 == 1)) {
+                // ABT #1253: the turnaround is a STEP, not a fold. Starting the return exactly on
+                // the forward layout's last station puts the two crossings of the ring transition
+                // at the same azimuth, and MVB++'s conductor builder then has no room for the
+                // transition's radial legs and fillets ("ring-transition dragback ... cannot
+                // follow the core's central radius"). One extra turn pitch is what a real winding
+                // leaves there anyway — the return lies beside the last forward turn, not on it.
+                currentTurnCenterRadialHeight = roundFloat(currentTurnCenterRadialHeight + int64_t(physicalTurnsInLayer) * currentTurnRadialHeightIncrement, 9);
+                currentTurnCenterAngle = roundFloat(currentTurnCenterAngle + int64_t(physicalTurnsInLayer) * currentTurnAngleIncrement, 9);
                 currentTurnRadialHeightIncrement = -currentTurnRadialHeightIncrement;
                 currentTurnAngleIncrement = -currentTurnAngleIncrement;
             }
@@ -12549,8 +12593,25 @@ bool Coil::wind_by_round_turns() {
                     firstParallelIndex++;
                 }
                 int64_t numberTurns = round(partialWinding.get_parallels_proportion()[firstParallelIndex] * get_number_turns(windingIndex));
+                // ABT #1253: A U-TURN DOES NOT REORDER THE BUNDLE. Parallels wound N-filar travel
+                // as one bundle, and the parallel that is AHEAD along the wound path stays ahead
+                // once the winding turns around at the end of a ring — it is simply the first to
+                // come back. Laying the bundle in parallel order while the angle DECREASES puts the
+                // trailing parallel ahead instead, so the bundle mirrors across the turnaround and
+                // every parallel's ring-to-ring hop has to cross its siblings'. Measured on 9 turns
+                // x 3 parallels: ring 0 closed p0/p1/p2 at 252/267/282 deg and ring 1 opened
+                // p0/p1/p2 at 278/257/225, i.e. hops of +26/-10/-58 deg, crossing. On a backward
+                // ring lay the bundle from the last parallel to the first, so the leader keeps the
+                // leading azimuth and the hops stay nested.
+                std::vector<size_t> bundleOrder;
+                for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                    bundleOrder.push_back(parallelIndex);
+                }
+                if (currentTurnAngleIncrement < 0 && !std::getenv("MKF_NO_TOROIDAL_BUNDLE_ORDER")) {
+                    std::reverse(bundleOrder.begin(), bundleOrder.end());
+                }
                 for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
-                    for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                    for (size_t parallelIndex : bundleOrder) {
                         if (roundFloat(partialWinding.get_parallels_proportion()[parallelIndex], 10) > 0) {
                             Turn turn;
                             turn.set_coordinates(std::vector<double>{currentTurnCenterRadialHeight, currentTurnCenterAngle});
