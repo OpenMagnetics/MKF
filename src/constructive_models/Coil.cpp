@@ -2294,6 +2294,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             auto& route = routes[pending.routeIndex];
             route.pinName = pinLeg.pinName;
             route.pinWaypoints = pinLeg.waypoints;
+            route.plannedBendRadius = pinLeg.plannedBendRadius;
             if (route.kind == ConnectionKind::TERMINAL_ENTRANCE) {
                 std::reverse(route.pinWaypoints.begin(), route.pinWaypoints.end());
             }

@@ -248,6 +248,19 @@ struct ConnectionRoute {
     // run is drawn at) and ride-over lift (z). `routedLength` includes it.
     std::string pinName;
     std::vector<std::vector<double>> pinWaypoints;
+    // ABT #1172: the centreline bend radius `pinWaypoints` were PLANNED for, metres -- the same
+    // value as PinLeadRoute::plannedBendRadius, copied here because this is the struct a consumer
+    // can actually reach (get_connection_layout().routes); PinLeadRoute is route_leads_to_pins'
+    // return value and never reaches the enriched magnetic.
+    //
+    // A consumer that rounds these corners MUST draw a radius <= this one, or refuse. The legs
+    // are offset d >= R - (R - r)/sqrt(2) off each obstacle face for exactly this R, so a larger
+    // bend cuts the edge it turns around and puts copper inside the pin rail. Equals the lead's
+    // own coated radius when no bend was declared, which says MKF planned SHARP corners -- so a
+    // magnetic enriched by a caller that never set Settings::coil_lead_bend_radius_factor (the
+    // WASM/web path, an older saved design, a plain mas_autocomplete) says so on the object
+    // instead of leaving the consumer to trust an ambient setting that is no longer in scope.
+    double plannedBendRadius = 0;
 };
 
 // ABT #1172 (WP3): the lead's run from the window exit to its assigned pin, see

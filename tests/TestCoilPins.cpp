@@ -1335,3 +1335,42 @@ TEST_CASE("route_leads_to_pins clears the rail edge for the bend a consumer will
         settings.reset();
     }
 }
+
+TEST_CASE("The bend radius a pin run was planned for reaches the struct a consumer can read (ABT #1172)",
+          "[constructive-model][coil][pins][abt1172]") {
+    // MVB++ consumes ConnectionRoute from get_connection_layout().routes; PinLeadRoute is
+    // route_leads_to_pins' return value and never reaches the enriched magnetic. Settings do not
+    // substitute for the field: a consumer that restores its settings after enrichment (or never
+    // set them -- the WASM/web path, an older saved design) reads the AMBIENT value at draw time,
+    // not what this design was planned with, and would round a corner into a rail whose legs were
+    // never offset for it.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+
+    auto inputs = reinforced_offline_inputs();
+    auto coil = make_coil({{"Primary", 40, 1, "primary", "Round 0.2 - Grade 1"},
+                           {"Secondary", 6, 1, "secondary", "Round 0.2 - Grade 1"}},
+                          inputs);
+    auto core = former_core();
+    REQUIRE_FALSE(coil.assign_pins(coil.resolve_bobbin(), core).skipped);
+
+    const double factor = 1.05;                       // MVB++'s kRoundCornerBendFactor
+    settings.set_coil_lead_bend_radius_factor(factor);
+    const auto layout = coil.get_connection_layout();
+    settings.reset();                                 // as a consumer's SettingsGuard would
+
+    size_t checked = 0;
+    for (const auto& route : layout.routes) {
+        if (route.pinWaypoints.empty()) {
+            continue;                                 // not a run to a pin
+        }
+        INFO("route " << route.winding << " parallel " << route.parallel << " pin " << route.pinName);
+        CHECK(route.plannedBendRadius > 0);
+        // The recorded radius is the one the legs were offset for, NOT the wire's own: it must
+        // survive the settings being restored, which is the whole reason it lives on the route.
+        CHECK(route.plannedBendRadius > 0.5 * factor * 0.0002);
+        ++checked;
+    }
+    REQUIRE(checked > 0);                             // a vacuous pass here would look identical
+}
