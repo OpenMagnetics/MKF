@@ -191,7 +191,7 @@ TEST_CASE("A small core carries 2+ pins a row or throws with the numbers; an une
         auto core = quick_core("E 13/7/4");
         auto synthesised = OpenMagnetics::Bobbin::synthesise_quick_bobbin_pinout(core, OrientationEnum::VERTICAL);
         // 12.65 mm < 13.825 mm -> 2.54 mm (MAS a392f1e: Norwe formers on 10 and 12.65 mm cores);
-        // floor((12.65 - 4.00) / 2.54) + 1 = floor(3.41) + 1 = 4; ceil((3.55 + 9.4) / 2.54) = ceil(5.10) = 6 -> 15.24 mm.
+        // floor((12.65 - 2 x 1.981) / 2.54) + 1 = floor(3.42) + 1 = 4; ceil((3.55 + 9.4) / 2.54) = ceil(5.10) = 6 -> 15.24 mm.
         CHECK(synthesised.pinout.get_number_pins_per_row().value() == std::vector<int64_t>({4, 4}));
         CHECK_THAT(std::get<double>(synthesised.pinout.get_pitch().value()), Catch::Matchers::WithinAbs(0.00254, 1e-12));
         CHECK_THAT(synthesised.pinout.get_row_distance().value(), Catch::Matchers::WithinAbs(0.01524, 1e-12));
@@ -200,10 +200,12 @@ TEST_CASE("A small core carries 2+ pins a row or throws with the numbers; an une
     }
     SECTION("E 5.3/2 holds one pin a row and throws") {
         auto core = quick_core("E 5.3/2");
-        // 5.25 - 2 x 2.00 = 1.25 mm: one pin at 2.54 mm.
+        // 5.25 - 2 x 1.981 = 1.288 mm: one pin at 2.54 mm. The 1.981 mm edge margin is the derived
+        // E-type median since MAS a349132 corrected 14 Norwe pin fields (was 2.00 mm, leaving 1.25 mm);
+        // the verdict is unchanged.
         CHECK_THROWS_WITH(OpenMagnetics::Bobbin::create_quick_bobbin(core, false, OrientationEnum::VERTICAL),
                           Catch::Matchers::ContainsSubstring("width of 5.250 mm") &&
-                          Catch::Matchers::ContainsSubstring("leaves 1.250 mm") &&
+                          Catch::Matchers::ContainsSubstring("leaves 1.288 mm") &&
                           Catch::Matchers::ContainsSubstring("holds 1 pin(s) at the 2.540 mm pitch") &&
                           Catch::Matchers::ContainsSubstring("at least 2"));
         // Off, the same core still gets its quick bobbin.

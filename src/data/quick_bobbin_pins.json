@@ -15,16 +15,16 @@
     },
     "grid": 0.00254,
     "gridEvidence": {
-        "rowPitches": 196,
+        "rowPitches": 194,
         "onHalfGridWithin": 0.0003,
-        "onHalfGrid": 195
+        "onHalfGrid": 193
     },
     "minimumPinsPerRow": 2,
     "recordsWithPinGeometry": 221,
-    "distinctFootprints": 98,
+    "distinctFootprints": 97,
     "recordsSkipped": {
         "pin split over the rows not stated": 2,
-        "repeat of a footprint already counted": 123,
+        "repeat of a footprint already counted": 124,
         "shape not in core_shapes.ndjson": 17,
         "toroid base (family t), not a former": 3
     },
@@ -57,7 +57,7 @@
                         0.015,
                         0.0161
                     ],
-                    "footprints": 15,
+                    "footprints": 14,
                     "pitch": 0.00381,
                     "source": "catalogue mode"
                 },
@@ -93,9 +93,9 @@
                 }
             ],
             "edgeMargin": {
-                "footprints": 75,
+                "footprints": 74,
                 "minimum": -0.00069,
-                "median": 0.002,
+                "median": 0.001981,
                 "maximum": 0.00855
             },
             "verticalRowClearance": {
@@ -105,9 +105,9 @@
                 "maximum": 0.01125
             },
             "horizontalRowClearance": {
-                "footprints": 46,
+                "footprints": 45,
                 "minimum": 0.00025,
-                "median": 0.00155,
+                "median": 0.0014,
                 "maximum": 0.004
             }
         },
