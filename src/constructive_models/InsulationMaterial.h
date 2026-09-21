@@ -30,42 +30,10 @@ public:
     virtual ~InsulationMaterial() = default;
 
     InsulationMaterial(MAS::InsulationMaterial insulationMaterial) {
-        if (insulationMaterial.get_aliases()) {
-            set_aliases(insulationMaterial.get_aliases().value());
-        }
-        if (insulationMaterial.get_composition()) {
-            set_composition(insulationMaterial.get_composition().value());
-        }
-        if (insulationMaterial.get_relative_permittivity()) {
-            set_relative_permittivity(insulationMaterial.get_relative_permittivity().value());
-        }
-        set_dielectric_strength(insulationMaterial.get_dielectric_strength());
-
-        if (insulationMaterial.get_manufacturer_info()) {
-            set_manufacturer_info(insulationMaterial.get_manufacturer_info().value());
-        }
-        if (insulationMaterial.get_melting_point()) {
-            set_melting_point(insulationMaterial.get_melting_point().value());
-        }
-        set_name(insulationMaterial.get_name());
-
-        if (insulationMaterial.get_resistivity()) {
-            set_resistivity(insulationMaterial.get_resistivity().value());
-        }
-        if (insulationMaterial.get_specific_heat()) {
-            set_specific_heat(insulationMaterial.get_specific_heat().value());
-        }
-        if (insulationMaterial.get_temperature_class()) {
-            set_temperature_class(insulationMaterial.get_temperature_class().value());
-        }
-        if (insulationMaterial.get_thermal_conductivity()) {
-            set_thermal_conductivity(insulationMaterial.get_thermal_conductivity().value());
-        }
-        // ABT #1174: the supply form is what tells sleeve stock from tape; dropping it here made a
-        // converted sleeve material look like a tape to every consumer.
-        set_form(insulationMaterial.get_form());
-        set_cti(insulationMaterial.get_cti());
-        set_surface_resistivity(insulationMaterial.get_surface_resistivity());
+        // The WHOLE record, never a field-by-field copy: that copy silently dropped every field it
+        // did not list -- `form` (ABT #1174, a sleeve then looked like a tape) and
+        // `minimumBendRadius` (ABT #1296, a sleeve's rated bend was ignored).
+        MAS::InsulationMaterial::operator=(std::move(insulationMaterial));
     }
 
     void extract_available_thicknesses();
@@ -79,4 +47,4 @@ public:
     double get_dielectric_strength_by_thickness(double thickness);
 
 };
-} // namespace OpenMagnetics
+} // namespace OpenMagnetics
