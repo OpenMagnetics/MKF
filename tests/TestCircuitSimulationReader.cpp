@@ -10,6 +10,7 @@
 #include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <chrono>
 #include <fstream>
 #include <sstream>
 #include <cmath>
@@ -880,4 +881,67 @@ TEST_CASE("Test_Import_Csv_Web_3", "[processor][circuit-simulation-reader]") {
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 10e-6);
 
     REQUIRE(operatingPoint.get_excitations_per_winding().size() == 2);
+}
+
+// A user's LTspice export of an inductor: "time", "I(L1)", "V(p1,p2)". The digits are the inductor's
+// and the probe nodes' names, but they were ranked as winding numbers, so V(p1,p2) went to a
+// second winding the magnetic does not have and auto-detection returned no voltage at all.
+TEST_CASE("Test_Ltspice_Column_Names_Single_Winding_Probe_Digits", "[processor][circuit-simulation-reader][ltspice]") {
+    const double frequency = 45000;
+    const double period = 1 / frequency;
+    const size_t numberPoints = 4000;
+    std::ostringstream csv;
+    csv << "time\tI(L1)\tV(p1,p2)\n";
+    for (size_t i = 0; i < numberPoints; ++i) {
+        double time = 4 * period * static_cast<double>(i) / static_cast<double>(numberPoints - 1);
+        double phase = std::fmod(time, period) / period;
+        double current = phase < 0.4? 2 + phase / 0.4 : 3 - (phase - 0.4) / 0.6;
+        double voltage = phase < 0.4? 24 : -12;
+        csv << time << "\t" << current << "\t" << voltage << "\n";
+    }
+
+    CircuitSimulationReader reader(csv.str(), true);
+    auto mapColumnNames = reader.extract_map_column_names(1, frequency);
+
+    REQUIRE(mapColumnNames.size() == 1);
+    REQUIRE(mapColumnNames[0]["time"] == "time");
+    REQUIRE(mapColumnNames[0]["current"] == "I(L1)");
+    REQUIRE(mapColumnNames[0]["voltage"] == "V(p1,p2)");
+}
+
+// The web import runs exactly this: parse the file, extract one period per signal, process the
+// operating point. With a fine LTspice time step a period holds hundreds of thousands of points,
+// and two stages were quadratic in them — sampling restarted its segment search for every sample,
+// and the waveform average and integral re-copied the whole time axis on every iteration (MAS's
+// get_time() returns by value). 200k points per period spent minutes in the web engine, whose
+// watchdog then aborted the import. The bound is generous; the quadratic path is far beyond it.
+TEST_CASE("Test_Import_Dense_Ltspice_Export_Is_Not_Quadratic", "[processor][circuit-simulation-reader][ltspice]") {
+    const double frequency = 45000;
+    const double period = 1 / frequency;
+    const size_t pointsPerPeriod = 200000;
+    const size_t numberPeriods = 2;
+    std::ostringstream csv;
+    csv.precision(15);
+    csv << "time\tI(L1)\tV(p1,p2)\n";
+    for (size_t i = 0; i < pointsPerPeriod * numberPeriods; ++i) {
+        double time = numberPeriods * period * static_cast<double>(i) / static_cast<double>(pointsPerPeriod * numberPeriods - 1);
+        double phase = std::fmod(time, period) / period;
+        double current = phase < 0.4? 2 + phase / 0.4 : 3 - (phase - 0.4) / 0.6;
+        double voltage = phase < 0.4? 24 : -16;
+        csv << time << "\t" << current << "\t" << voltage << "\n";
+    }
+    std::vector<std::map<std::string, std::string>> mapColumnNames = {{{"time", "time"}, {"current", "I(L1)"}, {"voltage", "V(p1,p2)"}}};
+
+    auto start = std::chrono::steady_clock::now();
+    CircuitSimulationReader reader(csv.str(), true);
+    auto operatingPoint = reader.extract_operating_point(1, frequency, mapColumnNames);
+    operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 100e-6);
+    double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+
+    REQUIRE(seconds < 20);
+    auto excitation = operatingPoint.get_excitations_per_winding()[0];
+    auto processed = excitation.get_current()->get_processed().value();
+    CHECK_THAT(processed.get_peak_to_peak().value(), Catch::Matchers::WithinAbs(1, 1e-3));
+    CHECK_THAT(processed.get_average().value(), Catch::Matchers::WithinAbs(2.5, 1e-3));
+    REQUIRE(excitation.get_voltage());
 }

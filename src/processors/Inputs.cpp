@@ -93,11 +93,16 @@ void ifft(std::vector<std::complex<double>>& x)
 }
 
 double Inputs::calculate_waveform_average(Waveform waveform) {
+    // get_time() returns the optional BY VALUE, so indexing it inside the loop copied the whole
+    // time axis twice per sample: O(N^2), minutes for an imported waveform with a few hundred
+    // thousand points. Take it once.
+    const auto time = waveform.get_time().value();
+    const auto& data = waveform.get_data();
     double integration = 0;
-    double period = waveform.get_time()->back() - waveform.get_time()->front();
-    for (size_t i = 0; i < waveform.get_data().size() - 1; ++i)
+    double period = time.back() - time.front();
+    for (size_t i = 0; i < data.size() - 1; ++i)
     {
-        double area = (waveform.get_data()[i + 1] + waveform.get_data()[i]) / 2 * (waveform.get_time().value()[i + 1] - waveform.get_time().value()[i]);
+        double area = (data[i + 1] + data[i]) / 2 * (time[i + 1] - time[i]);
         integration += area;
     }
     return integration / period;
@@ -1012,16 +1017,19 @@ Waveform Inputs::calculate_integral_waveform(Waveform waveform, bool subtractAve
         resultWaveform = sum_waveform(resultWaveform, -integrationAverage);
     }
 
+    // Taken once: get_time() copies the whole axis on every call (see calculate_waveform_average).
+    const auto resultTime = resultWaveform.get_time().value();
+    const auto& resultData = resultWaveform.get_data();
     std::vector<double> distinctData;
     std::vector<double> distinctTime;
-    for (size_t i = 0; i < resultWaveform.get_data().size(); ++i){
+    for (size_t i = 0; i < resultData.size(); ++i){
         if (distinctData.size() != 0) {
-            if (resultWaveform.get_data()[i] == distinctData.back() && resultWaveform.get_time().value()[i] == distinctTime.back())
+            if (resultData[i] == distinctData.back() && resultTime[i] == distinctTime.back())
                 continue;
         }
 
-        distinctData.push_back(resultWaveform.get_data()[i]);
-        distinctTime.push_back(resultWaveform.get_time().value()[i]);
+        distinctData.push_back(resultData[i]);
+        distinctTime.push_back(resultTime[i]);
     }
 
     resultWaveform.set_data(distinctData);

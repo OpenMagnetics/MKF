@@ -14,6 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <magic_enum.hpp>
+#include <chrono>
 #include <cmath>
 #include <random>
 #include <vector>
@@ -817,5 +818,70 @@ TEST_CASE("Test_Phase_Shifted_Non_Sine_Never_Sinusoidal", "[processor][waveform-
             REQUIRE(magic_enum::enum_name(WaveformProcessor::calculate_basic_processed_data(waveform).get_label()) !=
                     magic_enum::enum_name(WaveformLabel::SINUSOIDAL));
         }
+    }
+}
+
+// An LTspice export with a fine time step carries hundreds of thousands of points in one switching
+// period. Sampling restarted its segment search from the first point for every sample, so the cost
+// was O(N*M): 400k points spent over two minutes in the web engine, whose watchdog then killed the
+// import. With the search resuming where the previous sample stopped this is milliseconds; the bound
+// is generous so machine load cannot flake it, and still two orders of magnitude under the old cost.
+TEST_CASE("Test_Sampled_Waveform_Dense_Import_Is_Linear", "[processor][waveform-processor][smoke-test]") {
+    const size_t numberPoints = 400000;
+    const double period = 1.0 / 45000;
+    std::vector<double> time(numberPoints);
+    std::vector<double> data(numberPoints);
+    for (size_t i = 0; i < numberPoints; ++i) {
+        time[i] = period * static_cast<double>(i) / static_cast<double>(numberPoints - 1);
+        double phase = time[i] / period;
+        data[i] = phase < 0.4? 2 + phase / 0.4 : 3 - (phase - 0.4) / 0.6;
+    }
+    Waveform waveform;
+    waveform.set_time(time);
+    waveform.set_data(data);
+
+    auto start = std::chrono::steady_clock::now();
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 45000);
+    double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+
+    REQUIRE(sampledWaveform.get_data().size() == 524288);
+    REQUIRE(seconds < 5);
+    auto sampledTime = sampledWaveform.get_time().value();
+    for (size_t i = 0; i < sampledTime.size(); i += 4099) {
+        double phase = sampledTime[i] / period;
+        double expected = phase < 0.4? 2 + phase / 0.4 : 3 - (phase - 0.4) / 0.6;
+        CHECK_THAT(sampledWaveform.get_data()[i], Catch::Matchers::WithinAbs(expected, 1e-6));
+    }
+}
+
+// Resuming the search must not change which segment an instant lands in: still the FIRST one that
+// holds it, including on zero-length segments (repeated timestamps, as in FLYBACK_PRIMARY) where the
+// value on the left of the step is the one taken. Compared against the full search it replaced.
+TEST_CASE("Test_Sampled_Waveform_Matches_Full_Search", "[processor][waveform-processor][smoke-test]") {
+    std::vector<double> time = {0, 0, 1e-6, 2.5e-6, 2.5e-6, 2.5e-6, 4e-6, 7e-6, 7e-6, 1e-5};
+    std::vector<double> data = {-3, 5, 6, 7.5, -2.5, 1, 0.5, -1, 4, -3};
+    Waveform waveform;
+    waveform.set_time(time);
+    waveform.set_data(data);
+
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 1e5, 1024);
+    auto sampledTime = sampledWaveform.get_time().value();
+    REQUIRE(sampledTime.size() == 1024);
+
+    for (size_t i = 0; i < sampledTime.size(); ++i) {
+        std::optional<double> expected;
+        for (size_t k = 0; k + 1 < time.size() && !expected; ++k) {
+            if (time[k + 1] == time[k]) {
+                if (sampledTime[i] == time[k]) {
+                    expected = data[k];
+                }
+            }
+            else if (time[k] <= sampledTime[i] && sampledTime[i] <= time[k + 1]) {
+                double proportion = (sampledTime[i] - time[k]) / (time[k + 1] - time[k]);
+                expected = data[k] + (data[k + 1] - data[k]) * proportion;
+            }
+        }
+        REQUIRE(expected);
+        REQUIRE_THAT(sampledWaveform.get_data()[i], Catch::Matchers::WithinAbs(expected.value(), 1e-12));
     }
 }

@@ -2325,7 +2325,16 @@ bool CircuitSimulationReader::extract_winding_indexes(size_t numberWindings) {
         column.windingIndex = -1;
         if (!can_be_time(column.data)) {
             auto numbersInColumnName = get_numbers_in_string(column.name);
-            if (numbersInColumnName.size() > 0) {
+            if (numberWindings == 1) {
+                // One winding: every signal in the file is that winding's. The digits in a SPICE
+                // probe name belong to a node or a component (I(L1), V(p1,p2)), not to a winding;
+                // ranking them as windings put V(p1,p2) on a second winding this magnetic does not
+                // have, and the voltage was silently left out of the import.
+                numberFoundIndexes++;
+                indexes.push_back(0);
+                column.windingIndex = 0;
+            }
+            else if (numbersInColumnName.size() > 0) {
                 numberFoundIndexes++;
                 indexes.push_back(numbersInColumnName.back());
                 column.windingIndex = numbersInColumnName.back();

@@ -199,11 +199,16 @@ bool WaveformProcessor::is_waveform_sampled(Waveform waveform, size_t numberPoin
 }
 
 double WaveformProcessor::calculate_waveform_average(Waveform waveform) {
+    // get_time() returns the optional BY VALUE, so indexing it inside the loop copied the whole
+    // time axis twice per sample: O(N^2), minutes for an imported waveform with a few hundred
+    // thousand points. Take it once.
+    const auto time = waveform.get_time().value();
+    const auto& data = waveform.get_data();
     double integration = 0;
-    double period = waveform.get_time()->back() - waveform.get_time()->front();
-    for (size_t i = 0; i < waveform.get_data().size() - 1; ++i)
+    double period = time.back() - time.front();
+    for (size_t i = 0; i < data.size() - 1; ++i)
     {
-        double area = (waveform.get_data()[i + 1] + waveform.get_data()[i]) / 2 * (waveform.get_time().value()[i + 1] - waveform.get_time().value()[i]);
+        double area = (data[i + 1] + data[i]) / 2 * (time[i + 1] - time[i]);
         integration += area;
     }
     return integration / period;
@@ -993,17 +998,28 @@ Waveform WaveformProcessor::calculate_sampled_waveform(Waveform waveform, double
 
     auto sampledTime = linear_spaced_array(0, 1. / roundFloat(frequency, 9), numberPointsForSampling + 1);
 
+    // The sampled instants increase, and on a time axis that never goes back the segment that
+    // holds instant i+1 is never before the one that held instant i: every earlier segment ended
+    // before instant i, so it ends before instant i+1 too. The search therefore resumes where the
+    // previous one stopped. Restarting it from segment 0 for every sample made this O(N*M) —
+    // an LTspice export with 400k points per switching period spent over two minutes here, and
+    // the web engine's watchdog killed the import. The result is identical: each instant still
+    // lands in the FIRST segment that contains it. A time axis that goes back keeps the full search.
+    const bool timeNeverDecreases = std::is_sorted(time.begin(), time.end());
     std::vector<double> sampledData;
+    sampledData.reserve(numberPointsForSampling);
+    size_t searchStart = 0;
 
     for (size_t i = 0; i < numberPointsForSampling; i++) {
         bool found = false;
-        for (size_t interpIndex = 0; interpIndex < data.size() - 1; interpIndex++) {
+        for (size_t interpIndex = timeNeverDecreases? searchStart : 0; interpIndex < data.size() - 1; interpIndex++) {
             // Skip zero-length segments (where time[i] == time[i+1])
             // These occur in waveforms like FLYBACK_PRIMARY: time = {0, 0, dc, dc, period}
             if (time[interpIndex + 1] == time[interpIndex]) {
                 // If sampled time is exactly at this zero-length segment, use the data value
                 if (sampledTime[i] == time[interpIndex]) {
                     sampledData.push_back(data[interpIndex]);
+                    searchStart = interpIndex;
                     found = true;
                     break;
                 }
@@ -1017,6 +1033,7 @@ Waveform WaveformProcessor::calculate_sampled_waveform(Waveform waveform, double
                 double proportion = (sampledTime[i] - time[interpIndex]) / (time[interpIndex + 1] - time[interpIndex]);
                 double interpPoint = kWaveformLerp(data[interpIndex], data[interpIndex + 1], proportion);
                 sampledData.push_back(interpPoint);
+                searchStart = interpIndex;
                 found = true;
                 break;
             }
