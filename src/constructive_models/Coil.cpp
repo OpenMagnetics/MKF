@@ -20,6 +20,7 @@
 #include "json.hpp"
 #include "constructive_models/InsulationMaterial.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/WireBend.h"
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 #include <magic_enum.hpp>
@@ -4766,6 +4767,14 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         _recoveredMarginPerWinding = recoveredPerWindingSnapshot;
         _marginsExplicitlyCleared = explicitlyClearedSnapshot;
     }
+    // ABT #1290: judge the corners of the FINAL layout -- after the real-winding blocking
+    // re-winds have settled the radial positions and after name_turns_by_beginning has given the
+    // stations their real names, so the refusal quotes the turn the caller would have received.
+    // Only on a wind that would otherwise be handed back as good: a wind that already failed is
+    // already refused, and a second fault reported on top of the first only buries it.
+    if (ok) {
+        refuse_turns_bent_tighter_than_the_wire_allows();
+    }
     return ok;
 }
 
@@ -8656,6 +8665,253 @@ std::optional<double> Coil::get_turn_length_in_frame(const WoundColumnFrame& fra
         return std::nullopt;
     }
     return length;
+}
+
+// ABT #1290 (Alf, 2026-09-20): "MKF must not draw a conductor corner tighter than the wire's own
+// minimum bend radius", and "no magic numbers, all decisions are physics, manufacturing logic and
+// standards".
+//
+// WHERE THE CORNER COMES FROM. A turn laid against a rectangular former follows the former's
+// corner offset by its own standoff: that is the radius get_turn_length_in_frame charges the turn
+// for under real winding (frame.cornerRadius + standoff), and the same radius the 3D builder is
+// meant to sweep its profile around. So the radius judged here is the radius the layout itself
+// decided, read from the same frame and the same turn coordinate -- not a second model of it.
+//
+// WHERE THE LIMIT COMES FROM. The wire's own requirement standard, through WireBend: for round
+// copper IEC 60317-0-1:2013 Table 6 (mandrel winding) makes the mandrel the conductor itself, and
+// IEC 60851-3 5.1.1 winds the wire ON that mandrel, so the minimum CENTRELINE radius is
+// mandrel/2 + outer diameter/2. Rectangular copper takes IEC 60317-0-2 Table 6 the same way.
+// Nothing is tabulated here and no radius is invented; a wire the standards do not cover (litz,
+// foil) is abstained on rather than guessed at.
+//
+// WHY FLEXIBILITY AND NOT HEAT SHOCK. The two criteria answer different questions. Table 6 is the
+// bend the coating is required to survive AT ALL: below it the wire is not qualified to be bent,
+// full stop, which is a statement about whether the part can exist. Table 7 (heat shock) is the
+// bend it must survive AND THEN be thermally shocked -- a process-qualification margin a
+// manufacturer targets, not a physical impossibility. Refusing at heat shock would refuse
+// layouts that can be wound; refusing at flexibility refuses only layouts that cannot. The
+// shortfall against heat shock is what MagneticFilterWindability SCORES, and it stays a score.
+//
+// WHY THIS REFUSES INSTEAD OF CLAMPING. Clamping the radius up to the floor would move the copper
+// somewhere the layout did not put it and hand back a coil whose turns no longer sit where every
+// other consumer thinks they do; dropping the turn would hand back a coil with the wrong number
+// of turns. Both are silent substitutions of a part nobody asked for. The layout asked for a bend
+// the wire cannot make, so the layout does not physically exist, and the caller has to hear that.
+void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
+    if (!settings.get_coil_use_real_winding_geometry()) {
+        return;  // the ideal 2D layout is a separate contract (Alf, explicit scope)
+    }
+    if (!get_turns_description() || !get_sections_description()) {
+        return;
+    }
+    if (is_planar()) {
+        // A planar conductor is etched, not bent: there is no wire being pulled over a former,
+        // and IEC 60317 has nothing to say about a copper track on FR4.
+        return;
+    }
+    if (std::holds_alternative<std::string>(get_bobbin()) &&
+        std::get<std::string>(get_bobbin()) == "Dummy") {
+        // No former at all was ever named, so there is no corner to judge and nothing to read a
+        // corner radius off. resolve_bobbin() refuses a dummy outright, and turning that refusal
+        // into a bend verdict would report the wrong fault.
+        return;
+    }
+    {
+        // A toroid's turns are placed in polar coordinates around the core's cross-section, not
+        // laid against a column face, so neither the standoff nor the column frame below means
+        // what it means for a concentric coil. The ring's own bend is a different geometry and is
+        // judged where it is decided, not here on coordinates that do not describe it.
+        auto bobbin = resolve_bobbin();
+        if (!bobbin.get_processed_description()) {
+            return;
+        }
+        // get_processed_description() hands the optional back BY VALUE and get_winding_windows()
+        // returns a reference INTO it, so the description has to be a named local or the vector
+        // reference dangles the moment the temporary dies.
+        const auto processedDescription = bobbin.get_processed_description().value();
+        const auto& windingWindows = processedDescription.get_winding_windows();
+        if (windingWindows.empty()) {
+            return;
+        }
+        if (windingWindows[0].get_shape() &&
+            windingWindows[0].get_shape().value() == WindingWindowShape::ROUND) {
+            return;
+        }
+    }
+
+    auto turns = get_turns_description().value();
+
+    struct TightCorner {
+        std::string turnName;
+        std::string windingName;
+        double bendRadius = 0;
+        double formerCornerRadius = 0;
+        double standoff = 0;
+        WoundCorner asLaid;
+        Wire wire;
+    };
+    std::optional<TightCorner> tightest;
+    size_t numberTightCorners = 0;
+    // MKF_BEND_DIAG: the rule is only worth anything if it REACHES the corners, and a run that
+    // refuses nothing looks exactly like a run that judged nothing. These two counters, printed
+    // below, are what tells those apart on a coil that passes.
+    size_t numberCornersJudged = 0;
+    double worstRatioJudged = std::numeric_limits<double>::max();
+    std::map<std::string, WoundColumnFrame> frameBySection;
+    std::map<std::string, Wire> wireByWinding;
+
+    for (const auto& turn : turns) {
+        if (!turn.get_section()) {
+            continue;  // an unplaced station wraps nothing; there is no former to bend around
+        }
+        const std::string sectionName = turn.get_section().value();
+        if (!frameBySection.contains(sectionName)) {
+            frameBySection.insert({sectionName, get_wound_column_frame_for_section(sectionName)});
+        }
+        const auto& frame = frameBySection.at(sectionName);
+        if (frame.shape != ColumnShape::RECTANGULAR && frame.shape != ColumnShape::IRREGULAR) {
+            // A round or oblong column is all corner: the turn's radius IS the column's, there is
+            // no tighter place on the turn, and a turn that fits around it is bent by it evenly.
+            continue;
+        }
+
+        const std::string windingName = turn.get_winding();
+        if (!wireByWinding.contains(windingName)) {
+            wireByWinding.insert({windingName, resolve_wire(get_winding_index_by_name(windingName))});
+        }
+        Wire wire = wireByWinding.at(windingName);
+        if (wire.get_type() != WireType::ROUND && wire.get_type() != WireType::RECTANGULAR) {
+            continue;  // no standardised bend requirement; see WireBend's header
+        }
+
+        // The same radius get_turn_length_in_frame draws the corner with, read from the same
+        // frame and the same turn coordinate, so the two can never disagree about the corner.
+        const double turnX = std::abs(turn.get_coordinates()[0]);
+        const double radius = frame.axisX == 0 ? turnX : std::abs(turnX - frame.axisX);
+        const double standoff = radius - frame.columnWidth;
+        const double bendRadius = frame.cornerRadius + standoff;
+        if (!std::isfinite(bendRadius) || bendRadius <= 0) {
+            // A turn sitting on or inside the former's own face: there is no bend to judge, and
+            // what is wrong with it is not a bend limit. are_turns_inside_winding_window and the
+            // fit checks own that failure, and saying it again here would name the wrong defect.
+            continue;
+        }
+
+        // Which of a rectangular wire's dimensions lies in the bend plane: the coil lays the
+        // wire's WIDTH along the radial axis, and the bend plane is the one containing that axis
+        // and the direction of travel -- the same reading MagneticFilterWindability uses.
+        const auto axis = wire.get_type() == WireType::ROUND
+                              ? BendAxis::ROUND
+                              : WireBend::axis_from_bend_plane_dimension(wire, true);
+
+        WoundCorner asLaid;
+        try {
+            asLaid = WireBend::evaluate(bendRadius, wire, axis);
+        }
+        catch (const std::exception&) {
+            // The standards stop somewhere (a conductor above 1,600 mm takes a stretching test
+            // instead; a wire may not state the dimension the bend is defined against). Refusing
+            // on a limit the standard does not give would be inventing the limit, so this turn is
+            // abstained on -- exactly as MagneticFilterWindability abstains.
+            continue;
+        }
+
+        ++numberCornersJudged;
+        worstRatioJudged = std::min(worstRatioJudged, bendRadius / asLaid.flexibilityRadius);
+
+        if (asLaid.verdict != BendVerdict::BELOW_FLEXIBILITY) {
+            continue;
+        }
+        ++numberTightCorners;
+        // Report the worst corner in the coil, measured as how far short of its OWN wire's limit
+        // it falls -- a coil may hold several wires, and the tightest absolute radius is not
+        // necessarily the one furthest beyond what its wire can do.
+        const double shortfall = bendRadius / asLaid.flexibilityRadius;
+        if (!tightest || shortfall < tightest->bendRadius / tightest->asLaid.flexibilityRadius) {
+            tightest = TightCorner{turn.get_name(), windingName, bendRadius, frame.cornerRadius,
+                                   standoff, asLaid, wire};
+        }
+    }
+
+    if (std::getenv("MKF_BEND_DIAG")) {
+        std::cerr << "[bend] corners judged=" << numberCornersJudged
+                  << " of " << turns.size() << " turns, tightest drawn/limit="
+                  << (numberCornersJudged == 0 ? std::numeric_limits<double>::quiet_NaN()
+                                               : worstRatioJudged)
+                  << ", below flexibility=" << numberTightCorners << "\n";
+    }
+
+    if (!tightest) {
+        return;
+    }
+
+    auto millimetres = [](double metres) {
+        std::ostringstream text;
+        text << std::fixed << std::setprecision(4) << metres * 1000;
+        return text.str();
+    };
+    auto ratio = [](double value) {
+        std::ostringstream text;
+        text << std::fixed << std::setprecision(3) << value;
+        return text.str();
+    };
+
+    const auto& corner = tightest.value();
+    Wire wire = corner.wire;
+    const bool isRound = wire.get_type() == WireType::ROUND;
+    const double conductingDimension =
+        isRound ? resolve_dimensional_values(wire.get_conducting_diameter().value())
+                : resolve_dimensional_values(wire.get_conducting_width().value());
+    const double outerDimension =
+        isRound ? Wire::calculate_outer_diameter(wire) : Wire::calculate_outer_width(wire);
+
+    // Name the wire the way a reader can look it up: its catalogue name carries the grade (the
+    // grade sets the outer diameter and hence the limit), its standard and standard name say
+    // which table the mandrel was read from.
+    std::string wireDescription = std::string(isRound ? "round" : "rectangular");
+    if (wire.get_name()) {
+        wireDescription += " '" + wire.get_name().value() + "'";
+    }
+    if (wire.get_standard()) {
+        wireDescription += ", " + std::string(magic_enum::enum_name(wire.get_standard().value()));
+    }
+    if (wire.get_standard_name()) {
+        wireDescription += " " + wire.get_standard_name().value();
+    }
+
+    std::string message =
+        "Real winding refuses this layout: turn '" + corner.turnName + "' of winding '" +
+        corner.windingName + "' is drawn around a centreline bend radius of " +
+        millimetres(corner.bendRadius) + " mm, which is tighter than the " +
+        millimetres(corner.asLaid.flexibilityRadius) + " mm its wire can be bent to.\n" +
+        "  Wire: " + wireDescription + ", conducting " +
+        (isRound ? "diameter " : "width ") + millimetres(conductingDimension) + " mm, outer " +
+        (isRound ? "diameter " : "width ") + millimetres(outerDimension) + " mm.\n" +
+        "  Limit: FLEXIBILITY criterion - " +
+        (isRound ? "IEC 60317-0-1 Table 6 (mandrel winding)"
+                 : "IEC 60317-0-2 Table 6 (mandrel winding)") +
+        " gives a mandrel of " + millimetres(corner.asLaid.mandrelDiameterUsed) +
+        " mm, and IEC 60851-3 5.1.1 winds the wire ON the mandrel, so the minimum centreline "
+        "radius is mandrel/2 + outer/2 = " + millimetres(0.5 * corner.asLaid.mandrelDiameterUsed) +
+        " + " + millimetres(0.5 * outerDimension) + " = " +
+        millimetres(corner.asLaid.flexibilityRadius) + " mm.\n" +
+        "  As drawn: " + ratio(corner.bendRadius / corner.asLaid.flexibilityRadius) +
+        " of that limit, outer-fibre strain " + ratio(corner.asLaid.outerFibreStrain) +
+        " (the inner conductor fibre would sit " +
+        millimetres(corner.bendRadius - 0.5 * conductingDimension) +
+        " mm from the bend axis).\n" +
+        "  Where it comes from: the turn bends around the former's corner radius of " +
+        millimetres(corner.formerCornerRadius) + " mm plus its own standoff of " +
+        millimetres(corner.standoff) + " mm. For this wire the former's corner would have to be "
+        "at least " + millimetres(corner.asLaid.flexibilityRadius - corner.standoff) +
+        " mm, or the turn would have to sit that much further out.\n" +
+        "  " + std::to_string(numberTightCorners) + " of " + std::to_string(turns.size()) +
+        " turns in this coil are bent below their wire's limit; this is the worst. MKF does not "
+        "emit geometry for a bend the wire cannot make: give the former a corner radius, choose a "
+        "wire whose conductor is small enough to take this corner, or move the winding further "
+        "out. (ABT #1290; real winding only - the ideal layout is unchanged.)";
+
+    throw UnwindableBendException(message);
 }
 
 void Coil::apply_group_window_sides(bool inverse) {

@@ -598,6 +598,16 @@ class Coil : public MAS::Coil {
         // former's corner plus its standoff, which the frame already carries.
         std::optional<double> get_turn_length_in_frame(const WoundColumnFrame& frame, double turnX,
                                                        std::optional<double> turnBendRadius = std::nullopt);
+        // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
+        // tighter than the wire itself can be bent. The limit is the wire's own, from its
+        // requirement standard (WireBend / IEC 60317-0-1 Table 6 for round copper, -0-2 Table 6
+        // for rectangular) -- never a constant. A turn laid against a rectangular former bends
+        // around exactly the radius get_turn_length_in_frame charges it for, former corner plus
+        // standoff, so that is the radius judged. Throws UnwindableBendException naming the
+        // winding, the turn, the drawn radius, the wire's limit and the criterion; per the
+        // no-fallbacks rule it never clamps the radius up to the floor and never drops the turn.
+        // Ideal winding is untouched: the classic 2D layout is a separate contract.
+        void refuse_turns_bent_tighter_than_the_wire_allows();
         // Multi-column winding support: every group is wound in a window-local
         // frame on the +x side of the main column, so the whole section/layer/
         // turn machinery keeps a single geometry. This final winding step

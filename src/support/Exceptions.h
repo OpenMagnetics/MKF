@@ -244,6 +244,19 @@ public:
         : CoilException(ErrorCode::COIL_SHORTED_TURNS, message) {}
 };
 
+// ABT #1290 (Alf, 2026-09-20): a corner tighter than the wire's own minimum bend radius is not a
+// numerical problem and not a tolerance: the layout asks the wire to do something the wire is not
+// qualified to do, so the part it describes does not exist. Raised only under real winding, where
+// the drawn corner is a physical claim; the ideal 2D layout is a separate contract and never
+// raises it. Named after the fault rather than the symptom, for the same reason ShortedTurns is:
+// a reader told "bend below the standard's mandrel" goes and looks at the former's corner radius
+// or at the wire, which is where the defect is.
+class UnwindableBendException : public CoilException {
+public:
+    explicit UnwindableBendException(const std::string& message)
+        : CoilException(ErrorCode::COIL_WINDING_ERROR, message) {}
+};
+
 // ============================================================================
 // Material Exceptions
 // ============================================================================
