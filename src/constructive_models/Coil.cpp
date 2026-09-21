@@ -8659,11 +8659,16 @@ WoundColumnFrame Coil::get_wound_column_frame_for_section(const std::string& sec
     // one column-wall thickness sits between the leg and the winding space.
     frame.columnWidth = column.get_width() / 2 + bobbinProcessedDescription.get_column_thickness();
     frame.columnDepth = column.get_depth() / 2 + bobbinProcessedDescription.get_column_thickness();
-    // The wall wrapped around the leg carries the leg's own corner outwards; where the core
-    // gives no corner radius, the moulded wall still has one (see Bobbin::get_column_corner_radius).
-    frame.cornerRadius = column.get_corner_radius()
-        ? column.get_corner_radius().value() + bobbinProcessedDescription.get_column_thickness()
-        : 0.5 * bobbinProcessedDescription.get_column_thickness();
+    // The wall wrapped around the leg carries the leg's own corner outwards (outside = inside +
+    // wall, Bayer Fig. 2-4); where the core gives no corner radius, the inside corner is the
+    // moulding rule's -- the same derivation as Bobbin::get_column_corner_radius for the main one.
+    {
+        const double wallThickness = bobbinProcessedDescription.get_column_thickness();
+        const double insideCornerRadius = column.get_corner_radius()
+            ? column.get_corner_radius().value()
+            : Bobbin::get_moulded_inside_corner_radius(wallThickness);
+        frame.cornerRadius = Bobbin::get_moulded_outside_corner_radius(insideCornerRadius, wallThickness);
+    }
     // The winding frame is the +x side; mirrored (negative-x) windows are wound
     // against the mirrored column and flipped into place afterwards.
     frame.axisX = std::abs(column.get_coordinates()[0]);

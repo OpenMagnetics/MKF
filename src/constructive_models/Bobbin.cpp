@@ -837,7 +837,7 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
         // THE EDGE THE WIRE IS PULLED OVER. A turn on a toroid is a closed loop around the ring
         // cross-section, so it bends at that section's edges and nowhere else -- there is no
         // moulded former corner here, and the injection-moulding fallback in
-        // get_column_corner_radius() (half the wall thickness) is the wrong rule for a part that
+        // get_column_corner_radius() (inside corner + wall thickness) is the wrong rule for a part that
         // has no wall. MAS names this case directly: cornerRadius is "the radius of the core
         // cross-section edges (or of its coating, when coated), which is what the wire is pulled
         // over".
@@ -879,6 +879,19 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
     // (v2 work).
     coreBobbinProcessedDescription.set_winding_windows(bobbinWindingWindows);
     coreBobbinProcessedDescription.set_column_shape(coreCentralColumn.get_shape());
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR &&
+        (coreCentralColumn.get_shape() == ColumnShape::RECTANGULAR ||
+         coreCentralColumn.get_shape() == ColumnShape::IRREGULAR) &&
+        coreCentralColumn.get_corner_radius()) {
+        // The bore fits the column with no clearance (column_width below is the core half-width
+        // plus the wall, nothing more), so the bore's inside corner IS the column's corner, and
+        // the moulded wall carries it outwards by its thickness -- the same derivation the
+        // lateral-leg frame in Coil::get_wound_column_frame_for_section uses. A physical
+        // derivation from the part, preferred over the moulding rule whenever the core has it.
+        coreBobbinProcessedDescription.set_column_corner_radius(get_moulded_outside_corner_radius(
+            coreCentralColumn.get_corner_radius().value(),
+            coreBobbinProcessedDescription.get_column_thickness()));
+    }
     coreBobbinProcessedDescription.set_column_depth(coreCentralColumn.get_depth() / 2 + columnThickness);
     coreBobbinProcessedDescription.set_column_width(coreCentralColumn.get_width() / 2 + columnThickness);
     coreBobbinProcessedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -2293,6 +2306,30 @@ double Bobbin::get_column_depth() {
     return get_processed_description()->get_column_depth();
 }
 
+double Bobbin::get_moulded_inside_corner_radius(double wallThickness) {
+    if (!std::isfinite(wallThickness) || wallThickness < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                    "Bobbin: a moulded corner needs a finite, non-negative wall "
+                                    "thickness, got " + std::to_string(wallThickness) + " m");
+    }
+    return mouldedInsideCornerRadiusToWallThickness * wallThickness;
+}
+
+double Bobbin::get_moulded_outside_corner_radius(double insideCornerRadius, double wallThickness) {
+    if (!std::isfinite(insideCornerRadius) || insideCornerRadius < 0 ||
+        !std::isfinite(wallThickness) || wallThickness < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                    "Bobbin: a moulded corner needs a finite, non-negative inside "
+                                    "radius and wall thickness, got " +
+                                    std::to_string(insideCornerRadius) + " m and " +
+                                    std::to_string(wallThickness) + " m");
+    }
+    // Bayer, "Part and Mold Design", p. 21, Fig. 2-4: "Internal and external corner radii
+    // should originate from the same point", R2 = R1 + t -- the outside radius is one wall
+    // thickness larger than the inside one, which is what keeps the wall uniform round the bend.
+    return insideCornerRadius + wallThickness;
+}
+
 double Bobbin::get_column_corner_radius() {
     if (!get_processed_description()) {
         throw CoilNotProcessedException("Bobbin not processed");
@@ -2319,12 +2356,17 @@ double Bobbin::get_column_corner_radius() {
             if (processedDescription.get_column_corner_radius()) {
                 return processedDescription.get_column_corner_radius().value();
             }
-            // No datum: a moulded bobbin still cannot have a sharp corner. The injection-moulding
-            // rule puts the inside radius at half the wall thickness, which is a sourced design
-            // rule rather than a tuned constant, and it is the same treatment the wall thickness
-            // itself gets in create_quick_bobbin when a real bobbin is not available. A catalogue
-            // bobbin should carry the radius off its drawing instead.
-            return 0.5 * processedDescription.get_column_thickness();
+            // No datum. The wire wraps the former's OUTSIDE (convex) corner, and the moulded wall
+            // around the bore still has one: outside = inside + wall (Bayer, Fig. 2-4). Nothing
+            // tells this bobbin what the core column's own corner is -- MKF's core model never
+            // carries one for a rectangular column and no MAS shape dimensions it -- so the
+            // inside corner comes from the moulding rule (see get_moulded_inside_corner_radius).
+            // A catalogue bobbin should carry the radius off its drawing instead.
+            {
+                const double wallThickness = processedDescription.get_column_thickness();
+                return get_moulded_outside_corner_radius(get_moulded_inside_corner_radius(wallThickness),
+                                                         wallThickness);
+            }
     }
     throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
                                 "Bobbin: unknown column shape, cannot resolve its corner radius");

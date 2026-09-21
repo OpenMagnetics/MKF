@@ -482,12 +482,38 @@ class Bobbin : public MAS::Bobbin {
      *
      * Derived where the shape already defines it -- a round column's corner radius is its own
      * radius, an oblong one's is half its depth -- and read from the MAS datum for rectangular
-     * and irregular columns. A synthesised bobbin that carries no datum falls back to the
-     * injection-moulding rule (inside radius >= 0.5 x wall thickness), which is the same kind of
-     * modelled-but-sourced value create_quick_bobbin already uses for the wall thickness itself.
+     * and irregular columns. A bobbin that carries no datum resolves the OUTSIDE corner the wire
+     * wraps as inside corner + wall thickness (get_moulded_outside_corner_radius), with the inside
+     * corner from the moulding rule (get_moulded_inside_corner_radius). create_quick_bobbin writes
+     * the datum itself when the core declares its column's corner, so that derivation wins.
      * @return Column corner radius in m
      */
     double get_column_corner_radius();
+
+    /**
+     * @brief Inside (concave) corner radius of a moulded wall whose own corner is not known.
+     *
+     * Bayer MaterialScience, "Part and Mold Design" (thermoplastics design guide), pp. 30-31,
+     * Fig. 2-22: "The stress concentration factor climbs sharply as the radius-to-thickness ratio
+     * drops below approximately 0.2. [...] A radius-to-thickness ratio of approximately 0.15
+     * provides a good compromise between performance and appearance for most applications
+     * subjected to light to moderate impact loads." The 0.15 is that stated recommendation; 0.2
+     * is where the curve turns, not a recommendation. (Secondary sources quote >= 0.5; they do
+     * not trace it to a primary figure, so it is not used.)
+     * @return Inside corner radius in m
+     */
+    static double get_moulded_inside_corner_radius(double wallThickness);
+
+    /**
+     * @brief Outside (convex) corner radius of a moulded wall of uniform thickness:
+     *        inside radius + wall thickness (Bayer, "Part and Mold Design", p. 21, Fig. 2-4,
+     *        R2 = R1 + t). The outside corner is the one a wire wound on the former bends round.
+     * @return Outside corner radius in m
+     */
+    static double get_moulded_outside_corner_radius(double insideCornerRadius, double wallThickness);
+
+    /// Bayer "Part and Mold Design", pp. 30-31, Fig. 2-22: recommended inside R/t (see above).
+    static constexpr double mouldedInsideCornerRadiusToWallThickness = 0.15;
 
     /**
      * @brief Half the interior angle between the two straight runs that a turn's corner joins:
