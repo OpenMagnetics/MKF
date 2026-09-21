@@ -227,7 +227,7 @@ inline void to_json(json & j, const MagneticFieldStrengthModels & x) {
 }
 
 inline void from_json(const json & j, MagneticFieldStrengthModels & x) {
-    if (j == "BinnsLawrenson" || j == "binnslawrenson" || j == "BINNSLAWRENSON") x = MagneticFieldStrengthModels::BINNS_LAWRENSON;
+    if (j == "BinnsLawrenson" || j == "binnslawrenson" || j == "BINNSLAWRENSON" || j == "BINNS_LAWRENSON") x = MagneticFieldStrengthModels::BINNS_LAWRENSON;
     else if (j == "Lammeraner" || j == "lammeraner" || j == "LAMMERANER") x = MagneticFieldStrengthModels::LAMMERANER;
     else if (j == "Dowell" || j == "dowell" || j == "DOWELL") x = MagneticFieldStrengthModels::DOWELL;
     else if (j == "Wang" || j == "wang" || j == "WANG") x = MagneticFieldStrengthModels::WANG;
@@ -412,6 +412,8 @@ inline void from_json(const json & j, WindingProximityEffectLossesModels & x) {
     else if (j == "Sullivan"   || j == "SULLIVAN")   x = WindingProximityEffectLossesModels::SULLIVAN;
     else if (j == "Bartoli"    || j == "BARTOLI")    x = WindingProximityEffectLossesModels::BARTOLI;
     else if (j == "Vandelac"   || j == "VANDELAC")   x = WindingProximityEffectLossesModels::VANDELAC;
+    else if (j == "Martinez"   || j == "MARTINEZ")   x = WindingProximityEffectLossesModels::MARTINEZ;
+    else if (j == "Ewald"      || j == "EWALD")      x = WindingProximityEffectLossesModels::EWALD;
     else { throw std::runtime_error("Input JSON does not conform to WindingProximityEffectLossesModels schema: " + to_string(j)); }
 }
 
@@ -428,6 +430,8 @@ inline void to_json(json & j, const WindingProximityEffectLossesModels & x) {
     case WindingProximityEffectLossesModels::SULLIVAN:   j = "Sullivan";   break;
     case WindingProximityEffectLossesModels::BARTOLI:    j = "Bartoli";    break;
     case WindingProximityEffectLossesModels::VANDELAC:   j = "Vandelac";   break;
+    case WindingProximityEffectLossesModels::MARTINEZ:   j = "Martinez";   break;
+    case WindingProximityEffectLossesModels::EWALD:      j = "Ewald";      break;
     default: throw std::runtime_error("Unexpected value in enumeration \"WindingProximityEffectLossesModels\": " + std::to_string(static_cast<int>(x)));
     }
 }

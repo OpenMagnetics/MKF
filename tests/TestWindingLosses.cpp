@@ -2781,3 +2781,22 @@ TEST_CASE("Test_Sweeper_Resistance_Over_Frequency_Has_No_Notch", "[physical-mode
 
     settings.reset();
 }
+
+// Every winding-loss model value must survive the JSON the bindings use: PyOpenMagnetics' get_settings, set_settings and
+// get_all_*_models go through these to_json / from_json, and MagneticAdviser sends the magic_enum UPPER name. MARTINEZ and
+// EWALD were added to the enum without them, so listing the proximity models threw on the first new value; this walks the
+// whole enum so the next one added cannot do the same.
+TEST_CASE("Test_Winding_Losses_Model_Enums_Round_Trip_Through_Json", "[physical-model][winding-losses][smoke-test]") {
+    auto check = [](auto value) {
+        using Enum = decltype(value);
+        json serialised;
+        REQUIRE_NOTHROW(serialised = value);
+        CHECK(serialised.template get<Enum>() == value);
+        json upperName = std::string(magic_enum::enum_name(value));
+        CHECK(upperName.template get<Enum>() == value);
+    };
+    for (auto value : magic_enum::enum_values<MagneticFieldStrengthModels>()) check(value);
+    for (auto value : magic_enum::enum_values<MagneticFieldStrengthFringingEffectModels>()) check(value);
+    for (auto value : magic_enum::enum_values<WindingSkinEffectLossesModels>()) check(value);
+    for (auto value : magic_enum::enum_values<WindingProximityEffectLossesModels>()) check(value);
+}
