@@ -1645,11 +1645,36 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
         // ABT #1336: a drawable stub too short for its two bends becomes a ramp (see
         // ConnectionRoute::rampLength). Real winding only, like the bend it is planned for.
-        if (stubIsDrawable && routes.size() > routesBefore && is_real_winding_blocking_applied()) {
+        if (stubIsDrawable && routes.size() > routesBefore && is_real_winding_blocking_applied() && !layersAreContiguous) {
             const double bendRadius = routes.back().plannedBendRadius;
             const double stubHeight = std::abs(edgeY - turnY);
             if (stubHeight < 2 * bendRadius) {
-                routes.back().rampLength = std::sqrt(stubHeight * (4 * bendRadius - stubHeight));
+                // The S lies ON the turn's surface, so the wire's curvature is the S's own (in the
+                // surface) combined with the surface's across it: 1/R^2 >= 1/Rg^2 + 1/rho^2. A flat
+                // face adds nothing; a round column adds 1/rho, rho the turn's own radius. An
+                // OBLONG column is taken as round -- the larger curvature, so the longer, safe S.
+                const auto columnShape = bobbin.get_processed_description().value().get_column_shape();
+                if (columnShape == ColumnShape::IRREGULAR) {
+                    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                        "The terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
+                        " needs a ramp off its turn, but an IRREGULAR column states no surface curvature to plan it on (ABT #1336)");
+                }
+                double surfaceCurvature = 0.0;
+                if (columnShape != ColumnShape::RECTANGULAR) {
+                    surfaceCurvature = 1.0 / turnX;
+                }
+                const double inSurfaceCurvature2 = 1.0 / (bendRadius * bendRadius) - surfaceCurvature * surfaceCurvature;
+                if (!(inSurfaceCurvature2 > 0)) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "The terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
+                        " must bend no tighter than " + std::to_string(bendRadius * 1e3) + " mm, but its turn's own radius is " +
+                        std::to_string(turnX * 1e3) + " mm, so no ramp off that turn can climb at all (ABT #1336)");
+                }
+                const double inSurfaceRadius = 1.0 / std::sqrt(inSurfaceCurvature2);
+                // A cosine S, y = h (1 - cos(pi s / S)) / 2 over the extent S: its tangent is along
+                // the turn at both ends and its curvature is continuous, largest at the ends,
+                // h pi^2 / (2 S^2) -- which is 1/Rg when S = pi sqrt(h Rg / 2).
+                routes.back().rampLength = std::numbers::pi * std::sqrt(stubHeight * inSurfaceRadius / 2);
             }
         }
         deferPinLeg(routesBefore, edgeLeadSpaceIndex, windingName, parallel, isEntrance,

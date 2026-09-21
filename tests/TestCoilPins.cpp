@@ -1557,7 +1557,7 @@ TEST_CASE("A stub too short for its two bends is published as a ramp, only under
         return std::max(radial, axial);
     };
 
-    SECTION("real winding: every short stub is a ramp of length sqrt(h (4R - h)), every long one is not") {
+    SECTION("real winding: every short stub is a cosine-S ramp whose curvature stays within the bend, every long one is not") {
         settings.reset();
         settings.set_coil_use_real_winding_geometry(true);
         auto coil = make_coil(windings);
@@ -1573,7 +1573,15 @@ TEST_CASE("A stub too short for its two bends is published as a ramp, only under
             if (route.rampLength) {
                 REQUIRE(h);
                 CHECK(*h < 2 * R);
-                CHECK_THAT(*route.rampLength, Catch::Matchers::WithinRel(std::sqrt(*h * (4 * R - *h)), 1e-12));
+                // The cosine S at the in-surface radius that leaves room for the column's own
+                // curvature: former_core is a PQ, a ROUND column, so rho is the turn's radius.
+                const auto& turnEnd = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.waypoints.back() : route.waypoints.front();
+                const double rho = turnEnd[0];
+                const double Rg = 1.0 / std::sqrt(1.0 / (R * R) - 1.0 / (rho * rho));
+                CHECK_THAT(*route.rampLength, Catch::Matchers::WithinRel(std::numbers::pi * std::sqrt(*h * Rg / 2), 1e-12));
+                // ... and the S's peak curvature is then exactly 1/Rg, never tighter than the bend
+                CHECK_THAT(*h * std::numbers::pi * std::numbers::pi / (2 * *route.rampLength * *route.rampLength),
+                           Catch::Matchers::WithinRel(1.0 / Rg, 1e-12));
                 ++ramps;
             }
             else if (h) {

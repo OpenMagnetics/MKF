@@ -271,13 +271,16 @@ struct ConnectionRoute {
     // ABT #1336 (Alf, 2026-09-21: "Ramp off the helix"; real winding only). Set when this lead's
     // axial STUB, from its turn to its edge row (waypoints 0 -> 1), is shorter than the 2R its two
     // bends need -- a straight stub bends in the turn surface onto the axis and again out of it onto
-    // the radial run, each taking plannedBendRadius of it. It is then drawn as a RAMP: the wire
-    // leaves the helix and climbs to the row height in the turn surface as an S of two arcs of
-    // radius R, then bends once onto the radial run. The value is the S's length along the wire,
-    // sqrt(h (4R - h)) for the stub height h, which does not include the R of straight the radial
-    // bend takes after it. The ramp's projection on this section is the stub itself, so waypoints,
-    // reservations and blocking are unchanged. Empty: a straight stub, no stub, or not a real
-    // winding.
+    // the radial run, each taking plannedBendRadius of it. It is then drawn as a RAMP ON THE TURN'S
+    // SURFACE: a cosine S, y = h (1 - cos(pi s / S)) / 2 along the turn over the extent S, tangent
+    // to the turn at both ends and of continuous curvature, climbing the stub height h; then one bend
+    // onto the radial run. The value is S, measured along the turn, = pi sqrt(h Rg / 2): the S's
+    // curvature peaks at h pi^2 / (2 S^2) = 1/Rg, and Rg = (1/R^2 - 1/rho^2)^(-1/2) leaves room for
+    // the surface's own curvature 1/rho across the wire (rho = the turn's radius on a round or
+    // oblong column; a flat face adds none), so the wire's total curvature stays at 1/R. The radial
+    // bend's R of level run after the S is not included. The ramp projects on this section as the
+    // stub itself, so waypoints, reservations and blocking are unchanged. Empty: a straight stub, no
+    // stub, contiguous layers, or not a real winding.
     std::optional<double> rampLength;
 };
 
