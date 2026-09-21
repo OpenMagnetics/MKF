@@ -268,6 +268,17 @@ struct ConnectionRoute {
     // WASM/web path, an older saved design, a plain mas_autocomplete) says so on the object
     // instead of leaving the consumer to trust an ambient setting that is no longer in scope.
     double plannedBendRadius = 0;
+    // ABT #1336 (Alf, 2026-09-21: "Ramp off the helix"; real winding only). Set when this lead's
+    // axial STUB, from its turn to its edge row (waypoints 0 -> 1), is shorter than the 2R its two
+    // bends need -- a straight stub bends in the turn surface onto the axis and again out of it onto
+    // the radial run, each taking plannedBendRadius of it. It is then drawn as a RAMP: the wire
+    // leaves the helix and climbs to the row height in the turn surface as an S of two arcs of
+    // radius R, then bends once onto the radial run. The value is the S's length along the wire,
+    // sqrt(h (4R - h)) for the stub height h, which does not include the R of straight the radial
+    // bend takes after it. The ramp's projection on this section is the stub itself, so waypoints,
+    // reservations and blocking are unchanged. Empty: a straight stub, no stub, or not a real
+    // winding.
+    std::optional<double> rampLength;
 };
 
 // ABT #1172 (WP3): the lead's run from the window exit to its assigned pin, see

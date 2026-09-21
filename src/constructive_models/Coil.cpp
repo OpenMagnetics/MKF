@@ -1643,6 +1643,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                          std::move(terminalRoute));
         tagSleevedRoute(routesBefore);
         tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
+        // ABT #1336: a drawable stub too short for its two bends becomes a ramp (see
+        // ConnectionRoute::rampLength). Real winding only, like the bend it is planned for.
+        if (stubIsDrawable && routes.size() > routesBefore && is_real_winding_blocking_applied()) {
+            const double bendRadius = routes.back().plannedBendRadius;
+            const double stubHeight = std::abs(edgeY - turnY);
+            if (stubHeight < 2 * bendRadius) {
+                routes.back().rampLength = std::sqrt(stubHeight * (4 * bendRadius - stubHeight));
+            }
+        }
         deferPinLeg(routesBefore, edgeLeadSpaceIndex, windingName, parallel, isEntrance,
                     windowOuterX + wireOuterWidth / 2, edgeY,
                     std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));

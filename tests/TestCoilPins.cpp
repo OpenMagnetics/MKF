@@ -1539,3 +1539,63 @@ TEST_CASE("An ideal winding's terminal routes keep the corners they always had (
     }
     REQUIRE(terminals == 4);
 }
+
+TEST_CASE("A stub too short for its two bends is published as a ramp, only under real winding (ABT #1336)",
+          "[constructive-model][coil][pins][abt1336]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    const std::vector<Winding_> windings = {{"Primary", 40, 2, "primary", "Round 0.2 - Grade 1"},
+                                            {"Secondary", 6, 1, "secondary", "Round 0.2 - Grade 1"}};
+    // The stub is the axial leg at the TURN end of a terminal route (electrical order: an entrance
+    // ends on its turn, an exit starts on it).
+    auto stubHeightOf = [](const ConnectionRoute& route) -> std::optional<double> {
+        if (route.waypoints.size() < 3) return std::nullopt;
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const auto& turn = entrance ? route.waypoints.back() : route.waypoints.front();
+        const auto& next = entrance ? route.waypoints[route.waypoints.size() - 2] : route.waypoints[1];
+        const double radial = std::abs(next[0] - turn[0]), axial = std::abs(next[1] - turn[1]);
+        if (radial > 1e-12 && axial > 1e-12) return std::nullopt;   // not an axis-aligned stub
+        return std::max(radial, axial);
+    };
+
+    SECTION("real winding: every short stub is a ramp of length sqrt(h (4R - h)), every long one is not") {
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        auto coil = make_coil(windings);
+        REQUIRE(coil.is_real_winding_blocking_applied());
+        const auto layout = coil.get_connection_layout();
+        size_t ramps = 0, straight = 0;
+        for (const auto& route : layout.routes) {
+            if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
+            INFO("route " << route.winding << " parallel " << route.parallel
+                          << (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit"));
+            const auto h = stubHeightOf(route);
+            const double R = route.plannedBendRadius;
+            if (route.rampLength) {
+                REQUIRE(h);
+                CHECK(*h < 2 * R);
+                CHECK_THAT(*route.rampLength, Catch::Matchers::WithinRel(std::sqrt(*h * (4 * R - *h)), 1e-12));
+                ++ramps;
+            }
+            else if (h) {
+                CHECK(*h >= 2 * R);   // a stub left straight must hold both its bends
+                ++straight;
+            }
+        }
+        UNSCOPED_INFO(ramps << " ramps, " << straight << " straight stubs");
+        REQUIRE(ramps > 0);   // the second parallel's stub to the shared row is one OD, below 2R
+        settings.reset();
+    }
+
+    SECTION("an ideal winding publishes no ramp") {
+        settings.reset();
+        auto coil = make_coil(windings);
+        REQUIRE_FALSE(coil.is_real_winding_blocking_applied());
+        size_t terminals = 0;
+        for (const auto& route : coil.get_connection_layout().routes) {
+            if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
+            CHECK_FALSE(route.rampLength);
+            ++terminals;
+        }
+        REQUIRE(terminals == 6);
+    }
+}
