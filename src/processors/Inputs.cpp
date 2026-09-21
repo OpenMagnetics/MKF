@@ -2794,17 +2794,34 @@ double Inputs::calculate_instantaneous_power(OperatingPointExcitation excitation
     Waveform voltageSampledWaveform = excitation.get_voltage()->get_waveform().value();
     Waveform currentSampledWaveform = excitation.get_current()->get_waveform().value();
 
-    if (voltageSampledWaveform.get_time() && voltageSampledWaveform.get_data().size() != settings.get_inputs_number_points_sampled_waveforms()) {
-        voltageSampledWaveform = calculate_sampled_waveform(voltageSampledWaveform, frequency);
+    // Both signals go on one grid, as fine as the finer of them, and |v*i| is averaged over ALL of
+    // it. The loop used to stop at the 128-sample setting while the sampler keeps a denser
+    // waveform's own resolution, so an imported waveform (8192 samples) was averaged over the
+    // first 1.6 % of its period and the figure moved with the file's resolution (ABT #1325).
+    size_t numberPoints = settings.get_inputs_number_points_sampled_waveforms();
+    for (const auto* waveform : {&voltageSampledWaveform, &currentSampledWaveform}) {
+        size_t size = waveform->get_data().size();
+        if (size > numberPoints) {
+            // Exact powers of 2 are kept as they are: the rounding goes through a floating log.
+            numberPoints = (size & (size - 1)) == 0? size : round_up_size_to_power_of_2(size);
+        }
     }
-
-    if (currentSampledWaveform.get_time() && currentSampledWaveform.get_data().size() != settings.get_inputs_number_points_sampled_waveforms()) {
-        currentSampledWaveform = calculate_sampled_waveform(currentSampledWaveform, frequency);
+    if (voltageSampledWaveform.get_data().size() != numberPoints) {
+        voltageSampledWaveform = calculate_sampled_waveform(voltageSampledWaveform, frequency, numberPoints);
+    }
+    if (currentSampledWaveform.get_data().size() != numberPoints) {
+        currentSampledWaveform = calculate_sampled_waveform(currentSampledWaveform, frequency, numberPoints);
+    }
+    if (voltageSampledWaveform.get_data().size() != currentSampledWaveform.get_data().size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "calculate_instantaneous_power: voltage and current sampled to " +
+            std::to_string(voltageSampledWaveform.get_data().size()) + " and " +
+            std::to_string(currentSampledWaveform.get_data().size()) + " points; they must share one grid");
     }
 
     std::vector<double> powerPoints;
 
-    for (size_t i = 0; i < settings.get_inputs_number_points_sampled_waveforms(); i++) {
+    for (size_t i = 0; i < voltageSampledWaveform.get_data().size(); i++) {
         powerPoints.push_back(fabs(voltageSampledWaveform.get_data()[i] * currentSampledWaveform.get_data()[i]));
     }
 

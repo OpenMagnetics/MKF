@@ -917,3 +917,35 @@ TEST_CASE("Test_Sampled_Waveform_Capped_At_Maximum_Number_Points", "[processor][
 
     REQUIRE_THROWS_AS(WaveformProcessor::calculate_sampled_waveform(waveform, 45000, std::nullopt, 128, 6000), std::invalid_argument);
 }
+
+// ABT #1325: calculate_instantaneous_power averaged |v*i| over the first 128 samples whatever the
+// waveforms carried, so an imported waveform (8192 samples) was averaged over 1.6 % of its period.
+// Square voltage (+24 V for 40 %, -12 V after) across a triangular current (2 -> 3 -> 2 A):
+// mean |v*i| = 0.4 * 24 * 2.5 + 0.6 * 12 * 2.5 = 42 W.
+TEST_CASE("Test_Instantaneous_Power_Averages_The_Whole_Period", "[processor][inputs][smoke-test]") {
+    const double frequency = 45000;
+    const double period = 1 / frequency;
+    const size_t numberPoints = 8192;
+    std::vector<double> time, voltage, current;
+    for (size_t i = 0; i < numberPoints; ++i) {
+        double t = period * static_cast<double>(i) / numberPoints;
+        double phase = t / period;
+        time.push_back(t);
+        voltage.push_back(phase < 0.4? 24 : -12);
+        current.push_back(phase < 0.4? 2 + phase / 0.4 : 3 - (phase - 0.4) / 0.6);
+    }
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(frequency);
+    SignalDescriptor voltageSignal, currentSignal;
+    Waveform voltageWaveform, currentWaveform;
+    voltageWaveform.set_time(time);
+    voltageWaveform.set_data(voltage);
+    currentWaveform.set_time(time);
+    currentWaveform.set_data(current);
+    voltageSignal.set_waveform(voltageWaveform);
+    currentSignal.set_waveform(currentWaveform);
+    excitation.set_voltage(voltageSignal);
+    excitation.set_current(currentSignal);
+
+    REQUIRE_THAT(OpenMagnetics::Inputs::calculate_instantaneous_power(excitation), Catch::Matchers::WithinRel(42.0, 1e-3));
+}
