@@ -90,6 +90,14 @@ class WireBend {
         // Minimum centreline bend radius [m] = mandrel / 2 + outer dimension in the bend plane / 2.
         static double get_minimum_bend_radius(const Wire& wire, BendCriterion criterion, BendAxis axis);
 
+        // ABT #1296: the FLEXIBILITY minimum centreline radius when the requirement standards
+        // define one for this wire at all, else empty. Empty means "the standards say nothing"
+        // (litz, foil, planar, or round copper above IEC 60317-0-1's 1,600 mm table, where
+        // clause 8.2 replaces the winding test with a stretching test) -- NOT a missing input:
+        // a covered wire with missing dimensions still throws. A rectangular wire answers for
+        // the given axis.
+        static std::optional<double> get_flexibility_bend_radius_if_standardised(const Wire& wire, BendAxis axis);
+
         // THE SOLVER. Given the former's corner and the wire, return the geometry that actually
         // results. cornerHalfAngle is half the interior angle between the two straight runs the
         // corner joins: pi/4 at the corner of a rectangular column, and the lift-off term

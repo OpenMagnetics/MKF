@@ -14,11 +14,13 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/WireBend.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -455,6 +457,8 @@ TEST_CASE("route_leads_to_pins walks beside the pin, down to the rail face and i
     lead.pin = vertical;
     lead.windowExit = {0.010, 0.003};
     lead.diameter = 0.0005;
+    // Sharp corners: this test is about the run's placement, not its bends (ABT #1296).
+    lead.bendRadius = lead.diameter / 2;
     lead.exitX = 0.0;
     auto routes = OpenMagnetics::Coil::route_leads_to_pins({vertical}, {lead}, 0.0, 2);
     REQUIRE(routes.size() == 1);
@@ -1010,6 +1014,8 @@ TEST_CASE("A lead that cannot be routed clear throws naming what it collides wit
         lead.pin = pin;
         lead.windowExit = {0.011, axial};
         lead.diameter = 0.0006;
+        // Sharp corners: this test is about the run's placement, not its bends (ABT #1296).
+        lead.bendRadius = lead.diameter / 2;
         lead.exitX = 0.0;
         return lead;
     };
@@ -1202,6 +1208,8 @@ TEST_CASE("route_leads_to_pins starts each run at its exit slot and keeps every 
     a.pin = pins[0];
     a.windowExit = {0.011, -0.004};
     a.diameter = 0.0006;
+    // Sharp corners: this test is about the run's placement, not its bends (ABT #1296).
+    a.bendRadius = a.diameter / 2;
     a.lift = 0.002;
     a.exitX = 0.0;
     PinLeadRequest b = a;
@@ -1255,6 +1263,7 @@ TEST_CASE("route_leads_to_pins clears the rail edge for the bend a consumer will
     lead.pin = pins[0];
     lead.windowExit = {0.011, -0.004};
     lead.diameter = 0.000943;       // the boost PQ 26/25 lead: r = 0.4715 mm
+    lead.bendRadius = lead.diameter / 2;
     lead.lift = 0.0;
     lead.exitX = 0.0;
     const double coatedRadius = lead.diameter / 2;
@@ -1273,7 +1282,7 @@ TEST_CASE("route_leads_to_pins clears the rail edge for the bend a consumer will
                 settings.set_coil_lead_bend_radius_factor(factor);
             }
             const double bendRadius = OpenMagnetics::Settings::resolve_lead_bend_radius(coatedRadius);
-            const double clearance = OpenMagnetics::Settings::lead_leg_clearance(coatedRadius, std::numbers::pi / 2);
+            const double clearance = OpenMagnetics::Settings::lead_leg_clearance(coatedRadius, bendRadius, std::numbers::pi / 2);
             CHECK_THAT(bendRadius, Catch::Matchers::WithinRel(factor * coatedRadius, 1e-12));
             CHECK_THAT(clearance,
                        Catch::Matchers::WithinRel(bendRadius - (bendRadius - coatedRadius) / std::sqrt(2.0), 1e-12));
@@ -1302,7 +1311,9 @@ TEST_CASE("route_leads_to_pins clears the rail edge for the bend a consumer will
         const double railUnderside = rail.centre[1] - rail.halfExtents[1];
 
         settings.set_coil_lead_bend_radius_factor(1.05);      // MVB++'s kRoundCornerBendFactor
-        const auto roundedRoutes = OpenMagnetics::Coil::route_leads_to_pins(pins, {lead}, 0.0, 2, {rail});
+        PinLeadRequest roundedLead = lead;                    // the radius travels ON the request
+        roundedLead.bendRadius = OpenMagnetics::Settings::resolve_lead_bend_radius(coatedRadius);
+        const auto roundedRoutes = OpenMagnetics::Coil::route_leads_to_pins(pins, {roundedLead}, 0.0, 2, {rail});
         REQUIRE(roundedRoutes.size() == 1);
         CHECK_THAT(roundedRoutes[0].plannedBendRadius,
                    Catch::Matchers::WithinRel(1.05 * coatedRadius, 1e-12));
@@ -1333,6 +1344,18 @@ TEST_CASE("route_leads_to_pins clears the rail edge for the bend a consumer will
         CHECK_THROWS_WITH(settings.set_coil_lead_bend_radius_factor(0.9),
                           Catch::Matchers::ContainsSubstring("cannot be below 1"));
         settings.reset();
+    }
+
+    SECTION("a lead planned for a bend tighter than it sweeps is refused (ABT #1296)") {
+        settings.reset();
+        PinLeadRequest tooTight = lead;
+        tooTight.bendRadius = 0.9 * coatedRadius;
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins(pins, {tooTight}, 0.0, 2, {rail}),
+                          Catch::Matchers::ContainsSubstring("below the radius it sweeps"));
+        PinLeadRequest unset = lead;
+        unset.bendRadius = 0;                                 // never set: refused, not planned sharp
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins(pins, {unset}, 0.0, 2, {rail}),
+                          Catch::Matchers::ContainsSubstring("below the radius it sweeps"));
     }
 }
 
@@ -1373,4 +1396,115 @@ TEST_CASE("The bend radius a pin run was planned for reaches the struct a consum
         ++checked;
     }
     REQUIRE(checked > 0);                             // a vacuous pass here would look identical
+}
+
+TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the drawer's bend radius (ABT #1296)",
+          "[constructive-model][coil][pins][abt1296]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto round = find_wire_by_name("Round 0.2 - Grade 1");
+    const double coatedRadius = resolve_dimensional_values(round.get_outer_diameter().value()) / 2;
+    const double flexibility = WireBend::get_minimum_bend_radius(round, BendCriterion::FLEXIBILITY, BendAxis::ROUND);
+    REQUIRE(flexibility > coatedRadius);   // otherwise the next check could not tell the two apart
+
+    SECTION("nothing declared: the wire's own IEC 60317-0-1 minimum, not a sharp corner") {
+        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius),
+                   Catch::Matchers::WithinRel(flexibility, 1e-12));
+    }
+
+    SECTION("a drawer needing more than the wire gets what it declared") {
+        const double factor = 1.5 * flexibility / coatedRadius;
+        settings.set_coil_lead_bend_radius_factor(factor);
+        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius),
+                   Catch::Matchers::WithinRel(factor * coatedRadius, 1e-12));
+        settings.reset();
+    }
+
+    SECTION("wires no standard covers get buildability alone") {
+        OpenMagnetics::Wire litz;
+        litz.set_type(WireType::LITZ);
+        CHECK(OpenMagnetics::Coil::lead_bend_radius(litz, std::nullopt, 0.0005) == 0.0005);
+        // IEC 60317-0-1 clause 8.2: no winding test above a 1,600 mm conductor.
+        auto thick = find_wire_by_name("Round 2.00 - Grade 1");
+        const double thickRadius = resolve_dimensional_values(thick.get_outer_diameter().value()) / 2;
+        CHECK(OpenMagnetics::Coil::lead_bend_radius(thick, std::nullopt, thickRadius) == thickRadius);
+    }
+
+    SECTION("a sleeve whose material rates its bend takes the smallest rated size that holds it") {
+        auto material = find_insulation_material_by_name("PTFE extruded tubing");
+        auto point = [](double innerDiameter, double wall, double value) {
+            MAS::MinimumBendRadiusElement element;
+            element.set_inner_diameter(innerDiameter);
+            element.set_wall_thickness(wall);
+            element.set_value(value);
+            return element;
+        };
+        // Made-up ratings, for the selection rule only. The 1.0 mm size is too narrow for the
+        // sleeve, the 1.2 mm / 0.3 mm size is too thin-walled for it, and 1.2 mm / 0.4 mm is the one.
+        material.set_minimum_bend_radius(std::vector<MAS::MinimumBendRadiusElement>{
+            point(0.0010, 0.0004, 0.008), point(0.0012, 0.0003, 0.009),
+            point(0.0012, 0.0004, 0.012), point(0.0020, 0.0004, 0.020)});
+        ConnectionSleeve sleeve;
+        sleeve.set_material(InsulationMaterialDataOrNameUnion(static_cast<MAS::InsulationMaterial>(material)));
+        sleeve.set_inner_diameter(0.0011);
+        sleeve.set_wall_thickness(0.0004);
+        const double sleeveRadius = 0.0011 / 2 + 0.0004;
+        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, sleeveRadius),
+                   Catch::Matchers::WithinRel(0.012, 1e-12));
+
+        sleeve.set_inner_diameter(0.0025);   // wider than any rated size: refused, never extrapolated
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, 0.0025 / 2 + 0.0004),
+                          Catch::Matchers::ContainsSubstring("for no tubing"));
+
+        // No rating on the material: the sleeve adds nothing, and the wire rules.
+        auto unrated = find_insulation_material_by_name("PTFE extruded tubing");
+        REQUIRE_FALSE(unrated.get_minimum_bend_radius());
+        sleeve.set_material(InsulationMaterialDataOrNameUnion(static_cast<MAS::InsulationMaterial>(unrated)));
+        sleeve.set_inner_diameter(0.0011);
+        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, coatedRadius),
+                   Catch::Matchers::WithinRel(flexibility, 1e-12));
+    }
+}
+
+TEST_CASE("Every terminal route publishes the bend it was planned for, pin or not (ABT #1296)",
+          "[constructive-model][coil][pins][abt1296]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto round = find_wire_by_name("Round 0.2 - Grade 1");
+    const double flexibility = WireBend::get_minimum_bend_radius(round, BendCriterion::FLEXIBILITY, BendAxis::ROUND);
+    const std::vector<Winding_> windings = {{"Primary", 40, 1, "primary", "Round 0.2 - Grade 1"},
+                                            {"Secondary", 6, 1, "secondary", "Round 0.2 - Grade 1"}};
+
+    // Reinforced offline: every lead crosses a margin in a sleeve. No insulation requirements:
+    // bare leads, where only the wire's own minimum can move the radius off the sharp corner.
+    const bool sleevedCase = GENERATE(true, false);
+    INFO((sleevedCase ? "reinforced offline, sleeved leads" : "no insulation inputs, bare leads"));
+    auto coil = sleevedCase ? make_coil(windings, reinforced_offline_inputs()) : make_coil(windings);
+    auto core = former_core();
+    REQUIRE_FALSE(coil.assign_pins(coil.resolve_bobbin(), core).skipped);
+    const auto layout = coil.get_connection_layout();
+
+    size_t terminals = 0;
+    size_t pinned = 0;
+    size_t sleeved = 0;
+    for (const auto& route : layout.routes) {
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        INFO("route " << route.winding << " parallel " << route.parallel << " pin '" << route.pinName << "'");
+        // Nothing declared by a drawer and no sleeve rating: the wire's own minimum, unless the
+        // corner sweeps a sleeve wider than that -- nothing bends tighter than its own radius.
+        // A sharp-corner radius on a bare lead is the pre-#1296 behaviour.
+        const double swept = route.sleeveOuterDiameter ? route.sleeveOuterDiameter.value() / 2 : 0.0;
+        CHECK_THAT(route.plannedBendRadius, Catch::Matchers::WithinRel(std::max(flexibility, swept), 1e-9));
+        ++terminals;
+        pinned += route.pinWaypoints.empty() ? 0 : 1;
+        sleeved += route.sleeveOuterDiameter ? 1 : 0;
+    }
+    REQUIRE(terminals == 4);
+    REQUIRE(pinned > 0);
+    // Both branches are really exercised, or the check above could pass on the wrong one.
+    CHECK(sleeved == (sleevedCase ? terminals : 0));
+    settings.reset();
 }

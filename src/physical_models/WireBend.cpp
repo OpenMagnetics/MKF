@@ -180,6 +180,21 @@ double WireBend::get_minimum_bend_radius(const Wire& wire, BendCriterion criteri
     return 0.5 * mandrelDiameter + 0.5 * dimensions.outer;
 }
 
+std::optional<double> WireBend::get_flexibility_bend_radius_if_standardised(const Wire& wire, BendAxis axis) {
+    if (wire.get_type() == WireType::ROUND) {
+        const double conductingDiameter =
+            resolve_required(wire.get_conducting_diameter(), "conducting diameter");
+        if (conductingDiameter > kRoundMandrelMaximumDiameter + kLengthTolerance) {
+            return std::nullopt;  // IEC 60317-0-1 clause 8.2: no winding test above 1,600 mm
+        }
+        return get_minimum_bend_radius(wire, BendCriterion::FLEXIBILITY, BendAxis::ROUND);
+    }
+    if (wire.get_type() == WireType::RECTANGULAR) {
+        return get_minimum_bend_radius(wire, BendCriterion::FLEXIBILITY, axis);
+    }
+    return std::nullopt;  // litz, foil, planar: no requirement standard specifies a bend
+}
+
 WoundCorner WireBend::solve(double formerCornerRadius, double cornerHalfAngle, const Wire& wire,
                             double standoff, BendAxis axis, BendPolicy policy) {
     if (!std::isfinite(formerCornerRadius) || formerCornerRadius < 0) {

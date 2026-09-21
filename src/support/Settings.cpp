@@ -731,7 +731,7 @@ namespace OpenMagnetics {
         return radius;
     }
 
-    double Settings::lead_leg_clearance(double coatedRadius, double turnAngle) {
+    double Settings::lead_leg_clearance(double sweptRadius, double bendRadius, double turnAngle) {
         // ABT #1172. Two legs meet at an obstacle edge with the edge on the bisector. For a
         // centreline bend of radius R with each leg a distance d from its face, the arc centre
         // sits (R - d) / sin(theta/2) beyond the edge and the arc's closest approach to it is
@@ -739,13 +739,19 @@ namespace OpenMagnetics {
         // so keeping the copper clear by its own radius requires
         //     d >= R - (R - r) sin(theta/2)
         // At theta = 90 degrees this is d >= R - (R - r)/sqrt(2), and at R = r it collapses to
-        // d >= r, the sharp-corner geometry. theta is the angle BETWEEN the legs.
+        // d >= r, the sharp-corner geometry. theta is the angle BETWEEN the legs. r is the radius
+        // the corner SWEEPS (the sleeve's when sleeved), R the lead's planned bend (ABT #1296,
+        // Coil::lead_bend_radius).
         if (!(turnAngle > 0) || !(turnAngle < std::numbers::pi)) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "A lead corner turns through an angle strictly between 0 and pi, got " + std::to_string(turnAngle));
         }
-        const double bendRadius = resolve_lead_bend_radius(coatedRadius);
-        return bendRadius - (bendRadius - coatedRadius) * sin(turnAngle / 2);
+        if (!(sweptRadius > 0) || !(bendRadius >= sweptRadius)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "A lead corner's centreline bend radius cannot be below the radius it sweeps: bend " +
+                std::to_string(bendRadius) + " m, swept " + std::to_string(sweptRadius) + " m");
+        }
+        return bendRadius - (bendRadius - sweptRadius) * sin(turnAngle / 2);
     }
 
     void Settings::set_painter_cci_coordinates_path(std::string value) {

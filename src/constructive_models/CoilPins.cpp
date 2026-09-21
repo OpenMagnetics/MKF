@@ -42,6 +42,8 @@
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/Core.h"
 #include "constructive_models/Insulation.h"
+#include "physical_models/WireBend.h"
+#include "support/Settings.h"
 #include "support/Exceptions.h"
 #include "support/Utils.h"
 
@@ -420,6 +422,58 @@ double segment_box_distance(const std::vector<double>& a, const std::vector<doub
 
 }  // namespace
 
+double Coil::lead_bend_radius(const Wire& wire, const std::optional<ConnectionSleeve>& sleeve, double sweptRadius) {
+    // Buildability: what the consumer drawing the corner declared, on the radius it sweeps.
+    // Throws on a non-positive swept radius.
+    double radius = Settings::resolve_lead_bend_radius(sweptRadius);
+
+    // Physics of the wire: its insulation must survive the bend (IEC 60317-0-1 Table 6 /
+    // IEC 60317-0-2 Table 6). A lead leaving for a pin turns in 3D, so a rectangular wire bends
+    // on both of its axes somewhere along the run and the tighter-limited one rules.
+    std::vector<BendAxis> axes = wire.get_type() == WireType::RECTANGULAR
+                                     ? std::vector<BendAxis>{BendAxis::FLATWISE, BendAxis::EDGEWISE}
+                                     : std::vector<BendAxis>{BendAxis::ROUND};
+    for (auto axis : axes) {
+        if (auto wireMinimum = WireBend::get_flexibility_bend_radius_if_standardised(wire, axis)) {
+            radius = std::max(radius, wireMinimum.value());
+        }
+    }
+
+    // Physics of the sleeve: the tubing's own rated minimum, when its material sources one.
+    if (sleeve) {
+        const auto& materialUnion = sleeve->get_material();
+        InsulationMaterial material = std::holds_alternative<MAS::InsulationMaterial>(materialUnion)
+            ? InsulationMaterial(std::get<MAS::InsulationMaterial>(materialUnion))
+            : find_insulation_material_by_name(std::get<std::string>(materialUnion));
+        if (material.get_minimum_bend_radius()) {
+            // The tubing actually fitted is the smallest RATED size that holds this sleeve, so
+            // that is the size whose rating applies -- the standards' own "next larger size" rule.
+            const double innerDiameter = sleeve->get_inner_diameter();
+            const double wall = sleeve->get_wall_thickness();
+            std::optional<MAS::MinimumBendRadiusElement> rated;
+            const auto ratedPoints = material.get_minimum_bend_radius().value();  // returned by value
+            for (const auto& point : ratedPoints) {
+                if (point.get_inner_diameter() < innerDiameter - 1e-12 || point.get_wall_thickness() < wall - 1e-12) {
+                    continue;
+                }
+                if (!rated || point.get_inner_diameter() < rated->get_inner_diameter() - 1e-12 ||
+                    (std::abs(point.get_inner_diameter() - rated->get_inner_diameter()) <= 1e-12 &&
+                     point.get_wall_thickness() < rated->get_wall_thickness())) {
+                    rated = point;
+                }
+            }
+            if (!rated) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Sleeve material '" + material.get_name() + "' rates its minimum bend radius, but for no tubing with an inner diameter of at least " +
+                    std::to_string(innerDiameter * 1e3) + " mm and a wall of at least " + std::to_string(wall * 1e3) +
+                    " mm, which is the sleeve this lead needs");
+            }
+            radius = std::max(radius, rated->get_value());
+        }
+    }
+    return radius;
+}
+
 int64_t Coil::pin_wrap_turns() {
     static const int64_t wrapTurns = [] {
         auto fs = cmrc::dfmData::get_filesystem();
@@ -715,8 +769,13 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
         // ABT #1172: every corner of a pin run turns 90 degrees around an obstacle edge (the rail,
         // the flange, the core), so one clearance serves them all. Equals `radius` when no bend is
         // declared, which is the historical geometry.
-        const double legClearance = Settings::lead_leg_clearance(radius, std::numbers::pi / 2);
-        const double plannedBendRadius = Settings::resolve_lead_bend_radius(radius);
+        if (!(lead.bendRadius >= radius)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "The lead " + lead.label + " carries a planned bend radius of " + format_millimetres(lead.bendRadius) +
+                ", below the radius it sweeps (" + format_millimetres(radius) + "): set it from Coil::lead_bend_radius");
+        }
+        const double legClearance = Settings::lead_leg_clearance(radius, lead.bendRadius, std::numbers::pi / 2);
+        const double plannedBendRadius = lead.bendRadius;
         const double pinRadius = pin.diameter / 2;
         const double wrapRadius = pinRadius + radius;
         const double approach = wrapRadius + lead.diameter;   // clear of a neighbour wrap of this wire
@@ -946,10 +1005,8 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
         PinLeadRoute route;
         route.pinName = placedPins[lead.pinIndex].name;
         route.waypoints = lead.points;
-        // ABT #1172: the bend this run's corners were planned for. Taken from the lead's own
-        // coated radius, so a run of thicker wire records a larger radius than a thinner one
-        // beside it.
-        route.plannedBendRadius = Settings::resolve_lead_bend_radius(leads[lead.request].diameter / 2);
+        // ABT #1172/#1296: the bend this run's corners were planned for, the lead's own.
+        route.plannedBendRadius = leads[lead.request].bendRadius;
         for (size_t index = 0; index + 1 < route.waypoints.size(); ++index) {
             route.length += distance(route.waypoints[index], route.waypoints[index + 1]);
         }

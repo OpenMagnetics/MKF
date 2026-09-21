@@ -292,6 +292,9 @@ struct PinLeadRequest {
     MAS::Pin pin;
     std::vector<double> windowExit;    // {radial, axial}, the coil's real frame
     double diameter = 0;               // coated (or sleeve) outer diameter
+    // ABT #1296: the centreline radius this lead's corners are planned for, Coil::lead_bend_radius.
+    // Required (>= diameter / 2); the legs are offset for exactly this radius.
+    double bendRadius = 0;
     double lift = 0;                   // ride-over displacement at the exit radius (ConnectionLayout::ride_at)
     // ABT #1237: the x along the flange (bobbin frame) at which the lead's in-window run leaves the
     // window: MKF's exit slot, Coil::terminal_exit_slots. Required; the run starts there, never
@@ -1020,6 +1023,22 @@ class Coil : public MAS::Coil {
                                                              const std::vector<PinLeadRequest>& leads,
                                                              double frontFaceOffset, int64_t wrapTurns,
                                                              const std::vector<Bobbin::PinRailBlock>& pinRails = {});
+        /**
+         * ABT #1296: the centreline radius a terminal lead's corners are planned for, metres. The
+         * LARGEST of what bounds it:
+         *   - the wire's own FLEXIBILITY minimum (IEC 60317-0-1/-0-2 via WireBend), when the
+         *     standards cover the wire. A rectangular wire's lead turns in 3D, so both axes apply
+         *     and the larger rules. Litz, foil, planar and round copper above the 1,600 mm table
+         *     have none: they are bounded by buildability alone and not judged.
+         *   - the sleeve's RATED minimum bend radius (MAS insulation material minimumBendRadius)
+         *     when its material sources one, at the smallest rated tubing that holds this sleeve
+         *     (inner diameter and wall both at least the sleeve's); a material rating no such size
+         *     throws. A material with no rating contributes nothing.
+         *   - the consumer's declared buildability (Settings::resolve_lead_bend_radius) on the
+         *     radius the corner sweeps, `sweptRadius`: the sleeve's outer radius when sleeved,
+         *     else the coated wire's.
+         */
+        static double lead_bend_radius(const Wire& wire, const std::optional<ConnectionSleeve>& sleeve, double sweptRadius);
         /// RFC 0013 R4's wrap turns per wire end, from src/data/dfm_rules.json.
         static int64_t pin_wrap_turns();
         /// How much deeper the front face lies than MKF's radial coordinate: 0 for a round column,

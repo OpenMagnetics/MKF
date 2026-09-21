@@ -1387,6 +1387,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         MAS::Pin pin;
         std::vector<double> windowExit;   // {radial, axial}, real frame
         double diameter;
+        double bendRadius;                // the route's plannedBendRadius (ABT #1296)
     };
     std::vector<PendingPinLead> pendingPinLeads;
     auto deferPinLeg = [&](size_t routesBefore, size_t spaceIndex, const std::string& windingName, int64_t parallel,
@@ -1407,6 +1408,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         pending.windowExit = layersAreContiguous ? std::vector<double>{borderTurnAxis, borderLayerAxis}
                                                  : std::vector<double>{borderLayerAxis, borderTurnAxis};
         pending.diameter = diameter;
+        pending.bendRadius = routes[pending.routeIndex].plannedBendRadius;
         pendingPinLeads.push_back(pending);
     };
     auto addTerminalLead = [&](const std::string& windingName, double wireOuterWidth,
@@ -1427,6 +1429,18 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     const double edge = windowEdgeY(sleeveWindowIndex, atTopEdge);
                     routes.back().marginInnerFace = atTopEdge ? edge - sleeveMargin : edge + sleeveMargin;
                 }
+            }
+        };
+        // ABT #1296: EVERY terminal route records the bend its corners are planned for -- the
+        // run to a pin is planned for it, and a consumer drawing a lead that ends at the border
+        // must not bend it tighter either. Swept radius: the sleeve's outer radius when sleeved.
+        auto tagBendRadius = [&](size_t routesBefore, double sweptDiameter) {
+            if (routes.size() > routesBefore) {
+                routes.back().plannedBendRadius = lead_bend_radius(
+                    resolve_wire(get_winding_index_by_name(windingName)),
+                    sleeved ? resolve_lead_sleeve(windingName, isEntrance ? End::START : End::FINISH, parallel)
+                            : std::optional<ConnectionSleeve>{},
+                    sweptDiameter / 2);
             }
         };
         double turnX = connectingTurn.get_coordinates()[0];
@@ -1479,6 +1493,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
                              {{turnX, turnY}, {windowOuterX + wireOuterWidth / 2, turnY}});
             tagSleevedRoute(routesBefore);
+            tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
             deferPinLeg(routesBefore, spaces.size() - 1, windingName, parallel, isEntrance,
                         windowOuterX + wireOuterWidth / 2, turnY,
                         std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
@@ -1627,6 +1642,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
                          std::move(terminalRoute));
         tagSleevedRoute(routesBefore);
+        tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
         deferPinLeg(routesBefore, edgeLeadSpaceIndex, windingName, parallel, isEntrance,
                     windowOuterX + wireOuterWidth / 2, edgeY,
                     std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
@@ -2290,6 +2306,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             request.pin = pending.pin;
             request.windowExit = pending.windowExit;
             request.diameter = pending.diameter;
+            request.bendRadius = pending.bendRadius;
             request.lift = rides.ride_at(pending.windowExit[0], routes[pending.routeIndex].side);
             request.exitX = exitSlots[pending.routeIndex];
             requests.push_back(request);
@@ -2303,7 +2320,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             auto& route = routes[pending.routeIndex];
             route.pinName = pinLeg.pinName;
             route.pinWaypoints = pinLeg.waypoints;
-            route.plannedBendRadius = pinLeg.plannedBendRadius;
+            if (pinLeg.plannedBendRadius != route.plannedBendRadius) {
+                throw std::logic_error("The pin run of " + pending.label + " was planned for a bend of " +
+                                       std::to_string(pinLeg.plannedBendRadius) + " m, not the route's " +
+                                       std::to_string(route.plannedBendRadius) + " m");
+            }
             if (route.kind == ConnectionKind::TERMINAL_ENTRANCE) {
                 std::reverse(route.pinWaypoints.begin(), route.pinWaypoints.end());
             }

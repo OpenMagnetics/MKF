@@ -481,7 +481,7 @@ class Settings
         // The bend radius a lead of this coated radius will be drawn with, and the leg offset that
         // keeps a bend of that radius clear of the edge it turns around. See ABT #1172.
         static double resolve_lead_bend_radius(double coatedRadius);
-        static double lead_leg_clearance(double coatedRadius, double turnAngle);
+        static double lead_leg_clearance(double sweptRadius, double bendRadius, double turnAngle);
         void set_painter_cci_coordinates_path(std::string value);
 
         std::string get_painter_color_enamel() const;
