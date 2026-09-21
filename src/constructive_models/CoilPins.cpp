@@ -551,9 +551,27 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
                 windingOrder.push_back(route.winding);
             }
         }
+        // What a copper piece occupies ALONG the face: [low, high] in x. A lead occupies its slot;
+        // a RAMPED lead (ABT #1336, ConnectionRoute::rampLength, real winding only) also occupies
+        // the stretch of its turn it climbs along -- an entrance towards the crossing (lower x:
+        // the wrap leaves the crossing towards -x and the lead joins it from its slot), an exit
+        // away from it (its last turn arrives at the slot from +x) -- the ramp plus the
+        // plannedBendRadius of level run its radial bend takes. Links and dragbacks sit at the
+        // crossing, x = 0.
+        auto ramp_span = [&](size_t index) {
+            return routes[index].rampLength ? routes[index].rampLength.value() + routes[index].plannedBendRadius : 0.0;
+        };
+        auto footprint_at = [&](size_t index, double x) -> std::pair<double, double> {
+            if (!is_terminal(routes[index])) {
+                return {0.0, 0.0};
+            }
+            const double span = ramp_span(index);
+            return routes[index].kind == ConnectionKind::TERMINAL_ENTRANCE ? std::pair<double, double>{x - span, x}
+                                                                           : std::pair<double, double>{x, x + span};
+        };
         struct Occupant {
             size_t route;
-            size_t lane;
+            std::pair<double, double> footprint;
         };
         std::vector<Occupant> occupants;
         for (size_t index = 0; index < routes.size(); ++index) {
@@ -561,17 +579,25 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
             if (routes[index].side == side &&
                 (kind == ConnectionKind::Z_DRAGBACK || kind == ConnectionKind::EDGE_CONTINUATION ||
                  kind == ConnectionKind::U_ADJACENT || kind == ConnectionKind::U_TANGENTIAL)) {
-                occupants.push_back({index, 0});
+                occupants.push_back({index, footprint_at(index, 0.0)});
             }
         }
-        auto blocks_lead = [&](const Occupant& occupant, size_t lead) {
+        // Two pieces clash when their footprints along the face come within one coated radius each
+        // AND their sections do too. Without ramps a footprint is a point and pitch >= the sum of
+        // the radii, so this is exactly the old same-lane test.
+        auto blocks_lead = [&](const Occupant& occupant, size_t lead, const std::pair<double, double>& footprint) {
             const auto& other = routes[occupant.route];
             const bool link = other.kind == ConnectionKind::U_ADJACENT || other.kind == ConnectionKind::U_TANGENTIAL;
             if (link && other.winding == routes[lead].winding) {
                 return false;   // a winding's leads never yield to its own links
             }
+            const double clearance = (diameters[lead] + diameters[occupant.route]) / 2 - tolerance;
+            const double gap = std::max(footprint.first - occupant.footprint.second, occupant.footprint.first - footprint.second);
+            if (gap >= clearance) {
+                return false;
+            }
             const double found = polyline_distance(polyline_of(routes[lead]), polyline_of(other));
-            return found < (diameters[lead] + diameters[occupant.route]) / 2 - tolerance;
+            return found < clearance;
         };
         for (const auto& winding : windingOrder) {
             for (auto kind : {ConnectionKind::TERMINAL_ENTRANCE, ConnectionKind::TERMINAL_EXIT}) {
@@ -618,13 +644,24 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
                         return attachAxial[a] < attachAxial[b];
                     });
                 }
+                // A group's members stand side by side from the anchor, one pitch apart -- plus, between
+                // two of them, whatever ramp lies in that gap: an entrance member's own ramp lies
+                // back towards its predecessor, an exit member's ramp forward towards its successor.
+                // With no ramps this is the old lane grid, x = lane * pitch.
+                std::vector<double> offsets(members.size(), 0.0);
+                for (size_t position = 1; position < members.size(); ++position) {
+                    const bool entrance = kind == ConnectionKind::TERMINAL_ENTRANCE;
+                    const double between = entrance ? ramp_span(members[position]) : ramp_span(members[position - 1]);
+                    offsets[position] = offsets[position - 1] + pitch + between;
+                }
                 // Every anchor past the occupied lanes is free, so the search ends.
                 size_t anchor = 0;
                 for (;; ++anchor) {
                     bool free = true;
                     for (size_t position = 0; position < members.size() && free; ++position) {
+                        const auto footprint = footprint_at(members[position], double(anchor) * pitch + offsets[position]);
                         for (const auto& occupant : occupants) {
-                            if (occupant.lane == anchor + position && blocks_lead(occupant, members[position])) {
+                            if (blocks_lead(occupant, members[position], footprint)) {
                                 free = false;
                                 break;
                             }
@@ -635,9 +672,9 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
                     }
                 }
                 for (size_t position = 0; position < members.size(); ++position) {
-                    const size_t lane = anchor + position;
-                    slots[members[position]] = double(lane) * pitch;
-                    occupants.push_back({members[position], lane});
+                    const double x = double(anchor) * pitch + offsets[position];
+                    slots[members[position]] = x;
+                    occupants.push_back({members[position], footprint_at(members[position], x)});
                 }
             }
         }

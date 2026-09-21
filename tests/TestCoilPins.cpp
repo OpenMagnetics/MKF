@@ -1599,3 +1599,48 @@ TEST_CASE("A stub too short for its two bends is published as a ramp, only under
         REQUIRE(terminals == 6);
     }
 }
+
+TEST_CASE("Pinned sibling leads stand far enough apart for the ramps between them (ABT #1336)",
+          "[constructive-model][coil][pins][abt1336]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = make_coil({{"Primary", 40, 2, "primary", "Round 0.2 - Grade 1"},
+                           {"Secondary", 6, 1, "secondary", "Round 0.2 - Grade 1"}});
+    auto core = former_core();
+    REQUIRE_FALSE(coil.assign_pins(coil.resolve_bobbin(), core).skipped);
+    const auto layout = coil.get_connection_layout();
+
+    // The window exit of each pinned terminal (pinWaypoints is stored pin-first for an entrance).
+    struct Lead { double x; double span; };
+    auto wire = find_wire_by_name("Round 0.2 - Grade 1");
+    const double coatedDiameter = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
+    std::map<std::pair<std::string, bool>, std::vector<Lead>> groups;   // (winding, entrance) -> by parallel
+    size_t ramped = 0;
+    for (const auto& route : layout.routes) {
+        if (route.pinWaypoints.empty()) continue;
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const auto& exit = entrance ? route.pinWaypoints.back() : route.pinWaypoints.front();
+        const double span = route.rampLength ? *route.rampLength + route.plannedBendRadius : 0.0;
+        ramped += route.rampLength ? 1 : 0;
+        auto& group = groups[{route.winding, entrance}];
+        if (group.size() <= size_t(route.parallel)) group.resize(route.parallel + 1);
+        group[route.parallel] = {exit[0], span};
+    }
+    REQUIRE(ramped > 0);   // otherwise this checks the plain lane grid only
+    size_t pairs = 0;
+    for (const auto& [key, leads] : groups) {
+        for (size_t k = 1; k < leads.size(); ++k) {
+            INFO(key.first << (key.second ? " entrance" : " exit") << " parallels " << k - 1 << " and " << k);
+            // The ramp between two siblings: an entrance's own (back towards its predecessor), an
+            // exit's predecessor's (forward towards it).
+            const double between = key.second ? leads[k].span : leads[k - 1].span;
+            const double gap = std::abs(leads[k].x - leads[k - 1].x);
+            CHECK(gap > between);   // the ramp fits between them ...
+            CHECK(gap - between >= coatedDiameter - 1e-12);   // ... with a coated wire's centreline pitch to spare
+            ++pairs;
+        }
+    }
+    REQUIRE(pairs > 0);
+    settings.reset();
+}
