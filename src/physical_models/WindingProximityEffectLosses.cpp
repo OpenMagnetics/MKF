@@ -1,5 +1,6 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "WindingProximityEffectLosses.h"
+#include <magic_enum.hpp>
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/Resistivity.h"
 #include "Defaults.h"
@@ -468,17 +469,17 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
     return {totalProximityEffectLossesPerMeter, lossesPerHarmonic};
 }
 
-WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType) {
     return calculate_proximity_effect_losses_impl(coil, temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency(),
-                                                  windingWindowMagneticStrengthFieldOutput.get_quadrature_field_per_frequency(), modelOverride);
+                                                  windingWindowMagneticStrengthFieldOutput.get_quadrature_field_per_frequency(), modelOverride, modelPerWireType);
 }
 
-WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType) {
     return calculate_proximity_effect_losses_impl(coil, temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency(),
-                                                  std::nullopt, modelOverride);
+                                                  std::nullopt, modelOverride, modelPerWireType);
 }
 
-WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType) {
     if (quadratureFieldPerFrequency && quadratureFieldPerFrequency->size() != fieldPerFrequency.size()) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Proximity losses: " + std::to_string(fieldPerFrequency.size()) + " in-phase harmonic fields but " +
                                     std::to_string(quadratureFieldPerFrequency->size()) + " quadrature harmonic fields");
@@ -491,7 +492,11 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
     // WANG_STACKED reads each turn's place in its stack from the coil geometry, once.
     std::optional<std::vector<double>> perpendicularOutlineFactorPerTurn;
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        if (std::dynamic_pointer_cast<WindingProximityEffectLossesWangStackedModel>(get_model(coil.get_wire_type(windingIndex), modelOverride))) {
+        std::optional<WindingProximityEffectLossesModels> windingModelOverride = modelOverride;
+        if (modelPerWireType && modelPerWireType->contains(coil.get_wire_type(windingIndex))) {
+            windingModelOverride = modelPerWireType->at(coil.get_wire_type(windingIndex));
+        }
+        if (std::dynamic_pointer_cast<WindingProximityEffectLossesWangStackedModel>(get_model(coil.get_wire_type(windingIndex), windingModelOverride))) {
             perpendicularOutlineFactorPerTurn = WindingProximityEffectLossesWangStackedModel::calculate_perpendicular_outline_factors(coil);
             break;
         }
@@ -506,6 +511,17 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         auto turn = turns[turnIndex];
         int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto wire = coil.resolve_wire(windingIndex);
+        // ABT #1304: a model set chooses per wire type; a single override applies to every winding.
+        std::optional<WindingProximityEffectLossesModels> turnModelOverride = modelOverride;
+        if (modelPerWireType) {
+            auto wireTypeThisWinding = coil.get_wire_type(windingIndex);
+            auto found = modelPerWireType->find(wireTypeThisWinding);
+            if (found == modelPerWireType->end()) {
+                throw ModelNotAvailableException("The model set has no WindingProximityEffectLossesModels for " +
+                                                 std::string(magic_enum::enum_name(wireTypeThisWinding)) + " wire");
+            }
+            turnModelOverride = found->second;
+        }
         double wireLength = turn.get_length();
 
         // ABT #227.2: a turn with a genuine second plane crossing (CoilMesher samples the
@@ -629,10 +645,10 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         if (perpendicularOutlineFactorPerTurn) {
             perpendicularOutlineFactor = perpendicularOutlineFactorPerTurn.value()[turnIndex];
         }
-        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, modelOverride, primaryQuadrature, perpendicularOutlineFactor).second;
+        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, turnModelOverride, primaryQuadrature, perpendicularOutlineFactor).second;
         std::vector<std::pair<double, double>> secondaryLossesPerHarmonic;
         if (hasSecondaryCrossing) {
-            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, modelOverride, secondaryQuadrature, perpendicularOutlineFactor).second;
+            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, turnModelOverride, secondaryQuadrature, perpendicularOutlineFactor).second;
             if (secondaryLossesPerHarmonic.size() != primaryLossesPerHarmonic.size()) {
                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
                     "Primary and secondary crossing harmonics do not match for turn " + std::to_string(turnIndex));
@@ -640,7 +656,7 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         }
 
         LossElementPerHarmonic proximityEffectLossesThisTurn;
-        auto model = get_model(coil.get_wire_type(windingIndex), modelOverride);
+        auto model = get_model(coil.get_wire_type(windingIndex), turnModelOverride);
         proximityEffectLossesThisTurn.set_method_used(model->methodName);
         proximityEffectLossesThisTurn.set_origin(ResultOrigin::SIMULATION);
         proximityEffectLossesThisTurn.get_mutable_harmonic_frequencies().push_back(0);

@@ -54,13 +54,13 @@ class WindingProximityEffectLosses {
     static std::shared_ptr<WindingProximityEffectLossesModel> get_model(WireType wireType, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
     // Phasor field (MagneticField::calculate_magnetic_field_strength_field): the loss of every
     // harmonic is that of the in-phase plus the quadrature field.
-    static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
+    static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType = std::nullopt);
     // A plain (real, single-phase) field: there is no quadrature component.
-    static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
+    static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType = std::nullopt);
     // quadratureFields, when given, must match fields harmonic by harmonic and point by point.
     static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::vector<ComplexField>> quadratureFields = std::nullopt, std::optional<double> perpendicularOutlineFactor = std::nullopt);
   private:
-    static WindingLossesOutput calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride);
+    static WindingLossesOutput calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType);
 
 };
 

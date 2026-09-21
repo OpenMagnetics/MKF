@@ -1,5 +1,7 @@
 #include "support/Settings.h"
 #include "physical_models/WindingLosses.h"
+#include "physical_models/WindingLossesModelSets.h"
+#include <magic_enum.hpp>
 #include "physical_models/Inductance.h"
 #include "MAS.hpp"
 #include "physical_models/MagnetizingInductance.h"
@@ -166,77 +168,19 @@ double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magneti
 }
 
 
-WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
-    auto& settings = OpenMagnetics::Settings::GetInstance();
-
-    // Normalise under-specified excitations the same way core losses does
-    // (Inputs(json) runs process()): derive waveform/harmonics/processed from
-    // the caller's own signal instead of throwing bad_optional_access or
-    // silently reading 0 A (ABT #598/#599). Fully-processed operating points
-    // pass through untouched.
-    bool needsProcessing = false;
-    for (const auto& excitation : operatingPoint.get_excitations_per_winding()) {
-        if (excitation.get_current() &&
-            (!excitation.get_current()->get_waveform() ||
-             !excitation.get_current()->get_harmonics() ||
-             !excitation.get_current()->get_processed() ||
-             !excitation.get_current()->get_processed()->get_rms())) {
-            needsProcessing = true;
-            break;
-        }
-    }
-    if (needsProcessing) {
-        auto magnetizingInductance = resolve_dimensional_values(
-            MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
-                magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
-        operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance,
-                                                         magnetic.get_mutable_coil().get_turns_ratios(), false,
-                                                         magnetic.get_mutable_coil().get_isolation_sides());
-    }
-
-    auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
-    windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), _models.skinEffectModel);
-
-    auto isPlanar = true;
-    auto isRectangular = true;
-    auto isFoil = true;
+// MKF's historical automatic choice of field model by wire type. One function, so the CUSTOM path and the
+// LEGACY_DEFAULT model set (ABT #1304) cannot drift apart.
+static MagneticFieldStrengthModels automatic_field_model(Magnetic& magnetic) {
+    bool isPlanar = true;
+    bool isRectangular = true;
+    bool isFoil = true;
     for (auto wire : magnetic.get_mutable_coil().get_wires()) {
-        if (wire.get_type() != WireType::PLANAR) {
-            isPlanar = false;
-            break;
-        }
+        isPlanar = isPlanar && wire.get_type() == WireType::PLANAR;
+        isRectangular = isRectangular && wire.get_type() == WireType::RECTANGULAR;
+        isFoil = isFoil && wire.get_type() == WireType::FOIL;
     }
-    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
-        if (wire.get_type() != WireType::RECTANGULAR) {
-            isRectangular = false;
-            break;
-        }
-    }
-    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
-        if (wire.get_type() != WireType::FOIL) {
-            isFoil = false;
-            break;
-        }
-    }
-    // Only auto-select model if not explicitly specified in _models
-    // First check _models, then Settings, then auto-select based on wire type
     MagneticFieldStrengthModels modelToUse;
-    if (_models.magneticFieldStrengthModel.has_value()) {
-        modelToUse = _models.magneticFieldStrengthModel.value();
-    }
-    else if (settings.get_magnetic_field_strength_model() != Defaults().magneticFieldStrengthModelDefault) {
-        // User set a model in Settings, use it
-        modelToUse = settings.get_magnetic_field_strength_model();
-    }
-    else if ((_models.magneticFieldStrengthFringingEffectModel.has_value() ?
-                  _models.magneticFieldStrengthFringingEffectModel.value() :
-                  settings.get_magnetic_field_strength_fringing_effect_model()) == MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY) {
-        // ABT #1304: MMF_BOUNDARY is a 2-D image construction and pairs only with the pure 2-D kernel, for every wire
-        // type (see MagneticFieldStrengthMmfBoundaryModel). An explicitly chosen field model is left as chosen, and
-        // MagneticField refuses an incompatible one.
-        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
-    }
-    else if (isPlanar) {
+    if (isPlanar) {
         modelToUse = OpenMagnetics::MagneticFieldStrengthModels::WANG;
     }
     else if (isRectangular) {
@@ -267,10 +211,109 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
             modelToUse = OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER;
         }
     }
+    return modelToUse;
+}
+
+WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+
+    // Normalise under-specified excitations the same way core losses does
+    // (Inputs(json) runs process()): derive waveform/harmonics/processed from
+    // the caller's own signal instead of throwing bad_optional_access or
+    // silently reading 0 A (ABT #598/#599). Fully-processed operating points
+    // pass through untouched.
+    bool needsProcessing = false;
+    for (const auto& excitation : operatingPoint.get_excitations_per_winding()) {
+        if (excitation.get_current() &&
+            (!excitation.get_current()->get_waveform() ||
+             !excitation.get_current()->get_harmonics() ||
+             !excitation.get_current()->get_processed() ||
+             !excitation.get_current()->get_processed()->get_rms())) {
+            needsProcessing = true;
+            break;
+        }
+    }
+    if (needsProcessing) {
+        auto magnetizingInductance = resolve_dimensional_values(
+            MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
+                magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+        operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance,
+                                                         magnetic.get_mutable_coil().get_turns_ratios(), false,
+                                                         magnetic.get_mutable_coil().get_isolation_sides());
+    }
+
+    auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
+    // ABT #1304: a named model set fixes every model -- one field solution for the magnetic, skin and proximity per wire
+    // type -- after checking it models this magnetic. CUSTOM keeps the individually selected models.
+    const WindingLossesModelSets modelSetId = _models.modelSet.value_or(settings.get_winding_losses_model_set());
+    const WindingLossesModelSet* modelSet = nullptr;
+    if (modelSetId != WindingLossesModelSets::CUSTOM) {
+        if (_models.magneticFieldStrengthModel || _models.magneticFieldStrengthFringingEffectModel || _models.skinEffectModel || _models.proximityEffectModel) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Winding-loss model set " + std::string(magic_enum::enum_name(modelSetId)) +
+                                        " fixes every model; choose models individually only with the CUSTOM set");
+        }
+        modelSet = &get_winding_losses_model_set(modelSetId);
+        check_winding_losses_model_set_applies(*modelSet, magnetic);
+    }
+    windingLossesOutput = modelSet ?
+        WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), std::nullopt, modelSet->skinModelPerWireType) :
+        WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), _models.skinEffectModel);
+
+    auto isPlanar = true;
+    auto isRectangular = true;
+    auto isFoil = true;
+    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
+        if (wire.get_type() != WireType::PLANAR) {
+            isPlanar = false;
+            break;
+        }
+    }
+    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
+        if (wire.get_type() != WireType::RECTANGULAR) {
+            isRectangular = false;
+            break;
+        }
+    }
+    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
+        if (wire.get_type() != WireType::FOIL) {
+            isFoil = false;
+            break;
+        }
+    }
+    // Only auto-select model if not explicitly specified in _models
+    // First check _models, then Settings, then auto-select based on wire type
+    MagneticFieldStrengthModels modelToUse;
+    if (modelSet && modelSet->fieldModel) {
+        modelToUse = modelSet->fieldModel.value();
+    }
+    else if (modelSet) {
+        modelToUse = automatic_field_model(magnetic);
+    }
+    else if (_models.magneticFieldStrengthModel.has_value()) {
+        modelToUse = _models.magneticFieldStrengthModel.value();
+    }
+    else if (settings.get_magnetic_field_strength_model() != Defaults().magneticFieldStrengthModelDefault) {
+        // User set a model in Settings, use it
+        modelToUse = settings.get_magnetic_field_strength_model();
+    }
+    else if ((_models.magneticFieldStrengthFringingEffectModel.has_value() ?
+                  _models.magneticFieldStrengthFringingEffectModel.value() :
+                  settings.get_magnetic_field_strength_fringing_effect_model()) == MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY) {
+        // ABT #1304: MMF_BOUNDARY is a 2-D image construction and pairs only with the pure 2-D kernel, for every wire
+        // type (see MagneticFieldStrengthMmfBoundaryModel). An explicitly chosen field model is left as chosen, and
+        // MagneticField refuses an incompatible one.
+        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
+    }
+    else {
+        modelToUse = automatic_field_model(magnetic);
+    }
     
     // Use fringing model: first _models, then Settings, then default ROSHEN
     MagneticFieldStrengthFringingEffectModels fringingModelToUse;
-    if (_models.magneticFieldStrengthFringingEffectModel.has_value()) {
+    if (modelSet) {
+        fringingModelToUse = modelSet->fringingModel;
+    }
+    else if (_models.magneticFieldStrengthFringingEffectModel.has_value()) {
         fringingModelToUse = _models.magneticFieldStrengthFringingEffectModel.value();
     }
     else {
@@ -291,7 +334,9 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
         &Settings::set_harmonic_amplitude_threshold, thresholdToUse);
     auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
 
-    windingLossesOutput = WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput, _models.proximityEffectModel);
+    windingLossesOutput = modelSet ?
+        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput, std::nullopt, modelSet->proximityModelPerWireType) :
+        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput, _models.proximityEffectModel);
     windingLossesOutput = combine_turn_losses(windingLossesOutput, magnetic.get_coil());
 
     return windingLossesOutput;

@@ -26,6 +26,24 @@ enum class MagneticFieldStrengthFringingEffectModels : int {
 };
 
 
+// ABT #1304: named, self-consistent combinations of the winding-loss models (see WindingLossesModelSets.h).
+// CUSTOM = the individually selected models, i.e. MKF's behaviour before sets existed. APPEND ONLY: web UIs map
+// selections by ordinal.
+enum class WindingLossesModelSets : int {
+    CUSTOM,
+    LEGACY_DEFAULT,
+    NEUTRAL_WINDOW,
+    NEUTRAL_WINDOW_WANG,
+    WANG_PLANAR,
+    SULLIVAN_GAP,
+    AXISYMMETRIC,
+    TOROID,
+    MULTI_WINDOW,
+    DOWELL_1D,
+    EWALD_BENCHMARK
+};
+
+
 enum class ReluctanceModels : int {
     ZHANG,
     PARTRIDGE,

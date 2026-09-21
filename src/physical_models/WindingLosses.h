@@ -15,6 +15,9 @@ struct WindingLossesModels {
     std::optional<MagneticFieldStrengthFringingEffectModels> magneticFieldStrengthFringingEffectModel = std::nullopt;
     std::optional<WindingSkinEffectLossesModels> skinEffectModel = std::nullopt;
     std::optional<WindingProximityEffectLossesModels> proximityEffectModel = std::nullopt;
+    // ABT #1304: a named set fixes every model above; combining it with an individual model throws. nullopt: the
+    // set in Settings (default CUSTOM, the individually selected models).
+    std::optional<WindingLossesModelSets> modelSet = std::nullopt;
 };
 
 class WindingLosses

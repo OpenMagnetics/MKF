@@ -4,6 +4,7 @@
 #include "Models.h"
 #include <limits>
 #include <optional>
+#include <magic_enum.hpp>
 
 using json = nlohmann::json;
 
@@ -237,6 +238,37 @@ inline void from_json(const json & j, MagneticFieldStrengthModels & x) {
     else if (j == "Albach" || j == "albach" || j == "ALBACH" || j == "Albach2D" || j == "albach2d" || j == "ALBACH_2D") x = MagneticFieldStrengthModels::ALBACH;
     else if (j == "ImagedMmfSheets" || j == "imagedMmfSheets" || j == "IMAGED_MMF_SHEETS") x = MagneticFieldStrengthModels::IMAGED_MMF_SHEETS;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFieldStrengthModels schema: " + to_string(j)); }
+}
+
+void from_json(const json & j, WindingLossesModelSets & x);
+void to_json(json & j, const WindingLossesModelSets & x);
+
+inline void to_json(json & j, const WindingLossesModelSets & x) {
+    switch (x) {
+        case WindingLossesModelSets::CUSTOM: j = "Custom"; break;
+        case WindingLossesModelSets::LEGACY_DEFAULT: j = "LegacyDefault"; break;
+        case WindingLossesModelSets::NEUTRAL_WINDOW: j = "NeutralWindow"; break;
+        case WindingLossesModelSets::NEUTRAL_WINDOW_WANG: j = "NeutralWindowWang"; break;
+        case WindingLossesModelSets::WANG_PLANAR: j = "WangPlanar"; break;
+        case WindingLossesModelSets::SULLIVAN_GAP: j = "SullivanGap"; break;
+        case WindingLossesModelSets::AXISYMMETRIC: j = "Axisymmetric"; break;
+        case WindingLossesModelSets::TOROID: j = "Toroid"; break;
+        case WindingLossesModelSets::MULTI_WINDOW: j = "MultiWindow"; break;
+        case WindingLossesModelSets::DOWELL_1D: j = "Dowell1D"; break;
+        case WindingLossesModelSets::EWALD_BENCHMARK: j = "EwaldBenchmark"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"WindingLossesModelSets\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, WindingLossesModelSets & x) {
+    for (auto value : magic_enum::enum_values<WindingLossesModelSets>()) {
+        json name = value;
+        if (j == name || j == std::string(magic_enum::enum_name(value))) {
+            x = value;
+            return;
+        }
+    }
+    throw std::runtime_error("Input JSON does not conform to WindingLossesModelSets schema: " + to_string(j));
 }
 
 void from_json(const json & j, MagneticFieldStrengthFringingEffectModels & x);

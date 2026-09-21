@@ -159,6 +159,7 @@ namespace OpenMagnetics {
         _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
         _magneticFieldMirroringCompleteCells = false;
         _magneticFieldMirroringNeutralCells = false;
+        _windingLossesModelSet = WindingLossesModelSets::CUSTOM;
         _magneticFieldIncludeFringing = true;
 
         _coilMesherInsideTurnsFactor = 1.05;
@@ -884,6 +885,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_magnetic_field_mirroring_neutral_cells(bool value) {
         _magneticFieldMirroringNeutralCells = value;
+    }
+
+    WindingLossesModelSets Settings::get_winding_losses_model_set() const {
+        return _windingLossesModelSet;
+    }
+    void Settings::set_winding_losses_model_set(WindingLossesModelSets value) {
+        _windingLossesModelSet = value;
     }
 
     bool Settings::get_magnetic_field_include_fringing() const {

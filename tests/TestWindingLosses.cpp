@@ -3,6 +3,7 @@
 #include "support/Painter.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingLosses.h"
+#include "physical_models/WindingLossesModelSets.h"
 #include "physical_models/MagneticField.h"
 #include "support/Utils.h"
 #include "constructive_models/Core.h"
@@ -2819,6 +2820,129 @@ TEST_CASE("Test_Winding_Losses_Model_Enums_Round_Trip_Through_Json", "[physical-
     for (auto value : magic_enum::enum_values<MagneticFieldStrengthFringingEffectModels>()) check(value);
     for (auto value : magic_enum::enum_values<WindingSkinEffectLossesModels>()) check(value);
     for (auto value : magic_enum::enum_values<WindingProximityEffectLossesModels>()) check(value);
+    for (auto value : magic_enum::enum_values<WindingLossesModelSets>()) check(value);
+}
+
+
+// ABT #1304: winding-loss model sets. Each helper runs one fixture the way its winding-loss test does.
+namespace {
+    std::vector<double> model_set_turn_losses(const WindingLossesTestData::TestConfig& config, WindingLossesModels models,
+                                              WindingLossesModelSets settingsSet = WindingLossesModelSets::CUSTOM) {
+        // Built BEFORE the databases are cleared, as runWindingLossesTest does: the fixtures read the catalogues.
+        settings.reset();
+        auto magnetic = config.createMagnetic();
+        clear_databases();
+        settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
+        settings.set_magnetic_field_include_fringing(config.includeFringing);
+        settings.set_winding_losses_model_set(settingsSet);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            200000, config.magnetizingInductance, config.temperature, config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
+        auto output = WindingLosses(models).calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature);
+        std::vector<double> perTurn;
+        const auto turns = output.get_winding_losses_per_turn().value();
+        for (const auto& turn : turns) {
+            perTurn.push_back(WindingLosses::get_total_winding_losses(turn));
+        }
+        perTurn.push_back(output.get_winding_losses());
+        settings.reset();
+        return perTurn;
+    }
+}
+
+// LEGACY_DEFAULT must BE today's automatic behaviour -- bit for bit, per turn -- on every wire type and core family, so
+// selecting it can never move a number. Counter-check: change any entry of the LEGACY_DEFAULT registry row and this fails.
+TEST_CASE("Test_Winding_Losses_Model_Set_Legacy_Default_Is_Todays_Behaviour", "[physical-model][winding-losses][model-sets]") {
+    std::vector<std::pair<std::string, WindingLossesTestData::TestConfig>> fixtures = {
+        {"round", WindingLossesTestData::createOneTurnRoundStackedConfig()},
+        {"litz", WindingLossesTestData::createTenTurnsLitzSinusoidalConfig()},
+        {"rectangular", WindingLossesTestData::createFiveTurnsRectangularUngappedConfig()},
+        {"foil", WindingLossesTestData::createTenTurnsFoilSinusoidalConfig()},
+        {"planar", WindingLossesTestData::createOneTurnPlanarFringingConfig()},
+        {"round toroid", WindingLossesTestData::createTenTurnsRoundToroidalConfig()},
+    };
+    for (auto& [name, config] : fixtures) {
+        INFO(name);
+        WindingLossesModels legacy;
+        legacy.modelSet = WindingLossesModelSets::LEGACY_DEFAULT;
+        auto withSet = model_set_turn_losses(config, legacy);
+        auto automatic = model_set_turn_losses(config, WindingLossesModels());
+        REQUIRE(withSet.size() == automatic.size());
+        for (size_t index = 0; index < withSet.size(); ++index) {
+            CHECK(withSet[index] == automatic[index]);
+        }
+    }
+}
+
+// A named set is exactly its registry row: the same numbers as selecting those models by hand.
+TEST_CASE("Test_Winding_Losses_Model_Set_Neutral_Window_Is_Its_Models", "[physical-model][winding-losses][model-sets]") {
+    std::vector<std::pair<std::string, WindingLossesTestData::TestConfig>> fixtures = {
+        {"rectangular", WindingLossesTestData::createFiveTurnsRectangularUngappedConfig()},
+        {"round", WindingLossesTestData::createOneTurnRoundStackedConfig()},
+    };
+    for (auto& [name, config] : fixtures) {
+        INFO(name);
+        WindingLossesModels named;
+        named.modelSet = WindingLossesModelSets::NEUTRAL_WINDOW;
+        auto withSet = model_set_turn_losses(config, named);
+        const auto& set = get_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW);
+        settings.reset();
+        auto magnetic = config.createMagnetic();
+        auto wireType = magnetic.get_mutable_coil().get_wire_type(0);
+        WindingLossesModels byHand;
+        byHand.magneticFieldStrengthModel = set.fieldModel.value();
+        byHand.magneticFieldStrengthFringingEffectModel = set.fringingModel;
+        byHand.skinEffectModel = set.skinModelPerWireType.at(wireType);
+        byHand.proximityEffectModel = set.proximityModelPerWireType.at(wireType);
+        auto manual = model_set_turn_losses(config, byHand);
+        REQUIRE(withSet.size() == manual.size());
+        for (size_t index = 0; index < withSet.size(); ++index) {
+            CHECK(withSet[index] == manual[index]);
+        }
+    }
+    // The set in Settings is honoured the same way as the one in WindingLossesModels.
+    auto config = WindingLossesTestData::createFiveTurnsRectangularUngappedConfig();
+    WindingLossesModels named;
+    named.modelSet = WindingLossesModelSets::NEUTRAL_WINDOW;
+    CHECK(model_set_turn_losses(config, WindingLossesModels(), WindingLossesModelSets::NEUTRAL_WINDOW) == model_set_turn_losses(config, named));
+}
+
+// A set refuses what it was not built for, and never mixes with individually chosen models.
+TEST_CASE("Test_Winding_Losses_Model_Set_Refuses_What_It_Does_Not_Model", "[physical-model][winding-losses][model-sets]") {
+    WindingLossesModels neutral;
+    neutral.modelSet = WindingLossesModelSets::NEUTRAL_WINDOW;
+    CHECK_THROWS_AS(model_set_turn_losses(WindingLossesTestData::createTenTurnsRoundToroidalConfig(), neutral), ModelNotAvailableException);
+
+    WindingLossesModels wangPlanar;
+    wangPlanar.modelSet = WindingLossesModelSets::WANG_PLANAR;
+    CHECK_THROWS_AS(model_set_turn_losses(WindingLossesTestData::createOneTurnRoundStackedConfig(), wangPlanar), ModelNotAvailableException);
+
+    WindingLossesModels toroid;
+    toroid.modelSet = WindingLossesModelSets::TOROID;
+    CHECK_THROWS_AS(model_set_turn_losses(WindingLossesTestData::createFiveTurnsRectangularUngappedConfig(), toroid), ModelNotAvailableException);
+
+    WindingLossesModels mixed;
+    mixed.modelSet = WindingLossesModelSets::NEUTRAL_WINDOW;
+    mixed.proximityEffectModel = WindingProximityEffectLossesModels::WANG;
+    CHECK_THROWS_AS(model_set_turn_losses(WindingLossesTestData::createFiveTurnsRectangularUngappedConfig(), mixed), InvalidInputException);
+}
+
+// Every set in the enum is registered and documented; CUSTOM is the only one that is not a registry row.
+TEST_CASE("Test_Winding_Losses_Model_Set_Registry_Is_Complete", "[physical-model][winding-losses][model-sets]") {
+    for (auto id : get_all_winding_losses_model_sets()) {
+        if (id == WindingLossesModelSets::CUSTOM) {
+            CHECK_THROWS(get_winding_losses_model_set(id));
+            continue;
+        }
+        INFO(std::string(magic_enum::enum_name(id)));
+        const auto& set = get_winding_losses_model_set(id);
+        CHECK(set.id == id);
+        CHECK(!set.name.empty());
+        CHECK(!set.description.empty());
+        CHECK(!set.validation.empty());
+        CHECK(!set.scopes.empty());
+        CHECK(!set.skinModelPerWireType.empty());
+        CHECK(set.skinModelPerWireType.size() == set.proximityModelPerWireType.size());
+    }
 }
 
 

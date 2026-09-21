@@ -183,6 +183,8 @@ class Settings
         // dipole and converges on square cells: 0.14 % at M = 1, 0.02 % at M = 2 on a 40-turn E 42 inductor. Set by
         // MagneticField for that model only; not a user setting.
         bool _magneticFieldMirroringNeutralCells = false;
+        // ABT #1304: the named winding-loss model set. CUSTOM (default) uses the individually selected models.
+        WindingLossesModelSets _windingLossesModelSet = WindingLossesModelSets::CUSTOM;
         bool _magneticFieldIncludeFringing = true;
 
         double _coilMesherInsideTurnsFactor = 1.05;
@@ -582,6 +584,9 @@ class Settings
 
         bool get_magnetic_field_mirroring_neutral_cells() const;
         void set_magnetic_field_mirroring_neutral_cells(bool value);
+
+        WindingLossesModelSets get_winding_losses_model_set() const;
+        void set_winding_losses_model_set(WindingLossesModelSets value);
 
         size_t get_coil_adviser_maximum_number_wires() const;
         void set_coil_adviser_maximum_number_wires(size_t value);
