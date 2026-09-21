@@ -4748,6 +4748,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     auto recoveredPerWindingSnapshot = _recoveredMarginPerWinding;
     bool explicitlyClearedSnapshot = _marginsExplicitlyCleared;
     _leadSleeveCache.clear();   // ABT #1174: margins and wires may differ from the last wind
+    _turnBendRadiusByTurnName.clear();   // the previous wind's corners belong to the previous layout
     bool ok = wind_inner(proportionPerWinding, pattern, repetitions);
     // ABT #1174: record the lead-sleeve decision on the connections, where MAS carries it, once
     // the wind has placed the margins the decision depends on.
@@ -5763,6 +5764,14 @@ void Coil::name_turns_by_beginning() {
         return;
     }
     auto turns = get_turns_description().value();
+    // The bend radii were recorded under the names the winders gave these stations, and this pass
+    // is the one place those names change. Snapshot them here and re-key at the end, or every
+    // radius would be filed under a name no turn carries any more.
+    std::vector<std::string> namesBeforeRenaming;
+    namesBeforeRenaming.reserve(turns.size());
+    for (const auto& turn : turns) {
+        namesBeforeRenaming.push_back(turn.get_name());
+    }
     // Wind order, per conductor, grouped by the layer each station belongs to. Vector order IS
     // wind order (the winders append), so the grouping only has to preserve it.
     std::map<std::pair<std::string, int64_t>, std::vector<size_t>> byConductor;
@@ -5804,6 +5813,17 @@ void Coil::name_turns_by_beginning() {
             at = end;
         }
     }
+    // Re-key the recorded bend radii onto the names the turns now carry. Built fresh rather than
+    // edited in place: a rename can collide with a name another station still holds, and rebuilding
+    // cannot lose an entry to ordering.
+    std::map<std::string, double> rekeyed;
+    for (size_t index = 0; index < turns.size(); ++index) {
+        auto found = _turnBendRadiusByTurnName.find(namesBeforeRenaming[index]);
+        if (found != _turnBendRadiusByTurnName.end()) {
+            rekeyed[turns[index].get_name()] = found->second;
+        }
+    }
+    _turnBendRadiusByTurnName = rekeyed;
     set_turns_description(turns);
 }
 
@@ -8629,8 +8649,39 @@ WoundColumnFrame Coil::get_wound_column_frame_for_section(const std::string& sec
     return frame;
 }
 
+double Coil::get_turn_bend_radius_in_frame(const WoundColumnFrame& frame, double turnX,
+                                           std::optional<double> turnBendRadius) const {
+    // Deliberately the SAME two operations, in the same order, as the expression this was lifted
+    // out of: a turn laid against the former stands off by radius - columnWidth, and bends around
+    // the former's corner offset by that standoff. Lifting it changes no arithmetic; it only gives
+    // the number a name and one home, so that the length charged, the radius retained and the bend
+    // judged are the same double rather than three re-derivations of it.
+    const double radius = frame.axisX == 0 ? turnX : std::abs(turnX - frame.axisX);
+    const double standoff = radius - frame.columnWidth;
+    return turnBendRadius.value_or(frame.cornerRadius + standoff);
+}
+
+void Coil::record_turn_bend_radius(const std::string& turnName, double chargedBendRadius) {
+    if (std::isnan(chargedBendRadius)) {
+        // get_turn_length_in_frame left it untouched: this frame has no corner for MKF to choose
+        // a radius for (round/oblong column, or the classic 2D model). Recording a number here
+        // would be recording a decision that was never taken.
+        return;
+    }
+    _turnBendRadiusByTurnName[turnName] = chargedBendRadius;
+}
+
+std::optional<double> Coil::get_turn_bend_radius(const std::string& turnName) const {
+    auto found = _turnBendRadiusByTurnName.find(turnName);
+    if (found == _turnBendRadiusByTurnName.end()) {
+        return std::nullopt;
+    }
+    return found->second;
+}
+
 std::optional<double> Coil::get_turn_length_in_frame(const WoundColumnFrame& frame, double turnX,
-                                                     std::optional<double> turnBendRadius) {
+                                                     std::optional<double> turnBendRadius,
+                                                     double* chargedBendRadius) {
     double radius = frame.axisX == 0 ? turnX : std::abs(turnX - frame.axisX);
     double length;
     if (frame.shape == ColumnShape::ROUND) {
@@ -8647,7 +8698,13 @@ std::optional<double> Coil::get_turn_length_in_frame(const WoundColumnFrame& fra
             // turn drawn around a sharp one, by (2 pi - 8) * (bend - standoff) -- about 1,72
             // times the corner radius over the whole turn.
             const double standoff = radius - frame.columnWidth;
-            const double bendRadius = turnBendRadius.value_or(frame.cornerRadius + standoff);
+            const double bendRadius = get_turn_bend_radius_in_frame(frame, turnX, turnBendRadius);
+            if (chargedBendRadius) {
+                // Only here. A round or oblong column has no corner distinct from the turn itself,
+                // and the classic 2D model below chooses no corner radius at all -- writing a
+                // number for either would be inventing a decision MKF never made.
+                *chargedBendRadius = bendRadius;
+            }
             length = 4 * frame.columnDepth + 4 * frame.columnWidth + 8 * standoff +
                      (2 * std::numbers::pi - 8) * bendRadius;
         }
@@ -8784,12 +8841,13 @@ void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
             continue;  // no standardised bend requirement; see WireBend's header
         }
 
-        // The same radius get_turn_length_in_frame draws the corner with, read from the same
-        // frame and the same turn coordinate, so the two can never disagree about the corner.
+        // The same radius get_turn_length_in_frame charged this turn for -- literally the same
+        // function, not a second model of it, so the length, the retained radius and this verdict
+        // cannot disagree about the corner.
         const double turnX = std::abs(turn.get_coordinates()[0]);
         const double radius = frame.axisX == 0 ? turnX : std::abs(turnX - frame.axisX);
         const double standoff = radius - frame.columnWidth;
-        const double bendRadius = frame.cornerRadius + standoff;
+        const double bendRadius = get_turn_bend_radius_in_frame(frame, turnX);
         if (!std::isfinite(bendRadius) || bendRadius <= 0) {
             // A turn sitting on or inside the former's own face: there is no bend to judge, and
             // what is wrong with it is not a bend limit. are_turns_inside_winding_window and the
@@ -9076,12 +9134,17 @@ void Coil::apply_group_window_sides(bool inverse) {
                 // The reflection changed the turn's radius around its column: recompute
                 // the length in the winding frame (absolute coordinates).
                 auto frame = get_wound_column_frame_for_section(turn.get_section().value());
-                auto turnLength = get_turn_length_in_frame(frame, std::abs(turn.get_coordinates()[0]));
+                double chargedBendRadius = std::numeric_limits<double>::quiet_NaN();
+                auto turnLength = get_turn_length_in_frame(frame, std::abs(turn.get_coordinates()[0]),
+                                                           std::nullopt, &chargedBendRadius);
                 if (!turnLength) {
                     throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                         "Negative turn length after placing turn " + turn.get_name() + " around its column");
                 }
                 turn.set_length(turnLength.value());
+                // The reflection re-charged this turn: the radius it is now charged for replaces
+                // whatever the pre-reflection placement recorded.
+                record_turn_bend_radius(turn.get_name(), chargedBendRadius);
             }
             if (transform.mirrorSide) {
                 // A mirrored turn is wound the opposite way around its column.
@@ -12312,14 +12375,17 @@ bool Coil::wind_by_rectangular_turns() {
                         Turn turn;
                         turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
                         turn.set_layer(layer.get_name());
+                        double chargedBendRadius = std::numeric_limits<double>::quiet_NaN();
                         {
-                            auto turnLength = get_turn_length_in_frame(getFrameForSection(layer.get_section().value()), currentTurnCenterWidth);
+                            auto turnLength = get_turn_length_in_frame(getFrameForSection(layer.get_section().value()),
+                                                                       currentTurnCenterWidth, std::nullopt, &chargedBendRadius);
                             if (!turnLength) {
                                 return false;
                             }
                             turn.set_length(turnLength.value());
                         }
                         turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
+                        record_turn_bend_radius(turn.get_name(), chargedBendRadius);
                         turn.set_orientation(TurnOrientation::CLOCKWISE);
                         turn.set_parallel(parallelIndex);
                         turn.set_section(layer.get_section().value());
@@ -12354,14 +12420,17 @@ bool Coil::wind_by_rectangular_turns() {
                             Turn turn;
                             turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
                             turn.set_layer(layer.get_name());
+                            double chargedBendRadius = std::numeric_limits<double>::quiet_NaN();
                             {
-                                auto turnLength = get_turn_length_in_frame(getFrameForSection(layer.get_section().value()), currentTurnCenterWidth);
+                                auto turnLength = get_turn_length_in_frame(getFrameForSection(layer.get_section().value()),
+                                                                           currentTurnCenterWidth, std::nullopt, &chargedBendRadius);
                                 if (!turnLength) {
                                     return false;
                                 }
                                 turn.set_length(turnLength.value());
                             }
                             turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
+                            record_turn_bend_radius(turn.get_name(), chargedBendRadius);
                             turn.set_orientation(TurnOrientation::CLOCKWISE);
                             turn.set_parallel(parallelIndex);
                             turn.set_section(layer.get_section().value());
@@ -14467,11 +14536,14 @@ bool Coil::delimit_and_compact_rectangular_window() {
                                 }
 
                                 {
-                                    auto turnLength = get_turn_length_in_frame(getFrameForSection(sections[sectionIndex].get_name()), turns[turnIndex].get_coordinates()[0]);
+                                    double chargedBendRadius = std::numeric_limits<double>::quiet_NaN();
+                                    auto turnLength = get_turn_length_in_frame(getFrameForSection(sections[sectionIndex].get_name()),
+                                                                               turns[turnIndex].get_coordinates()[0], std::nullopt, &chargedBendRadius);
                                     if (!turnLength) {
                                         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in turn length 1: negative length for turn " + turns[turnIndex].get_name() + " at x: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
                                     }
                                     turns[turnIndex].set_length(turnLength.value());
+                                    record_turn_bend_radius(turns[turnIndex].get_name(), chargedBendRadius);
                                 }
                             }
                         }

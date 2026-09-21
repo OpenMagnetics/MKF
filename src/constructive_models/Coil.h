@@ -465,6 +465,10 @@ class Coil : public MAS::Coil {
         // (the ABT #650 gate declined). Consumers that require blocked geometry — the 3D
         // ConductorBuilder above all — must ASK instead of discovering it as a collision.
         bool _realWindingBlockingApplied = false;
+        // ABT #1290 follow-up: the bend radius each turn's LENGTH was charged for, keyed by the
+        // turn's final name. Written where the length is written, re-keyed when
+        // name_turns_by_beginning renames the stations, cleared at the start of every wind.
+        std::map<std::string, double> _turnBendRadiusByTurnName;
         // ABT #978: set by wind_planar when real winding geometry places planar turns left-justified from the
         // column (pcb.designRules), consumed by wind_by_planar_turns.
         bool _planarLeftJustifyTurns = false;
@@ -584,20 +588,6 @@ class Coil : public MAS::Coil {
         // each lateral winding the outer side of its own — halve and anchor each
         // wound group accordingly so they can never claim overlapping space.
         void split_shared_window_groups(std::vector<Group>& groups, const std::vector<WindingWindowElement>& windingWindows);
-        // Column frame turns of the given section wrap around, in the winding
-        // frame. Window 0 resolves to the historical bobbin column scalars;
-        // other windows resolve their column edge against the core columns
-        // provided via set_core_columns (throws if those are missing).
-        WoundColumnFrame get_wound_column_frame_for_section(const std::string& sectionName);
-        // Length of one turn at radial position turnX wrapped around the given
-        // column frame; nullopt when the geometry is invalid (negative length),
-        // matching the winder's historical soft-failure.
-        // turnBendRadius: the centreline radius the turn's corners actually achieve, when the
-        // caller has solved it (WireBend). Only consulted under the real-winding flag, and only
-        // needed for a turn that LIFTS OFF the former -- a conforming turn's bend is simply the
-        // former's corner plus its standoff, which the frame already carries.
-        std::optional<double> get_turn_length_in_frame(const WoundColumnFrame& frame, double turnX,
-                                                       std::optional<double> turnBendRadius = std::nullopt);
         // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
         // tighter than the wire itself can be bent. The limit is the wire's own, from its
         // requirement standard (WireBend / IEC 60317-0-1 Table 6 for round copper, -0-2 Table 6
@@ -619,6 +609,37 @@ class Coil : public MAS::Coil {
         void apply_group_window_sides(bool inverse = false);
 
     public:
+        // Column frame turns of the given section wrap around, in the winding
+        // frame. Window 0 resolves to the historical bobbin column scalars;
+        // other windows resolve their column edge against the core columns
+        // provided via set_core_columns (throws if those are missing).
+        WoundColumnFrame get_wound_column_frame_for_section(const std::string& sectionName);
+        // Length of one turn at radial position turnX wrapped around the given
+        // column frame; nullopt when the geometry is invalid (negative length),
+        // matching the winder's historical soft-failure.
+        // turnBendRadius: the centreline radius the turn's corners actually achieve, when the
+        // caller has solved it (WireBend). Only consulted under the real-winding flag, and only
+        // needed for a turn that LIFTS OFF the former -- a conforming turn's bend is simply the
+        // former's corner plus its standoff, which the frame already carries.
+        // chargedBendRadius: when non-null and the frame HAS a corner to bend around (a
+        // rectangular/irregular column under real winding), the centreline radius this call
+        // actually charged the length for is written here. That is how a caller records which
+        // radius it paid for instead of having to re-derive it and hope the two agree.
+        std::optional<double> get_turn_length_in_frame(const WoundColumnFrame& frame, double turnX,
+                                                       std::optional<double> turnBendRadius = std::nullopt,
+                                                       double* chargedBendRadius = nullptr);
+        // ABT #1290 follow-up: THE single derivation of a turn's corner radius. The caller's own
+        // solved radius when it has one (WireBend), otherwise the former's corner plus the turn's
+        // standoff. get_turn_length_in_frame charges exactly this number, and what the coil
+        // retains per turn is exactly what this returned, so the charged length, the retained
+        // radius and the bend verdict can never become three models of one corner.
+        double get_turn_bend_radius_in_frame(const WoundColumnFrame& frame, double turnX,
+                                             std::optional<double> turnBendRadius = std::nullopt) const;
+        // The centreline bend radius the wind actually charged this turn for, by turn name.
+        // nullopt when that turn was never charged one: ideal winding, or a round/oblong column,
+        // where the turn has no corner distinct from itself and MKF chooses no corner radius.
+        // Internal to MKF and to anything linking it -- nothing is written to MAS.
+        std::optional<double> get_turn_bend_radius(const std::string& turnName) const;
         // Winding window a section is placed in: the section's explicit
         // windingWindow reference when present, else its group's, else 0. Public:
         // non-member consumers that place per-window geometry against a section
@@ -844,6 +865,9 @@ class Coil : public MAS::Coil {
         // ABT #685: name every station for the turn that BEGINS there, and the station closing a
         // layer "<last turn>_ending". Real winding only; ideal winding has no closing stations.
         void name_turns_by_beginning();
+        // Record the radius a turn's length was charged for. NaN means get_turn_length_in_frame
+        // chose no corner radius for this frame, and nothing is recorded.
+        void record_turn_bend_radius(const std::string& turnName, double chargedBendRadius);
         // Adds the reserved-connection area into the affected section filling factors. Called at the
         // end of wind() when Settings::get_coil_use_real_winding_geometry() is true.
         void apply_connection_reserved_space();
