@@ -770,9 +770,10 @@ SignalDescriptor Inputs::get_differential_mode_choke_magnetizing_current(Operati
     return magnetizingCurrent;
 }
 
-Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency, std::optional<size_t> numberPoints) {
+Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency, std::optional<size_t> numberPoints, std::optional<size_t> maximumNumberPoints) {
     return WaveformProcessor::calculate_sampled_waveform(waveform, frequency, numberPoints,
-                                                         settings.get_inputs_number_points_sampled_waveforms());
+                                                         settings.get_inputs_number_points_sampled_waveforms(),
+                                                         maximumNumberPoints);
 }
 
 double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excitation) {

@@ -943,7 +943,7 @@ Waveform WaveformProcessor::create_waveform(WaveformLabel label, double peakToPe
     return waveform;
 }
 
-Waveform WaveformProcessor::calculate_sampled_waveform(Waveform waveform, double frequency, std::optional<size_t> numberPoints, size_t numberPointsSampledWaveforms) {
+Waveform WaveformProcessor::calculate_sampled_waveform(Waveform waveform, double frequency, std::optional<size_t> numberPoints, size_t numberPointsSampledWaveforms, std::optional<size_t> maximumNumberPoints) {
     std::vector<double> time;
     auto data = waveform.get_data();
 
@@ -993,6 +993,14 @@ Waveform WaveformProcessor::calculate_sampled_waveform(Waveform waveform, double
         }
         else {
             numberPointsForSampling = round_up_size_to_power_of_2(data);
+        }
+        // A waveform denser than requested is sampled at its own resolution, up to
+        // maximumNumberPoints when the caller sets one; never below what was requested.
+        if (maximumNumberPoints && numberPointsForSampling > maximumNumberPoints.value()) {
+            if ((maximumNumberPoints.value() & (maximumNumberPoints.value() - 1)) != 0) {
+                throw std::invalid_argument("maximumNumberPoints must be a power of 2, got " + std::to_string(maximumNumberPoints.value()));
+            }
+            numberPointsForSampling = std::max(numberPoints.value_or(numberPointsSampledWaveforms), maximumNumberPoints.value());
         }
     }
 

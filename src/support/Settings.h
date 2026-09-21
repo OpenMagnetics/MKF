@@ -33,6 +33,7 @@ class Settings
 
         bool _inputsTrimHarmonics = true;
         size_t _inputsNumberPointsSampledWaveforms;
+        size_t _inputsMaximumNumberPointsSampledImportedWaveforms;
 
         bool _magnetizingInductanceIncludeAirInductance = false;
 
@@ -316,6 +317,9 @@ class Settings
 
         size_t get_inputs_number_points_sampled_waveforms() const;
         void set_inputs_number_points_sampled_waveforms(size_t value);
+
+        size_t get_inputs_maximum_number_points_sampled_imported_waveforms() const;
+        void set_inputs_maximum_number_points_sampled_imported_waveforms(size_t value);
 
         bool get_magnetizing_inductance_include_air_inductance() const;
         void set_magnetizing_inductance_include_air_inductance(bool value);

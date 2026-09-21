@@ -56,7 +56,7 @@ class Inputs : public MAS::Inputs {
     static bool can_be_common_mode_choke(OperatingPoint operatingPoint);
     static bool can_be_differential_mode_choke(OperatingPoint operatingPoint, bool isDmcTopology = false);
 
-    static Waveform calculate_sampled_waveform(Waveform waveform, double frequency=0, std::optional<size_t> numberPoints=std::nullopt);
+    static Waveform calculate_sampled_waveform(Waveform waveform, double frequency=0, std::optional<size_t> numberPoints=std::nullopt, std::optional<size_t> maximumNumberPoints=std::nullopt);
     static ProcessedWaveform calculate_processed_data(Waveform waveform, std::optional<double> frequency=std::nullopt, bool includeAdvancedData=true, std::optional<ProcessedWaveform> processed=std::nullopt);
     static ProcessedWaveform calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData=true, std::optional<ProcessedWaveform> processed=std::nullopt);
     static ProcessedWaveform calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData=true, std::optional<ProcessedWaveform> processed=std::nullopt);

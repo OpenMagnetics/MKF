@@ -2232,7 +2232,10 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
     newWaveform.set_time(periodTime);
 
     if (sample) {
-        auto sampledWaveform = Inputs::calculate_sampled_waveform(newWaveform, frequency);
+        // One period of an export can hold hundreds of thousands of points; keep at most the
+        // imported-waveform maximum per period (ABT #1325).
+        auto sampledWaveform = Inputs::calculate_sampled_waveform(newWaveform, frequency, std::nullopt,
+            Settings::GetInstance().get_inputs_maximum_number_points_sampled_imported_waveforms());
         return sampledWaveform;
     }
     else {

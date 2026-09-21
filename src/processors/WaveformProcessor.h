@@ -42,7 +42,8 @@ class WaveformProcessor {
     static MAS::Waveform calculate_sampled_waveform(MAS::Waveform waveform,
                                                     double frequency = 0,
                                                     std::optional<size_t> numberPoints = std::nullopt,
-                                                    size_t numberPointsSampledWaveforms = 128);
+                                                    size_t numberPointsSampledWaveforms = 128,
+                                                    std::optional<size_t> maximumNumberPoints = std::nullopt);
 
     static MAS::Harmonics calculate_harmonics_data(MAS::Waveform waveform,
                                                    double frequency,

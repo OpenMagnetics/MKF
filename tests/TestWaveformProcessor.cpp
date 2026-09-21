@@ -885,3 +885,35 @@ TEST_CASE("Test_Sampled_Waveform_Matches_Full_Search", "[processor][waveform-pro
         REQUIRE_THAT(sampledWaveform.get_data()[i], Catch::Matchers::WithinAbs(expected.value(), 1e-12));
     }
 }
+
+// ABT #1325: a caller can cap how many samples a dense waveform keeps. Capped, the samples are
+// still exact on a piecewise-linear waveform; the cap never goes below what was requested, and a
+// cap that the FFT could not take is refused.
+TEST_CASE("Test_Sampled_Waveform_Capped_At_Maximum_Number_Points", "[processor][waveform-processor][smoke-test]") {
+    const size_t numberPoints = 400000;
+    const double period = 1.0 / 45000;
+    std::vector<double> time(numberPoints);
+    std::vector<double> data(numberPoints);
+    for (size_t i = 0; i < numberPoints; ++i) {
+        time[i] = period * static_cast<double>(i) / static_cast<double>(numberPoints - 1);
+        double phase = time[i] / period;
+        data[i] = phase < 0.4? 2 + phase / 0.4 : 3 - (phase - 0.4) / 0.6;
+    }
+    Waveform waveform;
+    waveform.set_time(time);
+    waveform.set_data(data);
+
+    auto capped = WaveformProcessor::calculate_sampled_waveform(waveform, 45000, std::nullopt, 128, 8192);
+    REQUIRE(capped.get_data().size() == 8192);
+    auto cappedTime = capped.get_time().value();
+    for (size_t i = 0; i < cappedTime.size(); i += 97) {
+        double phase = cappedTime[i] / period;
+        double expected = phase < 0.4? 2 + phase / 0.4 : 3 - (phase - 0.4) / 0.6;
+        CHECK_THAT(capped.get_data()[i], Catch::Matchers::WithinAbs(expected, 1e-6));
+    }
+
+    auto requestedAboveCap = WaveformProcessor::calculate_sampled_waveform(waveform, 45000, 16384, 128, 8192);
+    REQUIRE(requestedAboveCap.get_data().size() == 16384);
+
+    REQUIRE_THROWS_AS(WaveformProcessor::calculate_sampled_waveform(waveform, 45000, std::nullopt, 128, 6000), std::invalid_argument);
+}

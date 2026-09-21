@@ -67,6 +67,11 @@ struct Constants {
                                                                   "#ffa317"};
 
     const size_t numberPointsSampledWaveforms = 128;
+    // Samples per period kept when a circuit-simulator export is imported. The sampler keeps
+    // every point a waveform arrives with, so a fine LTspice time step gave 524288-sample signals
+    // and every later calculation crawled (ABT #1325). 8192 samples resolve 2.7 ns at 45 kHz and
+    // 4096 harmonics, far past what any loss model reads. A power of 2: the FFT needs one.
+    const size_t maximumNumberPointsSampledImportedWaveforms = 8192;
     const double minimumDistributedFringingFactor = 1.05;
     const double maximumDistributedFringingFactor = 1.3;
     const double initialGapLengthForSearching = 0.001;

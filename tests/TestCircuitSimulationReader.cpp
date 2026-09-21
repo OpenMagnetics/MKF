@@ -7,6 +7,7 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include "processors/Inputs.h"
 #include "support/Painter.h"
+#include "support/Settings.h"
 #include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -14,6 +15,7 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include <numbers>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -944,4 +946,52 @@ TEST_CASE("Test_Import_Dense_Ltspice_Export_Is_Not_Quadratic", "[processor][circ
     CHECK_THAT(processed.get_peak_to_peak().value(), Catch::Matchers::WithinAbs(1, 1e-3));
     CHECK_THAT(processed.get_average().value(), Catch::Matchers::WithinAbs(2.5, 1e-3));
     REQUIRE(excitation.get_voltage());
+}
+
+// ABT #1325: the import keeps at most the imported-waveform maximum per period (8192), and what it
+// keeps describes the signal as the full resolution does. Before the cap a 200k-point period came
+// back as 262144 samples per signal, and every later calculation in the web tool crawled.
+TEST_CASE("Test_Import_Dense_Export_Keeps_At_Most_The_Imported_Maximum", "[processor][circuit-simulation-reader][ltspice]") {
+    const double frequency = 45000;
+    const double period = 1 / frequency;
+    const size_t pointsPerPeriod = 200000;
+    std::ostringstream csv;
+    csv.precision(15);
+    csv << "time\tI(L1)\tV(p1,p2)\n";
+    for (size_t i = 0; i < pointsPerPeriod * 2; ++i) {
+        double time = 2 * period * static_cast<double>(i) / static_cast<double>(pointsPerPeriod * 2 - 1);
+        double phase = std::fmod(time, period) / period;
+        double current = phase < 0.4? 2 + phase / 0.4 : 3 - (phase - 0.4) / 0.6;
+        double voltage = (phase < 0.4? 24 : -16) + 0.5 * std::sin(2 * std::numbers::pi * 3e6 * time);
+        csv << time << "\t" << current << "\t" << voltage << "\n";
+    }
+    std::vector<std::map<std::string, std::string>> mapColumnNames = {{{"time", "time"}, {"current", "I(L1)"}, {"voltage", "V(p1,p2)"}}};
+    auto extract = [&]() {
+        CircuitSimulationReader reader(csv.str(), true);
+        auto operatingPoint = reader.extract_operating_point(1, frequency, mapColumnNames);
+        return OpenMagnetics::Inputs::process_operating_point(operatingPoint, 100e-6).get_excitations_per_winding()[0];
+    };
+
+    auto& settings = Settings::GetInstance();
+    REQUIRE(settings.get_inputs_maximum_number_points_sampled_imported_waveforms() == 8192);
+    auto capped = extract();
+    settings.set_inputs_maximum_number_points_sampled_imported_waveforms(262144);
+    auto full = extract();
+    settings.reset();
+
+    REQUIRE(capped.get_current()->get_waveform()->get_data().size() == 8192);
+    REQUIRE(capped.get_voltage()->get_waveform()->get_data().size() == 8192);
+    REQUIRE(full.get_current()->get_waveform()->get_data().size() == 262144);
+
+    for (auto signal : {std::string("current"), std::string("voltage")}) {
+        auto a = (signal == "current"? capped.get_current() : capped.get_voltage())->get_processed().value();
+        auto b = (signal == "current"? full.get_current() : full.get_voltage())->get_processed().value();
+        INFO(signal);
+        CHECK_THAT(a.get_rms().value(), Catch::Matchers::WithinRel(b.get_rms().value(), 1e-3));
+        CHECK_THAT(a.get_peak_to_peak().value(), Catch::Matchers::WithinRel(b.get_peak_to_peak().value(), 1e-3));
+        CHECK_THAT(a.get_average().value(), Catch::Matchers::WithinAbs(b.get_average().value(), 1e-3 * b.get_rms().value()));
+        auto ha = (signal == "current"? capped.get_current() : capped.get_voltage())->get_harmonics().value();
+        auto hb = (signal == "current"? full.get_current() : full.get_voltage())->get_harmonics().value();
+        CHECK_THAT(ha.get_amplitudes()[1], Catch::Matchers::WithinRel(hb.get_amplitudes()[1], 1e-3));
+    }
 }

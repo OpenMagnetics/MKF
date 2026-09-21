@@ -31,6 +31,7 @@ namespace OpenMagnetics {
 
     Settings::Settings() {
         _inputsNumberPointsSampledWaveforms = constants.numberPointsSampledWaveforms;
+        _inputsMaximumNumberPointsSampledImportedWaveforms = constants.maximumNumberPointsSampledImportedWaveforms;
         _painterMirroringDimension = defaults.magneticFieldMirroringDimension;
         _magneticFieldMirroringDimension = defaults.magneticFieldMirroringDimension;
         _harmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold;
@@ -79,6 +80,7 @@ namespace OpenMagnetics {
         _inputsTrimHarmonics = true;
 
         _inputsNumberPointsSampledWaveforms = Constants().numberPointsSampledWaveforms;
+        _inputsMaximumNumberPointsSampledImportedWaveforms = Constants().maximumNumberPointsSampledImportedWaveforms;
 
         _magnetizingInductanceIncludeAirInductance = false;
 
@@ -271,6 +273,16 @@ namespace OpenMagnetics {
     }
     void Settings::set_inputs_number_points_sampled_waveforms(size_t value) {
         _inputsNumberPointsSampledWaveforms = value;
+    }
+
+    size_t Settings::get_inputs_maximum_number_points_sampled_imported_waveforms() const {
+        return _inputsMaximumNumberPointsSampledImportedWaveforms;
+    }
+    void Settings::set_inputs_maximum_number_points_sampled_imported_waveforms(size_t value) {
+        if (value < 2 || (value & (value - 1)) != 0) {
+            throw std::invalid_argument("The maximum number of samples per period of an imported waveform must be a power of 2 (the FFT needs one), got " + std::to_string(value));
+        }
+        _inputsMaximumNumberPointsSampledImportedWaveforms = value;
     }
 
     bool Settings::get_magnetizing_inductance_include_air_inductance() const {
