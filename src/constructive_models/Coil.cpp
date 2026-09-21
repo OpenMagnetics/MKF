@@ -15257,41 +15257,26 @@ void Coil::try_rewind() {
         for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
             for (auto & winding : sections[sectionIndex].get_partial_windings()) {
                 if (winding.get_winding() == get_functional_description()[windingIndex].get_name()) {
-                    double sectionSpace = 0;
-                    if (sectionOrientation == WindingOrientation::OVERLAPPING) {
-                        sectionSpace += sections[sectionIndex].get_dimensions()[0];
-
-                        // We need to add half the insulation space after it, in case there is
-                        if (sectionIndex + 1 < sections.size()) {
-                            if (sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
-                                // throw std::runtime_error("Consecutive layer to CONDUCTION must always be INSULATION");
-                                if (sectionIndex == 0) {
-                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[0] / 2;
-                                }
-                                else if (sectionIndex == sections.size() - 2) {
-                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[0] * 3 / 2;
-                                }
-                                else {
-                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[0];
-                                }
-                            }
-                        }
+                    // ABT #1322: the space this section had in the plan is its own extent plus
+                    // exactly what add_insulation_to_sections carved out of it -- half of each
+                    // insulation between it and a neighbouring conduction section. The insulation
+                    // that closes the pattern (last section back to the first, the entry trailing
+                    // the list) is appended AFTER the proportioned space, carved from no section,
+                    // so no section may claim it: it is already out of the budget through
+                    // windingWindowRemainingRestrictiveDimensionAccordingToSections. The previous
+                    // rule gave every section the whole insulation after it, the first half of it
+                    // and the second-to-last entry 3/2 of the closing one; that equals the carving
+                    // only when every interface carries the same insulation, and otherwise
+                    // over-claims the window by half the difference -- 12.5 um on 750370900_00
+                    // (PRI, PRI, SEC, SEC: no insulation between same-winding sections, 25 um tape
+                    // at PRI-SEC and SEC-PRI), proportions summing to 1.004825.
+                    const size_t restrictiveAxis = sectionOrientation == WindingOrientation::OVERLAPPING ? 0 : 1;
+                    double sectionSpace = sections[sectionIndex].get_dimensions()[restrictiveAxis];
+                    if (sectionIndex >= 2 && sections[sectionIndex - 1].get_type() == ElectricalType::INSULATION) {
+                        sectionSpace += sections[sectionIndex - 1].get_dimensions()[restrictiveAxis] / 2;
                     }
-                    else {
-                        sectionSpace += sections[sectionIndex].get_dimensions()[1];
-
-                        // We need to add half the insulation space after it, in case there is
-                        if (sectionIndex + 1 < sections.size()) {
-                            if (sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
-                                // throw std::runtime_error("Consecutive layer to CONDUCTION must always be INSULATION");
-                                if (sectionIndex == 0 || sectionIndex == sections.size() - 2) {
-                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[1] / 2;
-                                }
-                                else {
-                                    sectionSpace += sections[sectionIndex + 1].get_dimensions()[1];
-                                }
-                            }
-                        }
+                    if (sectionIndex + 2 < sections.size() && sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
+                        sectionSpace += sections[sectionIndex + 1].get_dimensions()[restrictiveAxis] / 2;
                     }
                     spacePerSectionThisWinding.push_back(sectionSpace);
 

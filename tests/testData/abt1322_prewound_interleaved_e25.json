@@ -1,0 +1,442 @@
+{
+ "core": {
+  "distributorsInfo": null,
+  "functionalDescription": {
+   "coating": null,
+   "gapping": [
+    {
+     "length": 0.0019,
+     "type": "subtractive"
+    },
+    {
+     "length": 5e-06,
+     "type": "residual"
+    },
+    {
+     "length": 5e-06,
+     "type": "residual"
+    }
+   ],
+   "material": "TP4A",
+   "numberStacks": 1,
+   "shape": "E 25/13/7",
+   "type": "two-piece set"
+  },
+  "manufacturerInfo": {
+   "cost": null,
+   "datasheetUrl": null,
+   "description": null,
+   "family": null,
+   "name": "Midcom internal",
+   "orderCode": null,
+   "reference": "150-2039",
+   "status": null
+  },
+  "name": "E 25/13/7"
+ },
+ "coil": {
+  "bobbin": {
+   "distributorsInfo": null,
+   "functionalDescription": null,
+   "manufacturerInfo": null,
+   "name": null,
+   "processedDescription": {
+    "columnDepth": 0.0063342,
+    "columnShape": "rectangular",
+    "columnThickness": 0.0027342,
+    "columnWidth": 0.006359200000000001,
+    "coordinates": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "pins": null,
+    "wallThickness": 0.0066767,
+    "windingWindows": [
+     {
+      "angle": null,
+      "area": 1.1779331279999999e-05,
+      "coordinates": [
+       0.007654600000000001,
+       0.0,
+       0.0
+      ],
+      "height": 0.0045466,
+      "radialHeight": null,
+      "sectionsAlignment": null,
+      "sectionsOrientation": null,
+      "shape": "rectangular",
+      "width": 0.0025908
+     }
+    ]
+   }
+  },
+  "functionalDescription": [
+   {
+    "connections": [
+     {
+      "direction": "input",
+      "length": null,
+      "metric": null,
+      "pinName": "1",
+      "type": "Pin"
+     },
+     {
+      "direction": "output",
+      "length": null,
+      "metric": null,
+      "pinName": "2",
+      "type": "Pin"
+     },
+     {
+      "direction": "input",
+      "length": null,
+      "metric": null,
+      "pinName": "4",
+      "type": "Pin"
+     },
+     {
+      "direction": "output",
+      "length": null,
+      "metric": null,
+      "pinName": "5",
+      "type": "Pin"
+     }
+    ],
+    "isolationSide": "primary",
+    "name": "PRI",
+    "numberParallels": 2,
+    "numberTurns": 12,
+    "wire": "Round 24.0 - Heavy Build"
+   },
+   {
+    "connections": [
+     {
+      "direction": "input",
+      "length": null,
+      "metric": null,
+      "pinName": "10",
+      "type": "Pin"
+     },
+     {
+      "direction": "output",
+      "length": null,
+      "metric": null,
+      "pinName": "9",
+      "type": "Pin"
+     },
+     {
+      "direction": "input",
+      "length": null,
+      "metric": null,
+      "pinName": "7",
+      "type": "Pin"
+     },
+     {
+      "direction": "output",
+      "length": null,
+      "metric": null,
+      "pinName": "6",
+      "type": "Pin"
+     }
+    ],
+    "isolationSide": "secondary",
+    "name": "SEC",
+    "numberParallels": 2,
+    "numberTurns": 24,
+    "wire": "Round 27.0 - Heavy Build"
+   }
+  ],
+  "groupsDescription": null,
+  "sectionsDescription": [
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0069242,
+     0.0
+    ],
+    "dimensions": [
+     0.00113,
+     0.00339
+    ],
+    "fillingFactor": 0.780803171283259,
+    "group": "Default group",
+    "layersAlignment": "centered",
+    "layersOrientation": "overlapping",
+    "margin": {
+     "bottomOrRightWidth": 0.0,
+     "insulationMaterial": null,
+     "layerThickness": 9.236373137297e-312,
+     "numberLayers": 0,
+     "topOrLeftWidth": 0.0
+    },
+    "name": "PRI section 0",
+    "numberLayers": 2.0,
+    "partialWindings": [
+     {
+      "connections": [
+       {
+        "direction": "input",
+        "length": null,
+        "metric": null,
+        "pinName": "1",
+        "type": "Pin"
+       },
+       {
+        "direction": "output",
+        "length": null,
+        "metric": null,
+        "pinName": "2",
+        "type": "Pin"
+       }
+      ],
+      "parallelsProportion": [
+       1.0,
+       0.0
+      ],
+      "winding": "PRI"
+     }
+    ],
+    "type": "conduction",
+    "windingStyle": "windByConsecutiveTurns"
+   },
+   {
+    "coordinateSystem": null,
+    "coordinates": [
+     0.007520949999999999,
+     0.0
+    ],
+    "dimensions": [
+     6.35e-05,
+     0.0045466
+    ],
+    "fillingFactor": 1.0,
+    "group": null,
+    "layersAlignment": null,
+    "layersOrientation": "overlapping",
+    "margin": null,
+    "name": "Insulation between PRI and PRI section 0",
+    "numberLayers": 1.0,
+    "partialWindings": [],
+    "type": "insulation",
+    "windingStyle": null
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.008117699999999999,
+     0.0
+    ],
+    "dimensions": [
+     0.00113,
+     0.00339
+    ],
+    "fillingFactor": 0.780803171283259,
+    "group": "Default group",
+    "layersAlignment": "centered",
+    "layersOrientation": "overlapping",
+    "margin": {
+     "bottomOrRightWidth": 0.0,
+     "insulationMaterial": null,
+     "layerThickness": 9.236373137297e-312,
+     "numberLayers": 0,
+     "topOrLeftWidth": 0.0
+    },
+    "name": "PRI section 1",
+    "numberLayers": 2.0,
+    "partialWindings": [
+     {
+      "connections": [
+       {
+        "direction": "input",
+        "length": null,
+        "metric": null,
+        "pinName": "4",
+        "type": "Pin"
+       },
+       {
+        "direction": "output",
+        "length": null,
+        "metric": null,
+        "pinName": "5",
+        "type": "Pin"
+       }
+      ],
+      "parallelsProportion": [
+       0.0,
+       1.0
+      ],
+      "winding": "PRI"
+     }
+    ],
+    "type": "conduction",
+    "windingStyle": "windByConsecutiveTurns"
+   },
+   {
+    "coordinateSystem": null,
+    "coordinates": [
+     0.008682699999999998,
+     0.0
+    ],
+    "dimensions": [
+     0.0,
+     0.0045466
+    ],
+    "fillingFactor": 1.0,
+    "group": null,
+    "layersAlignment": null,
+    "layersOrientation": "overlapping",
+    "margin": null,
+    "name": "Insulation between PRI and SEC section 1",
+    "numberLayers": 0.0,
+    "partialWindings": [],
+    "type": "insulation",
+    "windingStyle": null
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.009294699999999998,
+     0.0
+    ],
+    "dimensions": [
+     0.0012239999999999998,
+     0.0032639999999999995
+    ],
+    "fillingFactor": 0.6766039516111215,
+    "group": "Default group",
+    "layersAlignment": "centered",
+    "layersOrientation": "overlapping",
+    "margin": {
+     "bottomOrRightWidth": 0.0,
+     "insulationMaterial": null,
+     "layerThickness": 9.236373137297e-312,
+     "numberLayers": 0,
+     "topOrLeftWidth": 0.0
+    },
+    "name": "SEC section 2",
+    "numberLayers": 3.0,
+    "partialWindings": [
+     {
+      "connections": [
+       {
+        "direction": "input",
+        "length": null,
+        "metric": null,
+        "pinName": "10",
+        "type": "Pin"
+       },
+       {
+        "direction": "output",
+        "length": null,
+        "metric": null,
+        "pinName": "9",
+        "type": "Pin"
+       }
+      ],
+      "parallelsProportion": [
+       1.0,
+       0.0
+      ],
+      "winding": "SEC"
+     }
+    ],
+    "type": "conduction",
+    "windingStyle": "windByConsecutiveTurns"
+   },
+   {
+    "coordinateSystem": null,
+    "coordinates": [
+     0.009906699999999997,
+     0.0
+    ],
+    "dimensions": [
+     0.0,
+     0.0045466
+    ],
+    "fillingFactor": 1.0,
+    "group": null,
+    "layersAlignment": null,
+    "layersOrientation": "overlapping",
+    "margin": null,
+    "name": "Insulation between SEC and SEC section 2",
+    "numberLayers": 0.0,
+    "partialWindings": [],
+    "type": "insulation",
+    "windingStyle": null
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.010518699999999997,
+     0.0
+    ],
+    "dimensions": [
+     0.0012239999999999998,
+     0.0032639999999999995
+    ],
+    "fillingFactor": 0.6766039516111215,
+    "group": "Default group",
+    "layersAlignment": "centered",
+    "layersOrientation": "overlapping",
+    "margin": {
+     "bottomOrRightWidth": 0.0,
+     "insulationMaterial": null,
+     "layerThickness": 9.236373137297e-312,
+     "numberLayers": 0,
+     "topOrLeftWidth": 0.0
+    },
+    "name": "SEC section 3",
+    "numberLayers": 3.0,
+    "partialWindings": [
+     {
+      "connections": [
+       {
+        "direction": "input",
+        "length": null,
+        "metric": null,
+        "pinName": "7",
+        "type": "Pin"
+       },
+       {
+        "direction": "output",
+        "length": null,
+        "metric": null,
+        "pinName": "6",
+        "type": "Pin"
+       }
+      ],
+      "parallelsProportion": [
+       0.0,
+       1.0
+      ],
+      "winding": "SEC"
+     }
+    ],
+    "type": "conduction",
+    "windingStyle": "windByConsecutiveTurns"
+   },
+   {
+    "coordinateSystem": null,
+    "coordinates": [
+     0.011130699999999997,
+     0.0
+    ],
+    "dimensions": [
+     0.0,
+     0.0045466
+    ],
+    "fillingFactor": 1.0,
+    "group": null,
+    "layersAlignment": null,
+    "layersOrientation": "overlapping",
+    "margin": null,
+    "name": "Final insulation after SEC section 3",
+    "numberLayers": 0.0,
+    "partialWindings": [],
+    "type": "insulation",
+    "windingStyle": null
+   }
+  ]
+ }
+}

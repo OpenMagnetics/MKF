@@ -15932,6 +15932,53 @@ TEST_CASE("Test_Wind_Proportions_Over_One_Window_Throw_And_Valid_Split_Winds_Sec
     settings.reset();
 }
 
+// ABT #1322: El Magnetic's catalogue record for 750370900_00 (E 25/13/7, PRI 12x2 Round 24 HB,
+// SEC 24x2 Round 27 HB) arrives with a sectionsDescription and no turns, so magnetic_autocomplete
+// re-winds it in the stored order PRI, PRI, SEC, SEC. The first wind does not fit and the
+// re-proportioning step recovered each winding's space from its sections -- and handed
+// get_ordered_sections proportions summing to 1.004825, which the ABT #1060 check refuses. The
+// load threw, and because the catalogue load is atomic one record stopped the whole catalogue.
+TEST_CASE("Test_Wind_Reproportioned_Interleaved_Sections_Do_Not_Overclaim_The_Window", "[constructive-model][coil][abt-1322]") {
+    clear_databases();
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1322_prewound_interleaved_e25.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    json magneticJson = json::parse(file);
+    OpenMagnetics::Magnetic magnetic(magneticJson);
+    REQUIRE(magnetic.get_coil().get_sections_description());
+    REQUIRE(!magnetic.get_coil().get_turns_description());
+
+    OpenMagnetics::Magnetic autocompleted;
+    REQUIRE_NOTHROW(autocompleted = OpenMagnetics::magnetic_autocomplete(magnetic));
+    REQUIRE(autocompleted.get_coil().get_turns_description());
+    // The case #1060's tests never covered: the interfaces do NOT all carry the same insulation.
+    // PRI|PRI and SEC|SEC have none, PRI|SEC and the closing SEC|PRI carry tape, so the old
+    // "whole insulation after each section, 3/2 of the closing one" bookkeeping stopped matching
+    // what add_insulation_to_sections carves.
+    auto coil = autocompleted.get_coil();
+    auto sections = coil.get_sections_description().value();
+    std::vector<std::string> kinds;
+    for (auto& section : sections) {
+        kinds.push_back(section.get_type() == ElectricalType::CONDUCTION ? section.get_partial_windings()[0].get_winding() : "INS");
+    }
+    REQUIRE(kinds == std::vector<std::string>{"PRI", "PRI", "INS", "SEC", "SEC", "INS"});
+    CHECK(sections[2].get_dimensions()[0] > 0);
+    CHECK(sections[5].get_dimensions()[0] > 0);
+
+    // Whatever the proportions, the re-wound stack has to fit the window width it was given: the
+    // sections and insulations stacked across it may not add up to more than the window.
+    auto bobbin = coil.resolve_bobbin();
+    double windowWidth = bobbin.get_processed_description()->get_winding_windows()[0].get_width().value();
+    double stackedWidth = 0;
+    for (auto& section : sections) {
+        stackedWidth += section.get_dimensions()[0];
+    }
+    UNSCOPED_INFO("stacked " << stackedWidth << " m in a " << windowWidth << " m window");
+    CHECK(stackedWidth <= windowWidth);
+    settings.reset();
+}
+
 // A ONE-TURN WINDING IS AN OMEGA (Alf, 2026-09-07): "one turn wire, independently of its
 // composition ... should be a U or Omega symbol, just one crossing and the terminal, side by
 // side, on the same height." Field report on an RM 10/13 (17x2 primary of 0.4 mm, one turn of
