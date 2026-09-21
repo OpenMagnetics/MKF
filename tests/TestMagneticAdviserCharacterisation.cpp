@@ -29,6 +29,9 @@
 //      --benchmark-samples 3 --benchmark-warmup-time 0
 // =============================================================================
 
+#include <filesystem>
+#include <fstream>
+#include <source_location>
 #include <cstdint>
 #include <iomanip>
 #include <sstream>
@@ -43,6 +46,7 @@
 #include "constructive_models/Mas.h"
 #include "processors/Inputs.h"
 #include "support/Settings.h"
+#include "support/Utils.h"
 
 #include "TestingUtils.h"
 
@@ -220,6 +224,39 @@ const std::vector<MagneticEntry> kTopThreeWinding = {
 // =============================================================================
 // CHARACTERISATION SNAPSHOT
 // =============================================================================
+
+// ABT #1328: El Magnetic's /v1/design/custom with coreMode "available cores" on an ordinary buck
+// inductor (11 V -> 5 V, 10 W, 100 kHz, ripple 0.4; inputs from its Kirchhoff buck wizard) grew
+// past 16 GB in PyOpenMagnetics, whose build left cores_stock.ndjson out and so advised over all
+// 18943 catalogue cores. Under the default stock setting the adviser works on the 1573-core stock
+// catalogue: a few hundred MB and a few seconds here.
+TEST_CASE("MagneticAdviser available cores advises a buck inductor from the stock catalogue",
+          "[adviser][magnetic-adviser][available-cores][abt-1328]") {
+    settings.reset();
+    clear_databases();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1328_buck_inductor_inputs.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    OpenMagnetics::Inputs inputs(nlohmann::json::parse(file));
+
+    OpenMagnetics::MagneticAdviser adviser;
+    adviser.set_core_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto results = adviser.get_advised_magnetic(inputs, 3);
+    CHECK(results.size() == 3);
+
+    auto stockPath = std::filesystem::path(__FILE__).parent_path().parent_path() / "MAS" / "data" / "cores_stock.ndjson";
+    std::ifstream stockFile(stockPath);
+    REQUIRE(stockFile.is_open());
+    size_t stockRecords = 0;
+    std::string line;
+    while (std::getline(stockFile, line)) {
+        if (!line.empty()) {
+            stockRecords++;
+        }
+    }
+    CHECK(coreDatabase.size() == stockRecords);
+    settings.reset();
+}
 
 TEST_CASE("MagneticAdviser 3-winding end-to-end top-3 snapshot",
           "[adviser][magnetic-adviser][characterisation][heavy][end-to-end]") {

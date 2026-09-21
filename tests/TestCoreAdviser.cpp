@@ -14,6 +14,7 @@
 #include <cmath>
 #include <chrono>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -388,6 +389,38 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Load_Internally_Only_Stock",
 
     REQUIRE(coreDatabase.size() < 3000);
     REQUIRE(masMagnetics.size() > 0);
+    settings.reset();
+}
+
+// ABT #1328: useOnlyCoresInStock (the default) used to mean "the stock catalogue if this build
+// embeds it, otherwise the full one". PyOpenMagnetics lists its own MAS resources and left
+// cores_stock.ndjson out, so every PyOM process silently loaded all 18943 cores (~2.4 GB) under a
+// setting that says 1573, and an available-cores MagneticAdviser run grew past 16 GB. A build
+// without the stock catalogue must refuse the setting, not quietly ignore it.
+TEST_CASE("Test_Cores_In_Stock_Without_The_Stock_Catalogue_Is_Refused_Not_Replaced_By_The_Full_One", "[adviser][core-adviser][available-cores][abt-1328]") {
+    REQUIRE_THROWS_AS(select_embedded_cores_catalogue(true, false), InvalidInputException);
+    REQUIRE_THROWS_WITH(select_embedded_cores_catalogue(true, false), Catch::Matchers::ContainsSubstring("cores_stock.ndjson"));
+    CHECK(select_embedded_cores_catalogue(true, true) == "MAS/data/cores_stock.ndjson");
+    CHECK(select_embedded_cores_catalogue(false, true) == "MAS/data/cores.ndjson");
+    CHECK(select_embedded_cores_catalogue(false, false) == "MAS/data/cores.ndjson");
+
+    // And this build, which embeds it, loads exactly the stock catalogue under the default setting.
+    settings.reset();
+    clear_databases();
+    REQUIRE(settings.get_use_only_cores_in_stock());
+    load_cores();
+    auto stockPath = std::filesystem::path(__FILE__).parent_path().parent_path() / "MAS" / "data" / "cores_stock.ndjson";
+    std::ifstream stockFile(stockPath);
+    REQUIRE(stockFile.is_open());
+    size_t stockRecords = 0;
+    std::string line;
+    while (std::getline(stockFile, line)) {
+        if (!line.empty()) {
+            stockRecords++;
+        }
+    }
+    REQUIRE(stockRecords > 0);
+    CHECK(coreDatabase.size() == stockRecords);
     settings.reset();
 }
 

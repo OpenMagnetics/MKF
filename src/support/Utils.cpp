@@ -238,6 +238,27 @@ void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {
     logger.log(level, module.empty() ? "OpenMagnetics" : module, entry);
 }
 
+// ABT #1328: with useOnlyCoresInStock set, the stock catalogue is the only acceptable answer. The
+// choice used to be "stock if embedded, otherwise the full catalogue", so a build whose resource
+// list left cores_stock.ndjson out (PyOpenMagnetics and MKFNet list their own files) silently
+// loaded all of cores.ndjson under a setting that says the opposite: 18943 cores instead of 1573,
+// each with its geometrical description, ~2.4 GB resident before any advising, and an
+// available-cores MagneticAdviser run that grew past 16 GB. Refuse instead.
+std::string select_embedded_cores_catalogue(bool useOnlyCoresInStock, bool stockCatalogueEmbedded) {
+    if (!useOnlyCoresInStock) {
+        return "MAS/data/cores.ndjson";
+    }
+    if (!stockCatalogueEmbedded) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "settings.useOnlyCoresInStock is set, but this build does not embed MAS/data/cores_stock.ndjson. "
+            "Loading MAS/data/cores.ndjson instead would ignore the setting and hand every consumer the full "
+            "core catalogue. Embed cores_stock.ndjson in the build's MAS resources (MKF's own CMake does; a "
+            "binding with its own resource list must add it), or set useOnlyCoresInStock to false to ask for "
+            "the full catalogue explicitly.");
+    }
+    return "MAS/data/cores_stock.ndjson";
+}
+
 void load_cores(std::optional<std::string> fileToLoad) {
     throw_if_databases_frozen("load_cores");
     bool includeToroidalCores = settings.get_use_toroidal_cores();
@@ -245,9 +266,11 @@ void load_cores(std::optional<std::string> fileToLoad) {
     bool useOnlyCoresInStock = settings.get_use_only_cores_in_stock();
 
     auto fs = cmrc::data::get_filesystem();
-    const bool stockPath = (useOnlyCoresInStock && fs.exists("MAS/data/cores_stock.ndjson"));
-    const std::string resourcePath = stockPath ? "MAS/data/cores_stock.ndjson"
-                                               : "MAS/data/cores.ndjson";
+    const bool stockCatalogueEmbedded = fs.exists("MAS/data/cores_stock.ndjson");
+    const bool stockPath = useOnlyCoresInStock && stockCatalogueEmbedded;
+    // A caller-supplied file replaces the embedded catalogue, so only the embedded choice is checked.
+    const std::string resourcePath = fileToLoad ? std::string()
+                                                : select_embedded_cores_catalogue(useOnlyCoresInStock, stockCatalogueEmbedded);
 
     // Both branches now use the same NDJSON streaming loader and filter on
     // parse, instead of the previous code that std::regex_replace'd the

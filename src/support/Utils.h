@@ -185,6 +185,9 @@ void clear_loaded_cores();
 void clear_loaded_core_shapes();
 void clear_databases();
 void load_cores(std::optional<std::string> fileToLoad=std::nullopt);
+// ABT #1328: the embedded catalogue load_cores() reads. Throws when useOnlyCoresInStock is set and
+// the stock catalogue is not embedded, instead of falling back to the full one.
+std::string select_embedded_cores_catalogue(bool useOnlyCoresInStock, bool stockCatalogueEmbedded);
 void load_core_materials(std::optional<std::string> fileToLoad=std::nullopt);
 void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManufacturer = true);
 void load_core_shapes(bool withAliases=true, std::optional<std::string> fileToLoad=std::nullopt);
