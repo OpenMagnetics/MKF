@@ -25,6 +25,18 @@ enum class CoilMesherModels : int {
     CENTER
 };
 
+// ABT #1304: a uniform current sheet on a straight segment of the winding-window boundary, per unit depth. It is
+// the equivalent source of an MMF drop on that boundary -- the mouth of a gap, or the ferrite along a wall -- and
+// every lattice image of it is returned as its own sheet with its image factor already applied.
+struct WindowWallSheet {
+    std::vector<double> start;
+    std::vector<double> end;
+    // Total current of the sheet per ampere-turn of NET winding MMF in the window, sign included. The sheets of one
+    // window (images excluded) sum to exactly -1: they return the winding's MMF, which is what makes each lattice
+    // cell neutral.
+    double current;
+};
+
 
 // The inducing mesh of a coil together with the PHASE of every winding's current at every
 // meshed harmonic (MAS excitation convention, 2026-09-24).
@@ -82,6 +94,12 @@ class CoilMesher {
     std::vector<Field> generate_mesh_inducing_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt);
     std::vector<Field> generate_mesh_induced_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold);
     std::vector<size_t> get_common_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold);
+    // ABT #1304: the magnetic circuit's MMF drops as sheets on the boundary of a single rectangular winding window,
+    // with their complete-cell image lattice. Each gap's share is its reluctance over the total (MKF's own
+    // composition: main-column gaps in series, lateral branches in parallel); the ferrite's share is spread along
+    // the four walls in proportion to length x tangential H, H = B / mu with B from the flux through that wall's
+    // limb. Throws for toroids and multi-window cores, whose boundary this frame does not describe.
+    static std::vector<WindowWallSheet> generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint);
     // meshAllWindows: mesh every distinct winding-window region (multi-column cores)
     // instead of only window 0. Painting wants it; the leakage energy integrator must
     // NOT use it — its revolution bookkeeping already accounts for the full turn from

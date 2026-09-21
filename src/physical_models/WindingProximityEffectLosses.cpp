@@ -1596,13 +1596,21 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
     // ABT #832 rectangular fixtures before this decomposition was put in.
     const bool wideAlongY = (wire.get_type() == WireType::FOIL);
     std::vector<double> perpendicularProfile;
-    double parallelFieldSquaredSum = 0;
+    // SIGNED sums, not sums of squares (ABT #1274). Skin and proximity losses are orthogonal
+    // (Ferreira): the proximity field a conductor sees is the AVERAGE of the fields on its two
+    // opposite faces, and the DIFFERENCE between them is the conductor's own current, I/w, which
+    // the skin-effect model already charges. A mean of squares is H_avg^2 + (dH/2)^2 and so
+    // counts the own-current field twice -- about 1% on a 16-layer stack, but the WHOLE loss on
+    // a single-layer winding, where H_avg = 0 and only the own field remains.
+    double parallelFieldSum = 0;
     size_t parallelCount = 0;
-    double edgeFieldSquaredSum = 0;
+    double edgeFieldSum = 0;
     size_t edgeCount = 0;
     std::vector<double> quadraturePerpendicularProfile;
+    double quadratureParallelFieldSum = 0;
+    double quadratureEdgeFieldSum = 0;
     if (quadratureData) {
-        // Squared sums only (the counts come from the in-phase pass over the same points).
+        // Signed sums, as in phase (the counts come from the in-phase pass over the same points).
         for (const auto& point : *quadratureData) {
             if (!point.get_label()) {
                 continue;
@@ -1614,14 +1622,14 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
                 quadraturePerpendicularProfile.push_back(wideAlongY ? fieldX : fieldY);
             }
             else if (label == "top" || label == "bottom") {
-                parallelFieldSquaredSum += (wideAlongY ? fieldY : fieldX) * (wideAlongY ? fieldY : fieldX);
+                quadratureParallelFieldSum += (wideAlongY ? fieldY : fieldX);
             }
             else if (label == "left" || label == "right") {
                 if (wideAlongY) {
-                    parallelFieldSquaredSum += fieldY * fieldY;
+                    quadratureParallelFieldSum += fieldY;
                 }
                 else {
-                    edgeFieldSquaredSum += fieldY * fieldY;
+                    quadratureEdgeFieldSum += fieldY;
                 }
             }
         }
@@ -1639,13 +1647,13 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
         }
         else if (label == "top" || label == "bottom") {
             // The wide faces of a rectangular wire; the flat faces of a foil are left/right.
-            parallelFieldSquaredSum += (wideAlongY ? fieldY : fieldX) * (wideAlongY ? fieldY : fieldX);
+            parallelFieldSum += (wideAlongY ? fieldY : fieldX);
             ++parallelCount;
         }
         else if (label == "left" || label == "right") {
             if (wideAlongY) {
                 // A foil's wide faces ARE left/right, so these carry its parallel field.
-                parallelFieldSquaredSum += fieldY * fieldY;
+                parallelFieldSum += fieldY;
                 ++parallelCount;
             }
             else {
@@ -1654,7 +1662,7 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
                 // disabled). Dropping them made the model return exactly zero for a field normal
                 // to the wide face — caught against Ewald & Biela's benchmark, where a purely
                 // perpendicular 250 A/m field gave 0 W/m.
-                edgeFieldSquaredSum += fieldY * fieldY;
+                edgeFieldSum += fieldY;
                 ++edgeCount;
             }
         }
@@ -1665,9 +1673,10 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
     std::vector<double> profile = perpendicularProfile;
     if (profile.empty() && edgeCount > 0) {
         // No width-resolved samples: take the perpendicular field as uniform across the face, at
-        // the level the short ends report. (edgeFieldSquaredSum already holds the quadrature
-        // squares, so this one uniform profile carries |H|^2 and no quadrature profile is used.)
-        profile.assign(8, sqrt(edgeFieldSquaredSum / double(edgeCount)));
+        // the level the short ends report: the magnitude of the mean phasor (in phase and in quadrature).
+        const double meanEdgeInPhase = edgeFieldSum / double(edgeCount);
+        const double meanEdgeQuadrature = quadratureEdgeFieldSum / double(edgeCount);
+        profile.assign(8, hypot(meanEdgeInPhase, meanEdgeQuadrature));
         quadraturePerpendicularProfile.clear();
     }
     if (!quadraturePerpendicularProfile.empty() && quadraturePerpendicularProfile.size() != profile.size()) {
@@ -1691,24 +1700,34 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
     const double surfaceResistance = resistivity / skinDepth;
     const double angularFrequency = 2 * std::numbers::pi * frequency;
     const double vacuumPermeability = Constants().vacuumPermeability;
-    const double meanParallelSquared = parallelCount > 0 ? parallelFieldSquaredSum / double(parallelCount) : 0.0;
+    const double meanParallelSquared = parallelCount > 0 ? pow(parallelFieldSum / double(parallelCount), 2) + pow(quadratureParallelFieldSum / double(parallelCount), 2) : 0.0;
 
-    // ---- parallel to the wide face: excluded too, and crowded by the inverse aspect ratio ----
-    // HF: the surface-resistance loss on each of the two wide faces.
-    // LF: the classical slab limit, sigma omega^2 mu0^2 H^2 t^3 w / 24, which is exactly the
-    //     x-term of Ewald & Biela's equation (8).
-    // ABT #1188: the field ALONG the wide face is excluded too, so its coefficient is the ellipse
-    // solution for that axis (4.03 on a 2:1 wire), not the 2.0 of "two flat faces". 2D FEM on the
-    // real conductor measured the difference as 2.016x, and the derived factor closes it.
+    // THE FLAT FACES HAVE AN EXACT SOLUTION, SO THEY GET IT (ABT #1274). A field along the wide
+    // face diffuses through the thin dimension, which is the 1D slab problem and is solved in
+    // closed form at every frequency:
+    //     P/l = length * (rho/delta) * H^2 * (sinh x - sin x) / (cosh x + cos x),   x = t/delta
+    // with the right limits by construction (sigma w^2 mu0^2 H^2 t^3 / 24 below, two faces of
+    // surface loss above). The harmonic-mean bridge this replaces reads 11% low at t/delta = 1 and
+    // 27% low at 1.73 against that exact form -- which is the droop the model showed against 2D
+    // OMFEM on a planar stack (0.83 -> 0.66 from 50 to 300 kHz).
+    // Only the two END CAPS of the stadium still need a bridge: they are what the exclusion
+    // factor adds over two flat faces, C*w - 2*(w - t), and at low frequency they are one
+    // cylinder of diameter t, pi w^2 mu0^2 H^2 t^4 / (128 rho).
     const double parallelExclusionFactor = calculate_exclusion_factor(wideDimension, thinDimension, true);
-    const double highFrequencyParallel = 0.5 * parallelExclusionFactor * surfaceResistance *
-                                         meanParallelSquared * wideDimension;
-    const double lowFrequencyParallel = pow(angularFrequency, 2) * pow(vacuumPermeability, 2) *
-                                        meanParallelSquared * pow(thinDimension, 3) * wideDimension /
-                                        (24 * resistivity);
-    double lossParallel = 0;
-    if (lowFrequencyParallel > 0 && highFrequencyParallel > 0) {
-        lossParallel = 1.0 / (1.0 / lowFrequencyParallel + 1.0 / highFrequencyParallel);
+    const double flatLength = std::max(0.0, wideDimension - thinDimension);
+    const double thicknessInSkinDepths = thinDimension / skinDepth;
+    const double slabKernel = thicknessInSkinDepths > 50
+        ? 1.0
+        : (sinh(thicknessInSkinDepths) - sin(thicknessInSkinDepths)) /
+          (cosh(thicknessInSkinDepths) + cos(thicknessInSkinDepths));
+    const double lossParallelFlat = flatLength * surfaceResistance * meanParallelSquared * slabKernel;
+    const double highFrequencyCaps = 0.5 * surfaceResistance * meanParallelSquared *
+                                     std::max(0.0, parallelExclusionFactor * wideDimension - 2 * flatLength);
+    const double lowFrequencyCaps = std::numbers::pi * pow(angularFrequency, 2) * pow(vacuumPermeability, 2) *
+                                    meanParallelSquared * pow(thinDimension, 4) / (128 * resistivity);
+    double lossParallel = lossParallelFlat;
+    if (lowFrequencyCaps > 0 && highFrequencyCaps > 0) {
+        lossParallel += 1.0 / (1.0 / lowFrequencyCaps + 1.0 / highFrequencyCaps);
     }
 
     // ---- perpendicular to the wide face: excluded, and edge-crowded by the aspect ratio ----

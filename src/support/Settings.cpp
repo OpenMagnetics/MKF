@@ -158,6 +158,7 @@ namespace OpenMagnetics {
         _magneticFieldNumberPointsY = 50;
         _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
         _magneticFieldMirroringCompleteCells = false;
+        _magneticFieldMirroringNeutralCells = false;
         _magneticFieldIncludeFringing = true;
 
         _coilMesherInsideTurnsFactor = 1.05;
@@ -876,6 +877,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_magnetic_field_mirroring_complete_cells(bool value) {
         _magneticFieldMirroringCompleteCells = value;
+    }
+
+    bool Settings::get_magnetic_field_mirroring_neutral_cells() const {
+        return _magneticFieldMirroringNeutralCells;
+    }
+    void Settings::set_magnetic_field_mirroring_neutral_cells(bool value) {
+        _magneticFieldMirroringNeutralCells = value;
     }
 
     bool Settings::get_magnetic_field_include_fringing() const {

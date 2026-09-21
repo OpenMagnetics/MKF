@@ -261,8 +261,11 @@ std::shared_ptr<MagneticFieldStrengthFringingEffectModel> MagneticField::factory
     else if (modelName == MagneticFieldStrengthFringingEffectModels::SULLIVAN) {
         return std::make_shared<MagneticFieldStrengthSullivanModel>();
     }
+    else if (modelName == MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY) {
+        return std::make_shared<MagneticFieldStrengthMmfBoundaryModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown Magnetic Field Strength Fringing Effect model, available options are: {ALBACH, ROSHEN, SULLIVAN}");
+        throw ModelNotAvailableException("Unknown Magnetic Field Strength Fringing Effect model, available options are: {ALBACH, ROSHEN, SULLIVAN, MMF_BOUNDARY}");
 }
 
 std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory() {
@@ -339,6 +342,58 @@ double get_magnetic_field_strength_gap_per_ampere_turn(Magnetic& magnetic, doubl
     return 1.0 / (reluctance * effectiveArea * Constants().vacuumPermeability);
 }
 
+// ABT #1304: field of a uniform current sheet on the segment start -> end, total current `current` per unit depth, in
+// the sign convention of the Binns-Lawrenson filament kernel (Hx = -I dy / (2 pi r^2), dy = source - point). With u, v
+// the point's coordinates along and normal to the segment (length L, tangent t, normal n = (-t_y, t_x)):
+//     H = I / (2 pi L) * [ theta t - 1/2 ln((u^2 + v^2) / ((u - L)^2 + v^2)) n ],
+// theta the angle the segment subtends at the point, signed with v (atan2 form: exact across the sheet, where theta
+// jumps by 2 pi and H_t by I / L). It does not depend on the segment's orientation, so lattice images may mirror it.
+std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::calculate_sheet_field(const WindowWallSheet& sheet, double current, double pointX, double pointY) {
+    const double segmentX = sheet.end[0] - sheet.start[0];
+    const double segmentY = sheet.end[1] - sheet.start[1];
+    const double length = hypot(segmentX, segmentY);
+    if (!(length > 0)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field (ABT #1304): zero-length wall sheet");
+    }
+    const double tangentX = segmentX / length;
+    const double tangentY = segmentY / length;
+    const double normalX = -tangentY;
+    const double normalY = tangentX;
+    const double relativeX = pointX - sheet.start[0];
+    const double relativeY = pointY - sheet.start[1];
+    const double u = relativeX * tangentX + relativeY * tangentY;
+    const double v = relativeX * normalX + relativeY * normalY;
+    const double theta = atan2(v * length, u * (u - length) + v * v);
+    const double squaredDistanceStart = u * u + v * v;
+    const double squaredDistanceEnd = (u - length) * (u - length) + v * v;
+    if (!(squaredDistanceStart > 0) || !(squaredDistanceEnd > 0)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field (ABT #1304): field point on a wall sheet's end");
+    }
+    const double logTerm = 0.5 * log(squaredDistanceStart / squaredDistanceEnd);
+    const double prefactor = current / (2 * std::numbers::pi * length);
+    return {prefactor * (theta * tangentX - logTerm * normalX), prefactor * (theta * tangentY - logTerm * normalY)};
+}
+
+
+void MagneticFieldStrengthMmfBoundaryModel::setup_window_boundary(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
+    _sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);
+    _isSetUp = true;
+}
+
+std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boundary_field(double pointX, double pointY, double netAmpereTurns) const {
+    if (!_isSetUp) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "MMF_BOUNDARY: get_window_boundary_field called before setup_window_boundary");
+    }
+    double fieldX = 0;
+    double fieldY = 0;
+    for (const auto& sheet : _sheets) {
+        auto [sheetFieldX, sheetFieldY] = calculate_sheet_field(sheet, sheet.current * netAmpereTurns, pointX, pointY);
+        fieldX += sheetFieldX;
+        fieldY += sheetFieldY;
+    }
+    return {fieldX, fieldY};
+}
+
 WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
     auto includeFringing = settings.get_magnetic_field_include_fringing();
@@ -412,6 +467,43 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         _model = factory(_magneticFieldStrengthModel);
     }
 
+    // ABT #1304: a window-boundary fringing model (MMF_BOUNDARY) is only consistent with a conductor field built the
+    // same way, so it is refused -- not silently replaced -- wherever that field cannot be built.
+    const bool windowBoundaryModel = _fringingEffectModel->is_window_boundary_model();
+    if (windowBoundaryModel) {
+        const std::string name = "Fringing effect model " + std::string(magic_enum::enum_name(_magneticFieldStrengthFringingEffectModel));
+        if (coreShapeFamily == CoreShapeFamily::T) {
+            throw ModelNotAvailableException(name + " is not available for toroids: they have no rectangular window boundary");
+        }
+        if (multiWindowCore) {
+            throw ModelNotAvailableException(name + " is not available for multi-window cores yet");
+        }
+        // Only the pure 2-D kernel. The mu -> inf image lattice is a 2-D construct; LAMMERANER scales every filament by a
+        // finite-turn-length factor, which fades the distant conductor images but not their wall-sheet partners, so the
+        // far cells stop being neutral and the sum diverges with lattice size (11.7 % at M = 1, 19 % at M = 2 on a
+        // 40-turn E 42 inductor, against 0.02 % with BINNS_LAWRENSON).
+        if (_magneticFieldStrengthModel != MagneticFieldStrengthModels::BINNS_LAWRENSON) {
+            throw ModelNotAvailableException(name + " needs the pure 2-D BINNS_LAWRENSON field model, not " +
+                                             std::string(magic_enum::enum_name(_magneticFieldStrengthModel)));
+        }
+        if (!settings.get_magnetic_field_include_fringing()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, name + " IS the core's field (gaps and ferrite): it cannot be used with fringing disabled");
+        }
+    }
+    // One point per turn with its complete-cell lattice: a flat conductor is ONE exact rectangle in the Binns-Lawrenson
+    // kernel. The Wang mesher's two full-current points are only correct for the Wang field model, whose own
+    // formulas halve them; any other kernel counts the turn's current twice.
+    std::optional<CoilMesherModels> mesherToUse = coilMesherModel;
+    std::optional<SettingsGuard<bool>> completeCellsGuard;
+    std::optional<SettingsGuard<bool>> neutralCellsGuard;
+    if (windowBoundaryModel) {
+        mesherToUse = CoilMesherModels::CENTER;
+        completeCellsGuard.emplace(settings, &Settings::get_magnetic_field_mirroring_complete_cells,
+                                   &Settings::set_magnetic_field_mirroring_complete_cells, true);
+        neutralCellsGuard.emplace(settings, &Settings::get_magnetic_field_mirroring_neutral_cells,
+                                  &Settings::set_magnetic_field_mirroring_neutral_cells, true);
+    }
+
     // MAS excitation convention (2026-09-24): direction by isolation side, not by index.
     std::vector<int8_t> currentDirectionPerWinding;
     if (!customCurrentDirectionPerWinding) {
@@ -425,7 +517,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     std::vector<std::vector<double>> currentPhasePerHarmonicPerWinding;
     std::vector<std::optional<double>> gaugePhasePerHarmonic;
     if (externalInducedField){
-        auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding, coilMesherModel);
+        auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding, mesherToUse);
         // We only process the harmonic that comes from the external field
         for (size_t auxIndex = 0; auxIndex < aux.fieldPerHarmonic.size(); ++auxIndex) {
             if (aux.fieldPerHarmonic[auxIndex].get_frequency() == externalInducedField.value().get_frequency()) {
@@ -437,7 +529,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         }
     }
     else {
-        auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding);
+        auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding, mesherToUse);
         inducingFields = aux.fieldPerHarmonic;
         currentPhasePerHarmonicPerWinding = aux.currentPhasePerHarmonicPerWinding;
         gaugePhasePerHarmonic = aux.gaugePhasePerHarmonic;
@@ -533,7 +625,10 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             break;
         }
     }
-    if (!hasFunctionalGap) {
+    // ABT #1304: on the neutral path a residual gap IS a source (its wall sheet), and the field it throws on the copper
+    // decays over tens of um -- the edge points alone would spread it uniformly across the whole face. Keep the
+    // samples there so the perpendicular profile is resolved.
+    if (!hasFunctionalGap && !windowBoundaryModel) {
         for (auto& inducedField : inducedFields) {
             auto& inducedData = inducedField.get_mutable_data();
             inducedData.erase(std::remove_if(inducedData.begin(), inducedData.end(),
@@ -685,7 +780,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             }
             key.strings.push_back(point.get_label() ? "1" + point.get_label().value() : "0");
         };
-        key.numbers = {static_cast<double>(_magneticFieldStrengthModel), multiWindowCore ? 1.0 : 0.0, coreColumnWidth, coreWidth,
+        key.numbers = {static_cast<double>(_magneticFieldStrengthModel), multiWindowCore ? 1.0 : 0.0, windowBoundaryModel ? 1.0 : 0.0, coreColumnWidth, coreWidth,
                        static_cast<double>(coreShapeFamily), _model->_windingWindowBreadth, static_cast<double>(numberWindings)};
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             json wireJson;
@@ -790,7 +885,10 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         for (size_t inducedIndex = 0; inducedIndex < inducedData.size(); ++inducedIndex) {
             const auto& inducedFieldPoint = inducedData[inducedIndex];
             // Width samples receive no turn field (the fringing-only rule of the loop below).
-            if (inducedFieldPoint.get_label() && inducedFieldPoint.get_label().value() == "widthsample") {
+            // The #182 exclusion guards against FILAMENT stand-ins for neighbouring flat conductors. On the neutral
+            // (MMF_BOUNDARY) path each neighbour is one exact Binns-Lawrenson rectangle and the sample's own conductor
+            // is skipped, so the samples take the complete field: turns, images and wall sources (ABT #1304).
+            if (!windowBoundaryModel && inducedFieldPoint.get_label() && inducedFieldPoint.get_label().value() == "widthsample") {
                 continue;
             }
             bool inducedPointInsideCore = is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily);
@@ -808,7 +906,10 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 if (multiWindowCore && inducingFieldPoint.get_point()[0] * inducedFieldPoint.get_point()[0] < 0) {
                     continue;
                 }
-                if (inducedFieldPoint.get_turn_index() && inducedFieldPoint.get_turn_index().value() == inducingFieldPoint.get_turn_index().value()) {
+                // A turn's own field is the skin model's. On the neutral path its IMAGES are not: they are the core's
+                // reply to it, and next to a wall they are most of the field the turn sees (ABT #1304).
+                bool inducingIsOwnImage = windowBoundaryModel && inducingFieldPoint.get_label() && inducingFieldPoint.get_label().value() == "image";
+                if (inducedFieldPoint.get_turn_index() && inducedFieldPoint.get_turn_index().value() == inducingFieldPoint.get_turn_index().value() && !inducingIsOwnImage) {
                     continue;
                 }
                 auto [inducedFieldX, inducedFieldY] = _model->get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, windingIndex);
@@ -847,6 +948,10 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         }
         return sums;
     };
+
+    if (windowBoundaryModel) {
+        _fringingEffectModel->setup_window_boundary(magnetic, operatingPoint);
+    }
 
     for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
         std::vector<ComplexFieldPoint> fieldPoints;
@@ -1256,6 +1361,22 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         const auto& scalePerWinding = turnFieldSums->scalePerHarmonicPerWinding[harmonicIndex];
         const auto& inducingData = inducingFields[harmonicIndex].get_data();
 
+        // ABT #1304: the net ampere-turns this harmonic drives round the window -- the conductors themselves, not
+        // their images -- which the wall sources return, in phase and in quadrature with the gauge (each turn
+        // carries its winding's phase).
+        double netAmpereTurns = 0;
+        double netQuadratureAmpereTurns = 0;
+        if (windowBoundaryModel) {
+            for (const auto& inducingFieldPoint : inducingData) {
+                bool isImage = inducingFieldPoint.get_label() && inducingFieldPoint.get_label().value() == "image";
+                if (inducingFieldPoint.get_turn_index() && !isImage) {
+                    size_t windingIndex = windingIndexPerTurn[static_cast<size_t>(inducingFieldPoint.get_turn_index().value())];
+                    netAmpereTurns += inducingFieldPoint.get_value() * inPhaseFactorPerWinding[windingIndex];
+                    netQuadratureAmpereTurns += inducingFieldPoint.get_value() * quadratureFactorPerWinding[windingIndex];
+                }
+            }
+        }
+
         const auto& inducedDataThisHarmonic = inducedFields[harmonicIndex].get_data();
         for (size_t inducedIndex = 0; inducedIndex < inducedDataThisHarmonic.size(); ++inducedIndex) {
             const auto& inducedFieldPoint = inducedDataThisHarmonic[inducedIndex];
@@ -1270,7 +1391,8 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             // except for gaps beyond its fitted validity, which are routed through the Roshen model here.
             bool albachRoutedGapsPending = _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH &&
                                            !albachOutOfRangeGaps.empty();
-            if (!isAlbach && (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN ||
+            // On the neutral path the gaps are wall sources already; a fringing model on top would count them twice.
+            if (!isAlbach && !windowBoundaryModel && (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN ||
                               _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN ||
                               albachRoutedGapsPending)) {
                 // Every harmonic's gap field, from that harmonic's magnetizing flux (get_gap_source),
@@ -1374,6 +1496,19 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                     throw NaNResultException("NaN found in magnetic field calculation");
                 }
             }
+            if (windowBoundaryModel && (netAmpereTurns != 0 || netQuadratureAmpereTurns != 0) &&
+                !is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
+                // The wall field is linear in the net ampere-turns: one unit evaluation, scaled per component.
+                auto [boundaryFieldX, boundaryFieldY] = _fringingEffectModel->get_window_boundary_field(
+                    inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1], 1.0);
+                if (std::isnan(boundaryFieldX) || std::isnan(boundaryFieldY)) {
+                    throw NaNResultException("NaN found in the MMF_BOUNDARY window field (ABT #1304)");
+                }
+                totalInducedFieldX += boundaryFieldX * netAmpereTurns;
+                totalInducedFieldY += boundaryFieldY * netAmpereTurns;
+                totalQuadratureInducedFieldX += boundaryFieldX * netQuadratureAmpereTurns;
+                totalQuadratureInducedFieldY += boundaryFieldY * netQuadratureAmpereTurns;
+            }
             ComplexFieldPoint complexFieldPoint;
             complexFieldPoint.set_point(inducedFieldPoint.get_point());
             complexFieldPoint.set_real(totalInducedFieldX);
@@ -1423,6 +1558,9 @@ ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_be
         double k = c / h;
         double lambda = 0.01 * k + 0.66;
 
+        if (inducingFieldPoint.get_label() && inducingFieldPoint.get_label().value() == "image") {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wang Magnetic Field model must be used with his CoilMesher model (got an image-lattice point)");
+        }
         if (inducedFieldPoint.get_label() && inducingFieldPoint.get_label()) {
             auto inducingLabel = inducingFieldPoint.get_label().value();
             auto inducedLabel = inducedFieldPoint.get_label().value();

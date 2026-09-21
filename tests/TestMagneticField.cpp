@@ -581,4 +581,166 @@ namespace {
         settings.reset();
     }
 
+    // ABT #1304: the closed-form wall-sheet kernel against the thing it integrates -- 20000 Binns-Lawrenson filaments
+    // along the same segment -- beside the sheet, beyond its ends, off its line, and 1 um from it.
+    TEST_CASE("Test_Magnetic_Field_Mmf_Boundary_Sheet_Kernel_Matches_Filaments", "[physical-model][magnetic-field][mmf-boundary]") {
+        const double length = 1e-3;
+        WindowWallSheet sheet{{0.0, 0.0}, {0.0, length}, 1.0};
+        const size_t numberFilaments = 20000;
+        MagneticFieldStrengthBinnsLawrensonModel filamentModel;
+        std::vector<std::vector<double>> probes = {{0.3e-3, 0.5e-3}, {-0.05e-3, 0.2e-3}, {0.2e-3, 1.5e-3},
+                                                   {1e-6, 0.5e-3}, {-1e-6, 0.5e-3}, {0.0, 1.3e-3}, {2e-3, -1e-3}};
+        for (auto& probe : probes) {
+            double filamentX = 0;
+            double filamentY = 0;
+            FieldPoint induced;
+            induced.set_point(probe);
+            for (size_t index = 0; index < numberFilaments; ++index) {
+                FieldPoint filament;
+                filament.set_point({0.0, (index + 0.5) * length / numberFilaments});
+                filament.set_value(1.0 / numberFilaments);
+                auto [fieldX, fieldY] = filamentModel.get_magnetic_field_strength_components_between_two_points(filament, induced);
+                filamentX += fieldX;
+                filamentY += fieldY;
+            }
+            auto [sheetX, sheetY] = MagneticFieldStrengthMmfBoundaryModel::calculate_sheet_field(sheet, 1.0, probe[0], probe[1]);
+            double scale = hypot(filamentX, filamentY);
+            CHECK_THAT(sheetX, Catch::Matchers::WithinAbs(filamentX, 1e-3 * scale));
+            CHECK_THAT(sheetY, Catch::Matchers::WithinAbs(filamentY, 1e-3 * scale));
+        }
+        // Across the sheet the tangential field jumps by the sheet density I / L, as a current sheet must.
+        auto [insideX, insideY] = MagneticFieldStrengthMmfBoundaryModel::calculate_sheet_field(sheet, 1.0, 1e-9, 0.5e-3);
+        auto [outsideX, outsideY] = MagneticFieldStrengthMmfBoundaryModel::calculate_sheet_field(sheet, 1.0, -1e-9, 0.5e-3);
+        CHECK_THAT(std::abs(insideY - outsideY), Catch::Matchers::WithinRel(1.0 / length, 1e-5));
+    }
+
+    // ABT #1304: a mu -> inf wall with a ferrite MMF drop along it has tangential H equal to that drop's density. The
+    // MMF_BOUNDARY puts exactly that on each wall; the historical lattice (net current, no MMF return) cannot, and
+    // this test fails with the ROSHEN fringing model in its place. Checked on the column and lateral walls, away from the gap.
+    TEST_CASE("Test_Magnetic_Field_Mmf_Boundary_Honours_The_Core_Walls", "[physical-model][magnetic-field][mmf-boundary]") {
+        numberTurns = {8};
+        numberParallels = {1};
+        turnsRatios = {};
+        interleavingLevel = 1;
+        numberStacks = 1;
+        voltagePeakToPeak = 2000;
+        frequency = 125000;
+        setup();
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        auto operatingPoint = inputs.get_operating_point(0);
+
+        settings.reset();
+        settings.set_magnetic_field_mirroring_dimension(1);
+
+        auto processed = core.get_processed_description().value();
+        auto window = processed.get_winding_windows()[0];
+        const double A = window.get_width().value();
+        const double B = window.get_height().value();
+        const double x0 = core.get_columns()[core.get_main_column_index()].get_width() / 2;
+        const double x1 = x0 + A;
+
+        // The ferrite sheets of the two vertical walls (the originals: full-height, largest image factor).
+        auto sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);
+        double columnSheet = 0;
+        double lateralSheet = 0;
+        for (auto& sheet : sheets) {
+            bool fullHeight = std::abs(sheet.start[1] + B / 2) < 1e-12 && std::abs(sheet.end[1] - B / 2) < 1e-12;
+            if (fullHeight && sheet.start[0] == x0 && sheet.end[0] == x0 && std::abs(sheet.current) > std::abs(columnSheet)) {
+                columnSheet = sheet.current;
+            }
+            if (fullHeight && sheet.start[0] == x1 && sheet.end[0] == x1 && std::abs(sheet.current) > std::abs(lateralSheet)) {
+                lateralSheet = sheet.current;
+            }
+        }
+        REQUIRE(columnSheet != 0);
+        REQUIRE(lateralSheet != 0);
+
+        double harmonicAmplitude = operatingPoint.get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
+        const double ampereTurns = harmonicAmplitude * numberTurns[0];
+        const double windowFieldScale = ampereTurns / B;
+
+        std::vector<FieldPoint> points;
+        for (double fraction : {-0.4, -0.3, 0.3, 0.4}) {   // the 1 mm ground gap sits at y = 0
+            FieldPoint point;
+            point.set_point({x0 + 1e-6, fraction * B});
+            points.push_back(point);
+            point.set_point({x1 - 1e-6, fraction * B});
+            points.push_back(point);
+        }
+        Field inducedField;
+        inducedField.set_data(points);
+        inducedField.set_frequency(frequency);
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
+        auto field = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField).get_field_per_frequency()[0];
+
+        for (size_t index = 0; index < field.get_data().size(); ++index) {
+            bool onColumn = index % 2 == 0;
+            double expectedTangential = std::abs((onColumn ? columnSheet : lateralSheet) * ampereTurns / B);
+            CHECK_THAT(std::abs(field.get_data()[index].get_imaginary()), Catch::Matchers::WithinAbs(expectedTangential, 0.03 * windowFieldScale));
+        }
+        settings.reset();
+    }
+
+    // ABT #1304: with MMF_BOUNDARY every lattice cell is neutral, so the image sum converges -- one and two mirror cells agree.
+    TEST_CASE("Test_Magnetic_Field_Mmf_Boundary_Lattice_Converges", "[physical-model][magnetic-field][mmf-boundary]") {
+        numberTurns = {8};
+        numberParallels = {1};
+        turnsRatios = {};
+        interleavingLevel = 1;
+        numberStacks = 1;
+        voltagePeakToPeak = 2000;
+        frequency = 125000;
+        setup();
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        auto operatingPoint = inputs.get_operating_point(0);
+
+        auto fieldWithCells = [&](int cells) {
+            settings.reset();
+            settings.set_magnetic_field_mirroring_dimension(cells);
+            MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
+            return magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic).get_field_per_frequency()[0];
+        };
+        auto one = fieldWithCells(1);
+        auto two = fieldWithCells(2);
+        REQUIRE(one.get_data().size() == two.get_data().size());
+        double scale = 0;
+        for (auto& point : two.get_data()) {
+            scale = std::max(scale, hypot(point.get_real(), point.get_imaginary()));
+        }
+        for (size_t index = 0; index < one.get_data().size(); ++index) {
+            CHECK_THAT(one.get_data()[index].get_real(), Catch::Matchers::WithinAbs(two.get_data()[index].get_real(), 0.01 * scale));
+            CHECK_THAT(one.get_data()[index].get_imaginary(), Catch::Matchers::WithinAbs(two.get_data()[index].get_imaginary(), 0.01 * scale));
+        }
+        settings.reset();
+    }
+
+    // ABT #1304: MMF_BOUNDARY is refused -- not quietly replaced by another model -- where its sources cannot be consistent.
+    TEST_CASE("Test_Magnetic_Field_Mmf_Boundary_Refuses_What_It_Cannot_Model", "[physical-model][magnetic-field][mmf-boundary]") {
+        numberTurns = {8};
+        numberParallels = {1};
+        turnsRatios = {};
+        interleavingLevel = 1;
+        numberStacks = 1;
+        voltagePeakToPeak = 2000;
+        frequency = 125000;
+        setup();
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        auto operatingPoint = inputs.get_operating_point(0);
+        settings.reset();
+        for (auto fieldModel : {MagneticFieldStrengthModels::LAMMERANER, MagneticFieldStrengthModels::DOWELL, MagneticFieldStrengthModels::WANG, MagneticFieldStrengthModels::ALBACH}) {
+            MagneticField magneticField(fieldModel, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
+            CHECK_THROWS_AS(magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic), ModelNotAvailableException);
+        }
+        settings.set_magnetic_field_include_fringing(false);
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
+        CHECK_THROWS_AS(magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic), InvalidInputException);
+        settings.reset();
+    }
+
 }  // namespace

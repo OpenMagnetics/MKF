@@ -42,8 +42,23 @@ class MagneticFieldStrengthModel {
 
 class MagneticFieldStrengthFringingEffectModel {
     public:
+        virtual ~MagneticFieldStrengthFringingEffectModel() = default;
         virtual FieldPoint get_equivalent_inducing_point_for_gap(CoreGap gap, double magneticFieldStrengthGap) = 0;
         virtual ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point(CoreGap gap, double magneticFieldStrengthGap, FieldPoint inducedFieldPoint) = 0;
+
+        // A WINDOW-BOUNDARY model (ABT #1304) places the magnetic circuit's MMF drops on the winding-window boundary
+        // instead of evaluating gaps one by one. Its sources are only consistent with a conductor field built the same
+        // way -- one point per turn with the complete-cell image lattice, a turn's own images counted -- and
+        // MagneticField builds it so when this returns true.
+        virtual bool is_window_boundary_model() const { return false; }
+        virtual void setup_window_boundary([[maybe_unused]] Magnetic magnetic, [[maybe_unused]] std::optional<OperatingPoint> operatingPoint) {
+            throw ModelNotAvailableException("This fringing effect model has no window-boundary sources");
+        }
+        // Field at (x, y) of the boundary sources for a net winding MMF of netAmpereTurns, Binns-Lawrenson sign convention.
+        virtual std::pair<double, double> get_window_boundary_field([[maybe_unused]] double pointX, [[maybe_unused]] double pointY,
+                                                                    [[maybe_unused]] double netAmpereTurns) const {
+            throw ModelNotAvailableException("This fringing effect model has no window-boundary sources");
+        }
 };
 
 class MagneticField {
@@ -249,6 +264,43 @@ class MagneticFieldStrengthSullivanModel : public MagneticFieldStrengthFringingE
     int _imageUnitsX = 2;
     /// Number of image unit repetitions in the Y direction (parallel to gap)
     int _imageUnitsY = 2;
+};
+
+// MMF_BOUNDARY (ABT #1304): the winding-window field as a charge-neutral image problem.
+//
+// The image lattice of a single rectangular window mirrors every conductor in the four core walls, taken as mu -> inf.
+// A winding with net ampere-turns NI then sits in a closed box that cannot hold net current (Ampere round the box would
+// need H inside the walls), and a truncated lattice carries a spurious, nearly uniform field. In the real core the NI
+// drops across the gaps and along the ferrite. This model puts exactly those drops on the window boundary as uniform
+// current sheets returning -NI: each gap's share of the MMF (its reluctance over the core's total, MKF's own reluctance
+// composition) across its slot mouth, and the ferrite's share along the four walls in proportion to length x H with
+// H = B / mu. Sheets and conductors are imaged by the same complete-cell lattice, so every cell is neutral and the sum
+// converges; the tangential field just inside each wall equals that wall's MMF density, as the wall boundary condition
+// requires. No fitted constant: geometry and the reluctance model only.
+//
+// It generalises SULLIVAN (gap MMF as imaged filaments) to every MMF drop in the circuit, made consistent with the
+// conductors' own lattice. Single rectangular windows with the pure 2-D BINNS_LAWRENSON kernel only: it throws for
+// toroids, multi-window cores, LAMMERANER (its finite-length factor breaks the lattice's neutrality), DOWELL (1-D, no
+// images), WANG (its own two-point mesh) and ALBACH. WindingLosses picks BINNS_LAWRENSON for it when the field model is
+// chosen automatically.
+class MagneticFieldStrengthMmfBoundaryModel : public MagneticFieldStrengthFringingEffectModel {
+  private:
+    std::vector<WindowWallSheet> _sheets;
+    bool _isSetUp = false;
+  public:
+    std::string methodName = "MmfBoundary";
+    ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point([[maybe_unused]] CoreGap gap, [[maybe_unused]] double magneticFieldStrengthGap,
+                                                                        [[maybe_unused]] FieldPoint inducedFieldPoint) {
+        throw ModelNotAvailableException("MMF_BOUNDARY is not a per-gap model: the ferrite carries part of the MMF; use get_window_boundary_field");
+    }
+    FieldPoint get_equivalent_inducing_point_for_gap([[maybe_unused]] CoreGap gap, [[maybe_unused]] double magneticFieldStrengthGap) {
+        throw ModelNotAvailableException("MMF_BOUNDARY is not a per-gap model: the ferrite carries part of the MMF; use get_window_boundary_field");
+    }
+    bool is_window_boundary_model() const override { return true; }
+    void setup_window_boundary(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) override;
+    std::pair<double, double> get_window_boundary_field(double pointX, double pointY, double netAmpereTurns) const override;
+    // Closed-form field of one uniform sheet (see the definition), Binns-Lawrenson sign convention.
+    static std::pair<double, double> calculate_sheet_field(const WindowWallSheet& sheet, double current, double pointX, double pointY);
 };
 
 

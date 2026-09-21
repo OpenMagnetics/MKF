@@ -21,7 +21,8 @@ enum class MagneticFieldStrengthModels : int {
 enum class MagneticFieldStrengthFringingEffectModels : int {
     ROSHEN,
     ALBACH,
-    SULLIVAN
+    SULLIVAN,
+    MMF_BOUNDARY
 };
 
 

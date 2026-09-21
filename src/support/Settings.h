@@ -178,6 +178,11 @@ class Settings
         // m, n in [-M, M] (M = mirroring dimension), the historical lattice used by the loss models.
         // true: M complete 2A x 2B mirror cells on each side, m, n in [-2M-1, 2M] (ABT #1240).
         bool _magneticFieldMirroringCompleteCells = false;
+        // Complete cells sized M x M (true) instead of M ceil(B/A) x M ceil(A/B). The B/A scaling exists to damp the dipole
+        // remainder of a lattice holding net current (ABT #1240); a charge-neutral lattice (MMF_BOUNDARY, ABT #1304) has no
+        // dipole and converges on square cells: 0.14 % at M = 1, 0.02 % at M = 2 on a 40-turn E 42 inductor. Set by
+        // MagneticField for that model only; not a user setting.
+        bool _magneticFieldMirroringNeutralCells = false;
         bool _magneticFieldIncludeFringing = true;
 
         double _coilMesherInsideTurnsFactor = 1.05;
@@ -574,6 +579,9 @@ class Settings
 
         bool get_magnetic_field_mirroring_complete_cells() const;
         void set_magnetic_field_mirroring_complete_cells(bool value);
+
+        bool get_magnetic_field_mirroring_neutral_cells() const;
+        void set_magnetic_field_mirroring_neutral_cells(bool value);
 
         size_t get_coil_adviser_maximum_number_wires() const;
         void set_coil_adviser_maximum_number_wires(size_t value);
