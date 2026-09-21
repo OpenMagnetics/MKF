@@ -422,10 +422,14 @@ double segment_box_distance(const std::vector<double>& a, const std::vector<doub
 
 }  // namespace
 
-double Coil::lead_bend_radius(const Wire& wire, const std::optional<ConnectionSleeve>& sleeve, double sweptRadius) {
+double Coil::lead_bend_radius(const Wire& wire, const std::optional<ConnectionSleeve>& sleeve, double sweptRadius,
+                              bool realWinding) {
     // Buildability: what the consumer drawing the corner declared, on the radius it sweeps.
     // Throws on a non-positive swept radius.
     double radius = Settings::resolve_lead_bend_radius(sweptRadius);
+    if (!realWinding) {
+        return radius;   // an ideal winding keeps the geometry it always had (Alf, 2026-09-21)
+    }
 
     // Physics of the wire: its insulation must survive the bend (IEC 60317-0-1 Table 6 /
     // IEC 60317-0-2 Table 6). A lead leaving for a pin turns in 3D, so a rectangular wire bends

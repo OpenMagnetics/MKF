@@ -1407,15 +1407,23 @@ TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the
     const double flexibility = WireBend::get_minimum_bend_radius(round, BendCriterion::FLEXIBILITY, BendAxis::ROUND);
     REQUIRE(flexibility > coatedRadius);   // otherwise the next check could not tell the two apart
 
+    SECTION("not a real winding: the pre-#1296 radius, whatever the wire (Alf, 2026-09-21)") {
+        CHECK(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius, false) == coatedRadius);
+        settings.set_coil_lead_bend_radius_factor(1.05);
+        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius, false),
+                   Catch::Matchers::WithinRel(1.05 * coatedRadius, 1e-12));
+        settings.reset();
+    }
+
     SECTION("nothing declared: the wire's own IEC 60317-0-1 minimum, not a sharp corner") {
-        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius),
+        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius, true),
                    Catch::Matchers::WithinRel(flexibility, 1e-12));
     }
 
     SECTION("a drawer needing more than the wire gets what it declared") {
         const double factor = 1.5 * flexibility / coatedRadius;
         settings.set_coil_lead_bend_radius_factor(factor);
-        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius),
+        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius, true),
                    Catch::Matchers::WithinRel(factor * coatedRadius, 1e-12));
         settings.reset();
     }
@@ -1423,11 +1431,11 @@ TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the
     SECTION("wires no standard covers get buildability alone") {
         OpenMagnetics::Wire litz;
         litz.set_type(WireType::LITZ);
-        CHECK(OpenMagnetics::Coil::lead_bend_radius(litz, std::nullopt, 0.0005) == 0.0005);
+        CHECK(OpenMagnetics::Coil::lead_bend_radius(litz, std::nullopt, 0.0005, true) == 0.0005);
         // IEC 60317-0-1 clause 8.2: no winding test above a 1,600 mm conductor.
         auto thick = find_wire_by_name("Round 2.00 - Grade 1");
         const double thickRadius = resolve_dimensional_values(thick.get_outer_diameter().value()) / 2;
-        CHECK(OpenMagnetics::Coil::lead_bend_radius(thick, std::nullopt, thickRadius) == thickRadius);
+        CHECK(OpenMagnetics::Coil::lead_bend_radius(thick, std::nullopt, thickRadius, true) == thickRadius);
     }
 
     SECTION("a sleeve whose material rates its bend takes the smallest rated size that holds it") {
@@ -1449,11 +1457,11 @@ TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the
         sleeve.set_inner_diameter(0.0011);
         sleeve.set_wall_thickness(0.0004);
         const double sleeveRadius = 0.0011 / 2 + 0.0004;
-        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, sleeveRadius),
+        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, sleeveRadius, true),
                    Catch::Matchers::WithinRel(0.012, 1e-12));
 
         sleeve.set_inner_diameter(0.0025);   // wider than any rated size: refused, never extrapolated
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, 0.0025 / 2 + 0.0004),
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, 0.0025 / 2 + 0.0004, true),
                           Catch::Matchers::ContainsSubstring("for no tubing"));
 
         // No rating on the material: the sleeve adds nothing, and the wire rules.
@@ -1461,7 +1469,7 @@ TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the
         REQUIRE_FALSE(unrated.get_minimum_bend_radius());
         sleeve.set_material(InsulationMaterialDataOrNameUnion(static_cast<MAS::InsulationMaterial>(unrated)));
         sleeve.set_inner_diameter(0.0011);
-        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, coatedRadius),
+        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, coatedRadius, true),
                    Catch::Matchers::WithinRel(flexibility, 1e-12));
     }
 }
@@ -1507,4 +1515,27 @@ TEST_CASE("Every terminal route publishes the bend it was planned for, pin or no
     // Both branches are really exercised, or the check above could pass on the wrong one.
     CHECK(sleeved == (sleevedCase ? terminals : 0));
     settings.reset();
+}
+
+TEST_CASE("An ideal winding's terminal routes keep the corners they always had (ABT #1296)",
+          "[constructive-model][coil][pins][abt1296]") {
+    // The wire and sleeve bend physics apply ONLY under real winding (Alf, 2026-09-21). An ideal
+    // wind with nothing declared still plans sharp corners: the route's radius is the lead's own.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    REQUIRE_FALSE(settings.get_coil_use_real_winding_geometry());
+    auto coil = make_coil({{"Primary", 40, 1, "primary", "Round 0.2 - Grade 1"},
+                           {"Secondary", 6, 1, "secondary", "Round 0.2 - Grade 1"}});
+    REQUIRE_FALSE(coil.is_real_winding_blocking_applied());
+    const auto layout = coil.get_connection_layout();
+    auto round = find_wire_by_name("Round 0.2 - Grade 1");
+    const double sharp = 0.5 * std::max(round.get_maximum_outer_width(), round.get_maximum_outer_height());
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
+        INFO("route " << route.winding << " parallel " << route.parallel);
+        CHECK_THAT(route.plannedBendRadius, Catch::Matchers::WithinRel(sharp, 1e-12));
+        ++terminals;
+    }
+    REQUIRE(terminals == 4);
 }

@@ -1440,7 +1440,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     resolve_wire(get_winding_index_by_name(windingName)),
                     sleeved ? resolve_lead_sleeve(windingName, isEntrance ? End::START : End::FINISH, parallel)
                             : std::optional<ConnectionSleeve>{},
-                    sweptDiameter / 2);
+                    sweptDiameter / 2, is_real_winding_blocking_applied());
             }
         };
         double turnX = connectingTurn.get_coordinates()[0];

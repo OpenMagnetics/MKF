@@ -1038,7 +1038,10 @@ class Coil : public MAS::Coil {
          *     radius the corner sweeps, `sweptRadius`: the sleeve's outer radius when sleeved,
          *     else the coated wire's.
          */
-        static double lead_bend_radius(const Wire& wire, const std::optional<ConnectionSleeve>& sleeve, double sweptRadius);
+        /// ONLY UNDER REAL WINDING (Alf, 2026-09-21): `realWinding` false returns the pre-#1296 radius,
+        /// the declared buildability alone (Settings::resolve_lead_bend_radius), physics untouched.
+        static double lead_bend_radius(const Wire& wire, const std::optional<ConnectionSleeve>& sleeve, double sweptRadius,
+                                       bool realWinding);
         /// RFC 0013 R4's wrap turns per wire end, from src/data/dfm_rules.json.
         static int64_t pin_wrap_turns();
         /// How much deeper the front face lies than MKF's radial coordinate: 0 for a round column,
