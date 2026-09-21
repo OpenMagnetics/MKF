@@ -4374,3 +4374,18 @@ TEST_CASE("ABT838_Bare_Copper_Does_Not_Radiate_Like_A_Matte_Dielectric", "[tempe
           OpenMagnetics::ThermalDefaults::kConvection_DefaultEmissivity / 10.0);
 }
 
+
+// An insulation layer names its material by its MAS name ("Kapton HN"). The lookup lower-cased the
+// name before searching the insulation database, whose keys are the MAS names, so every mixed-case
+// material missed, fell through to the generic list and threw MATERIAL_DATA_MISSING: the web
+// frontend's DMC flow failed with "No thermal conductivity for material 'Kapton HN'" although MAS
+// carries one (ABT #1302).
+TEST_CASE("Temperature: an insulation material is found under its MAS name", "[temperature][smoke-test]") {
+    auto expected = find_insulation_material_by_name("Kapton HN").get_thermal_conductivity();
+    REQUIRE(expected);
+    REQUIRE_THAT(ThermalResistance::getMaterialThermalConductivity("Kapton HN"),
+                 Catch::Matchers::WithinAbs(expected.value(), 1e-12));
+    // A name that only the generic list knows still resolves there.
+    REQUIRE_THAT(ThermalResistance::getMaterialThermalConductivity("mylar"),
+                 Catch::Matchers::WithinAbs(0.15, 1e-12));
+}

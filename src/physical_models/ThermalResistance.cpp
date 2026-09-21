@@ -169,15 +169,20 @@ double ThermalResistance::getMaterialThermalConductivity(const std::string& mate
         // Not a wire material, continue
     }
     
-    // Try insulation material database
-    try {
-        auto insulationMaterial = find_insulation_material_by_name(lowerName);
-        auto thermalCond = insulationMaterial.get_thermal_conductivity();
-        if (thermalCond) {
-            return *thermalCond;
+    // Try insulation material database. Its keys are the MAS names as written ("Kapton HN"), so
+    // the name as given is tried before the lower-cased one: searching only the lower-cased name
+    // never matched a mixed-case material, which fell through to the generic list and threw
+    // MATERIAL_DATA_MISSING for a material MAS does carry a conductivity for.
+    for (const auto& name : {materialName, lowerName}) {
+        try {
+            auto insulationMaterial = find_insulation_material_by_name(name);
+            auto thermalCond = insulationMaterial.get_thermal_conductivity();
+            if (thermalCond) {
+                return *thermalCond;
+            }
+        } catch (const std::exception& /* e */) { // IMP-8
+            // Not an insulation material under this spelling, continue
         }
-    } catch (const std::exception& /* e */) { // IMP-8
-        // Not an insulation material, continue
     }
     
     // Try core material database (uses heatConductivity field)
