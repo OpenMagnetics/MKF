@@ -4807,7 +4807,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     bool ok = wind_inner(proportionPerWinding, pattern, repetitions);
     // ABT #1174: record the lead-sleeve decision on the connections, where MAS carries it, once
     // the wind has placed the margins the decision depends on.
-    if (get_turns_description() && _inputs && _inputs->get_design_requirements().get_insulation()) {
+    if (get_turns_description() && _inputs && _inputs->has_insulation_coordination_requirements()) {
         assign_lead_sleeves();
     }
     if (!ok && !get_turns_description()) {
@@ -5187,11 +5187,19 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             if (_insulationSections.size() == 0) {
 
                 if (_inputs) {
-                    if (_inputs->get_design_requirements().get_insulation()) {
+                    if (_inputs->has_insulation_coordination_requirements()) {
                         logEntry("Calculating Required Insulation", "Coil", 2);
                         calculate_insulation();
                     }
                     else {
+                        // ABT #1329: designRequirements.insulation without standards is valid MAS and
+                        // names no standard to coordinate by, so there is no required insulation to
+                        // derive -- the same situation as no insulation block. Say so; never assume one.
+                        if (_inputs->get_design_requirements().get_insulation()) {
+                            logEntry("Insulation coordination skipped: designRequirements.insulation names no standards, "
+                                     "so clearance, creepage, distance through insulation and lead sleeves are not derived; "
+                                     "the coil is wound with mechanical insulation only", "Coil", 1);
+                        }
                         logEntry("Calculating Mechanical Insulation", "Coil", 2);
                         calculate_mechanical_insulation();
                     }
@@ -16299,7 +16307,7 @@ std::optional<ConnectionSleeve> Coil::get_recorded_lead_sleeve(const std::string
 }
 
 std::optional<ConnectionSleeve> Coil::resolve_lead_sleeve(const std::string& windingName, End windingEnd, int64_t parallel) {
-    if (!_inputs || !_inputs->get_design_requirements().get_insulation()) {
+    if (!_inputs || !_inputs->has_insulation_coordination_requirements()) {
         return get_recorded_lead_sleeve(windingName, windingEnd, parallel);
     }
     // Both ends of a winding share its wire and its margins, so they share the decision.

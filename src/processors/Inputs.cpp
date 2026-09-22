@@ -3271,10 +3271,29 @@ PollutionDegree Inputs::get_pollution_degree() {
 std::vector<InsulationStandards> Inputs::get_standards() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");
-    if (!get_design_requirements().get_insulation()->get_standards())
-        throw std::invalid_argument("Missing standards in insulation requirements");
+    if (!get_design_requirements().get_insulation()->get_standards()) {
+        // ABT #1329: optional in MAS, but this operation cannot run without it. Never assume one.
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "designRequirements.insulation.standards is missing: insulation coordination (clearance, creepage, "
+            "distance through insulation, lead sleeves) takes its tables from the standards the design names, and "
+            "this design names none");
+    }
 
     return get_design_requirements().get_insulation()->get_standards().value();
+}
+
+bool Inputs::has_insulation_coordination_requirements() const {
+    auto insulation = get_design_requirements().get_insulation();
+    return insulation && insulation->get_standards();
+}
+
+void Inputs::throw_if_json_lacks_required_fields(const json& inputsJson) {
+    for (const char* field : {"designRequirements", "operatingPoints"}) {
+        if (!inputsJson.is_object() || !inputsJson.contains(field)) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                std::string("MAS inputs.") + field + " is missing; the MAS schema requires it");
+        }
+    }
 }
 
 WiringTechnology Inputs::get_wiring_technology() const {

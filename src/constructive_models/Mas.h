@@ -66,6 +66,10 @@ void to_json(json& j, const std::vector<Mas>& v);
 inline void from_json(const json & j, Mas& x) {
     json migrated = j;
     OpenMagnetics::compat::migrate_pre_1_0(migrated);
+    if (!migrated.contains("inputs")) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "MAS inputs is missing; the MAS schema requires it");
+    }
+    Inputs::throw_if_json_lacks_required_fields(migrated["inputs"]);  // ABT #1329
     x.set_inputs(migrated.at("inputs").get<Inputs>());
     x.set_magnetic(migrated.at("magnetic").get<Magnetic>());
     x.set_outputs(migrated.at("outputs").get<std::vector<Outputs>>());
@@ -90,6 +94,10 @@ inline void from_json(const json& j, std::vector<Mas>& v) {
     for (auto e : j) {
         OpenMagnetics::compat::migrate_pre_1_0(e);
         Mas x;
+        if (!e.contains("inputs")) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "MAS inputs is missing; the MAS schema requires it");
+        }
+        Inputs::throw_if_json_lacks_required_fields(e["inputs"]);  // ABT #1329
         x.set_inputs(e.at("inputs").get<Inputs>());
         x.set_magnetic(e.at("magnetic").get<Magnetic>());
         x.set_outputs(e.at("outputs").get<std::vector<Outputs>>());

@@ -23,6 +23,7 @@ class Inputs : public MAS::Inputs {
   public:
     Inputs(json j, bool processWaveform = true, std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt) {
         OpenMagnetics::compat::migrate_pre_1_0(j);
+        throw_if_json_lacks_required_fields(j);
         from_json(j, *this);
         auto check_passed = check_integrity();
         if (!check_passed.first) {
@@ -46,6 +47,16 @@ class Inputs : public MAS::Inputs {
     Inputs() = default;
     virtual ~Inputs() = default;
 
+    // ABT #1329: MAS requires inputs.designRequirements and inputs.operatingPoints. Without this
+    // check a missing one surfaced as a raw "[json.exception.out_of_range.403] key
+    // 'designRequirements' not found" from the generated parser, naming no MAS field.
+    static void throw_if_json_lacks_required_fields(const json& inputsJson);
+    // ABT #1329: insulation coordination (clearance, creepage, distance through insulation, lead
+    // sleeves) is defined by the standards the design names. designRequirements.insulation.standards
+    // is optional in MAS, so an insulation block without it is valid and simply names no standard
+    // to coordinate by: true only when the insulation block carries a standards list. (An EMPTY
+    // list, which MKF's own quick inputs build, keeps its previous meaning: coordinate by no table.)
+    bool has_insulation_coordination_requirements() const;
     std::pair<bool, std::string> check_integrity();
     void process(std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt);
     static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios = std::nullopt, bool isDmcTopology = false);

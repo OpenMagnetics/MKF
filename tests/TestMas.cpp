@@ -247,4 +247,54 @@ TEST_CASE("Test_All_Examples_Real_Geometry_Physics", "[constructive-model][mas][
     }
 }
 
+// ABT #1329: designRequirements.insulation.standards is OPTIONAL in MAS. Eight schema-valid
+// MVB++ fixtures carry insulation type, overvoltage category, pollution degree, altitude and CTI
+// but name no standard, and mas_autocomplete refused all eight with "Missing standards in
+// insulation requirements" from the wind's insulation-coordination step. Without a standard there
+// is nothing to coordinate by: that step does not apply and must not run, and it must not be
+// replaced by an assumed standard either. Operations that do need one still refuse, by name.
+TEST_CASE("Test_Mas_Autocomplete_Insulation_Without_Standards_Skips_Coordination_And_Invents_None", "[constructive-model][mas][abt-1329]") {
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1329_flyback_insulation_without_standards.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    json masJson = json::parse(file);
+    REQUIRE(masJson["inputs"]["designRequirements"].contains("insulation"));
+    REQUIRE(!masJson["inputs"]["designRequirements"]["insulation"].contains("standards"));
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_json(masJson, mas);
+
+    OpenMagnetics::read_log();  // start capturing; drop anything logged before this case
+    OpenMagnetics::Mas autocompleted;
+    REQUIRE_NOTHROW(autocompleted = OpenMagnetics::mas_autocomplete(mas, true));
+    REQUIRE(autocompleted.get_magnetic().get_coil().get_turns_description());
+    CHECK_THAT(OpenMagnetics::read_log(), Catch::Matchers::ContainsSubstring("Insulation coordination skipped"));
+
+    // No standard was invented on the way.
+    auto insulation = autocompleted.get_inputs().get_design_requirements().get_insulation();
+    REQUIRE(insulation);
+    CHECK(!insulation->get_standards());
+
+    // What genuinely needs a standard still refuses, naming the missing field.
+    auto coil = autocompleted.get_magnetic().get_coil();
+    coil.set_inputs(autocompleted.get_inputs());
+    REQUIRE_THROWS_AS(coil.calculate_insulation_coordination_result(), InvalidInputException);
+    REQUIRE_THROWS_WITH(coil.calculate_insulation_coordination_result(), Catch::Matchers::ContainsSubstring("designRequirements.insulation.standards"));
+    settings.reset();
+}
+
+// ABT #1329: inputs.designRequirements IS required by the schema; a MAS without it must be refused
+// with a named MKF error, not a raw "[json.exception.out_of_range.403]" from the generated parser.
+TEST_CASE("Test_Mas_Without_Design_Requirements_Is_Refused_By_Name", "[constructive-model][mas][abt-1329]") {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1329_flyback_insulation_without_standards.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    json masJson = json::parse(file);
+    masJson["inputs"].erase("designRequirements");
+    OpenMagnetics::Mas mas;
+    REQUIRE_THROWS_AS(OpenMagnetics::from_json(masJson, mas), InvalidInputException);
+    REQUIRE_THROWS_WITH(OpenMagnetics::from_json(masJson, mas), Catch::Matchers::ContainsSubstring("inputs.designRequirements"));
+    REQUIRE_THROWS_AS(OpenMagnetics::Inputs(masJson["inputs"]), InvalidInputException);
+}
+
 }  // namespace

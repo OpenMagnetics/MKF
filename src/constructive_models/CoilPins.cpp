@@ -1639,6 +1639,10 @@ PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
     else if (!_inputs->get_design_requirements().get_insulation()) {
         result.creepageNotCheckedReason = "the design requirements declare no insulation, so no creepage is required";
     }
+    else if (!_inputs->has_insulation_coordination_requirements()) {
+        // ABT #1329: an insulation block that names no standard has no creepage table to read.
+        result.creepageNotCheckedReason = "the insulation requirements name no standards, so no creepage can be derived";
+    }
     else {
         auto inputs = _inputs.value();
         result.requiredCreepage = InsulationCoordinator().calculate_creepage_distance(inputs, false);
