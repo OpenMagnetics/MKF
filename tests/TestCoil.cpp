@@ -9948,6 +9948,34 @@ TEST_CASE("Test_Wind_Real_Winding_Planar_Dispatches_To_Wind_Planar", "[construct
     settings.set_coil_use_real_winding_geometry(false);
 }
 
+// A track wider than the window minus its clearances fits ZERO turns per layer -> one turn per layer, one layer per
+// turn (a size_t underflow made this 1 layer for the whole winding).
+TEST_CASE("Test_Plan_Planar_Stackup_One_Turn_Per_Layer_For_Wide_Tracks", "[constructive-model][coil][planar]") {
+    settings.reset();
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(0.01, 0.014);   // 14 mm window
+    OpenMagnetics::Wire wide; wide.set_nominal_value_conducting_width(0.012); wide.set_nominal_value_outer_width(0.012);
+    wide.set_nominal_value_conducting_height(0.00014); wide.set_nominal_value_outer_height(0.00014);
+    wide.set_number_conductors(1); wide.set_material("copper"); wide.set_type(WireType::PLANAR);
+    OpenMagnetics::Coil coil;
+    OpenMagnetics::Winding winding;
+    winding.set_number_turns(8); winding.set_number_parallels(1); winding.set_name("Wide");
+    winding.set_isolation_side(IsolationSide::PRIMARY); winding.set_wire(wide);
+    coil.get_mutable_functional_description().push_back(winding);
+    coil.set_bobbin(bobbin);
+    Pcb pcb;
+    PcbVias vias; DimensionWithTolerance d; d.set_nominal(0.0004); DimensionWithTolerance dr; dr.set_nominal(0.0003);
+    vias.set_diameter(d); vias.set_drill_diameter(dr); pcb.set_vias(vias);
+    PcbDesignRules rules; rules.set_track_to_track(0.0001); rules.set_core_to_track(0.0005); rules.set_via_to_via(0.0003); rules.set_via_to_track(0.0003);
+    pcb.set_design_rules(rules);
+    PcbOutline outline; outline.set_width(0.06); outline.set_depth(0.04); pcb.set_outline(outline);
+    Group group;
+    group.set_name("Board"); group.set_type(WiringTechnology::PRINTED); group.set_sections_orientation(WindingOrientation::CONTIGUOUS);
+    group.set_partial_windings({}); group.set_dimensions({0.014, 0.01}); group.set_coordinates({0.007, 0}); group.set_pcb(pcb);
+    coil.set_groups_description(std::vector<Group>{group});
+    auto stackUp = coil.plan_planar_stackup();
+    CHECK(stackUp.size() == 8);
+}
+
 TEST_CASE("Test_Wind_Planar_Real_Winding_Requires_Pcb", "[constructive-model][coil][planar][real-geometry]") {
     settings.set_coil_use_real_winding_geometry(true);
     auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(0.01, 0.02);
@@ -13439,9 +13467,10 @@ TEST_CASE("Test_Real_Geometry_Planar_Winds_As_Pcb", "[constructive-model][coil][
     auto groups = magnetic.get_coil().get_groups_description();
     REQUIRE(groups);
     CHECK(groups->front().get_pcb().has_value());
+    // the example carries no connection lengths yet: the PCB generator provides them, MKF does not guess
     REQUIRE_THROWS_WITH(OpenMagnetics::WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(
                             magnetic.get_coil(), 25.0),
-                        Catch::Matchers::ContainsSubstring("not implemented for planar"));
+                        Catch::Matchers::ContainsSubstring("no connection length"));
     settings.reset();
 }
 

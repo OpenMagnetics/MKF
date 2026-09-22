@@ -142,7 +142,7 @@ TEST_CASE("Test_All_Examples_Real_Geometry_Physics", "[constructive-model][mas][
                 REQUIRE(planarMagnetic.get_coil().get_turns_description());
                 REQUIRE_THROWS_WITH(WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(
                                         planarMagnetic.get_coil(), 25.0),
-                                    Catch::Matchers::ContainsSubstring("not implemented for planar"));
+                                    Catch::Matchers::ContainsSubstring("no connection length"));
                 settings.reset();
                 continue;
             }

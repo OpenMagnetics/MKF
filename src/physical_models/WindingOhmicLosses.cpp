@@ -30,15 +30,35 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_length
 
     auto wirePerWinding = coil.get_wires();
 
-    // ABT #492 owner ruling: planar wires are PCBs — the real-winding connection model is for WOUND
-    // magnetics only. wind() already throws on this combination, but a coil deserialized from JSON
-    // reaches this entry without ever winding, so the gate must live here too.
-    for (const auto& wire : wirePerWinding) {
-        if (wire.get_type() == WireType::PLANAR) {
-            throw std::runtime_error(
-                "Real winding geometry (connection/lead routing) is not implemented for planar "
-                "(PCB) constructions; disable coilUseRealWindingGeometry for planar magnetics");
+    // ABT #978: planar wires are PCBs. Their terminal connections are copper traces drawn by the PCB generator
+    // (MPB), which writes each trace length into MAS connections[].length; MKF has no lead-routing model for
+    // them and must not invent one. Layer-to-layer vias are not part of this length (their resistance is not
+    // modelled here yet).
+    bool planar = false;
+    for (const auto& wire : wirePerWinding) if (wire.get_type() == WireType::PLANAR) planar = true;
+    if (planar) {
+        for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+            double provided = 0.0;
+            bool any = false;
+            const auto connections = windings[windingIndex].get_connections();   // by-value optional: copy, never bind a reference
+            if (connections) {
+                for (const auto& connection : connections.value()) {
+                    if (connection.get_length()) { provided += connection.get_length().value(); any = true; }
+                }
+            }
+            if (!any) {
+                throw std::runtime_error(
+                    "Planar (PCB) winding '" + windings[windingIndex].get_name() + "' has no connection length: the terminal "
+                    "traces are drawn by the PCB generator (MPB), which must annotate connections[].length; MKF has no lead "
+                    "model for planar coils");
+            }
+            // connections[].length is the copper of ONE parallel's path to its terminal (every parallel has its own,
+            // identical, connection copper on its layers): each parallel carries the full length, not a share of it.
+            for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
+                connectionLength[windingIndex][parallelIndex] = provided;
+            }
         }
+        return connectionLength;
     }
 
     // Provided terminal-lead lengths from the design requirements apply to the winding as a whole;
