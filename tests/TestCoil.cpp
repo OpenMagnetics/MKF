@@ -13140,6 +13140,36 @@ TEST_CASE("Test_Abt967_Autocomplete_Accepts_A_Database_Foil", "[constructive-mod
     settings.reset();
 }
 
+TEST_CASE("Test_Autocomplete_Of_An_Autocompleted_Foil_Is_Accepted", "[constructive-model][coil][foil][regression]") {
+    // Autocomplete gives a foil outerWidth = thickness + interlayer film and leaves its coating
+    // unset. Autocompleting that OUTPUT again (every consumer that re-winds a processed MAS does)
+    // used to throw INVALID_WIRE_DATA: the "no coating but outer > conductor" check ran before
+    // the foil exemption and read the 25 um film as an unstated coating
+    // (two_switch_forward_transformer_complete in the OMFEM corpus).
+    settings.reset();
+    clear_databases();
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/04_forward_xfmr_e3216_n87.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    REQUIRE(windings.size() >= 2);
+    windings[1].set_wire("Foil 0.2");
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    auto once = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    auto wireOnce = once.get_mutable_coil().resolve_wire(1);
+    REQUIRE(wireOnce.get_outer_width());
+    REQUIRE(!wireOnce.get_coating());
+    OpenMagnetics::Magnetic twice;
+    REQUIRE_NOTHROW(twice = OpenMagnetics::magnetic_autocomplete(once));
+    auto wireTwice = twice.get_mutable_coil().resolve_wire(1);
+    REQUIRE(wireTwice.get_type() == WireType::FOIL);
+    CHECK_THAT(resolve_dimensional_values(wireTwice.get_outer_width().value()),
+               Catch::Matchers::WithinAbs(resolve_dimensional_values(wireOnce.get_outer_width().value()), 1e-12));
+    settings.reset();
+}
+
 TEST_CASE("Test_Abt881_Foil_Has_No_Crossing_Station", "[constructive-model][coil][real-geometry][foil][regression]") {
     // ABT #881: the real-winding crossing bump (ABT #685) charges every winding one extra station
     // per layer -- the slot a wire needs where it closes a layer and climbs to the next. A FOIL
