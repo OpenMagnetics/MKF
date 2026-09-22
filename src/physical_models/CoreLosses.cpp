@@ -2301,26 +2301,37 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
 
 /**
  * @brief Calculates classical eddy current losses density.
- * 
+ *
  * Based on: "Ferrite Core Loss for Power Magnetic Components Design"
  * by Waseem A. Roshen, IEEE Transactions on Magnetics, Vol. 27, No. 6, Nov. 1991
  * https://doi.org/10.1109/20.278777
- * 
- * From Eq. (5) - classical eddy current losses:
- * 
+ *
+ * For a solid/sintered material (ferrite, powder), from Eq. (5) - classical eddy
+ * current losses:
+ *
  *   Pe = (A / 8πρ) * f * ∫₀^T (dB/dt)² dt
- * 
+ *
  * where:
  * - A = cross-sectional area of the central column [m²]
  * - ρ = effective resistivity of the core material [Ω·m]
  * - f = frequency [Hz]
  * - dB/dt = rate of change of magnetic flux density [T/s]
- * 
- * This accounts for losses due to circulating eddy currents induced by
- * the changing magnetic flux. The (dB/dt)² integral captures the effect
- * of arbitrary waveform shapes.
- * 
- * @param core Core with geometry data
+ *
+ * For a laminated/tape-wound material (nanocrystalline, amorphous, electrical
+ * steel), the eddy-current-limiting dimension is the ribbon thickness D, not the
+ * core's bulk cross-section: they differ by 2-3 orders of magnitude, and using A
+ * here would be wrong. The classical laminated-eddy formula (e.g. TI SLUP124,
+ * "Magnetic Core Characteristics") is:
+ *
+ *   Pe = (π² D² f² Bpk²) / (6ρ)
+ *
+ * which is algebraically the same integral form as Eq. (5) above with A/(8π)
+ * replaced by D²/12 (both reduce to the same expression for a sinusoidal B(t)).
+ *
+ * Either way, the (dB/dt)² integral captures the effect of arbitrary waveform
+ * shapes.
+ *
+ * @param core Core with geometry and material data
  * @param excitation Operating point with flux density waveform
  * @param resistivity Effective core material resistivity [Ω·m]
  * @return Classical eddy current volumetric losses [W/m³]
@@ -2340,7 +2351,27 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
         throw CoreNotProcessedException("Core is not processed");
     }
 
-    double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
+    auto coreMaterial = core.resolve_material();
+    bool isLaminatedMaterial = coreMaterial.get_material() == MAS::MaterialType::NANOCRYSTALLINE ||
+                                coreMaterial.get_material() == MAS::MaterialType::AMORPHOUS ||
+                                coreMaterial.get_material() == MAS::MaterialType::ELECTRICAL_STEEL;
+
+    double eddyCurrentGeometryCoefficient;
+    if (isLaminatedMaterial) {
+        if (!coreMaterial.get_lamination_thickness()) {
+            throw std::runtime_error(
+                "Material " + coreMaterial.get_name() +
+                " is a tape-wound material (nanocrystalline, amorphous or electrical steel) but "
+                "carries no laminationThickness: classical eddy current losses need the ribbon "
+                "thickness, not the core's bulk cross-section, and cannot be computed without it.");
+        }
+        double laminationThickness = resolve_dimensional_values(coreMaterial.get_lamination_thickness().value());
+        eddyCurrentGeometryCoefficient = pow(laminationThickness, 2) / 12;
+    }
+    else {
+        double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
+        eddyCurrentGeometryCoefficient = centralColumnArea / 8 / std::numbers::pi;
+    }
 
     double volumetricLossesIntegration = 0;
     double timeDifference;
@@ -2371,7 +2402,7 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
     }
 
     double eddyCurrentLossesDensity =
-        centralColumnArea / 8 / std::numbers::pi / resistivity * frequency * volumetricLossesIntegration;
+        eddyCurrentGeometryCoefficient / resistivity * frequency * volumetricLossesIntegration;
 
     return eddyCurrentLossesDensity;
 }

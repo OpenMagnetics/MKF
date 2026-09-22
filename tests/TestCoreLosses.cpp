@@ -3926,3 +3926,104 @@ TEST_CASE("Test_Core_Losses_Molded_Per_Region_Split", "[physical-model][core-los
     CHECK_THROWS(CoreLosses().calculate_core_losses(buildCore(json::array({"air", "Nanoperm 4000", "Nanoperm 4000"})), excitation, 25));
     settings.reset();
 }
+
+// ABT #1344: the Roshen classical eddy current term used the core's own bulk
+// cross-section unconditionally, which is the right length scale for a
+// sintered/solid material (ferrite, powder) but wrong by 2-3 orders of
+// magnitude for a tape-wound material (nanocrystalline, amorphous, electrical
+// steel), whose eddy-current-limiting dimension is the ribbon thickness. These
+// tests pin the ferrite path to its closed-form (unchanged) formula and the new
+// laminated path to the textbook laminated-eddy formula (TI SLUP124).
+namespace {
+OperatingPointExcitation build_sinusoidal_flux_excitation(double frequency, double peak) {
+    size_t numberPoints = 10000;
+    std::vector<double> bData(numberPoints);
+    for (size_t i = 0; i < numberPoints; ++i) {
+        double t = static_cast<double>(i) / (numberPoints - 1) / frequency;
+        bData[i] = peak * sin(2 * std::numbers::pi * frequency * t);
+    }
+
+    json excitationJson;
+    excitationJson["frequency"] = frequency;
+    excitationJson["magneticFluxDensity"]["waveform"]["data"] = bData;
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+    excitationJson["magneticFluxDensity"]["processed"]["peak"] = peak;
+    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 2 * peak;
+    excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+    excitationJson["magneticFluxDensity"]["harmonics"]["amplitudes"] = {0, peak};
+    excitationJson["magneticFluxDensity"]["harmonics"]["frequencies"] = {0, frequency};
+
+    return OperatingPointExcitation(excitationJson);
+}
+}  // namespace
+
+TEST_CASE("Test_Roshen_Eddy_Current_Ferrite_Uses_Bulk_Cross_Section", "[physical-model][core-losses][roshen-core-losses-model][abt-1344]") {
+    settings.reset();
+    clear_databases();
+
+    double frequency = 100000;
+    double peak = 0.05;
+    double resistivity = 4;  // PC47 @ 20C, MAS/data/core_materials.ndjson
+
+    Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "PC47");
+    double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
+
+    auto excitation = build_sinusoidal_flux_excitation(frequency, peak);
+
+    double eddyLosses = CoreLossesRoshenModel().get_eddy_current_losses_density(core, excitation, resistivity);
+
+    // Closed form for a sinusoid, from Roshen Eq. (5): Pe = pi * A * Bpk^2 * f^2 / (4 * rho)
+    double expected = std::numbers::pi * centralColumnArea * pow(peak, 2) * pow(frequency, 2) / (4 * resistivity);
+    CHECK_THAT(eddyLosses, Catch::Matchers::WithinRel(expected, 0.02));
+    settings.reset();
+}
+
+TEST_CASE("Test_Roshen_Eddy_Current_Laminated_Uses_Ribbon_Thickness", "[physical-model][core-losses][roshen-core-losses-model][abt-1344]") {
+    settings.reset();
+    clear_databases();
+
+    double frequency = 100000;
+    double peak = 0.05;
+    double resistivity = 1.15e-6;  // Nanoperm 80000 @ 25C, MAS/data/core_materials.ndjson
+    double laminationThickness = 20e-6;  // illustrative ribbon thickness for this unit test only
+
+    Core core = OpenMagneticsTesting::get_quick_core("T 63/50/30", json::array(), 1, "Nanoperm 80000");
+    auto material = find_core_material_by_name("Nanoperm 80000");
+    REQUIRE(material.get_material() == MAS::MaterialType::NANOCRYSTALLINE);
+    DimensionWithTolerance laminationThicknessDimension;
+    laminationThicknessDimension.set_nominal(laminationThickness);
+    material.set_lamination_thickness(laminationThicknessDimension);
+    core.get_mutable_functional_description().set_material(material);
+
+    auto excitation = build_sinusoidal_flux_excitation(frequency, peak);
+
+    double eddyLosses = CoreLossesRoshenModel().get_eddy_current_losses_density(core, excitation, resistivity);
+
+    // Closed form for a sinusoid, TI SLUP124: Pe = pi^2 * D^2 * f^2 * Bpk^2 / (6 * rho)
+    double expected = pow(std::numbers::pi, 2) * pow(laminationThickness, 2) * pow(frequency, 2) * pow(peak, 2) / (6 * resistivity);
+    CHECK_THAT(eddyLosses, Catch::Matchers::WithinRel(expected, 0.02));
+
+    // The branch must actually be engaged: using the core's bulk cross-section instead of the
+    // ribbon thickness would be many orders of magnitude larger for a real tape-wound geometry.
+    double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
+    double bulkAreaFormulaResult = std::numbers::pi * centralColumnArea * pow(peak, 2) * pow(frequency, 2) / (4 * resistivity);
+    CHECK(eddyLosses < bulkAreaFormulaResult / 100);
+    settings.reset();
+}
+
+TEST_CASE("Test_Roshen_Eddy_Current_Laminated_Without_Thickness_Throws", "[physical-model][core-losses][roshen-core-losses-model][abt-1344]") {
+    settings.reset();
+    clear_databases();
+
+    Core core = OpenMagneticsTesting::get_quick_core("T 63/50/30", json::array(), 1, "Nanoperm 80000");
+    auto material = find_core_material_by_name("Nanoperm 80000");
+    REQUIRE(material.get_material() == MAS::MaterialType::NANOCRYSTALLINE);
+    REQUIRE_FALSE(material.get_lamination_thickness());
+    core.get_mutable_functional_description().set_material(material);
+
+    auto excitation = build_sinusoidal_flux_excitation(100000, 0.05);
+
+    CHECK_THROWS(CoreLossesRoshenModel().get_eddy_current_losses_density(core, excitation, 1.15e-6));
+    settings.reset();
+}
