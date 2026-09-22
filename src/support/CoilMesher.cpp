@@ -90,8 +90,8 @@ bool is_point_inside_turn(const Turn& turn, double pointX, double pointY, double
     return false;
 }
 
-bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
-    for (auto turn : turns) {
+bool is_inside_turns(const std::vector<Turn>& turns, double pointX, double pointY) {
+    for (const auto& turn : turns) {
         // Check main coordinates
         if (is_point_inside_turn(turn, pointX, pointY, settings.get_coil_mesher_inside_turns_factor())) {
             return true;
@@ -113,8 +113,8 @@ bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
     return false;
 }
 
-bool is_far_from_turns(std::vector<Turn> turns, double pointX, double pointY) {
-    for (auto turn : turns) {
+bool is_far_from_turns(const std::vector<Turn>& turns, double pointX, double pointY) {
+    for (const auto& turn : turns) {
         // Check distance to main coordinates
         double distanceX = fabs(turn.get_coordinates()[0] - pointX);
         double distanceY = fabs(turn.get_coordinates()[1] - pointY);
@@ -140,21 +140,21 @@ bool is_far_from_turns(std::vector<Turn> turns, double pointX, double pointY) {
     return true;
 }
 
-bool is_passed_from_all_turns(std::vector<Turn> turns, double pointX, double pointY) {
-    for (auto turn : turns) {
+bool is_passed_from_all_turns(const std::vector<Turn>& turns, double pointX, double pointY) {
+    for (const auto& turn : turns) {
         if (pointX < turn.get_coordinates()[0]) {
             return false;
         }
     }
     bool noTurnsAbove = true;
-    for (auto turn : turns) {
+    for (const auto& turn : turns) {
         if (pointY < turn.get_coordinates()[1]) {
             noTurnsAbove = false;
         }
     }
 
     bool noTurnsBelow = true;
-    for (auto turn : turns) {
+    for (const auto& turn : turns) {
         if (pointY > turn.get_coordinates()[1]) {
             noTurnsBelow = false;
         }
