@@ -105,6 +105,12 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::DRUM_SEMISHIELDED));
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::MOLDED));
 
+    // DRUM_PLATE (ABT #996): the rectangular drum plus ferrite lid a wire-wound chip common-mode
+    // choke is built on. Same situation as DRUM_SEMISHIELDED -- a piece class with no catalogue
+    // shapes yet, because the core makers publish only the envelope (L/W/H1/H2) and not the
+    // winding window, so support is asserted at the piece level only.
+    REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::DRUM_PLATE));
+
     // PQI is supported too (ABT #275): the PQ clause of IEC 60205 covers the plate case, and the
     // geometry validates against TDK's published planar data to 0.3%.
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::PQI));

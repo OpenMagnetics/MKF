@@ -3611,4 +3611,113 @@ TEST_CASE("Test_Molded_Region_Materials_Resolution", "[core][molded][abt-1002]")
     CHECK_THROWS(coreWithMaterial(json::array({"air"})).resolve_region_materials());
     CHECK_THROWS(coreWithMaterial(json::array({"air", "air", "air"})).resolve_material());
     settings.reset();
+
+// ET 20 is published now (MAS e4b90d2, from ACME's ET core catalogue), so the assertion the EI
+// test above asks for can be made: a type-only check passes through a regression that keeps the
+// enum and changes the mirroring, which is exactly how the UT and EI gaps survived.
+TEST_CASE("Test_Core_Type_EI_Effective_Length_ET20", "[core][core-type][smoke-test]") {
+    settings.reset();
+
+    auto coreShape = OpenMagnetics::find_core_shape_by_name("ET 20");
+    Core core(coreShape, OpenMagnetics::find_core_material_by_name("3C95"));
+    CHECK(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+
+    // Mirrored, ET 20 reports 99.51 mm. ACME publishes 52.10 mm for this core and the WE-FC
+    // works documents state the same; MKF's own section decomposition gives 49.76 mm, 4.5 %
+    // under the published figure, which is a decomposition difference and not a factor of two.
+    core.process_data();
+    REQUIRE(core.get_processed_description());
+    auto effective = core.get_processed_description()->get_effective_parameters();
+    CHECK_THAT(effective.get_effective_length() * 1000, Catch::Matchers::WithinRel(49.76, 0.02));
+}
+
+
+// DRUM_PLATE (ABT #996): the core a wire-wound chip common-mode choke is built on — a rectangular
+// drum, two end flanges with a post between them, closed by a flat ferrite lid. Third family in
+// the same cascade in as many days, so this asserts the derivation AND that the geometry is
+// actually computed, not just that the enum is right.
+//
+// The shape is built INLINE and its internals are a FIXTURE, not data: the core makers publish
+// only the envelope — Phonon Meiwa gives L, W, H1 and H2 and stops — so the flange thickness and
+// the post's two dimensions are nobody's published numbers yet. The envelope here is Meiwa's real
+// 0805 (2.00 x 1.27 x 0.90 with a 0.30 lid); the three internals are representative and must not
+// be read back as a core record. MAS ships no drumPlate shape for the same reason.
+TEST_CASE("Test_Core_Type_DrumPlate_Is_Piece_And_Plate", "[core][core-type][smoke-test]") {
+    settings.reset();
+
+    CoreShape shape;
+    shape.set_family(CoreShapeFamily::DRUM_PLATE);
+    shape.set_name("drumPlate test shape");
+    shape.set_type(FunctionalDescriptionType::CUSTOM);
+    shape.set_dimensions(std::map<std::string, Dimension>{
+        {"A", 0.00200}, {"B", 0.00090}, {"C", 0.00127},   // Meiwa 0805 envelope, published
+        {"D", 0.00035}, {"F", 0.00030}, {"G", 0.00100},   // fixture: flange, post height, post depth
+        {"J", 0.00030},                                    // lid thickness, published
+    });
+
+    // A drum closed by a plate, exactly as drumRing and drumSemishielded already derive.
+    Core core(shape, OpenMagnetics::find_core_material_by_name("3C95"));
+    CHECK(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+
+    core.process_data();
+    REQUIRE(core.get_processed_description());
+    auto effective = core.get_processed_description()->get_effective_parameters();
+
+    // The IEC effective area is a C1^2/C2 weighted average over the sections, NOT the smallest
+    // of them, so it sits BETWEEN the post it is narrowest at (G x F = 1.00 x 0.30 = 0.30 mm^2)
+    // and the widest section the flux passes through (the flange, C x D = 1.27 x 0.35 =
+    // 0.44 mm^2). Asserting it could not exceed the post was this test's own first mistake.
+    CHECK(effective.get_effective_area() * 1e6 > 0.30 * 0.999);
+    CHECK(effective.get_effective_area() * 1e6 < 0.4445 * 1.001);
+    // The minimum section IS the post, and that is what a saturation check must use.
+    CHECK_THAT(effective.get_minimum_area() * 1e6, Catch::Matchers::WithinRel(0.30, 0.001));
+    // The path runs post -> flange -> lid -> flange, so it is longer than the window it spans
+    // (A - 2D = 1.30 mm) and shorter than a lap of the whole body.
+    CHECK(effective.get_effective_length() * 1000 > 1.30);
+    CHECK(effective.get_effective_length() * 1000 < 12.0);
+    // Ve = Ae x le, the identity every family here satisfies.
+    CHECK_THAT(effective.get_effective_volume(),
+               Catch::Matchers::WithinRel(effective.get_effective_area() *
+                                          effective.get_effective_length(), 0.02));
+
+    // The winding window MUST carry an area and a shape: a null area is what throws
+    // bad_optional_access out of Coil::calculate_filling_factor, days away from here.
+    auto windingWindow = core.get_processed_description()->get_winding_windows()[0];
+    REQUIRE(windingWindow.get_area());
+    CHECK(windingWindow.get_area().value() > 0);
+
+    // And the column the bobbin is derived from is the POST, rectangular, not a round drum post.
+    auto column = core.get_processed_description()->get_columns()[0];
+    CHECK(column.get_shape() == ColumnShape::RECTANGULAR);
+    CHECK_THAT(column.get_width(), Catch::Matchers::WithinRel(0.00100, 0.001));
+}
+
+
+// Data errors must not become plausible-looking cores — the same discipline drumSemishielded
+// applies to its shell envelope. Each of these is a geometry that cannot exist.
+TEST_CASE("Test_DrumPlate_Rejects_Impossible_Geometry", "[core][core-type][smoke-test]") {
+    settings.reset();
+
+    auto build = [](std::map<std::string, Dimension> dimensions) {
+        CoreShape shape;
+        shape.set_family(CoreShapeFamily::DRUM_PLATE);
+        shape.set_name("drumPlate bad shape");
+        shape.set_type(FunctionalDescriptionType::CUSTOM);
+        shape.set_dimensions(dimensions);
+        Core core(shape, OpenMagnetics::find_core_material_by_name("3C95"));
+        core.process_data();
+    };
+
+    // flanges consume the whole length, so there is no window to wind in
+    CHECK_THROWS(build({{"A", 0.00200}, {"B", 0.00090}, {"C", 0.00127},
+                        {"D", 0.00100}, {"F", 0.00030}, {"G", 0.00100}, {"J", 0.00030}}));
+    // a post taller than the drum it sits in
+    CHECK_THROWS(build({{"A", 0.00200}, {"B", 0.00090}, {"C", 0.00127},
+                        {"D", 0.00035}, {"F", 0.00090}, {"G", 0.00100}, {"J", 0.00030}}));
+    // a post deeper than the body
+    CHECK_THROWS(build({{"A", 0.00200}, {"B", 0.00090}, {"C", 0.00127},
+                        {"D", 0.00035}, {"F", 0.00030}, {"G", 0.00200}, {"J", 0.00030}}));
+    // no lid: that is a drum, and its circuit does not close
+    CHECK_THROWS(build({{"A", 0.00200}, {"B", 0.00090}, {"C", 0.00127},
+                        {"D", 0.00035}, {"F", 0.00030}, {"G", 0.00100}, {"J", 0.0}}));
 }

@@ -2500,6 +2500,151 @@ class CorePieceDrumSemishielded : public CorePieceDrum {
 // radius for the corner lengths — the same first-order treatment RM/PQ pieces use for their
 // non-round outlines. Validated forward against the REDEXPERT measured L(I) data in the
 // ABT #357 phase-2 fit; this class only owns the geometry.
+// DRUM_PLATE (ABT #996): the core a wire-wound chip common-mode choke is built on -- a RECTANGULAR
+// drum, two end flanges with a post between them carrying the winding, closed by a flat ferrite lid
+// bonded across the top. Phonon Meiwa's "Ferrite Core for Chip Common Mode Choke Coil" catalogue
+// dimensions it L/W/H1/H2 and draws exactly that; the WE works documents name the two pieces
+// outright, "dr core" and "i core", with glue "used to bond the core and cover".
+//
+// NOT derived from CorePieceDrum, though it is the same idea: that class computes a RADIAL winding
+// window from a flange OD and a round post (width = (A - C)/2), and rectangular is the one thing
+// that does not carry over. Everything else follows its structure closely on purpose.
+//
+// Letters, per the MAS schema commit that added the family:
+//   A overall length along the post axis   D flange thickness, each end   J lid thickness
+//   B drum height, lid excluded            E winding window length, A-2D  K lid length (dflt A)
+//   C overall depth                        F post height                  L lid depth  (dflt C)
+//                                          G post depth (dflt C)
+//
+// Flux path, and so the IEC 60205 sections: along the post between the flanges, up through one
+// flange, across the lid, down the other flange. Corner terms follow the pi/4 (p + h) form the
+// drum and E pieces already use.
+class CorePieceDrumPlate : public CorePiece {
+  public:
+    static double lidLength(std::map<std::string, double>& dimensions) {
+        auto it = dimensions.find("K");
+        return (it != dimensions.end() && it->second > 0) ? it->second : dimensions["A"];
+    }
+
+    static double lidDepth(std::map<std::string, double>& dimensions) {
+        auto it = dimensions.find("L");
+        return (it != dimensions.end() && it->second > 0) ? it->second : dimensions["C"];
+    }
+
+    static double postDepth(std::map<std::string, double>& dimensions) {
+        auto it = dimensions.find("G");
+        return (it != dimensions.end() && it->second > 0) ? it->second : dimensions["C"];
+    }
+
+    static double windowLength(std::map<std::string, double>& dimensions) {
+        auto it = dimensions.find("E");
+        if (it != dimensions.end() && it->second > 0) {
+            return it->second;
+        }
+        return dimensions["A"] - 2 * dimensions["D"];
+    }
+
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        // Validated rather than trusted, in the style drumSemishielded already uses: a window that
+        // does not exist, or a lid larger than the body, is a data error and must not become a
+        // plausible-looking core.
+        if (windowLength(dimensions) <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumPlate: the two flanges (D = " + std::to_string(dimensions["D"]) +
+                ") leave no winding window in the length A = " + std::to_string(dimensions["A"]));
+        }
+        if (dimensions["F"] <= 0 || dimensions["F"] >= dimensions["B"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumPlate: the post height F (" + std::to_string(dimensions["F"]) +
+                ") must be positive and smaller than the drum height B (" +
+                std::to_string(dimensions["B"]) + ")");
+        }
+        if (postDepth(dimensions) > dimensions["C"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumPlate: the post depth G (" + std::to_string(postDepth(dimensions)) +
+                ") cannot exceed the overall depth C (" + std::to_string(dimensions["C"]) + ")");
+        }
+        if (dimensions["J"] <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumPlate: the lid thickness J must be positive; a drumPlate without a lid is a "
+                "drum, and its magnetic circuit does not close");
+        }
+        // The FINISHED body, drumSemishielded's convention: the lid is part of what you hold.
+        set_width(std::max(dimensions["A"], lidLength(dimensions)));
+        set_depth(std::max(dimensions["C"], lidDepth(dimensions)));
+        set_height(dimensions["B"] + dimensions["J"]);
+    }
+
+    void process_winding_window() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        WindingWindowElement windingWindow;
+        // Mirrors the drum: the window's HEIGHT is its extent along the post, and its WIDTH is the
+        // room the turns have off the post before they reach the body -- radial there, vertical
+        // here, because the lid closes over the top.
+        windingWindow.set_height(windowLength(dimensions));
+        windingWindow.set_width((dimensions["B"] - dimensions["F"]) / 2);
+        windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
+        // ABT #107 convention: coordinates[0] is the window CENTRE, not its inner edge.
+        windingWindow.set_coordinates(std::vector<double>(
+            {dimensions["F"] / 2 + (dimensions["B"] - dimensions["F"]) / 4, 0}));
+        set_winding_window(windingWindow);
+    }
+
+    void process_columns() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        std::vector<ColumnElement> columns;
+        ColumnElement mainColumn;
+        // The post is what the winding encircles, so it is what sets the mean turn length and, in
+        // turn, the bobbin MKF derives as half this column plus the bobbin thickness.
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::RECTANGULAR);
+        mainColumn.set_width(roundFloat(postDepth(dimensions)));
+        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        mainColumn.set_height(roundFloat(windowLength(dimensions)));
+        mainColumn.set_area(roundFloat(postDepth(dimensions) * dimensions["F"]));
+        mainColumn.set_coordinates({0, 0, 0});
+        columns.push_back(mainColumn);
+        set_columns(columns);
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double pi = std::numbers::pi;
+        double window = windowLength(dimensions);
+        double post = postDepth(dimensions);
+        double postArea = post * dimensions["F"];
+        double flangeArea = dimensions["C"] * dimensions["D"];
+        double lidArea = lidDepth(dimensions) * dimensions["J"];
+        // From the post's mid-height up to the middle of the lid: the length the flux travels in
+        // each flange before it turns into the lid.
+        double flangeRun = dimensions["B"] - dimensions["F"] / 2 + dimensions["J"] / 2;
+
+        std::vector<double> areas = {postArea, flangeArea, lidArea};
+        double c1 = window / postArea;
+        double c2 = window / pow(postArea, 2);
+        // Two flanges and the lid, each with the corner that joins it to what came before.
+        for (auto [sectionLength, sectionArea, previousArea] :
+             {std::make_tuple(flangeRun, flangeArea, postArea),
+              std::make_tuple(flangeRun, flangeArea, postArea),
+              std::make_tuple(window, lidArea, flangeArea)}) {
+            c1 += sectionLength / sectionArea;
+            c2 += sectionLength / pow(sectionArea, 2);
+            double cornerLength = pi / 4 * (sqrt(previousArea) + sqrt(sectionArea)) / 2;
+            double cornerArea = 0.5 * (previousArea + sectionArea);
+            areas.push_back(cornerArea);
+            c1 += cornerLength / cornerArea;
+            c2 += cornerLength / pow(cornerArea, 2);
+        }
+        return {c1, c2, *min_element(areas.begin(), areas.end())};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        return {pow(c1, 2) / c2, c1 / c2, minimumArea};
+    }
+};
+
 class CorePieceMolded : public CorePiece {
   public:
     void process_extra_data() {
@@ -2802,6 +2947,7 @@ static constexpr CoreShapeFamily kSupportedShapeFamilies[] = {
     CoreShapeFamily::C,          CoreShapeFamily::EER,        CoreShapeFamily::EF,
     CoreShapeFamily::EPC,        CoreShapeFamily::UI,         CoreShapeFamily::EI,
     CoreShapeFamily::DRUM,       CoreShapeFamily::DRUM_RING,  CoreShapeFamily::DRUM_SEMISHIELDED,
+    CoreShapeFamily::DRUM_PLATE,
     CoreShapeFamily::ROD,        CoreShapeFamily::MOLDED,     CoreShapeFamily::PQI,
     CoreShapeFamily::EPQ,        CoreShapeFamily::EPW,        CoreShapeFamily::EPT,
     CoreShapeFamily::LEP,
@@ -3091,6 +3237,12 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     }
     else if (family == CoreShapeFamily::DRUM_RING) {
         auto piece = std::make_shared<CorePieceDrumRing>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::DRUM_PLATE) {
+        auto piece = std::make_shared<CorePieceDrumPlate>();
         piece->set_shape(shape);
         if (process) piece->process();
         return piece;
