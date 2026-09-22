@@ -14,6 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -295,6 +296,38 @@ TEST_CASE("Test_Mas_Without_Design_Requirements_Is_Refused_By_Name", "[construct
     REQUIRE_THROWS_AS(OpenMagnetics::from_json(masJson, mas), InvalidInputException);
     REQUIRE_THROWS_WITH(OpenMagnetics::from_json(masJson, mas), Catch::Matchers::ContainsSubstring("inputs.designRequirements"));
     REQUIRE_THROWS_AS(OpenMagnetics::Inputs(masJson["inputs"]), InvalidInputException);
+}
+
+// ABT #1330: MAS example 22 (forward, E 42/21/15, 3C95) describes both excitations by processed
+// parameters only -- label, peakToPeak, offset, dutyCycle, no sampled waveform. The insulation
+// step asks for the peak and RMS voltage, and mas_autocomplete refused with "Voltage does not have
+// waveform". The waveform is MKF's own create_waveform of exactly those parameters.
+TEST_CASE("Test_Mas_Autocomplete_Rebuilds_A_Processed_Only_Voltage", "[constructive-model][mas][abt-1330]") {
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1330_processed_only_forward_e4218.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    json masJson = json::parse(file);
+    auto& primaryVoltage = masJson["inputs"]["operatingPoints"][0]["excitationsPerWinding"][0]["voltage"];
+    REQUIRE(!primaryVoltage.contains("waveform"));
+    REQUIRE(primaryVoltage["processed"]["label"] == "rectangular");
+    double peakToPeak = primaryVoltage["processed"]["peakToPeak"];
+    double dutyCycle = primaryVoltage["processed"]["dutyCycle"];
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_json(masJson, mas);
+
+    OpenMagnetics::Mas autocompleted;
+    REQUIRE_NOTHROW(autocompleted = OpenMagnetics::mas_autocomplete(mas, true));
+    REQUIRE(autocompleted.get_magnetic().get_coil().get_turns_description());
+
+    // The voltage now carries a waveform, and it is the rectangle its parameters define: high for
+    // the duty cycle at peakToPeak x (1 - D), low for the rest at -peakToPeak x D (zero mean).
+    auto voltage = autocompleted.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_voltage().value();
+    REQUIRE(voltage.get_waveform());
+    auto data = voltage.get_waveform()->get_data();
+    CHECK_THAT(*std::max_element(data.begin(), data.end()), Catch::Matchers::WithinRel(peakToPeak * (1 - dutyCycle), 1e-12));
+    CHECK_THAT(*std::min_element(data.begin(), data.end()), Catch::Matchers::WithinRel(-peakToPeak * dutyCycle, 1e-12));
+    settings.reset();
 }
 
 }  // namespace

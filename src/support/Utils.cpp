@@ -2642,6 +2642,11 @@ std::string fix_filename(std::string filename) {
 }
 
 SignalDescriptor standardize_signal_descriptor(SignalDescriptor signalDescriptor, double frequency) {
+    // ABT #1330: autocomplete rebuilds a signal given by processed parameters only; it must not
+    // let create_waveform assume the duty cycle or dead time that the MAS did not give.
+    if (!signalDescriptor.get_waveform() && signalDescriptor.get_processed()) {
+        Inputs::throw_if_processed_cannot_define_waveform(signalDescriptor.get_processed().value(), "signal");
+    }
 
     auto standardSignalDescriptor = Inputs::standardize_waveform(signalDescriptor, frequency);
     if (standardSignalDescriptor.get_harmonics()) {

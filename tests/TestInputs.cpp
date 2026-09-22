@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -2010,4 +2011,52 @@ TEST_CASE("Test_Missing_Required_Field_Names_The_Object", "[processor][inputs]")
         CHECK(message.find("winding") != std::string::npos);
         CHECK(message.find("wire") != std::string::npos);
     }
+}
+
+// ABT #1330: a signal given only by processed parameters is rebuilt with create_waveform, which
+// needs the duty cycle for every non-sinusoidal label and the dead time for the *_WITH_DEADTIME
+// ones. When they are absent the reconstruction must refuse by name, never assume a value.
+TEST_CASE("Test_Processed_Only_Signal_Defines_A_Waveform_Or_Says_What_Is_Missing", "[processor][inputs][abt-1330]") {
+    ProcessedWaveform triangular;
+    triangular.set_label(WaveformLabel::TRIANGULAR);
+    triangular.set_peak_to_peak(1.5);
+    triangular.set_offset(2.0);
+    REQUIRE_THROWS_AS(OpenMagnetics::Inputs::throw_if_processed_cannot_define_waveform(triangular, "current"), InvalidInputException);
+    REQUIRE_THROWS_WITH(OpenMagnetics::Inputs::throw_if_processed_cannot_define_waveform(triangular, "current"), Catch::Matchers::ContainsSubstring("dutyCycle"));
+    triangular.set_duty_cycle(0.4);
+    CHECK_NOTHROW(OpenMagnetics::Inputs::throw_if_processed_cannot_define_waveform(triangular, "current"));
+
+    ProcessedWaveform withDeadTime = triangular;
+    withDeadTime.set_label(WaveformLabel::RECTANGULAR_WITH_DEADTIME);
+    REQUIRE_THROWS_WITH(OpenMagnetics::Inputs::throw_if_processed_cannot_define_waveform(withDeadTime, "voltage"), Catch::Matchers::ContainsSubstring("deadTime"));
+
+    ProcessedWaveform sinusoidal;
+    sinusoidal.set_label(WaveformLabel::SINUSOIDAL);
+    sinusoidal.set_peak_to_peak(10);
+    sinusoidal.set_offset(0);
+    CHECK_NOTHROW(OpenMagnetics::Inputs::throw_if_processed_cannot_define_waveform(sinusoidal, "voltage"));
+    sinusoidal.set_peak_to_peak(std::nullopt);
+    REQUIRE_THROWS_WITH(OpenMagnetics::Inputs::throw_if_processed_cannot_define_waveform(sinusoidal, "voltage"), Catch::Matchers::ContainsSubstring("peakToPeak"));
+
+    ProcessedWaveform custom = triangular;
+    custom.set_label(WaveformLabel::CUSTOM);
+    REQUIRE_THROWS_WITH(OpenMagnetics::Inputs::throw_if_processed_cannot_define_waveform(custom, "voltage"), Catch::Matchers::ContainsSubstring("sampled waveform"));
+
+    // The voltage reconstruction refuses too, instead of letting create_waveform default the duty
+    // cycle to 0.5: a rectangular voltage with no dutyCycle has no defined peak.
+    ProcessedWaveform noDuty;
+    noDuty.set_label(WaveformLabel::RECTANGULAR);
+    noDuty.set_peak_to_peak(96);
+    noDuty.set_offset(0);
+    SignalDescriptor voltage;
+    voltage.set_processed(noDuty);
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(120000);
+    excitation.set_voltage(voltage);
+    OperatingPoint operatingPoint;
+    operatingPoint.set_excitations_per_winding({excitation});
+    OpenMagnetics::Inputs inputs;
+    inputs.set_operating_points({operatingPoint});
+    REQUIRE_THROWS_AS(inputs.get_maximum_voltage_peak(), InvalidInputException);
+    REQUIRE_THROWS_WITH(inputs.get_maximum_voltage_peak(), Catch::Matchers::ContainsSubstring("dutyCycle"));
 }

@@ -179,6 +179,12 @@ class Inputs : public MAS::Inputs {
                                                                               double currentOffset = 0);
 
     static WaveformLabel try_guess_waveform_label(Waveform waveform);
+    // ABT #1330: whether a processed description defines a waveform on its own. A signal given only
+    // by its processed parameters (label, peakToPeak, offset, dutyCycle...) is rebuilt with
+    // create_waveform, which reads the duty cycle for every non-sinusoidal label and the dead time
+    // for the *_WITH_DEADTIME ones; CUSTOM and RECTANGULAR_DCM have no parametric form at all.
+    // Throws naming what is missing (`what` says which signal), never assumes a value.
+    static void throw_if_processed_cannot_define_waveform(const ProcessedWaveform& processed, const std::string& what);
     static Waveform create_waveform(ProcessedWaveform processed, double frequency);
     // phase: radians, applied to SINUSOIDAL waveforms only (positive phase
     // advances the waveform — e.g. phase=pi/2 turns sin(wt) into sin(wt+pi/2)=cos(wt),

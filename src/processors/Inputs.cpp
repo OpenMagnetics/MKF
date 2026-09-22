@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <string>
@@ -419,6 +420,39 @@ Waveform Inputs::reconstruct_signal(Harmonics harmonics, double frequency) {
     waveform.set_data(data);
     waveform.set_time(time);
     return waveform;
+}
+
+void Inputs::throw_if_processed_cannot_define_waveform(const ProcessedWaveform& processed, const std::string& what) {
+    auto label = processed.get_label();
+    std::string labelName(magic_enum::enum_name(label));
+    if (label == WaveformLabel::CUSTOM || label == WaveformLabel::RECTANGULAR_DCM) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "The " + what + " has no waveform and its processed label " + labelName +
+            " has no parametric form to build one from: supply the sampled waveform");
+    }
+    std::vector<std::string> missing;
+    if (!processed.get_peak_to_peak()) {
+        missing.push_back("peakToPeak");
+    }
+    if (label != WaveformLabel::SINUSOIDAL && !processed.get_duty_cycle()) {
+        missing.push_back("dutyCycle");
+    }
+    const bool withDeadTime = label == WaveformLabel::TRIANGULAR_WITH_DEADTIME ||
+                              label == WaveformLabel::RECTANGULAR_WITH_DEADTIME ||
+                              label == WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME ||
+                              label == WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME;
+    if (withDeadTime && !processed.get_dead_time()) {
+        missing.push_back("deadTime");
+    }
+    if (!missing.empty()) {
+        std::string fields;
+        for (auto& field : missing) {
+            fields += (fields.empty() ? "" : ", ") + field;
+        }
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "The " + what + " has no waveform, and its processed data cannot define a " + labelName +
+            " one: missing " + fields);
+    }
 }
 
 Waveform Inputs::create_waveform(ProcessedWaveform processed, double frequency) {
@@ -2932,10 +2966,21 @@ Waveform Inputs::scale_time_to_frequency(Waveform waveform, double newFrequency)
 }
 
 void process_voltage(OperatingPointExcitation& excitation) {
-    if (!excitation.get_voltage()->get_waveform()) 
-        throw std::invalid_argument("Voltage does not have waveform");
-    ProcessedWaveform processed = Inputs::calculate_processed_data(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
+    // ABT #1330: a voltage described by its processed parameters alone (label, peakToPeak, offset,
+    // dutyCycle) is rebuilt with MKF's own create_waveform at the excitation's frequency, the same
+    // reconstruction autocomplete's inputs step does, instead of refusing it. Nothing is assumed: a
+    // processed block that cannot define the waveform throws naming what is missing (create_waveform
+    // itself would default a missing duty cycle to 0.5 and a dead time to 0).
     auto voltage = excitation.get_voltage().value();
+    if (!voltage.get_waveform()) {
+        if (!voltage.get_processed()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "The voltage has neither a waveform nor processed data to build one from");
+        }
+        Inputs::throw_if_processed_cannot_define_waveform(voltage.get_processed().value(), "voltage");
+        voltage = Inputs::standardize_waveform(voltage, excitation.get_frequency());
+    }
+    ProcessedWaveform processed = Inputs::calculate_processed_data(voltage.get_waveform().value(), excitation.get_frequency());
     voltage.set_processed(processed);
     excitation.set_voltage(voltage);
 }
