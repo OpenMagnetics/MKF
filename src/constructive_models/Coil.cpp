@@ -1143,6 +1143,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         double runDepth;
         double height;
         size_t rowIndex;  // into edgeRows[{window, edge}], so reuse can register more spans
+        // The isolation sides with a run on this row. Windings on opposite sides connect on
+        // opposite faces of the former and share the row freely (ABT #615's reuse); a SIBLING on
+        // the same side whose exit turn does not sit on the row stacks its own row instead.
+        std::vector<IsolationSide> sides;
     };
     std::map<std::pair<size_t, int>, ContinuationBand> continuationBand;
     // Allocates a row for a run of height `wireHeight` spanning [spanLo, spanHi] radially; returns
@@ -1535,6 +1539,36 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                    turnAtTop, edgeY, runHeight, sleeved,
                                    "terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
                                    (isEntrance ? " (start)" : " (finish)"));
+        // OFF-FACE EXIT STUB (MVB++ ABT #849; cm37, 2026-09-23). On a rectangular or oblong
+        // column the 3D exit vertical cannot run on the turn's own face: the sibling parallel's
+        // last straight arrives along that face at the same depth and the vertical would drop
+        // straight through it, so MVB++ draws the vertical one coated OD OUTWARD of the column
+        // (a radial step at the turn, then the climb). That copper lives in the next layer's
+        // column, which this reservation used to leave alone: the stub was drawn in the turn's
+        // own column and the crossed layers were squeezed only at the edge row. Measured on cm37
+        // once its Primary exit re-laid to mid-window: the vertical ran through Secondary
+        // section 1 layer 0 at 0.234 mm for a 0.3135 mm envelope. The stub is now DRAWN where
+        // the copper is, and every layer whose column it stands in is blocked over the stub's
+        // whole height (edgeDepth reaches down to the turn), so the layout pays for it.
+        const bool stubNeeded = std::abs(edgeY - turnY) > wireOuterHeight / 2;
+        const double stubDirection = (edgeY >= turnY) ? 1.0 : -1.0;
+        const double stubFarEnd = edgeY + stubDirection * wireOuterHeight / 2;
+        bool offFaceStub = false;
+        if (stubNeeded && !isEntrance && !sleeved) {
+            const auto columnShape =
+                std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_shape();
+            const auto wireType = resolve_wire(get_winding_index_by_name(windingName)).get_type();
+            offFaceStub = (columnShape == ColumnShape::RECTANGULAR || columnShape == ColumnShape::OBLONG) &&
+                          wireType != WireType::RECTANGULAR && wireType != WireType::PLANAR;
+        }
+        const double stubX = offFaceStub ? turnX + wireOuterWidth : turnX;
+        // The stub's turn-side end, as a depth past the margin's inner face -- runDepth's own
+        // terms, so the blocking can take the deeper of the two.
+        const double stubDepth =
+            offFaceStub ? std::abs(edgeBaseY(leadWindowIndex, turnAtTop) -
+                                   (turnY - stubDirection * wireOuterHeight / 2)) +
+                              (unsleevedInset(leadWindowIndex, turnAtTop) - edgeMargin(leadWindowIndex, turnAtTop))
+                        : 0.0;
         for (const Layer* crossed : crossedLayers) {
             // ABT #1174: a sleeved run lying wholly inside the margin band squeezes no layer --
             // the crossed layers' turns start at the margin's inner face, which it never passes.
@@ -1577,21 +1611,27 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 }
             }
             space.edgeDepth = runDepth + interWindingInsulation;
+            if (offFaceStub) {
+                // The layer the off-face stub stands in is blocked down to the turn.
+                const double crossedHalfWidth =
+                    0.5 * crossed->get_dimensions()[layersAreContiguous ? 1 : 0];
+                if (std::abs(crossed->get_coordinates()[0] - stubX) < wireOuterWidth / 2 + crossedHalfWidth) {
+                    space.edgeDepth = std::max(space.edgeDepth, stubDepth + interWindingInsulation);
+                }
+            }
             space.routedLength = 0;  // space-only squeeze: the lead's copper is the drawn stub + edge run
             space.kind = ConnectionKind::LAYER_SQUEEZE;   // ABT #685: no copper, no route
             (isEntrance ? space.toTurn : space.fromTurn) = connectingTurn.get_name();
             spaces.push_back(space);
         }
-        if (std::abs(edgeY - turnY) > wireOuterHeight / 2) {
-            double stubDirection = (edgeY >= turnY) ? 1.0 : -1.0;
-            double stubFarEnd = edgeY + stubDirection * wireOuterHeight / 2;
+        if (stubNeeded) {
             ConnectionReservedSpace stub;
             stub.isTerminal = true;
             stub.winding = windingName;
             stub.parallel = parallel;
             stub.section = connectingTurn.get_section().value_or("");
             stub.layer = "";
-            stub.coordinates = {turnX, roundFloat((turnY + stubFarEnd) / 2, 9)};
+            stub.coordinates = {roundFloat(stubX, 9), roundFloat((turnY + stubFarEnd) / 2, 9)};
             stub.dimensions = {wireOuterWidth, roundFloat(std::abs(stubFarEnd - turnY), 9)};
             stub.routedLength = roundFloat(std::abs(stubFarEnd - turnY), 9);  // the vertical climb to the edge row
             stub.kind = terminalKind;
@@ -1927,7 +1967,27 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
 
             // Each parallel is its own conductor: it has its own last-turn-of-layer-i and
             // first-turn-of-layer-(i+1), its own crossing squeezes, and its own drawn link.
-            for (int64_t parallel = 0; parallel < numberParallels; ++parallel) {
+            //
+            // NEAREST THE EDGE FIRST. N-filar parallels end a layer side by side, one wire apart,
+            // and only the outermost one's exit turn sits on the edge row. The band is created by
+            // whoever comes first, so in parallel order the inner parallel (p0) would create it
+            // at the edge, a wire above its own turn, and the outer one would then find its turn
+            // on that row and share it -- both on one row, the inner one climbing a stub the
+            // outer one's turn runs straight through (measured on a 2p E16 flyback, MVB++: 1.5 um
+            // between p0's step and p1's run). Creating the band from the edge-most turn and
+            // stacking the others under it (see the band branch) puts every run on the row its
+            // own turn already sits on.
+            std::vector<int64_t> parallelOrder;
+            for (int64_t parallel = 0; parallel < numberParallels; ++parallel) parallelOrder.push_back(parallel);
+            std::stable_sort(parallelOrder.begin(), parallelOrder.end(), [&](int64_t a, int64_t b) {
+                auto edgeDistance = [&](int64_t p) {
+                    auto key = std::make_pair(windingLayers[i].get_name(), p);
+                    if (!lastTurnByLayerParallel.count(key)) return std::numeric_limits<double>::max();
+                    return -std::abs(lastTurnByLayerParallel.at(key).get_coordinates()[1] - windowCenterTurnAxis);
+                };
+                return edgeDistance(a) < edgeDistance(b);
+            });
+            for (const int64_t parallel : parallelOrder) {
                 // ABT #685: the single-turn-layer override, evaluated per conductor (see above).
                 const WindingOrder windingOrder =
                     singleTurnLayerPair(parallel) ? WindingOrder::U : sectionWindingOrder;
@@ -1972,25 +2032,50 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     const int routeEdge = routeAtTop ? 0 : 1;
                     auto bandKey = std::make_pair(routeWindowIndex, routeEdge);
                     auto existingBand = continuationBand.find(bandKey);
-                    if (existingBand != continuationBand.end()
-                        && existingBand->second.height + 1e-12 >= wireOuterHeight) {
+                    const IsolationSide thisSide =
+                        get_functional_description()[windingIndex].get_isolation_side();
+                    bool reuseBand = existingBand != continuationBand.end()
+                                     && existingBand->second.height + 1e-12 >= wireOuterHeight;
+                    if (reuseBand) {
+                        // ONE ROW PER SIDE-BY-SIDE SIBLING. The one-band law holds across
+                        // isolation sides (opposite faces of the former, nothing to meet) and for
+                        // a sibling whose exit turn already sits on the row. A same-side sibling
+                        // whose turn sits a wire below it cannot share: its run needs a climb up
+                        // to the row and a drop off it at its own azimuth, and the sibling that IS
+                        // on the row runs through that azimuth at row height on one layer or the
+                        // other -- no in-plane order clears it (MVB++, 2p E16 flyback). It takes
+                        // the next row down (span-aware allocateEdgeRow), which for N-filar
+                        // turns one wire apart is exactly the row its own turn sits on.
+                        const bool onRow =
+                            std::abs(exitTurn.get_coordinates()[1] - existingBand->second.edgeY)
+                            <= 0.5 * wireOuterHeight;
+                        const bool sameSideOnRow =
+                            std::find(existingBand->second.sides.begin(), existingBand->second.sides.end(),
+                                      thisSide) != existingBand->second.sides.end();
+                        if (!onRow && sameSideOnRow) reuseBand = false;
+                    }
+                    if (reuseBand) {
                         routeEdgeY = existingBand->second.edgeY;
                         runDepth = existingBand->second.runDepth;
                         edgeRows[{routeWindowIndex, routeEdge}][existingBand->second.rowIndex]
                             .spans.push_back({spanLo, spanHi});
+                        existingBand->second.sides.push_back(thisSide);
                     }
                     else {
                         std::tie(routeEdgeY, runDepth) =
                             allocateEdgeRow(routeWindowIndex, routeAtTop, wireOuterHeight, spanLo, spanHi);
-                        size_t rowIndex = 0;
-                        auto& rows = edgeRows[{routeWindowIndex, routeEdge}];
-                        for (size_t r = 0; r < rows.size(); ++r) {
-                            if (std::abs((rows[r].depthBefore + rows[r].height) - runDepth) < 1e-12) {
-                                rowIndex = r;
-                                break;
+                        if (existingBand == continuationBand.end()) {
+                            size_t rowIndex = 0;
+                            auto& rows = edgeRows[{routeWindowIndex, routeEdge}];
+                            for (size_t r = 0; r < rows.size(); ++r) {
+                                if (std::abs((rows[r].depthBefore + rows[r].height) - runDepth) < 1e-12) {
+                                    rowIndex = r;
+                                    break;
+                                }
                             }
+                            continuationBand[bandKey] =
+                                {routeEdgeY, runDepth, wireOuterHeight, rowIndex, {thisSide}};
                         }
-                        continuationBand[bandKey] = {routeEdgeY, runDepth, wireOuterHeight, rowIndex};
                     }
                 }
 
