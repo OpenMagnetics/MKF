@@ -282,6 +282,23 @@ struct ConnectionRoute {
     // stub itself, so waypoints, reservations and blocking are unchanged. Empty: a straight stub, no
     // stub, contiguous layers, or not a real winding.
     std::optional<double> rampLength;
+    // ABT #1354: on a TERMINAL route, the SLOT along the flange this lead's in-window run leaves
+    // the window at -- the x Coil::terminal_exit_slots decided for it, in the same frame and units
+    // as `pinWaypoints`' x (metres, 0 = the crossing lane). It is MKF's own answer to "where, side
+    // by side, does each terminal leave", taken from every route on the connection plane at once:
+    // a group's members stand one PITCH apart, and the pitch is the largest coated outer diameter
+    // among that side's terminal leads -- the wires' own dimensions, not a chosen constant.
+    //
+    // It is carried HERE, and not only inside `pinWaypoints`, because a consumer that follows no
+    // pin run still has to draw the separation, and `waypoints` alone cannot express it: waypoints
+    // live in the window half-plane (layer axis, turn axis) and say nothing about x. A ONE-TURN
+    // OMEGA is the case that makes this load-bearing -- its entrance and exit share one edge row by
+    // design, so their waypoint polylines are IDENTICAL and the slot is the ONLY thing that keeps
+    // the two terminals apart. A consumer that ignores it draws a short.
+    //
+    // Empty on a non-terminal route (links, dragbacks and squeezes sit at the crossing, x = 0), and
+    // on every route when there are no routes at all.
+    std::optional<double> exitSlot;
 };
 
 // ABT #1172 (WP3): the lead's run from the window exit to its assigned pin, see
@@ -876,6 +893,9 @@ class Coil : public MAS::Coil {
         // the YZ/XZ painters read; none of them may re-derive a connection's kind, its route or
         // its bump from turn coordinates. Derived from get_connection_reserved_spaces(), so it
         // carries MKF's own decision rather than a reconstruction of it.
+        // ABT #1354: nor its EXIT SLOT -- ConnectionRoute::exitSlot, the x along the flange each
+        // terminal lead leaves the window at, decided for every wind whether or not pins are
+        // declared. A consumer separates two terminals by that, never by a rule of its own.
         ConnectionLayout get_connection_layout();
         // ABT #685/#1237: the ride levels the laned routes impose (see get_connection_layout).
         std::vector<ConnectionRideLevel> compute_ride_levels(const std::vector<ConnectionRoute>& routes);

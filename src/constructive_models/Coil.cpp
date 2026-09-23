@@ -2297,15 +2297,20 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             }
         }
     }
-    // ABT #1172/#1237: the runs from the window border to the pins, planned together so no two
-    // share copper. The exit's ride-over lift is MKF's own: the ride levels the routes just
-    // recorded impose at the exit radius, on the lead's face (the same levels get_connection_layout
-    // hands to MVB++).
-    if (!pendingPinLeads.empty()) {
-        ConnectionLayout rides;
-        rides.rideLevels = compute_ride_levels(routes);
-        // The exit slots (ABT #1237): the x each terminal lead's in-window run leaves the window at,
-        // decided here from every route on the connection plane, never by the pin-run search.
+    // The exit slots (ABT #1237/#1354): the x each terminal lead's in-window run leaves the window
+    // at, decided here from every route on the connection plane, never by the pin-run search.
+    //
+    // ABT #1354: this is a property of the ROUTES, not of the pin runs, so it is decided for every
+    // wind -- pins declared or not. It was written inside the pin block only because the pin run
+    // was its first consumer (ABT #1237 added it there; the block itself is ABT #1172's), and that
+    // placement silently made the separation conditional on a setting the FEM path turns off. A
+    // one-turn omega is the case where that matters: its entrance and exit share one edge row by
+    // design (the "/omega" key), their polylines are IDENTICAL, so without a slot the two terminals
+    // are emitted at the same point -- a short. terminal_exit_slots pushes the exit one pitch (one
+    // coated diameter, from the wires' own outer dimensions) because blocks_lead sees a polyline
+    // distance of 0: "side by side, on the same height" (Alf, 2026-09-07).
+    std::vector<std::optional<double>> exitSlots(routes.size());
+    if (!routes.empty()) {
         std::vector<double> routeDiameters(routes.size());
         std::vector<double> attachAxial(routes.size(), std::numeric_limits<double>::quiet_NaN());
         const auto turnsForSlots = get_turns_description().value();
@@ -2332,7 +2337,20 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                        " attaches to turn '" + turnName + "', which is not among the coil's turns");
             }
         }
-        const auto exitSlots = terminal_exit_slots(routes, routeDiameters, attachAxial);
+        exitSlots = terminal_exit_slots(routes, routeDiameters, attachAxial);
+        // ABT #1354: and it is CARRIED, so get_connection_layout's consumers read MKF's decision
+        // instead of re-deriving it (the contract at the head of get_connection_layout).
+        for (size_t index = 0; index < routes.size(); ++index) {
+            routes[index].exitSlot = exitSlots[index];
+        }
+    }
+    // ABT #1172/#1237: the runs from the window border to the pins, planned together so no two
+    // share copper. The exit's ride-over lift is MKF's own: the ride levels the routes just
+    // recorded impose at the exit radius, on the lead's face (the same levels get_connection_layout
+    // hands to MVB++).
+    if (!pendingPinLeads.empty()) {
+        ConnectionLayout rides;
+        rides.rideLevels = compute_ride_levels(routes);
         std::vector<PinLeadRequest> requests;
         for (const auto& pending : pendingPinLeads) {
             PinLeadRequest request;

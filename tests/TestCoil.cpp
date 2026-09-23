@@ -16069,6 +16069,33 @@ TEST_CASE("Test_One_Turn_Winding_Is_Omega_One_Crossing_Terminals_Same_Height", "
         }
         return count;
     };
+    // ABT #1354: "SIDE BY SIDE, on the same height" is two assertions, and only the second one was
+    // ever made. The height check below (space.coordinates[1] == the turn's) is the "same height"
+    // half; this is the "side by side" half. Every positional assertion in this test used to be an
+    // EQUALITY, which is why a total collapse -- both terminals emitted at the identical point, a
+    // dead short downstream -- passed it. The separation is MKF's own exit slot
+    // (ConnectionRoute::exitSlot, Coil::terminal_exit_slots), and the distance it must clear is the
+    // wire's own coated outer dimension, not a number chosen here.
+    auto checkOmegaTerminalsSideBySide = [&](OpenMagnetics::Coil& coil) {
+        auto layout = coil.get_connection_layout();
+        std::vector<double> slots;
+        for (auto& route : layout.routes) {
+            if (route.winding != "Secondary") continue;
+            if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
+            INFO("the " << (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? "entrance" : "exit")
+                        << " of the one-turn secondary carries no exit slot");
+            REQUIRE(route.exitSlot);
+            slots.push_back(route.exitSlot.value());
+        }
+        REQUIRE(slots.size() == 2);
+        auto litz = coil.resolve_wire(1);
+        const double coatedDiameter = std::max(litz.get_maximum_outer_width(), litz.get_maximum_outer_height());
+        REQUIRE(coatedDiameter > 0);
+        const double apart = std::abs(slots[0] - slots[1]);
+        UNSCOPED_INFO("the omega's terminals sit at x = " << slots[0] << " and " << slots[1] << " m, "
+                      << apart << " m apart; one coated diameter is " << coatedDiameter << " m");
+        CHECK(apart >= coatedDiameter - 1e-9);
+    };
     auto checkOmegaSecondary = [&](OpenMagnetics::Coil& coil) {
         auto secondaryTurns = coil.get_turns_by_winding("Secondary");
         REQUIRE(secondaryTurns.size() == 1);            // one crossing, no closing station
@@ -16086,6 +16113,7 @@ TEST_CASE("Test_One_Turn_Winding_Is_Omega_One_Crossing_Terminals_Same_Height", "
             CHECK(space.coordinates[1] == Catch::Approx(secondaryTurns[0].get_coordinates()[1]).margin(1e-9));
         }
         CHECK(terminalLeads == 2);
+        checkOmegaTerminalsSideBySide(coil);
         return secondaryTurns[0];
     };
 
@@ -16134,6 +16162,7 @@ TEST_CASE("Test_One_Turn_Winding_Is_Omega_One_Crossing_Terminals_Same_Height", "
         }
         REQUIRE(leadRows.size() == 2);
         CHECK(leadRows[0] == Catch::Approx(leadRows[1]).margin(1e-9));   // same height
+        checkOmegaTerminalsSideBySide(coil);                             // ABT #1354: and side by side
         REQUIRE(!squeezeDepthsByLayer.empty());                          // it does cross the primary
         for (auto& [layerName, depths] : squeezeDepthsByLayer) {
             INFO(layerName);
