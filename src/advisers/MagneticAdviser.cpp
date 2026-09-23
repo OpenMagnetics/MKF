@@ -126,6 +126,15 @@ WoundCandidateOutcome process_wound_candidate(
             double saturationMargin = settings.get_core_adviser_saturation_margin();
             bool saturates = false;
             for (auto& op : mas.get_mutable_inputs().get_operating_points()) {
+                // A tagged common-mode choke is exempt here exactly as it is in
+                // MagneticFilterSaturation: its line current cancels in the core
+                // and MAS has no CM-noise-current requirement, so I_sat against
+                // the line (or ripple) current is not a saturation criterion —
+                // the impedance filter is its gate. Without this the gate dropped
+                // every wound CMC the CoreAdviser had let through (ABT #1369).
+                if (is_tagged_common_mode_choke(mas.get_mutable_inputs(), op)) {
+                    continue;
+                }
                 auto excitation = op.get_excitations_per_winding()[0];
                 if (!excitation.get_current() || !excitation.get_current()->get_processed()
                     || !excitation.get_current()->get_processed()->get_peak()) {

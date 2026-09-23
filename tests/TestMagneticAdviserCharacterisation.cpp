@@ -314,3 +314,33 @@ TEST_CASE("Benchmark MagneticAdviser 3-winding end-to-end (top-3)",
 //            |                                   |                  | sat-margin 1.0→1.2 default flip
 //
 // =============================================================================
+
+// ABT #1369: the web CMC wizard's design (230 V, 10 A line current, 2 windings, 500 ohm at
+// 150 kHz — tests/testData/cmc/cmc_default_web_inputs.json) came back with ZERO magnetics from
+// calculate_advised_magnetics while the CoreAdviser alone returned toroids. The final saturation
+// gate in process_wound_candidate classified the CMC as an inductor (every winding on the line
+// side) and compared I_sat, derived from the mH-range common-mode inductance, against the full
+// 10 A line current — which cancels in a CMC's core. It must gate on the common-mode magnetizing
+// current, as MagnetizingInductance and the saturation filter already do.
+TEST_CASE("MagneticAdviser advises a toroidal CMC for the web wizard's default design",
+          "[adviser][magnetic-adviser][available-cores][cmc][suppression][abt-1369]") {
+    settings.reset();
+    clear_databases();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc/cmc_default_web_inputs.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    OpenMagnetics::Inputs inputs(nlohmann::json::parse(file));
+    REQUIRE(OpenMagnetics::Inputs::can_be_common_mode_choke(inputs.get_operating_points()[0]));
+
+    OpenMagnetics::MagneticAdviser adviser;
+    adviser.set_core_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto results = adviser.get_advised_magnetic(inputs, 3);
+
+    REQUIRE(results.size() > 0);
+    for (auto& [mas, scoring] : results) {
+        CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TOROIDAL);
+        CHECK(mas.get_mutable_magnetic().get_mutable_coil().get_functional_description().size() == 2);
+    }
+    settings.reset();
+    clear_databases();
+}

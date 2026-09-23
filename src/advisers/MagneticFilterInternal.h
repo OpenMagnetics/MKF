@@ -147,6 +147,34 @@ inline bool is_inductor(const Inputs& inputs) {
     return !minimumOnly;
 }
 
+// Single source of truth for "is this operating point a common-mode choke's",
+// shared by the saturation FILTER (seed stage) and the MagneticAdviser's final
+// saturation GATE so the two cannot disagree (ABT #1369: the gate lacked the
+// exemption and dropped every wound CMC the filter had let through).
+//
+// A CMC is an inductor to is_inductor (every winding on the line side) but its
+// line current is DIFFERENTIAL: the flux of the line/neutral windings cancels
+// in the core, so neither the raw line current nor the ripple swing that
+// get_common_mode_choke_magnetizing_current models as "the CM current" is a
+// saturation criterion — MAS carries no CM-noise-current requirement to gate
+// against, and the ripple estimate puts multi-tesla fictional B on every EMI
+// toroid. The impedance filter is the authoritative gate for a CMC. CMC-ONLY,
+// deliberately: a differential-mode choke also has 2-4 matching-current
+// windings (can_be_common_mode_choke is true for it too) but carries the full
+// line current additively and genuinely saturates, so it keeps both gates.
+// Distinguish by the CMC tag (topology, or the web wizard's subApplication —
+// the wizards do not set designRequirements.topology), then confirm current
+// symmetry with can_be_common_mode_choke so a mis-tagged asymmetric design is
+// still checked.
+inline bool is_tagged_common_mode_choke(const Inputs& inputs, const OperatingPoint& operatingPoint) {
+    auto topology = inputs.get_design_requirements().get_topology();
+    auto subApplication = inputs.get_design_requirements().get_sub_application();
+    bool taggedCommonMode =
+        (topology.has_value() && topology.value() == MAS::Topology::COMMON_MODE_CHOKE) ||
+        (subApplication.has_value() && subApplication.value() == "commonModeNoiseFiltering");
+    return taggedCommonMode && Inputs::can_be_common_mode_choke(operatingPoint);
+}
+
 // Single source of truth for the saturation-safe "maximum allowed peak flux
 // density" used as the SIZING target by the CoreAdviser gapping code
 // (gap/turn selection, refinement, golden-section / binary-search) AND by the

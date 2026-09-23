@@ -177,12 +177,8 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
         // subApplication), then confirm current symmetry with
         // can_be_common_mode_choke so a mis-tagged asymmetric design still
         // gets checked.
-        auto cmcTopology = inputs->get_design_requirements().get_topology();
-        auto cmcSubApplication = inputs->get_design_requirements().get_sub_application();
-        bool taggedCommonMode =
-            (cmcTopology.has_value() && cmcTopology.value() == MAS::Topology::COMMON_MODE_CHOKE) ||
-            (cmcSubApplication.has_value() && cmcSubApplication.value() == "commonModeNoiseFiltering");
-        bool isCommonModeChoke = taggedCommonMode && Inputs::can_be_common_mode_choke(operatingPoint);
+        // Shared with the MagneticAdviser's final gate (MagneticFilterInternal.h).
+        bool isCommonModeChoke = is_tagged_common_mode_choke(*inputs, operatingPoint);
 
         // Saturation scoring: dimensionless ratio of operating peak flux density to
         // material saturation. Smaller is better (more headroom). The previous
