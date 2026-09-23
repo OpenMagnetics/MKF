@@ -7,6 +7,7 @@
 #include "constructive_models/Core.h"
 #include "TestingUtils.h"
 #include "json.hpp"
+#include <numbers>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -107,6 +108,40 @@ TEST_CASE("Test_Epc_Effective_Parameters_Against_Tdk_Catalogue", "[core][shape-f
         INFO(shapeName << " pole area " << area << " mm2, TDK Acp " << poleArea);
         CHECK_THAT(area, Catch::Matchers::WithinRel(poleArea, 0.01));
     }
+    settings.reset();
+}
+
+// The EPC pole is a stadium long along A, carried as a RECTANGULAR column whose corner radius is
+// half its short side (see CorePieceEpc for why it is not OBLONG). Under real winding geometry a
+// turn around it must be the stadium turn: straights 4 (w - d) plus a circle of radius d + standoff,
+// where w and d are the bobbin bore's half-extents. An OBLONG column would have charged
+// 2 pi r + 4 (d - w), about 19 % short.
+TEST_CASE("Test_Epc_Real_Winding_Turn_Is_The_Stadium", "[core][shape-families][epc]") {
+    settings.reset();
+    clear_databases();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = OpenMagneticsTesting::get_quick_coil({10}, {1}, "EPC 13");
+    auto bobbin = coil.resolve_bobbin();
+    auto processed = bobbin.get_processed_description().value();
+    REQUIRE(processed.get_column_shape() == ColumnShape::RECTANGULAR);
+    double halfWidth = processed.get_column_width().value();
+    double halfDepth = processed.get_column_depth();
+    REQUIRE(processed.get_column_corner_radius());
+    CHECK_THAT(processed.get_column_corner_radius().value(), Catch::Matchers::WithinRel(halfDepth, 1e-6));
+
+    auto turns = coil.get_turns_description().value();
+    size_t checked = 0;
+    for (const auto& turn : turns) {
+        if (turn.get_length() <= 0) {
+            continue;  // real winding's zero-length station entry, as on any E core
+        }
+        double standoff = turn.get_coordinates()[0] - halfWidth;
+        double stadium = 4 * (halfWidth - halfDepth) + 2 * std::numbers::pi * (halfDepth + standoff);
+        INFO(turn.get_name() << ": length " << turn.get_length() << " m, stadium " << stadium << " m");
+        CHECK_THAT(turn.get_length(), Catch::Matchers::WithinRel(stadium, 1e-6));
+        checked++;
+    }
+    CHECK(checked >= 10);
     settings.reset();
 }
 

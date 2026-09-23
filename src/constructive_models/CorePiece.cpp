@@ -1939,9 +1939,10 @@ class CorePieceEf : public CorePieceE {};
 // turn length by about 19 %. Under real winding geometry the rectangular frame charges the corner
 // radius, and the turn around a rectangle whose corner radius is half its short side IS the
 // stadium turn. The classic (non-real-winding) path treats every rectangular column as sharp, so
-// there an EPC turn is charged the bounding rectangle: (4 - pi) * F2 longer per turn than the
-// stadium, about 1.8 mm on EPC13. That is the same sharp-corner approximation every other
-// rectangular column gets in that mode.
+// there an EPC turn is charged the bounding rectangle: (4 - pi) times the short side of the bobbin
+// bore longer per turn than the stadium. That is the same sharp-corner approximation every other
+// rectangular column gets in that mode. On EPC 13 with a quick bobbin, the first layer comes out at
+// 19.63 mm under real winding (the stadium exactly) and 22.62 mm classic (+15 %).
 class CorePieceEpc : public CorePiece {
   public:
     // The dimensions this piece reads, checked once, loudly: an EPC record whose pole is not a
