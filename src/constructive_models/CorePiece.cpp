@@ -1893,8 +1893,166 @@ class CorePieceC : public CorePiece {
 class CorePieceEer : public CorePieceEtd {};
 // EF: flat/economy E core -> E geometry.
 class CorePieceEf : public CorePieceE {};
-// EP derivatives (EPC low-profile, EPQ EP/PQ hybrid, EPW wide, EPT, LEP large-EP) -> EP geometry.
-class CorePieceEpc : public CorePieceEp {};
+// EPC (TDK's low-profile EPC series, ABT #270). An EPC is NOT an EP. Seen on its mating face it is
+// an E core lying on its side: a back plate, two outer legs, and a centre pole whose section is a
+// STADIUM (a rectangle with a half-disc on each end), long along the width A and short across the
+// thin dimension. It is not EP's round pole in a round bore. Forcing it through CorePieceEp gave
+// -20 % le / +11 % Ae on EPC13, so it has its own piece.
+//
+// Letters. TDK's drawing (catalogue "EPC series", 2014-03 ferrite_mz_sw_epc_en.pdf and 2026-04
+// ferrite_mz_rf-power_epc_en.pdf, Fig. 1) uses its own labels. The shape record uses the house E
+// labels plus the oblong-column pair F/F2 that CorePieceEl/CorePieceMolded already use:
+//     house  TDK     meaning
+//     A      A       overall width
+//     B      D       height of one half, mating face to back
+//     C      F       depth (the low-profile thickness)
+//     D      H       height of the winding window in one half
+//     E      B min.  window width between the outer legs
+//     F      C1      pole length along A
+//     F2     C2      pole thickness along C; the stadium's end discs have diameter F2
+//     G      E min.  opening between the ears at the top of the window (recorded, not modelled)
+// The stadium area F*F2 - (4 - pi)/4 * F2^2 reproduces TDK's published centre-pole area Acp on
+// every size: EPC13 10.58 vs 10.6 mm2, EPC17 19.88 vs 19.9, EPC25 42.57 vs 42.6, EPC27 48.57 vs 48.6.
+//
+// THIS MODEL IS APPROXIMATE, AND THE OWNER ACCEPTED IT AS SUCH (ABT #270, 2026-09-23). The
+// magnetic path is the house E-core IEC 60205 walk (CorePieceE) with the true stadium pole area.
+// Against TDK's published effective parameters, for the three records MAS ships (EPC13/EPC17 on
+// the 2026 dimensions, EPC25 on the 2014 ones):
+//     EPC 13   le -7.4 %   Ae +0.4 %   Ve  -7.0 %
+//     EPC 17   le -5.3 %   Ae -6.7 %   Ve -11.6 %
+//     EPC 25   le -1.3 %   Ae +2.8 %   Ve  +1.3 %
+// For comparison, from the 2014 table on sizes not shipped: EPC27 le -0.8 % / Ae +0.3 %, EPC30
+// le -0.4 % / Ae +2.3 %. The EPC25B variant (TDK Fig. 2/3) is off by +14 % in le and is NOT
+// covered by this piece. The small sizes come out short on le. The drawing does not dimension the ears, the curved
+// inner walls of the outer legs or the pole's offset toward the bottom face. The ferrite mass says
+// there is LESS material than this walk assumes (EPC17: TDK 4.5 g/set against about 4.8 g
+// modelled), so the shortfall is not simply missing ears. Other variants were tried and did no
+// better: EL-style pole-perimeter spreading gave EPC13 le -10.8 %; taking the window width from
+// TDK's published winding area gave -7.6 %; adding the ears to the legs moved Ae but not le.
+// Nothing is fitted to close the gap. Do not read EPC13/EPC17 results as better than about 8 % in
+// le, 7 % in Ae and 12 % in Ve (and so in core loss).
+//
+// The pole is a RECTANGULAR column F x F2 with a corner radius of F2 / 2, which is exactly the
+// stadium. It is NOT ColumnShape::OBLONG, because MKF's OBLONG assumes the long axis lies along the
+// depth (width F < depth F2; bobbin corner radius = depth / 2; turn length 2*pi*r + 4*(depth -
+// width)). The EPC pole's long axis faces the window, and that formula would silently cut its
+// turn length by about 19 %. Under real winding geometry the rectangular frame charges the corner
+// radius, and the turn around a rectangle whose corner radius is half its short side IS the
+// stadium turn. The classic (non-real-winding) path treats every rectangular column as sharp, so
+// there an EPC turn is charged the bounding rectangle: (4 - pi) * F2 longer per turn than the
+// stadium, about 1.8 mm on EPC13. That is the same sharp-corner approximation every other
+// rectangular column gets in that mode.
+class CorePieceEpc : public CorePiece {
+  public:
+    // The dimensions this piece reads, checked once, loudly: an EPC record whose pole is not a
+    // stadium lying along A cannot be modelled by the walk below.
+    std::map<std::string, double> checked_dimensions() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        for (const auto& key : {"A", "B", "C", "D", "E", "F", "F2"}) {
+            if (dimensions.find(key) == dimensions.end() || dimensions[key] <= 0) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "EPC shape '" + get_shape().get_name().value_or("<unnamed>") + "' has no dimension " + key);
+            }
+        }
+        if (dimensions["F2"] > dimensions["F"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "EPC shape '" + get_shape().get_name().value_or("<unnamed>") + "': the pole thickness F2 (TDK C2) "
+                "is larger than its length F (TDK C1); an EPC pole is a stadium long along A");
+        }
+        if (dimensions["F2"] > dimensions["C"] || dimensions["F"] >= dimensions["E"] ||
+            dimensions["E"] >= dimensions["A"] || dimensions["D"] >= dimensions["B"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "EPC shape '" + get_shape().get_name().value_or("<unnamed>") + "' is not a closed E-like "
+                "section: need F2 <= C, F < E < A and D < B");
+        }
+        return dimensions;
+    }
+
+    static double stadium_area(double length, double thickness) {
+        return length * thickness - (4 - std::numbers::pi) / 4 * pow(thickness, 2);
+    }
+
+    void process_extra_data() {
+        auto dimensions = checked_dimensions();
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["C"]);
+    }
+
+    void process_winding_window() {
+        auto dimensions = checked_dimensions();
+        WindingWindowElement windingWindow;
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
+        windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
+        // Centre of the window, as for CorePieceE (ABT #107).
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2 + (dimensions["E"] - dimensions["F"]) / 4, 0}));
+        set_winding_window(windingWindow);
+    }
+
+    void process_columns() {
+        auto dimensions = checked_dimensions();
+        std::vector<ColumnElement> columns;
+        ColumnElement mainColumn;
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::RECTANGULAR);
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F2"]));
+        mainColumn.set_corner_radius(roundFloat(dimensions["F2"] / 2));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(stadium_area(dimensions["F"], dimensions["F2"])));
+        mainColumn.set_coordinates({0, 0, 0});
+        columns.push_back(mainColumn);
+
+        ColumnElement lateralColumn;
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::RECTANGULAR);
+        lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_depth(roundFloat(dimensions["C"]));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
+        lateralColumn.set_area(roundFloat(lateralColumn.get_width() * lateralColumn.get_depth()));
+        lateralColumn.set_coordinates({roundFloat(dimensions["E"] / 2 + (dimensions["A"] - dimensions["E"]) / 4), 0, 0});
+        columns.push_back(lateralColumn);
+        lateralColumn.set_coordinates({roundFloat(-dimensions["E"] / 2 - (dimensions["A"] - dimensions["E"]) / 4), 0, 0});
+        columns.push_back(lateralColumn);
+        set_columns(columns);
+    }
+
+    // CorePieceE's IEC 60205 walk (same sections, same corner rule, same per-piece convention),
+    // with the centre section's area replaced by the stadium's. s is half the pole's extent
+    // along the path (F / 2), as CorePieceE's s is half its rectangular leg.
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = checked_dimensions();
+        std::vector<double> lengths;
+        std::vector<double> areas;
+
+        double h = dimensions["B"] - dimensions["D"];
+        double q = dimensions["C"];
+        double s = dimensions["F"] / 2;
+        double p = (dimensions["A"] - dimensions["E"]) / 2;
+
+        lengths.push_back(dimensions["D"]);
+        lengths.push_back((dimensions["E"] - dimensions["F"]) / 2);
+        lengths.push_back(dimensions["D"]);
+        lengths.push_back(std::numbers::pi / 8 * (p + h));
+        lengths.push_back(std::numbers::pi / 8 * (s + h));
+
+        areas.push_back(2 * q * p);
+        areas.push_back(2 * q * h);
+        areas.push_back(stadium_area(dimensions["F"], dimensions["F2"]));
+        areas.push_back((areas[0] + areas[1]) / 2);
+        areas.push_back((areas[1] + areas[2]) / 2);
+
+        double c1 = 0, c2 = 0;
+        for (size_t i = 0; i < lengths.size(); ++i) {
+            c1 += lengths[i] / areas[i];
+            c2 += lengths[i] / pow(areas[i], 2);
+        }
+        auto minimumArea = *min_element(areas.begin(), areas.end());
+
+        return {c1, c2, minimumArea};
+    }
+};
 
 // A PIECE-AND-PLATE core: a shaped piece (U, PQ, E...) closed by a flat I plate rather than by a
 // mirrored second half. IEC 60205:2016 has no clause for this combination -- every clause in 5.x is
@@ -2993,7 +3151,7 @@ static const std::map<CoreShapeFamily, std::vector<std::string>> kFamilyRequired
     {CoreShapeFamily::C,                   {"A", "B", "C", "D", "E"}},
     {CoreShapeFamily::EER,                 {"A", "B", "C", "D", "E", "F"}},
     {CoreShapeFamily::EF,                  {"A", "B", "C", "D", "E", "F"}},
-    {CoreShapeFamily::EPC,                 {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::EPC,                 {"A", "B", "C", "D", "E", "F", "F2"}},
     {CoreShapeFamily::UI,                  {"A", "B", "B2", "C", "D"}},
     {CoreShapeFamily::EI,                  {"A", "B", "B2", "C", "D", "E", "F"}},
     {CoreShapeFamily::DRUM,                {"A", "B", "C", "D", "E", "F"}},

@@ -24,7 +24,6 @@ TEST_CASE("New shape families inherit parent geometry", "[corepiece][newfamilies
     // {parent shape name, parent family, child family}
     struct Case { std::string shapeName; CoreShapeFamily parent; CoreShapeFamily child; };
     std::vector<Case> cases = {
-        {"EP 13",        CoreShapeFamily::EP,  CoreShapeFamily::EPC},
         {"EP 13",        CoreShapeFamily::EP,  CoreShapeFamily::EPQ},
         {"EP 13",        CoreShapeFamily::EP,  CoreShapeFamily::EPW},
         {"EP 13",        CoreShapeFamily::EP,  CoreShapeFamily::EPT},
@@ -43,6 +42,85 @@ TEST_CASE("New shape families inherit parent geometry", "[corepiece][newfamilies
         REQUIRE_THAT(aeC, Catch::Matchers::WithinRel(aeP, 1e-9));
         REQUIRE_THAT(leC, Catch::Matchers::WithinRel(leP, 1e-9));
     }
+}
+
+// ABT #270: EPC no longer inherits EP. It has its own piece (CorePieceEpc: an E-core walk
+// around a stadium pole), so it left the inheritance list above and is checked here against
+// TDK's PUBLISHED effective parameters instead of against another MKF result.
+//
+// Sources: TDK "EPC series" catalogues, 2026-04 ferrite_mz_rf-power_epc_en.pdf (EPC13, EPC17)
+// and 2014-03 ferrite_mz_sw_epc_en.pdf (EPC25). The MAS records carry those drawings'
+// dimensions.
+//
+// The bands are the model's ACCEPTED error, not tuning slack. The owner accepted an
+// approximate EPC model (ABT #270, 2026-09-23); the reasons are in the CorePieceEpc comment.
+// Measured errors: EPC13 le -7.4 % / Ae +0.4 % / Ve -7.0 %; EPC17 le -5.3 % / Ae -6.7 % /
+// Ve -11.6 %; EPC25 le -1.3 % / Ae +2.8 % / Ve +1.3 %. Each band is set about 1.5 points
+// outside its measured error, so the test does not flap on rounding but still fails if the
+// model drifts or the records change.
+TEST_CASE("Test_Epc_Effective_Parameters_Against_Tdk_Catalogue", "[core][shape-families][epc]") {
+    settings.reset();
+    clear_databases();
+
+    struct Reference {
+        std::string shapeName;
+        double effectiveAreaSquareMillimetres;
+        double effectiveLengthMillimetres;
+        double effectiveVolumeCubicMillimetres;
+        double areaBand;
+        double lengthBand;
+        double volumeBand;
+    };
+    std::vector<Reference> references = {
+        {"EPC 13", 12.5, 30.6,  382, 0.02, 0.09, 0.085},
+        {"EPC 17", 22.8, 40.2,  917, 0.08, 0.07, 0.13},
+        {"EPC 25", 40.4, 56.3, 2280, 0.045, 0.03, 0.03},
+    };
+
+    for (const auto& reference : references) {
+        auto core = OpenMagneticsTesting::get_quick_core(reference.shapeName, json::array(), 1, "3C97");
+        REQUIRE(core.get_shape_family() == CoreShapeFamily::EPC);
+        auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+        double effectiveArea = effectiveParameters.get_effective_area() * 1e6;
+        double effectiveLength = effectiveParameters.get_effective_length() * 1e3;
+        double effectiveVolume = effectiveParameters.get_effective_volume() * 1e9;
+        UNSCOPED_INFO(reference.shapeName << ": Ae " << effectiveArea << " mm2 (TDK "
+                      << reference.effectiveAreaSquareMillimetres << "), le " << effectiveLength
+                      << " mm (TDK " << reference.effectiveLengthMillimetres << "), Ve "
+                      << effectiveVolume << " mm3 (TDK " << reference.effectiveVolumeCubicMillimetres << ")");
+        CHECK_THAT(effectiveArea, Catch::Matchers::WithinRel(reference.effectiveAreaSquareMillimetres, reference.areaBand));
+        CHECK_THAT(effectiveLength, Catch::Matchers::WithinRel(reference.effectiveLengthMillimetres, reference.lengthBand));
+        CHECK_THAT(effectiveVolume, Catch::Matchers::WithinRel(reference.effectiveVolumeCubicMillimetres, reference.volumeBand));
+
+        // The pole is the stadium, which reproduces TDK's published centre-pole area Acp.
+        auto centralColumn = core.get_processed_description()->get_columns()[0];
+        REQUIRE(centralColumn.get_corner_radius());
+        CHECK_THAT(centralColumn.get_corner_radius().value(),
+                   Catch::Matchers::WithinRel(centralColumn.get_depth() / 2, 1e-6));
+    }
+
+    // Acp from the same catalogues: EPC13 10.6, EPC17 19.9, EPC25 42.6 mm2.
+    std::vector<std::pair<std::string, double>> poleAreas = {{"EPC 13", 10.6}, {"EPC 17", 19.9}, {"EPC 25", 42.6}};
+    for (const auto& [shapeName, poleArea] : poleAreas) {
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, "3C97");
+        double area = core.get_processed_description()->get_columns()[0].get_area() * 1e6;
+        INFO(shapeName << " pole area " << area << " mm2, TDK Acp " << poleArea);
+        CHECK_THAT(area, Catch::Matchers::WithinRel(poleArea, 0.01));
+    }
+    settings.reset();
+}
+
+// A pole that is thicker than it is long is not an EPC. The walk would silently model it wrong,
+// so the piece refuses it.
+TEST_CASE("Test_Epc_Refuses_A_Pole_Thicker_Than_Long", "[core][shape-families][epc]") {
+    settings.reset();
+    clear_databases();
+    auto shape = find_core_shape_by_name("EPC 13");
+    auto dimensions = shape.get_dimensions().value();
+    std::swap(dimensions["F"], dimensions["F2"]);
+    shape.set_dimensions(dimensions);
+    REQUIRE_THROWS(CorePiece::factory(shape, true));
+    settings.reset();
 }
 
 // ABT #274 / #264: validate the piece-and-plate effective parameters against PUBLISHED vendor
