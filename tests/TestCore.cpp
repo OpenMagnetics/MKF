@@ -3611,6 +3611,7 @@ TEST_CASE("Test_Molded_Region_Materials_Resolution", "[core][molded][abt-1002]")
     CHECK_THROWS(coreWithMaterial(json::array({"air"})).resolve_region_materials());
     CHECK_THROWS(coreWithMaterial(json::array({"air", "air", "air"})).resolve_material());
     settings.reset();
+}
 
 // ET 20 is published now (MAS e4b90d2, from ACME's ET core catalogue), so the assertion the EI
 // test above asks for can be made: a type-only check passes through a regression that keeps the
