@@ -3158,6 +3158,7 @@ static const std::map<CoreShapeFamily, std::vector<std::string>> kFamilyRequired
     {CoreShapeFamily::DRUM,                {"A", "B", "C", "D", "E", "F"}},
     {CoreShapeFamily::DRUM_RING,           {"A", "B", "C", "D", "E", "F", "J", "K", "L"}},
     {CoreShapeFamily::DRUM_SEMISHIELDED,   {"A", "B", "C", "D", "E", "F", "J", "K", "L"}},
+    {CoreShapeFamily::DRUM_PLATE,          {"A", "B", "C", "D", "F", "G"}},
     {CoreShapeFamily::ROD,                 {"A", "B", "H"}},
     {CoreShapeFamily::MOLDED,              {"A", "B", "C", "D", "E", "F"}},
     {CoreShapeFamily::PQI,                 {"A", "B", "B2", "C", "D", "E", "F", "G", "L"}},
