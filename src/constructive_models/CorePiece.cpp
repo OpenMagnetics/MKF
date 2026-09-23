@@ -1325,6 +1325,261 @@ class CorePieceP : public CorePiece {
     }
 };
 
+// Slab cores: DS, HS and RS (ABT #263). Magnetics' "modified pot cores with the sides removed"
+// (Magnetics 2022 Ferrite Catalog, pp. 56-57; the shape-code legend is in the 2013 edition):
+//   DS = two slab halves with a SOLID centre post        (symmetric pair, no H)
+//   HS = two slab halves with a DRILLED centre post      (symmetric pair, H = bore)
+//   RS = one slab half + one plain pot-core round        (ASYMMETRIC pair)
+//
+// The letters are the pot core's (the catalogue uses the same A B 2B C D 2D E F G H table), with
+// C meaning what the slab drawing dimensions it as: the distance ACROSS THE TWO FLATS that cut
+// the whole half, flange and wall alike. G, the wire opening, is the chord where a flat breaks
+// the wall and is DERIVED from C and E, so the geometry does not read it.
+//
+// Why not CorePieceP: its wire-opening term k1 = n*b*(r4 - r3) is linear in the slot width,
+// right for a pot core's narrow notch and wrong when the "opening" is a removed side: it
+// over-predicts Ae by 12-34% on these rows. Here the same IEC 60205 pot clause is kept but every
+// annular section is weighted by the angle the flats leave, theta(r) = 2 pi - 4 acos(C / 2r)
+// for r > C/2, which is exact for this outline: wall area, flange spreading, corner areas.
+//
+// ACCURACY -- READ BEFORE TRUSTING A NUMBER FROM THIS CLASS. Against the catalogue's own
+// le/Ae/Ve for the 19 rows shipped in MAS (Test_Slab_Cores_Match_Catalogue_Within_Accepted_Band):
+//   le:  mean |error| 4.1%, worst 7.7%   (the model runs short)
+//   Ae:  mean |error| 10.5%, worst +23.4% (DS 26/16; the model runs high on every row)
+// The owner accepted ~15-20% for this family rather than wait for better data (2026-09-23). The
+// residual is not the flats: the catalogue gives most slab D/E/F only as a min OR a max, never a
+// nominal, and resolve_dimensional_values then has to take that bound as the value, so the model
+// is fed a post at its largest and a window at its smallest. Nominal vendor drawings would fix it.
+//
+// NOT SHIPPED: DS/HS 23/11 and DS/HS 23/18. Their catalogue Amin (37.8 and 40.7 mm^2) is far
+// below even the solid post the drawing gives (pi/4 * 9.9^2 = 77 mm^2), so the drawing and the
+// magnetic data describe different parts; this model lands +27-49% on Ae there. The RS rows of
+// the same sizes carry their own dimensions and fit (+3-6%), so they are shipped.
+class CorePieceSlab : public CorePiece {
+  protected:
+    // RS pairs one slab with a plain pot-core round; DS/HS pair two slabs.
+    virtual bool paired_with_round() const { return false; }
+
+    struct SlabDimensions {
+        double outerRadius;       // A/2, r4
+        double windowOuterRadius; // E/2, r3
+        double postRadius;        // F/2, r2
+        double boreRadius;        // H/2, r1 (0 for a solid post)
+        double halfAcrossFlats;   // C/2
+        double halfHeight;        // B
+        double windowHalfHeight;  // D
+    };
+
+    SlabDimensions read_dimensions() const {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        for (auto letter : {"A", "B", "C", "D", "E", "F"}) {
+            if (!dimensions.count(letter) || !(dimensions[letter] > 0)) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    std::string("slab core: dimension ") + letter + " is missing or non-positive");
+            }
+        }
+        SlabDimensions slab;
+        slab.outerRadius = dimensions["A"] / 2;
+        slab.windowOuterRadius = dimensions["E"] / 2;
+        slab.postRadius = dimensions["F"] / 2;
+        slab.boreRadius = dimensions.count("H") ? dimensions["H"] / 2 : 0.0;
+        slab.halfAcrossFlats = dimensions["C"] / 2;
+        slab.halfHeight = dimensions["B"];
+        slab.windowHalfHeight = dimensions["D"];
+        if (slab.boreRadius < 0 || slab.boreRadius >= slab.postRadius) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "slab core: bore H must be non-negative and smaller than the post F");
+        }
+        if (slab.postRadius >= slab.windowOuterRadius || slab.windowOuterRadius >= slab.outerRadius) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "slab core: needs F < E < A (post inside the window inside the outline)");
+        }
+        if (slab.halfAcrossFlats <= slab.postRadius || slab.halfAcrossFlats > slab.outerRadius) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "slab core: the flats C must clear the post F and lie within the outline A");
+        }
+        if (slab.windowHalfHeight >= slab.halfHeight) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "slab core: window height D must be smaller than the half height B");
+        }
+        return slab;
+    }
+
+    // Angle of the annulus at radius r that survives the two flats (2 pi when r is inside them).
+    static double surviving_angle(double radius, double halfAcrossFlats) {
+        if (radius <= halfAcrossFlats) {
+            return 2 * std::numbers::pi;
+        }
+        return 2 * std::numbers::pi - 4 * acos(halfAcrossFlats / radius);
+    }
+
+    // Integral of theta(r) r dr from innerRadius to outerRadius, closed form:
+    // for r > c, d/dr[pi r^2 - 4 ((r^2/2) acos(c/r) - (c/2) sqrt(r^2 - c^2))] = theta(r) r.
+    static double surviving_area(double innerRadius, double outerRadius, double halfAcrossFlats) {
+        double pi = std::numbers::pi;
+        double c = halfAcrossFlats;
+        auto primitive = [c, pi](double r) {
+            return pi * r * r - 4 * (r * r / 2 * acos(c / r) - c / 2 * sqrt(r * r - c * c));
+        };
+        double area = 0;
+        if (innerRadius < c) {
+            area += pi * (pow(std::min(c, outerRadius), 2) - pow(innerRadius, 2));
+        }
+        double lower = std::max(innerRadius, c);
+        if (outerRadius > lower) {
+            area += primitive(outerRadius) - primitive(lower);
+        }
+        return area;
+    }
+
+    // Integral of (theta(r) r)^-power dr over [innerRadius, outerRadius]: the flange's radial
+    // spreading term. No closed form once theta varies, so composite Simpson, split at the flats
+    // where theta has a kink. 2000 panels per side is far below any tolerance that matters here.
+    static double radial_spreading_integral(double innerRadius, double outerRadius,
+                                            double halfAcrossFlats, int power) {
+        auto integrand = [halfAcrossFlats, power](double r) {
+            return pow(surviving_angle(r, halfAcrossFlats) * r, -power);
+        };
+        auto simpson = [&integrand](double from, double to) {
+            const int panels = 2000;
+            double step = (to - from) / panels;
+            double sum = integrand(from) + integrand(to);
+            for (int index = 1; index < panels; ++index) {
+                sum += integrand(from + index * step) * ((index % 2 == 1) ? 4 : 2);
+            }
+            return sum * step / 3;
+        };
+        if (halfAcrossFlats > innerRadius && halfAcrossFlats < outerRadius) {
+            return simpson(innerRadius, halfAcrossFlats) + simpson(halfAcrossFlats, outerRadius);
+        }
+        return simpson(innerRadius, outerRadius);
+    }
+
+    struct SetConstants {
+        double c1;
+        double c2;
+        double minimumArea;
+        double wallArea;
+    };
+
+    // IEC 60205 pot clause for a SYMMETRIC SET of two identical halves, exactly as
+    // CorePieceP::get_shape_constants lays it out (wall, flange, post, two corners), with each
+    // annular area weighted by the angle the flats leave. With flats=false it is CorePieceP
+    // without wire slots (n = 0), which is what the plain pot round of an RS set is.
+    static SetConstants symmetric_set_constants(const SlabDimensions& slab, bool flats) {
+        double pi = std::numbers::pi;
+        double c = flats ? slab.halfAcrossFlats : std::numeric_limits<double>::infinity();
+        double r4 = slab.outerRadius;
+        double r3 = slab.windowOuterRadius;
+        double r2 = slab.postRadius;
+        double r1 = slab.boreRadius;
+        double h = slab.halfHeight - slab.windowHalfHeight;
+        double h2 = 2 * slab.windowHalfHeight;
+
+        double wall = surviving_area(r3, r4, c);
+        double a1 = wall;
+        double l1 = h2;
+        double a3 = pi * (r2 * r2 - r1 * r1);
+        double l3 = h2;
+        double s1 = r2 - sqrt((r1 * r1 + r2 * r2) / 2);
+        double s2 = sqrt((r3 * r3 + r4 * r4) / 2) - r3;
+        double l4 = pi / 4 * (2 * s2 + h);
+        double a4 = (wall + surviving_angle(r3, c) * r3 * h) / 2;
+        double l5 = pi / 4 * (2 * s1 + h);
+        double a5 = pi / 2 * (r2 * r2 - r1 * r1 + 2 * r2 * h);
+        // Two flanges, one per half.
+        double radial1 = 2 / h * radial_spreading_integral(r2, r3, c, 1);
+        double radial2 = 2 / (h * h) * radial_spreading_integral(r2, r3, c, 2);
+
+        SetConstants set;
+        set.c1 = l1 / a1 + radial1 + l3 / a3 + l4 / a4 + l5 / a5;
+        set.c2 = l1 / (a1 * a1) + radial2 + l3 / (a3 * a3) + l4 / (a4 * a4) + l5 / (a5 * a5);
+        set.minimumArea = std::min({a1, a3, a4, a5});
+        set.wallArea = wall;
+        return set;
+    }
+
+    // The whole set's constants. For RS each half contributes half of its own symmetric set.
+    SetConstants set_constants() const {
+        auto slab = read_dimensions();
+        auto slabSet = symmetric_set_constants(slab, true);
+        if (!paired_with_round()) {
+            return slabSet;
+        }
+        auto roundSet = symmetric_set_constants(slab, false);
+        SetConstants set;
+        set.c1 = (slabSet.c1 + roundSet.c1) / 2;
+        set.c2 = (slabSet.c2 + roundSet.c2) / 2;
+        set.minimumArea = std::min(slabSet.minimumArea, roundSet.minimumArea);
+        set.wallArea = (slabSet.wallArea + roundSet.wallArea) / 2;
+        return set;
+    }
+
+  public:
+    void process_winding_window() {
+        auto slab = read_dimensions();
+        WindingWindowElement windingWindow;
+        double width = slab.windowOuterRadius - slab.postRadius;
+        windingWindow.set_height(slab.windowHalfHeight);
+        windingWindow.set_width(width);
+        windingWindow.set_area(slab.windowHalfHeight * width);
+        windingWindow.set_coordinates(std::vector<double>({slab.postRadius + width / 2, 0}));
+        set_winding_window(windingWindow);
+    }
+
+    void process_extra_data() {
+        auto slab = read_dimensions();
+        // Seen through the walls (the flats face the other way): full diameter across, the
+        // flats' width deep. An RS set's round half is not cut, so its envelope is the full A.
+        set_width(2 * slab.outerRadius);
+        set_height(slab.halfHeight);
+        set_depth(paired_with_round() ? 2 * slab.outerRadius : 2 * slab.halfAcrossFlats);
+    }
+
+    void process_columns() {
+        auto slab = read_dimensions();
+        auto set = set_constants();
+        std::vector<ColumnElement> columns;
+        ColumnElement mainColumn;
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
+        mainColumn.set_width(roundFloat(2 * slab.postRadius));
+        mainColumn.set_depth(roundFloat(2 * slab.postRadius));
+        mainColumn.set_height(roundFloat(slab.windowHalfHeight));
+        mainColumn.set_area(roundFloat(std::numbers::pi * (pow(slab.postRadius, 2) - pow(slab.boreRadius, 2))));
+        mainColumn.set_coordinates({0, 0, 0});
+        columns.push_back(mainColumn);
+
+        // The two surviving wall arcs, each carrying half the wall's area.
+        ColumnElement lateralColumn;
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::IRREGULAR);
+        double lateralWidth = slab.outerRadius - slab.windowOuterRadius;
+        lateralColumn.set_width(roundFloat(lateralWidth));
+        lateralColumn.set_area(roundFloat(set.wallArea / 2));
+        lateralColumn.set_depth(roundFloat(set.wallArea / 2 / lateralWidth));
+        lateralColumn.set_height(roundFloat(slab.windowHalfHeight));
+        lateralColumn.set_coordinates({roundFloat(slab.windowOuterRadius + lateralWidth / 2), 0, 0});
+        columns.push_back(lateralColumn);
+        lateralColumn.set_coordinates({roundFloat(-slab.windowOuterRadius - lateralWidth / 2), 0, 0});
+        columns.push_back(lateralColumn);
+        set_columns(columns);
+    }
+
+    // Per piece, half the set, as every two-piece family here reports it.
+    std::tuple<double, double, double> get_shape_constants() {
+        auto set = set_constants();
+        return {set.c1 / 2, set.c2 / 2, set.minimumArea};
+    }
+};
+
+class CorePieceDs : public CorePieceSlab {};
+class CorePieceHs : public CorePieceSlab {};
+class CorePieceRs : public CorePieceSlab {
+  protected:
+    bool paired_with_round() const override { return true; }
+};
+
 class CorePieceU : public CorePiece {
   public:
     void process_winding_window() {
@@ -3110,6 +3365,7 @@ static constexpr CoreShapeFamily kSupportedShapeFamilies[] = {
     CoreShapeFamily::ROD,        CoreShapeFamily::MOLDED,     CoreShapeFamily::PQI,
     CoreShapeFamily::EPQ,        CoreShapeFamily::EPW,        CoreShapeFamily::EPT,
     CoreShapeFamily::LEP,
+    CoreShapeFamily::DS,         CoreShapeFamily::HS,         CoreShapeFamily::RS,
 };
 
 // The dimensions each family's geometry actually READS, keyed by family rather than
@@ -3168,6 +3424,10 @@ static const std::map<CoreShapeFamily, std::vector<std::string>> kFamilyRequired
     {CoreShapeFamily::EPW,                 {"A", "B", "C", "D", "E", "F"}},
     {CoreShapeFamily::EPT,                 {"A", "B", "C", "D", "E", "F"}},
     {CoreShapeFamily::LEP,                 {"A", "B", "C", "D", "E", "F"}},
+    // Slab cores (ABT #263): H (the bore) is optional -- DS has a solid post -- and G is derived.
+    {CoreShapeFamily::DS,                  {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::HS,                  {"A", "B", "C", "D", "E", "F"}},
+    {CoreShapeFamily::RS,                  {"A", "B", "C", "D", "E", "F"}},
 };
 
 std::vector<std::string> get_core_shape_family_required_dimensions(CoreShapeFamily family) {
@@ -3399,6 +3659,24 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     }
     else if (family == CoreShapeFamily::EI) {
         auto piece = std::make_shared<CorePieceEi>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::DS) {
+        auto piece = std::make_shared<CorePieceDs>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::HS) {
+        auto piece = std::make_shared<CorePieceHs>();
+        piece->set_shape(shape);
+        if (process) piece->process();
+        return piece;
+    }
+    else if (family == CoreShapeFamily::RS) {
+        auto piece = std::make_shared<CorePieceRs>();
         piece->set_shape(shape);
         if (process) piece->process();
         return piece;

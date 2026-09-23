@@ -91,13 +91,11 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     //                like an I-bar or rod); the Wurth multilayer chips asked for in #779 are a
     //                closed ferrite body with an embedded planar spiral, whose internal spiral
     //                footprint no datasheet states (ABT #267, #779).
-    //   DS/HS/RS   - Magnetics slab cores: geometry decoded, but the model lands +12-20% on the
-    //                published le/Ae with only min/max vendor bounds to feed it (ABT #263).
+    // DS/HS/RS moved off this list (ABT #263): CorePieceSlab, at the owner-accepted ~15-20%.
     //   ELP        - covered: every ELP name is an alias of a planarE record (ABT #273).
     // H moved off this list (ABT #277): it is the drum under another name, canonicalised to DRUM.
     const std::vector<CoreShapeFamily> auditedUnsupported = {
-        CoreShapeFamily::BLOCK, CoreShapeFamily::DS, CoreShapeFamily::ELP,
-        CoreShapeFamily::HS,    CoreShapeFamily::RS,
+        CoreShapeFamily::BLOCK, CoreShapeFamily::ELP,
     };
     for (auto family : auditedUnsupported) {
         INFO("listed as unsupported but buildable, move it off the list: " << magic_enum::enum_name(family));
