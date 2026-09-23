@@ -79,8 +79,37 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     // ROD moved off this list (ABT #933): CorePieceRod + the rod open-core model. Note that MAS
     // still carries ZERO rod records, so unlike UI/DRUM there is no catalogued name to resolve
     // below — a rod reaches MKF as an inline shape today.
-    for (auto family : {CoreShapeFamily::BLOCK, CoreShapeFamily::H}) {
-        REQUIRE_FALSE(CorePiece::is_family_supported(family));
+    //
+    // ABT #779 audit (2026-09-23): this list used to name only BLOCK and H, so five more
+    // unsupported families (DS, ELP, HS, RS, and DRUM_PLATE until ABT #996 landed) were unsupported without anything
+    // saying so, and a new MAS enum value could arrive unbuildable without any test noticing.
+    // The list is now EXHAUSTIVE: every CoreShapeFamily value is either buildable or named here,
+    // each with the reason it is not. Implementing one of these fails the first loop below until
+    // it is moved off; a new MAS enum value with no geometry fails the second loop until it is
+    // either implemented or added here with its reason.
+    //   BLOCK      - two incompatible meanings: vendor "blocks" are raw bar stock (an OPEN circuit,
+    //                like an I-bar or rod); the Wurth multilayer chips asked for in #779 are a
+    //                closed ferrite body with an embedded planar spiral, whose internal spiral
+    //                footprint no datasheet states (ABT #267, #779).
+    //   DS/HS/RS   - Magnetics slab cores: geometry decoded, but the model lands +12-20% on the
+    //                published le/Ae with only min/max vendor bounds to feed it (ABT #263).
+    //   ELP        - covered: every ELP name is an alias of a planarE record (ABT #273).
+    //   H          - no definition: no vendor catalogue checked uses "H" as a family (ABT #277).
+    const std::vector<CoreShapeFamily> auditedUnsupported = {
+        CoreShapeFamily::BLOCK, CoreShapeFamily::DS, CoreShapeFamily::ELP,
+        CoreShapeFamily::H,     CoreShapeFamily::HS, CoreShapeFamily::RS,
+    };
+    for (auto family : auditedUnsupported) {
+        INFO("listed as unsupported but buildable, move it off the list: " << magic_enum::enum_name(family));
+        CHECK_FALSE(CorePiece::is_family_supported(family));
+    }
+    for (auto family : magic_enum::enum_values<CoreShapeFamily>()) {
+        if (CorePiece::is_family_supported(family)) {
+            continue;
+        }
+        INFO("unbuildable and unaccounted for: " << magic_enum::enum_name(family));
+        CHECK(std::find(auditedUnsupported.begin(), auditedUnsupported.end(), family) !=
+              auditedUnsupported.end());
     }
     REQUIRE(CorePiece::is_family_supported(CoreShapeFamily::ROD));
 
