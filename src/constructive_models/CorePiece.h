@@ -285,6 +285,21 @@ std::vector<CoreShapeFamily> get_supported_core_shape_families();
  */
 std::vector<std::string> get_core_shape_family_required_dimensions(CoreShapeFamily family);
 
+/**
+ * The family the engine models a shape as. Differs from the declared family only for pure
+ * aliases, whose geometry AND magnetic circuit are those of another family:
+ *   H -> DRUM (ABT #277): "H" is the Asian-vendor name for the H/I-shaped drum bobbin core.
+ *
+ * An alias cannot be handled in CorePiece::factory alone: the core TYPE (open shape vs
+ * two-piece set), the open-core inductance model and the painter all branch on the family,
+ * so an H routed only through the factory would get a drum's geometry but be MIRRORED as a
+ * two-piece set (twice the path length) and skip the drum's air-return model. Shapes are
+ * therefore canonicalised where they enter (Core construction and shape resolution, the
+ * catalogue loader), the same way an ELP name resolves to its planarE record (ABT #273).
+ */
+CoreShapeFamily canonical_core_shape_family(CoreShapeFamily family);
+CoreShape canonicalize_core_shape_family(CoreShape shape);
+
 void from_json(const json& j, OpenMagnetics::CorePiece& x);
 void to_json(json& j, const OpenMagnetics::CorePiece& x);
 

@@ -3722,3 +3722,63 @@ TEST_CASE("Test_DrumPlate_Rejects_Impossible_Geometry", "[core][core-type][smoke
     CHECK_THROWS(build({{"A", 0.00200}, {"B", 0.00090}, {"C", 0.00127},
                         {"D", 0.00035}, {"F", 0.00030}, {"G", 0.00100}, {"J", 0.0}}));
 }
+
+
+// H (ABT #277) is the drum under another name: "H/I-shaped" is how Asian vendors name the drum
+// bobbin core, and no catalogue uses "H" for anything else. It must therefore behave as a DRUM
+// everywhere, not merely build a drum-shaped piece: the core type, the open-core inductance model
+// and the painter all branch on the family, so an H that only reached CorePiece::factory would be
+// mirrored as a two-piece set (twice the path) and skip the drum's air-return model. Each
+// assertion below is one of the doors an H shape can come in through.
+TEST_CASE("Test_H_Family_Is_A_Drum_Alias", "[core][core-type][drum][smoke-test]") {
+    settings.reset();
+    clear_databases();
+
+    auto drumShape = OpenMagnetics::find_core_shape_by_name("DRH-14X20-4C");
+    REQUIRE(drumShape.get_family() == CoreShapeFamily::DRUM);
+    auto hShape = drumShape;
+    hShape.set_family(CoreShapeFamily::H);
+    hShape.set_name("H alias of DRH-14X20-4C");
+
+    // All three registration points, so none of them can be forgotten again (DRUM_PLATE was
+    // registered in two of them and missed the third, ABT #996).
+    CHECK(CorePiece::is_family_supported(CoreShapeFamily::H));
+    CHECK(get_core_shape_family_required_dimensions(CoreShapeFamily::H) ==
+          get_core_shape_family_required_dimensions(CoreShapeFamily::DRUM));
+    auto drumPiece = CorePiece::factory(drumShape);
+    auto hPiece = CorePiece::factory(hShape);
+    CHECK(hPiece->get_shape().get_family() == CoreShapeFamily::DRUM);
+    CHECK_THAT(hPiece->get_partial_effective_parameters().get_effective_length(),
+               Catch::Matchers::WithinRel(drumPiece->get_partial_effective_parameters().get_effective_length(), 1e-12));
+    CHECK_THAT(hPiece->get_partial_effective_parameters().get_effective_area(),
+               Catch::Matchers::WithinRel(drumPiece->get_partial_effective_parameters().get_effective_area(), 1e-12));
+
+    // Door 1: a Core built from the shape. The type cascade must see DRUM -> OPEN_SHAPE.
+    auto material = OpenMagnetics::find_core_material_by_name("3C95");
+    Core drumCore(drumShape, material);
+    Core hCore(hShape, material);
+    CHECK(hCore.get_functional_description().get_type() == CoreType::OPEN_SHAPE);
+    CHECK(hCore.get_shape_family() == CoreShapeFamily::DRUM);
+    drumCore.process_data();
+    hCore.process_data();
+    auto drumEffective = drumCore.get_processed_description()->get_effective_parameters();
+    auto hEffective = hCore.get_processed_description()->get_effective_parameters();
+    CHECK_THAT(hEffective.get_effective_length(), Catch::Matchers::WithinRel(drumEffective.get_effective_length(), 1e-12));
+    CHECK_THAT(hEffective.get_effective_area(), Catch::Matchers::WithinRel(drumEffective.get_effective_area(), 1e-12));
+    CHECK_THAT(hEffective.get_effective_volume(), Catch::Matchers::WithinRel(drumEffective.get_effective_volume(), 1e-12));
+
+    // Door 2: an inline MAS json shape with family "h". The family the engine reports, and so the
+    // one MagnetizingInductance routes its open-core model on, is the drum's.
+    json coreJson;
+    coreJson["name"] = "H core json";
+    coreJson["functionalDescription"]["type"] = "openShape";
+    coreJson["functionalDescription"]["material"] = "3C95";
+    coreJson["functionalDescription"]["numberStacks"] = 1;
+    coreJson["functionalDescription"]["gapping"] = json::array();
+    coreJson["functionalDescription"]["shape"] = json(hShape);
+    REQUIRE(coreJson["functionalDescription"]["shape"]["family"] == "h");
+    Core jsonCore(coreJson);
+    CHECK(jsonCore.get_shape_family() == CoreShapeFamily::DRUM);
+    CHECK_THAT(jsonCore.get_processed_description()->get_effective_parameters().get_effective_length(),
+               Catch::Matchers::WithinRel(drumEffective.get_effective_length(), 1e-12));
+}

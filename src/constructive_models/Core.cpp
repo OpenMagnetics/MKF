@@ -76,7 +76,10 @@ Core::Core(const MagneticCore core) {
     }
 }
 
-Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
+Core::Core(const CoreShape declaredShape, std::optional<CoreMaterial> material) {
+    // An alias family (H -> DRUM, ABT #277) must be resolved BEFORE the type cascade below,
+    // or an H core would fall through to TWO_PIECE_SET and be mirrored.
+    const CoreShape shape = canonicalize_core_shape_family(declaredShape);
     get_mutable_functional_description().set_gapping(std::vector<CoreGap>({}));
     get_mutable_functional_description().set_number_stacks(1);
     get_mutable_functional_description().set_shape(shape);
@@ -1683,10 +1686,12 @@ CoreShape Core::resolve_shape(CoreShapeDataOrNameUnion coreShape) {
     if (std::holds_alternative<std::string>(coreShape)) {
         auto coreShapeData = find_core_shape_by_name(std::get<std::string>(coreShape));
         coreShape = coreShapeData;
-        return coreShapeData;
+        return canonicalize_core_shape_family(coreShapeData);
     }
     else {
-        return std::get<CoreShape>(coreShape);
+        // An inline shape may name an alias family (H -> DRUM, ABT #277); everything downstream
+        // (core type, open-core inductance, painter) branches on the canonical one.
+        return canonicalize_core_shape_family(std::get<CoreShape>(coreShape));
     }
 }
 

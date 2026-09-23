@@ -537,7 +537,8 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     // straight-line assignment made "RM 6-S" resolve to RM 6/I, a different gapped part).
     std::vector<std::pair<std::string, CoreShape>> pendingAliases;
     parse_ndjson(database, [withAliases, includeToroidalCores, includeConcentricCores, &skippedPerFamily, &pendingAliases](const json& jf) {
-        CoreShape coreShape(jf);
+        // Alias families (H -> DRUM, ABT #277) are stored under the family they are modelled as.
+        CoreShape coreShape = canonicalize_core_shape_family(CoreShape(jf));
         check_core_shape_geometry(coreShape);
         if (!CorePiece::is_family_supported(coreShape.get_family())) {
             skippedPerFamily[coreShape.get_family()]++;

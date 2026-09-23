@@ -3106,7 +3106,7 @@ static constexpr CoreShapeFamily kSupportedShapeFamilies[] = {
     CoreShapeFamily::C,          CoreShapeFamily::EER,        CoreShapeFamily::EF,
     CoreShapeFamily::EPC,        CoreShapeFamily::UI,         CoreShapeFamily::EI,
     CoreShapeFamily::DRUM,       CoreShapeFamily::DRUM_RING,  CoreShapeFamily::DRUM_SEMISHIELDED,
-    CoreShapeFamily::DRUM_PLATE,
+    CoreShapeFamily::DRUM_PLATE, CoreShapeFamily::H,
     CoreShapeFamily::ROD,        CoreShapeFamily::MOLDED,     CoreShapeFamily::PQI,
     CoreShapeFamily::EPQ,        CoreShapeFamily::EPW,        CoreShapeFamily::EPT,
     CoreShapeFamily::LEP,
@@ -3156,6 +3156,8 @@ static const std::map<CoreShapeFamily, std::vector<std::string>> kFamilyRequired
     {CoreShapeFamily::UI,                  {"A", "B", "B2", "C", "D"}},
     {CoreShapeFamily::EI,                  {"A", "B", "B2", "C", "D", "E", "F"}},
     {CoreShapeFamily::DRUM,                {"A", "B", "C", "D", "E", "F"}},
+    // H is an alias of DRUM (ABT #277): same piece, so the same dimensions, by construction.
+    {CoreShapeFamily::H,                   {"A", "B", "C", "D", "E", "F"}},
     {CoreShapeFamily::DRUM_RING,           {"A", "B", "C", "D", "E", "F", "J", "K", "L"}},
     {CoreShapeFamily::DRUM_SEMISHIELDED,   {"A", "B", "C", "D", "E", "F", "J", "K", "L"}},
     {CoreShapeFamily::DRUM_PLATE,          {"A", "B", "C", "D", "F", "G"}},
@@ -3189,6 +3191,18 @@ std::vector<CoreShapeFamily> get_supported_core_shape_families() {
 bool CorePiece::is_family_supported(CoreShapeFamily family) {
     return std::find(std::begin(kSupportedShapeFamilies), std::end(kSupportedShapeFamilies),
                      family) != std::end(kSupportedShapeFamilies);
+}
+
+CoreShapeFamily canonical_core_shape_family(CoreShapeFamily family) {
+    if (family == CoreShapeFamily::H) {
+        return CoreShapeFamily::DRUM;
+    }
+    return family;
+}
+
+CoreShape canonicalize_core_shape_family(CoreShape shape) {
+    shape.set_family(canonical_core_shape_family(shape.get_family()));
+    return shape;
 }
 
 static std::string supported_shape_family_list() {
@@ -3389,9 +3403,10 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
         if (process) piece->process();
         return piece;
     }
-    else if (family == CoreShapeFamily::DRUM) {
+    else if (family == CoreShapeFamily::DRUM || family == CoreShapeFamily::H) {
+        // H is the drum under another name (ABT #277); see canonical_core_shape_family.
         auto piece = std::make_shared<CorePieceDrum>();
-        piece->set_shape(shape);
+        piece->set_shape(canonicalize_core_shape_family(shape));
         if (process) piece->process();
         return piece;
     }

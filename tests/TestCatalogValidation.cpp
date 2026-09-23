@@ -94,10 +94,10 @@ TEST_CASE("Test_Catalog_Unsupported_Families_Are_Not_Loaded", "[catalog][smoke-t
     //   DS/HS/RS   - Magnetics slab cores: geometry decoded, but the model lands +12-20% on the
     //                published le/Ae with only min/max vendor bounds to feed it (ABT #263).
     //   ELP        - covered: every ELP name is an alias of a planarE record (ABT #273).
-    //   H          - no definition: no vendor catalogue checked uses "H" as a family (ABT #277).
+    // H moved off this list (ABT #277): it is the drum under another name, canonicalised to DRUM.
     const std::vector<CoreShapeFamily> auditedUnsupported = {
         CoreShapeFamily::BLOCK, CoreShapeFamily::DS, CoreShapeFamily::ELP,
-        CoreShapeFamily::H,     CoreShapeFamily::HS, CoreShapeFamily::RS,
+        CoreShapeFamily::HS,    CoreShapeFamily::RS,
     };
     for (auto family : auditedUnsupported) {
         INFO("listed as unsupported but buildable, move it off the list: " << magic_enum::enum_name(family));
