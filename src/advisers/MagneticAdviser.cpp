@@ -1179,7 +1179,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             double usedWeight = 0;
             for (auto [filter, scoring] : scoringsPerReferencePerFilter[reference]) {
                 double weight = filterWeights.count(filter) ? filterWeights[filter] : 1.0;
-                totalScoring += scoring * weight;
+                // get_scorings() has ALREADY scaled each filter's score into [0, weight]
+                // (normalize_scoring multiplies by the operation's weight). Multiplying by the
+                // weight again here applied it twice -- an effective weight of w^2, and totals
+                // above 1 (a part best on a weight-2 filter scored (2*2)/3). Summing the weighted
+                // scores and dividing by the weights used is the weighted mean, in [0, 1].
+                totalScoring += scoring;
                 usedWeight += weight;
             }
             // Normalize by total weight used (weighted average)

@@ -15,6 +15,7 @@
 // =============================================================================
 
 #include <cmath>
+#include <map>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -353,4 +354,40 @@ TEST_CASE("A cache subset holds exactly the requested references, and refuses un
     REQUIRE(subset.count("A") == 1);
     REQUIRE(subset.count("B") == 0);
     REQUIRE_THROWS_WITH(cache.subset({"A", "Z"}), Catch::Matchers::ContainsSubstring("1 of 2 requested references are not in the cache (Z)"));
+}
+
+TEST_CASE("The catalogue adviser weights each filter once: the score is the weighted mean",
+          "[datasheet-only][adviser][scoring][smoke-test]") {
+    // Three parts, two filters: VOLUME (weight 2) and DATASHEET_LIMITS (weight 1). SMALL is the
+    // smallest and the most loaded; BIG the largest with the most margin; MID sits between.
+    // Normalised per filter (best 1, worst 0), SMALL scores VOLUME 1 and DATASHEET_LIMITS 0, so
+    // its weighted mean is (2*1 + 1*0) / 3. Weighting twice gave (2*2 + 0) / 3 = 1.33.
+    auto small = ten_microhenry("SMALL");
+    small.ratedCurrent = 1.2;
+    small.body = std::make_tuple(3e-3, 3e-3, 2e-3);
+    auto mid = ten_microhenry("MID");
+    mid.ratedCurrent = 2.0;
+    mid.body = std::make_tuple(4e-3, 4e-3, 3e-3);
+    auto big = ten_microhenry("BIG");
+    big.ratedCurrent = 6.0;
+    big.body = std::make_tuple(6e-3, 6e-3, 4e-3);
+    for (auto* spec : {&small, &mid, &big}) {
+        spec->saturationCurrents = {{30, 20.0}};
+    }
+    std::vector<OpenMagnetics::Magnetic> catalogue{datasheet_part(small), datasheet_part(mid), datasheet_part(big)};
+    std::vector<MagneticFilterOperation> flow{
+        MagneticFilterOperation(MagneticFilters::VOLUME, true, false, false, 2.0),
+        MagneticFilterOperation(MagneticFilters::DATASHEET_LIMITS, true, false, false, 1.0),
+    };
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(buck_inductor_inputs(10e-6, 1.0), catalogue, flow, 3, false);
+    REQUIRE(results.size() == 3);
+    std::map<std::string, double> score;
+    for (auto& [mas, value] : results) {
+        score[mas.get_magnetic().get_reference()] = value;
+        REQUIRE(value >= 0.0);
+        REQUIRE(value <= 1.0);
+    }
+    REQUIRE_THAT(score["SMALL"], WithinRel(2.0 / 3.0, 1e-9));
+    REQUIRE_THAT(score["BIG"], WithinRel(1.0 / 3.0, 1e-9));
 }
