@@ -104,6 +104,29 @@ std::optional<double> saturation_current(const MagneticDatasheetElectrical& entr
     return smallest;
 }
 
+}  // namespace
+
+// The design's turns ratios as numbers (empty: 1:1) and its isolation sides, which the ampere-turn
+// current needs to sign each winding. A coupled inductor judged without them would be judged on a
+// guess, so their absence throws.
+std::vector<double> design_turns_ratios(const Inputs& inputs) {
+    std::vector<double> ratios;
+    for (const auto& ratio : inputs.get_design_requirements().get_turns_ratios()) {
+        ratios.push_back(resolve_dimensional_values(ratio));
+    }
+    return ratios;
+}
+
+std::vector<IsolationSide> design_isolation_sides(const Inputs& inputs, Magnetic* magnetic) {
+    auto sides = inputs.get_design_requirements().get_isolation_sides();
+    if (!sides) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "judging coupled inductor '" + magnetic->get_reference() + "' needs designRequirements.isolationSides: each winding's side signs its current in the ampere-turn sum");
+    }
+    return sides.value();
+}
+
+namespace {
+
 std::optional<MagneticDatasheetElectrical> selected_entry(Magnetic* magnetic) {
     auto manufacturerInfo = magnetic->get_manufacturer_info();
     if (!manufacturerInfo || !manufacturerInfo->get_datasheet_info()) {
@@ -161,7 +184,10 @@ std::pair<bool, double> MagneticFilterDatasheetLimits::evaluate_magnetic(Magneti
     for (const auto& operatingPoint : inputs->get_operating_points()) {
         const auto& excitations = operatingPoint.get_excitations_per_winding();
 
-        // The saturation current gates the largest winding peak current.
+        // The saturation current gates the largest winding peak current -- or, for a datasheet
+        // coupled inductor, the peak of the ampere-turn current (see
+        // Magnetic::is_datasheet_coupled_inductor), which replaces the per-winding peaks below.
+        const bool coupled = magnetic->is_datasheet_coupled_inductor();
         double maxWindingPeak = 0.0;
         bool haveAnyPeak = false;
 
@@ -190,8 +216,7 @@ std::pair<bool, double> MagneticFilterDatasheetLimits::evaluate_magnetic(Magneti
             if (saturationCurrent && excitation.get_current() &&
                 excitation.get_current()->get_processed() &&
                 excitation.get_current()->get_processed()->get_peak()) {
-                maxWindingPeak = std::max(maxWindingPeak,
-                                          excitation.get_current()->get_processed()->get_peak().value());
+                maxWindingPeak = std::max(maxWindingPeak, excitation.get_current()->get_processed()->get_peak().value());
                 haveAnyPeak = true;
             }
 
@@ -207,6 +232,12 @@ std::pair<bool, double> MagneticFilterDatasheetLimits::evaluate_magnetic(Magneti
                 excitation.get_voltage()->get_processed()) {
                 check(ratedVoltageDc.value(), std::abs(excitation.get_voltage()->get_processed()->get_offset()));
             }
+        }
+
+        if (saturationCurrent && coupled) {
+            auto ampereTurnCurrent = Inputs::calculate_ampere_turn_current(operatingPoint, design_turns_ratios(*inputs), design_isolation_sides(*inputs, magnetic));
+            maxWindingPeak = ampereTurnCurrent.get_processed()->get_peak().value();
+            haveAnyPeak = true;
         }
 
         // --- saturation current (worst winding peak) -------------------------

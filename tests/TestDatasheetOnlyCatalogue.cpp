@@ -391,3 +391,167 @@ TEST_CASE("The catalogue adviser weights each filter once: the score is the weig
     REQUIRE_THAT(score["SMALL"], WithinRel(2.0 / 3.0, 1e-9));
     REQUIRE_THAT(score["BIG"], WithinRel(1.0 / 3.0, 1e-9));
 }
+
+namespace {
+
+// A winding current over one period at 500 kHz: `samples` evenly spread, the last repeating the first.
+OperatingPointExcitation winding_current(const std::vector<double>& samples) {
+    const double frequency = 500000;
+    std::vector<double> time;
+    for (size_t i = 0; i < samples.size(); ++i) {
+        time.push_back(i / (frequency * (samples.size() - 1)));
+    }
+    Waveform waveform;
+    waveform.set_data(samples);
+    waveform.set_time(time);
+    SignalDescriptor current;
+    current.set_waveform(waveform);
+    current.set_processed(OpenMagnetics::Inputs::calculate_processed_data(waveform, frequency));
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(frequency);
+    excitation.set_current(current);
+    return excitation;
+}
+
+OpenMagnetics::Inputs coupled_inputs(double inductance, const std::vector<std::vector<double>>& windings,
+                                     std::vector<IsolationSide> sides = {IsolationSide::PRIMARY, IsolationSide::PRIMARY},
+                                     std::vector<double> turnsRatios = {}) {
+    OpenMagnetics::Inputs inputs;
+    DimensionWithTolerance required;
+    required.set_minimum(inductance);
+    inputs.get_mutable_design_requirements().set_magnetizing_inductance(required);
+    std::vector<DimensionWithTolerance> ratios;
+    for (double ratio : turnsRatios) {
+        ratios.push_back(nominal(ratio));
+    }
+    inputs.get_mutable_design_requirements().set_turns_ratios(ratios);
+    inputs.get_mutable_design_requirements().set_isolation_sides(sides);
+    OperatingPoint operatingPoint;
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(20);
+    operatingPoint.set_conditions(conditions);
+    for (const auto& samples : windings) {
+        operatingPoint.get_mutable_excitations_per_winding().push_back(winding_current(samples));
+    }
+    inputs.get_mutable_operating_points().push_back(operatingPoint);
+    return inputs;
+}
+
+// The coupled inductor as Heimdall stores it: a 'single winding' inductor entry (with L(I)) and a
+// coupledInductor entry restating the per-winding values, two windings.
+OpenMagnetics::Magnetic coupled_part(const std::string& reference, bool coupled) {
+    auto magnetic = datasheet_part(ten_microhenry(reference));
+    auto manufacturerInfo = magnetic.get_manufacturer_info().value();
+    auto datasheetInfo = manufacturerInfo.get_datasheet_info().value();
+    auto electrical = datasheetInfo.get_electrical().value();
+    if (coupled) {
+        auto pair = electrical[0];
+        pair.set_subtype(ElectricalSubtype::COUPLED_INDUCTOR);
+        pair.set_inductance_points(std::nullopt);
+        electrical.push_back(pair);
+    }
+    datasheetInfo.set_electrical(electrical);
+    Part part;
+    part.set_number_of_windings(2);
+    datasheetInfo.set_part(part);
+    manufacturerInfo.set_datasheet_info(datasheetInfo);
+    magnetic.set_manufacturer_info(manufacturerInfo);
+    return magnetic;
+}
+
+const std::vector<double> kRising = {0.9, 1.2, 1.5, 1.2, 0.9};   // DC 1.2 A, peak 1.5 A
+const std::vector<double> kFalling = {1.5, 1.2, 0.9, 1.2, 1.5};  // the same, half a period later
+
+double ampere_turn_peak(const OpenMagnetics::Inputs& inputs, std::vector<IsolationSide> sides, std::vector<double> turnsRatios = {}) {
+    return OpenMagnetics::Inputs::calculate_ampere_turn_current(inputs.get_operating_points()[0], turnsRatios, sides).get_processed()->get_peak().value();
+}
+
+}  // namespace
+
+TEST_CASE("The ampere-turn current sums the windings in time, with phase, side and turns",
+          "[datasheet-only][coupled][smoke-test]") {
+    const std::vector<IsolationSide> primaries{IsolationSide::PRIMARY, IsolationSide::PRIMARY};
+    SECTION("in phase, two 1.5 A peaks make a 3 A peak") {
+        REQUIRE_THAT(ampere_turn_peak(coupled_inputs(5e-6, {kRising, kRising}), primaries), WithinRel(3.0, 1e-3));
+    }
+    SECTION("in anti-phase the equal ripples cancel: only the two 1.2 A DC components remain, 2.4 A") {
+        // kRising and kFalling are 1.2 A DC with +/-0.3 A of ripple half a period apart, so the
+        // ripple sums to zero at every sample and the sum is a flat 2.4 A -- the DC part alone.
+        REQUIRE_THAT(ampere_turn_peak(coupled_inputs(5e-6, {kRising, kFalling}), primaries), WithinRel(2.4, 1e-3));
+    }
+    SECTION("pure AC of equal amplitude in anti-phase cancels completely") {
+        const std::vector<double> ac = {-0.3, 0.0, 0.3, 0.0, -0.3};
+        const std::vector<double> antiAc = {0.3, 0.0, -0.3, 0.0, 0.3};
+        REQUIRE(ampere_turn_peak(coupled_inputs(5e-6, {ac, antiAc}), primaries) < 1e-9);
+    }
+    SECTION("a secondary-side winding counts negative") {
+        std::vector<IsolationSide> sides{IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        REQUIRE(ampere_turn_peak(coupled_inputs(5e-6, {kRising, kRising}, sides), sides) < 1e-9);
+    }
+    SECTION("a winding of half the turns (Np/Ns = 2) counts half") {
+        REQUIRE_THAT(ampere_turn_peak(coupled_inputs(5e-6, {kRising, kRising}, primaries, {2.0}), primaries, {2.0}), WithinRel(2.25, 1e-3));
+    }
+    SECTION("processed values alone carry no phase: a winding without a waveform throws") {
+        auto inputs = coupled_inputs(5e-6, {kRising, kRising});
+        auto current = inputs.get_mutable_operating_points()[0].get_mutable_excitations_per_winding()[1].get_current().value();
+        current.set_waveform(std::nullopt);
+        inputs.get_mutable_operating_points()[0].get_mutable_excitations_per_winding()[1].set_current(current);
+        REQUIRE_THROWS_AS(OpenMagnetics::Inputs::calculate_ampere_turn_current(inputs.get_operating_points()[0], {}, primaries), InvalidInputException);
+    }
+}
+
+TEST_CASE("A datasheet coupled inductor is gated by the peak of its ampere-turn current",
+          "[datasheet-only][coupled][smoke-test]") {
+    // Isat 2.5 A at 10 % per winding; each winding peaks at 1.5 A (under its 3 A rating).
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+    auto coupled = coupled_part("COUPLED", true);
+    REQUIRE(coupled.is_datasheet_coupled_inductor());
+
+    SECTION("in phase: 3 A of ampere-turn current saturates it") {
+        auto inputs = coupled_inputs(5e-6, {kRising, kRising});
+        auto [valid, score] = filter->evaluate_magnetic(&coupled, &inputs);
+        REQUIRE_FALSE(valid);
+        REQUIRE_THAT(score, WithinRel(3.0 / 2.5, 1e-3));
+    }
+    SECTION("in anti-phase: 2.4 A does not -- summing the peaks (3 A) would have rejected it") {
+        auto inputs = coupled_inputs(5e-6, {kRising, kFalling});
+        auto [valid, score] = filter->evaluate_magnetic(&coupled, &inputs);
+        REQUIRE(valid);
+    }
+    SECTION("a two-winding datasheet part NOT stated as coupled keeps the per-winding peak") {
+        auto uncoupled = coupled_part("TWO", false);
+        REQUIRE_FALSE(uncoupled.is_datasheet_coupled_inductor());
+        auto inputs = coupled_inputs(5e-6, {kRising, kRising});
+        auto [valid, score] = filter->evaluate_magnetic(&uncoupled, &inputs);
+        REQUIRE(valid);
+    }
+    SECTION("without isolation sides the windings cannot be signed: it throws") {
+        auto inputs = coupled_inputs(5e-6, {kRising, kRising});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::nullopt);
+        REQUIRE_THROWS_AS(filter->evaluate_magnetic(&coupled, &inputs), InvalidInputException);
+    }
+}
+
+TEST_CASE("A datasheet coupled inductor's inductance is read at its ampere-turn DC",
+          "[datasheet-only][coupled][smoke-test]") {
+    // L(I) at 20 C: 10 uH at 0 A, 9 uH at 2 A, 6 uH at 4 A. 1.5 A DC in each winding, in phase:
+    // 3 A of ampere-turn DC, 7.5 uH -- below the 8 uH asked for (1.5 A alone would leave 9.25 uH).
+    const std::vector<double> dc15 = {1.2, 1.5, 1.8, 1.5, 1.2};
+    auto magnetic = coupled_part("COUPLED", true);
+    auto inputs = coupled_inputs(8e-6, {dc15, dc15});
+    auto filter = MagneticFilter::factory(MagneticFilters::MAGNETIZING_INDUCTANCE);
+    auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
+    REQUIRE_FALSE(valid);
+    REQUIRE_THAT(score, WithinRel(0.5e-6, 1e-3));
+}
+
+TEST_CASE("A two-winding operating point searches the coupled inductors of a catalogue",
+          "[datasheet-only][coupled][adviser][smoke-test]") {
+    std::vector<OpenMagnetics::Magnetic> catalogue{coupled_part("COUPLED", true), datasheet_part(ten_microhenry("SINGLE"))};
+    std::vector<MagneticFilterOperation> flow{MagneticFilterOperation(MagneticFilters::DATASHEET_LIMITS, true, false, false, 1.0)};
+    MagneticAdviser adviser;
+    const std::vector<double> small = {0.3, 0.5, 0.7, 0.5, 0.3};
+    auto results = adviser.get_advised_magnetic(coupled_inputs(5e-6, {small, small}), catalogue, flow, 5, false);
+    REQUIRE(results.size() == 1);
+    REQUIRE(results[0].first.get_magnetic().get_reference() == "COUPLED");
+}

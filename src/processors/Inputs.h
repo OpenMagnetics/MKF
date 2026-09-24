@@ -119,6 +119,20 @@ class Inputs : public MAS::Inputs {
     // style); the winding current then contains commutation steps, so the DC anchor
     // is peak-based on the volt-second integral instead of the measured midpoint
     // (ABT #907). Pass excitations_per_winding().size() > 1 at the call site.
+    // The ampere-turn current of an operating point: i_m(t) = sum_k c_k (N_k/N_ref) i_k(t), the
+    // single current that, in the reference winding, drives the same core flux as all windings
+    // together. Built from the winding current WAVEFORMS on one common period grid, so phase and
+    // dot direction count: c_k = +1 for a primary-side winding, -1 otherwise (MAS's excitation
+    // sign convention: primary-side currents passive, the others source), N_k/N_ref from the
+    // design's turnsRatios (Np/Nk against winding 0, re-referred to the reference) or 1:1 when
+    // none are given; the reference is the first primary-side winding. Its processed values come
+    // from the summed waveform (offset = signed DC, peak = magnitude peak). Throws when a winding
+    // has no current waveform (processed values alone carry no phase), when the windings'
+    // frequencies differ, or when the isolation sides are not given for every winding.
+    static SignalDescriptor calculate_ampere_turn_current(const OperatingPoint& operatingPoint,
+                                                          const std::vector<double>& turnsRatios,
+                                                          const std::vector<IsolationSide>& isolationSides);
+
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
                                                             bool compress,

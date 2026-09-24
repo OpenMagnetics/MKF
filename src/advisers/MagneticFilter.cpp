@@ -436,6 +436,13 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
                 throw InvalidInputException(ErrorCode::INVALID_INPUT, "MagneticFilterMagnetizingInductance: the operating point has no processed current to read the DC bias of '" + magnetic->get_reference() + "' from");
             }
             double dcBias = excitations[0].get_current()->get_processed()->get_offset();
+            if (magnetic->is_datasheet_coupled_inductor()) {
+                // Two windings on one core: the L(I) is read at the DC of their ampere-turn current.
+                // Its signed mean may be negative (a net DC against the reference winding's dot);
+                // calculate_datasheet_inductance takes its magnitude, as L(I) is tabulated on |I|.
+                auto ampereTurnCurrent = Inputs::calculate_ampere_turn_current(operatingPoint, design_turns_ratios(*inputs), design_isolation_sides(*inputs, magnetic));
+                dcBias = ampereTurnCurrent.get_processed()->get_offset();
+            }
             auto inductance = magnetic->calculate_datasheet_inductance(dcBias, operatingPoint.get_conditions().get_ambient_temperature());
             if (!inductance) {
                 // The bias lies beyond the vendor's measured curve, past its deepest saturation.

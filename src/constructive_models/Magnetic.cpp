@@ -89,6 +89,14 @@ bool Magnetic::has_datasheet_dimensions() const {
     return mechanical.get_height().has_value() && ((mechanical.get_length().has_value() && mechanical.get_width().has_value()) || mechanical.get_diameter().has_value());
 }
 
+bool Magnetic::is_datasheet_coupled_inductor() const {
+    if (has_core() || has_coil() || !get_manufacturer_info() || !get_manufacturer_info()->get_datasheet_info() || !get_manufacturer_info()->get_datasheet_info()->get_electrical()) {
+        return false;
+    }
+    const auto electricals = get_manufacturer_info()->get_datasheet_info()->get_electrical().value();
+    return std::any_of(electricals.begin(), electricals.end(), [](const MagneticDatasheetElectrical& entry) { return entry.get_subtype() == ElectricalSubtype::COUPLED_INDUCTOR; });
+}
+
 std::optional<MagneticDatasheetElectrical> Magnetic::get_datasheet_inductor_electrical() const {
     if (!get_manufacturer_info() || !get_manufacturer_info()->get_datasheet_info() || !get_manufacturer_info()->get_datasheet_info()->get_electrical()) {
         return std::nullopt;

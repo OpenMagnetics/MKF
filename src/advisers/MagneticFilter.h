@@ -20,6 +20,11 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+// Helpers the datasheet filters share for judging a datasheet coupled inductor by its ampere-turn
+// current (MagneticFilterDatasheet.cpp).
+std::vector<double> design_turns_ratios(const Inputs& inputs);
+std::vector<IsolationSide> design_isolation_sides(const Inputs& inputs, Magnetic* magnetic);
+
 class MagneticFilter {
     public: 
         static std::shared_ptr<MagneticFilter> factory(MagneticFilters filterName, std::optional<Inputs> inputs = std::nullopt);

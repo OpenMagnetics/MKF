@@ -804,6 +804,75 @@ SignalDescriptor Inputs::get_differential_mode_choke_magnetizing_current(Operati
     return magnetizingCurrent;
 }
 
+SignalDescriptor Inputs::calculate_ampere_turn_current(const OperatingPoint& operatingPoint,
+                                                       const std::vector<double>& turnsRatios,
+                                                       const std::vector<IsolationSide>& isolationSides) {
+    const auto& excitations = operatingPoint.get_excitations_per_winding();
+    const size_t numberWindings = excitations.size();
+    if (numberWindings == 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_ampere_turn_current: the operating point has no excitations");
+    }
+    if (isolationSides.size() != numberWindings) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_ampere_turn_current: " + std::to_string(isolationSides.size()) + " isolation sides for " + std::to_string(numberWindings) + " windings; the sign of each winding's contribution depends on its side");
+    }
+    if (!turnsRatios.empty() && turnsRatios.size() != numberWindings - 1) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_ampere_turn_current: " + std::to_string(turnsRatios.size()) + " turns ratios for " + std::to_string(numberWindings) + " windings (expected one per winding after the first)");
+    }
+    // N_k / N_0: winding 0 is 1, winding k is 1 / (Np/Nk).
+    std::vector<double> turnsAgainstFirst(numberWindings, 1.0);
+    for (size_t k = 1; k < numberWindings && !turnsRatios.empty(); ++k) {
+        if (turnsRatios[k - 1] <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_ampere_turn_current: turns ratio " + std::to_string(turnsRatios[k - 1]) + " is not positive");
+        }
+        turnsAgainstFirst[k] = 1.0 / turnsRatios[k - 1];
+    }
+    size_t reference = numberWindings;
+    for (size_t k = 0; k < numberWindings; ++k) {
+        if (isolationSides[k] == IsolationSide::PRIMARY) {
+            reference = k;
+            break;
+        }
+    }
+    if (reference == numberWindings) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_ampere_turn_current: no winding is on the primary side, so there is no reference winding");
+    }
+
+    std::optional<double> frequency;
+    std::vector<double> sum;
+    std::vector<double> time;
+    for (size_t k = 0; k < numberWindings; ++k) {
+        const auto excitation = excitations[k];
+        const auto current = excitation.get_current();
+        if (!current || !current->get_waveform()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_ampere_turn_current: winding " + std::to_string(k) + " has no current waveform; processed values carry no phase to align the windings with");
+        }
+        if (frequency && std::fabs(excitation.get_frequency() - frequency.value()) > 1e-9 * frequency.value()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_ampere_turn_current: winding " + std::to_string(k) + " is excited at " + std::to_string(excitation.get_frequency()) + " Hz, winding 0 at " + std::to_string(frequency.value()) + " Hz");
+        }
+        frequency = excitation.get_frequency();
+        auto sampled = calculate_sampled_waveform(current->get_waveform().value(), frequency.value());
+        const auto& data = sampled.get_data();
+        const double scale = (isolationSides[k] == IsolationSide::PRIMARY ? 1.0 : -1.0) * turnsAgainstFirst[k] / turnsAgainstFirst[reference];
+        if (sum.empty()) {
+            sum.assign(data.size(), 0.0);
+            time = sampled.get_time().value();
+        }
+        if (data.size() != sum.size()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_ampere_turn_current: winding " + std::to_string(k) + " sampled to " + std::to_string(data.size()) + " points, winding 0 to " + std::to_string(sum.size()));
+        }
+        for (size_t i = 0; i < data.size(); ++i) {
+            sum[i] += scale * data[i];
+        }
+    }
+    Waveform waveform;
+    waveform.set_data(sum);
+    waveform.set_time(time);
+    SignalDescriptor ampereTurnCurrent;
+    ampereTurnCurrent.set_waveform(waveform);
+    ampereTurnCurrent.set_processed(calculate_processed_data(waveform, frequency.value()));
+    return ampereTurnCurrent;
+}
+
 Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency, std::optional<size_t> numberPoints, std::optional<size_t> maximumNumberPoints) {
     return WaveformProcessor::calculate_sampled_waveform(waveform, frequency, numberPoints,
                                                          settings.get_inputs_number_points_sampled_waveforms(),

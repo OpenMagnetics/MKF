@@ -113,6 +113,14 @@ class Magnetic : public MAS::Magnetic {
         // it is past the deepest saturation the vendor measured. With no L(I) points at all, the
         // stated inductance is returned. Throws when the datasheet gives neither.
         std::optional<double> calculate_datasheet_inductance(double dcBiasCurrent, double temperature) const;
+        // A datasheet-only part whose datasheet states it as a coupled inductor (a coupledInductor
+        // electrical entry): two windings on one core. With no model to simulate, it is judged by
+        // its AMPERE-TURN current (Inputs::calculate_ampere_turn_current: the windings' currents
+        // summed in time, with phase and dot direction) -- saturation against its peak, inductance
+        // from L(I) at its DC -- because the windings share the core flux and WE's datasheets state
+        // Isat and L(I) per winding. Rated currents stay per winding, as stated. Never true for a
+        // part with a core and coil (MKF simulates those) nor for a common-mode choke.
+        bool is_datasheet_coupled_inductor() const;
         bool fits(MaximumDimensions maximumDimensions, bool allowRotation);
 
         // I_sat = B_sat(T)·N·A_e/L. By default B_sat is the PROPORTION-derated
