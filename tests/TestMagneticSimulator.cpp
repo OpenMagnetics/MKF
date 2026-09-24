@@ -1596,3 +1596,29 @@ TEST_CASE("Test_Magnetic_Simulator_New_Core_Families",
     }
     settings.reset();
 }
+
+// A web-builder design (buck, 98 P 11/9, 2x15 turns) whose core arrived WITHOUT a
+// processedDescription — the builder cleared it while re-processing the core and a
+// simulation fired in that window. A Magnetic deserialized from JSON does not process its
+// core, and MagnetizingInductance read the effective area through the empty optional
+// (UB): area 0, flux / 0, and "Waveform data contains NaN" far downstream. It must name
+// the missing core data instead.
+TEST_CASE("MagneticSimulator names an unprocessed core instead of dividing by a zero area",
+          "[processor][magnetic-simulator][core-not-processed]") {
+    std::ifstream fi(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_buck_inputs_unprocessed_core_1369.json"));
+    std::ifstream fm(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_buck_magnetic_unprocessed_core_1369.json"));
+    REQUIRE(fi.good());
+    REQUIRE(fm.good());
+    OpenMagnetics::Inputs inputs(nlohmann::json::parse(fi));
+    OpenMagnetics::Magnetic magnetic(nlohmann::json::parse(fm));
+    REQUIRE(!magnetic.get_core().get_processed_description());
+
+    MagneticSimulator magneticSimulator;
+    try {
+        magneticSimulator.simulate(inputs, magnetic);
+        FAIL("simulating a magnetic whose core has no processed description must throw");
+    }
+    catch (const CoreNotProcessedException& e) {
+        CHECK(std::string(e.what()).find("processedDescription") != std::string::npos);
+    }
+}

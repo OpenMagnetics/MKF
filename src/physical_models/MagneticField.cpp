@@ -66,6 +66,12 @@ SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magneti
 
 SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor magneticFlux,
                                                                   double area) {
+    if (!(area > 0)) {
+        // B = flux / area: a zero or missing area turns every sample into inf/NaN,
+        // which surfaced far away as "Waveform data contains NaN".
+        throw std::invalid_argument("calculate_magnetic_flux_density: effective area must be positive, got " +
+                                    std::to_string(area));
+    }
     SignalDescriptor magneticFluxDensity;
     Waveform magneticFluxDensityWaveform;
     std::vector<double> magneticFluxDensityData;

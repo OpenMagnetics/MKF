@@ -1,0 +1,2134 @@
+{
+ "coil": {
+  "bobbin": {
+   "processedDescription": {
+    "columnDepth": 0.0030321193415637866,
+    "columnShape": "round",
+    "columnThickness": 0.0007321193415637864,
+    "columnWidth": 0.0030321193415637866,
+    "coordinates": [
+     0,
+     0,
+     0
+    ],
+    "wallThickness": 0.0008785432098765435,
+    "windingWindows": [
+     {
+      "area": 5.02178625311182e-06,
+      "coordinates": [
+       0.0038160596707818933,
+       0,
+       0
+      ],
+      "height": 0.003202913580246913,
+      "sectionsAlignment": "innerOrTop",
+      "sectionsOrientation": "overlapping",
+      "shape": "rectangular",
+      "width": 0.0015678806584362135
+     }
+    ]
+   }
+  },
+  "functionalDescription": [
+   {
+    "isolationSide": "primary",
+    "name": "Primary",
+    "numberParallels": 2,
+    "numberTurns": 15,
+    "wire": {
+     "coating": {
+      "breakdownVoltage": 2250,
+      "grade": 1,
+      "type": "enamelled"
+     },
+     "conductingArea": {
+      "nominal": 8.814130888727865e-08
+     },
+     "conductingDiameter": {
+      "maximum": 0.000339,
+      "minimum": 0.000330999999999,
+      "nominal": 0.000335
+     },
+     "manufacturerInfo": {
+      "name": "Elektrisola"
+     },
+     "material": "copper",
+     "name": "Round 0.335 - Grade 1",
+     "numberConductors": 1,
+     "outerDiameter": {
+      "maximum": 0.000372,
+      "minimum": 0.00035499999999900005
+     },
+     "standard": "IEC 60317",
+     "standardName": "0.335 mm",
+     "type": "round"
+    }
+   }
+  ],
+  "groupsDescription": [
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0038160596707818933,
+     0
+    ],
+    "dimensions": [
+     0.0015678806584362135,
+     0.003202913580246913
+    ],
+    "name": "Default group",
+    "partialWindings": [
+     {
+      "parallelsProportion": [
+       1,
+       1
+      ],
+      "winding": "Primary"
+     }
+    ],
+    "sectionsOrientation": "overlapping",
+    "type": "wound"
+   }
+  ],
+  "layersDescription": [
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0032138693415635364,
+     2.168404344971009e-19
+    ],
+    "dimensions": [
+     0.0003634999999995,
+     0.003202913580246913
+    ],
+    "fillingFactor": 0.907923,
+    "name": "Primary section 0 layer 0",
+    "orientation": "overlapping",
+    "partialWindings": [
+     {
+      "parallelsProportion": [
+       0.26666666666666666,
+       0.26666666666666666
+      ],
+      "winding": "Primary"
+     }
+    ],
+    "section": "Primary section 0",
+    "turnsAlignment": "spread",
+    "type": "conduction",
+    "windingStyle": "windByConsecutiveParallels"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0033956193415635365,
+     2.168404344971009e-19
+    ],
+    "dimensions": [
+     0,
+     0.003202913580246913
+    ],
+    "fillingFactor": 1,
+    "insulationMaterial": "Kapton HN",
+    "name": "Primary section 0 insulation layer 0",
+    "orientation": "overlapping",
+    "partialWindings": [],
+    "section": "Primary section 0",
+    "turnsAlignment": "spread",
+    "type": "insulation"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0035773693415635365,
+     2.168404344971009e-19
+    ],
+    "dimensions": [
+     0.0003634999999995,
+     0.003202913580246913
+    ],
+    "fillingFactor": 0.907923,
+    "name": "Primary section 0 layer 1",
+    "orientation": "overlapping",
+    "partialWindings": [
+     {
+      "parallelsProportion": [
+       0.26666666666666666,
+       0.26666666666666666
+      ],
+      "winding": "Primary"
+     }
+    ],
+    "section": "Primary section 0",
+    "turnsAlignment": "spread",
+    "type": "conduction",
+    "windingStyle": "windByConsecutiveParallels"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0037591193415635366,
+     2.168404344971009e-19
+    ],
+    "dimensions": [
+     0,
+     0.003202913580246913
+    ],
+    "fillingFactor": 1,
+    "insulationMaterial": "Kapton HN",
+    "name": "Primary section 0 insulation layer 1",
+    "orientation": "overlapping",
+    "partialWindings": [],
+    "section": "Primary section 0",
+    "turnsAlignment": "spread",
+    "type": "insulation"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.003940869341563536,
+     2.168404344971009e-19
+    ],
+    "dimensions": [
+     0.0003634999999995,
+     0.003202913580246913
+    ],
+    "fillingFactor": 0.907923,
+    "name": "Primary section 0 layer 2",
+    "orientation": "overlapping",
+    "partialWindings": [
+     {
+      "parallelsProportion": [
+       0.26666666666666666,
+       0.26666666666666666
+      ],
+      "winding": "Primary"
+     }
+    ],
+    "section": "Primary section 0",
+    "turnsAlignment": "spread",
+    "type": "conduction",
+    "windingStyle": "windByConsecutiveParallels"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.004122619341563537,
+     2.168404344971009e-19
+    ],
+    "dimensions": [
+     0,
+     0.003202913580246913
+    ],
+    "fillingFactor": 1,
+    "insulationMaterial": "Kapton HN",
+    "name": "Primary section 0 insulation layer 2",
+    "orientation": "overlapping",
+    "partialWindings": [],
+    "section": "Primary section 0",
+    "turnsAlignment": "spread",
+    "type": "insulation"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.004304369341563537,
+     3.2526065174565133e-19
+    ],
+    "dimensions": [
+     0.0003634999999995,
+     0.0032029135802469134
+    ],
+    "fillingFactor": 0.680943,
+    "name": "Primary section 0 layer 3",
+    "orientation": "overlapping",
+    "partialWindings": [
+     {
+      "parallelsProportion": [
+       0.2,
+       0.2
+      ],
+      "winding": "Primary"
+     }
+    ],
+    "section": "Primary section 0",
+    "turnsAlignment": "spread",
+    "type": "conduction",
+    "windingStyle": "windByConsecutiveParallels"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0044861189999995,
+     0
+    ],
+    "dimensions": [
+     0,
+     0.003202913580246913
+    ],
+    "fillingFactor": 1,
+    "insulationMaterial": "Kapton HN",
+    "name": "Insulation between Primary and Primary section 1 insulation layer 0",
+    "orientation": "overlapping",
+    "partialWindings": [],
+    "section": "Insulation between Primary and Primary section 1",
+    "turnsAlignment": "spread",
+    "type": "insulation"
+   }
+  ],
+  "sectionsDescription": [
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0037591193415635366,
+     2.168404344971009e-19
+    ],
+    "dimensions": [
+     0.0014539999999995,
+     0.0032029135802469134
+    ],
+    "fillingFactor": 0.789353914452282,
+    "group": "Default group",
+    "layersOrientation": "overlapping",
+    "margin": [
+     0,
+     0
+    ],
+    "name": "Primary section 0",
+    "partialWindings": [
+     {
+      "parallelsProportion": [
+       1,
+       1
+      ],
+      "winding": "Primary"
+     }
+    ],
+    "type": "conduction",
+    "windingStyle": "windByConsecutiveParallels"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0044861193415632866,
+     0
+    ],
+    "dimensions": [
+     0,
+     0.003202913580246913
+    ],
+    "fillingFactor": 1,
+    "group": "Default group",
+    "layersOrientation": "overlapping",
+    "name": "Insulation between Primary and Primary section 1",
+    "partialWindings": [],
+    "type": "insulation"
+   }
+  ],
+  "turnsDescription": [
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0032138693415635364,
+     -0.0014197067901237062
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 0",
+    "length": 0.020193336626106943,
+    "name": "Primary parallel 0 turn 0",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0032138693415635364,
+     -0.0010562067901242062
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 0",
+    "length": 0.020193336626106943,
+    "name": "Primary parallel 1 turn 0",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0032138693415635364,
+     -0.0005944022633744019
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 0",
+    "length": 0.020193336626106943,
+    "name": "Primary parallel 0 turn 1",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0032138693415635364,
+     -0.00023090226337490197
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 0",
+    "length": 0.020193336626106943,
+    "name": "Primary parallel 1 turn 1",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0032138693415635364,
+     0.00023090226337490238
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 0",
+    "length": 0.020193336626106943,
+    "name": "Primary parallel 0 turn 2",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0032138693415635364,
+     0.0005944022633744024
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 0",
+    "length": 0.020193336626106943,
+    "name": "Primary parallel 1 turn 2",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0032138693415635364,
+     0.0010562067901242066
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 0",
+    "length": 0.020193336626106943,
+    "name": "Primary parallel 0 turn 3",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0032138693415635364,
+     0.0014197067901237067
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 0",
+    "length": 0.020193336626106943,
+    "name": "Primary parallel 1 turn 3",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0035773693415635365,
+     -0.0014197067901237062
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 1",
+    "length": 0.022477274485266725,
+    "name": "Primary parallel 0 turn 4",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0035773693415635365,
+     -0.0010562067901242062
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 1",
+    "length": 0.022477274485266725,
+    "name": "Primary parallel 1 turn 4",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0035773693415635365,
+     -0.0005944022633744019
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 1",
+    "length": 0.022477274485266725,
+    "name": "Primary parallel 0 turn 5",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0035773693415635365,
+     -0.00023090226337490197
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 1",
+    "length": 0.022477274485266725,
+    "name": "Primary parallel 1 turn 5",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0035773693415635365,
+     0.00023090226337490238
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 1",
+    "length": 0.022477274485266725,
+    "name": "Primary parallel 0 turn 6",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0035773693415635365,
+     0.0005944022633744024
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 1",
+    "length": 0.022477274485266725,
+    "name": "Primary parallel 1 turn 6",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0035773693415635365,
+     0.0010562067901242066
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 1",
+    "length": 0.022477274485266725,
+    "name": "Primary parallel 0 turn 7",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.0035773693415635365,
+     0.0014197067901237067
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 1",
+    "length": 0.022477274485266725,
+    "name": "Primary parallel 1 turn 7",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.003940869341563536,
+     -0.0014197067901237062
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 2",
+    "length": 0.0247612123444265,
+    "name": "Primary parallel 0 turn 8",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.003940869341563536,
+     -0.0010562067901242062
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 2",
+    "length": 0.0247612123444265,
+    "name": "Primary parallel 1 turn 8",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.003940869341563536,
+     -0.0005944022633744019
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 2",
+    "length": 0.0247612123444265,
+    "name": "Primary parallel 0 turn 9",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.003940869341563536,
+     -0.00023090226337490197
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 2",
+    "length": 0.0247612123444265,
+    "name": "Primary parallel 1 turn 9",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.003940869341563536,
+     0.00023090226337490238
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 2",
+    "length": 0.0247612123444265,
+    "name": "Primary parallel 0 turn 10",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.003940869341563536,
+     0.0005944022633744024
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 2",
+    "length": 0.0247612123444265,
+    "name": "Primary parallel 1 turn 10",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.003940869341563536,
+     0.0010562067901242066
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 2",
+    "length": 0.0247612123444265,
+    "name": "Primary parallel 0 turn 11",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.003940869341563536,
+     0.0014197067901237067
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 2",
+    "length": 0.0247612123444265,
+    "name": "Primary parallel 1 turn 11",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.004304369341563537,
+     -0.0014197067901237062
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 3",
+    "length": 0.027045150203586284,
+    "name": "Primary parallel 0 turn 12",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.004304369341563537,
+     -0.0010562067901242062
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 3",
+    "length": 0.027045150203586284,
+    "name": "Primary parallel 1 turn 12",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.004304369341563537,
+     -0.0001817499999997497
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 3",
+    "length": 0.027045150203586284,
+    "name": "Primary parallel 0 turn 13",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.004304369341563537,
+     0.00018174999999975025
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 3",
+    "length": 0.027045150203586284,
+    "name": "Primary parallel 1 turn 13",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.004304369341563537,
+     0.0010562067901242068
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 3",
+    "length": 0.027045150203586284,
+    "name": "Primary parallel 0 turn 14",
+    "orientation": "clockwise",
+    "parallel": 0,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   },
+   {
+    "coordinateSystem": "cartesian",
+    "coordinates": [
+     0.004304369341563537,
+     0.0014197067901237069
+    ],
+    "crossSectionalShape": "round",
+    "dimensions": [
+     0.0003634999999995,
+     0.0003634999999995
+    ],
+    "layer": "Primary section 0 layer 3",
+    "length": 0.027045150203586284,
+    "name": "Primary parallel 1 turn 14",
+    "orientation": "clockwise",
+    "parallel": 1,
+    "rotation": 0,
+    "section": "Primary section 0",
+    "winding": "Primary"
+   }
+  ]
+ },
+ "core": {
+  "functionalDescription": {
+   "gapping": [
+    {
+     "length": 0.00015578376222483007,
+     "type": "subtractive"
+    },
+    {
+     "length": 5e-06,
+     "type": "residual"
+    },
+    {
+     "length": 5e-06,
+     "type": "residual"
+    }
+   ],
+   "material": {
+    "alternatives": [
+     "MB3",
+     "TP4A",
+     "JNP44",
+     "PC40",
+     "PL-11",
+     "N87",
+     "PL-7",
+     "CF139",
+     "CF292",
+     "ML24D"
+    ],
+    "application": [
+     "power"
+    ],
+    "coerciveForce": [
+     {
+      "magneticField": 6,
+      "magneticFluxDensity": 0,
+      "temperature": 100
+     },
+     {
+      "magneticField": 14,
+      "magneticFluxDensity": 0,
+      "temperature": 25
+     }
+    ],
+    "curieTemperature": 215,
+    "density": 4800,
+    "family": "Broadband",
+    "manufacturerInfo": {
+     "datasheetUrl": "https://fair-rite.com/98-material-data-sheet/",
+     "name": "Fair-Rite"
+    },
+    "material": "ferrite",
+    "materialComposition": "MnZn",
+    "name": "98",
+    "permeability": {
+     "complex": {
+      "imaginary": [
+       {
+        "frequency": 10000,
+        "value": 0.45
+       },
+       {
+        "frequency": 50000,
+        "value": 0.45
+       },
+       {
+        "frequency": 100000,
+        "value": 0.45
+       },
+       {
+        "frequency": 300000,
+        "value": 0.46
+       },
+       {
+        "frequency": 500000,
+        "value": 0.48
+       },
+       {
+        "frequency": 700000,
+        "value": 0.58
+       },
+       {
+        "frequency": 1000000,
+        "value": 0.62
+       },
+       {
+        "frequency": 1080000,
+        "value": 0.62
+       },
+       {
+        "frequency": 1160000,
+        "value": 0.62
+       },
+       {
+        "frequency": 1240000,
+        "value": 0.63
+       },
+       {
+        "frequency": 1320000,
+        "value": 0.65
+       },
+       {
+        "frequency": 1420000,
+        "value": 0.66
+       },
+       {
+        "frequency": 1530000,
+        "value": 0.7000000000000001
+       },
+       {
+        "frequency": 1640000,
+        "value": 0.72
+       },
+       {
+        "frequency": 1750000,
+        "value": 0.75
+       },
+       {
+        "frequency": 1870000,
+        "value": 0.75
+       },
+       {
+        "frequency": 2020000,
+        "value": 0.76
+       },
+       {
+        "frequency": 2160000,
+        "value": 0.76
+       },
+       {
+        "frequency": 2310000,
+        "value": 0.74
+       },
+       {
+        "frequency": 2480000,
+        "value": 0.77
+       },
+       {
+        "frequency": 2670000,
+        "value": 0.76
+       },
+       {
+        "frequency": 2860000,
+        "value": 0.77
+       },
+       {
+        "frequency": 3050000,
+        "value": 0.78
+       },
+       {
+        "frequency": 3270000,
+        "value": 0.78
+       },
+       {
+        "frequency": 3530000,
+        "value": 0.8
+       },
+       {
+        "frequency": 3780000,
+        "value": 0.81
+       },
+       {
+        "frequency": 4040000,
+        "value": 0.84
+       },
+       {
+        "frequency": 4330000,
+        "value": 0.86
+       },
+       {
+        "frequency": 4660000,
+        "value": 0.87
+       },
+       {
+        "frequency": 5000000,
+        "value": 0.93
+       },
+       {
+        "frequency": 5340000,
+        "value": 0.9500000000000001
+       },
+       {
+        "frequency": 5720000,
+        "value": 0.98
+       },
+       {
+        "frequency": 6170000,
+        "value": 1.07
+       },
+       {
+        "frequency": 6610000,
+        "value": 1.11
+       },
+       {
+        "frequency": 7050000,
+        "value": 1.17
+       },
+       {
+        "frequency": 7560000,
+        "value": 1.31
+       },
+       {
+        "frequency": 8170000,
+        "value": 1.42
+       },
+       {
+        "frequency": 8780000,
+        "value": 1.56
+       },
+       {
+        "frequency": 9390000,
+        "value": 1.78
+       },
+       {
+        "frequency": 10000000,
+        "value": 2.02
+       },
+       {
+        "frequency": 10700000,
+        "value": 2.35
+       },
+       {
+        "frequency": 11600000,
+        "value": 2.88
+       },
+       {
+        "frequency": 12400000,
+        "value": 3.54
+       },
+       {
+        "frequency": 13200000,
+        "value": 4.43
+       },
+       {
+        "frequency": 14200000,
+        "value": 5.91
+       },
+       {
+        "frequency": 15300000,
+        "value": 8.31
+       },
+       {
+        "frequency": 16400000,
+        "value": 11.73
+       },
+       {
+        "frequency": 17500000,
+        "value": 16.41
+       },
+       {
+        "frequency": 18700000,
+        "value": 23.49
+       },
+       {
+        "frequency": 20200000,
+        "value": 33.55
+       },
+       {
+        "frequency": 21600000,
+        "value": 44.49
+       },
+       {
+        "frequency": 23100000,
+        "value": 54.68
+       },
+       {
+        "frequency": 24800000,
+        "value": 64.11
+       },
+       {
+        "frequency": 26700000,
+        "value": 71.61
+       },
+       {
+        "frequency": 28600000,
+        "value": 76.41
+       },
+       {
+        "frequency": 30500000,
+        "value": 78.94
+       },
+       {
+        "frequency": 32700000,
+        "value": 80.56
+       },
+       {
+        "frequency": 35300000,
+        "value": 80.98
+       },
+       {
+        "frequency": 37800000,
+        "value": 80.56
+       },
+       {
+        "frequency": 40400000,
+        "value": 79.37
+       },
+       {
+        "frequency": 43300000,
+        "value": 77.69
+       },
+       {
+        "frequency": 46600000,
+        "value": 75.44
+       },
+       {
+        "frequency": 50000000,
+        "value": 73.15
+       },
+       {
+        "frequency": 53400000,
+        "value": 70.95
+       },
+       {
+        "frequency": 57200000,
+        "value": 68.5
+       },
+       {
+        "frequency": 61700000,
+        "value": 65.97
+       },
+       {
+        "frequency": 66100000,
+        "value": 63.62
+       },
+       {
+        "frequency": 70500000,
+        "value": 61.47
+       },
+       {
+        "frequency": 75600000,
+        "value": 59.3
+       },
+       {
+        "frequency": 81700000,
+        "value": 56.95
+       },
+       {
+        "frequency": 87800000,
+        "value": 54.88
+       },
+       {
+        "frequency": 93900000,
+        "value": 53.08
+       },
+       {
+        "frequency": 100000000,
+        "value": 51.43
+       },
+       {
+        "frequency": 107000000,
+        "value": 49.72
+       },
+       {
+        "frequency": 116000000,
+        "value": 47.92
+       },
+       {
+        "frequency": 124000000,
+        "value": 46.32
+       },
+       {
+        "frequency": 132000000,
+        "value": 44.89
+       },
+       {
+        "frequency": 142000000,
+        "value": 43.33
+       },
+       {
+        "frequency": 153000000,
+        "value": 41.76
+       },
+       {
+        "frequency": 164000000,
+        "value": 40.3
+       },
+       {
+        "frequency": 175000000,
+        "value": 38.91
+       },
+       {
+        "frequency": 187000000,
+        "value": 37.48
+       },
+       {
+        "frequency": 202000000,
+        "value": 35.95
+       },
+       {
+        "frequency": 216000000,
+        "value": 34.55
+       },
+       {
+        "frequency": 231000000,
+        "value": 33.22
+       },
+       {
+        "frequency": 248000000,
+        "value": 31.81
+       },
+       {
+        "frequency": 267000000,
+        "value": 30.3
+       },
+       {
+        "frequency": 286000000,
+        "value": 28.89
+       },
+       {
+        "frequency": 305000000,
+        "value": 27.62
+       },
+       {
+        "frequency": 327000000,
+        "value": 26.28
+       },
+       {
+        "frequency": 353000000,
+        "value": 24.89
+       },
+       {
+        "frequency": 378000000,
+        "value": 23.63
+       },
+       {
+        "frequency": 404000000,
+        "value": 22.49
+       },
+       {
+        "frequency": 433000000,
+        "value": 21.36
+       },
+       {
+        "frequency": 466000000,
+        "value": 20.25
+       },
+       {
+        "frequency": 500000000,
+        "value": 19.17
+       },
+       {
+        "frequency": 534000000,
+        "value": 18.27
+       },
+       {
+        "frequency": 572000000,
+        "value": 17.33
+       },
+       {
+        "frequency": 617000000,
+        "value": 16.4
+       },
+       {
+        "frequency": 661000000,
+        "value": 15.59
+       },
+       {
+        "frequency": 705000000,
+        "value": 14.87
+       },
+       {
+        "frequency": 756000000,
+        "value": 14.13
+       },
+       {
+        "frequency": 817000000,
+        "value": 13.41
+       },
+       {
+        "frequency": 878000000,
+        "value": 12.79
+       },
+       {
+        "frequency": 939000000,
+        "value": 12.3
+       },
+       {
+        "frequency": 1000000000,
+        "value": 11.9
+       }
+      ],
+      "real": [
+       {
+        "frequency": 10000,
+        "value": 118.03
+       },
+       {
+        "frequency": 50000,
+        "value": 117.55
+       },
+       {
+        "frequency": 100000,
+        "value": 117.59
+       },
+       {
+        "frequency": 300000,
+        "value": 117.89
+       },
+       {
+        "frequency": 500000,
+        "value": 117.95
+       },
+       {
+        "frequency": 700000,
+        "value": 117.85
+       },
+       {
+        "frequency": 1000000,
+        "value": 118.57
+       },
+       {
+        "frequency": 1080000,
+        "value": 118.5
+       },
+       {
+        "frequency": 1160000,
+        "value": 118.51
+       },
+       {
+        "frequency": 1240000,
+        "value": 118.53
+       },
+       {
+        "frequency": 1320000,
+        "value": 118.52
+       },
+       {
+        "frequency": 1420000,
+        "value": 118.49
+       },
+       {
+        "frequency": 1530000,
+        "value": 118.47
+       },
+       {
+        "frequency": 1640000,
+        "value": 118.5
+       },
+       {
+        "frequency": 1750000,
+        "value": 118.53
+       },
+       {
+        "frequency": 1870000,
+        "value": 118.53
+       },
+       {
+        "frequency": 2020000,
+        "value": 118.54
+       },
+       {
+        "frequency": 2160000,
+        "value": 118.54
+       },
+       {
+        "frequency": 2310000,
+        "value": 118.59
+       },
+       {
+        "frequency": 2480000,
+        "value": 118.58
+       },
+       {
+        "frequency": 2670000,
+        "value": 118.65
+       },
+       {
+        "frequency": 2860000,
+        "value": 118.71
+       },
+       {
+        "frequency": 3050000,
+        "value": 118.76
+       },
+       {
+        "frequency": 3270000,
+        "value": 118.84
+       },
+       {
+        "frequency": 3530000,
+        "value": 118.94
+       },
+       {
+        "frequency": 3780000,
+        "value": 119.04
+       },
+       {
+        "frequency": 4040000,
+        "value": 119.15
+       },
+       {
+        "frequency": 4330000,
+        "value": 119.29
+       },
+       {
+        "frequency": 4660000,
+        "value": 119.47
+       },
+       {
+        "frequency": 5000000,
+        "value": 119.69
+       },
+       {
+        "frequency": 5340000,
+        "value": 119.92
+       },
+       {
+        "frequency": 5720000,
+        "value": 120.19
+       },
+       {
+        "frequency": 6170000,
+        "value": 120.57
+       },
+       {
+        "frequency": 6610000,
+        "value": 120.98
+       },
+       {
+        "frequency": 7050000,
+        "value": 121.42
+       },
+       {
+        "frequency": 7560000,
+        "value": 121.97
+       },
+       {
+        "frequency": 8170000,
+        "value": 122.72
+       },
+       {
+        "frequency": 8780000,
+        "value": 123.54
+       },
+       {
+        "frequency": 9390000,
+        "value": 124.47
+       },
+       {
+        "frequency": 10000000,
+        "value": 125.48
+       },
+       {
+        "frequency": 10700000,
+        "value": 126.84
+       },
+       {
+        "frequency": 11600000,
+        "value": 128.58
+       },
+       {
+        "frequency": 12400000,
+        "value": 130.59
+       },
+       {
+        "frequency": 13200000,
+        "value": 132.86
+       },
+       {
+        "frequency": 14200000,
+        "value": 135.72
+       },
+       {
+        "frequency": 15300000,
+        "value": 139.39
+       },
+       {
+        "frequency": 16400000,
+        "value": 143.28
+       },
+       {
+        "frequency": 17500000,
+        "value": 147.07
+       },
+       {
+        "frequency": 18700000,
+        "value": 150.66
+       },
+       {
+        "frequency": 20200000,
+        "value": 152.75
+       },
+       {
+        "frequency": 21600000,
+        "value": 151.8
+       },
+       {
+        "frequency": 23100000,
+        "value": 147.86
+       },
+       {
+        "frequency": 24800000,
+        "value": 140.88
+       },
+       {
+        "frequency": 26700000,
+        "value": 131.6
+       },
+       {
+        "frequency": 28600000,
+        "value": 122.17
+       },
+       {
+        "frequency": 30500000,
+        "value": 113.86
+       },
+       {
+        "frequency": 32700000,
+        "value": 105.12
+       },
+       {
+        "frequency": 35300000,
+        "value": 96.33
+       },
+       {
+        "frequency": 37800000,
+        "value": 88.56
+       },
+       {
+        "frequency": 40400000,
+        "value": 82.07
+       },
+       {
+        "frequency": 43300000,
+        "value": 75.64
+       },
+       {
+        "frequency": 46600000,
+        "value": 69.45
+       },
+       {
+        "frequency": 50000000,
+        "value": 64.33
+       },
+       {
+        "frequency": 53400000,
+        "value": 60.03
+       },
+       {
+        "frequency": 57200000,
+        "value": 55.88
+       },
+       {
+        "frequency": 61700000,
+        "value": 51.86
+       },
+       {
+        "frequency": 66100000,
+        "value": 48.4
+       },
+       {
+        "frequency": 70500000,
+        "value": 45.5
+       },
+       {
+        "frequency": 75600000,
+        "value": 42.6
+       },
+       {
+        "frequency": 81700000,
+        "value": 39.66
+       },
+       {
+        "frequency": 87800000,
+        "value": 37.13
+       },
+       {
+        "frequency": 93900000,
+        "value": 34.87
+       },
+       {
+        "frequency": 100000000,
+        "value": 32.9
+       },
+       {
+        "frequency": 107000000,
+        "value": 30.8
+       },
+       {
+        "frequency": 116000000,
+        "value": 28.6
+       },
+       {
+        "frequency": 124000000,
+        "value": 26.66
+       },
+       {
+        "frequency": 132000000,
+        "value": 24.92
+       },
+       {
+        "frequency": 142000000,
+        "value": 23.03
+       },
+       {
+        "frequency": 153000000,
+        "value": 21.2
+       },
+       {
+        "frequency": 164000000,
+        "value": 19.46
+       },
+       {
+        "frequency": 175000000,
+        "value": 17.9
+       },
+       {
+        "frequency": 187000000,
+        "value": 16.32
+       },
+       {
+        "frequency": 202000000,
+        "value": 14.68
+       },
+       {
+        "frequency": 216000000,
+        "value": 13.23
+       },
+       {
+        "frequency": 231000000,
+        "value": 11.97
+       },
+       {
+        "frequency": 248000000,
+        "value": 10.62
+       },
+       {
+        "frequency": 267000000,
+        "value": 9.32
+       },
+       {
+        "frequency": 286000000,
+        "value": 8.16
+       },
+       {
+        "frequency": 305000000,
+        "value": 7.2
+       },
+       {
+        "frequency": 327000000,
+        "value": 6.24
+       },
+       {
+        "frequency": 353000000,
+        "value": 5.3
+       },
+       {
+        "frequency": 378000000,
+        "value": 4.54
+       },
+       {
+        "frequency": 404000000,
+        "value": 3.87
+       },
+       {
+        "frequency": 433000000,
+        "value": 3.21
+       },
+       {
+        "frequency": 466000000,
+        "value": 2.5700000000000003
+       },
+       {
+        "frequency": 500000000,
+        "value": 2.05
+       },
+       {
+        "frequency": 534000000,
+        "value": 1.63
+       },
+       {
+        "frequency": 572000000,
+        "value": 1.15
+       },
+       {
+        "frequency": 617000000,
+        "value": 0.74
+       },
+       {
+        "frequency": 661000000,
+        "value": 0.37
+       },
+       {
+        "frequency": 705000000,
+        "value": 0.05
+       },
+       {
+        "frequency": 756000000,
+        "value": -0.22
+       },
+       {
+        "frequency": 817000000,
+        "value": -0.49
+       },
+       {
+        "frequency": 878000000,
+        "value": -0.6900000000000001
+       },
+       {
+        "frequency": 939000000,
+        "value": -0.87
+       },
+       {
+        "frequency": 1000000000,
+        "value": -1.05
+       }
+      ]
+     },
+     "initial": [
+      {
+       "frequency": 10000,
+       "temperature": -50,
+       "value": 1252.36
+      },
+      {
+       "frequency": 10000,
+       "temperature": -40,
+       "value": 1362.4
+      },
+      {
+       "frequency": 10000,
+       "temperature": -30,
+       "value": 1476.29
+      },
+      {
+       "frequency": 10000,
+       "temperature": -20,
+       "value": 1599.65
+      },
+      {
+       "frequency": 10000,
+       "temperature": -10,
+       "value": 1729.18
+      },
+      {
+       "frequency": 10000,
+       "temperature": 0,
+       "value": 1865.7
+      },
+      {
+       "frequency": 10000,
+       "temperature": 10,
+       "value": 2049.35
+      },
+      {
+       "frequency": 10000,
+       "temperature": 20,
+       "value": 2258.05
+      },
+      {
+       "frequency": 10000,
+       "temperature": 30,
+       "value": 2502.15
+      },
+      {
+       "frequency": 10000,
+       "temperature": 40,
+       "value": 2791.06
+      },
+      {
+       "frequency": 10000,
+       "temperature": 50,
+       "value": 3129.86
+      },
+      {
+       "frequency": 10000,
+       "temperature": 60,
+       "value": 3518.27
+      },
+      {
+       "frequency": 10000,
+       "temperature": 70,
+       "value": 3953.38
+      },
+      {
+       "frequency": 10000,
+       "temperature": 80,
+       "value": 4408.69
+      },
+      {
+       "frequency": 10000,
+       "temperature": 90,
+       "value": 4845.83
+      },
+      {
+       "frequency": 10000,
+       "temperature": 100,
+       "value": 5186.19
+      },
+      {
+       "frequency": 10000,
+       "temperature": 110,
+       "value": 5233.29
+      },
+      {
+       "frequency": 10000,
+       "temperature": 120,
+       "value": 5001.23
+      },
+      {
+       "frequency": 10000,
+       "temperature": 130,
+       "value": 4769.11
+      },
+      {
+       "frequency": 10000,
+       "temperature": 140,
+       "value": 4614.62
+      },
+      {
+       "frequency": 10000,
+       "temperature": 150,
+       "value": 4531.19
+      },
+      {
+       "frequency": 10000,
+       "temperature": 160,
+       "value": 4511.42
+      },
+      {
+       "frequency": 10000,
+       "temperature": 170,
+       "value": 4553.24
+      },
+      {
+       "frequency": 10000,
+       "temperature": 180,
+       "value": 4645.86
+      },
+      {
+       "frequency": 10000,
+       "temperature": 190,
+       "value": 4799.88
+      },
+      {
+       "frequency": 10000,
+       "temperature": 205,
+       "value": 5521.31
+      },
+      {
+       "frequency": 10000,
+       "temperature": 210,
+       "value": 5704.37
+      },
+      {
+       "frequency": 10000,
+       "temperature": 215,
+       "value": 5883.45
+      },
+      {
+       "frequency": 10000,
+       "temperature": 220,
+       "value": 6005.49
+      },
+      {
+       "frequency": 10000,
+       "temperature": 225,
+       "value": 5922.52
+      },
+      {
+       "frequency": 10000,
+       "temperature": 230,
+       "value": 5043.76
+      },
+      {
+       "frequency": 10000,
+       "temperature": 235,
+       "value": 93.64
+      }
+     ]
+    },
+    "recommendations": {
+     "maximumFrequency": 10000000,
+     "minimumFrequency": 100000
+    },
+    "remanence": [
+     {
+      "magneticField": 0,
+      "magneticFluxDensity": 0.05,
+      "temperature": 100
+     },
+     {
+      "magneticField": 0,
+      "magneticFluxDensity": 0.2,
+      "temperature": 25
+     }
+    ],
+    "resistivity": [
+     {
+      "temperature": 25,
+      "value": 2
+     }
+    ],
+    "saturation": [
+     {
+      "magneticField": 397,
+      "magneticFluxDensity": 0.405,
+      "temperature": 100
+     },
+     {
+      "magneticField": 397,
+      "magneticFluxDensity": 0.501,
+      "temperature": 25
+     }
+    ],
+    "type": "commercial",
+    "volumetricLosses": {
+     "default": [
+      {
+       "method": "roshen"
+      },
+      {
+       "method": "steinmetz",
+       "ranges": [
+        {
+         "alpha": 1.5950612180000001,
+         "beta": 2.636535052,
+         "ct0": 1.3743367589296067,
+         "ct1": 0.017306149829612587,
+         "ct2": 9.330717889713308e-05,
+         "k": 0.660088749065969,
+         "maximumFrequency": 62500,
+         "minimumFrequency": 25000
+        },
+        {
+         "alpha": 1.475426256,
+         "beta": 2.740567552,
+         "ct0": 1.315376466971102,
+         "ct1": 0.014629797396835582,
+         "ct2": 8.058954871966012e-05,
+         "k": 1.7997062685805676,
+         "maximumFrequency": 150000,
+         "minimumFrequency": 62500
+        },
+        {
+         "alpha": 1.497570589,
+         "beta": 2.572303501,
+         "ct0": 1.385317081043464,
+         "ct1": 0.017773669678644393,
+         "ct2": 9.443945747623323e-05,
+         "k": 1.3715765761700585,
+         "maximumFrequency": 200000,
+         "minimumFrequency": 150000
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "numberStacks": 1,
+   "shape": {
+    "aliases": [
+     "PC 11/9"
+    ],
+    "dimensions": {
+     "A": {
+      "maximum": 0.01128,
+      "minimum": 0.01088
+     },
+     "B": {
+      "maximum": 0.00351,
+      "minimum": 0.00335
+     },
+     "C": {
+      "maximum": 0.00774,
+      "minimum": 0.00734
+     },
+     "D": {
+      "maximum": 0.00256,
+      "minimum": 0.0024
+     },
+     "E": {
+      "maximum": 0.0094,
+      "minimum": 0.009
+     },
+     "F": {
+      "maximum": 0.0047,
+      "minimum": 0.0045
+     },
+     "G": {
+      "maximum": 0.0021,
+      "minimum": 0.0018
+     },
+     "H": {
+      "maximum": 0.00208,
+      "minimum": 0.002
+     }
+    },
+    "family": "p",
+    "familySubtype": "2",
+    "magneticCircuit": "open",
+    "name": "P 11/9",
+    "type": "standard"
+   },
+   "type": "twoPieceSet"
+  },
+  "name": "98 P 11/9 gapped 0.16 mm"
+ },
+ "manufacturerInfo": {
+  "name": "OpenMagnetics",
+  "reference": "My custom magnetic"
+ }
+}

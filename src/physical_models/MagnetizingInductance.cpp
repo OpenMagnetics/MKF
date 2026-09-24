@@ -464,6 +464,16 @@ static SignalDescriptor calculate_flux_density_for_family_model(double magnetizi
 }
 
 std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(Core core, Coil coil, OperatingPoint* operatingPoint) {
+    // Every path below reads the effective area / columns from the processed
+    // description. A core deserialized as a Magnetic member (from_json never
+    // processes it) can arrive without one; `->` on the empty optional was UB and
+    // read an area of 0, so the flux density came out as flux / 0 and surfaced far
+    // away as "Waveform data contains NaN" (web builder, 2026-09-24). Say what is
+    // missing instead.
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException("MagnetizingInductance: core '" + core.get_name().value_or("unnamed") +
+                                        "' has no processedDescription (effective parameters)");
+    }
 
     // ABT #417: a drumRing core's two structural annular-clearance gaps are DERIVED
     // (Core::process_gap synthesizes them from A/K/D/F — nothing is ever hand-authored
