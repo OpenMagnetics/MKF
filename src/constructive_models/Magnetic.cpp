@@ -10,6 +10,8 @@
 #include "support/Exceptions.h"
 
 #include <cmath>
+#include <algorithm>
+#include <map>
 
 namespace OpenMagnetics {
 
@@ -51,6 +53,23 @@ std::string Magnetic::get_reference() const {
 }
 
 std::vector<double> Magnetic::get_maximum_dimensions() {
+    if (!_maximumDimensions && !(has_core() && has_coil())) {
+        // A datasheet-only catalogue part: its published body size. Ordered as the core's
+        // {width, height, depth}, so a footprint is [0] x [2] and the height [1] -- the same
+        // reading Area and Height apply to a constructed magnetic.
+        if (!has_datasheet_dimensions()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Magnetic '" + get_reference() + "' has no core and coil to take its dimensions from, and its datasheet states no body size (mechanical height plus length and width, or diameter)");
+        }
+        const auto mechanical = get_manufacturer_info()->get_datasheet_info()->get_mechanical().value();
+        double height = resolve_dimensional_values(mechanical.get_height().value());
+        if (mechanical.get_length() && mechanical.get_width()) {
+            _maximumDimensions = std::vector<double>{resolve_dimensional_values(mechanical.get_length().value()), height, resolve_dimensional_values(mechanical.get_width().value())};
+        }
+        else {
+            double diameter = resolve_dimensional_values(mechanical.get_diameter().value());
+            _maximumDimensions = std::vector<double>{diameter, height, diameter};
+        }
+    }
     if (!_maximumDimensions) {
         auto coreMaximumDimensions = get_mutable_core().get_maximum_dimensions();
         auto coilMaximumDimensions = get_mutable_coil().get_maximum_dimensions();
@@ -59,6 +78,105 @@ std::vector<double> Magnetic::get_maximum_dimensions() {
                               std::max(coreMaximumDimensions[2], coilMaximumDimensions[2])};
     }
     return _maximumDimensions.value();
+}
+
+bool Magnetic::has_datasheet_dimensions() const {
+    if (!get_manufacturer_info() || !get_manufacturer_info()->get_datasheet_info() || !get_manufacturer_info()->get_datasheet_info()->get_mechanical()) {
+        return false;
+    }
+    // The generated getters return optionals BY VALUE: copy, never bind a reference to them.
+    const auto mechanical = get_manufacturer_info()->get_datasheet_info()->get_mechanical().value();
+    return mechanical.get_height().has_value() && ((mechanical.get_length().has_value() && mechanical.get_width().has_value()) || mechanical.get_diameter().has_value());
+}
+
+std::optional<MagneticDatasheetElectrical> Magnetic::get_datasheet_inductor_electrical() const {
+    if (!get_manufacturer_info() || !get_manufacturer_info()->get_datasheet_info() || !get_manufacturer_info()->get_datasheet_info()->get_electrical()) {
+        return std::nullopt;
+    }
+    std::optional<MagneticDatasheetElectrical> found;
+    const auto electricals = get_manufacturer_info()->get_datasheet_info()->get_electrical().value();
+    for (const auto& entry : electricals) {
+        if (entry.get_subtype() != ElectricalSubtype::INDUCTOR) {
+            continue;
+        }
+        if (found) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Magnetic '" + get_reference() + "' states several single-winding inductor configurations in its datasheet; which one applies cannot be chosen");
+        }
+        found = entry;
+    }
+    return found;
+}
+
+namespace {
+
+// L at `current` along one measured curve, sorted by current. nullopt beyond the last point.
+std::optional<double> inductance_along_curve(const std::vector<std::pair<double, double>>& curve, double current) {
+    if (current <= curve.front().first) {
+        return curve.front().second;
+    }
+    for (size_t index = 1; index < curve.size(); ++index) {
+        if (current <= curve[index].first) {
+            const auto& [currentLow, inductanceLow] = curve[index - 1];
+            const auto& [currentHigh, inductanceHigh] = curve[index];
+            return inductanceLow + (inductanceHigh - inductanceLow) * (current - currentLow) / (currentHigh - currentLow);
+        }
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<double> Magnetic::calculate_datasheet_inductance(double dcBiasCurrent, double temperature) const {
+    auto electrical = get_datasheet_inductor_electrical();
+    if (!electrical) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Magnetic '" + get_reference() + "' has no single-winding inductor entry in its datasheet to read an inductance from");
+    }
+    double current = std::fabs(dcBiasCurrent);
+    auto points = electrical->get_inductance_points();
+    if (!points || points->empty()) {
+        if (!electrical->get_inductance()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Magnetic '" + get_reference() + "' states neither an inductance nor L(I) points in its datasheet");
+        }
+        return resolve_dimensional_values(electrical->get_inductance().value());
+    }
+
+    // One curve per measured temperature. A point without a temperature cannot be placed on
+    // any of them, so a datasheet mixing the two is refused rather than read one way or other.
+    std::map<double, std::vector<std::pair<double, double>>> curves;
+    size_t withoutTemperature = 0;
+    for (const auto& point : points.value()) {
+        if (!point.get_current()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Magnetic '" + get_reference() + "' has a datasheet L(I) point without a current");
+        }
+        if (!point.get_temperature()) {
+            ++withoutTemperature;
+        }
+        curves[point.get_temperature().value_or(0)].push_back({point.get_current().value(), point.get_inductance()});
+    }
+    if (withoutTemperature > 0 && withoutTemperature != points->size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Magnetic '" + get_reference() + "' mixes datasheet L(I) points with and without a temperature");
+    }
+    for (auto& [curveTemperature, curve] : curves) {
+        std::sort(curve.begin(), curve.end());
+    }
+
+    if (curves.size() == 1 || temperature <= curves.begin()->first) {
+        return inductance_along_curve(curves.begin()->second, current);
+    }
+    if (temperature >= curves.rbegin()->first) {
+        return inductance_along_curve(curves.rbegin()->second, current);
+    }
+    auto upper = curves.lower_bound(temperature);
+    if (upper->first == temperature) {
+        return inductance_along_curve(upper->second, current);
+    }
+    auto lower = std::prev(upper);
+    auto inductanceLow = inductance_along_curve(lower->second, current);
+    auto inductanceHigh = inductance_along_curve(upper->second, current);
+    if (!inductanceLow || !inductanceHigh) {
+        return std::nullopt;
+    }
+    return inductanceLow.value() + (inductanceHigh.value() - inductanceLow.value()) * (temperature - lower->first) / (upper->first - lower->first);
 }
 
 // NOTE (code review L-7): These fits_*_dimension() functions are duplicated in Core.cpp.

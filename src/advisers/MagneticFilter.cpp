@@ -372,6 +372,14 @@ std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magn
 
 
 
+bool MagneticFilterMagnetizingInductance::applies_to(Magnetic* magnetic) const {
+    if (magnetic->has_core() && magnetic->has_coil()) {
+        return true;
+    }
+    auto electrical = magnetic->get_datasheet_inductor_electrical();
+    return electrical && (electrical->get_inductance() || (electrical->get_inductance_points() && !electrical->get_inductance_points()->empty()));
+}
+
 std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = true;
     double scoring = 0;
@@ -416,6 +424,30 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
         if (topologyIsSuppression || applicationIsSuppression) {
             return {true, 0};
         }
+    }
+
+    // A datasheet-only catalogue part: the inductance its datasheet gives at each operating
+    // point's DC bias and ambient temperature, from the vendor's measured L(I). There is no
+    // construction to compute one from, and no reluctance to report, so no output is written.
+    if (!(magnetic->has_core() && magnetic->has_coil())) {
+        for (const auto& operatingPoint : inputs->get_operating_points()) {
+            const auto& excitations = operatingPoint.get_excitations_per_winding();
+            if (excitations.empty() || !excitations[0].get_current() || !excitations[0].get_current()->get_processed()) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "MagneticFilterMagnetizingInductance: the operating point has no processed current to read the DC bias of '" + magnetic->get_reference() + "' from");
+            }
+            double dcBias = excitations[0].get_current()->get_processed()->get_offset();
+            auto inductance = magnetic->calculate_datasheet_inductance(dcBias, operatingPoint.get_conditions().get_ambient_temperature());
+            if (!inductance) {
+                // The bias lies beyond the vendor's measured curve, past its deepest saturation.
+                return {false, 0};
+            }
+            scoring += fabs(resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) - inductance.value());
+            if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), inductance.value())) {
+                valid = false;
+            }
+        }
+        scoring /= inputs->get_operating_points().size();
+        return {valid, scoring};
     }
 
     // Transformer vs Inductor Detection

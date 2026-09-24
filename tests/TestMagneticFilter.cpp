@@ -616,9 +616,10 @@ TEST_CASE("MagneticFilter TURN_COUNT snapshot",
 // =============================================================================
 // DATASHEET_LIMITS (ABT #19)
 // =============================================================================
-// Gate catalogue parts by their OWN datasheet electrical limits; pure
-// pass-through (valid=true, score=1.0) for designed/custom magnetics and for
-// any limit a part does not publish. These tests build catalogue-style fixtures
+// Gate catalogue parts by their OWN datasheet electrical limits. The filter
+// does not apply (applies_to) to designed/custom magnetics or to parts that
+// publish no limit it checks; it scores UTILISATION (operating/limit, lower is
+// better), not headroom. These tests build catalogue-style fixtures
 // by attaching a DatasheetInfo with one MagneticDatasheetElectrical entry, and
 // drive operating values straight into the excitations' processed signals (no
 // physics path). The worked-example numbering matches the ABT #19 handoff.
@@ -686,12 +687,12 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS rejects over-rated current (the bug)"
     auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
     auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
     REQUIRE(valid == false);
-    REQUIRE(score == 0.0);  // headroom clamped to 0 when over the limit
+    REQUIRE_THAT(score, WithinRel(1.5, kRelTol));  // utilisation above 1: over the limit
 }
 
-TEST_CASE("MagneticFilter DATASHEET_LIMITS passes comfortable current and scores headroom",
+TEST_CASE("MagneticFilter DATASHEET_LIMITS passes comfortable current and scores utilisation",
           "[magnetic-filter][datasheet-limits][smoke-test]") {
-    // #2: ratedCurrents=[2.0], operating RMS 1.0 A ⇒ valid, score ≈ 0.5.
+    // #2: ratedCurrents=[2.0], operating RMS 1.0 A ⇒ valid, utilisation 0.5.
     settings.reset();
     MagneticDatasheetElectrical electrical;
     electrical.set_rated_currents(std::vector<double>{2.0});
@@ -705,32 +706,29 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS passes comfortable current and scores
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS is a no-op for custom magnetics",
           "[magnetic-filter][datasheet-limits][smoke-test]") {
-    // #3: no manufacturerInfo/datasheetInfo ⇒ neutral pass. Proves zero effect
-    // on designed parts even when the operating current is enormous.
+    // #3: no manufacturerInfo/datasheetInfo ⇒ the filter does not apply, so the
+    // adviser records no score for it: zero effect on designed parts even when
+    // the operating current is enormous. Evaluating it anyway is a caller error.
     settings.reset();
     auto magnetic = make_reference_magnetic();  // no manufacturer info
     auto inputs = make_datasheet_inputs({{999.0, 999.0, std::nullopt, std::nullopt}});
     auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
-    auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
-    REQUIRE(valid == true);
-    REQUIRE(score == 1.0);
+    REQUIRE_FALSE(filter->applies_to(&magnetic));
+    REQUIRE_THROWS_AS(filter->evaluate_magnetic(&magnetic, &inputs), InvalidInputException);
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS skips limits the datasheet omits",
           "[magnetic-filter][datasheet-limits][smoke-test]") {
     // #4: datasheet present but only publishes inductance (no current/voltage
-    // limit) ⇒ nothing to gate on ⇒ neutral pass.
+    // limit) ⇒ nothing to gate on ⇒ the filter does not apply.
     settings.reset();
     MagneticDatasheetElectrical electrical;
     DimensionWithTolerance inductance;
     inductance.set_nominal(100e-6);
     electrical.set_inductance(inductance);
     auto magnetic = make_datasheet_magnetic(electrical);
-    auto inputs = make_datasheet_inputs({{999.0, 999.0, 999.0, 999.0}});
     auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
-    auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
-    REQUIRE(valid == true);
-    REQUIRE(score == 1.0);
+    REQUIRE_FALSE(filter->applies_to(&magnetic));
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces rated AC voltage",
@@ -744,7 +742,7 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces rated AC voltage",
     auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
     auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
     REQUIRE(valid == false);
-    REQUIRE(score == 0.0);
+    REQUIRE_THAT(score, WithinRel(400.0 / 250.0, kRelTol));
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces saturation current peak",
@@ -758,7 +756,7 @@ TEST_CASE("MagneticFilter DATASHEET_LIMITS enforces saturation current peak",
     auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
     auto [valid, score] = filter->evaluate_magnetic(&magnetic, &inputs);
     REQUIRE(valid == false);
-    REQUIRE(score == 0.0);
+    REQUIRE_THAT(score, WithinRel(2.0 / 1.5, kRelTol));
 }
 
 TEST_CASE("MagneticFilter DATASHEET_LIMITS gates each winding against its own rated current",

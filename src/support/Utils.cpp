@@ -2821,6 +2821,13 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
 }
 
 Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optional<Inputs> inputs) {
+    // A datasheet-only catalogue part (neither core nor coil, see Magnetic.h) has no construction
+    // to complete: it is returned as it is, so a catalogue mixing such parts with constructed ones
+    // can be loaded with expansion on. A part with only one of the two is still refused below.
+    if (!magnetic.has_core() && !magnetic.has_coil()) {
+        return magnetic;
+    }
+
     // Core
     auto shape = magnetic.get_mutable_core().resolve_shape();
 

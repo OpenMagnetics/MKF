@@ -93,6 +93,26 @@ class Magnetic : public MAS::Magnetic {
         Wire get_wire(size_t windingIndex=0);
         std::string get_reference() const;
         std::vector<double> get_maximum_dimensions();
+
+        // A catalogue part may carry only its datasheet (no core, no coil). These read what the
+        // datasheet states, so such a part can still be judged on the quantities it publishes.
+        //
+        // True when the datasheet's mechanical block gives a body size: a height plus either
+        // length and width, or a diameter.
+        bool has_datasheet_dimensions() const;
+        // The single-winding inductor entry of datasheetInfo.electrical, if there is exactly one.
+        // Several inductor entries throw: which configuration applies is not the caller's guess.
+        std::optional<MagneticDatasheetElectrical> get_datasheet_inductor_electrical() const;
+        // Inductance the datasheet gives at `dcBiasCurrent` (A) and `temperature` (degC), from
+        // its measured L(I) points: linear in current along each measured temperature, linear
+        // between the two measured temperatures bracketing `temperature`, and the nearest
+        // measured temperature outside that range (a datasheet quoting L(I) at 20 degC only is
+        // used at every temperature -- that is what the datasheet offers). Below the first
+        // measured current the first point holds (the small-signal plateau). Returns nullopt when
+        // `dcBiasCurrent` lies beyond the measured curve: the datasheet says nothing there, and
+        // it is past the deepest saturation the vendor measured. With no L(I) points at all, the
+        // stated inductance is returned. Throws when the datasheet gives neither.
+        std::optional<double> calculate_datasheet_inductance(double dcBiasCurrent, double temperature) const;
         bool fits(MaximumDimensions maximumDimensions, bool allowRotation);
 
         // I_sat = B_sat(T)·N·A_e/L. By default B_sat is the PROPORTION-derated

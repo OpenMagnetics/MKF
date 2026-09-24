@@ -925,6 +925,34 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     return masMagneticsWithScoring;
 }
 
+namespace {
+
+// How many windings a catalogue part has: its coil's, or for a datasheet-only part (no
+// construction, see Magnetic.h) what its datasheet states. A single-winding datasheet subtype is
+// one winding; any other must state numberOfWindings, or the part cannot be matched to the
+// operating point's excitations and is refused loudly rather than guessed.
+size_t catalogue_number_windings(const Magnetic& magnetic) {
+    if (magnetic.has_coil()) {
+        return magnetic.get_coil().get_functional_description().size();
+    }
+    const auto& manufacturerInfo = magnetic.get_manufacturer_info();
+    if (manufacturerInfo && manufacturerInfo->get_datasheet_info()) {
+        const auto datasheetInfo = manufacturerInfo->get_datasheet_info().value();  // by-value getter: copy
+        if (datasheetInfo.get_part() && datasheetInfo.get_part()->get_number_of_windings()) {
+            return static_cast<size_t>(datasheetInfo.get_part()->get_number_of_windings().value());
+        }
+        if (datasheetInfo.get_electrical() && !datasheetInfo.get_electrical()->empty()) {
+            auto subtype = datasheetInfo.get_electrical()->front().get_subtype();
+            if (subtype == ElectricalSubtype::INDUCTOR || subtype == ElectricalSubtype::CHIP_BEAD || subtype == ElectricalSubtype::CABLE_CORE) {
+                return 1;
+            }
+        }
+    }
+    throw InvalidInputException(ErrorCode::MISSING_DATA, "catalogue magnetic '" + magnetic.get_reference() + "' has no coil, and its datasheet states neither its number of windings nor a single-winding subtype");
+}
+
+}  // namespace
+
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogueMagnetics, size_t maximumNumberResults, bool strict) {
     return get_advised_magnetic(inputs, catalogueMagnetics, _defaultCatalogueMagneticFilterFlow, maximumNumberResults, strict);
 }
@@ -932,7 +960,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogueMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
     std::vector<Mas> catalogueMagneticsWithInputs;
     for (auto magnetic : catalogueMagnetics) {
-        if (inputs.get_operating_points().size() > 0 && magnetic.get_mutable_coil().get_functional_description().size() != inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
+        if (inputs.get_operating_points().size() > 0 && catalogue_number_windings(magnetic) != inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
             continue;
         }
         Mas mas;
@@ -948,7 +976,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     std::vector<Mas> catalogueMagneticsWithInputs;
     catalogueMagneticsWithInputs.reserve(catalogueMagnetics.size());
     for (const auto& [reference, magnetic] : catalogueMagnetics) {
-        if (inputs.get_operating_points().size() > 0 && magnetic.get_coil().get_functional_description().size() != inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
+        if (inputs.get_operating_points().size() > 0 && catalogue_number_windings(magnetic) != inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
             continue;
         }
         Mas mas;
@@ -1018,6 +1046,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         bool validMagnetic = true;
         for (auto filterConfiguration : strictlyRequiredFilterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
+            // A filter that cannot judge this part (e.g. a core-loss filter on a datasheet-only
+            // part) neither passes nor fails it and records no score: the part is ranked on the
+            // filters that do apply to it.
+            if (!_filters[filterEnum]->applies_to(&magnetic)) {
+                continue;
+            }
 
             try {
                 auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
@@ -1084,6 +1118,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         // Re-running is otherwise harmless because add_scoring overwrites by key.
         for (auto filterConfiguration : nonStrictlyRequiredFilterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
+            if (!_filters[filterEnum]->applies_to(&magnetic)) {
+                continue;  // not applicable: no score, see the strict loop
+            }
 
             try {
                 // Loop B is intentionally score-only: the per-filter `valid` flag is
@@ -1162,6 +1199,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         if (_simulateResults) {
             std::vector<std::pair<Mas, double>> masMagneticsWithScoringSimulated;
             for (auto [mas, scoring] : masMagneticsWithScoring) {
+                // A datasheet-only part has no construction to simulate. It is returned as
+                // ranked, without simulated outputs -- dropping it here would silently remove
+                // a part every filter just accepted.
+                if (!(mas.get_magnetic().has_core() && mas.get_magnetic().has_coil())) {
+                    masMagneticsWithScoringSimulated.push_back({mas, scoring});
+                    continue;
+                }
                 try {
                     mas = magneticSimulator.simulate(mas, true);
                 } catch (const std::exception& e) {

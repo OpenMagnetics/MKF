@@ -537,7 +537,7 @@ enum class MagneticFilters : int {
     LEAKAGE_INDUCTANCE,  // For CMC optimization - minimize leakage for tight coupling
     TEMPERATURE,         // Node-network core temperature (Temperature.cpp, coreOnly mode)
     TURN_COUNT,       // Total turns across all windings — fewer turns preferred (CMC/DMC ranking)
-    DATASHEET_LIMITS,  // Gate catalogue parts by their own datasheet electrical limits; no-op when datasheetInfo absent (ABT #19)
+    DATASHEET_LIMITS,  // Gate catalogue parts by their own datasheet electrical limits, scoring utilisation; does not apply to parts publishing none (ABT #19)
     WINDABILITY,      // Can each wire actually be bent around the former it is wound on? IEC 60317 bend radius (ABT #959)
     LEAKAGE_INDUCTANCE_TARGET  // Distance of the leakage inductance to designRequirements.leakageInductance (ABT #1176)
 };

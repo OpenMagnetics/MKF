@@ -116,6 +116,21 @@ std::pair<bool, double> MagneticFilterTurnsRatios::evaluate_magnetic(Magnetic* m
     return {valid, scoring};
 }
 
+namespace {
+
+// The size filters read Magnetic::get_maximum_dimensions, which a datasheet-only part answers
+// from its published body size.
+bool has_dimensions(Magnetic* magnetic) {
+    return (magnetic->has_core() && magnetic->has_coil()) || magnetic->has_datasheet_dimensions();
+}
+
+}  // namespace
+
+bool MagneticFilterMaximumDimensions::applies_to(Magnetic* magnetic) const { return has_dimensions(magnetic); }
+bool MagneticFilterVolume::applies_to(Magnetic* magnetic) const { return has_dimensions(magnetic); }
+bool MagneticFilterArea::applies_to(Magnetic* magnetic) const { return has_dimensions(magnetic); }
+bool MagneticFilterHeight::applies_to(Magnetic* magnetic) const { return has_dimensions(magnetic); }
+
 std::pair<bool, double> MagneticFilterMaximumDimensions::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = true;
     double scoring = 0;

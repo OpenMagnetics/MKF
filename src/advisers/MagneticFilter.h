@@ -27,6 +27,13 @@ class MagneticFilter {
         MagneticFilter() { };
         virtual ~MagneticFilter() = default;
         virtual std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr) = 0;
+
+        // Whether this filter can judge `magnetic` at all. Most filters compute from the core and
+        // coil, so a datasheet-only catalogue part (no construction, see Magnetic.h) is outside
+        // anything they can say: the catalogue adviser then records NO score for that part and
+        // filter -- never a made-up one -- and ranks the part on the filters that do apply to it.
+        // Filters that can read their answer from the datasheet override this.
+        virtual bool applies_to(Magnetic* magnetic) const { return magnetic->has_core() && magnetic->has_coil(); }
 };
 
 class MagneticFilterAreaProduct : public MagneticFilter {
@@ -294,6 +301,7 @@ class MagneticFilterMaximumDimensions : public MagneticFilter {
     public:
         MagneticFilterMaximumDimensions() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        bool applies_to(Magnetic* magnetic) const override;
 };
 
 class MagneticFilterSaturation : public MagneticFilter {
@@ -317,37 +325,45 @@ class MagneticFilterEffectiveCurrentDensity : public MagneticFilter {
 /**
  * @class MagneticFilterDatasheetLimits
  * @brief Gate a catalogue part against its OWN datasheet-published electrical
- *        limits (rated current / voltage / saturation-current peak).
+ *        limits (rated current / voltage / saturation current).
  *
- * Semantics — "only if it exists":
- *   - No `manufacturerInfo.datasheetInfo.electrical` (every designed/custom
- *     magnetic) → {valid=true, score=1.0}: a pure pass-through, never affects
- *     non-catalogue parts.
- *   - Catalogue parts → validate the operating point against EACH datasheet
- *     limit that is present, skipping limits that are absent. A part that
- *     publishes only `inductance` is not gated on current.
+ * Applies only to a part whose datasheet publishes at least one of those
+ * limits (applies_to): designed magnetics, and catalogue parts stating only an
+ * inductance, are not judged by it and get no score from it.
+ *
+ * Checks each published limit against the operating point, skipping limits
+ * that are absent:
+ *   - rated current vs winding current RMS: `ratedCurrents`, or when only the
+ *     ΔT-qualified `ratedCurrentPoints` is given, its smallest current;
+ *   - saturation current vs the largest winding peak: the smallest of
+ *     `saturationCurrentPeak` and every `saturationCurrents` criterion;
+ *   - rated AC voltage vs voltage RMS, rated DC voltage vs |voltage offset|.
  *
  * No analytical physics: operating values are read from `Inputs`
  * (current/voltage processed RMS/peak/offset), datasheet values from the MAS
- * model. score ∈ [0,1] is the worst (smallest) headroom margin across the
- * checked limits — clamp((limit − operating)/limit, 0, 1) — so the filter can
- * also RANK by how comfortably a part clears its ratings. Pass-through parts
- * score 1.0 (neutral). valid=false rejects when used strictlyRequired.
+ * model. score is the UTILISATION -- the largest operating/limit ratio across
+ * the checked limits, 1.0 at a limit. Lower is better, like every other
+ * filter's score, so the usual invert=true ranks the part with the most
+ * margin first. (Until 2026-09 this returned the smallest headroom, higher =
+ * better, which invert=true turned upside down: the part closest to its
+ * ratings ranked best.) valid=false when any limit is exceeded.
  *
  * `electrical` is a vector (one entry per connection configuration). The entry
  * whose `numberTurns` matches the candidate coil's turns is used; if none
- * matches (or `numberTurns` is unset) the most conservative entry — smallest
- * published rated current — is used rather than guessing.
+ * matches (or `numberTurns` is unset, or the part has no coil) the most
+ * conservative entry — smallest published rated current — is used rather
+ * than guessing.
  *
  * Note (ABT #19): the MKF-pinned MAS uses `ratedCurrents` (array). Catalogues
  * still on the older `ratedCurrent` (scalar) schema deserialise to
- * get_rated_currents()==nullopt ⇒ this filter is a silent no-op on them until
+ * get_rated_currents()==nullopt, so this filter does not apply to them until
  * the consumer's catalogue is migrated (asgard-side follow-up).
  */
 class MagneticFilterDatasheetLimits : public MagneticFilter {
     public:
         MagneticFilterDatasheetLimits() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        bool applies_to(Magnetic* magnetic) const override;
 };
 
 class MagneticFilterImpedance : public MagneticFilter {
@@ -360,6 +376,7 @@ class MagneticFilterMagnetizingInductance : public MagneticFilter {
     public:
         MagneticFilterMagnetizingInductance() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        bool applies_to(Magnetic* magnetic) const override;
 };
 
 /**
@@ -433,18 +450,21 @@ class MagneticFilterVolume : public MagneticFilter {
     public:
         MagneticFilterVolume() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        bool applies_to(Magnetic* magnetic) const override;
 };
 
 class MagneticFilterArea : public MagneticFilter {
     public:
         MagneticFilterArea() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        bool applies_to(Magnetic* magnetic) const override;
 };
 
 class MagneticFilterHeight : public MagneticFilter {
     public:
         MagneticFilterHeight() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        bool applies_to(Magnetic* magnetic) const override;
 };
 
 class MagneticFilterTemperatureRise : public MagneticFilter {
