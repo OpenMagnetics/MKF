@@ -359,7 +359,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
 
     // Phase of each winding's current per inducing harmonic, aligned with inducingFields.
     std::vector<std::vector<double>> currentPhasePerHarmonicPerWinding;
-    std::vector<std::vector<double>> currentAmplitudePerHarmonicPerWinding;
+    std::vector<std::optional<double>> gaugePhasePerHarmonic;
     if (externalInducedField){
         auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding, coilMesherModel);
         // We only process the harmonic that comes from the external field
@@ -367,7 +367,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             if (aux.fieldPerHarmonic[auxIndex].get_frequency() == externalInducedField.value().get_frequency()) {
                 inducingFields.push_back(aux.fieldPerHarmonic[auxIndex]);
                 currentPhasePerHarmonicPerWinding.push_back(aux.currentPhasePerHarmonicPerWinding[auxIndex]);
-                currentAmplitudePerHarmonicPerWinding.push_back(aux.currentAmplitudePerHarmonicPerWinding[auxIndex]);
+                gaugePhasePerHarmonic.push_back(aux.gaugePhasePerHarmonic[auxIndex]);
                 break;
             }
         }
@@ -376,9 +376,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding);
         inducingFields = aux.fieldPerHarmonic;
         currentPhasePerHarmonicPerWinding = aux.currentPhasePerHarmonicPerWinding;
-        currentAmplitudePerHarmonicPerWinding = aux.currentAmplitudePerHarmonicPerWinding;
+        gaugePhasePerHarmonic = aux.gaugePhasePerHarmonic;
     }
-    if (currentPhasePerHarmonicPerWinding.size() != inducingFields.size() || currentAmplitudePerHarmonicPerWinding.size() != inducingFields.size()) {
+    if (currentPhasePerHarmonicPerWinding.size() != inducingFields.size() || gaugePhasePerHarmonic.size() != inducingFields.size()) {
         throw CalculationException(ErrorCode::CALCULATION_ERROR, "Magnetic field: " + std::to_string(inducingFields.size()) + " inducing harmonics but " +
                                    std::to_string(currentPhasePerHarmonicPerWinding.size()) + " sets of winding current phases");
     }
@@ -580,37 +580,43 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             }
         }
 
-        // The gap fringing field is the field of the MAGNETIZING current, so it carries the
-        // magnetizing current's phase: i_m = sum_k c_k N_k I_k / N_r (MAS excitation convention;
-        // c_k by isolation side, whatever custom direction vector drives the turns). Its
-        // magnitude still comes from get_magnetic_field_strength_gap. Computed only for a
-        // harmonic that actually receives fringing. A single winding gives phase 0 (or pi for a
-        // lone non-primary winding, whose turns are negated alike).
+        // The gap fringing field is the field of the MAGNETIZING current, so it carries that
+        // current's phase. Magnitude and phase come from the SAME signal: MKF's magnetizing
+        // current of the first excitation (get_magnetic_field_strength_gap sizes the gap field
+        // from it), whose DFT phase at this harmonic is referred to the winding-current gauge on
+        // the same time base. Only evaluated for a harmonic that receives fringing. For an
+        // inductor the magnetizing current is the winding current: phase 0, bit-identical.
         std::optional<std::pair<double, double>> magnetizingFactors;
         auto get_magnetizing_factors = [&]() -> std::pair<double, double> {
             if (magnetizingFactors) {
                 return magnetizingFactors.value();
             }
-            auto coil = magnetic.get_coil();
-            auto physicalDirectionPerWinding = CoilMesher::calculate_current_direction_per_winding(coil);
-            size_t referenceWindingIndex = CoilMesher::get_reference_winding_index(coil);
-            const auto& amplitudePerWinding = currentAmplitudePerHarmonicPerWinding[harmonicIndex];
-            std::complex<double> magnetizingAmpereTurns(0, 0);
-            double ampereTurnsScale = 0;
-            for (size_t windingIndex = 0; windingIndex < amplitudePerWinding.size(); ++windingIndex) {
-                double numberTurns = static_cast<double>(coil.get_number_turns(windingIndex));
-                magnetizingAmpereTurns += static_cast<double>(physicalDirectionPerWinding[windingIndex]) * numberTurns *
-                                          std::polar(amplitudePerWinding[windingIndex], currentPhasePerWinding[windingIndex]);
-                ampereTurnsScale += numberTurns * amplitudePerWinding[windingIndex];
+            double harmonicFrequency = inducingFields[harmonicIndex].get_frequency();
+            const auto& primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+            if (!primaryExcitation.get_magnetizing_current()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Gap fringing at " + std::to_string(harmonicFrequency) +
+                                            " Hz: the operating point has no magnetizing current to take the fringing phase from");
             }
-            auto magnetizingCurrent = magnetizingAmpereTurns / static_cast<double>(coil.get_number_turns(referenceWindingIndex));
-            if (!(std::abs(magnetizingAmpereTurns) > 1e-9 * ampereTurnsScale)) {
-                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
-                    "Gap fringing at " + std::to_string(inducingFields[harmonicIndex].get_frequency()) +
-                    " Hz: the winding currents cancel (sum c_k N_k I_k = 0), so the magnetizing current has no phase, "
-                    "yet the gap carries a field. The operating point's currents omit the magnetizing current.");
+            auto magnetizingCurrentSignal = primaryExcitation.get_magnetizing_current().value();
+            if (!magnetizingCurrentSignal.get_waveform()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Gap fringing at " + std::to_string(harmonicFrequency) +
+                                            " Hz: the magnetizing current has no waveform to take the fringing phase from");
             }
-            double magnetizingPhase = std::arg(magnetizingCurrent);
+            if (!gaugePhasePerHarmonic[harmonicIndex]) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Gap fringing at " + std::to_string(harmonicFrequency) +
+                                           " Hz: no winding current carries this harmonic, so there is no phase reference");
+            }
+            auto magnetizingWaveform = magnetizingCurrentSignal.get_waveform().value();
+            auto phasor = CoilMesher::calculate_harmonic_phasor(magnetizingWaveform, primaryExcitation.get_frequency(), harmonicFrequency);
+            double waveformScale = 0;
+            for (auto value : magnetizingWaveform.get_data()) {
+                waveformScale = std::max(waveformScale, std::abs(value));
+            }
+            if (!(std::abs(phasor) > 1e-9 * waveformScale)) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Gap fringing at " + std::to_string(harmonicFrequency) +
+                                           " Hz: the magnetizing current waveform has no content at this harmonic, so its phase is undefined");
+            }
+            double magnetizingPhase = std::arg(phasor) - gaugePhasePerHarmonic[harmonicIndex].value();
             magnetizingFactors = std::pair<double, double>{std::cos(magnetizingPhase), std::sin(magnetizingPhase)};
             return magnetizingFactors.value();
         };

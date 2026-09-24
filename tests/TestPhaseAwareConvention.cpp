@@ -210,110 +210,143 @@ double proximity_of(OpenMagnetics::Magnetic& magnetic, const OperatingPoint& ope
     return total;
 }
 
-// A gapped 8:8 transformer: primary = load + magnetizing current, secondary = load (source
-// convention), and the magnetizing current supplied explicitly on the primary so the gap field
-// magnitude does not depend on the winding currents.
-OperatingPoint gapped_operating_point(double loadPhase, double magnetizingPeak, double magnetizingPhase) {
+// A gapped 8:8 transformer: primary = load + an extra term, secondary = load (source
+// convention). MKF's magnetizing current of the primary excitation (the signal that sizes AND
+// phases the gap fringing field) is supplied explicitly.
+OperatingPoint gapped_operating_point(double loadPhase, double extraPeak, double extraPhase, double magnetizingPeak, double magnetizingPhase) {
     auto primary = sinusoid(0, 0);
-    primary.set_current(sinusoid_signal({{2.0, loadPhase}, {magnetizingPeak, magnetizingPhase}}));
-    primary.set_magnetizing_current(sinusoid_signal({{0.8, 0.0}}));
+    primary.set_current(sinusoid_signal({{2.0, loadPhase}, {extraPeak, extraPhase}}));
+    primary.set_magnetizing_current(sinusoid_signal({{magnetizingPeak, magnetizingPhase}}));
     auto secondary = sinusoid(2.0, loadPhase);
     return make_operating_point({primary, secondary});
+}
+
+// The model's phasor field must equal H_turns (fringing off) + F exp(j theta_m), with F the gap
+// field alone (taken where the fringing phase is 0, so it is purely real) and theta_m the phase
+// of MKF's magnetizing current relative to the primary current, computed here analytically.
+// Returns {model loss, loss with the gap field on the gauge phase}.
+std::pair<double, double> check_fringing_phase(OpenMagnetics::Magnetic& magnetic, const OperatingPoint& operatingPoint, double theta, double magnetizingPeak, MagneticFieldStrengthModels model) {
+    // F alone: the magnetizing current in phase with the primary current (theta = 0) and no turn
+    // field (directions 0). Same magnetizing amplitude, so the same gap field magnitude.
+    auto reference = make_operating_point({sinusoid(1.0, 0.0), sinusoid(0.0, 0.0)});
+    {
+        auto primary = reference.get_excitations_per_winding()[0];
+        primary.set_magnetizing_current(sinusoid_signal({{magnetizingPeak, 0.0}}));
+        reference.get_mutable_excitations_per_winding()[0] = primary;
+    }
+    settings.reset();
+    settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ROSHEN);
+    MagneticField magneticField(model, MagneticFieldStrengthFringingEffectModels::ROSHEN);
+
+    settings.set_magnetic_field_include_fringing(true);
+    auto full = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
+    auto gapOnly = magneticField.calculate_magnetic_field_strength_field(reference, magnetic, std::nullopt, std::vector<int8_t>{0, 0});
+    settings.set_magnetic_field_include_fringing(false);
+    auto turnsOnly = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
+
+    REQUIRE(full.get_field_per_frequency().size() == 1);
+    const auto& inPhase = full.get_field_per_frequency()[0].get_data();
+    const auto& quadrature = full.get_quadrature_field_per_frequency()[0].get_data();
+    const auto& turnsInPhase = turnsOnly.get_field_per_frequency()[0].get_data();
+    const auto& turnsQuadrature = turnsOnly.get_quadrature_field_per_frequency()[0].get_data();
+    const auto& gap = gapOnly.get_field_per_frequency()[0].get_data();
+    const auto& gapQuadrature = gapOnly.get_quadrature_field_per_frequency()[0].get_data();
+    REQUIRE(inPhase.size() == gap.size());
+    REQUIRE(inPhase.size() == turnsInPhase.size());
+    double scale = 0;
+    double gapScale = 0;
+    for (size_t p = 0; p < inPhase.size(); ++p) {
+        scale = std::max(scale, std::hypot(inPhase[p].get_real(), inPhase[p].get_imaginary()));
+        gapScale = std::max(gapScale, std::hypot(gap[p].get_real(), gap[p].get_imaginary()));
+        CHECK(std::abs(gapQuadrature[p].get_real()) <= 1e-12 * std::max(1.0, std::abs(gap[p].get_real())));
+        CHECK(std::abs(gapQuadrature[p].get_imaginary()) <= 1e-12 * std::max(1.0, std::abs(gap[p].get_imaginary())));
+    }
+    REQUIRE(gapScale > 1e-3 * scale);  // the gap field is not negligible here
+    for (size_t p = 0; p < inPhase.size(); ++p) {
+        CHECK_THAT(inPhase[p].get_real(), Catch::Matchers::WithinAbs(turnsInPhase[p].get_real() + gap[p].get_real() * std::cos(theta), 1e-9 * scale));
+        CHECK_THAT(inPhase[p].get_imaginary(), Catch::Matchers::WithinAbs(turnsInPhase[p].get_imaginary() + gap[p].get_imaginary() * std::cos(theta), 1e-9 * scale));
+        CHECK_THAT(quadrature[p].get_real(), Catch::Matchers::WithinAbs(turnsQuadrature[p].get_real() + gap[p].get_real() * std::sin(theta), 1e-9 * scale));
+        CHECK_THAT(quadrature[p].get_imaginary(), Catch::Matchers::WithinAbs(turnsQuadrature[p].get_imaginary() + gap[p].get_imaginary() * std::sin(theta), 1e-9 * scale));
+    }
+
+    // The loss move is exactly the magnetizing-phase effect: the same field with the gap term on
+    // the gauge phase (what the amplitude-only model did) against the model's.
+    std::vector<ComplexField> inPhaseAtZero = turnsOnly.get_field_per_frequency();
+    for (size_t p = 0; p < inPhase.size(); ++p) {
+        auto& point = inPhaseAtZero[0].get_mutable_data()[p];
+        point.set_real(point.get_real() + gap[p].get_real());
+        point.set_imaginary(point.get_imaginary() + gap[p].get_imaginary());
+    }
+    settings.set_magnetic_field_include_fringing(true);
+    double modelLoss = proximity_of(magnetic, operatingPoint, full.get_field_per_frequency(), full.get_quadrature_field_per_frequency());
+    double gaugePhaseLoss = proximity_of(magnetic, operatingPoint, inPhaseAtZero, turnsOnly.get_quadrature_field_per_frequency());
+    settings.reset();
+    return {modelLoss, gaugePhaseLoss};
 }
 
 }  // namespace
 
 TEST_CASE("Test_Phase_Aware_Gap_Fringing_Carries_Magnetizing_Phase", "[physical-model][magnetic-field][phase-aware]") {
-    // The gap fringing field is the field of the magnetizing current i_m = sum c_k N_k i_k / N_r,
-    // so it carries i_m's phase. Independent check: the model's phasor field must equal
-    //     H_turns (fringing off)  +  F * exp(j theta_m)
-    // where F is the gap field alone taken from an excitation whose magnetizing current is in
-    // phase with the gauge (so it is purely real), and theta_m is computed here from the
-    // analytic phasors, not by MKF.
+    // The gap fringing field is the field of the magnetizing current, so it carries that current's
+    // phase: MKF's magnetizing current of the primary excitation (which also sizes it), referred to
+    // the primary current (the gauge). Phasors of A sin(wt + p) are A exp(j (p - pi/2)); the -pi/2
+    // cancels in every phase difference.
     auto magnetic = make_magnetic({8, 8}, {"primary", "secondary"}, OpenMagneticsTesting::get_ground_gap(0.001));
     const double loadPhase = 0.3;
     const double magnetizingPeak = 0.8;
-    const double magnetizingPhase = 0.3 - std::numbers::pi / 2;
-    auto operatingPoint = gapped_operating_point(loadPhase, magnetizingPeak, magnetizingPhase);
-    // Gauge: the primary current's phase. Phasors of A sin(wt + p) are A exp(j (p - pi/2)).
-    std::complex<double> primaryPhasor = std::polar(2.0, loadPhase) + std::polar(magnetizingPeak, magnetizingPhase);
     std::complex<double> secondaryPhasor = std::polar(2.0, loadPhase);
-    std::complex<double> magnetizing = (8.0 * primaryPhasor - 8.0 * secondaryPhasor) / 8.0;
-    double theta = std::arg(magnetizing) - std::arg(primaryPhasor);
-
-    // F alone: primary carrying only a current in phase with its own (gauge) phase; no turn
-    // field (directions 0), so the whole field is the gap field, purely in phase.
-    auto reference = make_operating_point({sinusoid(1.0, 0.0), sinusoid(1.0, 0.0)});
-    {
-        auto primary = reference.get_excitations_per_winding()[0];
-        primary.set_magnetizing_current(sinusoid_signal({{0.8, 0.0}}));
-        reference.get_mutable_excitations_per_winding()[0] = primary;
-        auto secondary = reference.get_excitations_per_winding()[1];
-        secondary.set_current(sinusoid_signal({{0.0, 0.0}}));
-        reference.get_mutable_excitations_per_winding()[1] = secondary;
-    }
 
     for (auto model : {MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthModels::BINNS_LAWRENSON}) {
         INFO("model " << static_cast<int>(model));
-        settings.reset();
-        settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ROSHEN);
-        MagneticField magneticField(model, MagneticFieldStrengthFringingEffectModels::ROSHEN);
 
-        settings.set_magnetic_field_include_fringing(true);
-        auto full = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
-        auto gapOnly = magneticField.calculate_magnetic_field_strength_field(reference, magnetic, std::nullopt, std::vector<int8_t>{0, 0});
-        settings.set_magnetic_field_include_fringing(false);
-        auto turnsOnly = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
-
-        REQUIRE(full.get_field_per_frequency().size() == 1);
-        const auto& inPhase = full.get_field_per_frequency()[0].get_data();
-        const auto& quadrature = full.get_quadrature_field_per_frequency()[0].get_data();
-        const auto& turnsInPhase = turnsOnly.get_field_per_frequency()[0].get_data();
-        const auto& turnsQuadrature = turnsOnly.get_quadrature_field_per_frequency()[0].get_data();
-        const auto& gap = gapOnly.get_field_per_frequency()[0].get_data();
-        const auto& gapQuadrature = gapOnly.get_quadrature_field_per_frequency()[0].get_data();
-        REQUIRE(inPhase.size() == gap.size());
-        REQUIRE(inPhase.size() == turnsInPhase.size());
-        double scale = 0;
-        double gapScale = 0;
-        for (size_t p = 0; p < inPhase.size(); ++p) {
-            scale = std::max(scale, std::hypot(inPhase[p].get_real(), inPhase[p].get_imaginary()));
-            gapScale = std::max(gapScale, std::hypot(gap[p].get_real(), gap[p].get_imaginary()));
-            REQUIRE(gapQuadrature[p].get_real() == 0);
-            REQUIRE(gapQuadrature[p].get_imaginary() == 0);
-        }
-        REQUIRE(gapScale > 1e-3 * scale);  // the gap field is not negligible here
-        for (size_t p = 0; p < inPhase.size(); ++p) {
-            CHECK_THAT(inPhase[p].get_real(), Catch::Matchers::WithinAbs(turnsInPhase[p].get_real() + gap[p].get_real() * std::cos(theta), 1e-9 * scale));
-            CHECK_THAT(inPhase[p].get_imaginary(), Catch::Matchers::WithinAbs(turnsInPhase[p].get_imaginary() + gap[p].get_imaginary() * std::cos(theta), 1e-9 * scale));
-            CHECK_THAT(quadrature[p].get_real(), Catch::Matchers::WithinAbs(turnsQuadrature[p].get_real() + gap[p].get_real() * std::sin(theta), 1e-9 * scale));
-            CHECK_THAT(quadrature[p].get_imaginary(), Catch::Matchers::WithinAbs(turnsQuadrature[p].get_imaginary() + gap[p].get_imaginary() * std::sin(theta), 1e-9 * scale));
+        SECTION("magnetizing current unrelated to the winding currents") {
+            // The primary's extra term (0.5 A at -1.0 rad) is NOT the magnetizing current
+            // (0.8 A at 0.9 rad): the fringing phase must follow the magnetizing current.
+            auto operatingPoint = gapped_operating_point(loadPhase, 0.5, -1.0, magnetizingPeak, 0.9);
+            std::complex<double> primaryPhasor = std::polar(2.0, loadPhase) + std::polar(0.5, -1.0);
+            double theta = 0.9 - std::arg(primaryPhasor);
+            auto [modelLoss, gaugePhaseLoss] = check_fringing_phase(magnetic, operatingPoint, theta, magnetizingPeak, model);
+            std::printf("[phase-aware] fringing model %d unrelated: theta_m %.4f rad, loss %.10g, gap field on the gauge phase %.10g\n",
+                        static_cast<int>(model), theta, modelLoss, gaugePhaseLoss);
+            CHECK(std::abs(modelLoss - gaugePhaseLoss) > 1e-3 * gaugePhaseLoss);
         }
 
-        // The loss move is exactly the magnetizing-phase effect: the same field with the gap
-        // term on the gauge phase (theta = 0, what the amplitude-only model did) gives the old
-        // loss; with theta it gives the model's loss.
-        std::vector<ComplexField> inPhaseAtZero = turnsOnly.get_field_per_frequency();
-        for (size_t p = 0; p < inPhase.size(); ++p) {
-            auto& point = inPhaseAtZero[0].get_mutable_data()[p];
-            point.set_real(point.get_real() + gap[p].get_real());
-            point.set_imaginary(point.get_imaginary() + gap[p].get_imaginary());
+        SECTION("winding currents satisfy Faraday: both phases agree") {
+            // The primary carries load + i_m, with i_m equal to the magnetizing current: the phase
+            // of sum c_k N_k i_k / N_r and that of the magnetizing current coincide.
+            const double magnetizingPhase = loadPhase - std::numbers::pi / 2;
+            auto operatingPoint = gapped_operating_point(loadPhase, magnetizingPeak, magnetizingPhase, magnetizingPeak, magnetizingPhase);
+            std::complex<double> primaryPhasor = std::polar(2.0, loadPhase) + std::polar(magnetizingPeak, magnetizingPhase);
+            double thetaFromMagnetizingCurrent = magnetizingPhase - std::arg(primaryPhasor);
+            double thetaFromWindingCurrents = std::arg((8.0 * primaryPhasor - 8.0 * secondaryPhasor) / 8.0) - std::arg(primaryPhasor);
+            CHECK_THAT(std::remainder(thetaFromMagnetizingCurrent - thetaFromWindingCurrents, 2 * std::numbers::pi), Catch::Matchers::WithinAbs(0, 1e-12));
+            auto [modelLoss, gaugePhaseLoss] = check_fringing_phase(magnetic, operatingPoint, thetaFromWindingCurrents, magnetizingPeak, model);
+            std::printf("[phase-aware] fringing model %d Faraday: theta_m %.4f rad, loss %.10g, gap field on the gauge phase %.10g\n",
+                        static_cast<int>(model), thetaFromWindingCurrents, modelLoss, gaugePhaseLoss);
         }
-        settings.set_magnetic_field_include_fringing(true);
-        double modelLoss = proximity_of(magnetic, operatingPoint, full.get_field_per_frequency(), full.get_quadrature_field_per_frequency());
-        double gaugePhaseLoss = proximity_of(magnetic, operatingPoint, inPhaseAtZero, turnsOnly.get_quadrature_field_per_frequency());
-        std::printf("[phase-aware] fringing model %d theta_m %.4f rad: loss %.10g, with the gap field on the gauge phase %.10g\n",
-                    static_cast<int>(model), theta, modelLoss, gaugePhaseLoss);
-        CHECK(std::abs(modelLoss - gaugePhaseLoss) > 1e-3 * gaugePhaseLoss);
+
+        SECTION("winding currents cancel (no magnetizing part): computes with the magnetizing current's phase") {
+            // N1 i1 = N2 i2 exactly, as reflected-load operating points give. The fringing phase
+            // does not come from the winding currents, so this computes.
+            auto operatingPoint = gapped_operating_point(loadPhase, 0.0, 0.0, magnetizingPeak, 0.9);
+            double theta = 0.9 - loadPhase;
+            auto [modelLoss, gaugePhaseLoss] = check_fringing_phase(magnetic, operatingPoint, theta, magnetizingPeak, model);
+            std::printf("[phase-aware] fringing model %d cancelling currents: theta_m %.4f rad, loss %.10g, gap field on the gauge phase %.10g\n",
+                        static_cast<int>(model), theta, modelLoss, gaugePhaseLoss);
+            CHECK(modelLoss > 0);
+        }
     }
-    settings.reset();
 }
 
-TEST_CASE("Test_Phase_Aware_Gap_Fringing_Undefined_Magnetizing_Phase_Throws", "[physical-model][magnetic-field][phase-aware]") {
-    // Winding currents that cancel exactly (N1 i1 = N2 i2 in the convention) leave the
-    // magnetizing current without a phase while the gap still carries a field: throw.
+TEST_CASE("Test_Phase_Aware_Gap_Fringing_Needs_Magnetizing_Waveform", "[physical-model][magnetic-field][phase-aware]") {
+    // The fringing phase comes only from the magnetizing current: without its waveform, throw.
     auto magnetic = make_magnetic({8, 8}, {"primary", "secondary"}, OpenMagneticsTesting::get_ground_gap(0.001));
-    auto operatingPoint = gapped_operating_point(0.3, 0.0, 0.0);
+    auto operatingPoint = gapped_operating_point(0.3, 0.0, 0.0, 0.8, 0.9);
+    auto primary = operatingPoint.get_excitations_per_winding()[0];
+    auto magnetizingCurrent = primary.get_magnetizing_current().value();
+    magnetizingCurrent.set_waveform(std::nullopt);
+    primary.set_magnetizing_current(magnetizingCurrent);
+    operatingPoint.get_mutable_excitations_per_winding()[0] = primary;
     settings.reset();
     settings.set_magnetic_field_include_fringing(true);
     MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::ROSHEN);

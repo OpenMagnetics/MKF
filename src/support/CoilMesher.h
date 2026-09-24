@@ -5,6 +5,8 @@
 #include "support/Utils.h"
 
 #include <cmath>
+#include <complex>
+#include <optional>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -38,10 +40,11 @@ enum class CoilMesherModels : int {
 struct InducingCoilMesh {
     std::vector<Field> fieldPerHarmonic;
     std::vector<std::vector<double>> currentPhasePerHarmonicPerWinding;
-    // MAS harmonic amplitude (peak, A) of each winding's current at the harmonic of
-    // fieldPerHarmonic[i]; 0 when the winding lists none. With the phases and the directions it
-    // gives the magnetizing current phasor i_m = sum_k c_k N_k I_k / N_r (the gap fringing source).
-    std::vector<std::vector<double>> currentAmplitudePerHarmonicPerWinding;
+    // ABSOLUTE phase (rad, on the waveforms' own time base) of the gauge at the harmonic of
+    // fieldPerHarmonic[i]: subtracting it refers any other signal on the same time base (the
+    // magnetizing current, whose phase drives the gap fringing field) to the same gauge.
+    // Empty when no winding carries that harmonic.
+    std::vector<std::optional<double>> gaugePhasePerHarmonic;
 };
 
 class CoilMesher {
@@ -67,7 +70,11 @@ class CoilMesher {
     // Throws when an excited winding has no waveform or its waveform does not contain the
     // harmonic MAS lists.
     // Result: [position in harmonicIndexes][winding index].
-    static std::vector<std::vector<double>> calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes);
+    // gaugePhasePerHarmonic, when given, receives the gauge's absolute phase per harmonic.
+    static std::vector<std::vector<double>> calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes, std::vector<std::optional<double>>* gaugePhasePerHarmonic = nullptr);
+    // Peak phasor X of a waveform at harmonicFrequency, x(t) = Re(X exp(+j w t)), from a DFT of
+    // the waveform sampled over one period of excitationFrequency (the sampler MKF's harmonics use).
+    static std::complex<double> calculate_harmonic_phasor(const Waveform& waveform, double excitationFrequency, double harmonicFrequency);
     InducingCoilMesh generate_mesh_inducing_coil_phasors(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt);
     // Amplitude-and-direction part only (generate_mesh_inducing_coil_phasors().fieldPerHarmonic).
     // The phases are NOT in these fields: a caller that sums them treats every winding as in
