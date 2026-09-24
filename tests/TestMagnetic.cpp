@@ -4,11 +4,13 @@
 #include "json.hpp"
 #include "advisers/MagneticAdviser.h"
 #include "advisers/CoreAdviser.h"
+#include "advisers/CoilAdviser.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
+#include <source_location>
 #include <iostream>
 #include <magic_enum.hpp>
 #include <typeinfo>
@@ -200,6 +202,37 @@ namespace {
         // Test with STANDARD_CORES using Golden Section optimization
         run_adviser_with_mode("STANDARD_CORES_GOLDEN", CoreAdviser::CoreAdviserModes::STANDARD_CORES);
         settings.reset();
+    }
+
+
+    // The web PSFB's SIMULATED operating point (100 kHz, 12.3 A rms secondary) with the Magnetic
+    // Adviser's stock catalogue. Its top cores by core losses (3-stack E 20s, a U 15) cannot be
+    // wound within the effective current density limit; the adviser used to count their
+    // INVALID-marked fallbacks as "wound", stop after three of them and return nothing loadable.
+    TEST_CASE("Test_Magnetic_Adviser_Keeps_Searching_Past_Cores_That_Only_Wind_Invalid", "[magnetic][adviser][bug][heavy]") {
+        clear_databases();
+        auto& settings = Settings::GetInstance();
+        settings.reset();
+        settings.set_core_adviser_include_distributed_gaps(true);
+        settings.set_core_adviser_include_stacks(true);
+        settings.set_use_toroidal_cores(true);
+        settings.set_use_only_cores_in_stock(true);
+
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "psfb_simulated_inputs.json");
+        std::ifstream file(path);
+        OpenMagnetics::Inputs inputs(json::parse(file));
+
+        MagneticAdviser adviser;
+        adviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        std::map<MagneticFilters, double> weights{{MagneticFilters::COST, 30}, {MagneticFilters::LOSSES, 40}, {MagneticFilters::DIMENSIONS, 30}};
+        auto results = adviser.get_advised_magnetic(inputs, weights, 6);
+        settings.reset();
+
+        REQUIRE(results.size() > 0);
+        for (auto& [mas, scoring] : results) {
+            INFO(mas.get_magnetic().get_reference());
+            CHECK_FALSE(coil_failed_validity_filters(mas));
+        }
     }
 
 }  // namespace

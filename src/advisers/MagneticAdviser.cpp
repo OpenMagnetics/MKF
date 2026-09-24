@@ -16,6 +16,23 @@
 namespace OpenMagnetics {
 
 namespace {
+// A core counts as wound only when the coil adviser returned at least one coil that passed the
+// validity filters. Its INVALID-marked fallbacks (the best of the failed designs, returned so a
+// caller is never left empty-handed) used to count too: the search then stopped after
+// expectedWoundCores cores whose every coil was invalid, before reaching a core large enough to
+// wind (the simulated PSFB: three undersized ferrites, every coil over the effective current
+// density limit, and nothing to load in the Magnetic Adviser).
+bool core_wound_validly(std::vector<Mas>& masesWithCoil) {
+    for (auto& masWithCoil : masesWithCoil) {
+        if (!coil_failed_validity_filters(masWithCoil)) {
+            return true;
+        }
+    }
+    return false;
+}
+}  // namespace
+
+namespace {
 // Drop coil-invalid fallback designs (CoilAdviser stamps INVALID_COIL_REFERENCE_PREFIX on the best
 // design for a core it could not host a valid winding on) whenever ANY valid design exists — an
 // un-windable core must never outrank a windable one. Only when EVERY candidate is invalid do we keep
@@ -749,6 +766,45 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     const size_t perCoreCoilCap = std::min(size_t(5), size_t(ceil(maximumNumberResults * 0.5)));
     const size_t globalCandidateCap = std::max(size_t(1), maximumNumberResults) * 4;
     bool globalCapReached = false;
+    // The coil adviser's INVALID-marked fallbacks, per core, NOT simulated as they arrive: they
+    // are only ever returned when no core winds validly (drop_invalid_when_valid_exists), so
+    // simulating each one on the way (and letting it fill the per-core and global candidate
+    // caps) spent most of a search that went on to find valid designs. They are processed at
+    // the end, and only if nothing valid was found.
+    std::vector<std::vector<Mas>> deferredInvalidCoilsPerCore;
+    auto defer_invalid_coils = [&](std::vector<Mas>& masesWithCoil) {
+        std::vector<Mas> invalid;
+        for (auto& masWithCoil : masesWithCoil) {
+            if (coil_failed_validity_filters(masWithCoil)) {
+                invalid.push_back(masWithCoil);
+            }
+        }
+        if (!invalid.empty()) {
+            deferredInvalidCoilsPerCore.push_back(std::move(invalid));
+        }
+    };
+    auto add_deferred_invalid_coils = [&]() {
+        if (deferredInvalidCoilsPerCore.empty()) {
+            return;
+        }
+        logEntry("No core wound validly; returning the best designs that failed the validity filters, marked INVALID", "MagneticAdviser", 1);
+        for (auto& invalidCoilsOfOneCore : deferredInvalidCoilsPerCore) {
+            std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
+            size_t processedCoils = 0;
+            for (auto& masWithCoil : invalidCoilsOfOneCore) {
+                auto outcome = process_wound_candidate(
+                    masWithCoil, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
+                    perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
+                if (outcome == WoundCandidateOutcome::GlobalCapHit) {
+                    return;
+                }
+                if (outcome == WoundCandidateOutcome::PerCoreCapHit) {
+                    break;
+                }
+            }
+        }
+        deferredInvalidCoilsPerCore.clear();
+    };
     while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores && !globalCapReached) {
         whileIteration++;
         requestedCores += 20;  // Linear growth instead of exponential
@@ -788,12 +844,16 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
 
-            if (masMagneticsWithCoreAndCoil.size() > 0) {
+            if (core_wound_validly(masMagneticsWithCoreAndCoil)) {
                 logEntry("Core wound!", "MagneticAdviser", 2);
                 coresWound++;
             }
             size_t processedCoils = 0;
+            defer_invalid_coils(masMagneticsWithCoreAndCoil);
             for (auto mas : masMagneticsWithCoreAndCoil) {
+                if (coil_failed_validity_filters(mas)) {
+                    continue;
+                }
                 auto outcome = process_wound_candidate(
                     mas, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
                     perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
@@ -815,6 +875,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         }
     }
 
+    // With toroids to drop, the retry below gets its chance before settling for INVALID designs.
+    if (masData.empty() && !toroidsOriginallyEnabled) {
+        add_deferred_invalid_coils();
+    }
     logEntry("Found " + std::to_string(masData.size()) + " magnetics", "MagneticAdviser", 2);
     
     auto masMagneticsWithScoring = score_magnetics(masData, filterFlow);
@@ -884,7 +948,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 logEntry("Getting coil", "MagneticAdviser", 2);
                 std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
                 auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
-                if (masMagneticsWithCoreAndCoil.size() > 0) {
+                if (core_wound_validly(masMagneticsWithCoreAndCoil)) {
                     logEntry("Core wound!", "MagneticAdviser", 2);
                     coresWound++;
                 }
@@ -894,7 +958,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 // as the main loop (guards → dedup → delimit → simulate → final
                 // isat gate) instead of pushing raw, unsimulated, un-saturation-
                 // checked magnetics.
+                defer_invalid_coils(masMagneticsWithCoreAndCoil);
                 for (auto& masWithCoil : masMagneticsWithCoreAndCoil) {
+                    if (coil_failed_validity_filters(masWithCoil)) {
+                        continue;
+                    }
                     auto outcome = process_wound_candidate(
                         masWithCoil, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
                         perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
@@ -916,6 +984,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             }
         }
         
+        if (masData.empty()) {
+            add_deferred_invalid_coils();
+        }
         logEntry("Found " + std::to_string(masData.size()) + " magnetics without toroids", "MagneticAdviser", 2);
         masMagneticsWithScoring = score_magnetics(masData, filterFlow);
         drop_invalid_when_valid_exists(masMagneticsWithScoring);
