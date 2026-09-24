@@ -1934,17 +1934,29 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
         // Half of ONE flat run (see the trapezoid below).
         double flatRunHalfShare = (ringOuterDiameter - ringInnerDiameter) / 4.0 / encirclingPath;
 
-        // The outer crossing is the turn's wound position outside the ring. Every toroid the
-        // winder produces records it (all 18,573 corpus turns carry one); a turn without it cannot
-        // be placed against the outer surface, and that is missing data rather than an assumption.
+        // The outer crossing is the turn's wound position outside the ring. Every toroid the winder
+        // produces records one, EXCEPT the last station of a conductor (ABT #685: its exit terminal
+        // ascends axially instead of crossing to a next station, so it has none by design). A turn
+        // without one that ISN'T that last station cannot be placed against the outer surface, and
+        // that is missing data rather than an assumption -- see the otherTurn loop below for the
+        // last-station case (ABT #1353), which is expected and excluded rather than thrown on.
+        // ABT #1353: the last station of a conductor has no recorded outer crossing by design
+        // (Coil::wind_toroidal_additional_turns, ABT #685: its exit terminal ascends axially instead
+        // of crossing to a next station). Rather than invent a position for it, this turn's own outer
+        // surface, top-outer-half and bottom-outer-half faces are omitted entirely below -- exactly
+        // the treatment a turn that IS screened from outside already gets, since either way nothing
+        // should be charged against a face this turn has no known presence at (owner decision,
+        // 2026-09-24: no positional guess, only the recorded winder geometry).
         auto turnAdditionalCoordinates = turn.get_additional_coordinates();
-        if (!turnAdditionalCoordinates || turnAdditionalCoordinates->empty() || turnAdditionalCoordinates->at(0).size() < 2) {
-            throw InvalidInputException(ErrorCode::MISSING_DATA,
-                "Toroidal turn '" + turn.get_name() + "' has no outer crossing (additional coordinates):"
-                " its run along the outside of the ring cannot be placed against the core");
+        bool turnHasOuterCrossing = turnAdditionalCoordinates && !turnAdditionalCoordinates->empty() &&
+                                     turnAdditionalCoordinates->at(0).size() >= 2;
+        double outerCrossingRadius = 0.0;
+        double outerCrossingAngle = 0.0;
+        if (turnHasOuterCrossing) {
+            const auto& outerCrossing = turnAdditionalCoordinates->at(0);
+            outerCrossingRadius = std::hypot(outerCrossing[0], outerCrossing[1]);
+            outerCrossingAngle = std::atan2(outerCrossing[1], outerCrossing[0]);
         }
-        const auto& outerCrossing = turnAdditionalCoordinates->at(0);
-        double outerCrossingRadius = std::hypot(outerCrossing[0], outerCrossing[1]);
 
         // The outer ferrite surface, in the SAME datum as the bore. boreRadius is the winding
         // window's radial height, which is B/2 for a bare ring and B/2 minus the case for a cased
@@ -1956,7 +1968,9 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
         // column_width that ABT #948 found (bare-ring p10 -3.0 diameters).
         double outerSurfaceRadius = ringOuterDiameter / 2 + (ringInnerDiameter / 2 - boreRadius);
         double boreGap = std::max(0.0, (boreRadius - turnInsulationRadius) - turnRadius);
-        double outerGap = std::max(0.0, (outerCrossingRadius - turnInsulationRadius) - outerSurfaceRadius);
+        double outerGap = turnHasOuterCrossing
+            ? std::max(0.0, (outerCrossingRadius - turnInsulationRadius) - outerSurfaceRadius)
+            : 0.0;
 
         // Screening, at each crossing on its own. At the bore "closer to the core" means a LARGER
         // radius from the axis; outside the ring it means a SMALLER one. Another turn screens this
@@ -1964,10 +1978,11 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
         // i.e. their separation measured as an arc at the screening turn's radius is under the two
         // half-widths together -- the polar form of the rectangular branch's overlap test.
         double turnAngle = std::atan2(coordinates.size() > 1 ? coordinates[1] : 0.0, coordinates[0]);
-        double outerCrossingAngle = std::atan2(outerCrossing[1], outerCrossing[0]);
         double turnOuterRadius = std::max(turnHalfWidth, turnHalfHeight);
         bool screenedFromBore = false;
-        bool screenedFromOutside = false;
+        // No recorded outer crossing -> no known presence on the outer surface -> nothing is ever
+        // charged against it below, same as if some other turn were found screening it.
+        bool screenedFromOutside = !turnHasOuterCrossing;
         for (const auto& otherTurn : allTurns) {
             if (screenedFromBore && screenedFromOutside) {
                 break;
@@ -1990,11 +2005,14 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
             }
             if (!screenedFromOutside) {
                 auto otherAdditionalCoordinates = otherTurn.get_additional_coordinates();
+                // ABT #1353: the last station of a conductor is DELIBERATELY left without an outer
+                // crossing (Coil::wind_toroidal_additional_turns, ABT #685) -- its exit terminal
+                // ascends axially instead of crossing to a next station, so no such position exists
+                // to record. That is a known, name-stable state, not missing data: a station with no
+                // presence recorded on the outer surface cannot screen ANYTHING from outside it, so
+                // it is simply excluded from this turn's outside-screening search rather than an error.
                 if (!otherAdditionalCoordinates || otherAdditionalCoordinates->empty() || otherAdditionalCoordinates->at(0).size() < 2) {
-                    throw InvalidInputException(ErrorCode::MISSING_DATA,
-                        "Toroidal turn '" + otherTurn.get_name() + "' has no outer crossing (additional"
-                        " coordinates): whether it screens its neighbours from the outside of the ring"
-                        " cannot be established");
+                    continue;
                 }
                 const auto& otherOuterCrossing = otherAdditionalCoordinates->at(0);
                 double otherOuterCrossingRadius = std::hypot(otherOuterCrossing[0], otherOuterCrossing[1]);
