@@ -1718,6 +1718,19 @@ CoreShape find_core_shape_by_effective_parameters(double desiredEffectiveLength,
 
 
 bool check_requirement(DimensionWithTolerance requirement, double value){
+    // A bound is INCLUSIVE unless the requirement says otherwise: MAS carries
+    // excludeMinimum / excludeMaximum for an open bound. The one-sided branches
+    // used to be strict (value > minimum, value < maximum) while every two-sided
+    // branch was inclusive — so a value exactly AT a maximum-only requirement
+    // failed. NumberTurns aims a maximum-only turns ratio (a ceiling, e.g. the
+    // Weinberg's secondaries, "<= 0.5") exactly at that maximum, realised it
+    // exactly, and was rejected every time: "NumberTurns did not converge" for
+    // every core, and no core could be advised.
+    const bool excludeMinimum = requirement.get_exclude_minimum().value_or(false);
+    const bool excludeMaximum = requirement.get_exclude_maximum().value_or(false);
+    auto aboveMinimum = [&](double minimum) { return excludeMinimum ? value > minimum : value >= minimum; };
+    auto belowMaximum = [&](double maximum) { return excludeMaximum ? value < maximum : value <= maximum; };
+
     if (requirement.get_minimum() && requirement.get_maximum()) {
         if (requirement.get_maximum().value() < requirement.get_minimum().value()) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Minimum requirement cannot be larger than maximum");
@@ -1727,29 +1740,29 @@ bool check_requirement(DimensionWithTolerance requirement, double value){
                 throw InvalidInputException(ErrorCode::INVALID_INPUT, "Nominal requirement cannot be larger than maximum");
             }
         }
-        return requirement.get_minimum().value() <= value && value <= requirement.get_maximum().value();
+        return aboveMinimum(requirement.get_minimum().value()) && belowMaximum(requirement.get_maximum().value());
     }
     else if (!requirement.get_minimum() && requirement.get_nominal() && requirement.get_maximum()) {
         if (requirement.get_maximum().value() < requirement.get_nominal().value()) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Nominal requirement cannot be larger than maximum");
         }
-        return requirement.get_nominal().value() <= value && value <= requirement.get_maximum().value();
+        return requirement.get_nominal().value() <= value && belowMaximum(requirement.get_maximum().value());
     }
     else if (requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
         if (requirement.get_nominal().value() < requirement.get_minimum().value()) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Minimum requirement cannot be larger than nominal");
         }
-        return requirement.get_minimum().value() <= value && value <= requirement.get_nominal().value();
+        return aboveMinimum(requirement.get_minimum().value()) && value <= requirement.get_nominal().value();
     }
     else if (!requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
         return requirement.get_nominal().value() * (1 - defaults.magnetizingInductanceThresholdValidity) <= value &&
         value <= requirement.get_nominal().value() * (1 + defaults.magnetizingInductanceThresholdValidity);
     }
     else if (requirement.get_minimum() && !requirement.get_nominal() && !requirement.get_maximum()) {
-        return value > requirement.get_minimum().value();
+        return aboveMinimum(requirement.get_minimum().value());
     }
     else if (!requirement.get_minimum() && !requirement.get_nominal() && requirement.get_maximum()) {
-        return value < requirement.get_maximum().value();
+        return belowMaximum(requirement.get_maximum().value());
     }
 
     return false;

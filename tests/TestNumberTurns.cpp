@@ -39,6 +39,55 @@ namespace {
         REQUIRE(numberTurnsCombination[1] == (initialPrimaryNumberTurns + 1) * 1);
     }
 
+    // A bound is inclusive unless MAS marks it excluded. The one-sided branches of
+    // check_requirement were strict, so a value exactly at a maximum-only requirement
+    // failed while the same value passed a two-sided one.
+    TEST_CASE("Check_Requirement_One_Sided_Bounds_Are_Inclusive_Unless_Excluded", "[support][check-requirement]") {
+        DimensionWithTolerance ceiling;
+        ceiling.set_maximum(0.5);
+        CHECK(check_requirement(ceiling, 0.5));
+        CHECK(check_requirement(ceiling, 0.4));
+        CHECK_FALSE(check_requirement(ceiling, 0.51));
+        ceiling.set_exclude_maximum(true);
+        CHECK_FALSE(check_requirement(ceiling, 0.5));
+        CHECK(check_requirement(ceiling, 0.49));
+
+        DimensionWithTolerance floor;
+        floor.set_minimum(70e-6);
+        CHECK(check_requirement(floor, 70e-6));
+        CHECK_FALSE(check_requirement(floor, 69e-6));
+        floor.set_exclude_minimum(true);
+        CHECK_FALSE(check_requirement(floor, 70e-6));
+
+        DimensionWithTolerance band;
+        band.set_minimum(1.0);
+        band.set_maximum(2.0);
+        band.set_exclude_maximum(true);
+        CHECK(check_requirement(band, 1.0));
+        CHECK_FALSE(check_requirement(band, 2.0));
+    }
+
+    // The Weinberg transformer: a centre-tapped primary (1:1) and two secondaries whose
+    // ratio is a CEILING (<= 0.5, i.e. at least twice the primary turns). NumberTurns aims
+    // each ceiling exactly at its maximum; with the strict one-sided check that exact
+    // value never passed and every call threw "NumberTurns did not converge", so the
+    // core adviser culled every candidate and advised nothing.
+    TEST_CASE("Number_Turns_Converges_On_Maximum_Only_Turns_Ratios", "[constructive-model][number-turns]") {
+        DesignRequirements designRequirements;
+        DimensionWithTolerance primaryHalf;
+        primaryHalf.set_nominal(1.0);
+        DimensionWithTolerance secondaryCeiling;
+        secondaryCeiling.set_maximum(0.5);
+        designRequirements.set_turns_ratios(std::vector<DimensionWithTolerance>{primaryHalf, secondaryCeiling, secondaryCeiling});
+
+        NumberTurns numberTurns(7, designRequirements);
+        auto combination = numberTurns.get_next_number_turns_combination();
+        REQUIRE(combination.size() == 4);
+        CHECK(combination[1] == combination[0]);
+        CHECK(check_requirement(secondaryCeiling, double(combination[0]) / combination[2]));
+        CHECK(check_requirement(secondaryCeiling, double(combination[0]) / combination[3]));
+    }
+
     TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_8", "[constructive-model][number-turns][smoke-test]") {
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
