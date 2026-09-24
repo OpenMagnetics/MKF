@@ -24,11 +24,50 @@ enum class CoilMesherModels : int {
 };
 
 
+// The inducing mesh of a coil together with the PHASE of every winding's current at every
+// meshed harmonic (MAS excitation convention, 2026-09-24).
+//
+// fieldPerHarmonic carries, per turn, the signed peak AMPLITUDE of the harmonic current
+// (MKF's MAS harmonic amplitude x the turn's current divider x the winding's direction c_k),
+// exactly as generate_mesh_inducing_coil always did. currentPhasePerHarmonicPerWinding[i][k]
+// is the phase (rad) of winding k's current at the harmonic of fieldPerHarmonic[i], taken
+// from a DFT of the winding's current waveform and referred to the gauge winding (the
+// reference winding, see calculate_current_phase_per_winding), so the complex current of a
+// turn of winding k is  value * exp(j * phase[k]).  Inducing points that belong to no turn
+// (equivalent fringing sources) carry the gauge phase 0.
+struct InducingCoilMesh {
+    std::vector<Field> fieldPerHarmonic;
+    std::vector<std::vector<double>> currentPhasePerHarmonicPerWinding;
+};
+
 class CoilMesher {
   private:
   protected:
     double _quickModeForManyHarmonicsThreshold = 1;
   public:
+    // MAS excitation convention (2026-09-24). The reference winding r is the FIRST winding
+    // whose isolationSide is "primary"; throws if the coil has none.
+    static size_t get_reference_winding_index(Coil coil);
+    // MAS excitation convention: primary-side windings are PASSIVE (+ into the dot), every
+    // other winding SOURCES (+ out of the dot), so the physical dot-referenced current of
+    // winding k is c_k * i_k with c_k = +1 for isolationSide "primary" and -1 otherwise.
+    static std::vector<int8_t> calculate_current_direction_per_winding(Coil coil);
+    // Phase (rad, e^{+j w t} convention) of each winding's current at each of the given
+    // harmonic indexes, from a DFT of the winding's current waveform at the frequency MAS
+    // lists for that harmonic. Referred to a gauge: the reference winding's phase at that
+    // harmonic, or — when the reference winding carries none of that harmonic — the first
+    // winding (by index) that does. A global rotation leaves every |H|^2 unchanged; the gauge
+    // only fixes WHICH component is reported as in-phase, and makes a single winding and
+    // windings in exact antiphase (all phases 0) reproduce the amplitude-only field exactly.
+    // A winding whose MAS amplitude at a harmonic is zero gets phase 0 (it contributes nothing).
+    // Throws when an excited winding has no waveform or its waveform does not contain the
+    // harmonic MAS lists.
+    // Result: [position in harmonicIndexes][winding index].
+    static std::vector<std::vector<double>> calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes);
+    InducingCoilMesh generate_mesh_inducing_coil_phasors(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt);
+    // Amplitude-and-direction part only (generate_mesh_inducing_coil_phasors().fieldPerHarmonic).
+    // The phases are NOT in these fields: a caller that sums them treats every winding as in
+    // phase with the reference. Field computations must use the phasor variant.
     std::vector<Field> generate_mesh_inducing_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt);
     std::vector<Field> generate_mesh_induced_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold);
     std::vector<size_t> get_common_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold);

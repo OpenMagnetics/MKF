@@ -74,7 +74,12 @@ class MagneticField {
         static SignalDescriptor calculate_magnetic_field_strength(SignalDescriptor magneticFluxDensity,
                                                                     double initialPermeability);
 
-        WindingWindowMagneticStrengthFieldOutput calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField = std::nullopt, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt);
+        // Returns the in-phase field (inherited field_per_frequency, what every earlier reader
+        // used) AND the quadrature field (see WindingWindowMagneticStrengthFieldPhasorOutput).
+        // Default current directions follow the MAS excitation convention by isolation side
+        // (CoilMesher::calculate_current_direction_per_winding); a custom vector overrides
+        // them. Phases always come from the windings' current waveforms.
+        WindingWindowMagneticStrengthFieldPhasorOutput calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField = std::nullopt, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt);
 
         static std::shared_ptr<MagneticFieldStrengthFringingEffectModel> factory(MagneticFieldStrengthFringingEffectModels modelName);
         static std::shared_ptr<MagneticFieldStrengthModel> factory(MagneticFieldStrengthModels modelName);

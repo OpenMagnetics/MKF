@@ -1,8 +1,10 @@
 #include "support/CoilMesher.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "processors/Inputs.h"
 #include "constructive_models/Coil.h"
 #include "support/Utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <complex>
@@ -338,7 +340,119 @@ std::pair<Field, double> CoilMesher::generate_mesh_core_winding_window_grid(Magn
     return {inducedField, pixelXDimension * pixelYDimension};
 }
 
+size_t CoilMesher::get_reference_winding_index(Coil coil) {
+    auto functionalDescription = coil.get_functional_description();
+    for (size_t windingIndex = 0; windingIndex < functionalDescription.size(); ++windingIndex) {
+        if (functionalDescription[windingIndex].get_isolation_side() == IsolationSide::PRIMARY) {
+            return windingIndex;
+        }
+    }
+    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+        "MAS excitation convention: the coil has no winding with isolationSide \"primary\", so there is no "
+        "reference winding to refer the winding currents to");
+}
+
+std::vector<int8_t> CoilMesher::calculate_current_direction_per_winding(Coil coil) {
+    // MAS excitation convention (2026-09-24): primary-side windings are passive (+ into the
+    // dot), all others source (+ out of the dot). Direction by ISOLATION SIDE, not by index:
+    // a second primary-side winding (push-pull Primary Half 2, a forward's demagnetisation
+    // winding) is +1, not -1.
+    std::vector<int8_t> currentDirectionPerWinding;
+    for (auto& winding : coil.get_functional_description()) {
+        currentDirectionPerWinding.push_back(winding.get_isolation_side() == IsolationSide::PRIMARY ? int8_t(1) : int8_t(-1));
+    }
+    return currentDirectionPerWinding;
+}
+
+std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes) {
+    size_t numberWindings = coil.get_functional_description().size();
+    auto excitations = operatingPoint.get_excitations_per_winding();
+    if (excitations.size() < numberWindings) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "The operating point has " + std::to_string(excitations.size()) +
+                                    " excitations for a coil with " + std::to_string(numberWindings) + " windings");
+    }
+    size_t referenceWindingIndex = get_reference_winding_index(coil);
+
+    std::vector<std::optional<Waveform>> sampledWaveformPerWinding(numberWindings);
+    std::vector<std::vector<double>> phasePerHarmonicPerWinding;
+    for (auto harmonicIndex : harmonicIndexes) {
+        std::vector<double> phasePerWinding(numberWindings, 0.0);
+        std::vector<bool> excitedPerWinding(numberWindings, false);
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            auto current = excitations[windingIndex].get_current();
+            if (!current || !current->get_harmonics()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) + " is missing harmonics in Coil Mesher");
+            }
+            auto harmonics = current->get_harmonics().value();
+            if (harmonicIndex >= harmonics.get_amplitudes().size() || harmonics.get_amplitudes()[harmonicIndex] == 0) {
+                continue;  // no current at this harmonic: its phase is irrelevant
+            }
+            double amplitude = harmonics.get_amplitudes()[harmonicIndex];
+            double harmonicFrequency = harmonics.get_frequencies()[harmonicIndex];
+            if (!current->get_waveform()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) +
+                                            " has a harmonic at " + std::to_string(harmonicFrequency) +
+                                            " Hz but no waveform to take its phase from");
+            }
+            if (!sampledWaveformPerWinding[windingIndex]) {
+                sampledWaveformPerWinding[windingIndex] = Inputs::calculate_sampled_waveform(current->get_waveform().value(), excitations[windingIndex].get_frequency());
+            }
+            const auto& sampledData = sampledWaveformPerWinding[windingIndex]->get_data();
+            // get_time() returns the optional BY VALUE: copy, never bind a reference into it.
+            const auto sampledTimeOptional = sampledWaveformPerWinding[windingIndex]->get_time();
+            if (!sampledTimeOptional || sampledTimeOptional->size() != sampledData.size()) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Sampled current waveform of winding " + std::to_string(windingIndex) + " has no matching time axis");
+            }
+            const auto& sampledTime = sampledTimeOptional.value();
+            // Peak phasor X = (2/N) sum x_n exp(-j w t_n): x(t) = Re(X exp(+j w t)).
+            double realPart = 0;
+            double imaginaryPart = 0;
+            double angularFrequency = 2 * std::numbers::pi * harmonicFrequency;
+            for (size_t sampleIndex = 0; sampleIndex < sampledData.size(); ++sampleIndex) {
+                realPart += sampledData[sampleIndex] * std::cos(angularFrequency * sampledTime[sampleIndex]);
+                imaginaryPart -= sampledData[sampleIndex] * std::sin(angularFrequency * sampledTime[sampleIndex]);
+            }
+            double phasorAmplitude = 2.0 * std::hypot(realPart, imaginaryPart) / static_cast<double>(sampledData.size());
+            if (!(phasorAmplitude >= 1e-6 * amplitude)) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Current waveform of winding " + std::to_string(windingIndex) +
+                                            " does not contain the harmonic its MAS harmonics list at " + std::to_string(harmonicFrequency) +
+                                            " Hz (DFT amplitude " + std::to_string(phasorAmplitude) + " A vs " + std::to_string(amplitude) +
+                                            " A): its phase is undefined");
+            }
+            phasePerWinding[windingIndex] = std::atan2(imaginaryPart, realPart);
+            excitedPerWinding[windingIndex] = true;
+        }
+
+        std::optional<size_t> gaugeWindingIndex;
+        if (excitedPerWinding[referenceWindingIndex]) {
+            gaugeWindingIndex = referenceWindingIndex;
+        }
+        else {
+            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                if (excitedPerWinding[windingIndex]) {
+                    gaugeWindingIndex = windingIndex;
+                    break;
+                }
+            }
+        }
+        if (gaugeWindingIndex) {
+            double gaugePhase = phasePerWinding[gaugeWindingIndex.value()];
+            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                if (excitedPerWinding[windingIndex]) {
+                    phasePerWinding[windingIndex] -= gaugePhase;
+                }
+            }
+        }
+        phasePerHarmonicPerWinding.push_back(phasePerWinding);
+    }
+    return phasePerHarmonicPerWinding;
+}
+
 std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
+    return generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, windingLossesHarmonicAmplitudeThreshold, customCurrentDirectionPerWinding, coilMesherModel).fieldPerHarmonic;
+}
+
+InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding does not have turns description");
@@ -349,10 +463,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
 
     std::vector<int8_t> currentDirectionPerWinding;
     if (!customCurrentDirectionPerWinding) {
-        currentDirectionPerWinding.push_back(1);
-        for (size_t windingIndex = 1; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-            currentDirectionPerWinding.push_back(-1);
-        }
+        currentDirectionPerWinding = calculate_current_direction_per_winding(coil);
     }
     else {
         currentDirectionPerWinding = customCurrentDirectionPerWinding.value();
@@ -456,10 +567,18 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
             }
         }
     }
+    auto phasePerCommonHarmonic = calculate_current_phase_per_winding(coil, operatingPoint, commonHarmonicIndexes);
     std::vector<Field> fieldPerHarmonic;
+    std::vector<std::vector<double>> phasePerHarmonicPerWinding;
     for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
         if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
             fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
+            auto commonPosition = std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), harmonicIndex);
+            if (commonPosition == commonHarmonicIndexes.end()) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "generate_mesh_inducing_coil: meshed harmonic " + std::to_string(harmonicIndex) +
+                                           " is not one of the common harmonics");
+            }
+            phasePerHarmonicPerWinding.push_back(phasePerCommonHarmonic[static_cast<size_t>(commonPosition - commonHarmonicIndexes.begin())]);
         }
     }
 
@@ -481,7 +600,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
         }
     }
 
-    return fieldPerHarmonic;
+    return {fieldPerHarmonic, phasePerHarmonicPerWinding};
 }
 
 std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {

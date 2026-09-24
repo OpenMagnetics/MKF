@@ -61,6 +61,11 @@ std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_
 }
 
 std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
+    auto phasorField = calculate_magnetic_field_phasor(operatingPoint, magnetic, sourceIndex, destinationIndex, harmonicIndex, customCurrentDirectionPerWinding);
+    return {phasorField.inPhase, phasorField.dA};
+}
+
+LeakageInductance::PhasorField LeakageInductance::calculate_magnetic_field_phasor(OperatingPoint operatingPoint, Magnetic magnetic, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
@@ -120,11 +125,13 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     }
 
     ComplexField field;
+    ComplexField quadratureField;
     {
         // Every conductor as its true cross-section with its images (CENTER); the Wang mesh splits a planar
         // track into two full-current filaments without images, a proximity-loss construction.
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, customCurrentDirectionPerWinding, CoilMesherModels::CENTER);
         field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
+        quadratureField = windingWindowMagneticStrengthFieldOutput.get_quadrature_field_per_frequency()[0];
     }
     auto turns = magnetic.get_coil().get_turns_description().value();
 
@@ -146,15 +153,18 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
         magnetic.get_mutable_coil().set_turns_description(turns);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, customCurrentDirectionPerWinding);
         auto additionalField = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
+        auto additionalQuadratureField = windingWindowMagneticStrengthFieldOutput.get_quadrature_field_per_frequency()[0];
         for (size_t pointIndex = 0; pointIndex < field.get_data().size(); ++pointIndex) {
             if (hypot(field.get_data()[pointIndex].get_point()[0], field.get_data()[pointIndex].get_point()[1]) > windingWindowRadialHeight) {
                 field.get_mutable_data()[pointIndex].set_real(additionalField.get_data()[pointIndex].get_real());
                 field.get_mutable_data()[pointIndex].set_imaginary(additionalField.get_data()[pointIndex].get_imaginary());
+                quadratureField.get_mutable_data()[pointIndex].set_real(additionalQuadratureField.get_data()[pointIndex].get_real());
+                quadratureField.get_mutable_data()[pointIndex].set_imaginary(additionalQuadratureField.get_data()[pointIndex].get_imaginary());
             }
         }
     }
 
-    return {field, dA};
+    return {field, quadratureField, dA};
 }
 
 LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
@@ -240,11 +250,12 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
     currentDirectionPerWinding[sourceIndex] = 1;
     currentDirectionPerWinding[destinationIndex] = -1;
 
-    auto magneticFieldResult = calculate_magnetic_field(operatingPoint, magnetic, sourceIndex, destinationIndex, harmonicIndex, currentDirectionPerWinding);
-    ComplexField field = magneticFieldResult.first;
-    double dA = magneticFieldResult.second;
+    auto magneticFieldResult = calculate_magnetic_field_phasor(operatingPoint, magnetic, sourceIndex, destinationIndex, harmonicIndex, currentDirectionPerWinding);
+    ComplexField field = magneticFieldResult.inPhase;
+    double dA = magneticFieldResult.dA;
 
-    double energy = integrate_leakage_energy(magnetic, field, dA);
+    // Time-averaged energy of a phasor field: in-phase plus quadrature.
+    double energy = integrate_leakage_energy(magnetic, field, dA) + integrate_leakage_energy(magnetic, magneticFieldResult.quadrature, dA);
 
     // The field model drives every turn with the PEAK amplitude of the current harmonic
     // (CoilMesher::generate_mesh_inducing_coil), so |H|^2 is a peak-squared field and the
@@ -414,11 +425,12 @@ double LeakageInductance::calculate_leakage_field_energy(Magnetic magnetic, cons
 
     OperatingPoint operatingPoint = create_excitation_operating_point(magnetic, currentsRmsSigned, frequency);
 
-    auto magneticFieldResult = calculate_magnetic_field(operatingPoint, magnetic, 0, 1, harmonicIndex, directions);
-    ComplexField field = magneticFieldResult.first;
-    double dA = magneticFieldResult.second;
+    auto magneticFieldResult = calculate_magnetic_field_phasor(operatingPoint, magnetic, 0, 1, harmonicIndex, directions);
+    ComplexField field = magneticFieldResult.inPhase;
+    double dA = magneticFieldResult.dA;
 
-    double energy = integrate_leakage_energy(magnetic, field, dA);
+    // Time-averaged energy of a phasor field: in-phase plus quadrature.
+    double energy = integrate_leakage_energy(magnetic, field, dA) + integrate_leakage_energy(magnetic, magneticFieldResult.quadrature, dA);
 
     return energy;
 }

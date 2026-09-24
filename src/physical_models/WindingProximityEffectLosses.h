@@ -27,6 +27,15 @@ class WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Default";
     virtual double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) = 0;
+    // Turn losses of a PHASOR field (MAS excitation convention, 2026-09-24): inPhaseData and
+    // quadratureData are the in-phase and quadrature (Hx, Hy) at the same points, in the same
+    // order (see WindingWindowMagneticStrengthFieldPhasorOutput); the loss must be that of
+    // |H|^2 = Hx_i^2 + Hy_i^2 + Hx_q^2 + Hy_q^2. For a model whose loss is a quadratic form of
+    // the field (every model that sums |H|^2 or squared component averages with fixed
+    // coefficients) that is exactly loss(inPhase) + loss(quadrature), which is this default.
+    // A model that bridges two DIFFERENT quadratic forms (a low/high-frequency harmonic mean)
+    // is not additive and must override it and bridge the summed forms.
+    virtual double calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature);
     // Whether the model consumes the "widthsample" mesh points (width-resolved
     // perpendicular-field samples for flat conductors). Models that average over
     // the lumped surface points must not see them, so the dispatcher strips them
@@ -43,8 +52,15 @@ class WindingProximityEffectLosses {
   protected:
   public:
     static std::shared_ptr<WindingProximityEffectLossesModel> get_model(WireType wireType, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
+    // Phasor field (MagneticField::calculate_magnetic_field_strength_field): the loss of every
+    // harmonic is that of the in-phase plus the quadrature field.
+    static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
+    // A plain (real, single-phase) field: there is no quadrature component.
     static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
-    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
+    // quadratureFields, when given, must match fields harmonic by harmonic and point by point.
+    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::vector<ComplexField>> quadratureFields = std::nullopt);
+  private:
+    static WindingLossesOutput calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride);
 
 };
 
@@ -64,7 +80,11 @@ class WindingProximityEffectLossesWangModel : public WindingProximityEffectLosse
   public:
     std::string methodName = "Wang";
     double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    // Its width-sample term bridges two different quadratic forms, so it is not additive.
+    double calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) override;
     bool consumes_width_samples() const override { return true; }
+  private:
+    double calculate_turn_losses_impl(Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature);
 };
 
 // Based on A New Approach to Analyse Conduction Losses in High Frequency Magnetic Components by J.A. Ferreira
@@ -176,7 +196,11 @@ class WindingProximityEffectLossesMartinezModel : public WindingProximityEffectL
     // Named alias for the perpendicular case, which is what "edge crowding" means at the call site.
     static double calculate_edge_crowding_factor(double wideDimension, double thinDimension);
     double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    // Its perpendicular term bridges two different quadratic forms, so it is not additive.
+    double calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) override;
     bool consumes_width_samples() const override { return true; }
+  private:
+    double calculate_turn_losses_impl(Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature);
 };
 
 // Based on Eddy currents by Jiří Lammeraner

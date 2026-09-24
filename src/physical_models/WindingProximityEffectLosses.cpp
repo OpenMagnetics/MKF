@@ -385,16 +385,38 @@ void WindingProximityEffectLossesModel::set_proximity_factor(Wire wire,  double 
 
 }
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+double WindingProximityEffectLossesModel::calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) {
+    if (inPhaseData.size() != quadratureData.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Proximity losses: " + std::to_string(inPhaseData.size()) + " in-phase field points but " +
+                                    std::to_string(quadratureData.size()) + " quadrature field points");
+    }
+    // Quadratic form of the field: the time-averaged loss of Re[(Hi + j Hq) e^{jwt}] is
+    // loss(Hi) + loss(Hq). An identically zero quadrature field adds exactly nothing.
+    double turnLosses = calculate_turn_losses(wire, frequency, inPhaseData, temperature);
+    bool quadratureIsZero = std::all_of(quadratureData.begin(), quadratureData.end(),
+        [](const ComplexFieldPoint& point) { return point.get_real() == 0 && point.get_imaginary() == 0; });
+    if (!quadratureIsZero) {
+        turnLosses += calculate_turn_losses(wire, frequency, quadratureData, temperature);
+    }
+    return turnLosses;
+}
+
+std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::vector<ComplexField>> quadratureFields) {
     auto model = get_model(wire.get_type(), modelOverride);
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
+    }
+    if (quadratureFields && quadratureFields->size() != fields.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Proximity losses: " + std::to_string(fields.size()) + " in-phase harmonic fields but " +
+                                    std::to_string(quadratureFields->size()) + " quadrature harmonic fields");
     }
 
     double totalProximityEffectLossesPerMeter = 0;
     std::vector<std::pair<double, double>> lossesPerHarmonic;
 
-    for (auto& complexField : fields) {
+    auto isWidthSample = [](const ComplexFieldPoint& point) { return point.get_label() && point.get_label().value() == "widthsample"; };
+    for (size_t fieldIndex = 0; fieldIndex < fields.size(); ++fieldIndex) {
+        auto& complexField = fields[fieldIndex];
         auto frequency = complexField.get_frequency();
         auto dataForThisTurn = complexField.get_data();
 
@@ -402,12 +424,27 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
             // Width-resolved samples are only consumed by the Wang flat-conductor
             // model; models that average over the lumped surface points must not
             // see them, or their point-average would be silently skewed.
-            dataForThisTurn.erase(std::remove_if(dataForThisTurn.begin(), dataForThisTurn.end(),
-                [](const ComplexFieldPoint& point) { return point.get_label() && point.get_label().value() == "widthsample"; }),
+            dataForThisTurn.erase(std::remove_if(dataForThisTurn.begin(), dataForThisTurn.end(), isWidthSample),
                 dataForThisTurn.end());
         }
 
-        auto turnLosses = model->calculate_turn_losses(wire, frequency, dataForThisTurn, temperature);
+        double turnLosses;
+        if (quadratureFields) {
+            auto& quadratureField = quadratureFields.value()[fieldIndex];
+            if (quadratureField.get_frequency() != frequency) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Proximity losses: quadrature field at " + std::to_string(quadratureField.get_frequency()) +
+                                            " Hz paired with an in-phase field at " + std::to_string(frequency) + " Hz");
+            }
+            auto quadratureDataForThisTurn = quadratureField.get_data();
+            if (!model->consumes_width_samples()) {
+                quadratureDataForThisTurn.erase(std::remove_if(quadratureDataForThisTurn.begin(), quadratureDataForThisTurn.end(), isWidthSample),
+                    quadratureDataForThisTurn.end());
+            }
+            turnLosses = model->calculate_turn_losses_from_phasors(wire, frequency, dataForThisTurn, quadratureDataForThisTurn, temperature);
+        }
+        else {
+            turnLosses = model->calculate_turn_losses(wire, frequency, dataForThisTurn, temperature);
+        }
 
         if (std::isnan(turnLosses)) {
             throw NaNResultException("NaN found in proximity effect losses per meter");
@@ -419,7 +456,21 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
     return {totalProximityEffectLossesPerMeter, lossesPerHarmonic};
 }
 
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+    return calculate_proximity_effect_losses_impl(coil, temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency(),
+                                                  windingWindowMagneticStrengthFieldOutput.get_quadrature_field_per_frequency(), modelOverride);
+}
+
 WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+    return calculate_proximity_effect_losses_impl(coil, temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency(),
+                                                  std::nullopt, modelOverride);
+}
+
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+    if (quadratureFieldPerFrequency && quadratureFieldPerFrequency->size() != fieldPerFrequency.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Proximity losses: " + std::to_string(fieldPerFrequency.size()) + " in-phase harmonic fields but " +
+                                    std::to_string(quadratureFieldPerFrequency->size()) + " quadrature harmonic fields");
+    }
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding does not have turns description");
     }
@@ -463,12 +514,26 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
 
         std::vector<ComplexField> primaryFields;
         std::vector<ComplexField> secondaryFields;
+        std::vector<ComplexField> primaryQuadratureFields;
+        std::vector<ComplexField> secondaryQuadratureFields;
         bool hasSecondaryCrossing = false;
 
-        for (auto& fieldPerHarmonic : windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()) {
+        for (size_t fieldIndex = 0; fieldIndex < fieldPerFrequency.size(); ++fieldIndex) {
+            auto& fieldPerHarmonic = fieldPerFrequency[fieldIndex];
+            const std::vector<ComplexFieldPoint>* quadratureHarmonicData = nullptr;
+            if (quadratureFieldPerFrequency) {
+                quadratureHarmonicData = &quadratureFieldPerFrequency.value()[fieldIndex].get_data();
+                if (quadratureHarmonicData->size() != fieldPerHarmonic.get_data().size()) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT, "Proximity losses: the quadrature field has " + std::to_string(quadratureHarmonicData->size()) +
+                                                " points where the in-phase field has " + std::to_string(fieldPerHarmonic.get_data().size()));
+                }
+            }
             std::vector<ComplexFieldPoint> primaryData;
             std::vector<ComplexFieldPoint> secondaryData;
-            for (auto& fieldPoint : fieldPerHarmonic.get_data()) {
+            std::vector<ComplexFieldPoint> primaryQuadratureData;
+            std::vector<ComplexFieldPoint> secondaryQuadratureData;
+            for (size_t pointIndex = 0; pointIndex < fieldPerHarmonic.get_data().size(); ++pointIndex) {
+                auto& fieldPoint = fieldPerHarmonic.get_data()[pointIndex];
                 if (!fieldPoint.get_turn_index()) {
                     throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Missing turn index in field point");
                 }
@@ -489,10 +554,16 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
                                fieldPoint.get_point()[1] - turn.get_coordinates()[1]);
                 if (isSecondaryPoint) {
                     secondaryData.push_back(fieldPoint);
+                    if (quadratureHarmonicData) {
+                        secondaryQuadratureData.push_back((*quadratureHarmonicData)[pointIndex]);
+                    }
                     hasSecondaryCrossing = true;
                 }
                 else {
                     primaryData.push_back(fieldPoint);
+                    if (quadratureHarmonicData) {
+                        primaryQuadratureData.push_back((*quadratureHarmonicData)[pointIndex]);
+                    }
                 }
             }
 
@@ -500,6 +571,12 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             primaryComplexField.set_data(primaryData);
             primaryComplexField.set_frequency(fieldPerHarmonic.get_frequency());
             primaryFields.push_back(primaryComplexField);
+            if (quadratureHarmonicData) {
+                ComplexField primaryQuadratureComplexField;
+                primaryQuadratureComplexField.set_data(primaryQuadratureData);
+                primaryQuadratureComplexField.set_frequency(fieldPerHarmonic.get_frequency());
+                primaryQuadratureFields.push_back(primaryQuadratureComplexField);
+            }
 
             // Only assembled when this turn can actually have secondary points — the
             // common single-crossing case used to build an empty ComplexField per
@@ -509,16 +586,28 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
                 secondaryComplexField.set_data(secondaryData);
                 secondaryComplexField.set_frequency(fieldPerHarmonic.get_frequency());
                 secondaryFields.push_back(secondaryComplexField);
+                if (quadratureHarmonicData) {
+                    ComplexField secondaryQuadratureComplexField;
+                    secondaryQuadratureComplexField.set_data(secondaryQuadratureData);
+                    secondaryQuadratureComplexField.set_frequency(fieldPerHarmonic.get_frequency());
+                    secondaryQuadratureFields.push_back(secondaryQuadratureComplexField);
+                }
             }
+        }
+        std::optional<std::vector<ComplexField>> primaryQuadrature;
+        std::optional<std::vector<ComplexField>> secondaryQuadrature;
+        if (quadratureFieldPerFrequency) {
+            primaryQuadrature = primaryQuadratureFields;
+            secondaryQuadrature = secondaryQuadratureFields;
         }
 
         double primaryLength = hasSecondaryCrossing ? wireLength / 2 : wireLength;
         double secondaryLength = hasSecondaryCrossing ? wireLength / 2 : 0;
 
-        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, modelOverride).second;
+        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, modelOverride, primaryQuadrature).second;
         std::vector<std::pair<double, double>> secondaryLossesPerHarmonic;
         if (hasSecondaryCrossing) {
-            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, modelOverride).second;
+            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, modelOverride, secondaryQuadrature).second;
             if (secondaryLossesPerHarmonic.size() != primaryLossesPerHarmonic.size()) {
                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
                     "Primary and secondary crossing harmonics do not match for turn " + std::to_string(turnIndex));
@@ -702,6 +791,22 @@ double WindingProximityEffectLossesRossmanithModel::calculate_turn_losses(Wire w
  * @return Proximity effect losses for this turn [W]
  */
 double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    return calculate_turn_losses_impl(wire, frequency, data, nullptr, temperature);
+}
+
+double WindingProximityEffectLossesWangModel::calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) {
+    if (inPhaseData.size() != quadratureData.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wang proximity losses: " + std::to_string(inPhaseData.size()) + " in-phase field points but " +
+                                    std::to_string(quadratureData.size()) + " quadrature field points");
+    }
+    return calculate_turn_losses_impl(wire, frequency, inPhaseData, &quadratureData, temperature);
+}
+
+// Every term below is a quadratic form of the field, so the phasor loss adds the in-phase and
+// the quadrature forms (|H|^2 = Re^2 + Im^2); the width-sample term bridges the SUMMED low- and
+// high-frequency integrals. Without quadrature data every quadrature sum is exactly 0 and the
+// result is bit-identical to the single-field model.
+double WindingProximityEffectLossesWangModel::calculate_turn_losses_impl(Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature) {
     auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
@@ -727,6 +832,36 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     double nonPlanarHe = 0;
     size_t lumpedPointCount = 0;
     std::vector<double> widthSamplesHPerpendicular;
+    // Quadrature counterparts (all zero without quadrature data).
+    double quadratureHx1 = 0, quadratureHx2 = 0, quadratureHy1 = 0, quadratureHy2 = 0;
+    double quadratureNonPlanarHe = 0;
+    std::vector<double> quadratureWidthSamplesHPerpendicular;
+    if (quadratureData) {
+        for (auto& datum : *quadratureData) {
+            if (!datum.get_label()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing label in induced point");
+            }
+            else if (datum.get_label().value() == "top") {
+                quadratureNonPlanarHe += datum.get_imaginary();
+                quadratureHx2 += datum.get_real();
+            }
+            else if (datum.get_label().value() == "bottom") {
+                quadratureNonPlanarHe += datum.get_imaginary();
+                quadratureHx1 += datum.get_real();
+            }
+            else if (datum.get_label().value() == "right") {
+                quadratureNonPlanarHe += datum.get_real();
+                quadratureHy2 += datum.get_imaginary();
+            }
+            else if (datum.get_label().value() == "left") {
+                quadratureNonPlanarHe += datum.get_real();
+                quadratureHy1 += datum.get_imaginary();
+            }
+            else if (datum.get_label().value() == "widthsample") {
+                quadratureWidthSamplesHPerpendicular.push_back(wire.get_type() == WireType::FOIL ? datum.get_real() : datum.get_imaginary());
+            }
+        }
+    }
     for (auto& datum : data) {
         if (!datum.get_label()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing label in induced point");
@@ -783,7 +918,7 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
         // part within 15% (numerically arbitrated against F_R(Delta=1.2, m=2)=1.81).
 
         // Parallel field: Hy at the left/right faces, penetrating the thickness c.
-        turnLosses += h * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
+        turnLosses += h * resistivity / skinDepth * (pow((Hy2 + Hy1) / 2, 2) + pow((quadratureHy2 + quadratureHy1) / 2, 2)) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
 
         // Perpendicular field (Hx, normal to the wide face): rotated-slab end
         // term from the top/bottom points — always applied, so losses do not
@@ -792,7 +927,7 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
         // see). Mean of squares, not square of the mean — the two foil ends
         // dissipate independently and their Hx carry opposite signs in a
         // symmetric window (a signed average silently cancels them).
-        turnLosses += c * resistivity / skinDepth * (pow(Hx1, 2) + pow(Hx2, 2)) / 2 * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
+        turnLosses += c * resistivity / skinDepth * (pow(Hx1, 2) + pow(Hx2, 2) + pow(quadratureHx1, 2) + pow(quadratureHx2, 2)) / 2 * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
     }
     else if (wire.get_type() == WireType::RECTANGULAR) {
         // RECTANGULAR (wide dimension c across x, thin dimension h along y).
@@ -806,14 +941,14 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
 
         // Parallel field (Hx along the wide face, from the top/bottom points),
         // penetrating the thin dimension h.
-        turnLosses += c * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
+        turnLosses += c * resistivity / skinDepth * (pow((Hx2 + Hx1) / 2, 2) + pow((quadratureHx2 + quadratureHx1) / 2, 2)) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
         if (widthSamplesHPerpendicular.empty()) {
             // Perpendicular field (Hy, normal to the wide face): rotated-slab form
             // from the left/right edge points, penetrating the wide dimension c.
             // Mean of squares, not square of the mean — the two edges dissipate
             // independently and their Hy carry opposite signs in a symmetric
             // window (same rule as the FOIL end term).
-            turnLosses += h * resistivity / skinDepth * (pow(Hy1, 2) + pow(Hy2, 2)) / 2 * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
+            turnLosses += h * resistivity / skinDepth * (pow(Hy1, 2) + pow(Hy2, 2) + pow(quadratureHy1, 2) + pow(quadratureHy2, 2)) / 2 * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
         }
     }
     else {
@@ -822,11 +957,11 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     // the FOIL and RECTANGULAR branches above and ABT #182) but is entangled with the C=8
     // FEM-calibrated width integral below (single-turn planar benchmark, June
     // 2026); correcting it requires re-running the OMFEM planar suite — ABT #139.
-    turnLosses += c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
+    turnLosses += c * h * resistivity / skinDepth * (pow((Hx2 + Hx1) / 2, 2) + pow((quadratureHx2 + quadratureHx1) / 2, 2)) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
     if (widthSamplesHPerpendicular.empty()) {
         // Legacy lumped path (no width samples meshed, e.g. fringing disabled):
         // perpendicular-field loss from the average of the two edge points.
-        turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
+        turnLosses += h * c * resistivity / skinDepth * (pow((Hy2 + Hy1) / 2, 2) + pow((quadratureHy2 + quadratureHy1) / 2, 2)) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
     }
     }
     if (!widthSamplesHPerpendicular.empty()) {
@@ -881,19 +1016,35 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
         double vacuumPermeability = Constants().vacuumPermeability;
         double angularFrequency = 2 * std::numbers::pi * frequency;
 
+        // Both integrals are quadratic forms of the profile: evaluate each for the in-phase
+        // and (when present) the quadrature profile and add, THEN bridge.
+        auto integrateProfile = [&](const std::vector<double>& profile, double& integralSquared, double& integralFluxSquared) {
+            std::vector<double> fluxFunction(numberSamples);
+            double cumulativeFlux = 0;
+            for (size_t sampleIndex = 0; sampleIndex < numberSamples; ++sampleIndex) {
+                double HPerpendicular = profile[sampleIndex];
+                integralSquared += HPerpendicular * HPerpendicular * sampleStep;
+                cumulativeFlux += -vacuumPermeability * HPerpendicular * sampleStep;
+                fluxFunction[sampleIndex] = cumulativeFlux;
+            }
+            double fluxFunctionMean = std::accumulate(fluxFunction.begin(), fluxFunction.end(), 0.0) / double(numberSamples);
+            for (size_t sampleIndex = 0; sampleIndex < numberSamples; ++sampleIndex) {
+                integralFluxSquared += pow(fluxFunction[sampleIndex] - fluxFunctionMean, 2) * sampleStep;
+            }
+        };
         double integralHPerpendicularSquared = 0;
-        std::vector<double> fluxFunction(numberSamples);
-        double cumulativeFlux = 0;
-        for (size_t sampleIndex = 0; sampleIndex < numberSamples; ++sampleIndex) {
-            double HPerpendicular = widthSamplesHPerpendicular[sampleIndex];
-            integralHPerpendicularSquared += HPerpendicular * HPerpendicular * sampleStep;
-            cumulativeFlux += -vacuumPermeability * HPerpendicular * sampleStep;
-            fluxFunction[sampleIndex] = cumulativeFlux;
-        }
-        double fluxFunctionMean = std::accumulate(fluxFunction.begin(), fluxFunction.end(), 0.0) / double(numberSamples);
         double integralFluxFunctionSquared = 0;
-        for (size_t sampleIndex = 0; sampleIndex < numberSamples; ++sampleIndex) {
-            integralFluxFunctionSquared += pow(fluxFunction[sampleIndex] - fluxFunctionMean, 2) * sampleStep;
+        integrateProfile(widthSamplesHPerpendicular, integralHPerpendicularSquared, integralFluxFunctionSquared);
+        if (quadratureData) {
+            if (quadratureWidthSamplesHPerpendicular.size() != numberSamples) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wang proximity losses: " + std::to_string(numberSamples) + " in-phase width samples but " +
+                                            std::to_string(quadratureWidthSamplesHPerpendicular.size()) + " quadrature width samples");
+            }
+            double quadratureIntegralHPerpendicularSquared = 0;
+            double quadratureIntegralFluxFunctionSquared = 0;
+            integrateProfile(quadratureWidthSamplesHPerpendicular, quadratureIntegralHPerpendicularSquared, quadratureIntegralFluxFunctionSquared);
+            integralHPerpendicularSquared += quadratureIntegralHPerpendicularSquared;
+            integralFluxFunctionSquared += quadratureIntegralFluxFunctionSquared;
         }
 
         double lossLowFrequency = 0.5 * pow(angularFrequency, 2) * thinDimension / (2 * resistivity) * integralFluxFunctionSquared;
@@ -915,10 +1066,11 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     // here: its slab branch keeps the legacy c*h prefactor and the C=8 width
     // integral, and untangling that needs the OMFEM planar suite (ABT #139).
     if (wire.get_type() != WireType::FOIL && wire.get_type() != WireType::RECTANGULAR &&
-        nonPlanarHe != 0 && lumpedPointCount > 0) {
+        (nonPlanarHe != 0 || quadratureNonPlanarHe != 0) && lumpedPointCount > 0) {
         nonPlanarHe /= lumpedPointCount;
+        quadratureNonPlanarHe /= lumpedPointCount;
         double proximityFactor = WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(wire, frequency, temperature);
-        turnLosses += proximityFactor * pow(nonPlanarHe, 2);
+        turnLosses += proximityFactor * (pow(nonPlanarHe, 2) + pow(quadratureNonPlanarHe, 2));
     }
 
     turnLosses *= wire.get_number_conductors().value();
@@ -1346,6 +1498,21 @@ double WindingProximityEffectLossesMartinezModel::calculate_edge_crowding_factor
 
 
 double WindingProximityEffectLossesMartinezModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    return calculate_turn_losses_impl(wire, frequency, data, nullptr, temperature);
+}
+
+double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) {
+    if (inPhaseData.size() != quadratureData.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Martinez proximity losses: " + std::to_string(inPhaseData.size()) + " in-phase field points but " +
+                                    std::to_string(quadratureData.size()) + " quadrature field points");
+    }
+    return calculate_turn_losses_impl(wire, frequency, inPhaseData, &quadratureData, temperature);
+}
+
+// Phasor field: every squared-field sum takes the in-phase plus the quadrature component
+// (|H|^2 = Re^2 + Im^2), and each low/high-frequency bridge acts on the SUMMED forms. Without
+// quadrature data every quadrature sum is exactly 0: bit-identical to the single-field model.
+double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature) {
     if (data.empty()) {
         return 0;
     }
@@ -1408,6 +1575,32 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses(Wire wir
     size_t parallelCount = 0;
     double edgeFieldSquaredSum = 0;
     size_t edgeCount = 0;
+    std::vector<double> quadraturePerpendicularProfile;
+    if (quadratureData) {
+        // Squared sums only (the counts come from the in-phase pass over the same points).
+        for (const auto& point : *quadratureData) {
+            if (!point.get_label()) {
+                continue;
+            }
+            const auto label = point.get_label().value();
+            const double fieldX = point.get_real();
+            const double fieldY = point.get_imaginary();
+            if (label == "widthsample") {
+                quadraturePerpendicularProfile.push_back(wideAlongY ? fieldX : fieldY);
+            }
+            else if (label == "top" || label == "bottom") {
+                parallelFieldSquaredSum += (wideAlongY ? fieldY : fieldX) * (wideAlongY ? fieldY : fieldX);
+            }
+            else if (label == "left" || label == "right") {
+                if (wideAlongY) {
+                    parallelFieldSquaredSum += fieldY * fieldY;
+                }
+                else {
+                    edgeFieldSquaredSum += fieldY * fieldY;
+                }
+            }
+        }
+    }
     for (const auto& point : data) {
         if (!point.get_label()) {
             continue;
@@ -1447,12 +1640,21 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses(Wire wir
     std::vector<double> profile = perpendicularProfile;
     if (profile.empty() && edgeCount > 0) {
         // No width-resolved samples: take the perpendicular field as uniform across the face, at
-        // the level the short ends report.
+        // the level the short ends report. (edgeFieldSquaredSum already holds the quadrature
+        // squares, so this one uniform profile carries |H|^2 and no quadrature profile is used.)
         profile.assign(8, sqrt(edgeFieldSquaredSum / double(edgeCount)));
+        quadraturePerpendicularProfile.clear();
+    }
+    if (!quadraturePerpendicularProfile.empty() && quadraturePerpendicularProfile.size() != profile.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Martinez proximity losses: " + std::to_string(profile.size()) + " in-phase width samples but " +
+                                    std::to_string(quadraturePerpendicularProfile.size()) + " quadrature width samples");
     }
     if (!profile.empty()) {
         const double sampleStep = wideDimension / double(profile.size());
         for (double fieldValue : profile) {
+            integralPerpendicularSquared += fieldValue * fieldValue * sampleStep;
+        }
+        for (double fieldValue : quadraturePerpendicularProfile) {
             integralPerpendicularSquared += fieldValue * fieldValue * sampleStep;
         }
     }
@@ -1492,16 +1694,22 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses(Wire wir
         // LF: the vector-potential variance across the face (omega^2), which for a uniform field
         // reduces to the y-term of the same equation (8).
         const double sampleStep = wideDimension / double(profile.size());
-        std::vector<double> fluxFunction(profile.size());
-        double cumulativeFlux = 0;
-        for (size_t i = 0; i < profile.size(); ++i) {
-            cumulativeFlux += -vacuumPermeability * profile[i] * sampleStep;
-            fluxFunction[i] = cumulativeFlux;
-        }
-        const double fluxMean = std::accumulate(fluxFunction.begin(), fluxFunction.end(), 0.0) / double(fluxFunction.size());
         double integralFluxVariance = 0;
-        for (double flux : fluxFunction) {
-            integralFluxVariance += pow(flux - fluxMean, 2) * sampleStep;
+        auto accumulateFluxVariance = [&](const std::vector<double>& fieldProfile) {
+            std::vector<double> fluxFunction(fieldProfile.size());
+            double cumulativeFlux = 0;
+            for (size_t i = 0; i < fieldProfile.size(); ++i) {
+                cumulativeFlux += -vacuumPermeability * fieldProfile[i] * sampleStep;
+                fluxFunction[i] = cumulativeFlux;
+            }
+            const double fluxMean = std::accumulate(fluxFunction.begin(), fluxFunction.end(), 0.0) / double(fluxFunction.size());
+            for (double flux : fluxFunction) {
+                integralFluxVariance += pow(flux - fluxMean, 2) * sampleStep;
+            }
+        };
+        accumulateFluxVariance(profile);
+        if (!quadraturePerpendicularProfile.empty()) {
+            accumulateFluxVariance(quadraturePerpendicularProfile);
         }
         const double lowFrequencyPerpendicular = pow(angularFrequency, 2) * thinDimension /
                                                  (2 * resistivity) * integralFluxVariance;

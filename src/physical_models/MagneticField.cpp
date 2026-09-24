@@ -275,7 +275,7 @@ double get_magnetic_field_strength_gap(OperatingPoint& operatingPoint, Magnetic 
     return acAmplitude / Constants().vacuumPermeability;
 }
 
-WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
+WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
     auto includeFringing = settings.get_magnetic_field_include_fringing();
 
@@ -348,29 +348,36 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         _model = factory(_magneticFieldStrengthModel);
     }
 
+    // MAS excitation convention (2026-09-24): direction by isolation side, not by index.
     std::vector<int8_t> currentDirectionPerWinding;
     if (!customCurrentDirectionPerWinding) {
-        currentDirectionPerWinding.push_back(1);
-        for (size_t windingIndex = 1; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-            currentDirectionPerWinding.push_back(-1);
-        }
+        currentDirectionPerWinding = CoilMesher::calculate_current_direction_per_winding(magnetic.get_coil());
     }
     else {
         currentDirectionPerWinding = customCurrentDirectionPerWinding.value();
     }
 
+    // Phase of each winding's current per inducing harmonic, aligned with inducingFields.
+    std::vector<std::vector<double>> currentPhasePerHarmonicPerWinding;
     if (externalInducedField){
-        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding, coilMesherModel);
+        auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding, coilMesherModel);
         // We only process the harmonic that comes from the external field
-        for (auto field : aux) {
-            if (field.get_frequency() == externalInducedField.value().get_frequency()) {
-                inducingFields.push_back(field);
+        for (size_t auxIndex = 0; auxIndex < aux.fieldPerHarmonic.size(); ++auxIndex) {
+            if (aux.fieldPerHarmonic[auxIndex].get_frequency() == externalInducedField.value().get_frequency()) {
+                inducingFields.push_back(aux.fieldPerHarmonic[auxIndex]);
+                currentPhasePerHarmonicPerWinding.push_back(aux.currentPhasePerHarmonicPerWinding[auxIndex]);
                 break;
             }
         }
     }
     else {
-        inducingFields = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding);
+        auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding);
+        inducingFields = aux.fieldPerHarmonic;
+        currentPhasePerHarmonicPerWinding = aux.currentPhasePerHarmonicPerWinding;
+    }
+    if (currentPhasePerHarmonicPerWinding.size() != inducingFields.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Magnetic field: " + std::to_string(inducingFields.size()) + " inducing harmonics but " +
+                                   std::to_string(currentPhasePerHarmonicPerWinding.size()) + " sets of winding current phases");
     }
 
     if (!magnetic.get_coil().get_turns_description()) {
@@ -405,6 +412,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     }
     
     auto turns = magnetic.get_coil().get_turns_description().value();
+    std::vector<size_t> windingIndexPerTurn(turns.size());
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        windingIndexPerTurn[turnIndex] = magnetic.get_mutable_coil().get_winding_index_by_name(turns[turnIndex].get_winding());
+    }
 
     // Set up ALBACH model if being used
     if (_magneticFieldStrengthModel == MagneticFieldStrengthModels::ALBACH) {
@@ -415,10 +426,12 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     }
 
     std::vector<ComplexField> complexFieldPerHarmonic;
+    std::vector<ComplexField> quadratureComplexFieldPerHarmonic;
     for (auto& fieldPerHarmonic : inducingFields) {
         ComplexField field;
         field.set_frequency(fieldPerHarmonic.get_frequency());
         complexFieldPerHarmonic.push_back(field);
+        quadratureComplexFieldPerHarmonic.push_back(field);
     }
 
     std::vector<Field> inducedFields;
@@ -541,9 +554,27 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
     for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
         std::vector<ComplexFieldPoint> fieldPoints;
+        std::vector<ComplexFieldPoint> quadratureFieldPoints;
 
         if (inducedFields[harmonicIndex].get_data().size() == 0) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Empty complexField");
+        }
+
+        // Every kernel is LINEAR in the inducing current, so a turn of winding k with complex
+        // current value * exp(j phase_k) contributes (Hx, Hy) * cos(phase_k) in phase and
+        // (Hx, Hy) * sin(phase_k) in quadrature, from ONE kernel evaluation. The gauge winding
+        // has phase exactly 0 (cos 1, sin 0), so a single winding or windings in exact antiphase
+        // reproduce the amplitude-only in-phase field bit for bit.
+        const auto& currentPhasePerWinding = currentPhasePerHarmonicPerWinding[harmonicIndex];
+        std::vector<double> inPhaseFactorPerWinding(currentPhasePerWinding.size());
+        std::vector<double> quadratureFactorPerWinding(currentPhasePerWinding.size());
+        bool anyQuadratureCurrent = false;
+        for (size_t windingIndex = 0; windingIndex < currentPhasePerWinding.size(); ++windingIndex) {
+            inPhaseFactorPerWinding[windingIndex] = std::cos(currentPhasePerWinding[windingIndex]);
+            quadratureFactorPerWinding[windingIndex] = std::sin(currentPhasePerWinding[windingIndex]);
+            if (quadratureFactorPerWinding[windingIndex] != 0) {
+                anyQuadratureCurrent = true;
+            }
         }
 
         // For ALBACH model, use a more efficient approach that calculates
@@ -554,6 +585,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 // Update turn currents based on harmonic data
                 auto& harmonicData = inducingFields[harmonicIndex].get_data();
                 std::vector<double> turnCurrents(turns.size(), 0.0);
+                std::vector<double> quadratureTurnCurrents(turns.size(), 0.0);
                 
                 // Collect fringing field inducing points (those without turn_index)
                 std::vector<FieldPoint> fringingPoints;
@@ -562,7 +594,9 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     if (inducingPoint.get_turn_index()) {
                         size_t turnIdx = inducingPoint.get_turn_index().value();
                         if (turnIdx < turnCurrents.size()) {
-                            turnCurrents[turnIdx] = inducingPoint.get_value();
+                            size_t turnWindingIndex = windingIndexPerTurn[turnIdx];
+                            turnCurrents[turnIdx] = inducingPoint.get_value() * inPhaseFactorPerWinding[turnWindingIndex];
+                            quadratureTurnCurrents[turnIdx] = inducingPoint.get_value() * quadratureFactorPerWinding[turnWindingIndex];
                         }
                     } else {
                         // This is a fringing field equivalent point (from ALBACH fringing model)
@@ -670,7 +704,41 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     
                     fieldPoints.push_back(complexFieldPoint);
                 }
+
+                // Quadrature sweep: the turns' quadrature currents only. The gap fringing field
+                // is the magnetizing field and is kept on the gauge phase (in-phase sweep above),
+                // as the amplitude-only model had it.
+                if (anyQuadratureCurrent) {
+                    albach2DModel->updateTurnCurrents(quadratureTurnCurrents);
+                }
+                for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
+                    if (is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
+                        continue;
+                    }
+                    bool fringingOnlyPoint = inducedFieldPoint.get_label() &&
+                                             inducedFieldPoint.get_label().value() == "widthsample";
+                    ComplexFieldPoint quadratureFieldPoint;
+                    if (fringingOnlyPoint || !anyQuadratureCurrent) {
+                        quadratureFieldPoint.set_real(0);
+                        quadratureFieldPoint.set_imaginary(0);
+                        quadratureFieldPoint.set_point(inducedFieldPoint.get_point());
+                        if (inducedFieldPoint.get_turn_index()) {
+                            quadratureFieldPoint.set_turn_index(inducedFieldPoint.get_turn_index().value());
+                        }
+                        if (inducedFieldPoint.get_label()) {
+                            quadratureFieldPoint.set_label(inducedFieldPoint.get_label().value());
+                        }
+                    }
+                    else {
+                        quadratureFieldPoint = albach2DModel->calculateTotalFieldAtPoint(inducedFieldPoint);
+                    }
+                    if (std::isnan(quadratureFieldPoint.get_real()) || std::isnan(quadratureFieldPoint.get_imaginary())) {
+                        throw NaNResultException("NaN found in ALBACH quadrature magnetic field calculation");
+                    }
+                    quadratureFieldPoints.push_back(quadratureFieldPoint);
+                }
                 complexFieldPerHarmonic[harmonicIndex].set_data(fieldPoints);
+                quadratureComplexFieldPerHarmonic[harmonicIndex].set_data(quadratureFieldPoints);
                 continue; // Skip the standard per-turn-pair loop for this harmonic
             }
         }
@@ -688,6 +756,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
             double totalInducedFieldX = 0;
             double totalInducedFieldY = 0;
+            double totalQuadratureInducedFieldX = 0;
+            double totalQuadratureInducedFieldY = 0;
             bool inducedPointInsideCore = is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily);
 
             // ROSHEN and SULLIVAN fringing are computed per-point in this loop (not via equivalent current loops)
@@ -813,8 +883,18 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
                 auto [inducedFieldX, inducedFieldY] = _model->get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, windingIndex);
 
-                totalInducedFieldX += inducedFieldX;
-                totalInducedFieldY += inducedFieldY;
+                if (windingIndex) {
+                    // A turn: its complex current is value * exp(j phase_k).
+                    totalInducedFieldX += inducedFieldX * inPhaseFactorPerWinding[windingIndex.value()];
+                    totalInducedFieldY += inducedFieldY * inPhaseFactorPerWinding[windingIndex.value()];
+                    totalQuadratureInducedFieldX += inducedFieldX * quadratureFactorPerWinding[windingIndex.value()];
+                    totalQuadratureInducedFieldY += inducedFieldY * quadratureFactorPerWinding[windingIndex.value()];
+                }
+                else {
+                    // An equivalent fringing source: the magnetizing field, on the gauge phase.
+                    totalInducedFieldX += inducedFieldX;
+                    totalInducedFieldY += inducedFieldY;
+                }
                 if (std::isnan(inducedFieldX)) {
                     throw NaNResultException("NaN found in magnetic field calculation");
                 }
@@ -833,12 +913,19 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 complexFieldPoint.set_label(inducedFieldPoint.get_label().value());
             }
             fieldPoints.push_back(complexFieldPoint);
+
+            ComplexFieldPoint quadratureFieldPoint(complexFieldPoint);
+            quadratureFieldPoint.set_real(totalQuadratureInducedFieldX);
+            quadratureFieldPoint.set_imaginary(totalQuadratureInducedFieldY);
+            quadratureFieldPoints.push_back(quadratureFieldPoint);
         }
         complexFieldPerHarmonic[harmonicIndex].set_data(fieldPoints);
+        quadratureComplexFieldPerHarmonic[harmonicIndex].set_data(quadratureFieldPoints);
     }
 
-    WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput;
+    WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput;
     windingWindowMagneticStrengthFieldOutput.set_field_per_frequency(complexFieldPerHarmonic);
+    windingWindowMagneticStrengthFieldOutput.set_quadrature_field_per_frequency(quadratureComplexFieldPerHarmonic);
     windingWindowMagneticStrengthFieldOutput.set_method_used(to_string(_magneticFieldStrengthModel));
     windingWindowMagneticStrengthFieldOutput.set_origin(ResultOrigin::SIMULATION);
     return windingWindowMagneticStrengthFieldOutput;

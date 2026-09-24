@@ -269,10 +269,15 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
     auto primaryHarmonics =
         operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
 
-    // Winding current direction convention: primary positive, the rest negative
-    // (same default as CoilMesher::generate_mesh_inducing_coil).
-    std::vector<double> currentDirectionPerWinding(coil.get_functional_description().size(), -1.0);
-    currentDirectionPerWinding[0] = 1.0;
+    // MAS excitation convention (2026-09-24), the same as CoilMesher::generate_mesh_inducing_coil:
+    // primary-side windings +1 (passive), every other winding -1 (source), by isolation side.
+    std::vector<double> currentDirectionPerWinding;
+    for (auto direction : CoilMesher::calculate_current_direction_per_winding(coil)) {
+        currentDirectionPerWinding.push_back(static_cast<double>(direction));
+    }
+    // Phase of each winding's current per common harmonic (DFT of its waveform, referred to the
+    // reference winding): the bordered solve takes the COMPLEX terminal current.
+    auto currentPhasePerCommonHarmonic = CoilMesher::calculate_current_phase_per_winding(coil, operatingPoint, commonHarmonicIndexes);
 
     // Per-winding harmonic amplitudes on the COMMON harmonic grid.
     std::vector<Harmonics> harmonicsPerWinding;
@@ -625,7 +630,9 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
     }
     double totalExtraLosses = 0;
 
-    for (auto harmonicIndex : commonHarmonicIndexes) {
+    for (size_t commonPosition = 0; commonPosition < commonHarmonicIndexes.size(); ++commonPosition) {
+        size_t harmonicIndex = commonHarmonicIndexes[commonPosition];
+        const auto& currentPhasePerWinding = currentPhasePerCommonHarmonic[commonPosition];
         double frequency = primaryHarmonics.get_frequencies()[harmonicIndex];
         if (frequency <= 0) {
             continue;  // DC is the ohmic stage's job
@@ -660,7 +667,9 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
             for (size_t c = 0; c < numberConductors; ++c) {
                 size_t windingIndex = conductorWinding[c];
                 double amplitude = harmonicsPerWinding[windingIndex].get_amplitudes()[harmonicIndex];
-                rhs(numberCells + c) = currentDirectionPerWinding[windingIndex] * amplitude;
+                // The gauge winding has phase exactly 0, so single-winding and exact-antiphase
+                // excitations keep the real right-hand side they always had.
+                rhs(numberCells + c) = currentDirectionPerWinding[windingIndex] * amplitude * std::polar(1.0, currentPhasePerWinding[windingIndex]);
             }
             Eigen::VectorXcd solution = system.partialPivLu().solve(rhs);
             std::vector<double> lossPerConductor(numberConductors, 0.0);

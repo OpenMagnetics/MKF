@@ -80,6 +80,32 @@ class WireFieldPoint : public FieldPoint {
     void set_loss_density(const double & lossDensity) { this->lossDensity = lossDensity; }
 };
 
+// The winding-window H field of every harmonic as a PHASOR (MAS excitation convention,
+// 2026-09-24). In MAS's ComplexField the "real"/"imaginary" pair is the two SPATIAL components
+// (Hx, Hy) of one real field, so a time phase cannot ride in it. The field is therefore split
+// into two real vector fields on the same points, in the same order:
+//   field_per_frequency            : the component IN PHASE with the gauge winding's current
+//                                     (inherited; exactly what every existing reader used)
+//   quadrature_field_per_frequency : the component 90 degrees AHEAD of it
+// so H(t) = Re[(H_inPhase + j H_quadrature) exp(j w t)] per spatial component, and every
+// time-averaged quadratic quantity (proximity loss, stored energy) is the in-phase value plus
+// the quadrature value: |H|^2 = Hx_i^2 + Hy_i^2 + Hx_q^2 + Hy_q^2. A single winding, or windings
+// in exact antiphase, leave the quadrature field zero (to round-off) and the in-phase field
+// bit-identical to the amplitude-only model.
+class WindingWindowMagneticStrengthFieldPhasorOutput : public WindingWindowMagneticStrengthFieldOutput {
+    public:
+    WindingWindowMagneticStrengthFieldPhasorOutput() = default;
+    virtual ~WindingWindowMagneticStrengthFieldPhasorOutput() = default;
+
+    private:
+    std::vector<ComplexField> quadratureFieldPerFrequency;
+
+    public:
+    const std::vector<ComplexField> & get_quadrature_field_per_frequency() const { return quadratureFieldPerFrequency; }
+    std::vector<ComplexField> & get_mutable_quadrature_field_per_frequency() { return quadratureFieldPerFrequency; }
+    void set_quadrature_field_per_frequency(const std::vector<ComplexField> & value) { this->quadratureFieldPerFrequency = value; }
+};
+
 class WireMagneticStrengthFieldOutput : public WindingWindowMagneticStrengthFieldOutput {
     public:
     WireMagneticStrengthFieldOutput() = default;
