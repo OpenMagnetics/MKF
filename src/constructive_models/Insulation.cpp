@@ -1921,7 +1921,14 @@ double InsulationIEC60335Model::calculate_creepage_distance(Inputs& inputs, bool
     return roundFloat(creepageDistance, 5);
 }
 
-bool InsulationCoordinator::needs_margin(std::vector<WireSolidInsulationRequirements> combinationSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions) {
+IsolationClass InsulationCoordinator::insulation_class_for_margin(Inputs& inputs) {
+    if (!inputs.get_design_requirements().get_insulation()) {
+        return IsolationClass::FUNCTIONAL;
+    }
+    return inputs.get_insulation_type();
+}
+
+bool InsulationCoordinator::needs_margin(std::vector<WireSolidInsulationRequirements> combinationSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions, IsolationClass insulationClass) {
     for(size_t index = 0; index < pattern.size(); ++index) {
         size_t leftIndex = pattern[index];
         size_t rightIndex;
@@ -1951,9 +1958,30 @@ bool InsulationCoordinator::needs_margin(std::vector<WireSolidInsulationRequirem
             numberLayers += combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_number_layers().value();
         }
 
-        if (numberLayers < 3 && numberGrades < 4) {
-            return true;
+        if (numberLayers >= 3 || numberGrades >= 4) {
+            // Reinforced-level solid insulation between these two windings.
+            continue;
         }
+
+        // A wire whose requirement carries a breakdown voltage was asked to hold the withstand
+        // voltage in its own insulation (get_requirements_for_basic / _for_reinforced; the
+        // functional requirement asks for none). get_solid_insulation_requirements_for_wires
+        // builds, for BASIC and SUPPLEMENTARY insulation, one combination per isolation side in
+        // which only the OTHER side's wires carry it: that one rated wire IS the insulation,
+        // which is the point of those combinations. Judged only by the reinforced rule above,
+        // they always "needed" margin tape as well, so on a small bobbin (EQ 26/19/7 at 400 V
+        // mains, basic: 2.8 mm of margin at each end of a 5.65 mm window) every combination
+        // lost its whole section height and the coil adviser found no coil at all.
+        const bool leftRated = combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_breakdown_voltage() > 0;
+        const bool rightRated = combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_breakdown_voltage() > 0;
+        if ((insulationClass == IsolationClass::BASIC || insulationClass == IsolationClass::SUPPLEMENTARY) && (leftRated || rightRated)) {
+            continue;
+        }
+        // DOUBLE is basic plus supplementary: two rated wires, one of each part.
+        if (insulationClass == IsolationClass::DOUBLE && leftRated && rightRated) {
+            continue;
+        }
+        return true;
     }
     return false;
 }
@@ -1986,10 +2014,10 @@ WireSolidInsulationRequirements get_requirements_for_reinforced(double withstand
     return wireSolidInsulationRequirements;
 }
 
-std::vector<std::vector<WireSolidInsulationRequirements>> remove_combination_that_need_margin(std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions) {
+std::vector<std::vector<WireSolidInsulationRequirements>> remove_combination_that_need_margin(std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions, IsolationClass insulationClass) {
     std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWiresWithoutMargin;
     for (auto combinationSolidInsulationRequirementsForWires : combinationsSolidInsulationRequirementsForWires) {
-        bool needsMargin = InsulationCoordinator::needs_margin(combinationSolidInsulationRequirementsForWires, pattern, repetitions);
+        bool needsMargin = InsulationCoordinator::needs_margin(combinationSolidInsulationRequirementsForWires, pattern, repetitions, insulationClass);
         if (!needsMargin) {
             combinationsSolidInsulationRequirementsForWiresWithoutMargin.push_back(combinationSolidInsulationRequirementsForWires);
         }
@@ -2092,7 +2120,9 @@ std::vector<std::vector<WireSolidInsulationRequirements>> InsulationCoordinator:
         } 
 
         if (!allowMarginTape) {
-            combinationsSolidInsulationRequirementsForWires = remove_combination_that_need_margin(combinationsSolidInsulationRequirementsForWires, pattern, repetitions);
+            // insulationType here is the class the combinations were generated for (BASIC and
+            // SUPPLEMENTARY were raised to DOUBLE above when margin tape is not allowed).
+            combinationsSolidInsulationRequirementsForWires = remove_combination_that_need_margin(combinationsSolidInsulationRequirementsForWires, pattern, repetitions, insulationType);
         }
     }
 

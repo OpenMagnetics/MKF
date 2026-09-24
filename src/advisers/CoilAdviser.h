@@ -150,7 +150,10 @@ class CoilAdviser : public WireAdviser {
     // ABT #1176, behind Settings::get_coil_adviser_size_magnetic_shunts().
     void add_magnetic_shunts_for_leakage_target(std::vector<Mas>& candidates);
         std::vector<Mas> get_advised_coil(std::vector<Wire>* wires, Mas mas, size_t maximumNumberResults=1);
-        std::vector<Section> get_advised_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions);
+        // withMarginTape=false builds the sections of a combination whose wires carry the
+        // insulation themselves (InsulationCoordinator::needs_margin false): no creepage margin
+        // is reserved, and the inter-section tape is the no-margin build.
+        std::vector<Section> get_advised_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions, bool withMarginTape = true);
         std::vector<Section> get_advised_planar_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions);
         std::vector<Mas> get_advised_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference);
         std::vector<Mas> get_advised_planar_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, size_t maximumNumberResults, std::string reference);

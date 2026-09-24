@@ -2830,4 +2830,71 @@ TEST_CASE("Test_CoilAdviser_Real_Winding_Adds_Reversed_Patterns", "[adviser][coi
     settings.reset();
 }
 
+
+// A basic-rated wire on one side IS basic insulation between two windings; margin tape is only
+// needed when neither adjacent wire carries rated insulation. needs_margin used to apply the
+// reinforced rule (three layers, or fully-insulated-wire grades) to every class, so the
+// "one side insulated" combinations get_solid_insulation_requirements_for_wires builds for
+// BASIC insulation needed margin tape as well, and never avoided it.
+TEST_CASE("Test_Needs_Margin_Depends_On_The_Insulation_Class", "[adviser][coil-adviser][insulation][smoke-test]") {
+    WireSolidInsulationRequirements functional;
+    functional.set_minimum_grade(1);
+    functional.set_minimum_number_layers(1);
+    functional.set_minimum_breakdown_voltage(0);
+    WireSolidInsulationRequirements basicRated;
+    basicRated.set_minimum_number_layers(1);
+    basicRated.set_minimum_breakdown_voltage(4000);
+    WireSolidInsulationRequirements reinforcedRated;
+    reinforcedRated.set_minimum_number_layers(3);
+    reinforcedRated.set_minimum_breakdown_voltage(8000);
+    const std::vector<size_t> pattern{0, 1};
+
+    CHECK(InsulationCoordinator::needs_margin({functional, functional}, pattern, 1, IsolationClass::BASIC));
+    CHECK_FALSE(InsulationCoordinator::needs_margin({functional, basicRated}, pattern, 1, IsolationClass::BASIC));
+    CHECK_FALSE(InsulationCoordinator::needs_margin({basicRated, functional}, pattern, 1, IsolationClass::SUPPLEMENTARY));
+
+    // DOUBLE is basic + supplementary: one rated wire is only half of it.
+    CHECK(InsulationCoordinator::needs_margin({functional, basicRated}, pattern, 1, IsolationClass::DOUBLE));
+    CHECK_FALSE(InsulationCoordinator::needs_margin({basicRated, basicRated}, pattern, 1, IsolationClass::DOUBLE));
+
+    // REINFORCED keeps the three-layer rule.
+    CHECK(InsulationCoordinator::needs_margin({functional, basicRated}, pattern, 1, IsolationClass::REINFORCED));
+    CHECK_FALSE(InsulationCoordinator::needs_margin({functional, reinforcedRated}, pattern, 1, IsolationClass::REINFORCED));
+}
+
+// The web Flyback, core-advised onto an EQ 26/19/7 with basic insulation at 400 V mains
+// (OVC III): 2.8 mm of margin at each end of the 5.65 mm window left every section 0.05 mm
+// tall, so "Advise all wires" answered "No coil found" and the Magnetic Builder never got a
+// winding (WebFrontend 3DW-5). Insulating one side's wire is how such a design is wound.
+TEST_CASE("Test_CoilAdviser_Basic_Insulation_Small_Bobbin_Is_Wire_Insulated", "[adviser][coil-adviser][insulation][bug]") {
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback_eq26_basic_insulation.json");
+    std::ifstream file(path);
+    OpenMagnetics::Mas mas(json::parse(file));
+    for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
+        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
+    }
+    mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
+    settings.set_coil_delimit_and_compact(true);
+
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    settings.reset();
+    REQUIRE(masMagneticsWithCoil.size() > 0);
+    auto coil = masMagneticsWithCoil[0].get_magnetic().get_coil();
+    REQUIRE(coil.get_turns_description());
+    // At least one winding's wire carries the insulation itself.
+    bool anyRated = false;
+    for (auto winding : coil.get_functional_description()) {
+        auto coating = winding.resolve_wire().resolve_coating();
+        if (coating && coating->get_breakdown_voltage() && coating->get_breakdown_voltage().value() >= 4000) {
+            anyRated = true;
+        }
+    }
+    CHECK(anyRated);
+}
+
 }  // namespace

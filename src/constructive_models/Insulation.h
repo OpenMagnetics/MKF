@@ -582,7 +582,14 @@ class InsulationCoordinator {
     // One solid sleeve layer: the wall above already carries the reinforced-insulation thickness.
     static constexpr int64_t leadSleeveNumberLayers = 1;
     static std::vector<std::vector<WireSolidInsulationRequirements>> get_solid_insulation_requirements_for_wires(Inputs& inputs, std::vector<size_t> pattern, size_t repetitions);
-    static bool needs_margin(std::vector<WireSolidInsulationRequirements> combinationSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions);
+    // Whether a winding combination still needs margin tape between adjacent windings, given
+    // the solid insulation its wires are REQUIRED to carry and the insulation class the
+    // requirements were generated for (a wire's requirement only means something against the
+    // class it was built for: one basic-rated wire completes BASIC insulation, not DOUBLE).
+    static bool needs_margin(std::vector<WireSolidInsulationRequirements> combinationSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions, IsolationClass insulationClass);
+    // The class needs_margin must judge a combination of these inputs against: FUNCTIONAL when
+    // the design has no insulation requirement.
+    static IsolationClass insulation_class_for_margin(Inputs& inputs);
 
     InsulationCoordinator() {
         _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model());

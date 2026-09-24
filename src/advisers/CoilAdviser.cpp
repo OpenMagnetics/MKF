@@ -547,7 +547,7 @@ namespace OpenMagnetics {
                         else {
                             reference += ", Non-Interleaved";
                         }
-                        if (InsulationCoordinator::needs_margin(solidInsulationRequirementsForWires, pattern, repetition)) {
+                        if (InsulationCoordinator::needs_margin(solidInsulationRequirementsForWires, pattern, repetition, InsulationCoordinator::insulation_class_for_margin(mas.get_mutable_inputs()))) {
                             reference += ", Margin Taped";
                         }
                         else {
@@ -756,7 +756,7 @@ namespace OpenMagnetics {
         return masesWithoutScoring;
     }
 
-    std::vector<Section> CoilAdviser::get_advised_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions){
+    std::vector<Section> CoilAdviser::get_advised_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions, bool withMarginTape){
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs(), mas.get_magnetic().get_coil());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
@@ -764,6 +764,14 @@ namespace OpenMagnetics {
         coil.set_strict(false);
         coil.set_inputs(mas.get_inputs());
 
+        // The simple insulation build knows no wires (they are still Dummy here), so with margin
+        // tape allowed it reserves the full creepage margin between every pair of windings. For a
+        // combination whose wires insulate, that margin is not there, and reserving it anyway left
+        // a small bobbin no section height at all (see InsulationCoordinator::needs_margin).
+        std::optional<SettingsGuard<bool>> noMarginGuard;
+        if (!withMarginTape) {
+            noMarginGuard.emplace(settings, &Settings::get_coil_allow_margin_tape, &Settings::set_coil_allow_margin_tape, false);
+        }
         coil.calculate_insulation(true);
         auto result = coil.wind_by_sections(sectionProportions, pattern, repetitions);
         if (result) {
@@ -985,13 +993,13 @@ namespace OpenMagnetics {
 
         size_t numberWindings = coil.get_functional_description().size();
 
-        auto needsMargin = InsulationCoordinator::needs_margin(solidInsulationRequirementsForWires, pattern, repetitions);
+        auto needsMargin = InsulationCoordinator::needs_margin(solidInsulationRequirementsForWires, pattern, repetitions, InsulationCoordinator::insulation_class_for_margin(mas.get_mutable_inputs()));
         coil.set_inputs(mas.get_inputs());
         coil.clear();
         coil.set_groups_description(std::nullopt);
         coil.wind_by_sections(sectionProportions, pattern, repetitions);
 
-        auto sections = get_advised_sections(mas, pattern, repetitions);
+        auto sections = get_advised_sections(mas, pattern, repetitions, needsMargin);
         if (sections.size() == 0) {
             return {};
         }
