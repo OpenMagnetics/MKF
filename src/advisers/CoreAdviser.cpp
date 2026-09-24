@@ -380,7 +380,14 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         }
 
         logEntry("First attempt produced not enough results, so now we are searching again with " + std::to_string(magnetics.size()) + " magnetics, including up to " + std::to_string(defaults.coreAdviserMaximumNumberStacks) + " cores stacked when possible.", "CoreAdviser");
-        maximumMagneticsAfterFiltering = magnetics.size();
+        // The stacked pool is up to coreAdviserMaximumNumberStacks times the single-core
+        // one, so scale the score-cull by the same factor. This used to be the WHOLE pool
+        // (maximumMagneticsAfterFiltering = magnetics.size()), which disabled the cull
+        // altogether: every candidate (8514 single cores on a Weinberg transformer, 60887
+        // with stacks) was gapped, sized and saturation-checked, which took minutes, peaked
+        // near 8 GB natively and ran the browser engine out of memory (std::bad_alloc).
+        maximumMagneticsAfterFiltering = std::min<size_t>(magnetics.size(),
+            maximumMagneticsAfterFiltering * defaults.coreAdviserMaximumNumberStacks);
         filteredMagnetics = filter_available_cores_power_application(&magnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
         return filteredMagnetics;
     }

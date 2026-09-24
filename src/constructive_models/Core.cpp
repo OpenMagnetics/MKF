@@ -1461,12 +1461,21 @@ void Core::process_gap_or_throw() {
 // MULTI-GRADE assembly that would overwrite the whole list with just the primary piece and
 // silently destroy every closing material (ABT #576) — so a list is cached but never written
 // back. The list form is already fully resolvable on demand through resolve_materials().
+//
+// Only the multi-grade case is cached in _cachedResolvedMaterial. Every other case is memoized
+// by the write-back itself, and caching it as well kept a SECOND full copy of the material
+// record in every core: the catalogue's 18,943 cores then took ~2.2 GB, every copy of an
+// adviser candidate pool as much again, and the browser engine ran out of memory
+// (std::bad_alloc) the moment a design fell back to the manufacturer catalogue.
 CoreMaterial Core::resolve_material() {
     auto material = resolve_material(get_functional_description().get_material());
     if (!std::holds_alternative<std::vector<MaterialElement>>(get_functional_description().get_material())) {
         get_mutable_functional_description().set_material(material);
+        _cachedResolvedMaterial.reset();
     }
-    _cachedResolvedMaterial = material;
+    else {
+        _cachedResolvedMaterial = material;
+    }
     return material;
 }
 
@@ -1481,12 +1490,18 @@ CoreMaterial Core::resolve_material() {
 // std::variant alternative held by FunctionalDescription, so we honour
 // what the rest of MKF was already relying on.
 CoreMaterial Core::resolve_material() const {
+    // A resolved record already written back IS the memo (see the non-const overload).
+    if (std::holds_alternative<CoreMaterial>(get_functional_description().get_material())) {
+        return std::get<CoreMaterial>(get_functional_description().get_material());
+    }
     if (_cachedResolvedMaterial) return *_cachedResolvedMaterial;
     auto material = resolve_material(get_functional_description().get_material());
-    _cachedResolvedMaterial = material;
     // Same guard as the non-const overload: never collapse a multi-grade list to its primary.
     if (!std::holds_alternative<std::vector<MaterialElement>>(get_functional_description().get_material())) {
         const_cast<Core*>(this)->get_mutable_functional_description().set_material(material);
+    }
+    else {
+        _cachedResolvedMaterial = material;
     }
     return material;
 }

@@ -488,23 +488,29 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         // work. Parallelising was the other candidate fix and is a dead end for users: the
         // engine ships to the browser as WASM built without pthreads, so threads would speed up
         // the CLI and leave the 6-minute wait exactly where the users are.
-        const size_t retryCap = std::max<size_t>(maximumMagneticsAfterFiltering * 4, 1000);
-        if (magneticsWithScoring.size() > retryCap) {
-            const size_t before = magneticsWithScoring.size();
-            std::stable_sort(magneticsWithScoring.begin(), magneticsWithScoring.end(),
+        // From the configured cull, not this call's argument: the stacked second pass
+        // raises the argument, and the retry cap must not grow with it.
+        const size_t retryCap = std::max<size_t>(settings.get_core_adviser_maximum_magnetics_after_filtering() * 4, 1000);
+        auto keepLargestCores = [&](std::vector<std::pair<Magnetic, double>>& pool) {
+            if (pool.size() <= retryCap) {
+                return;
+            }
+            const size_t before = pool.size();
+            std::stable_sort(pool.begin(), pool.end(),
                              [](const std::pair<Magnetic, double>& left,
                                 const std::pair<Magnetic, double>& right) {
                                  return left.first.get_core().get_effective_area() >
                                         right.first.get_core().get_effective_area();
                              });
-            magneticsWithScoring.resize(retryCap);
+            pool.resize(retryCap);
             // Hand the rest of the pipeline the score order it expects; only the MEMBERSHIP of
             // the pool was decided by size.
-            sort_magnetics_by_scoring(&magneticsWithScoring);
+            sort_magnetics_by_scoring(&pool);
             logEntry("Retry pool culled from " + std::to_string(before) + " to " +
                      std::to_string(retryCap) + " candidates, largest cores kept (the retry is "
                      "looking for a bigger core, so the smallest cannot answer it).", "CoreAdviser");
-        }
+        };
+        keepLargestCores(magneticsWithScoring);
 
         add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
         magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0, true);
@@ -525,6 +531,9 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
                 magneticsWithScoring = *magnetics;
                 magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
                 magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+                // Same size bound as stage 1: this stage had none, so a design that failed
+                // stage 1 sized and saturation-checked the entire pool a second time.
+                keepLargestCores(magneticsWithScoring);
                 add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
                 magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0, true);
                 magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
