@@ -21,6 +21,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "advisers/MagneticAdviser.h"
 #include "advisers/MagneticFilter.h"
@@ -29,6 +30,7 @@
 #include "support/Exceptions.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
+#include "support/Cache.h"
 
 #include "TestingUtils.h"
 
@@ -338,4 +340,17 @@ TEST_CASE("Autocompleting a datasheet-only part leaves it as it is",
     REQUIRE_NOTHROW(completed = magnetic_autocomplete(magnetic));
     REQUIRE_FALSE(completed.has_core());
     REQUIRE(completed.get_reference() == "P11");
+}
+
+TEST_CASE("A cache subset holds exactly the requested references, and refuses unknown ones",
+          "[datasheet-only][cache][smoke-test]") {
+    Cache<OpenMagnetics::Magnetic> cache;
+    for (auto reference : {"A", "B", "C"}) {
+        cache.load(reference, datasheet_part(ten_microhenry(reference)));
+    }
+    auto subset = cache.subset({"A", "C"});
+    REQUIRE(subset.size() == 2);
+    REQUIRE(subset.count("A") == 1);
+    REQUIRE(subset.count("B") == 0);
+    REQUIRE_THROWS_WITH(cache.subset({"A", "Z"}), Catch::Matchers::ContainsSubstring("1 of 2 requested references are not in the cache (Z)"));
 }

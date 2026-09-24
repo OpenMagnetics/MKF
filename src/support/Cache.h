@@ -74,6 +74,31 @@ public:
         return filteredValues;
     }
 
+    // The entries for exactly `references`, keyed as in the cache -- e.g. to run the catalogue
+    // adviser over one family or one admin-chosen pool of a cache that holds several. A
+    // reference the cache does not hold THROWS, listing every missing one: silently searching
+    // fewer parts than asked for is how a failed or partial load goes unnoticed.
+    std::map<std::string, T> subset(const std::vector<std::string>& references) const {
+        std::map<std::string, T> entries;
+        std::vector<std::string> missing;
+        for (const auto& reference : references) {
+            auto entry = _cache.find(reference);
+            if (entry == _cache.end()) {
+                missing.push_back(reference);
+                continue;
+            }
+            entries.emplace(entry->first, entry->second);
+        }
+        if (!missing.empty()) {
+            std::string list;
+            for (size_t index = 0; index < missing.size() && index < 10; ++index) {
+                list += (index ? ", " : "") + missing[index];
+            }
+            throw std::runtime_error(std::to_string(missing.size()) + " of " + std::to_string(references.size()) + " requested references are not in the cache (" + list + (missing.size() > 10 ? ", ..." : "") + ")");
+        }
+        return entries;
+    }
+
     // Move both the key and the value into the map. Previously this took
     // `T value` by value and then assigned by copy, costing two whole
     // Magnetic copies per insert.
