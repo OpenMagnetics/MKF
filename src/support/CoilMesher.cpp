@@ -570,9 +570,16 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
     auto phasePerCommonHarmonic = calculate_current_phase_per_winding(coil, operatingPoint, commonHarmonicIndexes);
     std::vector<Field> fieldPerHarmonic;
     std::vector<std::vector<double>> phasePerHarmonicPerWinding;
+    std::vector<std::vector<double>> amplitudePerHarmonicPerWinding;
     for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
         if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
             fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
+            std::vector<double> amplitudePerWinding;
+            for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+                auto amplitudes = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()->get_amplitudes();
+                amplitudePerWinding.push_back(harmonicIndex < amplitudes.size() ? amplitudes[harmonicIndex] : 0.0);
+            }
+            amplitudePerHarmonicPerWinding.push_back(amplitudePerWinding);
             auto commonPosition = std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), harmonicIndex);
             if (commonPosition == commonHarmonicIndexes.end()) {
                 throw CalculationException(ErrorCode::CALCULATION_ERROR, "generate_mesh_inducing_coil: meshed harmonic " + std::to_string(harmonicIndex) +
@@ -600,7 +607,7 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
         }
     }
 
-    return {fieldPerHarmonic, phasePerHarmonicPerWinding};
+    return {fieldPerHarmonic, phasePerHarmonicPerWinding, amplitudePerHarmonicPerWinding};
 }
 
 std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {

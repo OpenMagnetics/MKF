@@ -38,6 +38,10 @@ enum class CoilMesherModels : int {
 struct InducingCoilMesh {
     std::vector<Field> fieldPerHarmonic;
     std::vector<std::vector<double>> currentPhasePerHarmonicPerWinding;
+    // MAS harmonic amplitude (peak, A) of each winding's current at the harmonic of
+    // fieldPerHarmonic[i]; 0 when the winding lists none. With the phases and the directions it
+    // gives the magnetizing current phasor i_m = sum_k c_k N_k I_k / N_r (the gap fringing source).
+    std::vector<std::vector<double>> currentAmplitudePerHarmonicPerWinding;
 };
 
 class CoilMesher {
