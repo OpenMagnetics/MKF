@@ -1283,33 +1283,10 @@ namespace TestWindingLossesWeb {
         auto magnetic = mas.get_magnetic();
         auto inputs = mas.get_inputs();
 
-        // MAS excitation convention (2026-09-24). This flyback fixture predates it: its secondary
-        // is referred to the OPPOSITE terminal (secondary voltage -64 V while the primary is at
-        // +269 V during the on-time, i.e. v_s = -N_s dPhi/dt), with the current + out of that
-        // terminal. In the convention every voltage is in the common dot reference, so both the
-        // secondary voltage and its (source) current change sign. Read literally, the proximity
-        // field would drive the secondary MMF against the flux (7.57 W).
-        auto operatingPoint = inputs.get_operating_point(0);
-        {
-            auto secondaryExcitation = operatingPoint.get_excitations_per_winding()[1];
-            auto current = secondaryExcitation.get_current().value();
-            auto voltage = secondaryExcitation.get_voltage().value();
-            auto currentWaveform = current.get_waveform().value();
-            auto voltageWaveform = voltage.get_waveform().value();
-            auto currentData = currentWaveform.get_data();
-            auto voltageData = voltageWaveform.get_data();
-            for (auto& datum : currentData) datum = -datum;
-            for (auto& datum : voltageData) datum = -datum;
-            currentWaveform.set_data(currentData);
-            voltageWaveform.set_data(voltageData);
-            current.set_waveform(currentWaveform);
-            voltage.set_waveform(voltageWaveform);
-            secondaryExcitation.set_current(current);
-            secondaryExcitation.set_voltage(voltage);
-            operatingPoint.get_mutable_excitations_per_winding()[1] = secondaryExcitation;
-        }
-
-        auto losses = WindingLosses().calculate_losses(magnetic, operatingPoint, 25);
+        // huge_losses.json follows the MAS excitation convention (2026-09-24) since it was
+        // converted: its secondary voltage is in the dot reference and its current in source
+        // convention (the fixture had referred the secondary to the opposite terminal).
+        auto losses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
 
         // Was < 2 W under the amplitude-only field, which forced the secondary into exact
         // antiphase with the primary. A flyback's primary and secondary never conduct together

@@ -404,25 +404,25 @@
                 ]
               },
               "processed": {
-                "acEffectiveFrequency": 753678.968127646,
-                "average": 5.76881987650798,
-                "dutyCycle": 0.34,
+                "acEffectiveFrequency": 753678.9681276458,
+                "average": -5.76881987650798,
+                "dutyCycle": 0.39062500000000094,
                 "effectiveFrequency": 629814.417538848,
                 "label": "flybackSecondaryWithDeadtime",
-                "negativePeak": 0,
-                "offset": 0,
+                "negativePeak": -18.43088426336202,
+                "offset": -9.21544213168101,
                 "peak": 18.43088426336202,
                 "peakToPeak": 18.43088426336202,
-                "positivePeak": 18.43088426336202,
+                "positivePeak": 0.0,
                 "rms": 8.418099853177358,
-                "thd": 0.6178839127148762
+                "thd": 0.6178839127148761
               },
               "waveform": {
                 "ancillaryLabel": "flybackSecondaryWithDeadtime",
                 "data": [
                   0,
                   0,
-                  18.609096375832195,
+                  -18.609096375832195,
                   0,
                   0,
                   0
@@ -575,27 +575,27 @@
                 ]
               },
               "processed": {
-                "acEffectiveFrequency": 678260.7229444913,
-                "average": -0.92598032804012,
-                "dutyCycle": 0.34,
-                "effectiveFrequency": 678053.8229706035,
+                "acEffectiveFrequency": 678260.7229444911,
+                "average": 0.92598032804012,
+                "dutyCycle": 0.3359375000000011,
+                "effectiveFrequency": 678053.8229706034,
                 "label": "secondaryRectangularWithDeadtime",
-                "negativePeak": -37.60041332041696,
-                "offset": 0,
+                "negativePeak": -18.519606560802387,
+                "offset": 0.0,
                 "peak": 37.60041332041696,
                 "peakToPeak": 56.12001988121935,
-                "positivePeak": 18.519606560802387,
+                "positivePeak": 37.60041332041696,
                 "rms": 25.99193321142009,
-                "thd": 0.6051104699326639
+                "thd": 0.6051104699326638
               },
               "waveform": {
                 "ancillaryLabel": "secondaryRectangularWithDeadtime",
                 "data": [
                   0,
-                  -37.60041332041696,
-                  -37.60041332041696,
-                  18.519606560802387,
-                  18.519606560802387,
+                  37.60041332041696,
+                  37.60041332041696,
+                  -18.519606560802387,
+                  -18.519606560802387,
                   0,
                   0
                 ],
@@ -749,16 +749,16 @@
               },
               "processed": {
                 "acEffectiveFrequency": 753678.9681276461,
-                "average": 0.07691759835343973,
-                "dutyCycle": 0.34,
-                "effectiveFrequency": 629814.417538848,
+                "average": -0.07691759835343973,
+                "dutyCycle": 0.39062500000000094,
+                "effectiveFrequency": 629814.4175388481,
                 "label": "flybackSecondaryWithDeadtime",
-                "negativePeak": 0,
-                "offset": 0,
+                "negativePeak": -0.2457451235114936,
+                "offset": -0.1228725617557468,
                 "peak": 0.2457451235114936,
                 "peakToPeak": 0.2457451235114936,
-                "positivePeak": 0.2457451235114936,
-                "rms": 0.1122413313756981,
+                "positivePeak": 0.0,
+                "rms": 0.11224133137569808,
                 "thd": 0.6178839127148762
               },
               "waveform": {
@@ -766,7 +766,7 @@
                 "data": [
                   0,
                   0,
-                  0.24812128501109593,
+                  -0.24812128501109593,
                   0,
                   0,
                   0
@@ -919,27 +919,27 @@
                 ]
               },
               "processed": {
-                "acEffectiveFrequency": 678260.7229444913,
-                "average": -0.92598032804012,
-                "dutyCycle": 0.34,
-                "effectiveFrequency": 678053.8229706035,
+                "acEffectiveFrequency": 678260.7229444911,
+                "average": 0.92598032804012,
+                "dutyCycle": 0.3359375000000011,
+                "effectiveFrequency": 678053.8229706034,
                 "label": "secondaryRectangularWithDeadtime",
-                "negativePeak": -37.60041332041696,
-                "offset": 0,
+                "negativePeak": -18.519606560802387,
+                "offset": 0.0,
                 "peak": 37.60041332041696,
                 "peakToPeak": 56.12001988121935,
-                "positivePeak": 18.519606560802387,
+                "positivePeak": 37.60041332041696,
                 "rms": 25.99193321142009,
-                "thd": 0.6051104699326639
+                "thd": 0.6051104699326638
               },
               "waveform": {
                 "ancillaryLabel": "secondaryRectangularWithDeadtime",
                 "data": [
                   0,
-                  -37.60041332041696,
-                  -37.60041332041696,
-                  18.519606560802387,
-                  18.519606560802387,
+                  37.60041332041696,
+                  37.60041332041696,
+                  -18.519606560802387,
+                  -18.519606560802387,
                   0,
                   0
                 ],
@@ -1442,16 +1442,16 @@
                 ]
               },
               "processed": {
-                "acEffectiveFrequency": 753678.968127646,
-                "average": 3.3459155283746282,
-                "dutyCycle": 0.34,
-                "effectiveFrequency": 629814.4175388481,
+                "acEffectiveFrequency": 753678.9681276459,
+                "average": -3.3459155283746282,
+                "dutyCycle": 0.39062500000000094,
+                "effectiveFrequency": 629814.4175388479,
                 "label": "flybackSecondaryWithDeadtime",
-                "negativePeak": 0,
-                "offset": 0,
+                "negativePeak": -10.689912872749973,
+                "offset": -5.344956436374987,
                 "peak": 10.689912872749973,
                 "peakToPeak": 10.689912872749973,
-                "positivePeak": 10.689912872749973,
+                "positivePeak": 0.0,
                 "rms": 4.882497914842869,
                 "thd": 0.6178839127148761
               },
@@ -1460,7 +1460,7 @@
                 "data": [
                   0,
                   0,
-                  10.793275897982674,
+                  -10.793275897982674,
                   0,
                   0,
                   0
@@ -1613,27 +1613,27 @@
                 ]
               },
               "processed": {
-                "acEffectiveFrequency": 678260.722944491,
-                "average": -0.6285445902632699,
-                "dutyCycle": 0.34,
-                "effectiveFrequency": 678053.8229706031,
+                "acEffectiveFrequency": 678260.7229444913,
+                "average": 0.6285445902632699,
+                "dutyCycle": 0.3359375000000011,
+                "effectiveFrequency": 678053.8229706034,
                 "label": "secondaryRectangularWithDeadtime",
-                "negativePeak": -25.522719725841842,
-                "offset": 0,
+                "negativePeak": -12.570891805265386,
+                "offset": 0.0,
                 "peak": 25.522719725841842,
                 "peakToPeak": 38.09361153110723,
-                "positivePeak": 12.570891805265386,
+                "positivePeak": 25.522719725841842,
                 "rms": 17.643019528395932,
-                "thd": 0.6051104699326637
+                "thd": 0.6051104699326638
               },
               "waveform": {
                 "ancillaryLabel": "secondaryRectangularWithDeadtime",
                 "data": [
                   0,
-                  -25.522719725841842,
-                  -25.522719725841842,
-                  12.570891805265386,
-                  12.570891805265386,
+                  25.522719725841842,
+                  25.522719725841842,
+                  -12.570891805265386,
+                  -12.570891805265386,
                   0,
                   0
                 ],
@@ -1786,25 +1786,25 @@
                 ]
               },
               "processed": {
-                "acEffectiveFrequency": 753678.9681276459,
-                "average": 0.04461220704499505,
-                "dutyCycle": 0.34,
-                "effectiveFrequency": 629814.4175388479,
+                "acEffectiveFrequency": 753678.9681276458,
+                "average": -0.04461220704499505,
+                "dutyCycle": 0.39062500000000094,
+                "effectiveFrequency": 629814.4175388478,
                 "label": "flybackSecondaryWithDeadtime",
-                "negativePeak": 0,
-                "offset": 0,
-                "peak": 0.14253217163666632,
-                "peakToPeak": 0.14253217163666632,
-                "positivePeak": 0.14253217163666632,
+                "negativePeak": -0.14253217163666634,
+                "offset": -0.07126608581833317,
+                "peak": 0.14253217163666634,
+                "peakToPeak": 0.14253217163666634,
+                "positivePeak": 0.0,
                 "rms": 0.06509997219790493,
-                "thd": 0.617883912714876
+                "thd": 0.6178839127148761
               },
               "waveform": {
                 "ancillaryLabel": "flybackSecondaryWithDeadtime",
                 "data": [
                   0,
                   0,
-                  0.14391034530643568,
+                  -0.14391034530643568,
                   0,
                   0,
                   0
@@ -1957,27 +1957,27 @@
                 ]
               },
               "processed": {
-                "acEffectiveFrequency": 678260.722944491,
-                "average": -0.6285445902632699,
-                "dutyCycle": 0.34,
-                "effectiveFrequency": 678053.8229706031,
+                "acEffectiveFrequency": 678260.7229444913,
+                "average": 0.6285445902632699,
+                "dutyCycle": 0.3359375000000011,
+                "effectiveFrequency": 678053.8229706034,
                 "label": "secondaryRectangularWithDeadtime",
-                "negativePeak": -25.522719725841842,
-                "offset": 0,
+                "negativePeak": -12.570891805265386,
+                "offset": 0.0,
                 "peak": 25.522719725841842,
                 "peakToPeak": 38.09361153110723,
-                "positivePeak": 12.570891805265386,
+                "positivePeak": 25.522719725841842,
                 "rms": 17.643019528395932,
-                "thd": 0.6051104699326637
+                "thd": 0.6051104699326638
               },
               "waveform": {
                 "ancillaryLabel": "secondaryRectangularWithDeadtime",
                 "data": [
                   0,
-                  -25.522719725841842,
-                  -25.522719725841842,
-                  12.570891805265386,
-                  12.570891805265386,
+                  25.522719725841842,
+                  25.522719725841842,
+                  -12.570891805265386,
+                  -12.570891805265386,
                   0,
                   0
                 ],
