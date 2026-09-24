@@ -235,4 +235,37 @@ namespace {
         }
     }
 
+
+    // The web isolated buck's simulated operating point (750 kHz, a few hundred uH, ~0.1 A):
+    // small enough that the standard-cores search reaches drum / piece-and-plate cores (DRS 5,
+    // a 1 mm window). Such a core has no gap position; the gap sizing read get_gapping()[0] of
+    // an empty vector (a segfault natively), and its window could not hold the inter-winding
+    // insulation, which threw "Something wrong happened in section dimensions" out of the
+    // whole search. Either one killed the advise.
+    TEST_CASE("Test_Magnetic_Adviser_Isolated_Buck_Survives_Drum_Cores", "[magnetic][adviser][bug][heavy]") {
+        clear_databases();
+        auto& settings = Settings::GetInstance();
+        settings.reset();
+        settings.set_core_adviser_include_distributed_gaps(true);
+        settings.set_core_adviser_include_stacks(true);
+        settings.set_use_toroidal_cores(true);
+        settings.set_use_only_cores_in_stock(true);
+
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "isolated_buck_simulated_inputs.json");
+        std::ifstream file(path);
+        OpenMagnetics::Inputs inputs(json::parse(file));
+
+        MagneticAdviser adviser;
+        adviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        std::map<MagneticFilters, double> weights{{MagneticFilters::COST, 30}, {MagneticFilters::LOSSES, 40}, {MagneticFilters::DIMENSIONS, 30}};
+        auto results = adviser.get_advised_magnetic(inputs, weights, 6);
+        settings.reset();
+
+        REQUIRE(results.size() > 0);
+        for (auto& [mas, scoring] : results) {
+            INFO(mas.get_magnetic().get_reference());
+            CHECK_FALSE(coil_failed_validity_filters(mas));
+        }
+    }
+
 }  // namespace

@@ -64,6 +64,10 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
 
     // 1. Calculate minimum gap: energy storage requirement
     double maxAllowedB = maximum_allowed_magnetic_flux_density(realisticBsat);
+    if (core.get_gapping().empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "calculate_gapping_constraints: core '" + core.get_name().value_or("?") + "' has no gap position to size");
+    }
     double minGap = magneticEnergy.calculate_gap_length_by_magnetic_energy(
         core.get_gapping()[0], maxAllowedB, requiredMagneticEnergy);
     constraints.minGap = minGap;
@@ -318,6 +322,17 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
         // Process core data if needed
         if (!core.get_processed_description()) {
             core.process_data();
+        }
+
+        // A drum / piece-and-plate core (e.g. DRS 5/3.7/...) carries no gap position at all:
+        // like a toroid, its reluctance is set by its geometry, not by a ground gap. It used
+        // to reach calculate_gapping_constraints, which read get_gapping()[0] of an empty
+        // vector (undefined behaviour: a segfault natively, whatever it happened to read in
+        // the browser engine) and killed the whole advise of the isolated buck at 750 kHz.
+        if (core.get_gapping().empty()) {
+            core.set_name(core.get_name().value_or("unnamed") + " ungapped");
+            (*magneticsWithScoring)[i].first.set_core(core);
+            continue;
         }
 
         // Calculate gapping constraints. ABT #774: the sizing itself can already prove the

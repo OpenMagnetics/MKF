@@ -10332,6 +10332,17 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                     }
                 }
 
+                if (windingOrientation == WindingOrientation::OVERLAPPING && currentSectionWidth <= 0) {
+                    // The section's share of the window is smaller than the insulation carved
+                    // out of it (add_insulation_to_sections takes half of each inter-winding
+                    // insulation from both neighbours): the insulation alone does not fit this
+                    // window. A geometry verdict, like the margin checks above, not an engine
+                    // error; it used to throw, and one tiny drum core (1 mm window) aborted the
+                    // magnetic adviser's whole search.
+                    _lastFitFailure = "section '" + section.get_name() + "' has no width left after the inter-winding insulation: " +
+                                      std::to_string(currentSectionWidth * 1e3) + " mm of a " + std::to_string(availableWidth * 1e3) + " mm window";
+                    return false;
+                }
                 if (section.get_dimensions()[0] < 0) {
                     throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
                                              " availableWidth: " + std::to_string(availableWidth) +
