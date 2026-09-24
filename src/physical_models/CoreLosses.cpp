@@ -2738,9 +2738,36 @@ SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_l
 }
 
 double CoreLossesLossFactorModel::calculate_magnetizing_inductance_from_excitation(Core core, OperatingPointExcitation excitation, double temperature) {
+    auto coreMaterial = core.resolve_material();
+    std::string materialName = coreMaterial.get_name();
+
+    if (!excitation.get_magnetizing_current()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Core material " + materialName + " (loss-factor model): missing magnetizing current in excitation");
+    }
+    if (!excitation.get_magnetizing_current()->get_processed()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Core material " + materialName + " (loss-factor model): magnetizing current has not been processed");
+    }
+    if (!excitation.get_magnetizing_current()->get_processed()->get_peak()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Core material " + materialName + " (loss-factor model): magnetizing current's processed data has no peak");
+    }
+    if (!excitation.get_magnetic_flux_density()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Core material " + materialName + " (loss-factor model): missing magnetic flux density in excitation");
+    }
+    if (!excitation.get_magnetic_flux_density()->get_processed()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Core material " + materialName + " (loss-factor model): magnetic flux density has not been processed");
+    }
+    if (!excitation.get_magnetic_flux_density()->get_processed()->get_peak()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Core material " + materialName + " (loss-factor model): magnetic flux density's processed data has no peak");
+    }
+
     auto currentPeak = excitation.get_magnetizing_current()->get_processed()->get_peak().value();
     auto magneticFluxDensityPeak = excitation.get_magnetic_flux_density()->get_processed()->get_peak().value();
-    auto coreMaterial = core.resolve_material();
     double effectiveArea = core.get_processed_description().value().get_effective_parameters().get_effective_area();
 
     double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);

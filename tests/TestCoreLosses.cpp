@@ -3927,6 +3927,60 @@ TEST_CASE("Test_Core_Losses_Molded_Per_Region_Split", "[physical-model][core-los
     settings.reset();
 }
 
+// ABT #1379: an excitation whose magnetizing current has an RMS value (enough to pass
+// get_core_losses's own guard) but no peak used to reach a bare .value() on an empty
+// std::optional inside calculate_magnetizing_inductance_from_excitation and crash with
+// bad_optional_access. It must throw a named InvalidInputException instead.
+//
+// Calls CoreLossesLossFactorModel directly rather than going through
+// CoreLosses::calculate_core_losses: DL5 publishes both a steinmetz and a
+// lossFactor volumetric-losses method, and the top-level dispatcher's material
+// lookup prefers steinmetz (which never touches magnetizing current), so it
+// would never exercise the function under test.
+TEST_CASE("Test_Loss_Factor_Model_Throws_On_Missing_Peak_Instead_Of_Crashing", "[physical-model][core-losses][loss-factor][abt-1379]") {
+    settings.reset();
+    clear_databases();
+    auto core = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "DL5");
+
+    json baseExcitationJson;
+    baseExcitationJson["frequency"] = 100000;
+    baseExcitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+    baseExcitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    baseExcitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+    baseExcitationJson["magneticFluxDensity"]["processed"]["peak"] = 0.05;
+    baseExcitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 0.1;
+
+    // Magnetizing current has an RMS but no peak: passes get_core_losses's own
+    // get_magnetizing_current()/get_processed() guards, then used to crash inside
+    // calculate_magnetizing_inductance_from_excitation instead of throwing.
+    json noPeakExcitationJson = baseExcitationJson;
+    noPeakExcitationJson["magnetizingCurrent"]["processed"]["dutyCycle"] = 0.5;
+    noPeakExcitationJson["magnetizingCurrent"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    noPeakExcitationJson["magnetizingCurrent"]["processed"]["offset"] = 0;
+    noPeakExcitationJson["magnetizingCurrent"]["processed"]["rms"] = 0.1;
+    OperatingPointExcitation noPeakExcitation(noPeakExcitationJson);
+    REQUIRE_THROWS_WITH(CoreLossesLossFactorModel().get_core_losses(core, noPeakExcitation, 25),
+        Catch::Matchers::ContainsSubstring("magnetizing current's processed data has no peak"));
+
+    // Magnetic flux density itself missing a peak must also throw, not crash.
+    json noBPeakExcitationJson;
+    noBPeakExcitationJson["frequency"] = 100000;
+    noBPeakExcitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+    noBPeakExcitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    noBPeakExcitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+    noBPeakExcitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 0.1;
+    noBPeakExcitationJson["magnetizingCurrent"]["processed"]["dutyCycle"] = 0.5;
+    noBPeakExcitationJson["magnetizingCurrent"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    noBPeakExcitationJson["magnetizingCurrent"]["processed"]["offset"] = 0;
+    noBPeakExcitationJson["magnetizingCurrent"]["processed"]["rms"] = 0.1;
+    noBPeakExcitationJson["magnetizingCurrent"]["processed"]["peak"] = 0.2;
+    OperatingPointExcitation noBPeakExcitation(noBPeakExcitationJson);
+    REQUIRE_THROWS_WITH(CoreLossesLossFactorModel().get_core_losses(core, noBPeakExcitation, 25),
+        Catch::Matchers::ContainsSubstring("magnetic flux density's processed data has no peak"));
+
+    settings.reset();
+}
+
 // ABT #1344: the Roshen classical eddy current term used the core's own bulk
 // cross-section unconditionally, which is the right length scale for a
 // sintered/solid material (ferrite, powder) but wrong by 2-3 orders of
