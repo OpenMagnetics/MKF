@@ -258,6 +258,71 @@ TEST_CASE("MagneticAdviser available cores advises a buck inductor from the stoc
     settings.reset();
 }
 
+// Field report (ABT #1410/#1411): the secondary resonant inductor of a 30 kW CLLC, one
+// winding, 33.5 uH +/-15 %, 41 x 43 x 44 mm envelope, two measured operating points of the
+// resonant tank current (118-143 kHz, no DC).
+static OpenMagnetics::Inputs load_cllc_resonant_inductor_inputs() {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1410_cllc_resonant_inductor_inputs.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    return OpenMagnetics::Inputs(nlohmann::json::parse(file));
+}
+
+// ABT #1410: standard-cores design mode returned an ER 51/10/38 (51 mm wide) inside a
+// 41 x 43 x 44 mm envelope, because only the height was ever checked.
+TEST_CASE("MagneticAdviser standard cores keeps the wound magnetic inside the maximum dimensions",
+          "[adviser][magnetic-adviser][standard-cores][abt-1410]") {
+    settings.reset();
+    clear_databases();
+    auto inputs = load_cllc_resonant_inductor_inputs();
+    auto maximumDimensions = inputs.get_design_requirements().get_maximum_dimensions().value();
+
+    OpenMagnetics::MagneticAdviser adviser;
+    adviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    auto results = adviser.get_advised_magnetic(inputs, 10);
+
+    REQUIRE(!results.empty());
+    for (auto& [mas, scoring] : results) {
+        auto& magnetic = mas.get_mutable_magnetic();
+        auto dimensions = magnetic.get_maximum_dimensions();
+        INFO(magnetic.get_reference() << ": " << dimensions[0] * 1000 << " x " << dimensions[1] * 1000 << " x " << dimensions[2] * 1000 << " mm");
+        CHECK(magnetic.fits(maximumDimensions, true));
+    }
+    settings.reset();
+}
+
+// ABT #1411: available-cores mode returned powder toroids at 4.6-10.4 uH against the
+// 28.475-38.525 uH requirement. Two defects: the single-winding resonant inductor was
+// classified as a transformer by its converter topology (turns seeded from volt-seconds),
+// and the available-cores power path had no inductance gate to catch the result.
+TEST_CASE("MagneticAdviser available cores returns only designs inside the magnetizing inductance band",
+          "[adviser][magnetic-adviser][available-cores][abt-1411]") {
+    settings.reset();
+    clear_databases();
+    auto inputs = load_cllc_resonant_inductor_inputs();
+    const auto& requirement = inputs.get_design_requirements().get_magnetizing_inductance();
+    double minimum = requirement.get_minimum().value();
+    double maximum = requirement.get_maximum().value();
+
+    OpenMagnetics::MagneticAdviser adviser;
+    adviser.set_core_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto results = adviser.get_advised_magnetic(inputs, 10);
+
+    REQUIRE(!results.empty());
+    for (auto& [mas, scoring] : results) {
+        REQUIRE(mas.get_outputs().size() == inputs.get_operating_points().size());
+        for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_outputs().size(); ++operatingPointIndex) {
+            auto inductance = mas.get_outputs()[operatingPointIndex].get_inductance();
+            REQUIRE(inductance);
+            double magnetizingInductance = resolve_dimensional_values(inductance->get_magnetizing_inductance().get_magnetizing_inductance());
+            INFO(mas.get_mutable_magnetic().get_reference() << " at operating point " << operatingPointIndex << ": " << magnetizingInductance * 1e6 << " uH");
+            CHECK(magnetizingInductance >= minimum);
+            CHECK(magnetizingInductance <= maximum);
+        }
+    }
+    settings.reset();
+}
+
 TEST_CASE("MagneticAdviser 3-winding end-to-end top-3 snapshot",
           "[adviser][magnetic-adviser][characterisation][heavy][end-to-end]") {
     settings.reset();

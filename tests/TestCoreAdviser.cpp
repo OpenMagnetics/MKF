@@ -3166,4 +3166,35 @@ TEST_CASE("Test_Abt774_Gap_Infeasible_Candidate_Is_Rejected_Not_Thrown", "[advis
     settings.reset();
 }
 
+// ABT #1410: the design-mode dataset read only the HEIGHT of maximumDimensions, so a
+// 41 x 43 x 44 mm envelope admitted an ER 51/10/38 (51 mm wide). Field report: the
+// secondary resonant inductor of a 30 kW CLLC, one winding, 33.5 uH +/-15 %.
+TEST_CASE("Test_CoreAdviser_Standard_Cores_Respect_Every_Axis_Of_Maximum_Dimensions",
+          "[adviser][core-adviser][standard-cores][abt1410]") {
+    settings.reset();
+    clear_databases();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1410_cllc_resonant_inductor_inputs.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    OpenMagnetics::Inputs inputs(json::parse(file));
+    auto maximumDimensions = inputs.get_design_requirements().get_maximum_dimensions().value();
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights{
+        {CoreAdviser::CoreAdviserFilters::COST, 1},
+        {CoreAdviser::CoreAdviserFilters::EFFICIENCY, 1},
+        {CoreAdviser::CoreAdviserFilters::DIMENSIONS, 1}};
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    auto results = coreAdviser.get_advised_core(inputs, weights, 20);
+
+    REQUIRE(!results.empty());
+    for (auto& [mas, scoring] : results) {
+        auto core = mas.get_magnetic().get_core();
+        auto dimensions = core.get_maximum_dimensions();
+        INFO(core.get_name().value_or("?") << ": " << dimensions[0] * 1000 << " x " << dimensions[1] * 1000 << " x " << dimensions[2] * 1000 << " mm");
+        CHECK(core.fits(maximumDimensions, true));
+    }
+    settings.reset();
+}
+
 }  // namespace
