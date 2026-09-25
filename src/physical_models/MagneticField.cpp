@@ -28,9 +28,101 @@ namespace std {
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include <list>
+#include <mutex>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
+
+namespace {
+
+// Everything the turn-to-point kernel sum reads besides the currents: the mesh (every
+// field-point attribute but its value), the winding of each turn filament, the field model,
+// the wires and the core geometry the exclusions test. Compared exactly; the hash only
+// narrows the search.
+struct TurnSumsKey {
+    std::vector<double> numbers;
+    std::vector<std::string> strings;
+    bool operator==(const TurnSumsKey&) const = default;
+};
+
+size_t hash_turn_sums_key(const TurnSumsKey& key) {
+    // FNV-1a over the bytes.
+    uint64_t hash = 1469598103934665603ULL;
+    auto mix = [&hash](const void* data, size_t size) {
+        auto bytes = static_cast<const unsigned char*>(data);
+        for (size_t index = 0; index < size; ++index) {
+            hash ^= bytes[index];
+            hash *= 1099511628211ULL;
+        }
+    };
+    mix(key.numbers.data(), key.numbers.size() * sizeof(double));
+    for (const auto& text : key.strings) {
+        mix(text.data(), text.size());
+        mix("\0", 1);
+    }
+    return static_cast<size_t>(hash);
+}
+
+struct TurnSumsEntry {
+    size_t hash;
+    TurnSumsKey key;
+    // Per winding, the filament position its currents are measured against; none when the
+    // winding carried no current when the sums were built.
+    std::vector<std::optional<size_t>> anchorPerWinding;
+    // Per filament position: its current over its winding's anchor current.
+    std::vector<double> relativeCurrentPerPosition;
+    // Per induced point, per winding: (Hx, Hy) of the winding's turns with unit anchor current.
+    std::vector<std::vector<std::pair<double, double>>> unitFieldPerInducedPointPerWinding;
+    size_t bytes;
+};
+
+struct TurnSumsCache {
+    std::mutex mutex;
+    std::list<TurnSumsEntry> entries;  // most recently used first
+    size_t bytes = 0;
+    size_t hits = 0;
+    size_t misses = 0;
+};
+
+TurnSumsCache& turn_sums_cache() {
+    static TurnSumsCache cache;
+    return cache;
+}
+
+size_t turn_sums_entry_bytes(const TurnSumsEntry& entry) {
+    size_t bytes = sizeof(TurnSumsEntry) + entry.key.numbers.size() * sizeof(double) +
+                   entry.anchorPerWinding.size() * sizeof(std::optional<size_t>) + entry.relativeCurrentPerPosition.size() * sizeof(double);
+    for (const auto& text : entry.key.strings) {
+        bytes += sizeof(std::string) + text.size();
+    }
+    for (const auto& perWinding : entry.unitFieldPerInducedPointPerWinding) {
+        bytes += sizeof(perWinding) + perWinding.size() * sizeof(std::pair<double, double>);
+    }
+    return bytes;
+}
+
+// Two currents that should be equal up to rounding.
+bool currents_agree(double actual, double expected) {
+    return std::abs(actual - expected) <= 1e-9 * std::max(std::abs(actual), std::abs(expected));
+}
+
+} // namespace
+
+MagneticField::TurnSumsCacheStatistics MagneticField::get_turn_sums_cache_statistics() {
+    auto& cache = turn_sums_cache();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    return {cache.hits, cache.misses, cache.entries.size(), cache.bytes};
+}
+
+void MagneticField::clear_turn_sums_cache() {
+    auto& cache = turn_sums_cache();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    cache.entries.clear();
+    cache.bytes = 0;
+    cache.hits = 0;
+    cache.misses = 0;
+}
 
 SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magnetizingCurrent,
                                                           double reluctance,
@@ -555,6 +647,256 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         }
     }
 
+    // The field of the turns, summed once for every harmonic. The mesher places each turn's
+    // filaments identically at every harmonic and gives filament j of winding w the current
+    // base_j * a_w(h): its mesh weight, its turn's current divider and its winding's direction,
+    // times the winding's amplitude at that harmonic. Every point-pair kernel is linear in that
+    // current and takes no frequency, so winding w's field at an induced point is its anchor
+    // filament's current at harmonic h times its field with unit anchor current, and the
+    // induced x inducing kernel sum -- the whole cost for a winding of many turns -- runs once
+    // instead of once per harmonic. Both properties are checked on the mesh, not assumed: a mesh that breaks either
+    // throws. Built on first use: the ALBACH model sums its own way and never needs it. The sums
+    // per unit current depend only on the mesh, so they are kept between calls (bounded by
+    // Settings::magnetic_field_turn_sums_cache_bytes): re-evaluating a part skips the kernel sum.
+    struct TurnFieldSums {
+        // Per induced point (in inducedFields order), per winding: (Hx, Hy) of that winding's
+        // turns with its anchor filament carrying unit current.
+        std::vector<std::vector<std::pair<double, double>>> fieldPerInducedPointPerWinding;
+        // Per harmonic, per winding: the anchor filament's current at that harmonic.
+        std::vector<std::vector<double>> scalePerHarmonicPerWinding;
+    };
+    std::optional<TurnFieldSums> turnFieldSums;
+    auto build_turn_field_sums = [&]() -> TurnFieldSums {
+        size_t numberHarmonics = inducingFields.size();
+        size_t numberWindings = magnetic.get_coil().get_functional_description().size();
+
+        // The turn filaments of each harmonic, which must be the same filaments in the same order.
+        std::vector<std::vector<size_t>> turnPointsPerHarmonic(numberHarmonics);
+        for (size_t harmonicIndex = 0; harmonicIndex < numberHarmonics; ++harmonicIndex) {
+            const auto& data = inducingFields[harmonicIndex].get_data();
+            for (size_t pointIndex = 0; pointIndex < data.size(); ++pointIndex) {
+                if (data[pointIndex].get_turn_index()) {
+                    turnPointsPerHarmonic[harmonicIndex].push_back(pointIndex);
+                }
+            }
+        }
+        const auto& firstData = inducingFields[0].get_data();
+        const auto& firstTurnPoints = turnPointsPerHarmonic[0];
+        for (size_t harmonicIndex = 1; harmonicIndex < numberHarmonics; ++harmonicIndex) {
+            const auto& data = inducingFields[harmonicIndex].get_data();
+            const auto& turnPoints = turnPointsPerHarmonic[harmonicIndex];
+            if (turnPoints.size() != firstTurnPoints.size()) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Magnetic field: the coil mesh has " + std::to_string(turnPoints.size()) + " turn filaments at " +
+                                           std::to_string(inducingFields[harmonicIndex].get_frequency()) + " Hz but " + std::to_string(firstTurnPoints.size()) + " at the first harmonic");
+            }
+            for (size_t position = 0; position < turnPoints.size(); ++position) {
+                const auto& point = data[turnPoints[position]];
+                const auto& firstPoint = firstData[firstTurnPoints[position]];
+                if (point.get_point() != firstPoint.get_point() || point.get_turn_index() != firstPoint.get_turn_index()) {
+                    throw CalculationException(ErrorCode::CALCULATION_ERROR, "Magnetic field: turn filament " + std::to_string(position) + " of the coil mesh moves between harmonics");
+                }
+            }
+        }
+        size_t numberPositions = firstTurnPoints.size();
+        std::vector<size_t> windingPerPosition(numberPositions);
+        for (size_t position = 0; position < numberPositions; ++position) {
+            windingPerPosition[position] = windingIndexPerTurn[static_cast<size_t>(firstData[firstTurnPoints[position]].get_turn_index().value())];
+        }
+        auto value_at = [&](size_t harmonicIndex, size_t position) {
+            return inducingFields[harmonicIndex].get_data()[turnPointsPerHarmonic[harmonicIndex][position]].get_value();
+        };
+
+        // The induced points must also be the same at every harmonic.
+        const auto& inducedData = inducedFields[0].get_data();
+        for (size_t harmonicIndex = 1; harmonicIndex < inducedFields.size(); ++harmonicIndex) {
+            const auto& data = inducedFields[harmonicIndex].get_data();
+            if (data.size() != inducedData.size()) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Magnetic field: the induced mesh has a different number of points at harmonic " + std::to_string(harmonicIndex));
+            }
+            for (size_t pointIndex = 0; pointIndex < data.size(); ++pointIndex) {
+                if (data[pointIndex].get_point() != inducedData[pointIndex].get_point() || data[pointIndex].get_turn_index() != inducedData[pointIndex].get_turn_index() ||
+                    data[pointIndex].get_label() != inducedData[pointIndex].get_label()) {
+                    throw CalculationException(ErrorCode::CALCULATION_ERROR, "Magnetic field: induced point " + std::to_string(pointIndex) + " moves between harmonics");
+                }
+            }
+        }
+
+        // What the sum depends on besides the currents.
+        TurnSumsKey key;
+        auto add_point = [&key](const FieldPoint& point) {
+            const auto& coordinates = point.get_point();
+            key.numbers.push_back(static_cast<double>(coordinates.size()));
+            key.numbers.insert(key.numbers.end(), coordinates.begin(), coordinates.end());
+            for (const auto& optionalNumber : {point.get_turn_index() ? std::optional<double>(static_cast<double>(point.get_turn_index().value())) : std::nullopt,
+                                               point.get_turn_length(), point.get_rotation()}) {
+                key.numbers.push_back(optionalNumber ? 1 : 0);
+                key.numbers.push_back(optionalNumber.value_or(0));
+            }
+            key.strings.push_back(point.get_label() ? "1" + point.get_label().value() : "0");
+        };
+        key.numbers = {static_cast<double>(_magneticFieldStrengthModel), multiWindowCore ? 1.0 : 0.0, coreColumnWidth, coreWidth,
+                       static_cast<double>(coreShapeFamily), _model->_windingWindowBreadth, static_cast<double>(numberWindings)};
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            json wireJson;
+            to_json(wireJson, _wirePerWinding[windingIndex]);
+            key.strings.push_back(wireJson.dump());
+            key.numbers.push_back(_wireMaxOuterWidth[windingIndex]);
+            key.numbers.push_back(_wireMaxOuterHeight[windingIndex]);
+        }
+        key.numbers.push_back(static_cast<double>(numberPositions));
+        for (size_t position = 0; position < numberPositions; ++position) {
+            add_point(firstData[firstTurnPoints[position]]);
+            key.numbers.push_back(static_cast<double>(windingPerPosition[position]));
+        }
+        key.numbers.push_back(static_cast<double>(inducedData.size()));
+        for (const auto& inducedPoint : inducedData) {
+            add_point(inducedPoint);
+        }
+        size_t keyHash = hash_turn_sums_key(key);
+
+        // The anchor currents of this operating point, per harmonic and winding.
+        auto scales_for = [&](const std::vector<std::optional<size_t>>& anchorPerWinding) {
+            std::vector<std::vector<double>> scalePerHarmonicPerWinding(numberHarmonics, std::vector<double>(numberWindings, 0.0));
+            for (size_t harmonicIndex = 0; harmonicIndex < numberHarmonics; ++harmonicIndex) {
+                for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                    if (anchorPerWinding[windingIndex]) {
+                        scalePerHarmonicPerWinding[harmonicIndex][windingIndex] = value_at(harmonicIndex, anchorPerWinding[windingIndex].value());
+                    }
+                }
+            }
+            return scalePerHarmonicPerWinding;
+        };
+        // Do this operating point's currents stand to the anchors as the stored ones did?
+        auto currents_fit = [&](const TurnSumsEntry& entry) {
+            for (size_t position = 0; position < numberPositions; ++position) {
+                const auto& anchor = entry.anchorPerWinding[windingPerPosition[position]];
+                for (size_t harmonicIndex = 0; harmonicIndex < numberHarmonics; ++harmonicIndex) {
+                    double actual = value_at(harmonicIndex, position);
+                    double expected = anchor ? entry.relativeCurrentPerPosition[position] * value_at(harmonicIndex, anchor.value()) : 0.0;
+                    if (!currents_agree(actual, expected)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+
+        size_t cacheLimit = settings.get_magnetic_field_turn_sums_cache_bytes();
+        auto& cache = turn_sums_cache();
+        if (cacheLimit > 0) {
+            std::lock_guard<std::mutex> lock(cache.mutex);
+            for (auto entry = cache.entries.begin(); entry != cache.entries.end(); ++entry) {
+                if (entry->hash != keyHash || !(entry->key == key)) {
+                    continue;
+                }
+                if (currents_fit(*entry)) {
+                    cache.entries.splice(cache.entries.begin(), cache.entries, entry);
+                    ++cache.hits;
+                    return {entry->unitFieldPerInducedPointPerWinding, scales_for(entry->anchorPerWinding)};
+                }
+                // Same mesh, currents distributed differently: summed afresh and replaced below.
+                cache.bytes -= entry->bytes;
+                cache.entries.erase(entry);
+                break;
+            }
+            ++cache.misses;
+        }
+
+        // Per winding: the filament and harmonic carrying its largest current. Every harmonic's
+        // currents must be proportional to that harmonic's.
+        TurnSumsEntry entry;
+        entry.hash = keyHash;
+        entry.anchorPerWinding.assign(numberWindings, std::nullopt);
+        entry.relativeCurrentPerPosition.assign(numberPositions, 0.0);
+        std::vector<size_t> referenceHarmonicPerWinding(numberWindings, 0);
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            double largest = 0;
+            for (size_t harmonicIndex = 0; harmonicIndex < numberHarmonics; ++harmonicIndex) {
+                for (size_t position = 0; position < numberPositions; ++position) {
+                    if (windingPerPosition[position] == windingIndex && std::abs(value_at(harmonicIndex, position)) > largest) {
+                        largest = std::abs(value_at(harmonicIndex, position));
+                        referenceHarmonicPerWinding[windingIndex] = harmonicIndex;
+                        entry.anchorPerWinding[windingIndex] = position;
+                    }
+                }
+            }
+        }
+        for (size_t position = 0; position < numberPositions; ++position) {
+            const auto& anchor = entry.anchorPerWinding[windingPerPosition[position]];
+            if (anchor) {
+                size_t reference = referenceHarmonicPerWinding[windingPerPosition[position]];
+                entry.relativeCurrentPerPosition[position] = value_at(reference, position) / value_at(reference, anchor.value());
+            }
+        }
+        if (!currents_fit(entry)) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Magnetic field: the currents of a winding's turn filaments are not proportional across harmonics, "
+                                       "so one field sum cannot serve every harmonic");
+        }
+
+        // The kernel sum with unit anchor current, with the same exclusions the per-harmonic
+        // loop applies to a turn.
+        entry.unitFieldPerInducedPointPerWinding.assign(inducedData.size(), std::vector<std::pair<double, double>>(numberWindings, {0.0, 0.0}));
+        for (size_t inducedIndex = 0; inducedIndex < inducedData.size(); ++inducedIndex) {
+            const auto& inducedFieldPoint = inducedData[inducedIndex];
+            // Width samples receive no turn field (the fringing-only rule of the loop below).
+            if (inducedFieldPoint.get_label() && inducedFieldPoint.get_label().value() == "widthsample") {
+                continue;
+            }
+            bool inducedPointInsideCore = is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily);
+            if (!inducedFieldPoint.get_turn_index() && inducedPointInsideCore) {
+                continue;
+            }
+            auto& fieldPerWinding = entry.unitFieldPerInducedPointPerWinding[inducedIndex];
+            for (size_t position = 0; position < numberPositions; ++position) {
+                size_t windingIndex = windingPerPosition[position];
+                if (!entry.anchorPerWinding[windingIndex]) {
+                    continue;
+                }
+                size_t reference = referenceHarmonicPerWinding[windingIndex];
+                const auto& inducingFieldPoint = inducingFields[reference].get_data()[turnPointsPerHarmonic[reference][position]];
+                if (multiWindowCore && inducingFieldPoint.get_point()[0] * inducedFieldPoint.get_point()[0] < 0) {
+                    continue;
+                }
+                if (inducedFieldPoint.get_turn_index() && inducedFieldPoint.get_turn_index().value() == inducingFieldPoint.get_turn_index().value()) {
+                    continue;
+                }
+                auto [inducedFieldX, inducedFieldY] = _model->get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, windingIndex);
+                if (std::isnan(inducedFieldX) || std::isnan(inducedFieldY)) {
+                    throw NaNResultException("NaN found in magnetic field calculation");
+                }
+                fieldPerWinding[windingIndex].first += inducedFieldX;
+                fieldPerWinding[windingIndex].second += inducedFieldY;
+            }
+        }
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            if (!entry.anchorPerWinding[windingIndex]) {
+                continue;
+            }
+            double anchorCurrent = value_at(referenceHarmonicPerWinding[windingIndex], entry.anchorPerWinding[windingIndex].value());
+            for (auto& fieldPerWinding : entry.unitFieldPerInducedPointPerWinding) {
+                fieldPerWinding[windingIndex].first /= anchorCurrent;
+                fieldPerWinding[windingIndex].second /= anchorCurrent;
+            }
+        }
+
+        TurnFieldSums sums{entry.unitFieldPerInducedPointPerWinding, scales_for(entry.anchorPerWinding)};
+        if (cacheLimit > 0) {
+            entry.key = std::move(key);
+            entry.bytes = turn_sums_entry_bytes(entry);
+            std::lock_guard<std::mutex> lock(cache.mutex);
+            // A mesh larger than the whole budget is not kept, rather than emptying the cache for it.
+            if (entry.bytes <= cacheLimit) {
+                cache.bytes += entry.bytes;
+                cache.entries.push_front(std::move(entry));
+                while (cache.bytes > cacheLimit) {
+                    cache.bytes -= cache.entries.back().bytes;
+                    cache.entries.pop_back();
+                }
+            }
+        }
+        return sums;
+    };
+
     for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
         std::vector<ComplexFieldPoint> fieldPoints;
         std::vector<ComplexFieldPoint> quadratureFieldPoints;
@@ -802,22 +1144,21 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             }
         }
 
-        // Loop invariants of the point-pair sum below, hoisted: the inducing point's winding (a name lookup)
-        // and, per induced point, whether it lies inside a toroidal core.
-        const auto& inducingData = inducingFields[harmonicIndex].get_data();
-        std::vector<std::optional<size_t>> windingIndexPerInducingPoint(inducingData.size(), std::nullopt);
-        for (size_t inducingIndex = 0; inducingIndex < inducingData.size(); ++inducingIndex) {
-            if (inducingData[inducingIndex].get_turn_index()) {
-                windingIndexPerInducingPoint[inducingIndex] = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingData[inducingIndex].get_turn_index().value()].get_winding());
-            }
+        if (!turnFieldSums) {
+            turnFieldSums = build_turn_field_sums();
         }
+        const auto& scalePerWinding = turnFieldSums->scalePerHarmonicPerWinding[harmonicIndex];
+        const auto& inducingData = inducingFields[harmonicIndex].get_data();
+        // The gap field of this harmonic: the same at every induced point, so computed once.
+        std::optional<double> magneticFieldStrengthGapThisHarmonic;
 
-        for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
+        const auto& inducedDataThisHarmonic = inducedFields[harmonicIndex].get_data();
+        for (size_t inducedIndex = 0; inducedIndex < inducedDataThisHarmonic.size(); ++inducedIndex) {
+            const auto& inducedFieldPoint = inducedDataThisHarmonic[inducedIndex];
             double totalInducedFieldX = 0;
             double totalInducedFieldY = 0;
             double totalQuadratureInducedFieldX = 0;
             double totalQuadratureInducedFieldY = 0;
-            bool inducedPointInsideCore = is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily);
 
             // ROSHEN and SULLIVAN fringing are computed per-point in this loop (not via equivalent current loops)
             // Skip if using ALBACH H-field model since fringing is already added in the ALBACH branch above
@@ -830,28 +1171,30 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                               albachRoutedGapsPending)) {
                 // For the main harmonic we calculate the fringing effect for each gap
                 if (includeFringing && std::abs(inducedFields[harmonicIndex].get_frequency() - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
-                    if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
-                        auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
-                        auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
-                        auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
-                                                                                               resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
-                                                                                               true, includeDcCurrent,
-                                                                               operatingPoint.get_excitations_per_winding().size() > 1);
+                    if (!magneticFieldStrengthGapThisHarmonic) {
+                        if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
+                            auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
+                            auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
+                            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
+                                                                                                   resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
+                                                                                                   true, includeDcCurrent,
+                                                                                   operatingPoint.get_excitations_per_winding().size() > 1);
 
-                        operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
-                        // throw std::runtime_error("Operating point is missing magnetizing current");
+                            operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+                            // throw std::runtime_error("Operating point is missing magnetizing current");
+                        }
+                        if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
+                            auto excitations = operatingPoint.get_excitations_per_winding();
+                            auto magnetizingCurrent = excitations[0].get_magnetizing_current().value();
+                            auto processed = Inputs::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
+                            magnetizingCurrent.set_processed(processed);
+                            excitations[0].set_magnetizing_current(magnetizingCurrent);
+                            operatingPoint.set_excitations_per_winding(excitations);
+                            // throw std::runtime_error("Operating point is missing magnetizing current processed data");
+                        }
+                        magneticFieldStrengthGapThisHarmonic = get_magnetic_field_strength_gap(operatingPoint, magnetic, inducingFields[harmonicIndex].get_frequency());
                     }
-                    if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
-                        auto excitations = operatingPoint.get_excitations_per_winding();
-                        auto magnetizingCurrent = excitations[0].get_magnetizing_current().value();
-                        auto processed = Inputs::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
-                        magnetizingCurrent.set_processed(processed);
-                        excitations[0].set_magnetizing_current(magnetizingCurrent);
-                        operatingPoint.set_excitations_per_winding(excitations);
-                        // throw std::runtime_error("Operating point is missing magnetizing current processed data");
-                    }
-                    double frequency = inducingFields[harmonicIndex].get_frequency();
-                    double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
+                    double magneticFieldStrengthGap = magneticFieldStrengthGapThisHarmonic.value();
 
                     // Multi-column winding: the fringing conventions below are written
                     // for the x>0 window (gaps at x<0 are skipped, edge selection
@@ -907,62 +1250,39 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             // neighbouring flat conductors misread as kA/m of perpendicular field.
             // Fringing contributions (added into totalInducedFieldX/Y above, and the
             // Albach equivalent-current loops, which carry no turn_index) still apply.
-            bool fringingOnlyPoint = inducedFieldPoint.get_label() &&
-                                     inducedFieldPoint.get_label().value() == "widthsample";
+            // The turns' field comes from turnFieldSums (above), which applies this rule,
+            // the multi-column screening and the own-turn and inside-core exclusions.
+            for (size_t windingIndex = 0; windingIndex < scalePerWinding.size(); ++windingIndex) {
+                auto [windingFieldX, windingFieldY] = turnFieldSums->fieldPerInducedPointPerWinding[inducedIndex][windingIndex];
+                // A turn of winding k carries value * exp(j phase_k): in phase and in quadrature.
+                double scale = scalePerWinding[windingIndex];
+                totalInducedFieldX += windingFieldX * scale * inPhaseFactorPerWinding[windingIndex];
+                totalInducedFieldY += windingFieldY * scale * inPhaseFactorPerWinding[windingIndex];
+                totalQuadratureInducedFieldX += windingFieldX * scale * quadratureFactorPerWinding[windingIndex];
+                totalQuadratureInducedFieldY += windingFieldY * scale * quadratureFactorPerWinding[windingIndex];
+            }
 
-            for (size_t inducingIndex = 0; inducingIndex < inducingData.size(); ++inducingIndex) {
-                const auto& inducingFieldPoint = inducingData[inducingIndex];
+            // Sources that are not turns -- equivalent fringing sources -- are summed per harmonic.
+            for (const auto& inducingFieldPoint : inducingData) {
+                if (inducingFieldPoint.get_turn_index()) {
+                    continue;
+                }
                 // Multi-column winding: the main column magnetically screens the two
-                // window sides from each other (the mirror-image walls). A turn on one
-                // side does not directly induce field on the other side; its influence
-                // travels through the shared core flux, which the per-column
-                // reluctance network accounts for.
+                // window sides from each other (the mirror-image walls).
                 if (multiWindowCore &&
                     inducingFieldPoint.get_point()[0] * inducedFieldPoint.get_point()[0] < 0) {
                     continue;
                 }
-                std::optional<size_t> windingIndex = std::nullopt;
-                if (inducingFieldPoint.get_turn_index()) {
-                    if (fringingOnlyPoint) {
-                        continue;
-                    }
-                    windingIndex = windingIndexPerInducingPoint[inducingIndex];
-                }
-                if (inducingFieldPoint.get_turn_index()) {
-                    if (inducedFieldPoint.get_turn_index()) {
-                        if (inducedFieldPoint.get_turn_index().value() == inducingFieldPoint.get_turn_index().value()) {
-                            continue;
-                        }
-                    }
-                    // else if (is_inside_inducing_turns(inducingFieldPoint, inducedFieldPoint, &_wirePerWinding[windingIndex])) {
-                    //     continue;
-                    // }
-                    // else if (is_inside_turns(turns, inducedFieldPoint, _wirePerWinding, magnetic)) {
-                    //     continue;
-                    // }
-                    else if (inducedPointInsideCore) {
-                        continue;
-                    }
-                }
 
-                auto [inducedFieldX, inducedFieldY] = _model->get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, windingIndex);
+                auto [inducedFieldX, inducedFieldY] = _model->get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, std::nullopt);
 
-                if (windingIndex) {
-                    // A turn: its complex current is value * exp(j phase_k).
-                    totalInducedFieldX += inducedFieldX * inPhaseFactorPerWinding[windingIndex.value()];
-                    totalInducedFieldY += inducedFieldY * inPhaseFactorPerWinding[windingIndex.value()];
-                    totalQuadratureInducedFieldX += inducedFieldX * quadratureFactorPerWinding[windingIndex.value()];
-                    totalQuadratureInducedFieldY += inducedFieldY * quadratureFactorPerWinding[windingIndex.value()];
-                }
-                else {
-                    // An equivalent fringing source: the magnetizing field, on the magnetizing
-                    // current's phase.
-                    auto [inPhaseFactor, quadratureFactor] = get_magnetizing_factors();
-                    totalInducedFieldX += inducedFieldX * inPhaseFactor;
-                    totalInducedFieldY += inducedFieldY * inPhaseFactor;
-                    totalQuadratureInducedFieldX += inducedFieldX * quadratureFactor;
-                    totalQuadratureInducedFieldY += inducedFieldY * quadratureFactor;
-                }
+                // An equivalent fringing source: the magnetizing field, on the magnetizing
+                // current's phase.
+                auto [inPhaseFactor, quadratureFactor] = get_magnetizing_factors();
+                totalInducedFieldX += inducedFieldX * inPhaseFactor;
+                totalInducedFieldY += inducedFieldY * inPhaseFactor;
+                totalQuadratureInducedFieldX += inducedFieldX * quadratureFactor;
+                totalQuadratureInducedFieldY += inducedFieldY * quadratureFactor;
                 if (std::isnan(inducedFieldX)) {
                     throw NaNResultException("NaN found in magnetic field calculation");
                 }
@@ -1328,52 +1648,51 @@ ComplexFieldPoint MagneticFieldStrengthDowellModel::get_magnetic_field_strength_
     return magneticFieldStrengthPoint;
 }
 
-ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
-    double Hx;
-    double Hy;
+std::pair<double, double> MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_components_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
+    if (inducingWireIndex && _wirePerWinding[inducingWireIndex.value()].get_type() != WireType::ROUND && _wirePerWinding[inducingWireIndex.value()].get_type() != WireType::LITZ) {
+        auto complexFieldPoint = MagneticFieldStrengthBinnsLawrensonModel().get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
+        return {complexFieldPoint.get_real(), complexFieldPoint.get_imaginary()};
+    }
 
     double turnLength = 1;
     if (inducingFieldPoint.get_turn_length()) {
         turnLength = inducingFieldPoint.get_turn_length().value();
     }
-    double distance = hypot(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0]);
-    // atan2 takes (dy, dx): the arguments were swapped, which mirrors the field about
-    // the line y = x — a point due EAST of the wire got a radial field pointing at the
-    // wire instead of the azimuthal field of a line current. With (dy, dx) the unit
-    // vector (cos(angle - pi/2), sin(angle - pi/2)) is the correct azimuthal direction.
-    double angle = atan2(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0]);
+    const auto& inducedPoint = inducedFieldPoint.get_point();
+    const auto& inducingPoint = inducingFieldPoint.get_point();
+    double distanceX = inducedPoint[0] - inducingPoint[0];
+    double distanceY = inducedPoint[1] - inducingPoint[1];
+    double distance = hypot(distanceY, distanceX);
 
-    if (inducingWireIndex) {
-        if (_wirePerWinding[inducingWireIndex.value()].get_type() != WireType::ROUND && _wirePerWinding[inducingWireIndex.value()].get_type() != WireType::LITZ) {
-            return MagneticFieldStrengthBinnsLawrensonModel().get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
-        }
-        double wireRadius = _wireMaxOuterWidth[inducingWireIndex.value()] / 2;
-        if (distance < wireRadius) {
-            Hx = 0;
-            Hy = 0;
-        }
-        else {
-            // Azimuthal unit vector: with angle = atan2(dy, dx) the correct in-plane rotation is
-            // +pi/2 (not -pi/2), which — together with the leading minus in the module below —
-            // gives the same clockwise field a line current produces in the Binns-Lawrenson model.
-            double ex = cos(angle + std::numbers::pi / 2);
-            double ey = sin(angle + std::numbers::pi / 2);
-            double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * turnLength / hypot(turnLength, distance);
-            Hx = magneticFiledStrengthModule * ex;
-            Hy = magneticFiledStrengthModule * ey;
-        }
+    if (inducingWireIndex && distance < _wireMaxOuterWidth[inducingWireIndex.value()] / 2) {
+        return {0, 0};
+    }
+
+    // The azimuthal field of a line current. Its unit vector is (cos(angle + pi/2),
+    // sin(angle + pi/2)) with angle = atan2(dy, dx), which is (-dy, dx) / distance: the same
+    // direction without an atan2, a cos and a sin per point pair. The leading minus in the
+    // module gives the same clockwise field a line current has in the Binns-Lawrenson model.
+    double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * turnLength / hypot(turnLength, distance);
+    double Hx;
+    double Hy;
+    if (distance > 0) {
+        Hx = magneticFiledStrengthModule * (-distanceY / distance);
+        Hy = magneticFiledStrengthModule * (distanceX / distance);
     }
     else {
-        double ex = cos(angle + std::numbers::pi / 2);
-        double ey = sin(angle + std::numbers::pi / 2);
-        double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * turnLength / hypot(turnLength, distance);
-        Hx = magneticFiledStrengthModule * ex;
-        Hy = magneticFiledStrengthModule * ey;
+        // Coincident points (only reachable for a non-turn source): angle = atan2(0, 0) = 0.
+        Hx = magneticFiledStrengthModule * cos(std::numbers::pi / 2);
+        Hy = magneticFiledStrengthModule * sin(std::numbers::pi / 2);
     }
 
     if (std::isnan(Hx) || std::isnan(Hy)) {
         throw NaNResultException("NaN found in Lammeraner's model for magnetic field");
     }
+    return {Hx, Hy};
+}
+
+ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
+    auto [Hx, Hy] = get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, inducingWireIndex);
 
     ComplexFieldPoint complexFieldPoint;
     complexFieldPoint.set_imaginary(Hy);

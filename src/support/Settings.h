@@ -231,6 +231,11 @@ class Settings
         bool _harmonicAmplitudeThresholdQuickMode = true;
         double _harmonicAmplitudeThreshold;
 
+        // Memory the magnetic field may keep for the turn-field sums of recently evaluated
+        // meshes, so re-evaluating a part (a catalogue search, an operating-point sweep) skips
+        // its turn-to-turn kernel sum. Least recently used first out; 0 keeps nothing.
+        size_t _magneticFieldTurnSumsCacheBytes = 64 * 1024 * 1024;
+
 
         std::vector<CoreLossesModels> _coreLossesModelNames;
 
@@ -596,6 +601,9 @@ class Settings
 
         bool get_harmonic_amplitude_threshold_quick_mode() const;
         void set_harmonic_amplitude_threshold_quick_mode(bool value);
+
+        size_t get_magnetic_field_turn_sums_cache_bytes() const;
+        void set_magnetic_field_turn_sums_cache_bytes(size_t value);
 
         double get_harmonic_amplitude_threshold() const;
         void set_harmonic_amplitude_threshold(double value);

@@ -190,6 +190,7 @@ namespace OpenMagnetics {
 
         _harmonicAmplitudeThresholdQuickMode = true;
         _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
+        _magneticFieldTurnSumsCacheBytes = 64 * 1024 * 1024;
 
         _verbose = false;
 
@@ -1047,6 +1048,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_harmonic_amplitude_threshold_quick_mode(bool value) {
         _harmonicAmplitudeThresholdQuickMode = value;
+    }
+
+    size_t Settings::get_magnetic_field_turn_sums_cache_bytes() const {
+        return _magneticFieldTurnSumsCacheBytes;
+    }
+    void Settings::set_magnetic_field_turn_sums_cache_bytes(size_t value) {
+        _magneticFieldTurnSumsCacheBytes = value;
     }
 
     double Settings::get_harmonic_amplitude_threshold() const {

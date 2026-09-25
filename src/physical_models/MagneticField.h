@@ -84,6 +84,17 @@ class MagneticField {
         static std::shared_ptr<MagneticFieldStrengthFringingEffectModel> factory(MagneticFieldStrengthFringingEffectModels modelName);
         static std::shared_ptr<MagneticFieldStrengthModel> factory(MagneticFieldStrengthModels modelName);
         static std::shared_ptr<MagneticFieldStrengthModel> factory();
+
+        // The turn-field sums kept between calls (Settings::magnetic_field_turn_sums_cache_bytes):
+        // how often a mesh was found, how often it was summed afresh, and what is held now.
+        struct TurnSumsCacheStatistics {
+            size_t hits = 0;
+            size_t misses = 0;
+            size_t entries = 0;
+            size_t bytes = 0;
+        };
+        static TurnSumsCacheStatistics get_turn_sums_cache_statistics();
+        static void clear_turn_sums_cache();
 };
 
 
@@ -138,6 +149,7 @@ class MagneticFieldStrengthLammeranerModel : public MagneticFieldStrengthModel {
     public:
         std::string methodName = "Lammeraner";
         ComplexFieldPoint get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
+        std::pair<double, double> get_magnetic_field_strength_components_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt) override;
 };
 
 
