@@ -374,6 +374,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     MagneticCoreFilterCost filterCost(inputs);
     MagneticCoreFilterLosses filterLosses(inputs, _models);
     MagneticCoreFilterDimensions filterDimensions;
+    MagneticCoreFilterMagneticInductance filterMagneticInductance;
 
     filterAreaProduct.set_scorings(&_scorings);
     filterAreaProduct.set_filter_configuration(&_filterConfiguration);
@@ -385,6 +386,11 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     filterLosses.set_filter_configuration(&_filterConfiguration);
     filterDimensions.set_scorings(&_scorings);
     filterDimensions.set_filter_configuration(&_filterConfiguration);
+    filterMagneticInductance.set_scorings(&_scorings);
+    filterMagneticInductance.set_filter_configuration(&_filterConfiguration);
+    // A stock core's turns are re-seeded on every pass (and the retries below), so a cached
+    // verdict from an earlier seeding would judge a different turn count.
+    filterMagneticInductance.set_cache_usage(false);
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
     magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);  // Fixed weight: pre-filtering criterion, not efficiency scoring
@@ -399,6 +405,14 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     log_stage("Energy Stored filter", magneticsWithScoring.size());
 
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+
+    // ABT #1411: this path had no inductance gate, so a stock core whose seeded turns
+    // miss the required band (powder toroids at 4.6-10.4 uH for a 28.5-38.5 uH spec)
+    // reached the results. Same gate, same place as the standard-cores and fast paths:
+    // after the turns are set, before saturation. Weight 0: a pure gate, so the ranking
+    // of the candidates that already met their band is unchanged.
+    magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0, true);
+    log_stage("Inductance filter", magneticsWithScoring.size());
 
     // Add saturation filter to reject cores that exceed magnetic flux density saturation
     MagneticCoreFilterSaturation filterSaturationAvailable;
@@ -493,6 +507,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         }
 
         add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+        magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0, true);
         magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
         log_stage("retry Saturation (size-bounded)", magneticsWithScoring.size());
 
@@ -511,6 +526,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
                 magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
                 magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
                 add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+                magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0, true);
                 magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
             }
             reducedSaturationMargin = !magneticsWithScoring.empty();

@@ -143,21 +143,10 @@ double CoreAdviser::calculate_gap_for_fringing_factor(double targetFringingFacto
 double CoreAdviser::get_peak_current(Inputs inputs) {
     double peakCurrent = 0.0;
 
-    // For transformer topologies (forward converters), core saturation is driven by
+    // For transformers (forward converters), core saturation is driven by
     // magnetizing current only. The reflected secondary current is balanced and does
     // not contribute to net flux. Using actual current would oversize the core.
-    // When topology is unset, fall back to inductance-based heuristic:
-    // minimum-only inductance = transformer; nominal/max inductance = inductor.
-    auto topology = inputs.get_design_requirements().get_topology();
-    bool isTransformerTopology;
-    if (topology.has_value()) {
-        isTransformerTopology = !is_energy_storing_topology(topology);
-    } else {
-        auto& inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
-        isTransformerTopology = inductanceReq.get_minimum() &&
-                                !inductanceReq.get_nominal() &&
-                                !inductanceReq.get_maximum();
-    }
+    bool isTransformerTopology = !is_inductor(inputs);
 
     for (auto& op : inputs.get_operating_points()) {
         auto excitation = Inputs::get_primary_excitation(op);
@@ -273,9 +262,6 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
     //   (e.g., LLC resonant converter needs controlled magnetizing inductance)
     // - Transformer with minimum-only inductance: NO gap needed (want maximum L)
     //
-    auto topology = inputs.get_design_requirements().get_topology();
-    bool isEnergyStoring = is_energy_storing_topology(topology);
-    
     auto inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
     bool hasNominalInductance = inductanceReq.get_nominal().has_value();
     bool hasMaxInductance = inductanceReq.get_maximum().has_value();
@@ -287,8 +273,9 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
     // - The gap is computed directly: gap = (N² / Lm - R_core) × μ₀ × Ae,
     //   where N comes from the same volt-seconds estimate as add_initial_turns_by_inductance.
     // When only a minimum inductance is specified (want high Lm), no gap is needed.
-    bool isTransformer = topology.has_value() ? !isEnergyStoring :
-        (inductanceReq.get_minimum() && !hasNominalInductance && !hasMaxInductance);
+    // is_inductor, not the topology alone: the resonant inductor of an LLC carries the
+    // converter's topology but is one winding, and must be gapped as an inductor (ABT #1411).
+    bool isTransformer = !is_inductor(inputs);
 
     bool skipGapping = isTransformer && !hasNominalInductance && !hasMaxInductance;
 

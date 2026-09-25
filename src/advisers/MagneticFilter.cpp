@@ -466,24 +466,10 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     // Inductors/Energy-storing: Use full iterative calculation with DC bias
     //   - Account for permeability rolloff with magnetizing current DC offset
     //
-    // Detection priority:
-    // 1. Use topology if specified (most reliable)
-    // 2. Fall back to inductance field heuristic (minimum-only = transformer)
-    //
-    auto topology = inputs->get_design_requirements().get_topology();
-    bool isTransformer;
-    if (windings_on_single_isolation_side(inputs->get_design_requirements().get_isolation_sides())) {
-        // All windings on one isolation side -> (coupled) inductor, never a transformer,
-        // regardless of the converter topology (e.g. Weinberg L1 input coupled inductor).
-        isTransformer = false;
-    } else if (topology.has_value()) {
-        isTransformer = !is_energy_storing_topology(topology);
-    } else {
-        // Legacy heuristic: minimum-only inductance = transformer
-        isTransformer = inputs->get_design_requirements().get_magnetizing_inductance().get_minimum() &&
-                         !inputs->get_design_requirements().get_magnetizing_inductance().get_nominal() &&
-                         !inputs->get_design_requirements().get_magnetizing_inductance().get_maximum();
-    }
+    // Classified by is_inductor, the predicate the turn seeder and the saturation filter use:
+    // a local copy of its tiers here let the gate judge a design by a different rule than
+    // the seeder that sized it.
+    bool isTransformer = !is_inductor(*inputs);
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];

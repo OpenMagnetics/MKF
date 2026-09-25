@@ -127,12 +127,34 @@ inline bool windings_on_single_isolation_side(const std::optional<std::vector<Is
 // turns LOWER B, so they must not. Every one of those sites — plus the
 // saturation filter and the CoreAdviser turn seeder — must use THIS predicate,
 // or they disagree on which candidates to saturation-check. Detection tiers
-// (most reliable first): (1) all windings on one isolation side ⇒ inductor;
-// (2) topology, if specified; (3) legacy heuristic — a minimum-only inductance
-// spec ("at least L") is a transformer's magnetizing inductance, anything with
-// a nominal or maximum is a specific energy-storage target ⇒ inductor.
+// (most reliable first): (0) a single winding ⇒ inductor; (1) all windings on
+// one isolation side ⇒ inductor; (2) topology, if specified; (3) legacy
+// heuristic — a minimum-only inductance spec ("at least L") is a transformer's
+// magnetizing inductance, anything with a nominal or maximum is a specific
+// energy-storage target ⇒ inductor.
+//
+// Tier 0 comes before the topology: designRequirements.topology names the
+// CONVERTER, not the component. The resonant inductor of an LLC/CLLC carries
+// the converter's topology but has one winding; classified as a transformer it
+// was seeded with volt-seconds turns at B_max and left ungapped, missing its
+// inductance band by 3-6x (ABT #1411).
+inline bool is_single_winding_design(const Inputs& inputs) {
+    if (!inputs.get_design_requirements().get_turns_ratios().empty()) {
+        return false;
+    }
+    for (const auto& operatingPoint : inputs.get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() > 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
 inline bool is_inductor(const Inputs& inputs) {
     const auto& designRequirements = inputs.get_design_requirements();
+    if (is_single_winding_design(inputs)) {
+        return true;
+    }
     if (windings_on_single_isolation_side(designRequirements.get_isolation_sides())) {
         return true;
     }
