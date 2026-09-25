@@ -97,6 +97,19 @@ WoundCandidateOutcome process_wound_candidate(
         return WoundCandidateOutcome::Skipped;
     }
 
+    // The wound magnetic against the full envelope (ABT #1410). The CoreAdviser only checked
+    // the bare core; the coil can make the assembly larger, notably around a toroid.
+    {
+        MagneticFilterMaximumDimensions maximumDimensionsFilter;
+        auto magnetic = mas.get_magnetic();
+        auto [fits, distance] = maximumDimensionsFilter.evaluate_magnetic(&magnetic, &mas.get_mutable_inputs());
+        if (!fits) {
+            logEntry("MagneticAdviser: dropping '" + magnetic.get_reference()
+                     + "' — wound magnetic exceeds the maximum dimensions", "MagneticAdviser", 2);
+            return WoundCandidateOutcome::Skipped;
+        }
+    }
+
     if (previousCoilIncludeAdditionalCoordinates) {
         // RAII (ABT #113 sweep): delimit_and_compact can throw; the manual
         // set-back-to-false would then be skipped.

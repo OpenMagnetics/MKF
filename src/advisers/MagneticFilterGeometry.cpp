@@ -137,12 +137,32 @@ std::pair<bool, double> MagneticFilterMaximumDimensions::evaluate_magnetic(Magne
     if (inputs->get_design_requirements().get_maximum_dimensions()) {
         auto maximumDimensions = inputs->get_design_requirements().get_maximum_dimensions().value();
         auto magneticDimensions = magnetic->get_maximum_dimensions();
-        scoring = sqrt(pow(maximumDimensions.get_width().value() - magneticDimensions[0], 2) + pow(maximumDimensions.get_height().value() - magneticDimensions[1], 2)+ pow(maximumDimensions.get_depth().value() - magneticDimensions[2], 2));
+        // Only the axes the envelope states: a height-only limit (the common PCB case) left
+        // width and depth disengaged, and reading them threw bad_optional_access.
+        double squaredDistance = 0;
+        if (maximumDimensions.get_width()) {
+            squaredDistance += pow(maximumDimensions.get_width().value() - magneticDimensions[0], 2);
+        }
+        if (maximumDimensions.get_height()) {
+            squaredDistance += pow(maximumDimensions.get_height().value() - magneticDimensions[1], 2);
+        }
+        if (maximumDimensions.get_depth()) {
+            squaredDistance += pow(maximumDimensions.get_depth().value() - magneticDimensions[2], 2);
+        }
+        scoring = sqrt(squaredDistance);
         if (!magnetic->fits(maximumDimensions, true)) {
             valid = false;
         }
     }
     return {valid, scoring};
+}
+
+bool MagneticFilterMaximumDimensions::core_fits(Core& core, const Inputs& inputs) {
+    auto maximumDimensions = inputs.get_design_requirements().get_maximum_dimensions();
+    if (!maximumDimensions) {
+        return true;
+    }
+    return core.fits(maximumDimensions.value(), true);
 }
 
 std::pair<bool, double> MagneticFilterVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {

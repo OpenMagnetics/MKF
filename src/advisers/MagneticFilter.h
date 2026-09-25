@@ -307,6 +307,9 @@ class MagneticFilterMaximumDimensions : public MagneticFilter {
         MagneticFilterMaximumDimensions() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
         bool applies_to(Magnetic* magnetic) const override;
+        // The same envelope, rotation allowed, for a bare core before any coil exists: a
+        // necessary condition for the wound magnetic, which can only be larger.
+        static bool core_fits(Core& core, const Inputs& inputs);
 };
 
 class MagneticFilterSaturation : public MagneticFilter {

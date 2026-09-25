@@ -210,12 +210,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
     auto includeConcentricCores = settings.get_use_concentric_cores();
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
     auto globalIncludeDistributedGaps = settings.get_core_adviser_include_distributed_gaps();
-    double maximumHeight = std::numeric_limits<double>::infinity();
-    if (inputs.get_design_requirements().get_maximum_dimensions()) {
-        if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
-            maximumHeight = inputs.get_design_requirements().get_maximum_dimensions()->get_height().value();
-        }
-    }
 
     Magnetic magnetic;
 
@@ -279,12 +273,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             continue;
         }
 
-        if (core.get_type() == CoreType::TWO_PIECE_SET) {
-            if (core.get_height() > maximumHeight) {
-                continue;
-            }
-        }
-
         if (!globalIncludeDistributedGaps && core.get_gapping().size() > core.get_processed_description()->get_columns().size()) {
             continue;
         }
@@ -296,6 +284,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
                 // process_data() resets processed description to base values, then calls scale_to_stacks internally
                 core.process_data();
                 core.process_gap(); // CA-OPT-2 FIX: reprocess gap data after stacking (was commented out)
+                // The whole envelope (ABT #1410), after the stack count is set: stacking grows depth.
+                if (!MagneticFilterMaximumDimensions::core_fits(core, inputs)) {
+                    continue;
+                }
                 magnetic.set_core(core);
                 MagneticManufacturerInfo magneticmanufacturerinfo;
                 if (i != 0) {
@@ -309,6 +301,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             }
         }
         else {
+            // The whole envelope (ABT #1410), not just the height.
+            if (!MagneticFilterMaximumDimensions::core_fits(core, inputs)) {
+                continue;
+            }
             magnetic.set_core(core);
             MagneticManufacturerInfo magneticmanufacturerinfo;
             magneticmanufacturerinfo.set_reference(core.get_name().value_or("unnamed"));
@@ -327,12 +323,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
     auto includeConcentricCores = settings.get_use_concentric_cores();
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
     auto globalIncludeDistributedGaps = settings.get_core_adviser_include_distributed_gaps();
-    double maximumHeight = std::numeric_limits<double>::infinity();
-    if (inputs.get_design_requirements().get_maximum_dimensions()) {
-        if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
-            maximumHeight = inputs.get_design_requirements().get_maximum_dimensions()->get_height().value();
-        }
-    }
 
     Magnetic magnetic;
 
@@ -391,12 +381,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             continue;
         }
 
-        if (core.get_type() == CoreType::TWO_PIECE_SET) {
-            if (core.get_height() > maximumHeight) {
-                continue;
-            }
-        }
-
         if (!globalIncludeDistributedGaps && core.get_gapping().size() > core.get_processed_description()->get_columns().size()) {
             continue;
         }
@@ -422,6 +406,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
                     variantName += " " + std::to_string(1 + i) + " stacks";
                 }
                 core.set_name(variantName);
+                // The whole envelope (ABT #1410), after the stack count is set: stacking grows depth.
+                if (!MagneticFilterMaximumDimensions::core_fits(core, inputs)) {
+                    continue;
+                }
                 magnetic.set_core(core);
                 MagneticManufacturerInfo magneticManufacturerInfo;
                 magneticManufacturerInfo.set_reference(variantName);
@@ -430,6 +418,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             }
         }
         else {
+            // The whole envelope (ABT #1410), not just the height.
+            if (!MagneticFilterMaximumDimensions::core_fits(core, inputs)) {
+                continue;
+            }
             magnetic.set_core(core);
             MagneticManufacturerInfo magneticManufacturerInfo;
             magneticManufacturerInfo.set_reference(core.get_name().value_or("unnamed"));
@@ -444,12 +436,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
 void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector<Core>* cores, std::vector<std::pair<Magnetic, double>>* magnetics) {
     Coil coil = get_dummy_coil(inputs, get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
-    double maximumHeight = std::numeric_limits<double>::infinity();
-    if (inputs.get_design_requirements().get_maximum_dimensions()) {
-        if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
-            maximumHeight = inputs.get_design_requirements().get_maximum_dimensions()->get_height().value();
-        }
-    }
 
     Magnetic magnetic;
 
@@ -459,11 +445,6 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
             continue;
         }
 
-        if (core.get_type() == CoreType::TWO_PIECE_SET) {
-            if (core.get_height() > maximumHeight) {
-                continue;
-            }
-        }
 
         if (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U || core.get_shape_family() == CoreShapeFamily::C) {
 
@@ -486,6 +467,10 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
                     magneticManufacturerInfo.set_reference(core.get_name().value_or("unnamed"));
                 }
                 magnetic.set_manufacturer_info(magneticManufacturerInfo);
+                // The whole envelope (ABT #1410), after the stack count is set: stacking grows depth.
+                if (!MagneticFilterMaximumDimensions::core_fits(core, inputs)) {
+                    continue;
+                }
                 magnetic.set_core(core);
                 (*magnetics).push_back(std::pair<Magnetic, double>{magnetic, 0});
             }
