@@ -101,7 +101,8 @@ static int64_t get_layer_bundle_size(const Layer& layer) {
 //
 // Using the perimeter rather than 2*pi*r keeps this correct for round, oblong and rectangular
 // columns alike (a racetrack turn is inclined over its whole length, not just the round part).
-// Returns `od` unchanged when the geometry makes the correction meaningless or impossible.
+// ABT #1401: a non-positive diameter, length or bundle, or a pitch reaching the whole perimeter,
+// is not a winding this model describes, and throws instead of handing back an uncompensated `od`.
 //
 // ABT #685 (Alf, 2026-08-19): the compensated pitch is QUANTISED UPWARD onto the nanometre grid.
 // Every station coordinate is emitted nm-rounded (roundFloat(..., 9) throughout this file), and
@@ -123,8 +124,11 @@ static double helical_stacking_pitch(double od, int64_t bundleSize, double turnL
     if (std::getenv("MKF_NO_HELICAL_PITCH")) {
         return od;   // bisect switch
     }
-    if (od <= 0 || turnLength <= 0 || bundleSize < 1) {
-        return od;
+    if (!(od > 0) || !(turnLength > 0) || bundleSize < 1) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Real winding: helical stacking pitch asked for od " + std::to_string(od) +
+                                ", turn length " + std::to_string(turnLength) + ", bundle " +
+                                std::to_string(bundleSize) + " -- every one must be positive");
     }
     const auto ceilToNanometreGrid = [](double pitch) {
         return std::ceil(pitch * 1e9 - 1e-6) / 1e9;
@@ -137,7 +141,11 @@ static double helical_stacking_pitch(double od, int64_t bundleSize, double turnL
     const double tangentRatio = advancePerRevolution / turnLength;
     const double denominator = 1.0 - tangentRatio * tangentRatio;
     if (denominator <= 1e-12) {
-        return od;   // a pitch approaching the whole perimeter: not a winding this model describes
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Real winding: a " + std::to_string(bundleSize) + "-lane bundle of " +
+                                std::to_string(od) + " m wire advances a whole " +
+                                std::to_string(turnLength) +
+                                " m turn per revolution -- not a helical winding");
     }
     return ceilToNanometreGrid(od / std::sqrt(denominator));
 }
@@ -3016,12 +3024,139 @@ void Coil::redistribute_section_turns_for_blocking() {
     set_sections_description(sections);
 }
 
+// The length of one revolution of an overlapping layer: its turns' own length. Every station of the
+// layer sits at the layer's radius, so they all carry the same one; the largest is taken so a
+// zero-length arrival station (ABT #674) cannot stand in for it. No length at all is a layout
+// nobody can draw a slope for, so it throws rather than skipping the helical correction.
+static double layer_revolution_length(const std::vector<Turn>& turns,
+                                      const std::vector<size_t>& layerTurns,
+                                      const std::string& layerName) {
+    double length = 0.0;
+    for (size_t turnIndex : layerTurns) {
+        length = std::max(length, turns[turnIndex].get_length());
+    }
+    if (!(length > 0)) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Real winding: no turn of layer " + layerName +
+                                " carries a length, so the slope its wraps are drawn with is "
+                                "unknown and its sibling spacing cannot be derived");
+    }
+    return length;
+}
+
+// ABT #1401. The winder (wind_by_turns) derives each helical layer's pitch from the turn length at
+// the radius it winds the layer at -- and delimit_and_compact then moves the layer radially INWARD,
+// shortening every turn and steepening every wrap. Measured on 21_interleaved_flyback_etd39: the
+// Secondary's layer 0 was pitched for a 75.568 mm turn and finally sits at r = 9.5635 mm, a
+// 60.089 mm turn, so its siblings (0.679257 mm apart, wrap 2.077 mm/rev) came out 148 nm inside the
+// 0.679 mm coated envelope; its layer 1 (the steep exit landing, 12.438 mm/rev over the final
+// 64.356 mm turn, pitched for 79.834 mm) 4.30 um inside. align_blocked_layer_turns re-laid only the
+// layers carrying connection depths, so an untouched layer kept the stale pitch.
+//
+// Here every such layer is re-laid over the SAME span the winder spread it across -- the station
+// extent plus half the laid pitch at each end, which the turns' dimensions carry -- with the pitch
+// re-derived from the turns' own final length and iterated to the nm-grid fixpoint with the
+// stations' realised advance, exactly as the winder's own fixpoint does.
+void Coil::respace_helical_layers_at_final_radius() {
+    auto layers = get_layers_description().value();
+    auto turns = get_turns_description().value();
+    auto wires = get_wires();
+    bool changed = false;
+    for (const auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION ||
+            layer.get_orientation() != WindingOrientation::OVERLAPPING ||
+            layer.get_partial_windings().empty()) {
+            continue;
+        }
+        const size_t windingIndex =
+            get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
+        if (wires[windingIndex].get_type() != WireType::ROUND &&
+            wires[windingIndex].get_type() != WireType::LITZ) {
+            continue;
+        }
+        std::vector<size_t> layerTurns;
+        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+            if (turns[turnIndex].get_layer() && turns[turnIndex].get_layer().value() == layer.get_name()) {
+                layerTurns.push_back(turnIndex);
+            }
+        }
+        if (layerTurns.empty()) {
+            continue;
+        }
+        std::sort(layerTurns.begin(), layerTurns.end(), [&](size_t a, size_t b) {
+            return turns[a].get_coordinates()[1] < turns[b].get_coordinates()[1];
+        });
+        const double length = layer_revolution_length(turns, layerTurns, layer.get_name());
+        const auto& laidDimensions = turns[layerTurns.front()].get_dimensions();
+        if (!laidDimensions || laidDimensions->size() < 2 || !(laidDimensions.value()[1] > 0)) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: turn " + turns[layerTurns.front()].get_name() +
+                                    " carries no axial dimension, so the pitch its layer was laid "
+                                    "at is unknown");
+        }
+        const double laidPitch = laidDimensions.value()[1];
+        const double od = wires[windingIndex].get_maximum_outer_height();
+        const int64_t bundleSize = get_layer_bundle_size(layer);
+        const double spanLow = turns[layerTurns.front()].get_coordinates()[1] - laidPitch / 2;
+        const double spanHigh = turns[layerTurns.back()].get_coordinates()[1] + laidPitch / 2;
+        double pitch = helical_stacking_pitch(od, bundleSize, length);
+        std::vector<double> stations;
+        double previousPitch = -1.0;
+        for (int pass = 0; pass < 64; ++pass) {
+            stations = compute_spread_turn_stations((spanLow + spanHigh) / 2, spanHigh - spanLow, pitch,
+                                                    int64_t(layerTurns.size()), bundleSize);
+            // A layer too short to hold a second station of any conductor has no wrap of its own:
+            // the packed closed form above is then the whole statement.
+            const double advance = realized_advance_per_revolution(stations, bundleSize);
+            if (advance <= 0) {
+                break;
+            }
+            const double refined = helical_stacking_pitch(od, bundleSize, length, advance);
+            if (std::abs(refined - pitch) < 1e-12) {
+                break;   // exact fixed point on the nm grid
+            }
+            if (std::abs(refined - previousPitch) < 1e-12 && refined < pitch) {
+                break;   // 2-cycle between adjacent nm values: keep the larger (clear side)
+            }
+            previousPitch = pitch;
+            pitch = refined;
+        }
+        if (std::abs(pitch - laidPitch) < 1e-12) {
+            continue;   // already laid for the radius it sits at
+        }
+        for (size_t k = 0; k < layerTurns.size(); ++k) {
+            auto coordinates = turns[layerTurns[k]].get_coordinates();
+            coordinates[1] = stations[k];
+            turns[layerTurns[k]].set_coordinates(coordinates);
+            auto dimensions = turns[layerTurns[k]].get_dimensions().value();
+            dimensions[1] = pitch;
+            turns[layerTurns[k]].set_dimensions(dimensions);
+        }
+        changed = true;
+    }
+    if (changed) {
+        set_turns_description(turns);
+    }
+}
+
 void Coil::align_blocked_layer_turns() {
-    if (_connectionBlockedSlotsPerLayer.empty() || !get_layers_description() || !get_turns_description()) {
+    if (!get_layers_description() || !get_turns_description()) {
+        return;
+    }
+    const bool realWinding = settings.get_coil_use_real_winding_geometry();
+    if (_connectionBlockedSlotsPerLayer.empty() && !realWinding) {
         return;
     }
     auto bobbin = resolve_bobbin();
     if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return;
+    }
+    // ABT #1401: every helical layer first gets the pitch its FINAL radius needs; the layers that
+    // carry connection depths are then re-laid below from their own spans with that same law.
+    if (realWinding) {
+        respace_helical_layers_at_final_radius();
+    }
+    if (_connectionBlockedSlotsPerLayer.empty()) {
         return;
     }
     auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
@@ -3138,8 +3273,12 @@ void Coil::align_blocked_layer_turns() {
             (wires[windingIndex].get_type() == WireType::ROUND ||
              wires[windingIndex].get_type() == WireType::LITZ);
         // The turn's own length is the perimeter — set by the winder, exact, no frame lookup.
-        const double helicalLength = helicalHere ? turns[layerTurns.front()].get_length() : 0.0;
-        if (helicalHere && helicalLength > 0) {
+        // ABT #1401: the LAYER's revolution length, never whichever station sorts first (an
+        // arrival station can carry none), and a layer without one throws instead of silently
+        // dropping the helical correction.
+        const double helicalLength =
+            helicalHere ? layer_revolution_length(turns, layerTurns, layer.get_name()) : 0.0;
+        if (helicalHere) {
             wirePitch = helical_stacking_pitch(wirePitch, get_layer_bundle_size(layer),
                                                helicalLength);
         }
@@ -3271,14 +3410,50 @@ void Coil::align_blocked_layer_turns() {
             // Stations at the FAR edge, one pitch apart, in the lane order the bundle already has
             // (sorted ascending like the assignment loop expects) — the descending helices stay
             // exactly one lane apart the whole way down.
-            for (size_t k = 0; k < numberTurnsInLayer; ++k) {
-                stations.push_back(roundFloat(
-                    steepArrivalAtHigh ? spanLow + wirePitch / 2 + double(k) * wirePitch
-                                       : spanHigh - wirePitch / 2 - double(k) * wirePitch,
-                    9));
-            }
-            if (!steepArrivalAtHigh) {
-                std::reverse(stations.begin(), stations.end());
+            const auto layFarEdgeStations = [&](double pitch) {
+                std::vector<double> laid;
+                for (size_t k = 0; k < numberTurnsInLayer; ++k) {
+                    laid.push_back(roundFloat(
+                        steepArrivalAtHigh ? spanLow + pitch / 2 + double(k) * pitch
+                                           : spanHigh - pitch / 2 - double(k) * pitch,
+                        9));
+                }
+                if (!steepArrivalAtHigh) {
+                    std::reverse(laid.begin(), laid.end());
+                }
+                return laid;
+            };
+            stations = layFarEdgeStations(wirePitch);
+            // ABT #1401: each landing wrap climbs from its ARRIVAL (the conductor's previous
+            // station, in the layer it came from) to its own station in ONE revolution, so the
+            // siblings are inclined by that climb -- not by the packed bundleSize * pitch the
+            // closed form above assumed. Iterate the pitch on the steepest landing's realised
+            // advance to the nm-grid fixpoint (stations move with the pitch, so the advance does).
+            if (helicalHere) {
+                double previousPitch = -1.0;
+                for (int pass = 0; pass < 64; ++pass) {
+                    double steepestAdvance = 0.0;
+                    for (size_t k = 0; k < numberTurnsInLayer; ++k) {
+                        const auto conductorKey = std::make_pair(turns[layerTurns[k]].get_winding(),
+                                                                 turns[layerTurns[k]].get_parallel());
+                        const auto& sequence = turnsByConductor.at(conductorKey);
+                        auto self = std::find(sequence.begin(), sequence.end(), layerTurns[k]);
+                        const double arrival = turns[*(self - 1)].get_coordinates()[turnAxis];
+                        steepestAdvance = std::max(steepestAdvance, std::abs(stations[k] - arrival));
+                    }
+                    const double refined = helical_stacking_pitch(
+                        wires[windingIndex].get_maximum_outer_height(), bundleSize, helicalLength,
+                        steepestAdvance);
+                    if (std::abs(refined - wirePitch) < 1e-12) {
+                        break;
+                    }
+                    if (std::abs(refined - previousPitch) < 1e-12 && refined < wirePitch) {
+                        break;   // 2-cycle between adjacent nm values: keep the larger (clear side)
+                    }
+                    previousPitch = wirePitch;
+                    wirePitch = refined;
+                    stations = layFarEdgeStations(wirePitch);
+                }
             }
         }
         else if (packFromArrival) {
@@ -3338,7 +3513,7 @@ void Coil::align_blocked_layer_turns() {
                                                         wirePitch,
                                                         int64_t(numberTurnsInLayer),
                                                         bundleSize);
-                if (!helicalHere || helicalLength <= 0) {
+                if (!helicalHere) {
                     break;
                 }
                 const double advance = realized_advance_per_revolution(stations, bundleSize);
@@ -12291,13 +12466,21 @@ bool Coil::wind_by_rectangular_turns() {
                  wirePerWinding[windingIndex].get_type() == WireType::LITZ);
             double helicalTurnLength = 0.0;
             if (helicalPitch) {
+                // The length the layer's turns are charged at the radius they are wound at (the
+                // stations below get exactly this length). delimit_and_compact may still move the
+                // layer inward; respace_helical_layers_at_final_radius (ABT #1401) re-derives the
+                // pitch there. No length is a turn nobody can draw, so it throws.
                 auto turnLength = get_turn_length_in_frame(
                     getFrameForSection(layer.get_section().value()), layer.get_coordinates()[0]);
-                if (turnLength) {
-                    helicalTurnLength = turnLength.value();
-                    wireHeight = helical_stacking_pitch(wireHeight, get_layer_bundle_size(layer),
-                                                        helicalTurnLength);
+                if (!turnLength) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                        "Real winding: layer " + layer.get_name() +
+                                            " has no turn length at its radius, so its helical "
+                                            "stacking pitch cannot be derived");
                 }
+                helicalTurnLength = turnLength.value();
+                wireHeight = helical_stacking_pitch(wireHeight, get_layer_bundle_size(layer),
+                                                    helicalTurnLength);
             }
 
             if (layer.get_orientation() == WindingOrientation::OVERLAPPING) {

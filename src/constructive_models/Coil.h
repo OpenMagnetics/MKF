@@ -940,6 +940,14 @@ class Coil : public MAS::Coil {
         // leads run (top edge for top-crossing leads, bottom for bottom) and no window space is wasted
         // with an empty gap on the unblocked side. Real winding geometry only.
         void align_blocked_layer_turns();
+        // ABT #1401: re-lay every real-winding overlapping round/litz layer at the pitch its wraps
+        // need at the radius the layer FINALLY sits at. The winder derives the helical pitch from
+        // the turn length at the radius it winds the layer at, and delimit_and_compact then moves
+        // the layer radially inward, shortening every turn and steepening every wrap; this
+        // re-derives the pitch from the turns' own (final) length and the stations' realised
+        // advance, over the same span the winder spread across. Throws when a layer's turns carry
+        // no length.
+        void respace_helical_layers_at_final_radius();
         // ABT #187: toroidal analog of align_blocked_layer_turns. Radial terminal leads emit angular
         // crossing markers on every ring they pass over (toroidal_connection_reserved_spaces); this
         // re-spreads each crossed ring's turns over the angular space OUTSIDE those corridors —
