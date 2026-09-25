@@ -709,17 +709,18 @@ namespace OpenMagnetics {
 
     double get_packing_factor_from_standard(WireStandard standard, double numberConductors) {
         if (standard == WireStandard::IEC_60317) {
-            // According to standard IEC 60317 - 11
-            if (numberConductors == 2) {
-                return sqrt(2);
-            }
-            else if (numberConductors < 12) {
+            // Bundle factor F in outerD = F * sqrt(N) * strandOD, from a fit of
+            // OD / (sqrt(N) * strandOD) over every unserved (bare-coated) litz record in
+            // MAS/data/wires.ndjson: 1.25 up to and including N = 12 (N = 2 included; the
+            // two-strand records sit at 1.250, not sqrt(2)), 1.26 up to N = 16, 1.27 up to
+            // N = 20 and 1.28 above. The band edges are inclusive.
+            if (numberConductors <= 12) {
                 return 1.25;
             }
-            else if (numberConductors < 16) {
+            else if (numberConductors <= 16) {
                 return 1.26;
             }
-            else if (numberConductors < 20) {
+            else if (numberConductors <= 20) {
                 return 1.27;
             }
             else {

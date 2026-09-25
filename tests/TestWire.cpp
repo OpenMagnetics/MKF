@@ -1026,4 +1026,52 @@ namespace {
         }
     }
 
+    // ABT #1406. The bare litz bundle is packingFactor * sqrt(N) * strandOD, with the factor
+    // stepping up with the strand count. Fitting OD / (sqrt(N) * strandOD) over every unserved
+    // litz record in MAS/data/wires.ndjson gives 1.25 up to and including N = 12 (N = 2 too:
+    // the records sit at 1.250, not sqrt(2)), 1.26 up to N = 16, 1.27 up to N = 20 and 1.28
+    // above. The previous table used strict "<" band edges and sqrt(2) for N = 2, so N = 2, 12,
+    // 16 and 20 bundles came out one band too large (+13 % for N = 2).
+    TEST_CASE("Bare litz bundle uses the catalogue packing factor at every band edge", "[constructive-model][wire][litz][abt1406]") {
+        double strandConductingDiameter = 0.0001;
+        double strandOuterDiameter = OpenMagnetics::Wire::get_outer_diameter_round(strandConductingDiameter, 1, WireStandard::IEC_60317);
+        for (auto [numberConductors, packingFactor] : std::vector<std::pair<int, double>>{{2, 1.25}, {8, 1.25}, {12, 1.25}, {16, 1.26}, {20, 1.27}, {25, 1.28}}) {
+            INFO("numberConductors = " << numberConductors);
+            double outerDiameter = OpenMagnetics::Wire::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, 1, WireStandard::IEC_60317);
+            double expected = packingFactor * sqrt(numberConductors) * strandOuterDiameter;
+            CHECK_THAT(outerDiameter, Catch::Matchers::WithinRel(expected, 0.001));
+        }
+    }
+
+    // ABT #1406. Every unserved (bare-coated) catalogue litz: the bundle OD MKF computes lies inside
+    // the catalogue's own [minimum, maximum] outer diameter.
+    TEST_CASE("Bare litz bundle diameter lies inside the catalogue tolerance for every unserved litz", "[constructive-model][wire][litz][abt1406]") {
+        size_t checked = 0;
+        std::vector<std::string> outside;
+        for (auto wire : get_wires(WireType::LITZ)) {
+            auto coating = wire.resolve_coating();
+            if (!coating || coating->get_type() != InsulationWireCoatingType::BARE) {
+                continue;
+            }
+            auto catalogueOuterDiameter = wire.get_outer_diameter();
+            REQUIRE(catalogueOuterDiameter);
+            REQUIRE(catalogueOuterDiameter->get_minimum());
+            REQUIRE(catalogueOuterDiameter->get_maximum());
+            double minimum = catalogueOuterDiameter->get_minimum().value();
+            double maximum = catalogueOuterDiameter->get_maximum().value();
+            double computed = OpenMagnetics::Wire::calculate_outer_diameter(wire);
+            checked++;
+            if (computed < minimum || computed > maximum) {
+                outside.push_back(wire.get_name().value() + ": " + std::to_string(computed * 1e6) + " um not in [" +
+                                  std::to_string(minimum * 1e6) + ", " + std::to_string(maximum * 1e6) + "] um");
+            }
+        }
+        REQUIRE(checked > 0);
+        for (size_t i = 0; i < std::min<size_t>(outside.size(), 20); ++i) {
+            UNSCOPED_INFO(outside[i]);
+        }
+        INFO("checked " << checked << ", outside " << outside.size());
+        CHECK(outside.empty());
+    }
+
 }  // namespace
