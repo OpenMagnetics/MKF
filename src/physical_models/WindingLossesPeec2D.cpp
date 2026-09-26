@@ -1,4 +1,5 @@
 #include "physical_models/WindingLossesPeec2D.h"
+#include <map>
 #include "physical_models/WindingLosses.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/WindingSkinEffectLosses.h"
@@ -323,6 +324,29 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
                 MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
                     core, coil).get_magnetizing_inductance());
             auto reluctanceModel = ReluctanceModel::factory();
+            // The flux through a LATERAL column is only that column's share of the total:
+            // lateral columns are parallel paths, each the series sum of its gaps (residual
+            // mating surfaces included -- they carry MMF even though they do not fringe),
+            // sharing the flux in proportion to 1/R. Charging a lateral gap the full flux
+            // doubles its MMF on a two-lateral core, and the window then carries a net
+            // current (turns + gap sheets no longer sum to ~0 around it), which the image
+            // lattice turns into a spurious field everywhere (ABT #1409).
+            std::map<long, double> lateralColumnReluctance;
+            for (auto& gap : gapping) {
+                if (!gap.get_coordinates()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA,
+                        "Peec2D winding losses: a gap has no coordinates, so its column cannot be identified");
+                }
+                double x = gap.get_coordinates().value()[0];
+                double halfSection = gap.get_section_dimensions() ? gap.get_section_dimensions().value()[0] / 2 : 0.0;
+                if (std::abs(x) >= halfSection) {
+                    lateralColumnReluctance[std::lround(x * 1e6)] += reluctanceModel->get_gap_reluctance(gap).get_reluctance();
+                }
+            }
+            double lateralConductanceSum = 0;
+            for (const auto& [column, reluctance] : lateralColumnReluctance) {
+                lateralConductanceSum += 1.0 / reluctance;
+            }
             for (auto& gap : gapping) {
                 if (gap.get_type() != GapType::SUBTRACTIVE && gap.get_type() != GapType::ADDITIVE) {
                     continue;  // residual mating surfaces do not fringe (ABT #832)
@@ -356,7 +380,12 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
                     // lateral column at +x: the window sits to its LEFT
                     placed.x = gapX - halfSection;
                 }
-                placed.mmfPerUnitPrimaryCurrent = fluxPerAmp * gapReluctance;
+                double columnFluxPerAmp = fluxPerAmp;
+                if (std::abs(gapX) >= halfSection) {
+                    double columnReluctance = lateralColumnReluctance.at(std::lround(gapX * 1e6));
+                    columnFluxPerAmp = fluxPerAmp * (1.0 / columnReluctance) / lateralConductanceSum;
+                }
+                placed.mmfPerUnitPrimaryCurrent = columnFluxPerAmp * gapReluctance;
                 gapConductor = placed;
                 gapConductors.push_back(gapConductor);
             }
@@ -659,7 +688,10 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
             }
             rhs.setZero();
             for (size_t g = 0; g < gapConductors.size(); ++g) {
-                double gapCurrent = gapConductors[g].mmfPerUnitPrimaryCurrent * primaryAmplitude;
+                // The gap's equivalent current sheet OPPOSES the winding that magnetises it
+                // (Ampere: the MMF the gap absorbs is subtracted from the window). With the
+                // winding's own sign, turns and gaps summed to ~2NI instead of ~0 (ABT #1409).
+                double gapCurrent = -currentDirectionPerWinding[0] * gapConductors[g].mmfPerUnitPrimaryCurrent * primaryAmplitude;
                 for (size_t i = 0; i < numberCells; ++i) {
                     rhs(i) -= std::complex<double>(0, omega * gapL(i, g) * gapCurrent);
                 }

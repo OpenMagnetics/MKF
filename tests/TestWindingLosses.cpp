@@ -15,6 +15,7 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "physical_models/WindingProximityEffectLosses.h"
 #include "physical_models/Resistivity.h"
+#include "physical_models/WindingLossesPeec2D.h"
 #include <numbers>
 
 #include <catch2/catch_test_macros.hpp>
@@ -2807,4 +2808,55 @@ TEST_CASE("Test_Winding_Losses_Model_Enums_Round_Trip_Through_Json", "[physical-
     for (auto value : magic_enum::enum_values<MagneticFieldStrengthFringingEffectModels>()) check(value);
     for (auto value : magic_enum::enum_values<WindingSkinEffectLossesModels>()) check(value);
     for (auto value : magic_enum::enum_values<WindingProximityEffectLossesModels>()) check(value);
+}
+
+
+// ABT #1409: one layer of 22 flat rectangular turns (7.0 x 1.1 mm, wide face radial, 1.29 mm
+// pitch) on an EQ 41/28/19.9 N97 core, 117.6 kHz sinusoid -- a CLLC resonant inductor from a
+// field report. 2D OMFEM (omfem_mas, conductor target 0.04 mm, mesh-converged: 268.6 at
+// 0.064 mm) gives R_ac/R_dc 268.0 with THREE 3.9 mm spacer gaps and 386.5 with one 2.0 mm
+// ground centre gap; its per-turn loss is ~0 at the yoke ends (turn 0: 4.4) and peaks at the
+// gap plane. PEEC-2D charged each lateral gap the FULL flux and gave the gap sheets the
+// winding's own sign, so turns + gaps summed to ~2NI in the window: 478 (1.78x) and 536
+// (1.39x), with the end turn at 277 and 258. The mesh here (5760 cells, ~15 s) is
+// under-resolved and converges UPWARD (3.9 mm spacers: 180 / 215 / 233 at 2880 / 5760 /
+// 9600 cells), so the band is [0.75, 1.05] of OMFEM.
+TEST_CASE("Test_Winding_Losses_Peec2D_Rect_Stack_Beside_Gaps_Vs_OMFEM", "[physical-model][winding-losses][peec][abt1409]") {
+    for (auto [fileName, omfemRacOverRdc] : std::vector<std::pair<std::string, double>>{
+             {"abt1409_rect_stack_spacer_gaps_3.9mm.json", 268.0},
+             {"abt1409_rect_stack_ground_gap_2.0mm.json", 386.5}}) {
+        settings.reset();
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName);
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+        auto operatingPoint = inputs.get_operating_point(0);
+
+        WindingLossesPeec2D peec;
+        peec.cellsPerSkinDepth = 2.0;
+        peec.maximumCellsWide = 24;
+        peec.maximumCellsThin = 8;
+        peec.calculate_losses(magnetic, operatingPoint, 25);
+
+        double fullLoss = 0;
+        double dcEquivalentLoss = 0;
+        const auto perTurn = peec.get_diagnostics().perTurnPerHarmonic;
+        REQUIRE(perTurn.size() == 22);
+        for (const auto& turn : perTurn) {
+            for (const auto& harmonic : turn) {
+                fullLoss += harmonic.fullLoss;
+                dcEquivalentLoss += harmonic.dcEquivalentLoss;
+            }
+        }
+        double racOverRdc = fullLoss / dcEquivalentLoss;
+        INFO(fileName << ": PEEC R_ac/R_dc " << racOverRdc << ", OMFEM " << omfemRacOverRdc);
+        CHECK(racOverRdc > 0.75 * omfemRacOverRdc);
+        CHECK(racOverRdc < 1.05 * omfemRacOverRdc);
+
+        // The yoke-end turn sits where the two core halves are equipotential: ~no field.
+        double endTurnRatio = perTurn[0][0].fullLoss / perTurn[0][0].dcEquivalentLoss;
+        INFO("end turn R_ac/R_dc " << endTurnRatio << ", OMFEM 4.4");
+        CHECK(endTurnRatio < 20);
+    }
+    settings.reset();
 }
