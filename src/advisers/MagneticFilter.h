@@ -307,9 +307,11 @@ class MagneticFilterMaximumDimensions : public MagneticFilter {
         MagneticFilterMaximumDimensions() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
         bool applies_to(Magnetic* magnetic) const override;
-        // The same envelope, rotation allowed, for a bare core before any coil exists: a
-        // necessary condition for the wound magnetic, which can only be larger.
+        // Design-mode checks: each axis as stated, no rotation, so a height limit stays a
+        // height limit (the catalogue check above allows rotation). core_fits is a necessary
+        // condition before any coil exists; magnetic_fits checks the wound assembly.
         static bool core_fits(Core& core, const Inputs& inputs);
+        static bool magnetic_fits(Magnetic& magnetic, const Inputs& inputs);
 };
 
 class MagneticFilterSaturation : public MagneticFilter {

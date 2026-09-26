@@ -286,7 +286,7 @@ TEST_CASE("MagneticAdviser standard cores keeps the wound magnetic inside the ma
         auto& magnetic = mas.get_mutable_magnetic();
         auto dimensions = magnetic.get_maximum_dimensions();
         INFO(magnetic.get_reference() << ": " << dimensions[0] * 1000 << " x " << dimensions[1] * 1000 << " x " << dimensions[2] * 1000 << " mm");
-        CHECK(magnetic.fits(maximumDimensions, true));
+        CHECK(magnetic.fits(maximumDimensions, false));
     }
     settings.reset();
 }

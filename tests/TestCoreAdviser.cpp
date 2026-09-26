@@ -3192,7 +3192,7 @@ TEST_CASE("Test_CoreAdviser_Standard_Cores_Respect_Every_Axis_Of_Maximum_Dimensi
         auto core = mas.get_magnetic().get_core();
         auto dimensions = core.get_maximum_dimensions();
         INFO(core.get_name().value_or("?") << ": " << dimensions[0] * 1000 << " x " << dimensions[1] * 1000 << " x " << dimensions[2] * 1000 << " mm");
-        CHECK(core.fits(maximumDimensions, true));
+        CHECK(core.fits(maximumDimensions, false));
     }
     settings.reset();
 }

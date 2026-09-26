@@ -162,7 +162,15 @@ bool MagneticFilterMaximumDimensions::core_fits(Core& core, const Inputs& inputs
     if (!maximumDimensions) {
         return true;
     }
-    return core.fits(maximumDimensions.value(), true);
+    return core.fits(maximumDimensions.value(), false);
+}
+
+bool MagneticFilterMaximumDimensions::magnetic_fits(Magnetic& magnetic, const Inputs& inputs) {
+    auto maximumDimensions = inputs.get_design_requirements().get_maximum_dimensions();
+    if (!maximumDimensions) {
+        return true;
+    }
+    return magnetic.fits(maximumDimensions.value(), false);
 }
 
 std::pair<bool, double> MagneticFilterVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
