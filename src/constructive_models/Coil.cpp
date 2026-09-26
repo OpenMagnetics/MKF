@@ -2436,6 +2436,62 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         for (size_t index = 0; index < routes.size(); ++index) {
             routes[index].exitSlot = exitSlots[index];
         }
+        // ABT #1423: a terminal lead whose radial bend cannot fit on the connection face's straight
+        // leaves tangentially off the lateral face instead (TangentDeparture). It then has no slot on
+        // the connection plane, no in-window run, and charges the straight lead.
+        if (!layersAreContiguous) {
+            const auto turnsForDeparture = get_turns_description().value();
+            for (size_t index = 0; index < routes.size(); ++index) {
+                auto departure = plan_tangent_departure(routes[index], routes, turnsForDeparture);
+                if (!departure) {
+                    continue;
+                }
+                auto& route = routes[index];
+                const bool isEntrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+                const std::string& turnName = isEntrance ? route.toTurn : route.fromTurn;
+                size_t matching = 0;
+                size_t spaceIndex = 0;
+                for (size_t k = 0; k < spaces.size(); ++k) {
+                    const auto& space = spaces[k];
+                    if (space.isTerminal && space.winding == route.winding && space.parallel == route.parallel &&
+                        space.kind == route.kind && (isEntrance ? space.toTurn : space.fromTurn) == turnName) {
+                        ++matching;
+                        spaceIndex = k;
+                    }
+                }
+                if (matching != 1) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                        "Real winding: the tangent departure of '" + turnName + "' replaces a lead "
+                                        "reserved as " + std::to_string(matching) + " rectangles; only the "
+                                        "outermost radial exit (one rectangle, crossing no layer) is modelled");
+                }
+                double turnX = 0, turnY = 0, turnWidth = 0, turnHeight = 0;
+                for (const auto& turn : turnsForDeparture) {
+                    if (turn.get_name() == turnName) {
+                        turnX = turn.get_coordinates()[0];
+                        turnY = turn.get_coordinates()[1];
+                        turnWidth = turn.get_dimensions().value()[0];
+                        turnHeight = turn.get_dimensions().value()[1];
+                    }
+                }
+                // The lead's projection on the window half-plane: at the turn's own radius, from the
+                // station to where the straight ends, in electrical order.
+                const std::vector<double> atStation{turnX, turnY};
+                const std::vector<double> atEnd{turnX, departure->end[1]};
+                route.waypoints = isEntrance ? std::vector<std::vector<double>>{atEnd, atStation}
+                                             : std::vector<std::vector<double>>{atStation, atEnd};
+                route.routedLength = roundFloat(departure->length, 9);
+                route.exitSlot = std::nullopt;
+                exitSlots[index] = std::nullopt;
+                auto& space = spaces[spaceIndex];
+                const double yLow = std::min({turnY, departure->point[1], departure->end[1]});
+                const double yHigh = std::max({turnY, departure->point[1], departure->end[1]});
+                space.coordinates = {roundFloat(turnX, 9), (yLow + yHigh) / 2};
+                space.dimensions = {roundFloat(turnWidth, 9), roundFloat(yHigh - yLow + turnHeight, 9)};
+                space.routedLength = roundFloat(departure->length, 9);
+                route.tangentDeparture = std::move(departure);
+            }
+        }
     }
     // ABT #1172/#1237: the runs from the window border to the pins, planned together so no two
     // share copper. The exit's ride-over lift is MKF's own: the ride levels the routes just
@@ -3530,6 +3586,202 @@ void Coil::refuse_radial_steps_closer_than_the_wire_to_sibling_wraps() {
                     << ". Sibling parallels cannot pass closer than one wire, so this layout cannot be wound.";
             throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
         }
+    }
+}
+
+// ABT #1423. See TangentDeparture (Coil.h) for the construction and the frame.
+std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRoute& route,
+                                                             const std::vector<ConnectionRoute>& routes,
+                                                             const std::vector<Turn>& turns) {
+    const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+    if (!entrance && route.kind != ConnectionKind::TERMINAL_EXIT) {
+        return std::nullopt;
+    }
+    // The coil's own record, not the ambient setting: a consumer reads the layout long after the
+    // wind that decided it (MVB++ restores its settings as soon as autocomplete returns).
+    if (!is_real_winding_blocking_applied()) {
+        return std::nullopt;
+    }
+    const std::string& turnName = entrance ? route.toTurn : route.fromTurn;
+    std::vector<size_t> sequence;   // the conductor's stations, in wound order
+    for (size_t t = 0; t < turns.size(); ++t) {
+        if (turns[t].get_winding() == route.winding && turns[t].get_parallel() == route.parallel) {
+            sequence.push_back(t);
+        }
+    }
+    const auto attachedIt = std::find_if(sequence.begin(), sequence.end(),
+                                         [&](size_t t) { return turns[t].get_name() == turnName; });
+    if (attachedIt == sequence.end()) {
+        throw std::logic_error("The terminal route of winding '" + route.winding + "' parallel " +
+                               std::to_string(route.parallel) + " attaches to turn '" + turnName +
+                               "', which is not among the coil's turns");
+    }
+    const Turn& attached = turns[*attachedIt];
+    if (!attached.get_section()) {
+        return std::nullopt;
+    }
+    const auto frame = get_wound_column_frame_for_section(attached.get_section().value());
+    if (frame.shape != ColumnShape::RECTANGULAR && frame.shape != ColumnShape::IRREGULAR) {
+        return std::nullopt;   // a round or oblong connection face has no straight to run out of
+    }
+    if (resolve_wire(get_winding_index_by_name(route.winding)).get_type() == WireType::FOIL) {
+        return std::nullopt;   // a foil terminates in a tab across the sheet, not in a bent lead wire
+    }
+    const double turnX = std::abs(attached.get_coordinates()[0]);
+    const double radius = frame.axisX == 0 ? turnX : std::abs(turnX - frame.axisX);
+    const double standoff = radius - frame.columnWidth;
+    const double bendRadius = get_turn_bend_radius_in_frame(frame, turnX);
+    // The connection face's half straight, from its midpoint to where its corner begins.
+    const double faceHalfStraight = frame.columnWidth + standoff - bendRadius;
+    if (!(route.plannedBendRadius > 0)) {
+        throw std::logic_error("The terminal route of '" + turnName + "' carries no planned bend radius");
+    }
+    // Judged at the crossing itself, the most room the face straight can ever give the bend: the
+    // slot a lead is later spread to along the face is the consumer's lane packing, and a bend that
+    // does not fit even at the crossing fits at no slot.
+    if (route.plannedBendRadius <= faceHalfStraight) {
+        return std::nullopt;   // the radial lead's bend fits on the face straight
+    }
+    const std::string who = "Real winding: the " + std::string(entrance ? "entrance" : "exit") +
+                            " lead of '" + turnName + "' bends at " + std::to_string(route.plannedBendRadius) +
+                            " m, which does not fit on the " + std::to_string(faceHalfStraight) +
+                            " m connection-face half straight, so it must leave tangentially off the "
+                            "lateral face -- but ";
+    if (frame.axisX != 0) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            who + "it is wound on a lateral column, whose face orientation is not modelled");
+    }
+    if (!route.pinName.empty()) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            who + "it is assigned to pin '" + route.pinName +
+                                "', and a tangent lead run to a pin is not modelled");
+    }
+    // The revolution the tangent exit shortens, and its pitch-true slope over the FULL turn (the one
+    // every station was laid for; the cut-off part simply is not drawn).
+    const size_t position = size_t(attachedIt - sequence.begin());
+    size_t from, to;
+    if (entrance) {
+        if (position + 1 >= sequence.size()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, who + "the conductor has no revolution after it");
+        }
+        from = sequence[position];
+        to = sequence[position + 1];
+    }
+    else {
+        if (position == 0) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, who + "the conductor has no revolution before it");
+        }
+        from = sequence[position - 1];
+        to = sequence[position];
+    }
+    if (turns[from].get_layer() != turns[to].get_layer()) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            who + "its revolution '" + turns[from].get_name() + "' -> '" + turns[to].get_name() +
+                                "' changes layer, and a tangent exit off a layer link is not modelled");
+    }
+    // The racetrack the real-winding turn is charged for (get_turn_length_in_frame's real-winding
+    // branch, spelled out: that function follows the ambient setting, and a layout is read after it
+    // has been restored): four straights between the corner arcs, plus one circle of the bend.
+    const double fullLength = 4 * frame.columnDepth + 4 * frame.columnWidth + 8 * standoff +
+                              (2 * std::numbers::pi - 8) * bendRadius;
+    const double slope = (turns[to].get_coordinates()[1] - turns[from].get_coordinates()[1]) / fullLength;
+    const double removed = faceHalfStraight + std::numbers::pi / 2 * bendRadius;
+    const double faceStraightEnd = frame.columnDepth + standoff - bendRadius;
+    // A dragback lane on the connection face displaces it and lengthens the lateral faces
+    // (ConnectionLayout::ride_at): the departure would move with it.
+    ConnectionLayout rides;
+    rides.rideLevels = compute_ride_levels(routes);
+    if (rides.ride_at(turnX, route.side) > 0) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            who + "a dragback lane rides " + std::to_string(rides.ride_at(turnX, route.side)) +
+                                " m over its face, which moves the lateral face's end and is not modelled");
+    }
+    TangentDeparture departure;
+    departure.face = entrance ? -1 : 1;
+    departure.distanceAlongFace = faceStraightEnd;
+    const double y = attached.get_coordinates()[1] + (entrance ? slope : -slope) * removed;
+    departure.point = {departure.face * (frame.columnWidth + standoff), y, -faceStraightEnd};
+    // Entrance: the wire travels +Z along the -X face climbing `slope` per metre, so outward (back
+    // along it) is (0, -slope, -1); exit: it travels -Z along the +X face, and carries on.
+    const double norm = std::sqrt(1 + slope * slope);
+    departure.direction = {0.0, (entrance ? -slope : slope) / norm, -1.0 / norm};
+    // The border the radial lead ran to, on the window half-plane, moved to the connection face's
+    // depth: that face stands columnDepth - columnWidth further out than the lateral ones.
+    const double border = route.waypoints.at(entrance ? 0 : route.waypoints.size() - 1).at(0);
+    const double borderDepth = border + (frame.columnDepth - frame.columnWidth);
+    if (!(borderDepth > faceStraightEnd)) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR, who + "its face straight ends beyond the window border");
+    }
+    departure.length = (borderDepth - faceStraightEnd) * norm;
+    departure.end = {departure.point[0], departure.point[1] + departure.direction[1] * departure.length,
+                     -borderDepth};
+    departure.turnLengthRemoved = removed;
+    departure.shortenedTurn = turns[to].get_name();
+    // Nothing else may lie on that straight. Its footprint on the window half-plane is the band
+    // [radius - w/2, radius + w/2] x [min y, max y] +- h/2; any station of ANOTHER turn whose own band
+    // overlaps it, at or outside the lead's radius, winds a corner across the lead's line (inner
+    // turns' corners never reach this radius). The lead's own station and the conductor's own next
+    // revolution are the wire itself.
+    const auto dims = attached.get_dimensions().value();
+    const double yLow = std::min(y, departure.end[1]) - dims[1] / 2;
+    const double yHigh = std::max(y, departure.end[1]) + dims[1] / 2;
+    for (size_t t = 0; t < turns.size(); ++t) {
+        if (t == *attachedIt || !turns[t].get_dimensions()) {
+            continue;
+        }
+        const auto& other = turns[t];
+        const auto otherDims = other.get_dimensions().value();
+        const double otherX = std::abs(other.get_coordinates()[0]);
+        if (other.get_section() && get_wound_column_frame_for_section(other.get_section().value()).axisX != frame.axisX) {
+            continue;   // another column
+        }
+        if (otherX + otherDims[0] / 2 <= turnX - dims[0] / 2 + 1e-12) {
+            continue;   // radially inside the lead
+        }
+        const double otherY = other.get_coordinates()[1];
+        if (otherY + otherDims[1] / 2 > yLow + 1e-12 && otherY - otherDims[1] / 2 < yHigh - 1e-12) {
+            std::ostringstream message;
+            message.precision(9);
+            message << who << "turn '" << other.get_name() << "' (at " << otherX << ", " << otherY
+                    << " m) lies across its straight, which runs at radius " << turnX << " m over y "
+                    << yLow << " .. " << yHigh << " m";
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+        }
+    }
+    return departure;
+}
+
+void Coil::charge_tangent_departures() {
+    if (!settings.get_coil_use_real_winding_geometry() || !get_turns_description()) {
+        return;
+    }
+    std::vector<ConnectionRoute> routes;
+    get_connection_reserved_spaces(&routes);
+    auto turns = get_turns_description().value();
+    bool changed = false;
+    for (const auto& route : routes) {
+        if (!route.tangentDeparture) {
+            continue;
+        }
+        const auto& departure = route.tangentDeparture.value();
+        auto found = std::find_if(turns.begin(), turns.end(),
+                                  [&](const Turn& turn) { return turn.get_name() == departure.shortenedTurn; });
+        if (found == turns.end()) {
+            throw std::logic_error("The tangent departure shortens turn '" + departure.shortenedTurn +
+                                   "', which is not among the coil's turns");
+        }
+        if (!(found->get_length() > departure.turnLengthRemoved)) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: turn '" + found->get_name() + "' is " +
+                                    std::to_string(found->get_length()) + " m long, not longer than the " +
+                                    std::to_string(departure.turnLengthRemoved) +
+                                    " m its tangent departure cuts off");
+        }
+        found->set_length(roundFloat(found->get_length() - departure.turnLengthRemoved, 9));
+        changed = true;
+    }
+    if (changed) {
+        set_turns_description(turns);
     }
 }
 
@@ -5434,6 +5686,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         refuse_turns_bent_tighter_than_the_wire_allows();
         refuse_sibling_layer_links_closer_than_the_wire();
         refuse_radial_steps_closer_than_the_wire_to_sibling_wraps();
+        charge_tangent_departures();
     }
     return ok;
 }

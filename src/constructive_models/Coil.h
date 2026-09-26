@@ -223,6 +223,52 @@ struct ConnectionRideLevel {
     double height = 0;   // how much a wire riding over it is displaced (one wire OD)
 };
 
+// ABT #1423: a terminal lead that leaves the winding TANGENTIALLY, straight off the end of a lateral
+// face straight of a rectangular column, instead of bending off the connection face.
+//
+// Real winding lays a terminal lead radially out of the connection face (-Z, the bobbin frame
+// below): the wire runs along that face's straight from the crossing and bends through
+// ConnectionRoute::plannedBendRadius onto the radial run. That bend needs plannedBendRadius of
+// straight between the lead's slot and the face's corner. A rectangular wire wound on edge bends
+// edgewise there, at its IEC 60317-0-2 radius, and on a former whose corner is itself sized to that
+// radius the face straight is shorter than the bend (realwinding_rect_wire_rect: a 12.5425 mm bend
+// against a 5.4207 mm half straight). The wire then does what a winder does: it is not bent off the
+// face at all. The last turn runs along its lateral face towards the connection face and simply
+// carries on, straight, past the point where the corner would have started; the entrance arrives
+// the same way on the other lateral face. The corner and the connection-face half straight are no
+// longer the turn's copper; the straight lead is.
+//
+// Frame: the bobbin frame of ConnectionRoute::pinWaypoints -- MVB++'s concentric frame, column axis
+// Y, the connection face at -Z -- with x measured from the WOUND column's own axis. Turns are
+// CLOCKWISE seen from +Y: from the crossing on the -Z face a turn runs towards -X, round the -X-Z
+// corner, along the -X face towards +Z, ..., along the +X face towards -Z and back to the crossing.
+// So the entrance leaves along the -X face and the exit along the +X face.
+struct TangentDeparture {
+    // The lateral face the lead continues: -1 = the -X face (entrance), +1 = the +X face (exit).
+    int face = 0;
+    // Distance along that face, from the face's midpoint (z = 0) towards the connection face, to the
+    // end of its straight -- where the corner would begin, and where the lead leaves: the face's
+    // half straight at this turn's standoff, columnDepth + standoff - the turn's bend radius.
+    double distanceAlongFace = 0;
+    // The departure point on the wire's centreline, {x, y, z}: x = face * (columnWidth + standoff),
+    // z = -distanceAlongFace, y = where the turn's pitch-true helix is there (the station plus or
+    // minus the advance share of the cut-off part, turnLengthRemoved).
+    std::vector<double> point;
+    // Unit vector along which the lead leaves the winding, from `point` outward: the face straight's
+    // own direction, climb included, so lead and face straight are ONE straight line.
+    std::vector<double> direction;
+    // The charged lead: from `point` along `direction` to the plane of the window border at the front
+    // (the radial route's border, moved to the connection face's depth), and its length.
+    std::vector<double> end;
+    double length = 0;
+    // The copper the first (entrance) or last (exit) revolution no longer has: the connection face's
+    // half straight plus the quarter corner, at that turn's bend radius. Already taken off that
+    // turn's length by wind().
+    double turnLengthRemoved = 0;
+    // The turn whose revolution was shortened (the one that carries its length).
+    std::string shortenedTurn;
+};
+
 // ABT #685: one connection of one conductor, as MKF drew it — the record MVB++ realises in 3D and
 // the painters draw. `waypoints` is the route in the winding-window half-plane, (layer axis, turn
 // axis), in path order from `fromTurn` to `toTurn`; a consumer follows it, it never invents one.
@@ -299,6 +345,11 @@ struct ConnectionRoute {
     // Empty on a non-terminal route (links, dragbacks and squeezes sit at the crossing, x = 0), and
     // on every route when there are no routes at all.
     std::optional<double> exitSlot;
+    // ABT #1423: set when this TERMINAL lead leaves tangentially off a lateral face straight (see
+    // TangentDeparture): a consumer draws the straight lead from tangentDeparture->point along
+    // ->direction and ends the turn there, and follows neither `waypoints` (then only the lead's
+    // projection on the window half-plane, at the turn's own radius) nor `exitSlot` (empty).
+    std::optional<TangentDeparture> tangentDeparture;
 };
 
 // ABT #1172 (WP3): the lead's run from the window exit to its assigned pin, see
@@ -972,6 +1023,14 @@ class Coil : public MAS::Coil {
         void fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std::vector<Layer>& layers);
         // ABT #1422: throws when a finished layout still has a radial step inside a sibling's envelope.
         void refuse_radial_steps_closer_than_the_wire_to_sibling_wraps();
+        // ABT #1423: the tangent departure of a terminal route, or none when its radial bend fits on
+        // the connection face straight. Throws when the bend does not fit and the tangent exit
+        // cannot be laid either.
+        std::optional<TangentDeparture> plan_tangent_departure(const ConnectionRoute& route,
+                                                               const std::vector<ConnectionRoute>& routes,
+                                                               const std::vector<Turn>& turns);
+        // ABT #1423: take the tangent departures' cut-off copper off the revolutions that lost it.
+        void charge_tangent_departures();
         // ABT #187: toroidal analog of align_blocked_layer_turns. Radial terminal leads emit angular
         // crossing markers on every ring they pass over (toroidal_connection_reserved_spaces); this
         // re-spreads each crossed ring's turns over the angular space OUTSIDE those corridors —
