@@ -1515,28 +1515,32 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
-        // Pinned to 2D OMFEM (ABT #1409 re-arbitration, 2026-09-26): each AC value is OMFEM's OWN
-        // R_ac/R_dc (its own DC) times MKF's DC for this fixture (0.49121 mW), so the +-25% check
-        // compares the two solvers' R_ac/R_dc, never watts across different turn lengths. OMFEM
-        // R_ac/R_dc: 12.84 / 19.49 / 24.71 / 29.18 / 33.17 / 36.84 / 40.23 / 43.42 / 46.46 / 49.43
-        // at 100 k .. 1 MHz (planar solve, mesh-converged to 0.2 %). The 2026-08-20 table
-        // ("R_ac/R_dc 6.016 / 13.35 / 18.85, MKF within 3%") compared OMFEM WATTS against MKF's
-        // DC -- mixed normalization -- and pinned MKF's own output. MKF's default reads 0.39-0.49
-        // of these, so this test FAILS until the rectangular proximity kernel is fixed (ABT #1409
-        // follow-up). Caveat: PQ windows are only partly enclosed by the core, so OMFEM's fully
-        // imaged planar frame may overstate field confinement; OMFEM is nevertheless the reference.
+        // Pinned to 2D OMFEM WITHOUT the 5 um residual gaps (ABT #1425, 2026-09-27): each AC value
+        // is OMFEM's OWN R_ac/R_dc (its own DC) times MKF's DC for this fixture (0.49121 mW), the
+        // same normalisation as ABT #1409, so the +-25% check compares the two solvers' R_ac/R_dc,
+        // never watts across different turn lengths. The residual gaps are left out because MKF
+        // excludes residual (mating-surface) gaps from every field source (ABT #832); OMFEM meshes
+        // them, and with them its loss is ~2.4x higher at 500 kHz (R_ac/R_dc 33.2 vs 13.9): the
+        // middle turn sits 42 um from the column, right in front of the residual gap, and carries
+        // 73% of the loss. That near-field effect is tracked as a possible future field source,
+        // not tested here. OMFEM R_ac/R_dc without residual gaps: 6.261 / 8.815 / 10.80 / 12.47 /
+        // 13.92 / 15.29 / 16.46 / 17.64 / 18.78 / 19.90 at 100 k .. 1 MHz (planar solve, automatic
+        // conductor mesh = skin depth / 3). Mesh check at 500 kHz: 13.92 / 14.02 / 14.24 / 14.24 /
+        // 14.78 at conductor targets 30.7 / 15.5 / 10 / 7 / 5 um, i.e. within ~6% of the pin.
+        // Caveat: PQ windows are only partly enclosed by the core, so OMFEM's fully imaged planar
+        // frame may overstate field confinement; OMFEM is nevertheless the reference.
         config.expectedValues = {
             {0.01, 0.00048949},
-            {100000, 0.0063071},
-            {200000, 0.0095737},
-            {300000, 0.012138},
-            {400000, 0.014334},
-            {500000, 0.016293},
-            {600000, 0.018096},
-            {700000, 0.019761},
-            {800000, 0.021328},
-            {900000, 0.022822},
-            {1000000, 0.024281}
+            {100000, 0.0030755},
+            {200000, 0.00433},
+            {300000, 0.0053041},
+            {400000, 0.0061269},
+            {500000, 0.0068376},
+            {600000, 0.0075121},
+            {700000, 0.0080853},
+            {800000, 0.0086659},
+            {900000, 0.0092264},
+            {1000000, 0.0097726}
         };
         
         config.createMagnetic = []() {
@@ -1601,22 +1605,21 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
-        // Pinned to 2D OMFEM like the 1 A variant (same geometry and R_ac/R_dc; OMFEM confirms the
-        // I^2 scaling: 0.3308 W at 500 kHz, R_ac/R_dc 33.18): OMFEM's own R_ac/R_dc times MKF's DC
-        // here (24.0692 mW). FAILS on MKF's current default (0.39-0.49) until the rectangular
-        // proximity kernel is fixed (ABT #1409 follow-up).
+        // Pinned to 2D OMFEM without the residual gaps like the 1 A variant (same geometry and
+        // R_ac/R_dc; OMFEM run at 7 A gives the same ratios to 4 digits: 13.920 at 500 kHz), times
+        // MKF's DC here (24.0692 mW). See the 1 A config for why the residual gaps are left out.
         config.expectedValues = {
             {0.01, 0.023985},
-            {100000, 0.30905},
-            {200000, 0.46911},
-            {300000, 0.59475},
-            {400000, 0.70234},
-            {500000, 0.79838},
-            {600000, 0.88671},
-            {700000, 0.9683},
-            {800000, 1.0451},
-            {900000, 1.1183},
-            {1000000, 1.1897}
+            {100000, 0.1507},
+            {200000, 0.21217},
+            {300000, 0.2599},
+            {400000, 0.30022},
+            {500000, 0.33504},
+            {600000, 0.36809},
+            {700000, 0.39618},
+            {800000, 0.42463},
+            {900000, 0.45209},
+            {1000000, 0.47886}
         };
         
         config.createMagnetic = []() {

@@ -490,14 +490,13 @@ namespace TestWindingLossesRectangular {
     }
 
     TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangular-winding-window]") {
-        // Pinned to 2D OMFEM's own R_ac/R_dc (2026-09-26, ABT #1409); see the config comment.
-        // Fails on MKF's current default until the rectangular proximity kernel is fixed.
+        // Pinned to 2D OMFEM's own R_ac/R_dc WITHOUT the residual gaps (ABT #1425); see the config comment.
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngappedConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
     TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangular-winding-window]") {
-        // Pinned to 2D OMFEM's own R_ac/R_dc like the 1 A variant (2026-09-26, ABT #1409).
+        // Pinned to 2D OMFEM's own R_ac/R_dc without the residual gaps, like the 1 A variant (ABT #1425).
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngapped7AmpsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
