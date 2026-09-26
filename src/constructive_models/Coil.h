@@ -955,6 +955,23 @@ class Coil : public MAS::Coil {
         // ABT #685/#1424: a winding's parallels keep the FIRST-wound layer's spatial order in every
         // layer (a permutation of stations within each bundle). Run on every real-winding layout.
         void keep_parallel_order_in_every_layer(std::vector<Turn>& turns, const std::vector<Layer>& layers);
+        // ABT #1422: a radial step (U layer link, or an inter-section return laid as one step) and a
+        // sibling's wrap beside one of its ends: the minimum centreline distance, as drawn.
+        struct RadialStepClearance {
+            size_t stepFrom = 0, stepTo = 0;   // the step's two stations (turn indices)
+            size_t stepEnd = 0;                // the end whose layer holds the sibling
+            size_t neighbour = 0;              // the sibling's station beside it
+            bool leaving = true;               // the sibling's wrap leaving (true) or reaching its station
+            bool sameBundle = false;           // both stations in one bundle: the bundle pitch can fund it
+            double distance = 0;
+            double od = 0;
+        };
+        std::vector<RadialStepClearance> measure_radial_step_clearances(const std::vector<Turn>& turns,
+                                                                        const std::vector<Layer>& layers);
+        // ABT #1422: widen the bundles of each layer whose stations a radial step's clearance needs.
+        void fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std::vector<Layer>& layers);
+        // ABT #1422: throws when a finished layout still has a radial step inside a sibling's envelope.
+        void refuse_radial_steps_closer_than_the_wire_to_sibling_wraps();
         // ABT #187: toroidal analog of align_blocked_layer_turns. Radial terminal leads emit angular
         // crossing markers on every ring they pass over (toroidal_connection_reserved_spaces); this
         // re-spreads each crossed ring's turns over the angular space OUTSIDE those corridors —

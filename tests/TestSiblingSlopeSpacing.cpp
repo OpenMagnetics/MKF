@@ -28,7 +28,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
+#include <optional>
+#include <tuple>
 #include <source_location>
 
 using json = nlohmann::json;
@@ -300,3 +303,156 @@ TEST_CASE("Real winding: sibling layer links keep one coated diameter apart (int
     // Secondary 7 t x 3 p crosses from layer 0 to layer 1 once per parallel: three sibling pairs.
     CHECK(pairs >= 3);
 }
+
+// ABT #1422: a RADIAL STEP -- a U layer link, or an inter-section return laid as one step at the
+// crossing (ABT #1360) -- runs in the connection plane from its departure station to the
+// conductor's own station in the next layer, so it is TILTED whenever the two layers' grids differ.
+// The sibling beside either end, in that end's layer, leaves (or reaches) the crossing on its wrap
+// at slope advance / length, perpendicular to that plane. Measured here the way MVB++ draws it: the
+// step as the segment between the two stations, the sibling's wrap as the half-line leaving (or
+// arriving at) its station at its own slope, both at their layers' radii; the distance is the
+// minimum over the step, sampled densely, of the exact point-to-half-line distance. Every sibling
+// pair must clear one coated OD.
+//
+// PSPS E16 flyback 2p/4p before the fix: the Secondary's section 1 stations were 0.542857 mm apart
+// -- ABT #1401's OD / cos(alpha) for the 0.18289 landing slope -- while parallel 0's return fell
+// 25.85 um over its 0.534 mm step toward parallel 1's wrap: 0.533396 mm, 604 nm inside the 0.534 mm
+// envelope (MVB++ #1295 certified 39 pairs, worst 604.192 nm). On the interleaved flyback the same
+// law bit the U link into layer 1 once ABT #1424 restored the bundle order.
+namespace {
+
+struct StepPair {
+    std::string step, neighbour;
+    double distance = 0, od = 0;
+};
+
+std::vector<StepPair> measure_radial_steps(OpenMagnetics::Coil& coil) {
+    const auto turns = coil.get_turns_description().value();
+    const auto layers = coil.get_layers_description().value();
+    auto wires = coil.get_wires();
+    std::map<std::string, double> layerX;
+    std::vector<double> conductionX;
+    for (const auto& layer : layers) {
+        layerX[layer.get_name()] = layer.get_coordinates()[0];
+        if (layer.get_type() == MAS::ElectricalType::CONDUCTION) {
+            conductionX.push_back(layer.get_coordinates()[0]);
+        }
+    }
+    std::map<std::pair<std::string, int64_t>, std::vector<size_t>> sequenceOf;
+    std::vector<std::pair<size_t, size_t>> placeInSequence(turns.size());
+    for (size_t t = 0; t < turns.size(); ++t) {
+        auto& sequence = sequenceOf[{turns[t].get_winding(), turns[t].get_parallel()}];
+        sequence.push_back(t);
+    }
+    std::map<size_t, std::pair<std::optional<size_t>, std::optional<size_t>>> prevNext;
+    for (const auto& [conductor, sequence] : sequenceOf) {
+        for (size_t k = 0; k < sequence.size(); ++k) {
+            prevNext[sequence[k]] = {k > 0 ? std::optional<size_t>(sequence[k - 1]) : std::nullopt,
+                                     k + 1 < sequence.size() ? std::optional<size_t>(sequence[k + 1])
+                                                             : std::nullopt};
+        }
+    }
+    const auto layerOf = [&](size_t t) { return turns[t].get_layer().value(); };
+    std::vector<StepPair> pairs;
+    for (const auto& [conductor, sequence] : sequenceOf) {
+        const auto windingIndex = coil.get_winding_index_by_name(conductor.first);
+        const double od = wires[windingIndex].get_maximum_outer_height();
+        for (size_t k = 0; k + 1 < sequence.size(); ++k) {
+            const size_t a = sequence[k], b = sequence[k + 1];
+            if (layerOf(a) == layerOf(b)) {
+                continue;
+            }
+            const double ra = turns[a].get_coordinates()[0], ya = turns[a].get_coordinates()[1];
+            const double rb = turns[b].get_coordinates()[0], yb = turns[b].get_coordinates()[1];
+            if (std::abs(rb - ra) <= 1e-12 || std::abs(yb - ya) > 0.5 * od) {
+                continue;   // not one radial step (MKF lays a vertical stub past half a wire)
+            }
+            bool adjacent = true;
+            for (double x : conductionX) {
+                if (x > std::min(ra, rb) + 1e-12 && x < std::max(ra, rb) - 1e-12) {
+                    adjacent = false;
+                }
+            }
+            if (!adjacent) {
+                continue;   // band-routed over another layer, not one step
+            }
+            for (size_t end : {a, b}) {
+                std::vector<size_t> inLayer;
+                for (size_t t = 0; t < turns.size(); ++t) {
+                    if (layerOf(t) == layerOf(end)) inLayer.push_back(t);
+                }
+                std::sort(inLayer.begin(), inLayer.end(), [&](size_t p, size_t q) {
+                    return turns[p].get_coordinates()[1] < turns[q].get_coordinates()[1];
+                });
+                const auto at = std::find(inLayer.begin(), inLayer.end(), end) - inLayer.begin();
+                for (long side : {-1L, 1L}) {
+                    const long j = at + side;
+                    if (j < 0 || j >= long(inLayer.size())) continue;
+                    const size_t n = inLayer[size_t(j)];
+                    if (turns[n].get_winding() != conductor.first || turns[n].get_parallel() == conductor.second) {
+                        continue;
+                    }
+                    const double rn = turns[n].get_coordinates()[0], s = turns[n].get_coordinates()[1];
+                    std::vector<std::pair<double, bool>> pieces;   // (slope, leaving)
+                    const auto [prev, next] = prevNext.at(n);
+                    if (next && layerOf(*next) == layerOf(n)) {
+                        REQUIRE(turns[*next].get_length() > 0);
+                        pieces.push_back({(turns[*next].get_coordinates()[1] - s) / turns[*next].get_length(), true});
+                    }
+                    if (prev && layerOf(*prev) == layerOf(n)) {
+                        REQUIRE(turns[n].get_length() > 0);
+                        pieces.push_back({(s - turns[*prev].get_coordinates()[1]) / turns[n].get_length(), false});
+                    }
+                    for (const auto& [m, leaving] : pieces) {
+                        double best = std::numeric_limits<double>::max();
+                        for (int i = 0; i <= 20000; ++i) {
+                            const double w = i / 20000.0;
+                            const double y = ya + w * (yb - ya), r = ra + w * (rb - ra);
+                            const double e = y - s;
+                            double x = m * e / (1 + m * m);
+                            if (leaving ? x < 0 : x > 0) x = 0;
+                            best = std::min(best, std::hypot(x, e - m * x, r - rn));
+                        }
+                        pairs.push_back({turns[a].get_name() + " -> " + turns[b].get_name(),
+                                         turns[n].get_name() + (leaving ? " (leaving)" : " (arriving)"), best, od});
+                    }
+                }
+            }
+        }
+    }
+    return pairs;
+}
+
+void require_steps_clear(OpenMagnetics::Coil& coil) {
+    const auto pairs = measure_radial_steps(coil);
+    REQUIRE(pairs.size() > 0);
+    const StepPair* worst = nullptr;
+    for (const auto& pair : pairs) {
+        if (worst == nullptr || pair.distance - pair.od < worst->distance - worst->od) worst = &pair;
+        INFO(pair.step << " vs " << pair.neighbour << ": " << pair.distance * 1e3 << " mm against OD "
+                       << pair.od * 1e3 << " mm");
+        CHECK(pair.distance >= pair.od - 0.5e-9);
+    }
+    std::cout << "[abt1422] " << pairs.size() << " step/sibling-wrap pairs; tightest " << worst->step
+              << " vs " << worst->neighbour << ": " << worst->distance * 1e3 << " mm, "
+              << (worst->distance - worst->od) * 1e9 << " nm off the " << worst->od * 1e3 << " mm envelope"
+              << std::endl;
+}
+
+}  // namespace
+
+TEST_CASE("Real winding: a tilted radial step clears the sibling's wrap (PSPS E16 flyback, rect column)",
+          "[constructive-model][coil][real-winding][abt1422]") {
+    auto coil = wind_real("abt1422_psps_e16_flyback_2p4p.json");
+    require_steps_clear(coil);
+    // ABT #1401's wrap law must still hold where the step law widened the stations.
+    require_siblings_clear(coil, std::nullopt);
+}
+
+TEST_CASE("Real winding: a tilted radial step clears the sibling's wrap (interleaved flyback, ETD39)",
+          "[constructive-model][coil][real-winding][abt1422]") {
+    auto coil = wind_real("abt1401_interleaved_flyback_etd39.json");
+    require_steps_clear(coil);
+    require_siblings_clear(coil, "Secondary section 0 layer 1");
+}
+

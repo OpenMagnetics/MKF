@@ -3232,6 +3232,307 @@ void Coil::keep_parallel_order_in_every_layer(std::vector<Turn>& turns, const st
     }
 }
 
+// ABT #1422. A RADIAL STEP (a U layer link, or an inter-section return laid as one step at the
+// crossing, ABT #1360) is drawn in the connection plane from its departure station
+// (r_a, y_a) to the conductor's own station in the next layer (r_b, y_b) -- and is therefore
+// TILTED by tau = y_a - y_b over the radial run rho = |r_b - r_a| whenever the two layers'
+// grids differ. The sibling whose station sits beside the step's end, in the same layer, leaves
+// (or reaches) the crossing on its wrap at slope m = advance / turn length, perpendicular to that
+// plane. Two inclinations in perpendicular planes: along the step the sibling's centreline is
+// nearest where
+//     d^2 = e^2 rho^2 / (tau^2 + rho^2 (1 + m^2)),      e = the stations' axial spacing,
+// so the spacing the pair needs is OD * sqrt(1 + m^2 + (tau / rho)^2) -- ABT #1401's OD / cos(alpha)
+// with the step's own tilt added. #1401 funded only the m part. Measured on the PSPS E16 flyback
+// (Secondary 4 p, rect column): section 1's stations were 0.542857 mm apart, exactly
+// 0.534 mm * sqrt(1 + 0.18289^2) for the landing wrap's slope, while parallel 0's return fell
+// 25.85 um over its 0.534 mm step toward parallel 1's wrap: 0.533396 mm, 604 nm inside the coated
+// envelope. It surfaced with ABT #1295 (MVB++ drawing the rect corner at the radius MKF charges):
+// the drawn wrap got as short as the charged one, and its slope as steep.
+//
+// The distance is computed exactly, not from the closed form: the squared distance from a point to
+// a half-line is convex in the point, the point moves linearly along the step, so a golden-section
+// search over the step converges on the true minimum.
+static double radial_step_to_wrap_distance(double ra, double ya, double rb, double yb, double rn,
+                                           double station, double slope, bool leaving) {
+    const auto squared = [&](double w) {
+        const double y = ya + w * (yb - ya);
+        const double r = ra + w * (rb - ra);
+        const double e = y - station;
+        double x = slope * e / (1 + slope * slope);   // nearest point of the whole line
+        if (leaving ? x < 0 : x > 0) {
+            x = 0;   // the wrap starts (or ends) at the crossing
+        }
+        const double dy = e - slope * x;
+        return x * x + dy * dy + (r - rn) * (r - rn);
+    };
+    double low = 0, high = 1;
+    const double golden = (std::sqrt(5.0) - 1) / 2;
+    double c = high - golden * (high - low), d = low + golden * (high - low);
+    double fc = squared(c), fd = squared(d);
+    for (int it = 0; it < 200 && high - low > 1e-15; ++it) {
+        if (fc < fd) {
+            high = d; d = c; fd = fc; c = high - golden * (high - low); fc = squared(c);
+        }
+        else {
+            low = c; c = d; fc = fd; d = low + golden * (high - low); fd = squared(d);
+        }
+    }
+    return std::sqrt(std::min({squared(0), squared(1), fc, fd}));
+}
+// ABT #1422: every radial step of the layout against the sibling wraps beside its two ends.
+std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(const std::vector<Turn>& turns,
+                                                                            const std::vector<Layer>& layers) {
+    std::vector<RadialStepClearance> clearances;
+    std::map<std::string, const Layer*> layerByName;
+    std::vector<double> conductionLayerX;
+    for (const auto& layer : layers) {
+        layerByName[layer.get_name()] = &layer;
+        if (layer.get_type() == ElectricalType::CONDUCTION) {
+            conductionLayerX.push_back(layer.get_coordinates()[0]);
+        }
+    }
+    auto wires = get_wires();
+    std::map<std::pair<std::string, int64_t>, std::vector<size_t>> turnsByConductor;
+    for (size_t t = 0; t < turns.size(); ++t) {
+        turnsByConductor[{turns[t].get_winding(), turns[t].get_parallel()}].push_back(t);
+    }
+    std::vector<std::optional<size_t>> previousOf(turns.size()), nextOf(turns.size());
+    for (const auto& [conductor, sequence] : turnsByConductor) {
+        for (size_t k = 0; k < sequence.size(); ++k) {
+            if (k > 0) previousOf[sequence[k]] = sequence[k - 1];
+            if (k + 1 < sequence.size()) nextOf[sequence[k]] = sequence[k + 1];
+        }
+    }
+    std::map<std::string, std::vector<size_t>> stationsOfLayer;   // sorted along the turn axis
+    for (size_t t = 0; t < turns.size(); ++t) {
+        if (turns[t].get_layer()) {
+            stationsOfLayer[turns[t].get_layer().value()].push_back(t);
+        }
+    }
+    for (auto& [name, stations] : stationsOfLayer) {
+        std::sort(stations.begin(), stations.end(), [&](size_t a, size_t b) {
+            return turns[a].get_coordinates()[1] < turns[b].get_coordinates()[1];
+        });
+    }
+    const auto overlappingLayer = [&](const Turn& turn) {
+        if (!turn.get_layer()) return false;
+        auto found = layerByName.find(turn.get_layer().value());
+        return found != layerByName.end() && found->second->get_type() == ElectricalType::CONDUCTION &&
+               found->second->get_orientation() == WindingOrientation::OVERLAPPING;
+    };
+    for (const auto& [conductor, sequence] : turnsByConductor) {
+        const size_t windingIndex = get_winding_index_by_name(conductor.first);
+        if (wires[windingIndex].get_type() != WireType::ROUND && wires[windingIndex].get_type() != WireType::LITZ) {
+            continue;
+        }
+        const int64_t numberParallels = get_number_parallels(windingIndex);
+        if (numberParallels < 2) {
+            continue;   // no sibling to clear
+        }
+        const double od = wires[windingIndex].get_maximum_outer_height();
+        for (size_t k = 0; k + 1 < sequence.size(); ++k) {
+            const size_t from = sequence[k], to = sequence[k + 1];
+            if (!overlappingLayer(turns[from]) || !overlappingLayer(turns[to]) ||
+                turns[from].get_layer().value() == turns[to].get_layer().value()) {
+                continue;
+            }
+            const double ra = turns[from].get_coordinates()[0], ya = turns[from].get_coordinates()[1];
+            const double rb = turns[to].get_coordinates()[0], yb = turns[to].get_coordinates()[1];
+            // ONE radial step: the connection MKF lays with no vertical stub (the U turnaround's
+            // `needVertical` test in the connection layout, |dy| <= half a wire). Anything taller
+            // is an L route, a dragback or a final landing, drawn differently.
+            if (std::abs(rb - ra) <= 1e-12 || std::abs(yb - ya) > 0.5 * od) {
+                continue;
+            }
+            bool oneStep = true;
+            for (double x : conductionLayerX) {
+                if (x > std::min(ra, rb) + 1e-12 && x < std::max(ra, rb) - 1e-12) {
+                    oneStep = false;   // routed over another layer: a band route, not one step
+                }
+            }
+            if (!oneStep) {
+                continue;
+            }
+            for (size_t end : {from, to}) {
+                const auto& stations = stationsOfLayer.at(turns[end].get_layer().value());
+                const size_t at = size_t(std::find(stations.begin(), stations.end(), end) - stations.begin());
+                for (int side : {-1, 1}) {
+                    if ((side < 0 && at == 0) || (side > 0 && at + 1 >= stations.size())) {
+                        continue;
+                    }
+                    const size_t neighbour = stations[side < 0 ? at - 1 : at + 1];
+                    if (turns[neighbour].get_winding() != conductor.first ||
+                        turns[neighbour].get_parallel() == conductor.second) {
+                        continue;   // not a sibling
+                    }
+                    const double rn = turns[neighbour].get_coordinates()[0];
+                    const double station = turns[neighbour].get_coordinates()[1];
+                    const auto sameLayer = [&](std::optional<size_t> other) {
+                        return other && turns[*other].get_layer() &&
+                               turns[*other].get_layer().value() == turns[neighbour].get_layer().value();
+                    };
+                    // The sibling's wrap through its station, as it is drawn at the crossing: the
+                    // revolution LEAVING it (to its next station in the layer) and the one ARRIVING
+                    // at it (from its previous one), each at its own slope = advance / length.
+                    std::vector<std::pair<double, bool>> pieces;
+                    if (sameLayer(nextOf[neighbour])) {
+                        const double length = turns[*nextOf[neighbour]].get_length();
+                        if (!(length > 0)) {
+                            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                                "Real winding: turn " + turns[*nextOf[neighbour]].get_name() +
+                                                    " carries no length, so the slope of the wrap beside the "
+                                                    "radial step of " + turns[from].get_name() + " is unknown");
+                        }
+                        pieces.push_back({(turns[*nextOf[neighbour]].get_coordinates()[1] - station) / length, true});
+                    }
+                    if (sameLayer(previousOf[neighbour])) {
+                        const double length = turns[neighbour].get_length();
+                        if (!(length > 0)) {
+                            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                                "Real winding: turn " + turns[neighbour].get_name() +
+                                                    " carries no length, so the slope of the wrap beside the "
+                                                    "radial step of " + turns[from].get_name() + " is unknown");
+                        }
+                        pieces.push_back({(station - turns[*previousOf[neighbour]].get_coordinates()[1]) / length, false});
+                    }
+                    for (const auto& [slope, leaving] : pieces) {
+                        RadialStepClearance clearance;
+                        clearance.stepFrom = from;
+                        clearance.stepTo = to;
+                        clearance.stepEnd = end;
+                        clearance.neighbour = neighbour;
+                        clearance.leaving = leaving;
+                        clearance.od = od;
+                        clearance.distance = radial_step_to_wrap_distance(ra, ya, rb, yb, rn, station, slope, leaving);
+                        clearance.sameBundle = (at / size_t(numberParallels)) ==
+                                               ((side < 0 ? at - 1 : at + 1) / size_t(numberParallels)) &&
+                                               stations.size() % size_t(numberParallels) == 0;
+                        clearances.push_back(clearance);
+                    }
+                }
+            }
+        }
+    }
+    return clearances;
+}
+
+// ABT #1422: widen the bundles of every layer where a radial step's end sits closer than one coated
+// OD to a sibling's wrap, to the spacing that clears it, iterated to the nm-grid fixpoint (widening
+// moves the stations, and with them the steps' tilts and the wraps' slopes). Each bundle keeps its
+// anchor: the lowest bundle its lowest station, the highest its highest -- the layer's envelope,
+// and so its fit in the window, is unchanged -- and an inner one its centre. Every conductor's
+// advance between consecutive bundles then changes by the same amount, so the siblings' wraps stay
+// parallel (ABT #1401). A deficit between two DIFFERENT bundles, or a widening that would close the
+// gap between bundles, cannot be funded by the bundle pitch; it is left in place and
+// refuse_radial_steps_closer_than_the_wire_to_sibling_wraps refuses the finished layout.
+void Coil::fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std::vector<Layer>& layers) {
+    for (int pass = 0; pass < 64; ++pass) {
+        std::map<std::string, double> spacingNeeded;   // per layer
+        for (const auto& clearance : measure_radial_step_clearances(turns, layers)) {
+            // Funded to the envelope itself, not to the half-nanometre the refusal allows: the
+            // widened stations are re-emitted on the nm grid, which takes back up to half of one.
+            if (!(clearance.distance < clearance.od) || !clearance.sameBundle) {
+                continue;
+            }
+            const double spacing = std::abs(turns[clearance.stepEnd].get_coordinates()[1] -
+                                            turns[clearance.neighbour].get_coordinates()[1]);
+            const double needed = std::ceil(spacing * clearance.od / clearance.distance * 1e9 - 1e-6) / 1e9;
+            const std::string layerName = turns[clearance.neighbour].get_layer().value();
+            // At least one nm more than now: the ratio can round back onto the spacing it came from.
+            spacingNeeded[layerName] = std::max({spacingNeeded[layerName], needed, spacing + 1e-9});
+        }
+        if (spacingNeeded.empty()) {
+            return;
+        }
+        for (const auto& [layerName, needed] : spacingNeeded) {
+            std::vector<size_t> stations;
+            for (size_t t = 0; t < turns.size(); ++t) {
+                if (turns[t].get_layer() && turns[t].get_layer().value() == layerName) {
+                    stations.push_back(t);
+                }
+            }
+            std::sort(stations.begin(), stations.end(), [&](size_t a, size_t b) {
+                return turns[a].get_coordinates()[1] < turns[b].get_coordinates()[1];
+            });
+            const size_t bundleSize = size_t(get_number_parallels(get_winding_index_by_name(turns[stations.front()].get_winding())));
+            if (bundleSize < 2 || stations.size() % bundleSize != 0) {
+                continue;   // only same-bundle deficits reach here, which need whole bundles
+            }
+            const size_t numberBundles = stations.size() / bundleSize;
+            std::vector<double> laid(stations.size());
+            for (size_t bundle = 0; bundle < numberBundles; ++bundle) {
+                const double low = turns[stations[bundle * bundleSize]].get_coordinates()[1];
+                const double high = turns[stations[bundle * bundleSize + bundleSize - 1]].get_coordinates()[1];
+                const double pitch = std::max(needed, (high - low) / double(bundleSize - 1));
+                const double span = pitch * double(bundleSize - 1);
+                double first;
+                if (numberBundles == 1 || (bundle > 0 && bundle + 1 < numberBundles)) {
+                    first = (low + high) / 2 - span / 2;
+                }
+                else if (bundle == 0) {
+                    first = low;
+                }
+                else {
+                    first = high - span;
+                }
+                for (size_t j = 0; j < bundleSize; ++j) {
+                    laid[bundle * bundleSize + j] = roundFloat(first + double(j) * pitch, 9);
+                }
+            }
+            for (size_t k = bundleSize; k < laid.size(); k += bundleSize) {
+                if (laid[k] - laid[k - 1] < needed - 1e-12) {
+                    std::ostringstream message;
+                    message.precision(9);
+                    message << "Real winding: layer " << layerName << " needs its bundles' stations " << needed
+                            << " m apart for a radial step to clear a sibling's wrap, which closes the gap "
+                               "between two of its bundles to "
+                            << laid[k] - laid[k - 1] << " m";
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+                }
+            }
+            for (size_t k = 0; k < stations.size(); ++k) {
+                auto coordinates = turns[stations[k]].get_coordinates();
+                coordinates[1] = laid[k];
+                turns[stations[k]].set_coordinates(coordinates);
+                auto dimensions = turns[stations[k]].get_dimensions();
+                if (dimensions && dimensions->size() > 1) {
+                    auto widened = dimensions.value();
+                    widened[1] = std::max(widened[1], needed);
+                    turns[stations[k]].set_dimensions(widened);
+                }
+            }
+        }
+    }
+    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "Real winding: widening the bundles for the radial steps' clearance did not reach a "
+                        "fixpoint in 64 passes");
+}
+
+void Coil::refuse_radial_steps_closer_than_the_wire_to_sibling_wraps() {
+    if (!settings.get_coil_use_real_winding_geometry() || !get_turns_description() || !get_layers_description()) {
+        return;
+    }
+    if (resolve_bobbin().get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return;
+    }
+    const auto turns = get_turns_description().value();
+    const auto layers = get_layers_description().value();
+    for (const auto& clearance : measure_radial_step_clearances(turns, layers)) {
+        if (clearance.distance < clearance.od - 0.5e-9) {
+            std::ostringstream message;
+            message.precision(9);
+            message << "Real winding: the radial step '" << turns[clearance.stepFrom].get_name() << "' -> '"
+                    << turns[clearance.stepTo].get_name() << "' passes " << clearance.distance
+                    << " m from the wrap " << (clearance.leaving ? "leaving" : "reaching") << " '"
+                    << turns[clearance.neighbour].get_name() << "', against the " << clearance.od
+                    << " m coated diameter" << (clearance.sameBundle ? "" : " (the two stations are in different bundles, "
+                                                                          "so the bundle pitch cannot fund it)")
+                    << ". Sibling parallels cannot pass closer than one wire, so this layout cannot be wound.";
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+        }
+    }
+}
+
 void Coil::align_blocked_layer_turns() {
     if (!get_layers_description() || !get_turns_description()) {
         return;
@@ -3260,7 +3561,9 @@ void Coil::align_blocked_layer_turns() {
         // the 0.63 mm copper.
         if (realWinding) {
             auto turns = get_turns_description().value();
-            keep_parallel_order_in_every_layer(turns, get_layers_description().value());
+            auto layers = get_layers_description().value();
+            keep_parallel_order_in_every_layer(turns, layers);
+            fund_radial_steps_against_sibling_wraps(turns, layers);
             set_turns_description(turns);
         }
         return;
@@ -3948,6 +4251,10 @@ void Coil::align_blocked_layer_turns() {
                 break;
             }
         }
+    }
+    // ABT #1422: after the order law and the link pitch, the radial steps against the sibling wraps.
+    if (realWinding) {
+        fund_radial_steps_against_sibling_wraps(turns, layers);
     }
     set_layers_description(layers);
     set_turns_description(turns);
@@ -5126,6 +5433,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     if (ok) {
         refuse_turns_bent_tighter_than_the_wire_allows();
         refuse_sibling_layer_links_closer_than_the_wire();
+        refuse_radial_steps_closer_than_the_wire_to_sibling_wraps();
     }
     return ok;
 }
