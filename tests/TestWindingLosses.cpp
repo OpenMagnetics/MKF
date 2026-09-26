@@ -3064,3 +3064,145 @@ TEST_CASE("Debug_Abt1409_Model_Sweep", "[debug][abt1409-sweep][.]") {
     }
     settings.reset();
 }
+
+// ABT #1409 investigation driver (hidden, untagged): dumps, for the first operating point of a
+// MAS (env ABT1409_MAS, absolute path) or of a test-data file prepared like
+// runJsonBasedWindingLossesTest at env ABT1409_FREQ (env ABT1409_JSON), the processed MAS (for
+// OMFEM), the field model's H on its own induced mesh at the fundamental, H at arbitrary points
+// (env ABT1409_POINTS, a JSON [[x, y], ...]), the turn rectangles and the per-turn losses.
+// Model: env ABT1409_FIELD_MODEL / ABT1409_FRINGING (JSON names). Output: env ABT1409_OUT.
+TEST_CASE("Debug_Abt1409_Field_Dump", "[debug][abt1409-dump][.]") {
+    const char* outPath = std::getenv("ABT1409_OUT");
+    REQUIRE(outPath != nullptr);
+    settings.reset();
+    clear_databases();
+    settings.set_magnetic_field_turn_sums_cache_bytes(0);
+    OpenMagnetics::Magnetic magnetic;
+    OperatingPoint operatingPoint;
+    OpenMagnetics::Inputs inputs;
+    if (const char* masPath = std::getenv("ABT1409_MAS")) {
+        auto mas = OpenMagneticsTesting::mas_loader(masPath);
+        magnetic = mas.get_magnetic();
+        inputs = mas.get_inputs();
+        operatingPoint = inputs.get_operating_point(0);
+    }
+    else {
+        const char* jsonName = std::getenv("ABT1409_JSON");
+        const char* frequencyText = std::getenv("ABT1409_FREQ");
+        REQUIRE(jsonName != nullptr);
+        REQUIRE(frequencyText != nullptr);
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), jsonName);
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        magnetic = mas.get_magnetic();
+        inputs = mas.get_inputs();
+        operatingPoint = inputs.get_operating_point(0);
+        OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, std::stod(frequencyText), true);
+        MagnetizingInductance magnetizingInductanceModel("ZHANG");
+        double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
+            magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance());
+        operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+        settings.set_magnetic_field_mirroring_dimension(1);
+        settings.set_magnetic_field_include_fringing(true);
+    }
+    MagneticFieldStrengthModels fieldModel = MagneticFieldStrengthModels::IMAGED_MMF_SHEETS;
+    MagneticFieldStrengthFringingEffectModels fringingModel = MagneticFieldStrengthFringingEffectModels::ROSHEN;
+    if (const char* v = std::getenv("ABT1409_FIELD_MODEL")) from_json(json(std::string(v)), fieldModel);
+    if (const char* v = std::getenv("ABT1409_FRINGING")) from_json(json(std::string(v)), fringingModel);
+
+    json out;
+    {
+        OpenMagnetics::Inputs dumpInputs = inputs;
+        dumpInputs.set_operating_points({operatingPoint});
+        OpenMagnetics::Mas dumpMas;
+        dumpMas.set_inputs(dumpInputs);
+        dumpMas.set_magnetic(magnetic);
+        json masJson;
+        to_json(masJson, dumpMas);
+        out["mas"] = masJson;
+    }
+    const auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+    double fundamental = harmonics.get_frequencies()[1];
+    out["frequency"] = fundamental;
+
+    auto dumpField = [&](const WindingWindowMagneticStrengthFieldPhasorOutput& field) {
+        json points = json::array();
+        const auto perFrequency = field.get_field_per_frequency();
+        const auto quadraturePerFrequency = field.get_quadrature_field_per_frequency();
+        for (size_t h = 0; h < perFrequency.size(); ++h) {
+            if (std::abs(perFrequency[h].get_frequency() - fundamental) > 1e-6 * fundamental) continue;
+            const auto data = perFrequency[h].get_data();
+            const auto quadrature = quadraturePerFrequency[h].get_data();
+            for (size_t i = 0; i < data.size(); ++i) {
+                json p;
+                p["x"] = data[i].get_point()[0];
+                p["y"] = data[i].get_point()[1];
+                p["hx"] = data[i].get_real();
+                p["hy"] = data[i].get_imaginary();
+                p["qx"] = quadrature[i].get_real();
+                p["qy"] = quadrature[i].get_imaginary();
+                if (data[i].get_label()) p["label"] = data[i].get_label().value();
+                if (data[i].get_turn_index()) p["turn"] = data[i].get_turn_index().value();
+                points.push_back(p);
+            }
+        }
+        return points;
+    };
+    MagneticField magneticField(fieldModel, fringingModel);
+    out["mesh"] = dumpField(magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic));
+
+    if (const char* pointsPath = std::getenv("ABT1409_POINTS")) {
+        std::ifstream pointsFile(pointsPath);
+        json requested = json::parse(pointsFile);
+        Field external;
+        external.set_frequency(fundamental);
+        std::vector<FieldPoint> externalPoints;
+        for (auto& xy : requested) {
+            FieldPoint fieldPoint;
+            fieldPoint.set_point({xy[0].get<double>(), xy[1].get<double>()});
+            fieldPoint.set_value(0);
+            externalPoints.push_back(fieldPoint);
+        }
+        external.set_data(externalPoints);
+        MagneticField externalField(fieldModel, fringingModel);
+        out["points"] = dumpField(externalField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, external));
+    }
+
+    json turnsJson = json::array();
+    auto wires = magnetic.get_mutable_coil().get_wires();
+    const auto turns = magnetic.get_coil().get_turns_description().value();
+    for (const auto& turn : turns) {
+        size_t windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turn.get_winding());
+        auto wire = wires[windingIndex];
+        json t;
+        t["x"] = turn.get_coordinates()[0];
+        t["y"] = turn.get_coordinates()[1];
+        t["w"] = wire.get_maximum_conducting_width();
+        t["h"] = wire.get_maximum_conducting_height();
+        t["length"] = turn.get_length();
+        turnsJson.push_back(t);
+    }
+    out["turns"] = turnsJson;
+
+    WindingLossesModels models;
+    models.magneticFieldStrengthModel = fieldModel;
+    models.magneticFieldStrengthFringingEffectModel = fringingModel;
+    auto losses = WindingLosses(models).calculate_losses(magnetic, operatingPoint, 25);
+    out["rdcPerTurn"] = losses.get_dc_resistance_per_turn().value();
+    json perTurnJson = json::array();
+    const auto perTurn = losses.get_winding_losses_per_turn().value();
+    for (const auto& turn : perTurn) {
+        const auto skin = turn.get_skin_effect_losses().value();
+        const auto proximity = turn.get_proximity_effect_losses().value();
+        double skinTotal = 0, proximityTotal = 0;
+        for (auto l : skin.get_losses_per_harmonic()) skinTotal += l;
+        for (auto l : proximity.get_losses_per_harmonic()) proximityTotal += l;
+        perTurnJson.push_back({{"ohmic", turn.get_ohmic_losses()->get_losses()}, {"skin", skinTotal}, {"proximity", proximityTotal}});
+    }
+    out["lossesPerTurn"] = perTurnJson;
+    out["currentRms"] = operatingPoint.get_excitations_per_winding()[0].get_current()->get_processed()->get_rms().value();
+    out["currentPeakFundamental"] = harmonics.get_amplitudes()[1];
+    std::ofstream file(outPath);
+    file << out.dump();
+    settings.reset();
+}
