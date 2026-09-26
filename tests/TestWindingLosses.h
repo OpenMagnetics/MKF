@@ -612,8 +612,8 @@ namespace WindingLossesTestData {
         // compares the two solvers' R_ac/R_dc, never watts across different turn lengths. OMFEM
         // R_ac/R_dc: 9.637 / 14.09 / 17.52 / 20.41 / 22.96 / 25.26 / 27.37 / 29.35 / 31.20 / 32.97
         // at 100 k .. 1 MHz (planar solve, mesh-converged to 0.1 %). The previous table was MKF's
-        // own output; MKF's default reads 0.75-0.86 of these, so this test FAILS until the
-        // rectangular proximity kernel is fixed (ABT #1409 follow-up). Caveat: PQ windows are only
+        // own output. MKF's default reads 0.75-0.86 of these: inside the +-25% band, but at its low
+        // edge at 1 MHz (ABT #1409 follow-up on the rectangular proximity kernel). Caveat: PQ windows are only
         // partly enclosed by the core, so OMFEM's fully imaged planar frame may overstate field
         // confinement here; OMFEM is nevertheless the reference.
         config.expectedValues = {
