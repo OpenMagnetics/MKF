@@ -365,4 +365,71 @@ private:
     std::pair<double, double> calculateMagneticField(double r, double z) const;
 };
 
+// ============================================================================
+// IMAGED_MMF_SHEETS: turns and gap MMF sheets imaged together (ABT #1409)
+// ============================================================================
+/**
+ * @brief Window field of the turns and of every functional gap, imaged as one system.
+ *
+ * A gap in an otherwise high-permeability core is equivalent to a current sheet on the
+ * leg face next to the window, carrying the MMF the gap absorbs and OPPOSING the winding
+ * (Ampere around the window). Turns and gap sheets are placed in the same method-of-images
+ * lattice the CoilMesher uses for the core walls, so the window carries ~no net current and
+ * the lattice sum is the ideal-core window field. Away from the gap plane the two core
+ * halves are equipotential and the field there collapses; it concentrates at the gap plane.
+ * Free-space fringing kernels (Roshen) superposed on a separately computed turn field
+ * cannot reproduce that, which is what read R_ac/R_dc 887 against 2D FEM's 268 on a stack
+ * of flat turns beside 3.9 mm spacer gaps.
+ *
+ * Everything is closed form: a flat conductor (rectangular, foil, planar) is a uniform-
+ * current rectangle, a round/litz turn a line current, a gap sheet a uniform line segment.
+ * Gap MMF per unit magnetizing current: flux N/R_total (the reluctance model's total),
+ * shared between lateral columns in proportion to their gap conductances, times the gap's
+ * own reluctance. Only functional (subtractive/additive) gaps carry a sheet (ABT #832).
+ *
+ * The own turn is excluded at its own points (its field there is skin effect); its images
+ * are kept, being the core's response. Scope: single-window, non-toroidal cores. Anything
+ * else throws.
+ */
+class MagneticFieldStrengthImagedMmfSheetsModel : public MagneticFieldStrengthModel {
+  public:
+    std::string methodName = "ImagedMmfSheets";
+
+    struct Source {
+        double x1, x2, y1, y2;             // extent; x1 == x2 for a sheet, both extents collapse for a filament
+        double weight;                     // image multiplier (times turn divider and direction for turns)
+        std::optional<size_t> turnIndex;   // set on turn sources
+        bool isImage;                      // false only for the real (m = n = 0) copy
+        size_t windingIndex;
+    };
+
+    ComplexFieldPoint get_magnetic_field_strength_between_two_points(
+        const FieldPoint& inducingFieldPoint,
+        const FieldPoint& inducedFieldPoint,
+        std::optional<size_t> inducingWireIndex = std::nullopt) override;
+
+    void setup(Magnetic magnetic, const std::vector<Wire>& wirePerWinding,
+               const std::vector<double>& currentDividerPerTurn,
+               const std::vector<int8_t>& currentDirectionPerWinding,
+               double frequency);
+
+    // Field of all turns (per winding current amplitudes, signed), own real turn excluded.
+    std::pair<double, double> turns_field(double x, double y, const std::vector<double>& currentPerWinding,
+                                          std::optional<size_t> excludedTurn) const;
+    // Field of all gap sheets per ampere of magnetizing current.
+    std::pair<double, double> gaps_field(double x, double y) const;
+
+    static std::pair<double, double> rectangle_field(double x, double y, double x1, double x2, double y1, double y2, double current);
+    static std::pair<double, double> vertical_sheet_field(double x, double y, double xs, double y1, double y2, double current);
+    static std::pair<double, double> filament_field(double x, double y, double xs, double ys, double current);
+
+    const std::vector<Source>& get_turn_sources() const { return _turnSources; }
+    const std::vector<Source>& get_gap_sources() const { return _gapSources; }
+
+  private:
+    std::vector<Source> _turnSources;
+    std::vector<Source> _gapSources;
+    static std::pair<double, double> source_field(const Source& source, double x, double y, double current);
+};
+
 } // namespace OpenMagnetics

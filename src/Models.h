@@ -10,7 +10,12 @@ enum class MagneticFieldStrengthModels : int {
     LAMMERANER,
     DOWELL,
     WANG,
-    ALBACH
+    ALBACH,
+    // ABT #1409: turns AND functional-gap MMF sheets imaged together in the core window, so the
+    // window carries ~no net current. Gap fringing is part of this model: the fringing-effect
+    // model setting is not consulted when it is selected. Appended last: bindings pass the
+    // enum as an int.
+    IMAGED_MMF_SHEETS
 };
 
 enum class MagneticFieldStrengthFringingEffectModels : int {

@@ -23,6 +23,8 @@ Not really used, but for completeness: MANIKTALA - Switching Power Supplies A - 
 ### Turns Magnetic Field
 BINNS_LAWRENSON - https://library.lol/main/78A1F466FA9F3EFBCB6165283FC346B6 Equation 3.34 and 5.4
 
+Opt-in: IMAGED_MMF_SHEETS - turns and every functional gap (as a current sheet carrying the gap's MMF, opposing the winding) imaged together in the core window; it includes its own gap fringing, so the fringing model setting is not used with it.
+
 ### Fringing Field Magnetic Field
 ROSHEN - https://sci-hub.st/10.1109/tmag.2007.898908 and https://sci-hub.st/10.1109/tmag.2008.2002302
 

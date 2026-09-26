@@ -31,6 +31,7 @@
 #include <typeinfo>
 #include <cmath>
 #include <chrono>
+#include <sstream>
 #include <optional>
 
 using namespace MAS;
@@ -2857,6 +2858,209 @@ TEST_CASE("Test_Winding_Losses_Peec2D_Rect_Stack_Beside_Gaps_Vs_OMFEM", "[physic
         double endTurnRatio = perTurn[0][0].fullLoss / perTurn[0][0].dcEquivalentLoss;
         INFO("end turn R_ac/R_dc " << endTurnRatio << ", OMFEM 4.4");
         CHECK(endTurnRatio < 20);
+    }
+    settings.reset();
+}
+
+// ABT #1409: the IMAGED_MMF_SHEETS field model on the same 22-turn flat-rectangular stack
+// (EQ 41/28/19.9 N97, 117.6 kHz) with three spacer gaps of 3.9 / 2.0 / 0.5 mm. 2D OMFEM
+// (conductor target 0.04 mm) gives R_ac/R_dc 268.0 / 297.9 / 282.2 and ~4 at the yoke-end
+// turn; the default Binns-Lawrenson + Roshen pair reads 887 / 625 / 400 and 963 / 809 / 613
+// at the end turn, because a free-space fringing field is never balanced by the winding.
+// The model reads 296.8 / 309.1 / 274.8 (end turn 7.1 / 7.4 / 8.0), hence the band
+// [0.85, 1.20] of OMFEM.
+//
+// NOT covered, and the reason this is not the default: on the centre-ground 2.0 mm variant
+// (abt1409_rect_stack_ground_gap_2.0mm.json, OMFEM 386.5) it reads 883, and on the existing
+// FEM-arbitrated fixtures it is worse than the default pair (single planar trace 2.1x FEM,
+// ungapped five-turn rectangular 0.46x). The turns at the gap plane are over-read 1.8-3x;
+// the width-sample loss kernel was derived for the bare fringing field it replaces.
+TEST_CASE("Test_Winding_Losses_Imaged_Mmf_Sheets_Rect_Stack_Beside_Spacer_Gaps_Vs_OMFEM", "[physical-model][winding-losses][rectangular][abt1409]") {
+    for (auto [fileName, omfemRacOverRdc] : std::vector<std::pair<std::string, double>>{
+             {"abt1409_rect_stack_spacer_gaps_3.9mm.json", 268.0},
+             {"abt1409_rect_stack_spacer_gaps_2.0mm.json", 297.9},
+             {"abt1409_rect_stack_spacer_gaps_0.5mm.json", 282.2}}) {
+        settings.reset();
+        clear_databases();
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName);
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+        auto operatingPoint = inputs.get_operating_point(0);
+        double currentRms = operatingPoint.get_excitations_per_winding()[0].get_current()->get_processed()->get_rms().value();
+
+        WindingLossesModels models;
+        models.magneticFieldStrengthModel = MagneticFieldStrengthModels::IMAGED_MMF_SHEETS;
+        auto output = WindingLosses(models).calculate_losses(magnetic, operatingPoint, 25);
+
+        const auto rdcPerTurn = output.get_dc_resistance_per_turn().value();
+        double rdcTotal = 0;
+        for (auto r : rdcPerTurn) {
+            rdcTotal += r;
+        }
+        double racOverRdc = output.get_winding_losses() / (currentRms * currentRms * rdcTotal);
+        INFO(fileName << ": IMAGED_MMF_SHEETS R_ac/R_dc " << racOverRdc << ", OMFEM " << omfemRacOverRdc);
+        CHECK(racOverRdc > 0.85 * omfemRacOverRdc);
+        CHECK(racOverRdc < 1.20 * omfemRacOverRdc);
+
+        const auto perTurn = output.get_winding_losses_per_turn().value();
+        const auto endTurn = perTurn[0];
+        double endTurnLoss = endTurn.get_ohmic_losses()->get_losses();
+        const auto skinLosses = endTurn.get_skin_effect_losses().value();
+        const auto proximityLosses = endTurn.get_proximity_effect_losses().value();
+        for (auto loss : skinLosses.get_losses_per_harmonic()) {
+            endTurnLoss += loss;
+        }
+        for (auto loss : proximityLosses.get_losses_per_harmonic()) {
+            endTurnLoss += loss;
+        }
+        double endTurnRatio = endTurnLoss / (currentRms * currentRms * rdcPerTurn[0]);
+        INFO("end turn R_ac/R_dc " << endTurnRatio << ", OMFEM ~4");
+        CHECK(endTurnRatio < 20);
+    }
+    settings.reset();
+}
+
+// ABT #1409 comparison driver (hidden): every field x fringing model on the MAS file in env
+// ABT1409_MAS, first operating point. Prints total R_ac/R_dc, the end and gap-plane turns, and
+// the time per loss evaluation (turn-sum cache off, so each call does the full work).
+TEST_CASE("Debug_Abt1409_Model_Table", "[winding-losses][debug][abt1409-table][.]") {
+    const char* masPath = std::getenv("ABT1409_MAS");
+    REQUIRE(masPath != nullptr);
+    settings.reset();
+    settings.set_magnetic_field_turn_sums_cache_bytes(0);
+    auto mas = OpenMagneticsTesting::mas_loader(masPath);
+    auto magnetic = mas.get_magnetic();
+    auto inputs = mas.get_inputs();
+    auto operatingPoint = inputs.get_operating_point(0);
+    double currentRms = operatingPoint.get_excitations_per_winding()[0].get_current()->get_processed()->get_rms().value();
+    auto turns = magnetic.get_coil().get_turns_description().value();
+    size_t gapTurn = 0;
+    for (size_t t = 0; t < turns.size(); ++t) {
+        if (std::abs(turns[t].get_coordinates()[1]) < std::abs(turns[gapTurn].get_coordinates()[1])) gapTurn = t;
+    }
+    auto run = [&](MagneticFieldStrengthModels field, MagneticFieldStrengthFringingEffectModels fringing) {
+        WindingLossesModels models;
+        models.magneticFieldStrengthModel = field;
+        models.magneticFieldStrengthFringingEffectModel = fringing;
+        WindingLosses windingLosses(models);
+        try {
+            auto start = std::chrono::steady_clock::now();
+            auto output = windingLosses.calculate_losses(magnetic, operatingPoint, 25);
+            output = windingLosses.calculate_losses(magnetic, operatingPoint, 25);
+            output = windingLosses.calculate_losses(magnetic, operatingPoint, 25);
+            double milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / 3;
+            auto perTurn = output.get_winding_losses_per_turn().value();
+            auto rdcPerTurn = output.get_dc_resistance_per_turn().value();
+            double rdcTotal = 0;
+            for (auto r : rdcPerTurn) rdcTotal += r;
+            auto turnRatio = [&](size_t i) {
+                const auto& turn = perTurn[i];
+                if (!turn.get_ohmic_losses() || !turn.get_skin_effect_losses() || !turn.get_proximity_effect_losses()) {
+                    std::cout << "MISSING per-turn component on turn " << i << " ohm=" << bool(turn.get_ohmic_losses())
+                              << " skin=" << bool(turn.get_skin_effect_losses()) << " prox=" << bool(turn.get_proximity_effect_losses()) << std::endl;
+                    return std::nan("");
+                }
+                double loss = turn.get_ohmic_losses()->get_losses();
+                const auto skinLosses = turn.get_skin_effect_losses().value();
+                const auto proximityLosses = turn.get_proximity_effect_losses().value();
+                for (auto l : skinLosses.get_losses_per_harmonic()) loss += l;
+                for (auto l : proximityLosses.get_losses_per_harmonic()) loss += l;
+                return loss / (currentRms * currentRms * rdcPerTurn[i]);
+            };
+            std::cout << "ROW " << to_string(field) << " " << to_string(fringing) << " total=" << output.get_winding_losses() / (currentRms * currentRms * rdcTotal)
+                      << " end=" << turnRatio(0) << " gap=" << turnRatio(gapTurn) << " ms=" << milliseconds << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cout << "ROW " << to_string(field) << " " << to_string(fringing) << " THREW " << e.what() << std::endl;
+        }
+    };
+    for (auto field : magic_enum::enum_values<MagneticFieldStrengthModels>()) {
+        if (field == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS) {
+            run(field, MagneticFieldStrengthFringingEffectModels::ROSHEN);
+            continue;
+        }
+        for (auto fringing : magic_enum::enum_values<MagneticFieldStrengthFringingEffectModels>()) {
+            run(field, fringing);
+        }
+    }
+    settings.reset();
+}
+
+// ABT #1409 comparison driver (hidden): watts per field x fringing model over a frequency list
+// (env ABT1409_FREQS, comma separated) on either a test-data JSON (env ABT1409_JSON, prepared
+// like runJsonBasedWindingLossesTest) or a WindingLossesTestData config (env ABT1409_CONFIG,
+// prepared like runWindingLossesTest).
+TEST_CASE("Debug_Abt1409_Model_Sweep", "[winding-losses][debug][abt1409-sweep][.]") {
+    const char* frequenciesText = std::getenv("ABT1409_FREQS");
+    REQUIRE(frequenciesText != nullptr);
+    std::vector<double> frequencies;
+    {
+        std::stringstream stream(frequenciesText);
+        std::string item;
+        while (std::getline(stream, item, ',')) frequencies.push_back(std::stod(item));
+    }
+    const char* jsonName = std::getenv("ABT1409_JSON");
+    const char* configName = std::getenv("ABT1409_CONFIG");
+    REQUIRE((jsonName != nullptr) != (configName != nullptr));
+
+    auto evaluate = [&](MagneticFieldStrengthModels field, MagneticFieldStrengthFringingEffectModels fringing, double frequency) {
+        settings.reset();
+        clear_databases();
+        settings.set_magnetic_field_turn_sums_cache_bytes(0);
+        WindingLossesModels models;
+        models.magneticFieldStrengthModel = field;
+        models.magneticFieldStrengthFringingEffectModel = fringing;
+        OpenMagnetics::Magnetic magnetic;
+        OperatingPoint operatingPoint;
+        double temperature;
+        if (jsonName) {
+            auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), jsonName);
+            auto mas = OpenMagneticsTesting::mas_loader(path);
+            magnetic = mas.get_magnetic();
+            auto inputs = mas.get_inputs();
+            operatingPoint = inputs.get_operating_point(0);
+            OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
+            MagnetizingInductance magnetizingInductanceModel("ZHANG");
+            double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
+                magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                    magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance());
+            operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
+            temperature = std::getenv("ABT1409_TEMP") ? std::stod(std::getenv("ABT1409_TEMP")) : 22.0;
+        }
+        else {
+            auto config = WindingLossesTestData::getAllTestConfigs().at(configName);
+            magnetic = config.createMagnetic();
+            settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
+            settings.set_magnetic_field_include_fringing(config.includeFringing);
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+                frequency, config.magnetizingInductance, config.temperature,
+                config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
+            operatingPoint = inputs.get_operating_point(0);
+            temperature = config.temperature;
+        }
+        auto start = std::chrono::steady_clock::now();
+        auto output = WindingLosses(models).calculate_losses(magnetic, operatingPoint, temperature);
+        double milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        return std::pair<double, double>{output.get_winding_losses(), milliseconds};
+    };
+    for (auto field : magic_enum::enum_values<MagneticFieldStrengthModels>()) {
+        for (auto fringing : magic_enum::enum_values<MagneticFieldStrengthFringingEffectModels>()) {
+            if (field == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS && fringing != MagneticFieldStrengthFringingEffectModels::ROSHEN) continue;
+            std::cout << "SWEEP " << to_string(field) << " " << to_string(fringing);
+            for (auto frequency : frequencies) {
+                try {
+                    auto [watts, milliseconds] = evaluate(field, fringing, frequency);
+                    std::cout << " " << frequency << ":" << watts << "(" << milliseconds << "ms)";
+                }
+                catch (const std::exception& e) {
+                    std::cout << " " << frequency << ":THREW(" << std::string(e.what()).substr(0, 60) << ")";
+                }
+            }
+            std::cout << std::endl;
+        }
     }
     settings.reset();
 }

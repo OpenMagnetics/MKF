@@ -7,6 +7,8 @@
 #include "physical_models/Reluctance.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/InitialPermeability.h"
+#include <map>
+#include "physical_models/WindingOhmicLosses.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 
@@ -239,8 +241,11 @@ std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory(MagneticField
     else if (modelName == MagneticFieldStrengthModels::DOWELL) {
         return std::make_shared<MagneticFieldStrengthDowellModel>();
     }
+    else if (modelName == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS) {
+        return std::make_shared<MagneticFieldStrengthImagedMmfSheetsModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown Magnetic Field Strength model, available options are: {BINNS_LAWRENSON, LAMMERANER, WANG, ALBACH, DOWELL}");
+        throw ModelNotAvailableException("Unknown Magnetic Field Strength model, available options are: {BINNS_LAWRENSON, LAMMERANER, WANG, ALBACH, DOWELL, IMAGED_MMF_SHEETS}");
 }
 
 std::shared_ptr<MagneticFieldStrengthFringingEffectModel> MagneticField::factory(MagneticFieldStrengthFringingEffectModels modelName) {
@@ -510,6 +515,17 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     std::vector<size_t> windingIndexPerTurn(turns.size());
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
         windingIndexPerTurn[turnIndex] = magnetic.get_mutable_coil().get_winding_index_by_name(turns[turnIndex].get_winding());
+    }
+
+    // Set up IMAGED_MMF_SHEETS: turn rectangles/filaments and gap sheets in the image lattice.
+    if (_magneticFieldStrengthModel == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS) {
+        auto imagedModel = std::dynamic_pointer_cast<MagneticFieldStrengthImagedMmfSheetsModel>(_model);
+        if (!imagedModel) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "IMAGED_MMF_SHEETS selected but the model instance is of another type");
+        }
+        auto ohmicLosses = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, defaults.ambientTemperature);
+        imagedModel->setup(magnetic, _wirePerWinding, ohmicLosses.get_current_divider_per_turn().value(), currentDirectionPerWinding,
+                           operatingPoint.get_excitations_per_winding()[0].get_frequency());
     }
 
     // Set up ALBACH model if being used
@@ -962,6 +978,104 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             magnetizingFactors = std::pair<double, double>{std::cos(magnetizingPhase), std::sin(magnetizingPhase)};
             return magnetizingFactors.value();
         };
+
+        // IMAGED_MMF_SHEETS: the whole window field (turns and gap sheets) at every induced point,
+        // width samples included -- the sheets only balance the turns when both are present.
+        if (_magneticFieldStrengthModel == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS) {
+            auto imagedModel = std::dynamic_pointer_cast<MagneticFieldStrengthImagedMmfSheetsModel>(_model);
+            double harmonicFrequency = inducingFields[harmonicIndex].get_frequency();
+            size_t numberWindings = magnetic.get_coil().get_functional_description().size();
+            // Each winding's current at this harmonic, as the CoilMesher reads it (a winding
+            // without this harmonic carries none of it).
+            std::vector<double> inPhaseCurrentPerWinding(numberWindings, 0.0);
+            std::vector<double> quadratureCurrentPerWinding(numberWindings, 0.0);
+            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current();
+                if (!current || !current->get_harmonics()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "IMAGED_MMF_SHEETS: winding " + std::to_string(windingIndex) + " has no current harmonics");
+                }
+                auto harmonics = current->get_harmonics().value();
+                for (size_t k = 0; k < harmonics.get_frequencies().size(); ++k) {
+                    if (std::abs(harmonics.get_frequencies()[k] - harmonicFrequency) <= 1e-9 * harmonicFrequency) {
+                        inPhaseCurrentPerWinding[windingIndex] = harmonics.get_amplitudes()[k] * inPhaseFactorPerWinding[windingIndex];
+                        quadratureCurrentPerWinding[windingIndex] = harmonics.get_amplitudes()[k] * quadratureFactorPerWinding[windingIndex];
+                        break;
+                    }
+                }
+            }
+            // The gap sheets carry the magnetizing current of this harmonic, on its phase.
+            double gapInPhaseCurrent = 0;
+            double gapQuadratureCurrent = 0;
+            if (includeFringing && !imagedModel->get_gap_sources().empty()) {
+                if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
+                    auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
+                    auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
+                    auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
+                                                                                   resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
+                                                                                   true, includeDcCurrent,
+                                                                                   operatingPoint.get_excitations_per_winding().size() > 1);
+                    operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+                }
+                auto magnetizingCurrentSignal = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value();
+                if (!magnetizingCurrentSignal.get_waveform()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "IMAGED_MMF_SHEETS: the magnetizing current has no waveform");
+                }
+                auto magnetizingWaveform = magnetizingCurrentSignal.get_waveform().value();
+                auto phasor = CoilMesher::calculate_harmonic_phasor(magnetizingWaveform, operatingPoint.get_excitations_per_winding()[0].get_frequency(), harmonicFrequency);
+                double waveformScale = 0;
+                for (auto value : magnetizingWaveform.get_data()) {
+                    waveformScale = std::max(waveformScale, std::abs(value));
+                }
+                if (std::abs(phasor) > 1e-9 * waveformScale) {
+                    if (!gaugePhasePerHarmonic[harmonicIndex]) {
+                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "IMAGED_MMF_SHEETS at " + std::to_string(harmonicFrequency) +
+                                                   " Hz: no winding current carries this harmonic, so there is no phase reference");
+                    }
+                    double magnetizingPhase = std::arg(phasor) - gaugePhasePerHarmonic[harmonicIndex].value();
+                    gapInPhaseCurrent = std::abs(phasor) * std::cos(magnetizingPhase);
+                    gapQuadratureCurrent = std::abs(phasor) * std::sin(magnetizingPhase);
+                }
+            }
+            for (const auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
+                double x = inducedFieldPoint.get_point()[0];
+                double y = inducedFieldPoint.get_point()[1];
+                auto excludedTurn = inducedFieldPoint.get_turn_index();
+                auto [turnsX, turnsY] = imagedModel->turns_field(x, y, inPhaseCurrentPerWinding, excludedTurn);
+                double quadratureX = 0, quadratureY = 0;
+                if (anyQuadratureCurrent) {
+                    std::tie(quadratureX, quadratureY) = imagedModel->turns_field(x, y, quadratureCurrentPerWinding, excludedTurn);
+                }
+                double totalX = turnsX, totalY = turnsY;
+                if (gapInPhaseCurrent != 0 || gapQuadratureCurrent != 0) {
+                    auto [gapsX, gapsY] = imagedModel->gaps_field(x, y);
+                    totalX += gapsX * gapInPhaseCurrent;
+                    totalY += gapsY * gapInPhaseCurrent;
+                    quadratureX += gapsX * gapQuadratureCurrent;
+                    quadratureY += gapsY * gapQuadratureCurrent;
+                }
+                if (std::isnan(totalX) || std::isnan(totalY) || std::isnan(quadratureX) || std::isnan(quadratureY)) {
+                    throw NaNResultException("NaN found in IMAGED_MMF_SHEETS magnetic field calculation");
+                }
+                ComplexFieldPoint complexFieldPoint;
+                complexFieldPoint.set_point(inducedFieldPoint.get_point());
+                complexFieldPoint.set_real(totalX);
+                complexFieldPoint.set_imaginary(totalY);
+                if (excludedTurn) {
+                    complexFieldPoint.set_turn_index(excludedTurn.value());
+                }
+                if (inducedFieldPoint.get_label()) {
+                    complexFieldPoint.set_label(inducedFieldPoint.get_label().value());
+                }
+                fieldPoints.push_back(complexFieldPoint);
+                ComplexFieldPoint quadratureFieldPoint(complexFieldPoint);
+                quadratureFieldPoint.set_real(quadratureX);
+                quadratureFieldPoint.set_imaginary(quadratureY);
+                quadratureFieldPoints.push_back(quadratureFieldPoint);
+            }
+            complexFieldPerHarmonic[harmonicIndex].set_data(fieldPoints);
+            quadratureComplexFieldPerHarmonic[harmonicIndex].set_data(quadratureFieldPoints);
+            continue;
+        }
 
         // For ALBACH model, use a more efficient approach that calculates
         // the total field from all turns at once for each induced point.
@@ -2171,5 +2285,277 @@ ComplexFieldPoint MagneticFieldStrengthSullivanModel::get_magnetic_field_strengt
     return complexFieldPoint;
 }
 
+// ============================================================================
+// MagneticFieldStrengthImagedMmfSheetsModel (ABT #1409)
+// ============================================================================
+
+ComplexFieldPoint MagneticFieldStrengthImagedMmfSheetsModel::get_magnetic_field_strength_between_two_points(
+    [[maybe_unused]] const FieldPoint& inducingFieldPoint,
+    [[maybe_unused]] const FieldPoint& inducedFieldPoint,
+    [[maybe_unused]] std::optional<size_t> inducingWireIndex) {
+    throw CalculationException(ErrorCode::CALCULATION_ERROR,
+        "IMAGED_MMF_SHEETS computes the window field of all turns and gaps together; it has no point-pair kernel");
+}
+
+// Uniform current `current` over [x1,x2] x [y1,y2], out of the plane. Exact 2D integral of the
+// line-current field: with u = x - x', v = y - y' and P(u, v) = u ln(u^2 + v^2) + 2 v atan(u / v),
+//   Hx = -J/(4 pi) [P]_{u,v},   Hy = J/(4 pi) [P(v, u)]_{u,v}   (double differences over both limits).
+std::pair<double, double> MagneticFieldStrengthImagedMmfSheetsModel::rectangle_field(double x, double y, double x1, double x2, double y1, double y2, double current) {
+    auto P = [](double u, double v) {
+        double r2 = u * u + v * v;
+        double logarithmicPart = r2 > 0 ? u * std::log(r2) : 0.0;
+        double angularPart = v != 0 ? 2 * v * std::atan(u / v) : 0.0;
+        return logarithmicPart + angularPart;
+    };
+    double density = current / ((x2 - x1) * (y2 - y1));
+    double ua = x - x2, ub = x - x1, va = y - y2, vb = y - y1;
+    double Hx = -density / (4 * std::numbers::pi) * (P(ub, vb) - P(ub, va) - P(ua, vb) + P(ua, va));
+    double Hy = density / (4 * std::numbers::pi) * (P(vb, ub) - P(va, ub) - P(vb, ua) + P(va, ua));
+    return {Hx, Hy};
+}
+
+// Uniform current `current` spread over the segment x = xs, y in [y1, y2].
+std::pair<double, double> MagneticFieldStrengthImagedMmfSheetsModel::vertical_sheet_field(double x, double y, double xs, double y1, double y2, double current) {
+    double u = x - xs;
+    double va = y - y2, vb = y - y1;
+    double linearDensity = current / (y2 - y1);
+    double Hx = -linearDensity / (4 * std::numbers::pi) * (std::log(u * u + vb * vb) - std::log(u * u + va * va));
+    double Hy;
+    if (u != 0) {
+        Hy = linearDensity / (2 * std::numbers::pi) * (std::atan(vb / u) - std::atan(va / u));
+    }
+    else if (va * vb > 0) {
+        Hy = 0;
+    }
+    else {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "IMAGED_MMF_SHEETS: field requested on a gap sheet");
+    }
+    return {Hx, Hy};
+}
+
+std::pair<double, double> MagneticFieldStrengthImagedMmfSheetsModel::filament_field(double x, double y, double xs, double ys, double current) {
+    double dx = x - xs, dy = y - ys;
+    double r2 = dx * dx + dy * dy;
+    if (r2 == 0) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "IMAGED_MMF_SHEETS: field requested on a filament");
+    }
+    return {-current * dy / (2 * std::numbers::pi * r2), current * dx / (2 * std::numbers::pi * r2)};
+}
+
+std::pair<double, double> MagneticFieldStrengthImagedMmfSheetsModel::source_field(const Source& source, double x, double y, double current) {
+    if (source.x1 == source.x2 && source.y1 == source.y2) {
+        return filament_field(x, y, source.x1, source.y1, current);
+    }
+    if (source.x1 == source.x2) {
+        return vertical_sheet_field(x, y, source.x1, source.y1, source.y2, current);
+    }
+    return rectangle_field(x, y, source.x1, source.x2, source.y1, source.y2, current);
+}
+
+void MagneticFieldStrengthImagedMmfSheetsModel::setup(Magnetic magnetic, const std::vector<Wire>& wirePerWinding,
+                                                      const std::vector<double>& currentDividerPerTurn,
+                                                      const std::vector<int8_t>& currentDirectionPerWinding,
+                                                      double frequency) {
+    _turnSources.clear();
+    _gapSources.clear();
+    auto core = magnetic.get_core();
+    if (core.get_shape_family() == CoreShapeFamily::T) {
+        throw NotImplementedException("IMAGED_MMF_SHEETS: toroidal cores have no rectangular image frame");
+    }
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException("IMAGED_MMF_SHEETS: core is not processed");
+    }
+    auto windingWindows = core.get_processed_description()->get_winding_windows();
+    if (windingWindows.size() != 1) {
+        throw NotImplementedException("IMAGED_MMF_SHEETS: only single-window cores are supported (this core has " +
+                                      std::to_string(windingWindows.size()) + " winding windows)");
+    }
+    if (!windingWindows[0].get_width() || !windingWindows[0].get_height()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "IMAGED_MMF_SHEETS: the winding window has no width or height");
+    }
+    const double A = windingWindows[0].get_width().value();
+    const double B = windingWindows[0].get_height().value();
+    // Same frame as CoilMesherCenterModel for a single window: bounded left by the main column.
+    const double frameLeftX = core.get_columns()[0].get_width() / 2;
+    const double frameBottomY = -B / 2;
+
+    int mirroringDimension = settings.get_magnetic_field_mirroring_dimension();
+    if (mirroringDimension < 1) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "IMAGED_MMF_SHEETS needs the core walls (magnetic field mirroring dimension >= 1); without images the gap sheets are unbalanced");
+    }
+    bool completeCells = settings.get_magnetic_field_mirroring_complete_cells();
+    double corePermeability = core.get_initial_permeability(defaults.ambientTemperature);
+    int cellsX = mirroringDimension;
+    int cellsY = mirroringDimension;
+    if (completeCells) {
+        cellsX = mirroringDimension * static_cast<int>(std::max(1.0, std::ceil(B / A)));
+        cellsY = mirroringDimension * static_cast<int>(std::max(1.0, std::ceil(A / B)));
+    }
+    int mMinimum = completeCells ? -2 * cellsX - 1 : -cellsX;
+    int mMaximum = completeCells ? 2 * cellsX : cellsX;
+    int nMinimum = completeCells ? -2 * cellsY - 1 : -cellsY;
+    int nMaximum = completeCells ? 2 * cellsY : cellsY;
+
+    // The lattice rule and weights of CoilMesherCenterModel::generate_mesh_inducing_turn.
+    auto appendImaged = [&](Source base, std::vector<Source>& out) {
+        for (int m = mMinimum; m <= mMaximum; ++m) {
+            for (int n = nMinimum; n <= nMaximum; ++n) {
+                double multiplier = completeCells
+                    ? std::pow((corePermeability - 1.0) / (corePermeability + 1.0), std::abs(m) + std::abs(n))
+                    : (corePermeability - std::max(std::abs(m), std::abs(n))) / (corePermeability + std::max(std::abs(m), std::abs(n)));
+                auto mapX = [&](double x) {
+                    double a = x - frameLeftX;
+                    return frameLeftX + ((m % 2 == 0) ? m * A + a : m * A + A - a);
+                };
+                auto mapY = [&](double y) {
+                    double b = y - frameBottomY;
+                    return frameBottomY + ((n % 2 == 0) ? n * B + b : n * B + B - b);
+                };
+                Source image = base;
+                double xa = mapX(base.x1), xb = mapX(base.x2);
+                double ya = mapY(base.y1), yb = mapY(base.y2);
+                image.x1 = std::min(xa, xb);
+                image.x2 = std::max(xa, xb);
+                image.y1 = std::min(ya, yb);
+                image.y2 = std::max(ya, yb);
+                image.weight = base.weight * multiplier;
+                image.isImage = (m != 0 || n != 0);
+                out.push_back(image);
+            }
+        }
+    };
+
+    auto coil = magnetic.get_coil();
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("IMAGED_MMF_SHEETS: the coil has no turns description");
+    }
+    const auto turns = coil.get_turns_description().value();
+    if (currentDividerPerTurn.size() != turns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "IMAGED_MMF_SHEETS: " + std::to_string(currentDividerPerTurn.size()) +
+                                    " current dividers for " + std::to_string(turns.size()) + " turns");
+    }
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        const auto& turn = turns[turnIndex];
+        if (turn.get_additional_coordinates()) {
+            throw NotImplementedException("IMAGED_MMF_SHEETS: turns with a second crossing (multi-column windings) are not supported");
+        }
+        size_t windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        auto wire = wirePerWinding.at(windingIndex);  // the dimension getters are non-const
+        Source source;
+        source.turnIndex = turnIndex;
+        source.windingIndex = windingIndex;
+        source.isImage = false;
+        source.weight = currentDividerPerTurn[turnIndex] * currentDirectionPerWinding.at(windingIndex);
+        double x = turn.get_coordinates()[0];
+        double y = turn.get_coordinates()[1];
+        if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+            source.x1 = source.x2 = x;
+            source.y1 = source.y2 = y;
+        }
+        else {
+            double halfWidth = wire.get_maximum_conducting_width() / 2;
+            double halfHeight = wire.get_maximum_conducting_height() / 2;
+            source.x1 = x - halfWidth;
+            source.x2 = x + halfWidth;
+            source.y1 = y - halfHeight;
+            source.y2 = y + halfHeight;
+        }
+        appendImaged(source, _turnSources);
+    }
+
+    // Gap sheets: MMF per ampere of magnetizing current.
+    auto gapping = core.get_functional_description().get_gapping();
+    bool anyFunctional = false;
+    for (const auto& gap : gapping) {
+        if (gap.get_type() == GapType::SUBTRACTIVE || gap.get_type() == GapType::ADDITIVE) {
+            anyFunctional = true;
+        }
+    }
+    if (!anyFunctional) {
+        return;
+    }
+    auto reluctanceModel = ReluctanceModel::factory();
+    InitialPermeability initialPermeabilityModel;
+    double initialPermeability = initialPermeabilityModel.get_initial_permeability(core.resolve_material(), std::nullopt, std::nullopt, frequency);
+    double totalReluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
+    double numberTurns = static_cast<double>(coil.get_functional_description()[0].get_number_turns());
+    double fluxPerAmpere = numberTurns / totalReluctance;
+
+    auto halfSectionOf = [](const CoreGap& gap) {
+        if (!gap.get_section_dimensions() || !gap.get_coordinates()) {
+            throw GapException("IMAGED_MMF_SHEETS: a gap has no section dimensions or coordinates");
+        }
+        return gap.get_section_dimensions().value()[0] / 2;
+    };
+    std::map<long, double> lateralColumnReluctance;
+    for (const auto& gap : gapping) {
+        double x = gap.get_coordinates().value()[0];
+        if (std::abs(x) >= halfSectionOf(gap)) {
+            lateralColumnReluctance[std::lround(x * 1e6)] += reluctanceModel->get_gap_reluctance(gap).get_reluctance();
+        }
+    }
+    double lateralConductance = 0;
+    for (const auto& [column, reluctance] : lateralColumnReluctance) {
+        lateralConductance += 1.0 / reluctance;
+    }
+    for (const auto& gap : gapping) {
+        if (gap.get_type() != GapType::SUBTRACTIVE && gap.get_type() != GapType::ADDITIVE) {
+            continue;  // residual mating surfaces carry no sheet (ABT #832)
+        }
+        double x = gap.get_coordinates().value()[0];
+        if (x < 0) {
+            continue;  // the other side's window
+        }
+        double halfSection = halfSectionOf(gap);
+        double columnFluxPerAmpere = fluxPerAmpere;
+        double sheetX;
+        if (std::abs(x) < halfSection) {
+            sheetX = x + halfSection;
+        }
+        else {
+            columnFluxPerAmpere = fluxPerAmpere * (1.0 / lateralColumnReluctance.at(std::lround(x * 1e6))) / lateralConductance;
+            sheetX = x - halfSection;
+        }
+        double mmfPerAmpere = columnFluxPerAmpere * reluctanceModel->get_gap_reluctance(gap).get_reluctance();
+        double y = gap.get_coordinates().value()[1];
+        Source sheet;
+        sheet.x1 = sheet.x2 = sheetX;
+        sheet.y1 = y - gap.get_length() / 2;
+        sheet.y2 = y + gap.get_length() / 2;
+        sheet.weight = -currentDirectionPerWinding.at(0) * mmfPerAmpere;
+        sheet.windingIndex = 0;
+        sheet.isImage = false;
+        appendImaged(sheet, _gapSources);
+    }
+}
+
+std::pair<double, double> MagneticFieldStrengthImagedMmfSheetsModel::turns_field(double x, double y, const std::vector<double>& currentPerWinding,
+                                                                                 std::optional<size_t> excludedTurn) const {
+    double Hx = 0, Hy = 0;
+    for (const auto& source : _turnSources) {
+        if (!source.isImage && excludedTurn && source.turnIndex == excludedTurn) {
+            continue;
+        }
+        double current = source.weight * currentPerWinding.at(source.windingIndex);
+        if (current == 0) {
+            continue;
+        }
+        auto [hx, hy] = source_field(source, x, y, current);
+        Hx += hx;
+        Hy += hy;
+    }
+    return {Hx, Hy};
+}
+
+std::pair<double, double> MagneticFieldStrengthImagedMmfSheetsModel::gaps_field(double x, double y) const {
+    double Hx = 0, Hy = 0;
+    for (const auto& source : _gapSources) {
+        auto [hx, hy] = source_field(source, x, y, source.weight);
+        Hx += hx;
+        Hy += hy;
+    }
+    return {Hx, Hy};
+}
 
 } // namespace OpenMagnetics
