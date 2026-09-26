@@ -7244,6 +7244,9 @@ bool Coil::calculate_custom_thickness_insulation(double thickness) {
                 else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
                     double tapeThicknessInAngle = wound_distance_to_angle(thickness, windingWindowRadialHeight);
                     layer.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+                    // A radial wall between side-by-side sectors: the walls stack in angle, not
+                    // radius, so they must not be summed as overlapping radial heights.
+                    layer.set_orientation(WindingOrientation::CONTIGUOUS);
                 }
             }
             // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
@@ -7366,6 +7369,9 @@ bool Coil::calculate_mechanical_insulation() {
                     else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
                         double tapeThicknessInAngle = wound_distance_to_angle(defaultInsulationMaterial.get_thinner_tape_thickness(), windingWindowRadialHeight);
                         layer.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+                        // A radial wall between side-by-side sectors: the walls stack in angle, not
+                        // radius, so they must not be summed as overlapping radial heights.
+                        layer.set_orientation(WindingOrientation::CONTIGUOUS);
                     }
                 }
                 // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
@@ -7619,6 +7625,9 @@ bool Coil::calculate_insulation(bool simpleMode) {
                     else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
                         double tapeThicknessInAngle = wound_distance_to_angle(chosenInsulationMaterial.get_thinner_tape_thickness(), windingWindowRadialHeight);
                         layer.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+                        // A radial wall between side-by-side sectors: the walls stack in angle, not
+                        // radius, so they must not be summed as overlapping radial heights.
+                        layer.set_orientation(WindingOrientation::CONTIGUOUS);
                     }
                 }
 
@@ -12054,13 +12063,23 @@ bool Coil::wind_by_round_layers() {
             }
 
             double layerRadialHeight = insulationLayers[0].get_dimensions()[0];
+            double layerAngle = insulationLayers[0].get_dimensions()[1];
+            // Walls between side-by-side sectors (CONTIGUOUS insulation layers) stack in angle
+            // across the insulation section; rings (OVERLAPPING) stack in radius.
+            bool layersAreWalls = insulationLayers[0].get_orientation() == WindingOrientation::CONTIGUOUS;
 
             double currentLayerCenterRadialHeight;
             double currentLayerCenterAngle;
 
             if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                currentLayerCenterRadialHeight = roundFloat(sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2 + layerRadialHeight / 2, 9);
-                currentLayerCenterAngle = roundFloat(sections[sectionIndex].get_coordinates()[1], 9);
+                if (layersAreWalls) {
+                    currentLayerCenterRadialHeight = roundFloat(sections[sectionIndex].get_coordinates()[0], 9);
+                    currentLayerCenterAngle = roundFloat(sections[sectionIndex].get_coordinates()[1] - sections[sectionIndex].get_dimensions()[1] / 2 + layerAngle / 2, 9);
+                }
+                else {
+                    currentLayerCenterRadialHeight = roundFloat(sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2 + layerRadialHeight / 2, 9);
+                    currentLayerCenterAngle = roundFloat(sections[sectionIndex].get_coordinates()[1], 9);
+                }
             } else {
                 throw std::invalid_argument("Only overlapping layers allowed in toroids");
             }
@@ -12075,7 +12094,12 @@ bool Coil::wind_by_round_layers() {
 
 
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                    currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + layerRadialHeight, 9);
+                    if (layersAreWalls) {
+                        currentLayerCenterAngle = roundFloat(currentLayerCenterAngle + layerAngle, 9);
+                    }
+                    else {
+                        currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + layerRadialHeight, 9);
+                    }
                 }
                 else {
                     throw std::invalid_argument("Only overlapping layers allowed in toroids");
@@ -15762,12 +15786,13 @@ double Coil::get_insulation_layer_thickness(Layer layer) {
             auto bobbinProcessedDescription = bobbin.get_processed_description().value();
             auto windingWindows = bobbinProcessedDescription.get_winding_windows();
 
+            // A CONTIGUOUS polar layer is a radial wall between side-by-side sectors, spanning
+            // the whole radial height; its angle is wound_distance_to_angle(tapeThickness,
+            // windingWindowRadialHeight) (calculate_*insulation), so invert exactly that. The
+            // arc at (radialHeight - layerRadialHeight) collapsed to 0 for a full-height wall.
             double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
-            double layerRadialHeight = layer.get_dimensions()[0];
-            double radius = windingWindowRadialHeight - layerRadialHeight;
             double layerAngle = layer.get_dimensions()[1];
-            double layerPerimeter = std::numbers::pi * (layerAngle / 180) * radius;
-            return layerPerimeter;
+            return angle_to_wound_distance(layerAngle, windingWindowRadialHeight);
         }
         else {
             return layer.get_dimensions()[0];
@@ -16252,6 +16277,9 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
         else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
             double tapeThicknessInAngle = wound_distance_to_angle(layerThickness, windingWindowRadialHeight);
             layer.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+            // A radial wall between side-by-side sectors: the walls stack in angle, not
+            // radius, so they must not be summed as overlapping radial heights.
+            layer.set_orientation(WindingOrientation::CONTIGUOUS);
         }
     }
     layer.set_filling_factor(1);

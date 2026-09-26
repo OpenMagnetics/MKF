@@ -16196,3 +16196,78 @@ TEST_CASE("Test_Real_Winding_Station_Raise_That_Cannot_Converge_Throws", "[const
     REQUIRE_THROWS_WITH(coil.wind(), Catch::Matchers::ContainsSubstring("do not converge"));
     settings.reset();
 }
+
+// Two windings side by side on a toroid (CONTIGUOUS sections) with double insulation, which needs
+// several tape layers between the sectors. Those layers are radial walls {radialHeight, tapeAngle}
+// that stack in ANGLE; they used to keep the OVERLAPPING tag, so overlapping_filling_factor summed
+// n full radial heights (ff = n) and no such toroid could ever fit (the frontend "Advise All" on
+// T 68/48/13 returned nothing after ~14 s). They were also placed stacked radially, walking past
+// the window, and a CONTIGUOUS polar layer read back a thickness of 0.
+static OpenMagnetics::Coil get_side_by_side_toroid_with_double_insulation(std::string primaryWire, std::string secondaryWire) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_wire_adviser_hang.json");
+    std::ifstream jsonFile(path);
+    OpenMagnetics::Mas mas(json::parse(jsonFile));
+
+    auto coil = mas.get_magnetic().get_coil();
+    coil.get_mutable_functional_description()[0].set_wire(primaryWire);
+    coil.get_mutable_functional_description()[1].set_wire(secondaryWire);
+    coil.set_turns_description(std::nullopt);
+    coil.set_layers_description(std::nullopt);
+    coil.set_sections_description(std::nullopt);
+    coil.set_groups_description(std::nullopt);
+    coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
+    coil.set_layers_orientation(WindingOrientation::OVERLAPPING);
+    coil.set_inputs(mas.get_inputs());
+    return coil;
+}
+
+static void check_side_by_side_toroid_insulation_walls(OpenMagnetics::Coil& coil, size_t expectedNumberLayers) {
+    REQUIRE(coil.get_sections_description());
+    REQUIRE(coil.get_layers_description());
+    size_t numberInsulationSections = 0;
+    auto sections = coil.get_sections_description().value();
+    for (auto& section : sections) {
+        if (section.get_type() != ElectricalType::INSULATION) {
+            continue;
+        }
+        numberInsulationSections++;
+        auto layers = coil.get_layers_by_section(section.get_name());
+        INFO(section.get_name() << ": " << layers.size() << " insulation layers");
+        REQUIRE(layers.size() == expectedNumberLayers);
+        double sectionAngle = section.get_dimensions()[1];
+        double sectionCenterAngle = section.get_coordinates()[1];
+        for (auto& layer : layers) {
+            CHECK(layer.get_orientation() == WindingOrientation::CONTIGUOUS);
+            // Walls stack in angle inside the insulation section, never radially past it.
+            CHECK(layer.get_coordinates()[0] == Catch::Approx(section.get_coordinates()[0]).margin(1e-9));
+            CHECK(layer.get_coordinates()[1] - layer.get_dimensions()[1] / 2 >= sectionCenterAngle - sectionAngle / 2 - 1e-9);
+            CHECK(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 <= sectionCenterAngle + sectionAngle / 2 + 1e-9);
+            // The wall's thickness is one tape, not the window's radial height (nor 0).
+            double tapeThickness = coil.get_insulation_layer_thickness(layer);
+            CHECK(tapeThickness > 0);
+            CHECK(tapeThickness < 0.001);
+        }
+        CHECK(coil.overlapping_filling_factor(section) <= 1.0);
+        CHECK(coil.contiguous_filling_factor(section) <= 1.0);
+    }
+    REQUIRE(numberInsulationSections == 2);
+    CHECK(coil.are_sections_and_layers_fitting());
+}
+
+TEST_CASE("Test_Toroid_Side_By_Side_Multi_Layer_Intersection_Insulation_Fits", "[constructive-model][coil][round-winding-window][insulation]") {
+    settings.reset();
+    // Triple-insulated primary against an enamelled secondary: the coordinator asks for 4 tape layers.
+    auto coil = get_side_by_side_toroid_with_double_insulation("Round T20A01TXXX-1", "Round 0.5 - Grade 1");
+    coil.wind();
+    check_side_by_side_toroid_insulation_walls(coil, 4);
+    settings.reset();
+}
+
+TEST_CASE("Test_Toroid_Side_By_Side_Custom_Multi_Layer_Intersection_Insulation_Fits", "[constructive-model][coil][round-winding-window][insulation]") {
+    settings.reset();
+    auto coil = get_side_by_side_toroid_with_double_insulation("Round 0.5 - Grade 1", "Round 0.5 - Grade 1");
+    coil.set_intersection_insulation(0.0001, 3, std::nullopt, std::nullopt, false);
+    coil.wind();
+    check_side_by_side_toroid_insulation_walls(coil, 3);
+    settings.reset();
+}
