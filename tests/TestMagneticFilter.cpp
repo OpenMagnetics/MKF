@@ -1031,3 +1031,43 @@ TEST_CASE("Processed-only excitation advises without a bad optional access (ABT 
         magneticEnergy.calculate_required_magnetic_energy(inputs));
     CHECK_THAT(requiredEnergy, Catch::Matchers::WithinRel(1.25e-3, 0.05));
 }
+
+// ABT #1410: design mode holds maximumDimensions as the part can be mounted. A bobbin-wound
+// part keeps its height (laying it down needs a horizontal bobbin the design doesn't have) but
+// may be turned on the board (width and depth swap). A toroid mounts flat or on edge on a
+// vertical header, so it fits if either orientation does.
+TEST_CASE("Design-mode envelope fit: height strict, in-plane rotation, toroid flat or on edge",
+          "[adviser][magnetic-filter][abt-1410]") {
+    auto inputs_with = [](std::optional<double> width, std::optional<double> height, std::optional<double> depth) {
+        MaximumDimensions maximumDimensions;
+        if (width) maximumDimensions.set_width(width.value());
+        if (height) maximumDimensions.set_height(height.value());
+        if (depth) maximumDimensions.set_depth(depth.value());
+        DesignRequirements designRequirements;
+        designRequirements.set_maximum_dimensions(maximumDimensions);
+        OpenMagnetics::Inputs inputs;
+        inputs.set_design_requirements(designRequirements);
+        return inputs;
+    };
+
+    auto eCore = Core::create_quick_core("E 65/32/27", "N87");       // 65.15 x 65.0 x 27.0 mm
+    auto toroid = Core::create_quick_core("T 58/35/15", "N87");      // 58.04 x 58.04 x 14.9 mm
+
+    SECTION("a 30 mm height does not admit an E 65 lying on its 27 mm side") {
+        CHECK_FALSE(MagneticFilterMaximumDimensions::core_fits(eCore, inputs_with(std::nullopt, 0.030, std::nullopt)));
+        CHECK(MagneticFilterMaximumDimensions::core_fits(eCore, inputs_with(std::nullopt, 0.066, std::nullopt)));
+    }
+    SECTION("turning the part on the board is allowed: width and depth may swap") {
+        CHECK(MagneticFilterMaximumDimensions::core_fits(eCore, inputs_with(0.030, 0.066, 0.070)));
+        CHECK_FALSE(MagneticFilterMaximumDimensions::core_fits(eCore, inputs_with(0.030, 0.066, 0.060)));
+    }
+    SECTION("a toroid fits flat (height = axial length) or on edge (height = OD)") {
+        CHECK(MagneticFilterMaximumDimensions::core_fits(toroid, inputs_with(std::nullopt, 0.020, std::nullopt)));
+        CHECK(MagneticFilterMaximumDimensions::core_fits(toroid, inputs_with(0.060, 0.020, 0.060)));
+        CHECK_FALSE(MagneticFilterMaximumDimensions::core_fits(toroid, inputs_with(0.050, 0.020, 0.060)));
+        CHECK_FALSE(MagneticFilterMaximumDimensions::core_fits(toroid, inputs_with(std::nullopt, 0.014, std::nullopt)));
+        // Only on edge fits: a 60 x 16 mm footprint is too narrow flat, 60 mm is tall enough standing.
+        CHECK(MagneticFilterMaximumDimensions::core_fits(toroid, inputs_with(0.060, 0.060, 0.016)));
+        CHECK_FALSE(MagneticFilterMaximumDimensions::core_fits(toroid, inputs_with(0.060, 0.050, 0.016)));
+    }
+}

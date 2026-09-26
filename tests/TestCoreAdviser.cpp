@@ -1,3 +1,4 @@
+#include "advisers/MagneticFilter.h"
 #include <source_location>
 #include "support/Settings.h"
 #include "advisers/CoreAdviser.h"
@@ -3177,7 +3178,7 @@ TEST_CASE("Test_CoreAdviser_Standard_Cores_Respect_Every_Axis_Of_Maximum_Dimensi
     std::ifstream file(path);
     REQUIRE(file.is_open());
     OpenMagnetics::Inputs inputs(json::parse(file));
-    auto maximumDimensions = inputs.get_design_requirements().get_maximum_dimensions().value();
+    REQUIRE(inputs.get_design_requirements().get_maximum_dimensions());
 
     std::map<CoreAdviser::CoreAdviserFilters, double> weights{
         {CoreAdviser::CoreAdviserFilters::COST, 1},
@@ -3192,7 +3193,7 @@ TEST_CASE("Test_CoreAdviser_Standard_Cores_Respect_Every_Axis_Of_Maximum_Dimensi
         auto core = mas.get_magnetic().get_core();
         auto dimensions = core.get_maximum_dimensions();
         INFO(core.get_name().value_or("?") << ": " << dimensions[0] * 1000 << " x " << dimensions[1] * 1000 << " x " << dimensions[2] * 1000 << " mm");
-        CHECK(core.fits(maximumDimensions, false));
+        CHECK(MagneticFilterMaximumDimensions::core_fits(core, inputs));
     }
     settings.reset();
 }

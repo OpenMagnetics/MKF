@@ -29,6 +29,7 @@
 //      --benchmark-samples 3 --benchmark-warmup-time 0
 // =============================================================================
 
+#include "advisers/MagneticFilter.h"
 #include <filesystem>
 #include <fstream>
 #include <source_location>
@@ -275,7 +276,7 @@ TEST_CASE("MagneticAdviser standard cores keeps the wound magnetic inside the ma
     settings.reset();
     clear_databases();
     auto inputs = load_cllc_resonant_inductor_inputs();
-    auto maximumDimensions = inputs.get_design_requirements().get_maximum_dimensions().value();
+    REQUIRE(inputs.get_design_requirements().get_maximum_dimensions());
 
     OpenMagnetics::MagneticAdviser adviser;
     adviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
@@ -286,7 +287,7 @@ TEST_CASE("MagneticAdviser standard cores keeps the wound magnetic inside the ma
         auto& magnetic = mas.get_mutable_magnetic();
         auto dimensions = magnetic.get_maximum_dimensions();
         INFO(magnetic.get_reference() << ": " << dimensions[0] * 1000 << " x " << dimensions[1] * 1000 << " x " << dimensions[2] * 1000 << " mm");
-        CHECK(magnetic.fits(maximumDimensions, false));
+        CHECK(MagneticFilterMaximumDimensions::magnetic_fits(magnetic, inputs));
     }
     settings.reset();
 }

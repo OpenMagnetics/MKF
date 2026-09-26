@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 namespace OpenMagnetics {
 
@@ -157,12 +158,40 @@ std::pair<bool, double> MagneticFilterMaximumDimensions::evaluate_magnetic(Magne
     return {valid, scoring};
 }
 
+namespace {
+// One mounting: the height as stated, and the part turned on the board if needed (width and
+// depth may swap).
+bool fits_in_orientation(double height, double footprintA, double footprintB, const MaximumDimensions& maximumDimensions) {
+    if (maximumDimensions.get_height() && height > maximumDimensions.get_height().value()) {
+        return false;
+    }
+    double maximumWidth = maximumDimensions.get_width().value_or(std::numeric_limits<double>::infinity());
+    double maximumDepth = maximumDimensions.get_depth().value_or(std::numeric_limits<double>::infinity());
+    return (footprintA <= maximumWidth && footprintB <= maximumDepth) ||
+           (footprintA <= maximumDepth && footprintB <= maximumWidth);
+}
+
+// Design-mode fit, as the part can actually be mounted. dimensions = {width, height, depth} in
+// MKF's frame. A bobbin-wound part keeps its height: laying it down needs a horizontal bobbin
+// and pinout the design doesn't have. A toroid mounts either flat or on edge on a vertical
+// header without changing the magnetic; MKF builds it on edge (width = height = OD, depth =
+// axial length), so flat means height = that axial depth and footprint = OD x OD.
+bool fits_as_mounted(const std::vector<double>& dimensions, bool isToroid, const MaximumDimensions& maximumDimensions) {
+    bool fitsAsBuilt = fits_in_orientation(dimensions[1], dimensions[0], dimensions[2], maximumDimensions);
+    if (!isToroid) {
+        return fitsAsBuilt;
+    }
+    return fitsAsBuilt || fits_in_orientation(dimensions[2], dimensions[0], dimensions[1], maximumDimensions);
+}
+}
+
 bool MagneticFilterMaximumDimensions::core_fits(Core& core, const Inputs& inputs) {
     auto maximumDimensions = inputs.get_design_requirements().get_maximum_dimensions();
     if (!maximumDimensions) {
         return true;
     }
-    return core.fits(maximumDimensions.value(), false);
+    return fits_as_mounted(core.get_maximum_dimensions(),
+                           core.get_shape_family() == CoreShapeFamily::T, maximumDimensions.value());
 }
 
 bool MagneticFilterMaximumDimensions::magnetic_fits(Magnetic& magnetic, const Inputs& inputs) {
@@ -170,7 +199,8 @@ bool MagneticFilterMaximumDimensions::magnetic_fits(Magnetic& magnetic, const In
     if (!maximumDimensions) {
         return true;
     }
-    return magnetic.fits(maximumDimensions.value(), false);
+    return fits_as_mounted(magnetic.get_maximum_dimensions(),
+                           magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::T, maximumDimensions.value());
 }
 
 std::pair<bool, double> MagneticFilterVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
