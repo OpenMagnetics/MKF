@@ -402,7 +402,17 @@ namespace OpenMagnetics {
                     (settings.get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
                     (settings.get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
 
-                    if (!enforceStandard || !_commonWireStandard || !wire.get_standard()) {
+                    // An INSULATED wire (triple / fully insulated) is not an alternative to an enamelled
+                    // magnet wire of another standard: it is how a winding carries its own insulation, and
+                    // the catalogue's are all NEMA MW 1000 C. Filtering them by the preferred standard
+                    // (IEC 60317 for every metric user) removed that option entirely: every design that
+                    // needs insulated wire fell back to margin tape, a small bobbin could not take it, and
+                    // the Magnetic Adviser searched for minutes to return only INVALID designs.
+                    Wire candidate = wire;
+                    const auto coating = candidate.resolve_coating();
+                    const bool insulated = coating && coating->get_type() &&
+                                           coating->get_type().value() == InsulationWireCoatingType::INSULATED;
+                    if (!enforceStandard || !_commonWireStandard || !wire.get_standard() || insulated) {
                         wires.push_back(wire);
                     }
                     else if (wire.get_standard().value() == _commonWireStandard){
