@@ -216,3 +216,87 @@ TEST_CASE("Real winding: sibling wraps are spaced for the slope they are drawn w
     require_siblings_clear(coil, "Secondary section 0 layer 1");
 }
 
+
+
+// ABT #1424: the U layer link is one radial step in the connection plane, drawn from the departure
+// station to the conductor's OWN station in the next layer. Sibling parallels' links share that
+// plane, so their centrelines must stay one coated OD apart as 2D segments -- and they cannot cross.
+// Measured before the fix on the same design: the winder handed layer 1's bundle out top-down in
+// parallel order (p0 6.904, p1 6.213, p2 5.521 mm) while layer 0 closed bottom-up (p0 5.551,
+// p1 6.231, p2 6.910 mm), and the order law that should keep the bundle's stacking ran only on
+// layouts with blocked lead slots -- this one has none. p0's link climbed 1.353 mm over the
+// 0.679 mm step and p2's fell 1.389 mm: they crossed (distance 0), and MVB++'s gate refused p0/p1
+// at 0.578 mm against the 0.63 mm copper.
+TEST_CASE("Real winding: sibling layer links keep one coated diameter apart (interleaved flyback, ETD39)",
+          "[constructive-model][coil][real-winding][abt1424]") {
+    auto coil = wind_real("abt1401_interleaved_flyback_etd39.json");
+    const auto turns = coil.get_turns_description().value();
+    auto wires = coil.get_wires();
+    std::map<std::pair<std::string, int64_t>, std::vector<size_t>> turnsByConductor;
+    for (size_t t = 0; t < turns.size(); ++t) {
+        turnsByConductor[{turns[t].get_winding(), turns[t].get_parallel()}].push_back(t);
+    }
+    struct Link {
+        int64_t parallel;
+        double x0, y0, x1, y1;
+        std::string name;
+    };
+    std::map<std::tuple<std::string, std::string, std::string>, std::vector<Link>> links;
+    for (const auto& [conductor, sequence] : turnsByConductor) {
+        const auto windingIndex = coil.get_winding_index_by_name(conductor.first);
+        const double od = wires[windingIndex].get_maximum_outer_height();
+        const double parallels = double(coil.get_number_parallels(windingIndex));
+        for (size_t k = 0; k + 1 < sequence.size(); ++k) {
+            const auto& a = turns[sequence[k]];
+            const auto& b = turns[sequence[k + 1]];
+            if (a.get_layer().value() == b.get_layer().value() || a.get_section() != b.get_section()) {
+                continue;
+            }
+            const double dx = std::abs(b.get_coordinates()[0] - a.get_coordinates()[0]);
+            const double dy = std::abs(b.get_coordinates()[1] - a.get_coordinates()[1]);
+            if (dx <= 1e-12 || dy > dx + 2.0 * od * std::max(1.0, parallels)) {
+                continue;   // a dragback, not a radial layer step
+            }
+            links[{conductor.first, a.get_layer().value(), b.get_layer().value()}].push_back(
+                {conductor.second, a.get_coordinates()[0], a.get_coordinates()[1], b.get_coordinates()[0],
+                 b.get_coordinates()[1], a.get_name() + " -> " + b.get_name()});
+        }
+    }
+    const auto pointToSegment = [](double px, double py, double ax, double ay, double bx, double by) {
+        const double vx = bx - ax, vy = by - ay;
+        const double l2 = vx * vx + vy * vy;
+        const double u = l2 > 0 ? std::clamp(((px - ax) * vx + (py - ay) * vy) / l2, 0.0, 1.0) : 0.0;
+        return std::hypot(px - (ax + u * vx), py - (ay + u * vy));
+    };
+    const auto side = [](double ox, double oy, double ax, double ay, double bx, double by) {
+        return (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+    };
+    size_t pairs = 0;
+    for (const auto& [key, group] : links) {
+        const double od = wires[coil.get_winding_index_by_name(std::get<0>(key))].get_maximum_outer_height();
+        for (size_t i = 0; i < group.size(); ++i) {
+            for (size_t j = i + 1; j < group.size(); ++j) {
+                const auto& p = group[i];
+                const auto& q = group[j];
+                const bool crossing = (side(p.x0, p.y0, p.x1, p.y1, q.x0, q.y0) > 0) !=
+                                          (side(p.x0, p.y0, p.x1, p.y1, q.x1, q.y1) > 0) &&
+                                      (side(q.x0, q.y0, q.x1, q.y1, p.x0, p.y0) > 0) !=
+                                          (side(q.x0, q.y0, q.x1, q.y1, p.x1, p.y1) > 0);
+                const double distance =
+                    crossing ? 0.0
+                             : std::min({pointToSegment(p.x0, p.y0, q.x0, q.y0, q.x1, q.y1),
+                                         pointToSegment(p.x1, p.y1, q.x0, q.y0, q.x1, q.y1),
+                                         pointToSegment(q.x0, q.y0, p.x0, p.y0, p.x1, p.y1),
+                                         pointToSegment(q.x1, q.y1, p.x0, p.y0, p.x1, p.y1)});
+                ++pairs;
+                std::cout << "[abt1424] " << p.name << " | " << q.name << ": " << distance * 1e3
+                          << " mm (OD " << od * 1e3 << " mm)" << std::endl;
+                INFO(p.name << " | " << q.name << ": " << distance * 1e3 << " mm against OD "
+                            << od * 1e3 << " mm");
+                CHECK(distance >= od - 0.5e-9);
+            }
+        }
+    }
+    // Secondary 7 t x 3 p crosses from layer 0 to layer 1 once per parallel: three sibling pairs.
+    CHECK(pairs >= 3);
+}

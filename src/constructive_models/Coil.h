@@ -632,6 +632,10 @@ class Coil : public MAS::Coil {
         // no-fallbacks rule it never clamps the radius up to the floor and never drops the turn.
         // Ideal winding is untouched: the classic 2D layout is a separate contract.
         void refuse_turns_bent_tighter_than_the_wire_allows();
+        // ABT #1424: sibling parallels' radial layer links (drawn in the connection plane from each
+        // departure station to the arrival station) must keep their centrelines one coated OD apart,
+        // the invariant ABT #1401 enforces for wraps. Throws, naming the pair, when they do not.
+        void refuse_sibling_layer_links_closer_than_the_wire();
         // Multi-column winding support: every group is wound in a window-local
         // frame on the +x side of the main column, so the whole section/layer/
         // turn machinery keeps a single geometry. This final winding step
@@ -948,6 +952,9 @@ class Coil : public MAS::Coil {
         // advance, over the same span the winder spread across. Throws when a layer's turns carry
         // no length.
         void respace_helical_layers_at_final_radius();
+        // ABT #685/#1424: a winding's parallels keep the FIRST-wound layer's spatial order in every
+        // layer (a permutation of stations within each bundle). Run on every real-winding layout.
+        void keep_parallel_order_in_every_layer(std::vector<Turn>& turns, const std::vector<Layer>& layers);
         // ABT #187: toroidal analog of align_blocked_layer_turns. Radial terminal leads emit angular
         // crossing markers on every ring they pass over (toroidal_connection_reserved_spaces); this
         // re-spreads each crossed ring's turns over the angular space OUTSIDE those corridors —

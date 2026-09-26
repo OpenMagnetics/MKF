@@ -3139,6 +3139,99 @@ void Coil::respace_helical_layers_at_final_radius() {
     }
 }
 
+// ABT #1424: split out of align_blocked_layer_turns so that it runs on EVERY real-winding
+// layout, not only on one that carries blocked connection slots (see the call there).
+// ABT #685: a winding's PARALLELS keep the same spatial order in every layer of a section.
+// The winder walks each layer's stations in fill order and hands them to parallel 0, 1, ... in
+// turn, so a U section — whose layers alternate direction — flips the bundle over at every
+// turnaround: parallel 0 sat at the BOTTOM of layer 0's bundles and at the TOP of layer 1's.
+// Two consequences, both wrong: each parallel's landing link had to cross its sibling's to
+// reach the far station (the 0.822 mm approach that made the #608 descent look necessary), and
+// no parallel could land level with its own last turn, so the U layer climbed instead — the
+// 8t x 2p climb that walked parallel 0's link into parallel 1's dragback (0.55 mm against a
+// 0.9 mm envelope). Wires wound side by side do not swap places at a turnaround: they turn
+// around together and keep their stacking. Re-assign each bundle's stations so every layer
+// shows the parallels in the FIRST layer's order — a permutation within one bundle, so the
+// stations, the turn count and every reservation are untouched. Z sections fill every layer
+// the same way, so their order already matches and this is a no-op there.
+void Coil::keep_parallel_order_in_every_layer(std::vector<Turn>& turns, const std::vector<Layer>& layers) {
+    std::map<std::string, std::vector<size_t>> turnIndicesPerLayer;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        if (turns[turnIndex].get_layer()) {
+            turnIndicesPerLayer[turns[turnIndex].get_layer().value()].push_back(turnIndex);
+        }
+    }
+    std::map<std::string, std::vector<int64_t>> orderPerSectionWinding;
+    for (const auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION || !layer.get_section()) {
+            continue;
+        }
+        auto layerTurnsIt = turnIndicesPerLayer.find(layer.get_name());
+        if (layerTurnsIt == turnIndicesPerLayer.end() || layerTurnsIt->second.empty()) {
+            continue;
+        }
+        size_t turnAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+        const std::string windingName = turns[layerTurnsIt->second.front()].get_winding();
+        const size_t numberParallelsInLayer =
+            size_t(get_number_parallels(get_winding_index_by_name(windingName)));
+        if (numberParallelsInLayer < 2) {
+            continue;
+        }
+        auto orderedTurns = layerTurnsIt->second;
+        std::sort(orderedTurns.begin(), orderedTurns.end(), [&](size_t a, size_t b) {
+            return turns[a].get_coordinates()[turnAxis] > turns[b].get_coordinates()[turnAxis];
+        });
+        if (orderedTurns.size() % numberParallelsInLayer != 0) {
+            continue;   // ragged bundles (unequal parallels): not ours to reorder
+        }
+        std::vector<int64_t> orderInThisLayer;
+        for (size_t j = 0; j < numberParallelsInLayer; ++j) {
+            orderInThisLayer.push_back(turns[orderedTurns[j]].get_parallel());
+        }
+        // ABT #849 (Alf, 2026-08-22): the order holds across the WHOLE WINDING, not per
+        // section. "This is wound by grabbing the parallels fixed with the hand and giving
+        // turns up and down, but without twisting the order" -- the bundle's spatial stacking
+        // is a property of the wire in the hand, and an interleave boundary does not re-grip
+        // it. Keyed per (section, winding), each section chose its own order from its own
+        // first layer: on custom_magnetic 37 the Secondary's single-layer section 0 ended
+        // with p0 below p1, and section 1's first layer started p0 ABOVE p1 -- the parallels
+        // crossed inside the horizontal inter-section connection. Keyed per winding, the
+        // first-wound layer sets the order once and every later layer -- next section
+        // included -- keeps it.
+        const std::string key = windingName;
+        auto knownOrder = orderPerSectionWinding.find(key);
+        if (knownOrder == orderPerSectionWinding.end()) {
+            orderPerSectionWinding[key] = orderInThisLayer;   // the first-wound layer sets the order
+            continue;
+        }
+        if (knownOrder->second == orderInThisLayer) {
+            continue;
+        }
+        for (size_t bundle = 0; bundle + numberParallelsInLayer <= orderedTurns.size();
+             bundle += numberParallelsInLayer) {
+            std::vector<double> stations;
+            std::map<int64_t, size_t> turnOfParallel;
+            for (size_t j = 0; j < numberParallelsInLayer; ++j) {
+                const size_t turnIndex = orderedTurns[bundle + j];
+                stations.push_back(turns[turnIndex].get_coordinates()[turnAxis]);
+                turnOfParallel[turns[turnIndex].get_parallel()] = turnIndex;
+            }
+            if (turnOfParallel.size() != numberParallelsInLayer) {
+                continue;   // a parallel appears twice in this bundle: leave it as wound
+            }
+            for (size_t j = 0; j < numberParallelsInLayer; ++j) {
+                auto found = turnOfParallel.find(knownOrder->second[j]);
+                if (found == turnOfParallel.end()) {
+                    continue;
+                }
+                auto coordinates = turns[found->second].get_coordinates();
+                coordinates[turnAxis] = stations[j];
+                turns[found->second].set_coordinates(coordinates);
+            }
+        }
+    }
+}
+
 void Coil::align_blocked_layer_turns() {
     if (!get_layers_description() || !get_turns_description()) {
         return;
@@ -3157,6 +3250,19 @@ void Coil::align_blocked_layer_turns() {
         respace_helical_layers_at_final_radius();
     }
     if (_connectionBlockedSlotsPerLayer.empty()) {
+        // ABT #1424: the bundle keeps its stacking whether or not any lead blocked a slot. The
+        // order law used to live only in the blocked-slot path below, so a real-winding layout
+        // whose leads blocked nothing kept the winder's flipped bundle at every U turnaround.
+        // Measured on 21_interleaved_flyback_etd39 (Secondary, 7 t x 3 p, U): layer 0 closes
+        // p0/p1/p2 at y = 5.551/6.231/6.910 mm and layer 1 opened them at 6.904/6.213/5.521, so
+        // the three radial layer links crossed in the connection plane (p0 climbing 1.353 mm over
+        // the 0.679 mm step, p2 falling 1.389 mm); MVB++'s gate refused p0/p1 at 0.578 mm against
+        // the 0.63 mm copper.
+        if (realWinding) {
+            auto turns = get_turns_description().value();
+            keep_parallel_order_in_every_layer(turns, get_layers_description().value());
+            set_turns_description(turns);
+        }
         return;
     }
     auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
@@ -3609,96 +3715,7 @@ void Coil::align_blocked_layer_turns() {
             }
         }
     }
-    // ABT #685: a winding's PARALLELS keep the same spatial order in every layer of a section.
-    // The winder walks each layer's stations in fill order and hands them to parallel 0, 1, ... in
-    // turn, so a U section — whose layers alternate direction — flips the bundle over at every
-    // turnaround: parallel 0 sat at the BOTTOM of layer 0's bundles and at the TOP of layer 1's.
-    // Two consequences, both wrong: each parallel's landing link had to cross its sibling's to
-    // reach the far station (the 0.822 mm approach that made the #608 descent look necessary), and
-    // no parallel could land level with its own last turn, so the U layer climbed instead — the
-    // 8t x 2p climb that walked parallel 0's link into parallel 1's dragback (0.55 mm against a
-    // 0.9 mm envelope). Wires wound side by side do not swap places at a turnaround: they turn
-    // around together and keep their stacking. Re-assign each bundle's stations so every layer
-    // shows the parallels in the FIRST layer's order — a permutation within one bundle, so the
-    // stations, the turn count and every reservation are untouched. Z sections fill every layer
-    // the same way, so their order already matches and this is a no-op there.
-    {
-        std::map<std::string, std::vector<size_t>> turnIndicesPerLayer;
-        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-            if (turns[turnIndex].get_layer()) {
-                turnIndicesPerLayer[turns[turnIndex].get_layer().value()].push_back(turnIndex);
-            }
-        }
-        std::map<std::string, std::vector<int64_t>> orderPerSectionWinding;
-        for (const auto& layer : layers) {
-            if (layer.get_type() != ElectricalType::CONDUCTION || !layer.get_section()) {
-                continue;
-            }
-            auto layerTurnsIt = turnIndicesPerLayer.find(layer.get_name());
-            if (layerTurnsIt == turnIndicesPerLayer.end() || layerTurnsIt->second.empty()) {
-                continue;
-            }
-            size_t turnAxis = (layer.get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
-            const std::string windingName = turns[layerTurnsIt->second.front()].get_winding();
-            const size_t numberParallelsInLayer =
-                size_t(get_number_parallels(get_winding_index_by_name(windingName)));
-            if (numberParallelsInLayer < 2) {
-                continue;
-            }
-            auto orderedTurns = layerTurnsIt->second;
-            std::sort(orderedTurns.begin(), orderedTurns.end(), [&](size_t a, size_t b) {
-                return turns[a].get_coordinates()[turnAxis] > turns[b].get_coordinates()[turnAxis];
-            });
-            if (orderedTurns.size() % numberParallelsInLayer != 0) {
-                continue;   // ragged bundles (unequal parallels): not ours to reorder
-            }
-            std::vector<int64_t> orderInThisLayer;
-            for (size_t j = 0; j < numberParallelsInLayer; ++j) {
-                orderInThisLayer.push_back(turns[orderedTurns[j]].get_parallel());
-            }
-            // ABT #849 (Alf, 2026-08-22): the order holds across the WHOLE WINDING, not per
-            // section. "This is wound by grabbing the parallels fixed with the hand and giving
-            // turns up and down, but without twisting the order" -- the bundle's spatial stacking
-            // is a property of the wire in the hand, and an interleave boundary does not re-grip
-            // it. Keyed per (section, winding), each section chose its own order from its own
-            // first layer: on custom_magnetic 37 the Secondary's single-layer section 0 ended
-            // with p0 below p1, and section 1's first layer started p0 ABOVE p1 -- the parallels
-            // crossed inside the horizontal inter-section connection. Keyed per winding, the
-            // first-wound layer sets the order once and every later layer -- next section
-            // included -- keeps it.
-            const std::string key = windingName;
-            auto knownOrder = orderPerSectionWinding.find(key);
-            if (knownOrder == orderPerSectionWinding.end()) {
-                orderPerSectionWinding[key] = orderInThisLayer;   // the first-wound layer sets the order
-                continue;
-            }
-            if (knownOrder->second == orderInThisLayer) {
-                continue;
-            }
-            for (size_t bundle = 0; bundle + numberParallelsInLayer <= orderedTurns.size();
-                 bundle += numberParallelsInLayer) {
-                std::vector<double> stations;
-                std::map<int64_t, size_t> turnOfParallel;
-                for (size_t j = 0; j < numberParallelsInLayer; ++j) {
-                    const size_t turnIndex = orderedTurns[bundle + j];
-                    stations.push_back(turns[turnIndex].get_coordinates()[turnAxis]);
-                    turnOfParallel[turns[turnIndex].get_parallel()] = turnIndex;
-                }
-                if (turnOfParallel.size() != numberParallelsInLayer) {
-                    continue;   // a parallel appears twice in this bundle: leave it as wound
-                }
-                for (size_t j = 0; j < numberParallelsInLayer; ++j) {
-                    auto found = turnOfParallel.find(knownOrder->second[j]);
-                    if (found == turnOfParallel.end()) {
-                        continue;
-                    }
-                    auto coordinates = turns[found->second].get_coordinates();
-                    coordinates[turnAxis] = stations[j];
-                    turns[found->second].set_coordinates(coordinates);
-                }
-            }
-        }
-    }
+    keep_parallel_order_in_every_layer(turns, layers);
     // LINK-PITCH COMPENSATION (ABT #831/#839). A radial layer link is the steepest run in its
     // departure layer: it leaves the layer's last station and settles on the ADJACENT layer's
     // corresponding station, so its tangent is a RESIDUAL between the two layers' grids and can
@@ -5108,6 +5125,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     // already refused, and a second fault reported on top of the first only buries it.
     if (ok) {
         refuse_turns_bent_tighter_than_the_wire_allows();
+        refuse_sibling_layer_links_closer_than_the_wire();
     }
     return ok;
 }
@@ -9077,6 +9095,125 @@ std::optional<double> Coil::get_turn_length_in_frame(const WoundColumnFrame& fra
         return std::nullopt;
     }
     return length;
+}
+
+// ABT #1424. A U layer link is drawn as ONE radial step in the connection plane, from the
+// departure station (layer axis, turn axis) to the conductor's own station in the next layer
+// (MVB++ appendRoundWrap: "the link ENDS ON ITS OWN TURN"). Sibling parallels' links sit in that
+// same plane, so their centrelines are two segments of one half-plane and the true distance
+// between them is the 2D segment-to-segment distance -- zero when they cross. Wires wound side by
+// side cannot pass closer than one coated OD, the same invariant ABT #1401 enforces for the
+// wraps. The layout is final here (wind() calls this after the blocking re-winds have settled),
+// so a pair inside the envelope is a layout nobody can wind, and it is refused with the pair,
+// the distance and the envelope rather than handed to a consumer to discover.
+//
+// What counts as a link is the classification the layout itself publishes for the U connection
+// (the LINK-PITCH pass in align_blocked_layer_turns): consecutive stations of one conductor in
+// two different layers of the same section, stepping along the layer axis, whose turn-axis
+// difference is within one layer step plus the bundle's lanes -- anything steeper is a dragback,
+// routed elsewhere.
+void Coil::refuse_sibling_layer_links_closer_than_the_wire() {
+    if (!settings.get_coil_use_real_winding_geometry() || !get_turns_description() ||
+        !get_layers_description()) {
+        return;
+    }
+    if (resolve_bobbin().get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return;   // toroidal stations are polar; their ring-to-ring hops are judged elsewhere
+    }
+    const auto turns = get_turns_description().value();
+    const auto layers = get_layers_description().value();
+    std::map<std::string, WindingOrientation> orientationOfLayer;
+    for (const auto& layer : layers) {
+        orientationOfLayer[layer.get_name()] = layer.get_orientation();
+    }
+    auto wires = get_wires();
+    std::map<std::pair<std::string, int64_t>, std::vector<size_t>> turnsByConductor;
+    for (size_t t = 0; t < turns.size(); ++t) {
+        turnsByConductor[{turns[t].get_winding(), turns[t].get_parallel()}].push_back(t);
+    }
+    struct Link {
+        size_t from, to;
+        int64_t parallel;
+    };
+    std::map<std::tuple<std::string, std::string, std::string>, std::vector<Link>> linksByLayerPair;
+    for (const auto& [conductor, sequence] : turnsByConductor) {
+        const size_t windingIndex = get_winding_index_by_name(conductor.first);
+        if (wires[windingIndex].get_type() != WireType::ROUND &&
+            wires[windingIndex].get_type() != WireType::LITZ) {
+            continue;
+        }
+        const double od = wires[windingIndex].get_maximum_outer_height();
+        const int64_t numberParallels = get_number_parallels(windingIndex);
+        for (size_t k = 0; k + 1 < sequence.size(); ++k) {
+            const Turn& a = turns[sequence[k]];
+            const Turn& b = turns[sequence[k + 1]];
+            if (!a.get_layer() || !b.get_layer() || a.get_layer().value() == b.get_layer().value() ||
+                a.get_section() != b.get_section()) {
+                continue;
+            }
+            if (orientationOfLayer.at(a.get_layer().value()) != WindingOrientation::OVERLAPPING ||
+                orientationOfLayer.at(b.get_layer().value()) != WindingOrientation::OVERLAPPING) {
+                continue;
+            }
+            const double dx = std::abs(b.get_coordinates()[0] - a.get_coordinates()[0]);
+            const double dy = std::abs(b.get_coordinates()[1] - a.get_coordinates()[1]);
+            if (dx <= 1e-12 || dy > dx + 2.0 * od * double(std::max<int64_t>(1, numberParallels))) {
+                continue;   // not a radial layer step: a dragback
+            }
+            linksByLayerPair[{conductor.first, a.get_layer().value(), b.get_layer().value()}].push_back(
+                {sequence[k], sequence[k + 1], conductor.second});
+        }
+    }
+    const auto pointToSegment = [](double px, double py, double ax, double ay, double bx, double by) {
+        const double vx = bx - ax, vy = by - ay;
+        const double l2 = vx * vx + vy * vy;
+        const double u = l2 > 0 ? std::clamp(((px - ax) * vx + (py - ay) * vy) / l2, 0.0, 1.0) : 0.0;
+        return std::hypot(px - (ax + u * vx), py - (ay + u * vy));
+    };
+    const auto cross = [](double ox, double oy, double ax, double ay, double bx, double by) {
+        return (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+    };
+    for (const auto& [key, links] : linksByLayerPair) {
+        const double od = wires[get_winding_index_by_name(std::get<0>(key))].get_maximum_outer_height();
+        for (size_t i = 0; i < links.size(); ++i) {
+            for (size_t j = i + 1; j < links.size(); ++j) {
+                if (links[i].parallel == links[j].parallel) {
+                    continue;   // one conductor's own links are a different layer pair each
+                }
+                const auto& p0 = turns[links[i].from].get_coordinates();
+                const auto& p1 = turns[links[i].to].get_coordinates();
+                const auto& q0 = turns[links[j].from].get_coordinates();
+                const auto& q1 = turns[links[j].to].get_coordinates();
+                const double d1 = cross(p0[0], p0[1], p1[0], p1[1], q0[0], q0[1]);
+                const double d2 = cross(p0[0], p0[1], p1[0], p1[1], q1[0], q1[1]);
+                const double d3 = cross(q0[0], q0[1], q1[0], q1[1], p0[0], p0[1]);
+                const double d4 = cross(q0[0], q0[1], q1[0], q1[1], p1[0], p1[1]);
+                const bool cross_ = ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0)) && d1 != 0 &&
+                                    d2 != 0 && d3 != 0 && d4 != 0;
+                const double distance =
+                    cross_ ? 0.0
+                           : std::min({pointToSegment(p0[0], p0[1], q0[0], q0[1], q1[0], q1[1]),
+                                       pointToSegment(p1[0], p1[1], q0[0], q0[1], q1[0], q1[1]),
+                                       pointToSegment(q0[0], q0[1], p0[0], p0[1], p1[0], p1[1]),
+                                       pointToSegment(q1[0], q1[1], p0[0], p0[1], p1[0], p1[1])});
+                // Half a nanometre: the grid every station is emitted on (roundFloat(..., 9)).
+                if (distance < od - 0.5e-9) {
+                    std::ostringstream message;
+                    message.precision(9);
+                    message << "Real winding: the layer links of '" << turns[links[i].from].get_name()
+                            << "' -> '" << turns[links[i].to].get_name() << "' and '"
+                            << turns[links[j].from].get_name() << "' -> '"
+                            << turns[links[j].to].get_name() << "' (" << std::get<1>(key) << " -> "
+                            << std::get<2>(key) << ") " << (cross_ ? "cross" : "pass")
+                            << " in the connection plane: centreline distance " << distance
+                            << " m against the " << od
+                            << " m coated diameter. Sibling parallels wound side by side cannot pass "
+                               "closer than one wire, so this layout cannot be wound.";
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+                }
+            }
+        }
+    }
 }
 
 // ABT #1290 (Alf, 2026-09-20): "MKF must not draw a conductor corner tighter than the wire's own
