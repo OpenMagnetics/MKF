@@ -490,20 +490,20 @@ namespace TestWindingLossesRectangular {
     }
 
     TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangular-winding-window]") {
-        // ABT #832 (2026-08-20): re-pinned against 2D OMFEM (R_ac/R_dc 6.016/13.35/18.85
-        // at 100k/500k/1M; MKF within 3%) after the rectangular slab-prefactor fix.
+        // Pinned to 2D OMFEM's own R_ac/R_dc (2026-09-26, ABT #1409); see the config comment.
+        // Fails on MKF's current default until the rectangular proximity kernel is fixed.
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngappedConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
     TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangular-winding-window]") {
-        // ABT #832 (2026-08-20): re-pinned, same FEM arbitration as the 1 A variant.
+        // Pinned to 2D OMFEM's own R_ac/R_dc like the 1 A variant (2026-09-26, ABT #1409).
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngapped7AmpsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
     TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangular-winding-window]") {
-        // ABT #832 (2026-08-20): re-pinned (this config aliases the ungapped 7 A one).
+        // Aliases the ungapped 7 A config (no gap), so it carries the same OMFEM pins.
         auto config = WindingLossesTestData::createFiveTurnsRectangularGapped7AmpsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }

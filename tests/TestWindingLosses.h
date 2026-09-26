@@ -607,27 +607,27 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
-        // Re-pinned (ABT #832, 2026-08-20). REGRESSION pin, not a validation pin — read this
-        // before trusting the numbers. The old table was green only against the c*h Wang
-        // prefactor bug (rectangular proximity ~0) and sat 3.7x below the slab-form result.
-        // 2D OMFEM on this exact fixture gives R_ac/R_dc = 6.749 @100k and 15.064 @500k;
-        // the values below are MKF's, which run +21% and +15% hot against that. The sibling
-        // Five_Turns_Rectangular (PQ 20/16, 5 turns) agrees with FEM within 3%, so the excess
-        // grows with turn count/packing — the edge-point sampling residual tracked in ABT #837
-        // (same signature as the toroidal-rectangular case). Pinned to MKF so the suite still
-        // catches regressions; re-pin to FEM when #837 lands.
+        // Pinned to 2D OMFEM (ABT #1409 re-arbitration, 2026-09-26): each AC value is OMFEM's OWN
+        // R_ac/R_dc (its own DC) times MKF's DC for this fixture (1.15494 mW), so the +-25% check
+        // compares the two solvers' R_ac/R_dc, never watts across different turn lengths. OMFEM
+        // R_ac/R_dc: 9.637 / 14.09 / 17.52 / 20.41 / 22.96 / 25.26 / 27.37 / 29.35 / 31.20 / 32.97
+        // at 100 k .. 1 MHz (planar solve, mesh-converged to 0.1 %). The previous table was MKF's
+        // own output; MKF's default reads 0.75-0.86 of these, so this test FAILS until the
+        // rectangular proximity kernel is fixed (ABT #1409 follow-up). Caveat: PQ windows are only
+        // partly enclosed by the core, so OMFEM's fully imaged planar frame may overstate field
+        // confinement here; OMFEM is nevertheless the reference.
         config.expectedValues = {
             {0.01, 0.0011519},
-            {100000, 0.0094129},
-            {200000, 0.012714},
-            {300000, 0.015481},
-            {400000, 0.017900},
-            {500000, 0.020032},
-            {600000, 0.021950},
-            {700000, 0.023709},
-            {800000, 0.025345},
-            {900000, 0.026881},
-            {1000000, 0.028335}
+            {100000, 0.01113},
+            {200000, 0.016271},
+            {300000, 0.020229},
+            {400000, 0.023569},
+            {500000, 0.026513},
+            {600000, 0.029171},
+            {700000, 0.031607},
+            {800000, 0.033894},
+            {900000, 0.036038},
+            {1000000, 0.038078}
         };
         
         config.createMagnetic = []() {
@@ -1515,22 +1515,28 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
-        // Re-pinned (ABT #832, 2026-08-20) against 2D OMFEM: the old table sat on the
-        // c*h Wang prefactor bug (rectangular proximity ~0, losses were skin-only) and
-        // was itself ~2.4x BELOW FEM. OMFEM on this exact fixture: R_ac/R_dc = 6.016 /
-        // 13.35 / 18.85 at 100k/500k/1M; the slab-form model lands within 3% of that.
+        // Pinned to 2D OMFEM (ABT #1409 re-arbitration, 2026-09-26): each AC value is OMFEM's OWN
+        // R_ac/R_dc (its own DC) times MKF's DC for this fixture (0.49121 mW), so the +-25% check
+        // compares the two solvers' R_ac/R_dc, never watts across different turn lengths. OMFEM
+        // R_ac/R_dc: 12.84 / 19.49 / 24.71 / 29.18 / 33.17 / 36.84 / 40.23 / 43.42 / 46.46 / 49.43
+        // at 100 k .. 1 MHz (planar solve, mesh-converged to 0.2 %). The 2026-08-20 table
+        // ("R_ac/R_dc 6.016 / 13.35 / 18.85, MKF within 3%") compared OMFEM WATTS against MKF's
+        // DC -- mixed normalization -- and pinned MKF's own output. MKF's default reads 0.39-0.49
+        // of these, so this test FAILS until the rectangular proximity kernel is fixed (ABT #1409
+        // follow-up). Caveat: PQ windows are only partly enclosed by the core, so OMFEM's fully
+        // imaged planar frame may overstate field confinement; OMFEM is nevertheless the reference.
         config.expectedValues = {
             {0.01, 0.00048949},
-            {100000, 0.0030343},
-            {200000, 0.0041970},
-            {300000, 0.0051466},
-            {400000, 0.0059475},
-            {500000, 0.0066499},
-            {600000, 0.0072842},
-            {700000, 0.0078676},
-            {800000, 0.0084107},
-            {900000, 0.0089209},
-            {1000000, 0.0094035}
+            {100000, 0.0063071},
+            {200000, 0.0095737},
+            {300000, 0.012138},
+            {400000, 0.014334},
+            {500000, 0.016293},
+            {600000, 0.018096},
+            {700000, 0.019761},
+            {800000, 0.021328},
+            {900000, 0.022822},
+            {1000000, 0.024281}
         };
         
         config.createMagnetic = []() {
@@ -1595,20 +1601,22 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
-        // Re-pinned (ABT #832, 2026-08-20): same FEM arbitration as the 1 A variant
-        // (identical geometry, F_R identical; losses scale with I^2).
+        // Pinned to 2D OMFEM like the 1 A variant (same geometry and R_ac/R_dc; OMFEM confirms the
+        // I^2 scaling: 0.3308 W at 500 kHz, R_ac/R_dc 33.18): OMFEM's own R_ac/R_dc times MKF's DC
+        // here (24.0692 mW). FAILS on MKF's current default (0.39-0.49) until the rectangular
+        // proximity kernel is fixed (ABT #1409 follow-up).
         config.expectedValues = {
             {0.01, 0.023985},
-            {100000, 0.14868},
-            {200000, 0.20565},
-            {300000, 0.25219},
-            {400000, 0.29143},
-            {500000, 0.32584},
-            {600000, 0.35693},
-            {700000, 0.38551},
-            {800000, 0.41212},
-            {900000, 0.43712},
-            {1000000, 0.46077}
+            {100000, 0.30905},
+            {200000, 0.46911},
+            {300000, 0.59475},
+            {400000, 0.70234},
+            {500000, 0.79838},
+            {600000, 0.88671},
+            {700000, 0.9683},
+            {800000, 1.0451},
+            {900000, 1.1183},
+            {1000000, 1.1897}
         };
         
         config.createMagnetic = []() {
