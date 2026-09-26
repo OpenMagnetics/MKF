@@ -2792,7 +2792,10 @@ void from_json(const json& j, Core& x) {
         migrated["functionalDescription"]["shape"].contains("family") &&
         migrated["functionalDescription"]["shape"]["family"].is_string()) {
         auto declaredFamily = migrated["functionalDescription"]["shape"]["family"].get<std::string>();
-        MAS::CoreShapeFamily parsedFamily;
+        // Value-initialised: the generated converter does not touch the enum for a string it
+        // does not know, and an uninitialised one made this check depend on the stack's contents
+        // (a RelWithDebInfo build read garbage and the serialiser threw its own nameless error).
+        MAS::CoreShapeFamily parsedFamily{};
         MAS::from_json(migrated["functionalDescription"]["shape"]["family"], parsedFamily);
         json roundTripped;
         MAS::to_json(roundTripped, parsedFamily);

@@ -66,7 +66,8 @@ void LibraryContext::loadFromJson(const json& data, LoadMode mode) {
             // bug). Validate the spelling explicitly instead.
             if (jf.contains("family") && jf["family"].is_string()) {
                 json probe = jf["family"];
-                MAS::CoreShapeFamily decoded;
+                // Value-initialised, or a miss leaves stack garbage for to_json to choke on.
+                MAS::CoreShapeFamily decoded{};
                 from_json(probe, decoded);
                 json roundtrip;
                 to_json(roundtrip, decoded);
