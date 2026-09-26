@@ -2921,6 +2921,51 @@ TEST_CASE("Test_Winding_Losses_Imaged_Mmf_Sheets_Rect_Stack_Beside_Spacer_Gaps_V
     settings.reset();
 }
 
+// ABT #1409: WANG_STACKED on 16 stacked parallel planar traces (20 x 0.209 mm, 0.1 mm slits) of
+// one turn beside a 3 mm gap, 100 kHz. 2D OMFEM gives R_ac/R_dc 100.1: the stack excludes the
+// field as one body. WANG puts an isolated conductor's edge crowding on every trace and reads
+// 2008; with each trace carrying its share of the stack outline WANG_STACKED reads 103, hence
+// the band [0.8, 1.25] of OMFEM. On a single trace (nothing stacked) the two kernels are the
+// same number, which the second half checks.
+TEST_CASE("Test_Winding_Losses_Wang_Stacked_Planar_Parallel_Stack_Vs_OMFEM", "[physical-model][winding-losses][planar][abt1409]") {
+    auto racOverRdc = [](const std::string& fileName, WindingProximityEffectLossesModels proximityModel) {
+        settings.reset();
+        clear_databases();
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName);
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+        OperatingPoint operatingPoint = inputs.get_operating_point(0);
+        OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, 100000, true);
+        MagnetizingInductance magnetizingInductanceModel("ZHANG");
+        double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
+            magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance());
+        operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+        settings.set_magnetic_field_mirroring_dimension(1);
+        settings.set_magnetic_field_include_fringing(true);
+        WindingLossesModels models;
+        models.proximityEffectModel = proximityModel;
+        auto output = WindingLosses(models).calculate_losses(magnetic, operatingPoint, 25);
+        const auto perTurn = output.get_winding_losses_per_turn().value();
+        double ohmic = 0;
+        for (const auto& turn : perTurn) {
+            ohmic += turn.get_ohmic_losses()->get_losses();
+        }
+        settings.reset();
+        return output.get_winding_losses() / ohmic;
+    };
+
+    double stacked = racOverRdc("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json", WindingProximityEffectLossesModels::WANG_STACKED);
+    INFO("16 stacked parallel traces, WANG_STACKED R_ac/R_dc " << stacked << ", OMFEM 100.1");
+    CHECK(stacked > 0.8 * 100.1);
+    CHECK(stacked < 1.25 * 100.1);
+
+    double singleStacked = racOverRdc("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json", WindingProximityEffectLossesModels::WANG_STACKED);
+    double singleWang = racOverRdc("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json", WindingProximityEffectLossesModels::WANG);
+    CHECK(singleStacked == singleWang);
+}
+
 // ABT #1409 comparison driver (hidden): every field x fringing model on the MAS file in env
 // ABT1409_MAS, first operating point. Prints total R_ac/R_dc, the end and gap-plane turns, and
 // the time per loss evaluation (turn-sum cache off, so each call does the full work).
@@ -2943,6 +2988,11 @@ TEST_CASE("Debug_Abt1409_Model_Table", "[debug][abt1409-table][.]") {
         WindingLossesModels models;
         models.magneticFieldStrengthModel = field;
         models.magneticFieldStrengthFringingEffectModel = fringing;
+        if (const char* proximityName = std::getenv("ABT1409_PROX")) {
+            WindingProximityEffectLossesModels proximityModel;
+            from_json(json(std::string(proximityName)), proximityModel);
+            models.proximityEffectModel = proximityModel;
+        }
         WindingLosses windingLosses(models);
         try {
             auto start = std::chrono::steady_clock::now();
@@ -2966,9 +3016,11 @@ TEST_CASE("Debug_Abt1409_Model_Table", "[debug][abt1409-table][.]") {
                 const auto proximityLosses = turn.get_proximity_effect_losses().value();
                 for (auto l : skinLosses.get_losses_per_harmonic()) loss += l;
                 for (auto l : proximityLosses.get_losses_per_harmonic()) loss += l;
-                return loss / (currentRms * currentRms * rdcPerTurn[i]);
+                return loss / turn.get_ohmic_losses()->get_losses();
             };
-            std::cout << "ROW " << to_string(field) << " " << to_string(fringing) << " total=" << output.get_winding_losses() / (currentRms * currentRms * rdcTotal)
+            double ohmicTotal = 0;
+            for (const auto& turn : perTurn) ohmicTotal += turn.get_ohmic_losses()->get_losses();
+            std::cout << "ROW " << to_string(field) << " " << to_string(fringing) << " total=" << output.get_winding_losses() / ohmicTotal
                       << " end=" << turnRatio(0) << " gap=" << turnRatio(gapTurn) << " ms=" << milliseconds << std::endl;
         }
         catch (const std::exception& e) {
@@ -3011,6 +3063,11 @@ TEST_CASE("Debug_Abt1409_Model_Sweep", "[debug][abt1409-sweep][.]") {
         WindingLossesModels models;
         models.magneticFieldStrengthModel = field;
         models.magneticFieldStrengthFringingEffectModel = fringing;
+        if (const char* proximityName = std::getenv("ABT1409_PROX")) {
+            WindingProximityEffectLossesModels proximityModel;
+            from_json(json(std::string(proximityName)), proximityModel);
+            models.proximityEffectModel = proximityModel;
+        }
         OpenMagnetics::Magnetic magnetic;
         OperatingPoint operatingPoint;
         double temperature;
@@ -3034,7 +3091,7 @@ TEST_CASE("Debug_Abt1409_Model_Sweep", "[debug][abt1409-sweep][.]") {
             auto config = WindingLossesTestData::getAllTestConfigs().at(configName);
             magnetic = config.createMagnetic();
             settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
-            settings.set_magnetic_field_include_fringing(config.includeFringing);
+            settings.set_magnetic_field_include_fringing(std::getenv("ABT1409_FRINGE") ? true : config.includeFringing);
             auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
                 frequency, config.magnetizingInductance, config.temperature,
                 config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
@@ -3084,6 +3141,18 @@ TEST_CASE("Debug_Abt1409_Field_Dump", "[debug][abt1409-dump][.]") {
         auto mas = OpenMagneticsTesting::mas_loader(masPath);
         magnetic = mas.get_magnetic();
         inputs = mas.get_inputs();
+        operatingPoint = inputs.get_operating_point(0);
+    }
+    else if (const char* configName = std::getenv("ABT1409_CONFIG")) {
+        const char* frequencyText = std::getenv("ABT1409_FREQ");
+        REQUIRE(frequencyText != nullptr);
+        auto config = WindingLossesTestData::getAllTestConfigs().at(configName);
+        magnetic = config.createMagnetic();
+        settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
+        settings.set_magnetic_field_include_fringing(std::getenv("ABT1409_FRINGE") ? true : config.includeFringing);
+        inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            std::stod(frequencyText), config.magnetizingInductance, config.temperature,
+            config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
         operatingPoint = inputs.get_operating_point(0);
     }
     else {
@@ -3187,6 +3256,11 @@ TEST_CASE("Debug_Abt1409_Field_Dump", "[debug][abt1409-dump][.]") {
     WindingLossesModels models;
     models.magneticFieldStrengthModel = fieldModel;
     models.magneticFieldStrengthFringingEffectModel = fringingModel;
+    if (const char* proximityName = std::getenv("ABT1409_PROX")) {
+        WindingProximityEffectLossesModels proximityModel;
+        from_json(json(std::string(proximityName)), proximityModel);
+        models.proximityEffectModel = proximityModel;
+    }
     auto losses = WindingLosses(models).calculate_losses(magnetic, operatingPoint, 25);
     out["rdcPerTurn"] = losses.get_dc_resistance_per_turn().value();
     json perTurnJson = json::array();

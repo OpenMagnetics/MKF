@@ -416,6 +416,7 @@ inline void from_json(const json & j, WindingProximityEffectLossesModels & x) {
     else if (j == "Vandelac"   || j == "VANDELAC")   x = WindingProximityEffectLossesModels::VANDELAC;
     else if (j == "Martinez"   || j == "MARTINEZ")   x = WindingProximityEffectLossesModels::MARTINEZ;
     else if (j == "Ewald"      || j == "EWALD")      x = WindingProximityEffectLossesModels::EWALD;
+    else if (j == "WangStacked" || j == "WANG_STACKED") x = WindingProximityEffectLossesModels::WANG_STACKED;
     else { throw std::runtime_error("Input JSON does not conform to WindingProximityEffectLossesModels schema: " + to_string(j)); }
 }
 
@@ -434,6 +435,7 @@ inline void to_json(json & j, const WindingProximityEffectLossesModels & x) {
     case WindingProximityEffectLossesModels::VANDELAC:   j = "Vandelac";   break;
     case WindingProximityEffectLossesModels::MARTINEZ:   j = "Martinez";   break;
     case WindingProximityEffectLossesModels::EWALD:      j = "Ewald";      break;
+    case WindingProximityEffectLossesModels::WANG_STACKED: j = "WangStacked"; break;
     default: throw std::runtime_error("Unexpected value in enumeration \"WindingProximityEffectLossesModels\": " + std::to_string(static_cast<int>(x)));
     }
 }

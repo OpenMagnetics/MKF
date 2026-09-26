@@ -58,7 +58,7 @@ class WindingProximityEffectLosses {
     // A plain (real, single-phase) field: there is no quadrature component.
     static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
     // quadratureFields, when given, must match fields harmonic by harmonic and point by point.
-    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::vector<ComplexField>> quadratureFields = std::nullopt);
+    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::vector<ComplexField>> quadratureFields = std::nullopt, std::optional<double> perpendicularOutlineFactor = std::nullopt);
   private:
     static WindingLossesOutput calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride);
 
@@ -83,8 +83,53 @@ class WindingProximityEffectLossesWangModel : public WindingProximityEffectLosse
     // Its width-sample term bridges two different quadratic forms, so it is not additive.
     double calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) override;
     bool consumes_width_samples() const override { return true; }
+  protected:
+    // Multiplies the high-frequency (skin-limited) branch of the width-resolved perpendicular
+    // term. 1 for an isolated conductor; WANG_STACKED supplies the stack-outline share.
+    virtual double perpendicular_high_frequency_factor() const { return 1.0; }
   private:
     double calculate_turn_losses_impl(Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature);
+};
+
+// ABT #1409: WANG for flat conductors that screen each other.
+//
+// Wang's width-resolved perpendicular term puts the edge crowding of an ISOLATED conductor on
+// every flat turn: at strong skin effect the conductor excludes the field normal to its wide
+// faces, and the exterior problem is a field-excluding ellipse with the conductor's own
+// semi-axes (fringing_edge_crowding_factor). Flat conductors stacked with slits much narrower
+// than their width do not each exclude the field: the stack does, as one body, and the
+// excluded field crowds at the STACK's edges. Against 2D FEM, with the true applied field, the
+// isolated form read the gap-plane turns of a 22-turn flat stack beside spacer gaps 3x high,
+// and 16 stacked parallel planar traces 30x high.
+//
+// Grouping (geometry only): two flat conductors of the same section and orientation belong to
+// one stack when they overlap over more than half their width along the wide direction and
+// the slit between their facing wide faces is narrower than half that width -- the slit then
+// offers the perpendicular flux a path (w/2)/(mu0 s) longer than the free path around the
+// body, so the flux goes around the stack.
+//
+// Each member's high-frequency perpendicular loss becomes its share of the stack outline's:
+// the ellipse surface-field integral over the arc of the outline the member occupies (bounded
+// half-way across the slits) instead of its own full ellipse, with the incident field still
+// the member's own width-averaged perpendicular field. The factor is geometry only:
+//     (A + B)^2 J(A, B; v1, v2) / ((a + b)^2 J(a, b; -pi/2, pi/2)),
+//     J = integral cos^2 v / sqrt(A^2 sin^2 v + B^2 cos^2 v) dv,
+// A, B the stack's semi-axes along the wide and stacking directions, a, b the conductor's.
+// A stack of one gives exactly 1. The parallel-field term, the low-frequency branch and the
+// skin effect are Wang's, unchanged: current redistribution among stacked parallels is NOT
+// modelled (the field arrives as one sum, so the stack's own current cannot be separated).
+class WindingProximityEffectLossesWangStackedModel : public WindingProximityEffectLossesWangModel {
+  public:
+    std::string methodName = "WangStacked";
+    void set_perpendicular_outline_factor(double factor) { _perpendicularOutlineFactor = factor; }
+    // One factor per turn of the coil, in turns-description order (1 for unstacked or round turns).
+    static std::vector<double> calculate_perpendicular_outline_factors(Coil coil);
+    // integral_{v1}^{v2} cos^2 v / sqrt(A^2 sin^2 v + B^2 cos^2 v) dv, fixed 64-point quadrature.
+    static double outline_integral(double A, double B, double v1, double v2);
+  protected:
+    double perpendicular_high_frequency_factor() const override;
+  private:
+    std::optional<double> _perpendicularOutlineFactor;
 };
 
 // Based on A New Approach to Analyse Conduction Losses in High Frequency Magnetic Components by J.A. Ferreira

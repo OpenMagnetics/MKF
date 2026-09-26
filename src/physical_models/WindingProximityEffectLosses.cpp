@@ -9,6 +9,8 @@
 #include <cmath>
 #include <complex>
 #include <mutex>
+#include <limits>
+#include <map>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -293,8 +295,11 @@ std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLosses
     else if (modelName == WindingProximityEffectLossesModels::VANDELAC) {
         return std::make_shared<WindingProximityEffectLossesVandelacModel>();
     }
+    else if (modelName == WindingProximityEffectLossesModels::WANG_STACKED) {
+        return std::make_shared<WindingProximityEffectLossesWangStackedModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER, DOWELL, XI_NAN, WOJDA, SULLIVAN, BARTOLI, VANDELAC}");
+        throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER, DOWELL, XI_NAN, WOJDA, SULLIVAN, BARTOLI, VANDELAC, MARTINEZ, EWALD, WANG_STACKED}");
 }
 
 std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses::get_model(WireType wireType, std::optional<WindingProximityEffectLossesModels> modelOverride) {
@@ -401,8 +406,15 @@ double WindingProximityEffectLossesModel::calculate_turn_losses_from_phasors(Wir
     return turnLosses;
 }
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::vector<ComplexField>> quadratureFields) {
+std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::vector<ComplexField>> quadratureFields, std::optional<double> perpendicularOutlineFactor) {
     auto model = get_model(wire.get_type(), modelOverride);
+    if (auto stackedModel = std::dynamic_pointer_cast<WindingProximityEffectLossesWangStackedModel>(model)) {
+        if (!perpendicularOutlineFactor) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "WANG_STACKED needs the turn's stack-outline factor, which only the coil geometry gives: evaluate it through calculate_proximity_effect_losses");
+        }
+        stackedModel->set_perpendicular_outline_factor(perpendicularOutlineFactor.value());
+    }
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
     }
@@ -475,6 +487,15 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         throw CoilNotProcessedException("Winding does not have turns description");
     }
     auto turns = coil.get_turns_description().value();
+
+    // WANG_STACKED reads each turn's place in its stack from the coil geometry, once.
+    std::optional<std::vector<double>> perpendicularOutlineFactorPerTurn;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        if (std::dynamic_pointer_cast<WindingProximityEffectLossesWangStackedModel>(get_model(coil.get_wire_type(windingIndex), modelOverride))) {
+            perpendicularOutlineFactorPerTurn = WindingProximityEffectLossesWangStackedModel::calculate_perpendicular_outline_factors(coil);
+            break;
+        }
+    }
 
     auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
 
@@ -604,10 +625,14 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         double primaryLength = hasSecondaryCrossing ? wireLength / 2 : wireLength;
         double secondaryLength = hasSecondaryCrossing ? wireLength / 2 : 0;
 
-        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, modelOverride, primaryQuadrature).second;
+        std::optional<double> perpendicularOutlineFactor;
+        if (perpendicularOutlineFactorPerTurn) {
+            perpendicularOutlineFactor = perpendicularOutlineFactorPerTurn.value()[turnIndex];
+        }
+        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, modelOverride, primaryQuadrature, perpendicularOutlineFactor).second;
         std::vector<std::pair<double, double>> secondaryLossesPerHarmonic;
         if (hasSecondaryCrossing) {
-            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, modelOverride, secondaryQuadrature).second;
+            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, modelOverride, secondaryQuadrature, perpendicularOutlineFactor).second;
             if (secondaryLossesPerHarmonic.size() != primaryLossesPerHarmonic.size()) {
                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
                     "Primary and secondary crossing harmonics do not match for turn " + std::to_string(turnIndex));
@@ -1048,7 +1073,7 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses_impl(Wire& w
         }
 
         double lossLowFrequency = 0.5 * pow(angularFrequency, 2) * thinDimension / (2 * resistivity) * integralFluxFunctionSquared;
-        double lossHighFrequency = 0.5 * fringingLossCalibration * resistivity / skinDepth * integralHPerpendicularSquared;
+        double lossHighFrequency = 0.5 * fringingLossCalibration * resistivity / skinDepth * integralHPerpendicularSquared * perpendicular_high_frequency_factor();
         if (lossLowFrequency > 0 && lossHighFrequency > 0) {
             turnLosses += 1.0 / (1.0 / lossLowFrequency + 1.0 / lossHighFrequency);
         }
@@ -2340,6 +2365,166 @@ double WindingProximityEffectLossesVandelacModel::calculate_turn_losses(Wire wir
     return turnLosses;
 }
 
+// ============================================================================
+// WANG_STACKED (ABT #1409)
+// ============================================================================
+
+double WindingProximityEffectLossesWangStackedModel::perpendicular_high_frequency_factor() const {
+    if (!_perpendicularOutlineFactor) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "WANG_STACKED: no stack-outline factor was set for this turn");
+    }
+    return _perpendicularOutlineFactor.value();
+}
+
+double WindingProximityEffectLossesWangStackedModel::outline_integral(double A, double B, double v1, double v2) {
+    // 64-point Gauss-Legendre. For a wide, flat outline (A > B) the integrand peaks within B/A of
+    // v = 0; u = sin v, u = (B / sqrt(A^2 - B^2)) sinh t turns it into sqrt(1 - u^2) / sqrt(A^2 - B^2),
+    // smooth in t. Checked against a 2e6-point trapezoid: within 4e-6 up to A/B = 100.
+    static const std::pair<std::vector<double>, std::vector<double>> nodesAndWeights = []() {
+        constexpr size_t n = 64;
+        std::vector<double> nodes(n), weights(n);
+        for (size_t i = 0; i < n; ++i) {
+            double x = std::cos(std::numbers::pi * (static_cast<double>(i) + 0.75) / (static_cast<double>(n) + 0.5));
+            double derivative = 0;
+            for (int newton = 0; newton < 100; ++newton) {
+                double p0 = 1, p1 = x;
+                for (size_t k = 2; k <= n; ++k) {
+                    double p2 = ((2.0 * static_cast<double>(k) - 1) * x * p1 - (static_cast<double>(k) - 1.0) * p0) / static_cast<double>(k);
+                    p0 = p1;
+                    p1 = p2;
+                }
+                derivative = static_cast<double>(n) * (x * p1 - p0) / (x * x - 1);
+                double step = p1 / derivative;
+                x -= step;
+                if (std::abs(step) < 1e-15) {
+                    break;
+                }
+            }
+            nodes[i] = x;
+            weights[i] = 2 / ((1 - x * x) * derivative * derivative);
+        }
+        return std::pair<std::vector<double>, std::vector<double>>{nodes, weights};
+    }();
+    const auto& nodes = nodesAndWeights.first;
+    const auto& weights = nodesAndWeights.second;
+    double total = 0;
+    if (A > B) {
+        double c = std::sqrt(A * A - B * B);
+        double t1 = std::asinh(std::sin(v1) * c / B);
+        double t2 = std::asinh(std::sin(v2) * c / B);
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            double t = 0.5 * (t2 - t1) * nodes[i] + 0.5 * (t2 + t1);
+            double u = B / c * std::sinh(t);
+            total += weights[i] * std::sqrt(std::max(0.0, 1 - u * u)) / c;
+        }
+        return total * 0.5 * (t2 - t1);
+    }
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        double v = 0.5 * (v2 - v1) * nodes[i] + 0.5 * (v2 + v1);
+        double sine = std::sin(v), cosine = std::cos(v);
+        total += weights[i] * cosine * cosine / std::sqrt(A * A * sine * sine + B * B * cosine * cosine);
+    }
+    return total * 0.5 * (v2 - v1);
+}
+
+std::vector<double> WindingProximityEffectLossesWangStackedModel::calculate_perpendicular_outline_factors(Coil coil) {
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("WANG_STACKED: the coil has no turns description");
+    }
+    const auto turns = coil.get_turns_description().value();
+    size_t numberTurns = turns.size();
+    std::vector<double> factors(numberTurns, 1.0);
+
+    // Each flat turn in its own (wide, stacking) frame, as the CoilMesher places its width samples.
+    struct FlatTurn { bool flat; bool wideAlongY; double wide; double thin; double alongWide; double alongStack; };
+    std::vector<FlatTurn> flatTurns(numberTurns);
+    for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+        const auto& turn = turns[turnIndex];
+        auto wire = coil.resolve_wire(coil.get_winding_index_by_name(turn.get_winding()));
+        FlatTurn flatTurn{false, false, 0, 0, 0, 0};
+        if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::FOIL) {
+            flatTurn.flat = true;
+            flatTurn.wideAlongY = (wire.get_type() == WireType::FOIL);
+            double width = wire.get_maximum_conducting_width();
+            double height = wire.get_maximum_conducting_height();
+            flatTurn.wide = flatTurn.wideAlongY ? height : width;
+            flatTurn.thin = flatTurn.wideAlongY ? width : height;
+            flatTurn.alongWide = flatTurn.wideAlongY ? turn.get_coordinates()[1] : turn.get_coordinates()[0];
+            flatTurn.alongStack = flatTurn.wideAlongY ? turn.get_coordinates()[0] : turn.get_coordinates()[1];
+        }
+        flatTurns[turnIndex] = flatTurn;
+    }
+
+    std::vector<size_t> parent(numberTurns);
+    for (size_t i = 0; i < numberTurns; ++i) {
+        parent[i] = i;
+    }
+    auto root = [&](size_t i) {
+        while (parent[i] != i) {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        return i;
+    };
+    for (size_t i = 0; i < numberTurns; ++i) {
+        const auto& a = flatTurns[i];
+        if (!a.flat) {
+            continue;
+        }
+        for (size_t j = i + 1; j < numberTurns; ++j) {
+            const auto& b = flatTurns[j];
+            if (!b.flat || b.wideAlongY != a.wideAlongY) {
+                continue;
+            }
+            double tolerance = 1e-9 * std::max(a.wide, b.wide);
+            if (std::abs(a.wide - b.wide) > tolerance || std::abs(a.thin - b.thin) > tolerance) {
+                continue;
+            }
+            if (std::abs(a.alongWide - b.alongWide) >= a.wide / 2) {
+                continue;
+            }
+            double slit = std::abs(a.alongStack - b.alongStack) - a.thin;
+            if (slit >= 0 && slit < a.wide / 2) {
+                parent[root(i)] = root(j);
+            }
+        }
+    }
+    std::map<size_t, std::vector<size_t>> stacks;
+    for (size_t i = 0; i < numberTurns; ++i) {
+        if (flatTurns[i].flat) {
+            stacks[root(i)].push_back(i);
+        }
+    }
+    for (auto& [stackRoot, members] : stacks) {
+        if (members.size() < 2) {
+            continue;  // an isolated conductor keeps Wang's own ellipse: factor 1
+        }
+        std::sort(members.begin(), members.end(), [&](size_t i, size_t j) { return flatTurns[i].alongStack < flatTurns[j].alongStack; });
+        double wide = flatTurns[members[0]].wide;
+        double thin = flatTurns[members[0]].thin;
+        double minimumAlongWide = std::numeric_limits<double>::max();
+        double maximumAlongWide = std::numeric_limits<double>::lowest();
+        for (auto i : members) {
+            minimumAlongWide = std::min(minimumAlongWide, flatTurns[i].alongWide);
+            maximumAlongWide = std::max(maximumAlongWide, flatTurns[i].alongWide);
+        }
+        double A = (maximumAlongWide - minimumAlongWide + wide) / 2;
+        double stackBottom = flatTurns[members.front()].alongStack - thin / 2;
+        double stackTop = flatTurns[members.back()].alongStack + thin / 2;
+        double B = (stackTop - stackBottom) / 2;
+        double stackCentre = (stackTop + stackBottom) / 2;
+        double a = wide / 2;
+        double b = thin / 2;
+        double isolated = (a + b) * (a + b) * outline_integral(a, b, -std::numbers::pi / 2, std::numbers::pi / 2);
+        auto angleAt = [&](double position) { return std::asin(std::clamp((position - stackCentre) / B, -1.0, 1.0)); };
+        for (size_t k = 0; k < members.size(); ++k) {
+            size_t i = members[k];
+            double lower = (k == 0) ? stackBottom : (flatTurns[members[k - 1]].alongStack + flatTurns[i].alongStack) / 2;
+            double upper = (k + 1 == members.size()) ? stackTop : (flatTurns[members[k + 1]].alongStack + flatTurns[i].alongStack) / 2;
+            factors[i] = (A + B) * (A + B) * outline_integral(A, B, angleAt(lower), angleAt(upper)) / isolated;
+        }
+    }
+    return factors;
+}
 
 } // namespace OpenMagnetics
-

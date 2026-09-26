@@ -103,7 +103,12 @@ enum class WindingProximityEffectLossesModels : int {
     // Ewald & Biela, EPE'23 (ETH Zurich): "Eddy currents in rectangular conductors: Analytical 2D
     // loss model in the context of magnetic component design". The closest published state of the
     // art for rectangular conductors, implemented here so MKF can be measured against it.
-    EWALD
+    EWALD,
+    // ABT #1409: WANG with the width-resolved perpendicular (edge-crowding) term taken on the
+    // outline of the stack a flat conductor belongs to (conductors separated by slits narrower
+    // than half their width screen each other), each member carrying its share of that outline.
+    // Identical to WANG for a conductor that is not stacked. Appended last: bindings pass ints.
+    WANG_STACKED
 };
 
 
