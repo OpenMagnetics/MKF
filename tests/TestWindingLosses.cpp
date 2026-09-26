@@ -2966,6 +2966,137 @@ TEST_CASE("Test_Winding_Losses_Wang_Stacked_Planar_Parallel_Stack_Vs_OMFEM", "[p
     CHECK(singleStacked == singleWang);
 }
 
+// ABT #1409 investigation driver (hidden, untagged): every proximity kernel on a SUPPLIED field.
+// Same inputs as Debug_Abt1409_Field_Dump. Without env ABT1409_FIELD_IN it writes the induced
+// mesh (points, labels, turns) of the first operating point's fundamental to ABT1409_OUT; with
+// it (a JSON [[hx, hy], ...] in that order) the fundamental is replaced by that field (other
+// harmonics zeroed, quadrature zero) and every kernel's per-turn (ohmic + skin + proximity) /
+// ohmic is written to ABT1409_OUT.
+TEST_CASE("Debug_Abt1409_Kernel_On_Field", "[debug][abt1409-kernels][.]") {
+    const char* outPath = std::getenv("ABT1409_OUT");
+    REQUIRE(outPath != nullptr);
+
+    settings.reset();
+    clear_databases();
+    settings.set_magnetic_field_turn_sums_cache_bytes(0);
+    OpenMagnetics::Magnetic magnetic;
+    OperatingPoint operatingPoint;
+    OpenMagnetics::Inputs inputs;
+    if (const char* masPath = std::getenv("ABT1409_MAS")) {
+        auto mas = OpenMagneticsTesting::mas_loader(masPath);
+        magnetic = mas.get_magnetic();
+        inputs = mas.get_inputs();
+        operatingPoint = inputs.get_operating_point(0);
+    }
+    else if (const char* configName = std::getenv("ABT1409_CONFIG")) {
+        const char* frequencyText = std::getenv("ABT1409_FREQ");
+        REQUIRE(frequencyText != nullptr);
+        auto config = WindingLossesTestData::getAllTestConfigs().at(configName);
+        magnetic = config.createMagnetic();
+        settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
+        settings.set_magnetic_field_include_fringing(std::getenv("ABT1409_FRINGE") ? true : config.includeFringing);
+        inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            std::stod(frequencyText), config.magnetizingInductance, config.temperature,
+            config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
+        operatingPoint = inputs.get_operating_point(0);
+    }
+    else {
+        const char* jsonName = std::getenv("ABT1409_JSON");
+        const char* frequencyText = std::getenv("ABT1409_FREQ");
+        REQUIRE(jsonName != nullptr);
+        REQUIRE(frequencyText != nullptr);
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), jsonName);
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        magnetic = mas.get_magnetic();
+        inputs = mas.get_inputs();
+        operatingPoint = inputs.get_operating_point(0);
+        OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, std::stod(frequencyText), true);
+        MagnetizingInductance magnetizingInductanceModel("ZHANG");
+        double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
+            magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance());
+        operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+        settings.set_magnetic_field_mirroring_dimension(1);
+        settings.set_magnetic_field_include_fringing(true);
+    }
+    MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::ROSHEN);
+    auto field = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
+    const auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+    double fundamental = harmonics.get_frequencies()[1];
+    auto perFrequency = field.get_field_per_frequency();
+    auto quadraturePerFrequency = field.get_quadrature_field_per_frequency();
+    json out;
+    const char* fieldInPath = std::getenv("ABT1409_FIELD_IN");
+    if (!fieldInPath) {
+        json points = json::array();
+        for (size_t h = 0; h < perFrequency.size(); ++h) {
+            if (std::abs(perFrequency[h].get_frequency() - fundamental) > 1e-6 * fundamental) continue;
+            for (const auto& point : perFrequency[h].get_data()) {
+                json p;
+                p["x"] = point.get_point()[0];
+                p["y"] = point.get_point()[1];
+                if (point.get_label()) p["label"] = point.get_label().value();
+                if (point.get_turn_index()) p["turn"] = point.get_turn_index().value();
+                points.push_back(p);
+            }
+        }
+        out["points"] = points;
+    }
+    else {
+        std::ifstream fieldFile(fieldInPath);
+        json supplied = json::parse(fieldFile);
+        for (size_t h = 0; h < perFrequency.size(); ++h) {
+            auto data = perFrequency[h].get_data();
+            auto quadrature = quadraturePerFrequency[h].get_data();
+            bool isFundamental = std::abs(perFrequency[h].get_frequency() - fundamental) <= 1e-6 * fundamental;
+            if (isFundamental) {
+                REQUIRE(supplied.size() == data.size());
+            }
+            for (size_t i = 0; i < data.size(); ++i) {
+                data[i].set_real(isFundamental ? supplied[i][0].get<double>() : 0.0);
+                data[i].set_imaginary(isFundamental ? supplied[i][1].get<double>() : 0.0);
+                quadrature[i].set_real(0.0);
+                quadrature[i].set_imaginary(0.0);
+            }
+            perFrequency[h].set_data(data);
+            quadraturePerFrequency[h].set_data(quadrature);
+        }
+        field.set_field_per_frequency(perFrequency);
+        field.set_quadrature_field_per_frequency(quadraturePerFrequency);
+        auto coil = magnetic.get_coil();
+        for (auto kernel : magic_enum::enum_values<WindingProximityEffectLossesModels>()) {
+            json row;
+            try {
+                auto base = WindingOhmicLosses::calculate_ohmic_losses(coil, operatingPoint, 25);
+                base = WindingSkinEffectLosses::calculate_skin_effect_losses(coil, 25, base, settings.get_harmonic_amplitude_threshold());
+                auto result = WindingProximityEffectLosses::calculate_proximity_effect_losses(coil, 25, base, field, kernel);
+                const auto perTurn = result.get_winding_losses_per_turn().value();
+                json ratios = json::array();
+                double ohmicTotal = 0;
+                for (const auto& turn : perTurn) {
+                    double ohmic = turn.get_ohmic_losses()->get_losses();
+                    ohmicTotal += ohmic;
+                    double loss = ohmic;
+                    const auto skin = turn.get_skin_effect_losses().value();
+                    const auto proximity = turn.get_proximity_effect_losses().value();
+                    for (auto l : skin.get_losses_per_harmonic()) loss += l;
+                    for (auto l : proximity.get_losses_per_harmonic()) loss += l;
+                    ratios.push_back(loss / ohmic);
+                }
+                row["perTurn"] = ratios;
+                row["total"] = result.get_winding_losses() / ohmicTotal;
+            }
+            catch (const std::exception& e) {
+                row["error"] = std::string(e.what()).substr(0, 120);
+            }
+            out[to_string(kernel)] = row;
+        }
+    }
+    std::ofstream file(outPath);
+    file << out.dump();
+    settings.reset();
+}
+
 // ABT #1409 comparison driver (hidden): every field x fringing model on the MAS file in env
 // ABT1409_MAS, first operating point. Prints total R_ac/R_dc, the end and gap-plane turns, and
 // the time per loss evaluation (turn-sum cache off, so each call does the full work).
@@ -3027,13 +3158,25 @@ TEST_CASE("Debug_Abt1409_Model_Table", "[debug][abt1409-table][.]") {
             std::cout << "ROW " << to_string(field) << " " << to_string(fringing) << " THREW " << e.what() << std::endl;
         }
     };
-    for (auto field : magic_enum::enum_values<MagneticFieldStrengthModels>()) {
-        if (field == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS) {
-            run(field, MagneticFieldStrengthFringingEffectModels::ROSHEN);
-            continue;
+    if (std::getenv("ABT1409_ALLPROX")) {
+        for (auto field : magic_enum::enum_values<MagneticFieldStrengthModels>()) {
+            for (auto proximity : magic_enum::enum_values<WindingProximityEffectLossesModels>()) {
+                setenv("ABT1409_PROX", std::string(magic_enum::enum_name(proximity)).c_str(), 1);
+                std::cout << "KERNEL " << to_string(proximity) << " ";
+                run(field, MagneticFieldStrengthFringingEffectModels::ROSHEN);
+            }
         }
-        for (auto fringing : magic_enum::enum_values<MagneticFieldStrengthFringingEffectModels>()) {
-            run(field, fringing);
+        unsetenv("ABT1409_PROX");
+    }
+    else {
+        for (auto field : magic_enum::enum_values<MagneticFieldStrengthModels>()) {
+            if (field == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS) {
+                run(field, MagneticFieldStrengthFringingEffectModels::ROSHEN);
+                continue;
+            }
+            for (auto fringing : magic_enum::enum_values<MagneticFieldStrengthFringingEffectModels>()) {
+                run(field, fringing);
+            }
         }
     }
     settings.reset();
