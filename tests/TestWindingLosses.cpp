@@ -2924,7 +2924,7 @@ TEST_CASE("Test_Winding_Losses_Imaged_Mmf_Sheets_Rect_Stack_Beside_Spacer_Gaps_V
 // ABT #1409 comparison driver (hidden): every field x fringing model on the MAS file in env
 // ABT1409_MAS, first operating point. Prints total R_ac/R_dc, the end and gap-plane turns, and
 // the time per loss evaluation (turn-sum cache off, so each call does the full work).
-TEST_CASE("Debug_Abt1409_Model_Table", "[winding-losses][debug][abt1409-table][.]") {
+TEST_CASE("Debug_Abt1409_Model_Table", "[debug][abt1409-table][.]") {
     const char* masPath = std::getenv("ABT1409_MAS");
     REQUIRE(masPath != nullptr);
     settings.reset();
@@ -2991,7 +2991,7 @@ TEST_CASE("Debug_Abt1409_Model_Table", "[winding-losses][debug][abt1409-table][.
 // (env ABT1409_FREQS, comma separated) on either a test-data JSON (env ABT1409_JSON, prepared
 // like runJsonBasedWindingLossesTest) or a WindingLossesTestData config (env ABT1409_CONFIG,
 // prepared like runWindingLossesTest).
-TEST_CASE("Debug_Abt1409_Model_Sweep", "[winding-losses][debug][abt1409-sweep][.]") {
+TEST_CASE("Debug_Abt1409_Model_Sweep", "[debug][abt1409-sweep][.]") {
     const char* frequenciesText = std::getenv("ABT1409_FREQS");
     REQUIRE(frequenciesText != nullptr);
     std::vector<double> frequencies;
