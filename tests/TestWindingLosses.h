@@ -607,27 +607,30 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
-        // Pinned to 2D OMFEM (ABT #1409 re-arbitration, 2026-09-26): each AC value is OMFEM's OWN
-        // R_ac/R_dc (its own DC) times MKF's DC for this fixture (1.15494 mW), so the +-25% check
-        // compares the two solvers' R_ac/R_dc, never watts across different turn lengths. OMFEM
-        // R_ac/R_dc: 9.637 / 14.09 / 17.52 / 20.41 / 22.96 / 25.26 / 27.37 / 29.35 / 31.20 / 32.97
-        // at 100 k .. 1 MHz (planar solve, mesh-converged to 0.1 %). The previous table was MKF's
-        // own output. MKF's default reads 0.75-0.86 of these: inside the +-25% band, but at its low
-        // edge at 1 MHz (ABT #1409 follow-up on the rectangular proximity kernel). Caveat: PQ windows are only
-        // partly enclosed by the core, so OMFEM's fully imaged planar frame may overstate field
-        // confinement here; OMFEM is nevertheless the reference.
+        // Pinned to 2D OMFEM WITHOUT the 5 um residual gaps (ABT #1425, 2026-09-27), like the
+        // five-turn PQ 20/16: each AC value is OMFEM's OWN R_ac/R_dc (its own DC) times MKF's DC for
+        // this fixture (1.15494 mW), so the +-25% check compares the two solvers' R_ac/R_dc, never
+        // watts across different turn lengths. The residual gaps are left out because MKF excludes
+        // residual (mating-surface) gaps from every field source (ABT #832); with them OMFEM reads
+        // R_ac/R_dc 22.96 at 500 kHz, without them 14.98 (the near field of the residual gap on the
+        // turns next to it, ABT #1441). OMFEM R_ac/R_dc without residual gaps: 6.704 / 9.421 /
+        // 11.55 / 13.36 / 14.98 / 16.40 / 17.74 / 18.97 / 20.08 / 21.27 at 100 k .. 1 MHz (planar
+        // solve, automatic conductor mesh = skin depth / 3). Mesh check at 500 kHz: 14.98 / 14.99 /
+        // 15.30 at conductor targets 30.7 / 10 / 7 um. Caveat: PQ windows are only partly enclosed
+        // by the core, so OMFEM's fully imaged planar frame may overstate field confinement; OMFEM
+        // is nevertheless the reference.
         config.expectedValues = {
             {0.01, 0.0011519},
-            {100000, 0.01113},
-            {200000, 0.016271},
-            {300000, 0.020229},
-            {400000, 0.023569},
-            {500000, 0.026513},
-            {600000, 0.029171},
-            {700000, 0.031607},
-            {800000, 0.033894},
-            {900000, 0.036038},
-            {1000000, 0.038078}
+            {100000, 0.0077427},
+            {200000, 0.010881},
+            {300000, 0.013344},
+            {400000, 0.015431},
+            {500000, 0.017295},
+            {600000, 0.018942},
+            {700000, 0.02049},
+            {800000, 0.021905},
+            {900000, 0.023196},
+            {1000000, 0.02456}
         };
         
         config.createMagnetic = []() {
