@@ -320,56 +320,20 @@ bool is_inside_core(const FieldPoint& inducedFieldPoint, double coreColumnWidth,
     return true;
 }
 
-double get_magnetic_field_strength_gap(OperatingPoint& operatingPoint, Magnetic magnetic, double frequency) {
-    auto numberTurns = magnetic.get_mutable_coil().get_number_turns(0);
+// Field strength in the gap per ampere-turn of MMF at this frequency: B = MMF / (R_core A_e),
+// H_gap = B / mu_0, with the core reluctance at the material's initial permeability at that
+// frequency. Used for a single winding, whose current IS the magnetizing current (ABT #1463).
+double get_magnetic_field_strength_gap_per_ampere_turn(Magnetic& magnetic, double frequency) {
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     OpenMagnetics::InitialPermeability initial_permeability;
     double initialPermeability = initial_permeability.get_initial_permeability(magnetic.get_mutable_core().resolve_material(), std::nullopt, std::nullopt, frequency);
     double reluctance = reluctanceModel->get_core_reluctance(magnetic.get_core(), initialPermeability).get_core_reluctance();
-    
-    // Calculate magnetizing current if missing
-    if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
-        auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
-        auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
-        auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
-                                                                               resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
-                                                                               true, includeDcCurrent,
-                                                                               operatingPoint.get_excitations_per_winding().size() > 1);
-        operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+    double effectiveArea = magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area();
+    if (!(reluctance > 0) || !(effectiveArea > 0)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Gap field: core reluctance " + std::to_string(reluctance) +
+                                   " H^-1 and effective area " + std::to_string(effectiveArea) + " m2 must both be positive");
     }
-
-    auto magnetizingCurrent = operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value();
-    if (!magnetizingCurrent.get_waveform()) {
-        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Magnetizing current is missing waveform");
-    }
-    if (!magnetizingCurrent.get_waveform()->get_time()) {
-        magnetizingCurrent = Inputs::standardize_waveform(magnetizingCurrent, frequency);
-    }
-    if (!magnetizingCurrent.get_harmonics()) {
-        auto waveform = magnetizingCurrent.get_waveform().value();
-        if (!Inputs::is_waveform_sampled(waveform)) {
-            waveform = Inputs::calculate_sampled_waveform(waveform, frequency);
-        }
-        magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(waveform, frequency));
-    }
-    auto magneticFlux = MagneticField::calculate_magnetic_flux(magnetizingCurrent, reluctance, numberTurns);
-    auto magneticFluxDensity = MagneticField::calculate_magnetic_flux_density(magneticFlux, magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area());
-
-    // This gap field is superposed onto the driven (fundamental) harmonic and feeds the
-    // AC eddy/proximity loss integrals, so it must be an AC harmonic amplitude. The
-    // waveform peak used previously includes the DC bias, which fringes statically and
-    // drives no eddy loss (a 31 A-bias inductor read H_gap 5.5x high -> ~30x proximity
-    // loss, FEM-arbitrated 2026-07). The dominant AC harmonic is selected by AMPLITUDE,
-    // not by frequency label: frequency-swept operating points can carry harmonics on
-    // their original (stale) grid, but the amplitudes remain those of the waveform.
-    // Index 0 is the DC bin by MKF harmonics convention. For an unbiased sinusoid this
-    // equals the previous waveform-peak definition exactly.
-    auto harmonics = magneticFluxDensity.get_harmonics().value();
-    double acAmplitude = 0;
-    for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-        acAmplitude = std::max(acAmplitude, std::abs(harmonics.get_amplitudes()[harmonicIndex]));
-    }
-    return acAmplitude / Constants().vacuumPermeability;
+    return 1.0 / (reluctance * effectiveArea * Constants().vacuumPermeability);
 }
 
 WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
@@ -591,74 +555,42 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
 
     if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
         if (includeFringing) {
-            if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
-
-                auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
-                auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
-                auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
-                                                                                       resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
-                                                                                       true, includeDcCurrent,
-                                                                               operatingPoint.get_excitations_per_winding().size() > 1);
-
-                operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
-                // throw std::runtime_error("Operating point is missing magnetizing current");
-            }
-            if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
-                auto excitations = operatingPoint.get_excitations_per_winding();
-                auto magnetizingCurrent = excitations[0].get_magnetizing_current().value();
-                auto processed = Inputs::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
-                magnetizingCurrent.set_processed(processed);
-                excitations[0].set_magnetizing_current(magnetizingCurrent);
-                operatingPoint.set_excitations_per_winding(excitations);
-                // throw std::runtime_error("Operating point is missing magnetizing current processed data");
-
-            }
-
-            for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
-
-                if (std::abs(inducingFields[harmonicIndex].get_frequency() - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
-
-                    double frequency = inducingFields[harmonicIndex].get_frequency();
-                    double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
-                    for (auto& gap : gapping) {
-                        if (gap.get_coordinates().value()[0] < 0) {
-                            continue;
-                        }
-                        // ABT #832: only functional (SUBTRACTIVE/ADDITIVE) gaps fringe.
-                        // A RESIDUAL gap is a ground mating surface a few um long; its
-                        // conformal near-field sampled at a surface point mm away is a
-                        // modelling artifact, not physics (same doctrine as the
-                        // width-sample gate below). With residual-gap fringing included
-                        // a 12-turn P-core read R_ac/R_dc 2.63 at 1 MHz where OMFEM
-                        // gives 1.263 -- excluding it lands at 1.25.
-                        if (gap.get_type() != GapType::SUBTRACTIVE && gap.get_type() != GapType::ADDITIVE) {
-                            continue;
-                        }
-                        // ABT #832 (FEM-arbitrated 2026-08-20): the equivalent-current
-                        // construction is NOT used, for two independent reasons.
-                        //  1. Albach's fitted current polynomial (Abb. 9.5) is stated
-                        //     accurate only for xi = lg/(2rc) < 0.2 and its denominator
-                        //     has a pole at xi ~ 0.2755; the old validity gate
-                        //     (denominator > 0) admitted xi up to the pole, where the
-                        //     equivalent current diverges (ETD24, 2 mm gap, xi = 0.253:
-                        //     I_eq = 60x the gap MMF -> R_ac/R_dc 53 vs FEM 1.44 at
-                        //     100 kHz).
-                        //  2. Even inside the fit's validity the construction needs the
-                        //     book's full boundary-value treatment (Sect. 9.1.3: the
-                        //     loop's images in the core) to mean anything; feeding the
-                        //     equivalent point as a bare wire carrying I = H_g*lg/0.25
-                        //     (= 4x the gap MMF at small xi) over-predicts fringing
-                        //     proximity loss 6-9x on an IN-validity gap (ETD24,
-                        //     0.5 mm gap, xi = 0.063, vs OMFEM).
-                        // Until the faithful axisymmetric treatment exists, every gap is
-                        // routed through the Roshen conformal per-point model below --
-                        // the same path the out-of-validity gaps already took -- which
-                        // matches OMFEM within 16-35% on the same geometry.
-                        // Only one harmonic can pass the frequency-tolerance gate
-                        // (harmonics are integer multiples), so no dedup is needed.
-                        albachOutOfRangeGaps.push_back(gap);
-                    }
+            for (auto& gap : gapping) {
+                if (gap.get_coordinates().value()[0] < 0) {
+                    continue;
                 }
+                // ABT #832: only functional (SUBTRACTIVE/ADDITIVE) gaps fringe.
+                // A RESIDUAL gap is a ground mating surface a few um long; its
+                // conformal near-field sampled at a surface point mm away is a
+                // modelling artifact, not physics (same doctrine as the
+                // width-sample gate below). With residual-gap fringing included
+                // a 12-turn P-core read R_ac/R_dc 2.63 at 1 MHz where OMFEM
+                // gives 1.263 -- excluding it lands at 1.25.
+                if (gap.get_type() != GapType::SUBTRACTIVE && gap.get_type() != GapType::ADDITIVE) {
+                    continue;
+                }
+                // ABT #832 (FEM-arbitrated 2026-08-20): the equivalent-current
+                // construction is NOT used, for two independent reasons.
+                //  1. Albach's fitted current polynomial (Abb. 9.5) is stated
+                //     accurate only for xi = lg/(2rc) < 0.2 and its denominator
+                //     has a pole at xi ~ 0.2755; the old validity gate
+                //     (denominator > 0) admitted xi up to the pole, where the
+                //     equivalent current diverges (ETD24, 2 mm gap, xi = 0.253:
+                //     I_eq = 60x the gap MMF -> R_ac/R_dc 53 vs FEM 1.44 at
+                //     100 kHz).
+                //  2. Even inside the fit's validity the construction needs the
+                //     book's full boundary-value treatment (Sect. 9.1.3: the
+                //     loop's images in the core) to mean anything; feeding the
+                //     equivalent point as a bare wire carrying I = H_g*lg/0.25
+                //     (= 4x the gap MMF at small xi) over-predicts fringing
+                //     proximity loss 6-9x on an IN-validity gap (ETD24,
+                //     0.5 mm gap, xi = 0.063, vs OMFEM).
+                // Until the faithful axisymmetric treatment exists, every gap is
+                // routed through the Roshen conformal per-point model below --
+                // the same path the out-of-validity gaps already took -- which
+                // matches OMFEM within 16-35% on the same geometry. Every harmonic
+                // gets this gap's field, sized by its own magnetizing flux (ABT #1463).
+                albachOutOfRangeGaps.push_back(gap);
             }
         }
     }
@@ -938,45 +870,106 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             }
         }
 
-        // The gap fringing field is the field of the MAGNETIZING current, so it carries that
-        // current's phase. Magnitude and phase come from the SAME signal: MKF's magnetizing
-        // current of the first excitation (get_magnetic_field_strength_gap sizes the gap field
-        // from it), whose DFT phase at this harmonic is referred to the winding-current gauge on
-        // the same time base. Only evaluated for a harmonic that receives fringing. For an
-        // inductor the magnetizing current is the winding current: phase 0, bit-identical.
-        std::optional<std::pair<double, double>> magnetizingFactors;
-        auto get_magnetizing_factors = [&]() -> std::pair<double, double> {
-            if (magnetizingFactors) {
-                return magnetizingFactors.value();
+        // The gap fringing field of THIS harmonic (ABT #1463): every harmonic of the magnetizing
+        // flux drives its own gap field, on its own phase. The gap carries the core's magnetizing
+        // MMF, which by Ampere around the core path is sum_k N_k i_k = R_core * Phi: the load
+        // currents cancel there by definition. So the magnetizing MMF the winding currents "already
+        // carry" IS their net MMF M_w, and "M_w + N_p I_mag - (the part of M_w that is magnetizing)"
+        // is exactly N_p I_mag = R_core Phi: no threshold, no decomposition of the currents. The
+        // flux itself comes from the source that is exact for the input:
+        //  - one winding: its current is the magnetizing current (nothing can cancel it), so
+        //    M_h = c N I_h (MAS amplitude, DFT phase against the gauge -- phase 0 when it is the
+        //    gauge) and H_gap,h = M_h / (R_core(f_h) A_e mu_0);
+        //  - several windings: Faraday on winding 0, v_0 = N_0 dPhi/dt (dot convention; Phi counts
+        //    positive for current into the dot, which is the turn-field frame: filament current =
+        //    direction x MAS current = into-dot current). With x(t) = Re(X e^{j w t}),
+        //    B_h = V_0,h / (j w_h N_0 A_e) and H_gap,h = B_h / mu_0. For a flyback the windings'
+        //    currents carry the magnetizing MMF and Faraday reproduces their net MMF; for a
+        //    transformer given ideal (exactly cancelling) currents Faraday still gives the
+        //    magnetizing field, which the net MMF (zero) would lose. MKF's derived
+        //    magnetizingCurrent is NOT used: for FLYBACK_PRIMARY/UNIPOLAR_TRIANGULAR labels it is a
+        //    triangle rebuilt from the current's duty cycle that ignores a DCM dead time (h1 on a
+        //    DCM flyback: 17% low and 29 degrees off the windings' net MMF).
+        // The DC bin drives no eddy loss and gets no gap field (as before).
+        // IMAGED_MMF_SHEETS (below) still sizes and phases its gap sheets from the derived
+        // magnetizingCurrent, and so shares that DCM defect; left as is.
+        struct GapSource {
+            double magnitude;
+            double inPhaseFactor;
+            double quadratureFactor;
+        };
+        std::optional<GapSource> gapSource;
+        auto get_gap_source = [&]() -> GapSource {
+            if (gapSource) {
+                return gapSource.value();
             }
             double harmonicFrequency = inducingFields[harmonicIndex].get_frequency();
-            const auto& primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
-            if (!primaryExcitation.get_magnetizing_current()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA, "Gap fringing at " + std::to_string(harmonicFrequency) +
-                                            " Hz: the operating point has no magnetizing current to take the fringing phase from");
-            }
-            auto magnetizingCurrentSignal = primaryExcitation.get_magnetizing_current().value();
-            if (!magnetizingCurrentSignal.get_waveform()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA, "Gap fringing at " + std::to_string(harmonicFrequency) +
-                                            " Hz: the magnetizing current has no waveform to take the fringing phase from");
+            if (!(harmonicFrequency > 0)) {
+                gapSource = GapSource{0, 0, 0};
+                return gapSource.value();
             }
             if (!gaugePhasePerHarmonic[harmonicIndex]) {
-                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Gap fringing at " + std::to_string(harmonicFrequency) +
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Gap field at " + std::to_string(harmonicFrequency) +
                                            " Hz: no winding current carries this harmonic, so there is no phase reference");
             }
-            auto magnetizingWaveform = magnetizingCurrentSignal.get_waveform().value();
-            auto phasor = CoilMesher::calculate_harmonic_phasor(magnetizingWaveform, primaryExcitation.get_frequency(), harmonicFrequency);
-            double waveformScale = 0;
-            for (auto value : magnetizingWaveform.get_data()) {
-                waveformScale = std::max(waveformScale, std::abs(value));
+            const auto& functionalDescription = magnetic.get_coil().get_functional_description();
+            const auto& excitations = operatingPoint.get_excitations_per_winding();
+            if (excitations.empty() || functionalDescription.empty()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Gap field: no windings or no excitations");
             }
-            if (!(std::abs(phasor) > 1e-9 * waveformScale)) {
-                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Gap fringing at " + std::to_string(harmonicFrequency) +
-                                           " Hz: the magnetizing current waveform has no content at this harmonic, so its phase is undefined");
+            std::complex<double> fieldPhasor;
+            if (functionalDescription.size() == 1) {
+                auto current = excitations[0].get_current();
+                if (!current || !current->get_harmonics()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Gap field at " + std::to_string(harmonicFrequency) + " Hz: the winding has no current harmonics");
+                }
+                const auto harmonics = current->get_harmonics().value();
+                double amplitude = 0;
+                bool found = false;
+                for (size_t index = 0; index < harmonics.get_frequencies().size(); ++index) {
+                    if (harmonics.get_frequencies()[index] == harmonicFrequency) {
+                        amplitude = harmonics.get_amplitudes()[index];
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    throw CalculationException(ErrorCode::CALCULATION_ERROR, "Gap field at " + std::to_string(harmonicFrequency) +
+                                               " Hz: the winding current's harmonics do not list the inducing harmonic");
+                }
+                if (amplitude == 0) {
+                    gapSource = GapSource{0, 0, 0};
+                    return gapSource.value();
+                }
+                double numberTurns = static_cast<double>(functionalDescription[0].get_number_turns());
+                double magnetomotiveForce = currentDirectionPerWinding.at(0) * numberTurns * amplitude;
+                fieldPhasor = std::polar(magnetomotiveForce * get_magnetic_field_strength_gap_per_ampere_turn(magnetic, harmonicFrequency),
+                                         currentPhasePerHarmonicPerWinding[harmonicIndex].at(0));
             }
-            double magnetizingPhase = std::arg(phasor) - gaugePhasePerHarmonic[harmonicIndex].value();
-            magnetizingFactors = std::pair<double, double>{std::cos(magnetizingPhase), std::sin(magnetizingPhase)};
-            return magnetizingFactors.value();
+            else {
+                auto voltage = excitations[0].get_voltage();
+                if (!voltage || !voltage->get_waveform()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Gap field at " + std::to_string(harmonicFrequency) +
+                                                " Hz: with several windings the magnetizing flux comes from winding 0's voltage (Faraday), and it has no voltage waveform");
+                }
+                double effectiveArea = magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area();
+                double numberTurns = static_cast<double>(functionalDescription[0].get_number_turns());
+                if (!(effectiveArea > 0) || !(numberTurns > 0)) {
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Gap field: effective area " + std::to_string(effectiveArea) +
+                                               " m2 and winding 0 turns " + std::to_string(numberTurns) + " must both be positive");
+                }
+                auto voltagePhasor = CoilMesher::calculate_harmonic_phasor(voltage->get_waveform().value(), excitations[0].get_frequency(), harmonicFrequency);
+                double angularFrequency = 2 * std::numbers::pi * harmonicFrequency;
+                auto fluxDensityPhasor = voltagePhasor / (std::complex<double>(0, 1) * angularFrequency * numberTurns * effectiveArea);
+                fieldPhasor = fluxDensityPhasor / Constants().vacuumPermeability * std::polar(1.0, -gaugePhasePerHarmonic[harmonicIndex].value());
+            }
+            double magnitude = std::abs(fieldPhasor);
+            if (!(magnitude > 0)) {
+                gapSource = GapSource{0, 0, 0};
+                return gapSource.value();
+            }
+            gapSource = GapSource{magnitude, fieldPhasor.real() / magnitude, fieldPhasor.imag() / magnitude};
+            return gapSource.value();
         };
 
         // IMAGED_MMF_SHEETS: the whole window field (turns and gap sheets) at every induced point,
@@ -1126,11 +1119,8 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 double magneticFieldStrengthGap = 0;
                 if ((_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN ||
                      _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN ||
-                     !albachOutOfRangeGaps.empty()) && includeFringing) {
-                    double frequency = inducingFields[harmonicIndex].get_frequency();
-                    if (std::abs(frequency - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
-                        magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
-                    }
+                     !albachOutOfRangeGaps.empty()) && includeFringing && hasFunctionalGap) {
+                    magneticFieldStrengthGap = get_gap_source().magnitude;
                 }
                 
                 // Calculate field at each induced point directly from all turns
@@ -1168,18 +1158,19 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                     }
                     
                     // Add fringing field contribution based on configured fringing model. The
-                    // fringing field carries the magnetizing current's phase (see
-                    // get_magnetizing_factors): cos in phase, sin in quadrature.
+                    // fringing field carries the magnetizing flux's phase (see
+                    // get_gap_source): cos in phase, sin in quadrature.
                     double fringingQuadratureX = 0;
                     double fringingQuadratureY = 0;
                     auto add_fringing = [&](const ComplexFieldPoint& contribution) {
-                        auto [inPhaseFactor, quadratureFactor] = get_magnetizing_factors();
+                        double inPhaseFactor = get_gap_source().inPhaseFactor;
+                        double quadratureFactor = get_gap_source().quadratureFactor;
                         complexFieldPoint.set_real(complexFieldPoint.get_real() + contribution.get_real() * inPhaseFactor);
                         complexFieldPoint.set_imaginary(complexFieldPoint.get_imaginary() + contribution.get_imaginary() * inPhaseFactor);
                         fringingQuadratureX += contribution.get_real() * quadratureFactor;
                         fringingQuadratureY += contribution.get_imaginary() * quadratureFactor;
                     };
-                    if (includeFringing && std::abs(inducingFields[harmonicIndex].get_frequency() - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
+                    if (includeFringing && hasFunctionalGap && get_gap_source().magnitude > 0) {
                         if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
                             // ALBACH fringing: use equivalent current loops
                             for (auto& fringingPoint : fringingPoints) {
@@ -1263,8 +1254,6 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         }
         const auto& scalePerWinding = turnFieldSums->scalePerHarmonicPerWinding[harmonicIndex];
         const auto& inducingData = inducingFields[harmonicIndex].get_data();
-        // The gap field of this harmonic: the same at every induced point, so computed once.
-        std::optional<double> magneticFieldStrengthGapThisHarmonic;
 
         const auto& inducedDataThisHarmonic = inducedFields[harmonicIndex].get_data();
         for (size_t inducedIndex = 0; inducedIndex < inducedDataThisHarmonic.size(); ++inducedIndex) {
@@ -1283,32 +1272,10 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             if (!isAlbach && (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN ||
                               _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN ||
                               albachRoutedGapsPending)) {
-                // For the main harmonic we calculate the fringing effect for each gap
-                if (includeFringing && std::abs(inducedFields[harmonicIndex].get_frequency() - operatingPoint.get_excitations_per_winding()[0].get_frequency()) <= 0.05 * operatingPoint.get_excitations_per_winding()[0].get_frequency() /*B11 tol*/) {
-                    if (!magneticFieldStrengthGapThisHarmonic) {
-                        if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
-                            auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
-                            auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
-                            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
-                                                                                                   resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
-                                                                                                   true, includeDcCurrent,
-                                                                                   operatingPoint.get_excitations_per_winding().size() > 1);
-
-                            operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
-                            // throw std::runtime_error("Operating point is missing magnetizing current");
-                        }
-                        if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
-                            auto excitations = operatingPoint.get_excitations_per_winding();
-                            auto magnetizingCurrent = excitations[0].get_magnetizing_current().value();
-                            auto processed = Inputs::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
-                            magnetizingCurrent.set_processed(processed);
-                            excitations[0].set_magnetizing_current(magnetizingCurrent);
-                            operatingPoint.set_excitations_per_winding(excitations);
-                            // throw std::runtime_error("Operating point is missing magnetizing current processed data");
-                        }
-                        magneticFieldStrengthGapThisHarmonic = get_magnetic_field_strength_gap(operatingPoint, magnetic, inducingFields[harmonicIndex].get_frequency());
-                    }
-                    double magneticFieldStrengthGap = magneticFieldStrengthGapThisHarmonic.value();
+                // Every harmonic's gap field, from that harmonic's magnetizing flux (get_gap_source),
+                // evaluated only when a functional gap exists to fringe.
+                if (includeFringing && hasFunctionalGap && get_gap_source().magnitude > 0) {
+                    double magneticFieldStrengthGap = get_gap_source().magnitude;
 
                     // Multi-column winding: the fringing conventions below are written
                     // for the x>0 window (gaps at x<0 are skipped, edge selection
@@ -1342,8 +1309,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                             albachFallbackRoshenModel.get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, fringingInducedPoint) :
                             _fringingEffectModel->get_magnetic_field_strength_between_gap_and_point(gap, magneticFieldStrengthGap, fringingInducedPoint);
 
-                        // The magnetizing current's phase: cos in phase, sin in quadrature.
-                        auto [inPhaseFactor, quadratureFactor] = get_magnetizing_factors();
+                        // The magnetizing flux's phase: cos in phase, sin in quadrature.
+                        double inPhaseFactor = get_gap_source().inPhaseFactor;
+                        double quadratureFactor = get_gap_source().quadratureFactor;
                         double fringingX = mirroredForFringing ? -complexFieldPoint.get_real() : complexFieldPoint.get_real();
                         totalInducedFieldX += fringingX * inPhaseFactor;
                         totalInducedFieldY += complexFieldPoint.get_imaginary() * inPhaseFactor;
@@ -1391,8 +1359,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 auto [inducedFieldX, inducedFieldY] = _model->get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, std::nullopt);
 
                 // An equivalent fringing source: the magnetizing field, on the magnetizing
-                // current's phase.
-                auto [inPhaseFactor, quadratureFactor] = get_magnetizing_factors();
+                // flux's phase.
+                double inPhaseFactor = get_gap_source().inPhaseFactor;
+                double quadratureFactor = get_gap_source().quadratureFactor;
                 totalInducedFieldX += inducedFieldX * inPhaseFactor;
                 totalInducedFieldY += inducedFieldY * inPhaseFactor;
                 totalQuadratureInducedFieldX += inducedFieldX * quadratureFactor;
