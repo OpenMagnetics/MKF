@@ -211,6 +211,9 @@ class MagneticFilterAreaNoParallels : public MagneticFilter {
         MagneticFilterAreaNoParallels(int maximumNumberParallels);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
         std::pair<bool, double> evaluate_magnetic(Winding winding, Section section);
+        // The same verdict for a bare wire, without building a Winding around it. Scores nothing:
+        // every candidate this filter keeps scores 0, so it is a pure per-wire predicate.
+        bool wire_fits(Wire& wire, int64_t numberParallels, int64_t numberTurns, const Section& section) const;
 };
 
 /**
@@ -294,6 +297,8 @@ class MagneticFilterSolidInsulationRequirements : public MagneticFilter {
         MagneticFilterSolidInsulationRequirements() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
         std::pair<bool, double> evaluate_magnetic(Winding winding, WireSolidInsulationRequirements wireSolidInsulationRequirements);
+        // The same verdict and scoring for a bare wire, without building a Winding around it.
+        std::pair<bool, double> evaluate_wire(Wire& wire, const WireSolidInsulationRequirements& wireSolidInsulationRequirements);
 };
 
 class MagneticFilterTurnsRatios : public MagneticFilter {

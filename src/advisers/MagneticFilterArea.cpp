@@ -286,28 +286,20 @@ std::pair<bool, double> MagneticFilterAreaNoParallels::evaluate_magnetic(Magneti
 
 std::pair<bool, double> MagneticFilterAreaNoParallels::evaluate_magnetic(Winding winding, Section section) {
     auto wire = Coil::resolve_wire(winding);
+    return {wire_fits(wire, winding.get_number_parallels(), winding.get_number_turns(), section), 0.0};
+}
 
-    if (wire.get_type() == WireType::FOIL && winding.get_number_parallels() * winding.get_number_turns() > _maximumNumberParallels) {
-        return {false, 0.0};
+bool MagneticFilterAreaNoParallels::wire_fits(Wire& wire, int64_t numberParallels, int64_t numberTurns, const Section& section) const {
+    if (wire.get_type() == WireType::FOIL && numberParallels * numberTurns > _maximumNumberParallels) {
+        return false;
     }
 
     if (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
-        if (wire.get_maximum_outer_width() < section.get_dimensions()[0] && wire.get_maximum_outer_height() < section.get_dimensions()[1]) {
-            return {true, 0.0};
-        }
-        else {
-            return {false, 0.0};
-        }
+        return wire.get_maximum_outer_width() < section.get_dimensions()[0] && wire.get_maximum_outer_height() < section.get_dimensions()[1];
     }
     else {
         double wireAngle = wound_distance_to_angle(wire.get_maximum_outer_height(), wire.get_maximum_outer_width());
-
-        if (wire.get_maximum_outer_width() < section.get_dimensions()[0] && wireAngle < section.get_dimensions()[1]) {
-            return {true, 0.0};
-        }
-        else {
-            return {false, 0.0};
-        }
+        return wire.get_maximum_outer_width() < section.get_dimensions()[0] && wireAngle < section.get_dimensions()[1];
     }
 }
 

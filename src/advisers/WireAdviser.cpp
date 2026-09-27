@@ -7,6 +7,7 @@
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include <list>
+#include <numeric>
 #include <sstream>
 #include <iomanip>
 #include <magic_enum.hpp>
@@ -43,13 +44,47 @@ static double wire_outer_metric(const Winding& winding) {
     return std::numeric_limits<double>::infinity();
 }
 
+// Reorders the candidates by a permutation. A candidate is expensive to move: Winding carries its
+// Wire twice, and the generated MAS classes declare a virtual destructor, so they have no move
+// operations and every "move" is a deep copy. Sorting the candidates themselves cost n*log(n) such
+// copies per filter; sorting their indices and placing each candidate once costs n.
+static void apply_order(std::vector<std::pair<Winding, double>>* coilsWithScoring, const std::vector<size_t>& order) {
+    bool identity = true;
+    for (size_t i = 0; i < order.size(); ++i) {
+        if (order[i] != i) {
+            identity = false;
+            break;
+        }
+    }
+    if (identity) {
+        return;
+    }
+    std::vector<std::pair<Winding, double>> reordered;
+    reordered.reserve(order.size());
+    for (auto index : order) {
+        reordered.push_back(std::move((*coilsWithScoring)[index]));
+    }
+    *coilsWithScoring = std::move(reordered);
+}
+
 static void break_score_ties(std::vector<std::pair<Winding, double>>* coilsWithScoring) {
     if (coilsWithScoring->size() < 2) return;
-    std::stable_sort(coilsWithScoring->begin(), coilsWithScoring->end(),
-        [](const std::pair<Winding, double>& a, const std::pair<Winding, double>& b) {
-            if (a.second != b.second) return a.second > b.second;
-            return wire_outer_metric(a.first) < wire_outer_metric(b.first);
-        });
+    // Same ordering as a stable_sort of the candidates by (score desc, outer metric asc), with the
+    // metric computed once per candidate instead of twice per comparison.
+    std::vector<double> outerMetrics;
+    outerMetrics.reserve(coilsWithScoring->size());
+    for (const auto& candidate : *coilsWithScoring) {
+        outerMetrics.push_back(wire_outer_metric(candidate.first));
+    }
+    std::vector<size_t> order(coilsWithScoring->size());
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        const double scoreA = (*coilsWithScoring)[a].second;
+        const double scoreB = (*coilsWithScoring)[b].second;
+        if (scoreA != scoreB) return scoreA > scoreB;
+        return outerMetrics[a] < outerMetrics[b];
+    });
+    apply_order(coilsWithScoring, order);
 }
 
 void normalize_scoring(std::vector<std::pair<Winding, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true, const std::string& filterName="") {
@@ -84,9 +119,13 @@ void normalize_scoring(std::vector<std::pair<Winding, double>>* coilsWithScoring
     for (size_t i = 0; i < (*coilsWithScoring).size(); ++i) {
         (*coilsWithScoring)[i].second += normalizedScorings[i];
     }
-    std::stable_sort((*coilsWithScoring).begin(), (*coilsWithScoring).end(), [](const std::pair<Winding, double>& b1, const std::pair<Winding, double>& b2) {
-        return b1.second > b2.second;
-    }); // F12 FIX: stable_sort for reproducible results
+    // F12 FIX: stable ordering for reproducible results (sorted by index, see apply_order).
+    std::vector<size_t> order((*coilsWithScoring).size());
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&](size_t b1, size_t b2) {
+        return (*coilsWithScoring)[b1].second > (*coilsWithScoring)[b2].second;
+    });
+    apply_order(coilsWithScoring, order);
 }
 
 std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_no_parallels(std::vector<std::pair<Winding, double>>* unfilteredCoils,
@@ -99,8 +138,7 @@ std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_no_parallel
     auto filter = MagneticFilterAreaNoParallels(_maximumNumberParallels);
 
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){
-        auto winding = (*unfilteredCoils)[coilIndex].first;
-        auto [valid, scoring] = filter.evaluate_magnetic(winding, section);
+        auto [valid, scoring] = filter.evaluate_magnetic((*unfilteredCoils)[coilIndex].first, section);
 
         if (valid) {
             newScoring.push_back(scoring);
@@ -676,30 +714,44 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding wind
     auto& settings = Settings::GetInstance();
     std::vector<std::pair<Winding, double>> windings;
 
-    // Extend the candidate pool with synthesized fine-strand litz (ABT #5). Work
-    // on a local copy so the caller's wire list is not mutated. Gated by the
-    // caller to single-winding inductors (see _synthesizeLitz).
-    std::vector<Wire> extendedWires = *wires;
-    if (_synthesizeLitz) {
-        auto synthesizedLitz = synthesize_litz_candidates(current, temperature, _maximumEffectiveCurrentDensity);
-        extendedWires.insert(extendedWires.end(), synthesizedLitz.begin(), synthesizedLitz.end());
-    }
+    // The first thing get_advised_wire does with this dataset is filter_by_area_no_parallels: a
+    // per-wire geometric verdict (does one wire fit the section at all) under which every survivor
+    // scores 0. Applying that same verdict here, before a Winding is built, keeps exactly the same
+    // candidates in the same order, and stops every call from deep-copying the whole catalogue: the
+    // coil adviser calls this once per winding, pattern, insulation combination and wire
+    // configuration of every core it tries (~1000 calls of ~8000 wires for a Magnetic Adviser run),
+    // and on a small core nearly all of those copies were thrown away by that first filter.
+    auto areaNoParallelsFilter = MagneticFilterAreaNoParallels(_maximumNumberParallels);
+    // Likewise filter_by_solid_insulation_requirements, which runs next: its verdict is per wire, and
+    // its scores are normalised over the wires it keeps, which are the same wires either way.
+    auto solidInsulationFilter = MagneticFilterSolidInsulationRequirements();
 
-    for (auto& wire : extendedWires){
+    auto add_candidates = [&](Wire& catalogueWire) {
+        if ((!settings.get_wire_adviser_include_foil() && catalogueWire.get_type() == WireType::FOIL) ||
+            (!settings.get_wire_adviser_include_planar() &&  catalogueWire.get_type() == WireType::PLANAR) ||
+            (!(settings.get_wire_adviser_include_rectangular() && (settings.get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) && catalogueWire.get_type() == WireType::RECTANGULAR) ||
+            (!settings.get_wire_adviser_include_litz() && catalogueWire.get_type() == WireType::LITZ) ||
+            (!settings.get_wire_adviser_include_round() && catalogueWire.get_type() == WireType::ROUND)) {
+            return;
+        }
+        // Round and rectangular wires are judged as they are in the catalogue; litz, foil and planar
+        // first get the same preparation as before (resolved strand, cut to the section), because
+        // their outer dimensions depend on it.
+        const bool needsPreparation = catalogueWire.get_type() == WireType::LITZ ||
+                                      catalogueWire.get_type() == WireType::FOIL ||
+                                      catalogueWire.get_type() == WireType::PLANAR;
+        if (!needsPreparation) {
+            if (!areaNoParallelsFilter.wire_fits(catalogueWire, 1, winding.get_number_turns(), section)) {
+                return;
+            }
+            if (_wireSolidInsulationRequirements && !solidInsulationFilter.evaluate_wire(catalogueWire, _wireSolidInsulationRequirements.value()).first) {
+                return;
+            }
+        }
+        Wire wire = catalogueWire;
         if (wire.get_type() == WireType::LITZ) {
             wire.set_strand(wire.resolve_strand());
         }
-    }
-
-    for (auto& wire : extendedWires){
-        if ((!settings.get_wire_adviser_include_foil() && wire.get_type() == WireType::FOIL) ||
-            (!settings.get_wire_adviser_include_planar() &&  wire.get_type() == WireType::PLANAR) ||
-            (!(settings.get_wire_adviser_include_rectangular() && (settings.get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) && wire.get_type() == WireType::RECTANGULAR) ||
-            (!settings.get_wire_adviser_include_litz() && wire.get_type() == WireType::LITZ) ||
-            (!settings.get_wire_adviser_include_round() && wire.get_type() == WireType::ROUND)) {
-            continue;
-        }
-        int numberParallelsNeeded;
         if (wire.get_type() == WireType::FOIL) {
             wire.cut_foil_wire_to_section(section);
         }
@@ -707,23 +759,48 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding wind
             wire.cut_planar_wire_to_section(section);
         }
 
-
+        int numberParallelsNeeded;
         if (wire.get_type() == WireType::RECTANGULAR) {
             numberParallelsNeeded = 1;
         }
         else {
             numberParallelsNeeded = Wire::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity);
             if (numberParallelsNeeded > _maximumNumberParallels) {
-                continue;
+                return;
             }
         }
 
-        winding.set_number_parallels(numberParallelsNeeded);
-        winding.set_wire(wire);
-        windings.push_back(std::pair<Winding, double>{winding, 0});
-        if (numberParallelsNeeded < _maximumNumberParallels) {
+        const bool fits = areaNoParallelsFilter.wire_fits(wire, numberParallelsNeeded, winding.get_number_turns(), section);
+        const bool addAnotherParallel = numberParallelsNeeded < _maximumNumberParallels;
+        // Only a foil's verdict depends on the number of parallels.
+        const bool fitsWithAnotherParallel = addAnotherParallel &&
+            areaNoParallelsFilter.wire_fits(wire, numberParallelsNeeded + 1, winding.get_number_turns(), section);
+        if (!fits && !fitsWithAnotherParallel) {
+            return;
+        }
+        if (needsPreparation && _wireSolidInsulationRequirements && !solidInsulationFilter.evaluate_wire(wire, _wireSolidInsulationRequirements.value()).first) {
+            return;
+        }
+        winding.set_wire(std::move(wire));
+        if (fits) {
+            winding.set_number_parallels(numberParallelsNeeded);
+            windings.push_back(std::pair<Winding, double>{winding, 0});
+        }
+        if (fitsWithAnotherParallel) {
             winding.set_number_parallels(numberParallelsNeeded + 1);
             windings.push_back(std::pair<Winding, double>{winding, 0});
+        }
+    };
+
+    for (auto& wire : *wires) {
+        add_candidates(wire);
+    }
+    // Extend the candidate pool with synthesized fine-strand litz (ABT #5), after the catalogue as
+    // before; the caller's wire list is not mutated.
+    if (_synthesizeLitz) {
+        auto synthesizedLitz = synthesize_litz_candidates(current, temperature, _maximumEffectiveCurrentDensity);
+        for (auto& wire : synthesizedLitz) {
+            add_candidates(wire);
         }
     }
 

@@ -293,6 +293,10 @@ std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magn
 
 std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magnetic(Winding winding, WireSolidInsulationRequirements wireSolidInsulationRequirements) {
     auto wire = Coil::resolve_wire(winding);
+    return evaluate_wire(wire, wireSolidInsulationRequirements);
+}
+
+std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_wire(Wire& wire, const WireSolidInsulationRequirements& wireSolidInsulationRequirements) {
 
     if (wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
         return {true, 0.0};
