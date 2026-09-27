@@ -33,7 +33,9 @@
 #include <filesystem>
 #include <fstream>
 #include <source_location>
+#include <chrono>
 #include <cstdint>
+#include <iostream>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -46,6 +48,7 @@
 #include "advisers/MagneticAdviser.h"
 #include "constructive_models/Mas.h"
 #include "processors/Inputs.h"
+#include "processors/MagneticSimulator.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 
@@ -322,6 +325,107 @@ TEST_CASE("MagneticAdviser available cores returns only designs inside the magne
         }
     }
     settings.reset();
+}
+
+// ABT #1426: the resonant inductor of the same CLLC (ABT #1410/#1411) carries pure AC, so it
+// swings the full flux every cycle and CORE LOSS, not saturation, decides its turns. The
+// adviser took the fewest turns that hold L and clear the saturation margin and stopped
+// there: 8-9 turns, 0.34 T, 59-62 W of core loss against 8-13 W of copper, 590-620 C.
+//
+// Criterion. At a fixed inductance B ~ 1/N, so core loss falls as N^-beta (Steinmetz
+// beta ~ 2.5 for these power ferrites) while window-filled copper rises as N^2; their sum
+// is least where Pcore = (2 / beta) Pcu, below Pcu. A design whose core dissipates more than
+// three times its copper is therefore far on the few-turns side of that minimum (one more
+// turn would lower the total), unless it stopped at a buildability limit; the 3x bound
+// leaves that room plus the proximity loss the full simulation adds and the adviser's
+// estimate leaves out. Each returned design is simulated in full here (core and winding
+// losses, every operating point) and held to it.
+TEST_CASE("MagneticAdviser standard cores sizes an AC-dominated inductor by losses, not at the saturation floor",
+          "[adviser][magnetic-adviser][standard-cores][abt-1426]") {
+    settings.reset();
+    clear_databases();
+    auto inputs = load_cllc_resonant_inductor_inputs();
+
+    OpenMagnetics::MagneticAdviser adviser;
+    adviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    auto results = adviser.get_advised_magnetic(inputs, 10);
+
+    REQUIRE(!results.empty());
+    MagneticSimulator simulator;
+    for (auto& [mas, scoring] : results) {
+        auto magnetic = mas.get_magnetic();
+        auto simulated = simulator.simulate(inputs, magnetic);
+        double coreLosses = 0;
+        double windingLosses = 0;
+        for (auto& output : simulated.get_outputs()) {
+            REQUIRE(output.get_core_losses());
+            REQUIRE(output.get_winding_losses());
+            coreLosses += output.get_core_losses()->get_core_losses();
+            windingLosses += output.get_winding_losses()->get_winding_losses();
+        }
+        INFO(magnetic.get_reference() << ": N = " << magnetic.get_coil().get_functional_description()[0].get_number_turns()
+             << ", core " << coreLosses << " W, winding " << windingLosses << " W");
+        CHECK(coreLosses <= 3 * windingLosses);
+    }
+    settings.reset();
+}
+
+// Hidden ABT #1426 driver (no suite tag, so no suite run pulls it in): times the adviser on
+// the CLLC resonant inductor (standard cores with and without the envelope, available cores)
+// and prints every returned design fully simulated, per operating point.
+static void report_abt1426_designs(const std::string& label, OpenMagnetics::Inputs inputs,
+                                   CoreAdviser::CoreAdviserModes mode) {
+    settings.reset();
+    clear_databases();
+    OpenMagnetics::MagneticAdviser adviser;
+    adviser.set_core_mode(mode);
+    auto start = std::chrono::steady_clock::now();
+    auto results = adviser.get_advised_magnetic(inputs, 10);
+    double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    std::cerr << "ABT1426 " << label << ": " << results.size() << " results in " << seconds << " s" << std::endl;
+    MagneticSimulator simulator;
+    for (auto& [mas, scoring] : results) {
+        auto magnetic = mas.get_magnetic();
+        auto core = magnetic.get_core();
+        std::cerr << "ABT1426   " << core.get_name().value_or("?") << " | N="
+                  << magnetic.get_coil().get_functional_description()[0].get_number_turns() << " | gaps mm [";
+        for (auto& gap : core.get_gapping()) {
+            if (gap.get_type() != GapType::RESIDUAL) {
+                std::cerr << gap.get_length() * 1000 << " ";
+            }
+        }
+        std::cerr << "]" << std::endl;
+        auto simulated = simulator.simulate(inputs, magnetic);
+        for (size_t operatingPointIndex = 0; operatingPointIndex < simulated.get_outputs().size(); ++operatingPointIndex) {
+            auto& output = simulated.get_outputs()[operatingPointIndex];
+            double bPeak = output.get_core_losses()->get_magnetic_flux_density()->get_processed()->get_peak().value();
+            std::cerr << "ABT1426     OP" << operatingPointIndex << ": Bpk=" << bPeak
+                      << " T core=" << output.get_core_losses()->get_core_losses()
+                      << " W winding=" << output.get_winding_losses()->get_winding_losses()
+                      << " W Tmax=" << output.get_temperature()->get_maximum_temperature() << " C";
+            auto perWinding = output.get_winding_losses()->get_winding_losses_per_winding().value()[0];
+            double skin = 0, proximity = 0;
+            auto skinLosses = perWinding.get_skin_effect_losses().value();
+            auto proximityLosses = perWinding.get_proximity_effect_losses().value();
+            for (auto v : skinLosses.get_losses_per_harmonic()) skin += v;
+            for (auto v : proximityLosses.get_losses_per_harmonic()) proximity += v;
+            std::cerr << " (ohmic " << perWinding.get_ohmic_losses()->get_losses() << " skin " << skin << " prox " << proximity << ") wire "
+                      << magnetic.get_mutable_coil().get_wires()[0].get_name().value_or("?")
+                      << " x" << magnetic.get_coil().get_functional_description()[0].get_number_parallels() << std::endl;
+        }
+    }
+    settings.reset();
+}
+
+TEST_CASE("ABT 1426 driver: CLLC resonant inductor designs and adviser timing", "[.][abt-1426-driver]") {
+    auto inputs = load_cllc_resonant_inductor_inputs();
+    report_abt1426_designs("standard cores, envelope", inputs, CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    auto withoutEnvelope = inputs;
+    auto requirements = withoutEnvelope.get_design_requirements();
+    requirements.set_maximum_dimensions(std::nullopt);
+    withoutEnvelope.set_design_requirements(requirements);
+    report_abt1426_designs("standard cores, no envelope", withoutEnvelope, CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    report_abt1426_designs("available cores, envelope", inputs, CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
 }
 
 TEST_CASE("MagneticAdviser 3-winding end-to-end top-3 snapshot",
