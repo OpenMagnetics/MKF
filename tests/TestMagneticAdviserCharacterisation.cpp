@@ -428,6 +428,57 @@ TEST_CASE("ABT 1426 driver: CLLC resonant inductor designs and adviser timing", 
     report_abt1426_designs("available cores, envelope", inputs, CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
 }
 
+// Hidden ABT #1449 driver: one adviser case of the CLLC resonant inductor, timed, with a
+// fingerprint of every returned design (core, gaps, turns, parallels, wires, score and a hash
+// of the full Mas JSON) so two engine builds can be diffed for identical results.
+// ABT1449_CASE = envelope | noenvelope (default) | available; ABT1449_N = number of results (10).
+TEST_CASE("ABT 1449 driver: CLLC resonant inductor, one adviser case, fingerprinted", "[.][abt-1449-driver]") {
+    auto inputs = load_cllc_resonant_inductor_inputs();
+    std::string adviserCase = std::getenv("ABT1449_CASE") ? std::getenv("ABT1449_CASE") : "noenvelope";
+    size_t numberResults = std::getenv("ABT1449_N") ? std::stoul(std::getenv("ABT1449_N")) : 10;
+    auto mode = CoreAdviser::CoreAdviserModes::STANDARD_CORES;
+    if (adviserCase == "noenvelope") {
+        auto requirements = inputs.get_design_requirements();
+        requirements.set_maximum_dimensions(std::nullopt);
+        inputs.set_design_requirements(requirements);
+    }
+    else if (adviserCase == "available") {
+        mode = CoreAdviser::CoreAdviserModes::AVAILABLE_CORES;
+    }
+    else {
+        REQUIRE(adviserCase == "envelope");
+    }
+    settings.reset();
+    clear_databases();
+    OpenMagnetics::MagneticAdviser adviser;
+    adviser.set_core_mode(mode);
+    auto start = std::chrono::steady_clock::now();
+    auto results = adviser.get_advised_magnetic(inputs, numberResults);
+    double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    std::cerr << "ABT1449 " << adviserCase << " n=" << numberResults << ": " << results.size() << " results in " << seconds << " s" << std::endl;
+    for (auto& [mas, scoring] : results) {
+        auto magnetic = mas.get_magnetic();
+        std::ostringstream line;
+        line << std::setprecision(17) << "ABT1449   " << magnetic.get_core().get_name().value_or("?") << " | gaps [";
+        for (auto& gap : magnetic.get_core().get_gapping()) {
+            line << gap.get_length() << " ";
+        }
+        line << "] |";
+        auto wires = magnetic.get_mutable_coil().get_wires();
+        const auto& functionalDescription = magnetic.get_coil().get_functional_description();
+        for (size_t windingIndex = 0; windingIndex < functionalDescription.size(); ++windingIndex) {
+            line << " N=" << functionalDescription[windingIndex].get_number_turns()
+                 << " x" << functionalDescription[windingIndex].get_number_parallels()
+                 << " " << wires[windingIndex].get_name().value_or("?");
+        }
+        json masJson;
+        to_json(masJson, mas);
+        line << " | score " << scoring << " | mas hash " << std::hash<std::string>{}(masJson.dump());
+        std::cerr << line.str() << std::endl;
+    }
+    settings.reset();
+}
+
 TEST_CASE("MagneticAdviser 3-winding end-to-end top-3 snapshot",
           "[adviser][magnetic-adviser][characterisation][heavy][end-to-end]") {
     settings.reset();
