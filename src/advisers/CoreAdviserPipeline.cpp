@@ -327,6 +327,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
     log_probe("entering post_process_and_cut", magneticsWithScoring.size());
     size_t candidatesExamined = 0;
     size_t candidatesDropped = 0;
+    std::map<std::string, std::vector<std::string>> alternativeMaterialsCache;
     for (auto& magneticWithScoring : magneticsWithScoring) {
         if (masWithScoring.size() >= maximumNumberResults) {
             break;
@@ -342,7 +343,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
         std::vector<std::pair<Magnetic, double>> candidate{magneticWithScoring};
         correct_windings(&candidate, inputs);
         if (withAlternativeMaterials) {
-            add_alternative_materials(&candidate, inputs);
+            add_alternative_materials(&candidate, inputs, &alternativeMaterialsCache);
         }
         try {
             auto mas = post_process_core(candidate[0].first, inputs);
