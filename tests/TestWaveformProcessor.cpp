@@ -16,6 +16,7 @@
 #include <magic_enum.hpp>
 #include <chrono>
 #include <cmath>
+#include <numbers>
 #include <random>
 #include <vector>
 
@@ -948,4 +949,177 @@ TEST_CASE("Test_Instantaneous_Power_Averages_The_Whole_Period", "[processor][inp
     excitation.set_current(currentSignal);
 
     REQUIRE_THAT(OpenMagnetics::Inputs::calculate_instantaneous_power(excitation), Catch::Matchers::WithinRel(42.0, 1e-3));
+}
+
+// --- ABT #1460 ------------------------------------------------------------
+// Harmonics come from the exact Fourier series of the piecewise-linear knots, not from a
+// 128-point DFT that folds everything above harmonic 64 back onto 1..63. A switched current
+// decays as 1/k, so the aliased high harmonics read up to ~1.5x high and inflated litz
+// proximity loss by 11-17% on flyback waveforms.
+namespace {
+std::vector<double> exact_amplitudes(const std::vector<double>& time, const std::vector<double>& data, size_t numberHarmonics) {
+    auto coefficients = WaveformProcessor::calculate_exact_fourier_coefficients(time, data, numberHarmonics);
+    std::vector<double> amplitudes{std::abs(coefficients[0])};
+    for (size_t k = 1; k < coefficients.size(); ++k) {
+        amplitudes.push_back(2 * std::abs(coefficients[k]));
+    }
+    return amplitudes;
+}
+double sinc_pi(double x) { return x == 0 ? 1.0 : std::sin(std::numbers::pi * x) / (std::numbers::pi * x); }
+}  // namespace
+
+TEST_CASE("Test_Exact_Harmonics_Analytic_Series", "[processor][waveform-processor][harmonics][smoke-test]") {
+    const double period = 1e-5;
+    const double amplitude = 3.0;
+    const size_t numberHarmonics = 64;
+
+    SECTION("Square wave: 4A/(pi k) at odd k, 0 at even k") {
+        auto a = exact_amplitudes({0, period / 2, period / 2, period}, {amplitude, amplitude, -amplitude, -amplitude}, numberHarmonics);
+        REQUIRE(a.size() == numberHarmonics + 1);
+        CHECK(std::fabs(a[0]) < 1e-12);
+        for (size_t k = 1; k <= numberHarmonics; ++k) {
+            double expected = (k % 2 == 1) ? 4 * amplitude / (std::numbers::pi * static_cast<double>(k)) : 0.0;
+            CHECK(std::fabs(a[k] - expected) < 1e-9);
+        }
+    }
+    SECTION("Triangle: 8A/(pi^2 k^2) at odd k, 0 at even k") {
+        auto a = exact_amplitudes({0, period / 2, period}, {-amplitude, amplitude, -amplitude}, numberHarmonics);
+        CHECK(std::fabs(a[0]) < 1e-12);
+        for (size_t k = 1; k <= numberHarmonics; ++k) {
+            double kDouble = static_cast<double>(k);
+            double expected = (k % 2 == 1) ? 8 * amplitude / (std::numbers::pi * std::numbers::pi * kDouble * kDouble) : 0.0;
+            CHECK(std::fabs(a[k] - expected) < 1e-9);
+        }
+    }
+    SECTION("Trapezoid: box (rise + top) convolved with box (rise)") {
+        const double rise = 0.07 * period;
+        const double top = 0.31 * period;
+        auto a = exact_amplitudes({0, rise, rise + top, 2 * rise + top, period}, {0, amplitude, amplitude, 0, 0}, numberHarmonics);
+        const double width = (rise + top) / period;
+        CHECK(std::fabs(a[0] - amplitude * width) < 1e-9);
+        for (size_t k = 1; k <= numberHarmonics; ++k) {
+            double kDouble = static_cast<double>(k);
+            double expected = 2 * amplitude * width * std::fabs(sinc_pi(kDouble * width) * sinc_pi(kDouble * rise / period));
+            CHECK(std::fabs(a[k] - expected) < 1e-9);
+        }
+    }
+}
+
+TEST_CASE("Test_Exact_Harmonics_Flyback_DCM_Against_Fine_DFT", "[processor][waveform-processor][harmonics][smoke-test]") {
+    // A DCM flyback-like current: a ramp that steps down, a step up into a falling ramp, an
+    // idle stretch, and a step back at the period boundary.
+    const double period = 1e-5;
+    // The step sits on the reference's sample grid (0.375 = 24576 / 65536) so its mid-step
+    // sample is exact; the kink at 0.85 T is off-grid.
+    const std::vector<double> time = {0, 0.375 * period, 0.375 * period, 0.85 * period, period};
+    const std::vector<double> data = {0.2, 2.0, 3.1, 0, 0};
+    auto exact = exact_amplitudes(time, data, 64);
+
+    // Reference: the plain DFT of 65536 point samples (data only, so the legacy path), taking
+    // the mid-step value where a sample lands on a step. Its aliasing error is ~A/(pi N).
+    const size_t numberSamples = 65536;
+    std::vector<double> samples(numberSamples);
+    for (size_t n = 0; n < numberSamples; ++n) {
+        double t = period * static_cast<double>(n) / static_cast<double>(numberSamples);
+        if (n == 0) {
+            samples[n] = 0.5 * (data.back() + data.front());
+        }
+        else if (n == 24576) {
+            samples[n] = 0.5 * (data[1] + data[2]);
+        }
+        else if (t < time[1]) {
+            samples[n] = data[0] + (data[1] - data[0]) * t / time[1];
+        }
+        else if (t < time[3]) {
+            samples[n] = data[2] + (data[3] - data[2]) * (t - time[2]) / (time[3] - time[2]);
+        }
+        else {
+            samples[n] = 0;
+        }
+    }
+    Waveform sampled;
+    sampled.set_data(samples);
+    auto reference = WaveformProcessor::calculate_harmonics_data(sampled, 1 / period, false);
+    for (size_t k = 1; k <= 64; ++k) {
+        INFO("harmonic " << k << ": exact " << exact[k] << ", 65536-point DFT " << reference.get_amplitudes()[k]);
+        CHECK(std::fabs(exact[k] - reference.get_amplitudes()[k]) <= 1e-3 * reference.get_amplitudes()[k]);
+    }
+    CHECK(std::fabs(exact[0] - reference.get_amplitudes()[0]) <= 1e-3 * reference.get_amplitudes()[0]);
+
+    // And the 128-point path this replaces was aliased well beyond that at the top harmonics.
+    auto sampled128 = WaveformProcessor::calculate_sampled_waveform([&] { Waveform w; w.set_time(time); w.set_data(data); return w; }(), 1 / period);
+    std::vector<double> samples128 = sampled128.get_data();
+    Waveform dataOnly128;
+    dataOnly128.set_data(samples128);
+    auto aliased = WaveformProcessor::calculate_harmonics_data(dataOnly128, 1 / period, false);
+    CHECK(aliased.get_amplitudes()[63] > 1.2 * reference.get_amplitudes()[63]);
+}
+
+TEST_CASE("Test_Exact_Harmonics_Knot_Invariance_And_Errors", "[processor][waveform-processor][harmonics][smoke-test]") {
+    const double period = 1e-5;
+    const std::vector<double> time = {0, 0, 0.3 * period, 0.3 * period, period};
+    const std::vector<double> data = {0, 1.5, 4.0, 0, 0};
+    auto reference = WaveformProcessor::calculate_exact_fourier_coefficients(time, data, 64);
+
+    SECTION("Repeated knots (same instant, same value) change nothing") {
+        const std::vector<double> repeatedTime = {0, 0, 0, 0.1 * period, 0.1 * period, 0.3 * period, 0.3 * period, 0.3 * period, 0.7 * period, period, period};
+        // The ramp is also split at 0.1 T by a repeated knot on the line.
+        const std::vector<double> repeatedData = {0, 0, 1.5, 1.5 + 2.5 * (0.1 / 0.3), 1.5 + 2.5 * (0.1 / 0.3), 4.0, 4.0, 0, 0, 0, 0};
+        auto repeated = WaveformProcessor::calculate_exact_fourier_coefficients(repeatedTime, repeatedData, 64);
+        REQUIRE(repeated.size() == reference.size());
+        for (size_t k = 0; k < reference.size(); ++k) {
+            CHECK(std::abs(repeated[k] - reference[k]) < 1e-12);
+        }
+    }
+    SECTION("Uniform samples: the sinc^2-corrected DFT is the closed form of their interpolant") {
+        Waveform knots;
+        knots.set_time(time);
+        knots.set_data(data);
+        auto sampled = WaveformProcessor::calculate_sampled_waveform(knots, 1 / period);
+        REQUIRE(WaveformProcessor::is_waveform_sampled(sampled));
+        auto viaSamples = WaveformProcessor::calculate_harmonics_data(sampled, 1 / period, false);
+        auto closedTime = sampled.get_time().value();
+        auto closedData = sampled.get_data();
+        closedTime.push_back(closedTime.back() + (closedTime[1] - closedTime[0]));
+        closedData.push_back(closedData.front());
+        auto closedForm = exact_amplitudes(closedTime, closedData, 64);
+        REQUIRE(viaSamples.get_amplitudes().size() == 65);
+        for (size_t k = 0; k <= 64; ++k) {
+            CHECK(std::fabs(viaSamples.get_amplitudes()[k] - closedForm[k]) < 1e-9);
+        }
+    }
+    SECTION("A knot waveform gets harmonics 0..64 from its knots") {
+        Waveform knots;
+        knots.set_time(time);
+        knots.set_data(data);
+        auto harmonics = WaveformProcessor::calculate_harmonics_data(knots, 1 / period, false);
+        REQUIRE(harmonics.get_amplitudes().size() == 65);
+        REQUIRE(harmonics.get_frequencies().size() == 65);
+        CHECK(harmonics.get_frequencies()[64] == 64 / period);
+        for (size_t k = 1; k <= 64; ++k) {
+            CHECK(harmonics.get_amplitudes()[k] == 2 * std::abs(reference[k]));
+        }
+    }
+    SECTION("Time running backwards throws") {
+        CHECK_THROWS(WaveformProcessor::calculate_exact_fourier_coefficients({0, 0.5 * period, 0.4 * period, period}, {0, 1, 2, 0}, 64));
+    }
+    SECTION("128 points on an uneven time axis are knots, not samples") {
+        // mas_autocomplete's compressed magnetizing current is exactly this: 128 uneven knots.
+        std::vector<double> unevenTime, unevenData;
+        for (size_t n = 0; n < 128; ++n) {
+            double x = static_cast<double>(n) / 128.0;
+            unevenTime.push_back(period * x * x);
+            unevenData.push_back(std::sin(2 * std::numbers::pi * x));
+        }
+        Waveform uneven;
+        uneven.set_time(unevenTime);
+        uneven.set_data(unevenData);
+        auto harmonics = WaveformProcessor::calculate_harmonics_data(uneven, 1 / period, false);
+        auto exact = WaveformProcessor::calculate_exact_fourier_coefficients(unevenTime, unevenData, 64);
+        REQUIRE(harmonics.get_amplitudes().size() == 65);
+        CHECK(harmonics.get_amplitudes()[0] == std::abs(exact[0]));
+        for (size_t k = 1; k <= 64; ++k) {
+            CHECK(harmonics.get_amplitudes()[k] == 2 * std::abs(exact[k]));
+        }
+    }
 }
