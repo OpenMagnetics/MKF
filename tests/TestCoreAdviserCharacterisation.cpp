@@ -263,12 +263,20 @@ const std::vector<TopEntry> kTopAvailablePower = {
 // reshuffled by the normalization pool, not a re-ranking of substance), RM 10LP
 // enters at slot 2 and the 4-stack E 16/7/5 at slot 3, displacing PQ 27/15 and
 // the 95-material RM 10/ILP from the five.
+// Refreshed 2026-09-27 (ABT #1426, user-approved): the CoreAdviser now picks an
+// inductor's (N, gap) by estimated core + copper loss instead of at the saturation
+// floor (MagneticFilterInductorTurnsAndGapByLosses), so the candidates here move
+// to more turns and a larger gap (0.32 -> 0.80 mm on RM 10/ILP) with estimated
+// losses 50-60 % lower (top-0 RM 10/ILP N15 4.13 W est before, PQ 27/15 N22 1.68 W
+// est now). PQ 27/15 takes slot 0 and HS 26/16 (3 x 0.40 mm distributed) and
+// EQ 25/6 enter the five. The table was already stale on main before this change
+// (it returned RM 10/ILP 0.32 mm, 3.8106, at slot 0).
 const std::vector<TopEntry> kTopStandardPower = {
-    {"98 E 19/8/9 2 stacks gapped 0.17 mm",        3.8288484389587505},
-    {"98 RM 10/ILP gapped 0.32 mm",                3.8230493952667546},
-    {"98 RM 10LP gapped 0.32 mm",                  3.7313683903739983},
-    {"98 E 16/7/5 4 stacks gapped 0.09 mm",        3.6953925508982479},
-    {"98 RM 10/13 gapped 0.32 mm",                 3.6220437125629177},
+    {"98 PQ 27/15 gapped 0.80 mm",                 3.7337654648839442},
+    {"98 RM 10/ILP gapped 0.80 mm",                3.7133884725479489},
+    {"98 HS 26/16 gapped 3 x 0.40 mm",             3.6854404500368796},
+    {"98 RM 10LP gapped 0.80 mm",                  3.671448283980375},
+    {"98 EQ 25/6 gapped 0.90 mm",                  3.6606228135989283},
 };
 
 // Refreshed 2026-06-16 (ABT #10) after landing the suppression returns-0 fix

@@ -444,6 +444,10 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         }
     }
 
+    // No loss-optimal (N, gap) step here (ABT #1426, select_inductor_turns_and_gap_by_losses),
+    // unlike filter_standard_cores_power_application: this is available-cores mode, and a
+    // stock core's gap is part of the catalogue part, so it is excluded on purpose (Alf's
+    // decision). The losses below rank each part at its own gap.
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
     log_stage("Core Losses filter", magneticsWithScoring.size());
 
@@ -877,6 +881,9 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         // inductor to its loss-optimal pair before the losses rank it. On the pruned pool
         // only: the step is per-candidate work, and the pool has already been cut on the
         // criteria the turn count does not change (size, cost, inductance band).
+        // Standard cores only. Available-cores mode (filter_available_cores_power_application)
+        // is excluded on purpose: a stock core's gap is part of the catalogue part, so its
+        // (N, gap) is not the adviser's to re-solve (Alf's decision).
         select_inductor_turns_and_gap_by_losses(&ferriteCores, inputs);
         log_stage("Loss-optimal turns (ferrite)", ferriteCores.size());
 
