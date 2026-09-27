@@ -483,16 +483,33 @@ void CoreAdviser::select_inductor_turns_and_gap_by_losses(std::vector<std::pair<
     }
     MagneticFilterInductorTurnsAndGapByLosses filter(inputs, _models);
     size_t moved = 0;
-    for (auto& [magnetic, scoring] : *magneticsWithScoring) {
+    std::vector<size_t> failedIndexes;
+    for (size_t index = 0; index < magneticsWithScoring->size(); ++index) {
+        auto& magnetic = (*magneticsWithScoring)[index].first;
         auto seededNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
-        filter.evaluate_magnetic(&magnetic, &inputs);
+        // A candidate whose (N, gap) cannot be evaluated (a loss estimate that is not finite,
+        // a waveform the loss models reject) is dropped with an ERROR, as evaluate_and_cull
+        // drops a candidate whose filter evaluation throws: it would otherwise reach the
+        // ranking on a seed nobody checked, and one bad candidate must not abort the others.
+        try {
+            filter.evaluate_magnetic(&magnetic, &inputs);
+        }
+        catch (const OpenMagneticsException& exception) {
+            logEntry("Loss-optimal inductor turns: dropping candidate " + magnetic.get_core().get_name().value_or("?") +
+                     ": " + exception.what(), "CoreAdviser", 0);
+            failedIndexes.push_back(index);
+            continue;
+        }
         if (magnetic.get_coil().get_functional_description()[0].get_number_turns() != seededNumberTurns) {
             moved++;
         }
     }
     logEntry("Loss-optimal inductor turns: " + std::to_string(moved) + " of " +
-             std::to_string(magneticsWithScoring->size()) + " candidates moved above their saturation-floor turns",
-             "CoreAdviser");
+             std::to_string(magneticsWithScoring->size()) + " candidates moved above their saturation-floor turns, " +
+             std::to_string(failedIndexes.size()) + " dropped", "CoreAdviser");
+    for (auto it = failedIndexes.rbegin(); it != failedIndexes.rend(); ++it) {
+        magneticsWithScoring->erase(magneticsWithScoring->begin() + static_cast<std::ptrdiff_t>(*it));
+    }
 }
 
 // ============================================================================

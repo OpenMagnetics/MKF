@@ -755,6 +755,12 @@ double MagneticFilterInductorTurnsAndGapByLosses::calculate_core_losses(const Co
         if (!pick.ok) {
             return std::numeric_limits<double>::quiet_NaN();
         }
+        if (!std::isfinite(pick.value)) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR,
+                "Loss-optimal inductor turns: core loss estimate of " + core.get_name().value_or("?") + " at " +
+                std::to_string(static_cast<int64_t>(numberTurns)) + " turns, operating point " +
+                std::to_string(operatingPointIndex) + " is not finite (" + std::to_string(pick.value) + " W)");
+        }
         if (pick.value < 0) {
             throw CalculationException(ErrorCode::CALCULATION_ERROR,
                 "Loss-optimal inductor turns: negative core losses for core " + core.get_name().value_or("?"));
@@ -780,13 +786,28 @@ std::pair<bool, double> MagneticFilterInductorTurnsAndGapByLosses::evaluate_magn
             "Loss-optimal inductor turns: candidate " + core.get_name().value_or("?") + " has no seeded turns");
     }
 
-    // The operating points in the form the inductance model uses (standardised, power-of-two
-    // waveforms, the winding current taken as the magnetizing current for the one-winding
-    // stand-in coil). Computing the seed's inductance and flux once puts them there.
+    // The operating points with the magnetizing current the flux follows. For one winding that
+    // winding's current IS the magnetizing current, and computing the seed's inductance and flux
+    // once puts it there in the form the inductance model uses (standardised, power-of-two).
+    // For several windings it is not: the stand-in coil has one winding, and the inductance
+    // model would take the primary's own current as the magnetizing current. A flyback primary
+    // carries only its on-time share and drops to zero when the secondary takes over, a step
+    // the flux never makes; fed to the core-loss models as B it was a flux discontinuity, and
+    // the iGSE integral returned NaN on it. The design's magnetizing current, derived from the
+    // primary volt-seconds at the target inductance (pre_process_inputs), is the right one.
     std::vector<OperatingPoint> preparedOperatingPoints;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
-        _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+        if (operatingPoint.get_excitations_per_winding().size() > 1) {
+            if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA,
+                    "Loss-optimal inductor turns: operating point " + std::to_string(operatingPointIndex) +
+                    " has several windings but no magnetizing current (the adviser derives it in pre_process_inputs)");
+            }
+        }
+        else {
+            _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+        }
         preparedOperatingPoints.push_back(operatingPoint);
     }
 
@@ -856,6 +877,11 @@ std::pair<bool, double> MagneticFilterInductorTurnsAndGapByLosses::evaluate_magn
         meanCopperLossesPerTurnSquared += dcLosses + proximityLosses;
     }
     meanCopperLossesPerTurnSquared /= _temperatures.size();
+    if (!std::isfinite(meanCopperLossesPerTurnSquared) || meanCopperLossesPerTurnSquared < 0) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR,
+            "Loss-optimal inductor turns: copper loss estimate of " + core.get_name().value_or("?") +
+            " is not a finite non-negative number (" + std::to_string(meanCopperLossesPerTurnSquared) + " W per turn squared)");
+    }
 
     // Most turns the window can carry. The adviser's stand-in winding (get_dummy_coil) is what
     // the loss ranking winds next and what the coil adviser has to beat: strands two skin
