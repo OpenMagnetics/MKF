@@ -2060,3 +2060,29 @@ TEST_CASE("Test_Processed_Only_Signal_Defines_A_Waveform_Or_Says_What_Is_Missing
     REQUIRE_THROWS_AS(inputs.get_maximum_voltage_peak(), InvalidInputException);
     REQUIRE_THROWS_WITH(inputs.get_maximum_voltage_peak(), Catch::Matchers::ContainsSubstring("dutyCycle"));
 }
+
+TEST_CASE("Test_Excitation_With_Proportional_Voltage_And_Current_Recalculates_Processed", "[processor][inputs][smoke-test]") {
+    // The processed peak, peak to peak and offset scale with the waveform, they are not kept from the original one
+    OpenMagnetics::Inputs inputs = OpenMagnetics::Inputs::create_quick_operating_point(
+        100000, 100e-6, 25, WaveformLabel::RECTANGULAR, 10, 0.5, 0);
+    auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
+    auto originalVoltage = excitation.get_voltage()->get_processed().value();
+    auto originalCurrent = excitation.get_current()->get_processed().value();
+
+    auto scaled = OpenMagnetics::Inputs::get_excitation_with_proportional_voltage(excitation, 3);
+    scaled = OpenMagnetics::Inputs::get_excitation_with_proportional_current(scaled, 2);
+    auto scaledVoltage = scaled.get_voltage()->get_processed().value();
+    auto scaledCurrent = scaled.get_current()->get_processed().value();
+    REQUIRE_THAT(scaledVoltage.get_peak().value(), Catch::Matchers::WithinRel(3 * originalVoltage.get_peak().value(), 0.01));
+    REQUIRE_THAT(scaledVoltage.get_peak_to_peak().value(), Catch::Matchers::WithinRel(3 * originalVoltage.get_peak_to_peak().value(), 0.01));
+    REQUIRE_THAT(scaledVoltage.get_rms().value(), Catch::Matchers::WithinRel(3 * originalVoltage.get_rms().value(), 0.01));
+    REQUIRE(scaledVoltage.get_label() == originalVoltage.get_label());
+    REQUIRE_THAT(scaledCurrent.get_peak().value(), Catch::Matchers::WithinRel(2 * originalCurrent.get_peak().value(), 0.01));
+    REQUIRE_THAT(scaledCurrent.get_peak_to_peak().value(), Catch::Matchers::WithinRel(2 * originalCurrent.get_peak_to_peak().value(), 0.01));
+    REQUIRE(scaledCurrent.get_label() == originalCurrent.get_label());
+
+    // A winding without load: no current at all
+    auto unloaded = OpenMagnetics::Inputs::get_excitation_with_proportional_current(excitation, 0);
+    REQUIRE_THAT(unloaded.get_current()->get_processed()->get_peak().value(), Catch::Matchers::WithinAbs(0, 1e-12));
+    REQUIRE_THAT(unloaded.get_current()->get_processed()->get_rms().value(), Catch::Matchers::WithinAbs(0, 1e-12));
+}

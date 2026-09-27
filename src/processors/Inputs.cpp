@@ -1173,7 +1173,14 @@ OperatingPointExcitation Inputs::get_excitation_with_proportional_current(Operat
     current.set_waveform(multipliedWaveform);
     auto sampledCurrentWaveform = calculate_sampled_waveform(multipliedWaveform, excitation.get_frequency());
     current.set_harmonics(calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
-    current.set_processed(calculate_processed_data(current, sampledCurrentWaveform, true, current.get_processed()));
+    // The basic processed data (peak, peak to peak, offset) scale with the waveform, so they are calculated again:
+    // handing over the previous processed data would keep its values. Only the label survives, as the shape does.
+    auto previousProcessedCurrent = current.get_processed();
+    auto processedCurrent = calculate_processed_data(current, sampledCurrentWaveform, true, std::nullopt);
+    if (previousProcessedCurrent) {
+        processedCurrent.set_label(previousProcessedCurrent->get_label());
+    }
+    current.set_processed(processedCurrent);
 
     excitation.set_current(current);
     return excitation;
@@ -1191,7 +1198,14 @@ OperatingPointExcitation Inputs::get_excitation_with_proportional_voltage(Operat
     voltage.set_waveform(multipliedWaveform);
     auto sampledVoltageWaveform = calculate_sampled_waveform(multipliedWaveform, excitation.get_frequency());
     voltage.set_harmonics(calculate_harmonics_data(sampledVoltageWaveform, excitation.get_frequency()));
-    voltage.set_processed(calculate_processed_data(voltage, sampledVoltageWaveform, true, voltage.get_processed()));
+    // The basic processed data (peak, peak to peak, offset) scale with the waveform, so they are calculated again:
+    // handing over the previous processed data would keep its values. Only the label survives, as the shape does.
+    auto previousProcessedVoltage = voltage.get_processed();
+    auto processedVoltage = calculate_processed_data(voltage, sampledVoltageWaveform, true, std::nullopt);
+    if (previousProcessedVoltage) {
+        processedVoltage.set_label(previousProcessedVoltage->get_label());
+    }
+    voltage.set_processed(processedVoltage);
     excitation.set_voltage(voltage);
     return excitation;
 }
