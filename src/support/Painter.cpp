@@ -55,7 +55,7 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from current");
             }
             auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            auto harmonics = Inputs::calculate_harmonics_data(current.get_waveform().value(), sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
             current.set_harmonics(harmonics);
             if (!current.get_processed()) {
                 auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
@@ -132,7 +132,7 @@ ComplexField PainterInterface::calculate_magnetic_field_internal_only(OperatingP
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from current");
             }
             auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            auto harmonics = Inputs::calculate_harmonics_data(current.get_waveform().value(), sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
             current.set_harmonics(harmonics);
             if (!current.get_processed()) {
                 auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
@@ -179,7 +179,7 @@ ComplexField PainterInterface::calculate_magnetic_field_external_only(OperatingP
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from current");
             }
             auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            auto harmonics = Inputs::calculate_harmonics_data(current.get_waveform().value(), sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
             current.set_harmonics(harmonics);
             if (!current.get_processed()) {
                 auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
@@ -528,7 +528,7 @@ Field PainterInterface::calculate_electric_field_sdf(OperatingPoint operatingPoi
             }
             auto sampledWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(),
                 operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            auto harmonics_data = Inputs::calculate_harmonics_data(sampledWaveform,
+            auto harmonics_data = Inputs::calculate_harmonics_data(voltage.get_waveform().value(), sampledWaveform,
                 operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
             voltage.set_harmonics(harmonics_data);
             if (!voltage.get_processed()) {
@@ -710,7 +710,7 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from voltage");
             }
             auto sampledWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            auto harmonics = Inputs::calculate_harmonics_data(voltage.get_waveform().value(), sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
             voltage.set_harmonics(harmonics);
             if (!voltage.get_processed()) {
                 auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);

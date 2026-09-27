@@ -414,7 +414,8 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
                                                                                    false);
 
             auto sampledMagnetizingCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
-            magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
+            // calculate_magnetizing_current already set the harmonics, from the current's knots
+            // where it had them (ABT #1460); recomputing them from this resample would lose that.
             magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, false));
 
             excitation.set_magnetizing_current(magnetizingCurrent);

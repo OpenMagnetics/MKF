@@ -2,6 +2,7 @@
 
 #include <MAS.hpp>
 
+#include <complex>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -45,6 +46,29 @@ class WaveformProcessor {
                                                     size_t numberPointsSampledWaveforms = 128,
                                                     std::optional<size_t> maximumNumberPoints = std::nullopt);
 
+    // Exact complex Fourier coefficients c_0..c_numberHarmonics of the PERIODIC piecewise-linear
+    // waveform through the knots (time[i], data[i]), period = time.back() - time.front(), the
+    // period closing with a step from data.back() to data.front() when they differ.
+    // Closed form per segment, no sampling, so no aliasing (ABT #1460):
+    //   c_k = 1/(j 2 pi k) * sum_segments dv * exp(-j w_k t_mid) * sinc(w_k dt / 2)
+    // A repeated sample (dt = 0, dv = 0) contributes nothing; a step (dt = 0, dv != 0) is the
+    // dt -> 0 limit of the same term, exactly. Time running backwards throws.
+    // Amplitudes in MAS convention are |c_0| and 2 |c_k|.
+    static std::vector<std::complex<double>> calculate_exact_fourier_coefficients(const std::vector<double>& time,
+                                                                                  const std::vector<double>& data,
+                                                                                  size_t numberHarmonics);
+
+    // Harmonics 0..K of a waveform (ABT #1460):
+    //  - with a time axis and fewer knots than numberPointsSampledWaveforms: the exact series of
+    //    its piecewise-linear knots (calculate_exact_fourier_coefficients), K = N/2;
+    //  - a sampled waveform (is_waveform_sampled: N uniform samples on [t0, t0 + N dt)): the
+    //    exact series of the periodic linear interpolant of the samples, which is the N-point
+    //    DFT times sinc^2(pi k / N), K = N/2; N points on an uneven time axis are knots, as above;
+    //  - denser knots than N that are not a sampled waveform: sampled at their own power-of-2
+    //    resolution first (a closed form over thousands of knots costs O(knots x harmonics)),
+    //    then as above;
+    //  - no time axis: samples only, no knots to be exact about: the plain DFT, harmonics
+    //    0..N/2-1, as before.
     static MAS::Harmonics calculate_harmonics_data(MAS::Waveform waveform,
                                                    double frequency,
                                                    bool trimHarmonics = true,

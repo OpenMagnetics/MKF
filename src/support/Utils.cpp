@@ -2481,7 +2481,7 @@ std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitatio
         }
         double frequency = excitation.get_frequency();
         auto sampledWaveform = Inputs::calculate_sampled_waveform(signalDescriptor.get_waveform().value(), frequency);
-        signalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(sampledWaveform, frequency));
+        signalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(signalDescriptor.get_waveform().value(), sampledWaveform, frequency));
     }
     auto harmonics = signalDescriptor.get_harmonics().value();
     size_t maximumCommonIndex = harmonics.get_amplitudes().size();
@@ -2684,11 +2684,11 @@ OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation 
     auto currentSignalDescriptor = Inputs::reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
 
     auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
-    voltageSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(voltageSampledWaveform, excitationOfThisWinding.get_frequency()));
+    voltageSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(voltageSignalDescriptor.get_waveform().value(), voltageSampledWaveform, excitationOfThisWinding.get_frequency()));
     voltageSignalDescriptor.set_processed(Inputs::calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
 
     auto currentSampledWaveform = Inputs::calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
-    currentSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(currentSampledWaveform, excitationOfThisWinding.get_frequency()));
+    currentSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(currentSignalDescriptor.get_waveform().value(), currentSampledWaveform, excitationOfThisWinding.get_frequency()));
     currentSignalDescriptor.set_processed(Inputs::calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
 
     excitationOfThisWinding.set_voltage(voltageSignalDescriptor);
@@ -2767,7 +2767,7 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
                 }
                 if (!current.get_harmonics()) {
                     auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                    auto harmonics = Inputs::calculate_harmonics_data(sampledCurrentWaveform, inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto harmonics = Inputs::calculate_harmonics_data(current.get_waveform().value(), sampledCurrentWaveform, inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
                     current.set_harmonics(harmonics);
                 }
                 inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
@@ -2780,7 +2780,7 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
                 }
                 if (!voltage.get_harmonics()) {
                     auto sampledvoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                    auto harmonics = Inputs::calculate_harmonics_data(sampledvoltageWaveform, inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto harmonics = Inputs::calculate_harmonics_data(voltage.get_waveform().value(), sampledvoltageWaveform, inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
                     voltage.set_harmonics(harmonics);
                 }
                 inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_voltage(voltage);

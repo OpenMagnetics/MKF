@@ -72,6 +72,10 @@ class Inputs : public MAS::Inputs {
     static ProcessedWaveform calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData=true, std::optional<ProcessedWaveform> processed=std::nullopt);
     static ProcessedWaveform calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData=true, std::optional<ProcessedWaveform> processed=std::nullopt);
     static Harmonics calculate_harmonics_data(Waveform waveform, double frequency);
+    // Harmonics of `waveform` from its own knots when it has a time axis (the exact series, no
+    // sampling), else of `sampledWaveform`, its uniform resample: a data-only waveform has no
+    // knots to be exact about (ABT #1460).
+    static Harmonics calculate_harmonics_data(const Waveform& waveform, const Waveform& sampledWaveform, double frequency);
     static OperatingPointExcitation prune_harmonics(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex=std::nullopt);
     static SignalDescriptor prune_harmonics(SignalDescriptor signalDescriptor, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex=std::nullopt);
     static OperatingPoint prune_harmonics(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex=std::nullopt);

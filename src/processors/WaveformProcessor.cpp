@@ -5,6 +5,7 @@
 #include <cfloat>
 #include <cmath>
 #include <complex>
+#include <cstdio>
 #include <cstdint>
 #include <numeric>
 #include <optional>
@@ -1066,26 +1067,200 @@ Waveform WaveformProcessor::calculate_sampled_waveform(Waveform waveform, double
     return sampledWaveform;
 }
 
+std::vector<std::complex<double>> WaveformProcessor::calculate_exact_fourier_coefficients(const std::vector<double>& time,
+                                                                                         const std::vector<double>& data,
+                                                                                         size_t numberHarmonics) {
+    if (time.size() != data.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Exact Fourier coefficients: the waveform has " + std::to_string(time.size()) +
+                                    " time values but " + std::to_string(data.size()) + " data values");
+    }
+    if (data.size() < 2) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Exact Fourier coefficients: a piecewise-linear waveform needs at least 2 knots");
+    }
+    for (size_t i = 0; i < data.size(); ++i) {
+        if (!std::isfinite(time[i]) || !std::isfinite(data[i])) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Exact Fourier coefficients: knot " + std::to_string(i) + " is not finite");
+        }
+        if (i > 0 && time[i] < time[i - 1]) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Exact Fourier coefficients: time runs backwards at knot " + std::to_string(i) +
+                                        " (" + std::to_string(time[i - 1]) + " s -> " + std::to_string(time[i]) + " s)");
+        }
+    }
+    const double t0 = time.front();
+    const double period = time.back() - t0;
+    if (!(period > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Exact Fourier coefficients: the knots span no time, period = " + std::to_string(period));
+    }
+
+    // Every segment, including the closing one from the last knot back to the first value one
+    // period later (a step, as the last knot sits at t0 + period), as (dv, dt, t_mid - t0).
+    // Segments with dv = 0 add nothing to the derivative, so flat stretches and repeated
+    // samples drop out here.
+    struct Segment { double dv; double dt; double mid; };
+    std::vector<Segment> segments;
+    segments.reserve(data.size());
+    double integral = 0;
+    for (size_t i = 0; i + 1 < data.size(); ++i) {
+        double dt = time[i + 1] - time[i];
+        double dv = data[i + 1] - data[i];
+        integral += 0.5 * (data[i] + data[i + 1]) * dt;
+        if (dv != 0) {
+            segments.push_back({dv, dt, 0.5 * (time[i] + time[i + 1]) - t0});
+        }
+    }
+    if (data.front() != data.back()) {
+        segments.push_back({data.front() - data.back(), 0.0, period});
+    }
+
+    std::vector<std::complex<double>> coefficients(numberHarmonics + 1);
+    coefficients[0] = integral / period;
+    if (numberHarmonics == 0 || segments.empty()) {
+        return coefficients;
+    }
+
+    // c_k = 1/T int x e^{-j w t} dt = 1/(T j w) int e^{-j w t} dx (by parts, periodic x),
+    // and a linear segment gives int e^{-j w t} dx = dv e^{-j w t_mid} sinc(w dt / 2),
+    // which tends to the step's dv e^{-j w t} as dt -> 0. With w = 2 pi k / T,
+    // 1/(T j w) = -j / (2 pi k). The k-th powers of each segment's two phasors come from a
+    // running product, so the loop costs two complex products per segment and harmonic.
+    const double w1 = 2 * kWaveformPi / period;
+    std::vector<std::complex<double>> midPhasorStep(segments.size()), midPhasor(segments.size());
+    std::vector<std::complex<double>> halfWidthPhasorStep(segments.size()), halfWidthPhasor(segments.size());
+    for (size_t s = 0; s < segments.size(); ++s) {
+        midPhasorStep[s] = std::polar(1.0, -w1 * segments[s].mid);
+        midPhasor[s] = 1.0;
+        halfWidthPhasorStep[s] = std::polar(1.0, 0.5 * w1 * segments[s].dt);
+        halfWidthPhasor[s] = 1.0;
+    }
+    for (size_t k = 1; k <= numberHarmonics; ++k) {
+        const double kDouble = static_cast<double>(k);
+        std::complex<double> sum = 0;
+        for (size_t s = 0; s < segments.size(); ++s) {
+            midPhasor[s] *= midPhasorStep[s];
+            halfWidthPhasor[s] *= halfWidthPhasorStep[s];
+            double halfAngle = 0.5 * w1 * segments[s].dt * kDouble;
+            double sinc = (segments[s].dt == 0) ? 1.0 : halfWidthPhasor[s].imag() / halfAngle;
+            sum += segments[s].dv * sinc * midPhasor[s];
+        }
+        coefficients[k] = std::complex<double>(0, -1.0 / (2 * kWaveformPi * kDouble)) * sum;
+    }
+    return coefficients;
+}
+
+namespace {
+// True when the time axis steps uniformly (to 1e-6 of the mean step): the only waveforms that
+// can be read as uniform samples. N points on an uneven axis are knots, whatever their count.
+bool has_uniform_time_step(const std::vector<double>& time) {
+    if (time.size() < 2) {
+        return false;
+    }
+    const double step = (time.back() - time.front()) / static_cast<double>(time.size() - 1);
+    if (!(step > 0)) {
+        return false;
+    }
+    for (size_t i = 1; i < time.size(); ++i) {
+        if (std::fabs((time[i] - time[i - 1]) - step) > 1e-6 * step) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Exact Fourier coefficients c_0..c_{N/2} of the periodic linear interpolant of N uniform
+// samples: linear interpolation is the samples convolved with a one-sample triangle, whose
+// spectrum is sinc^2, so c_k = DFT_N[k] / N * sinc^2(pi k / N) (ABT #1460).
+std::vector<std::complex<double>> uniform_samples_exact_coefficients(const Waveform& sampledWaveform) {
+    const auto& values = sampledWaveform.get_data();
+    const size_t numberSamples = values.size();
+    if (numberSamples < 2 || (numberSamples & (numberSamples - 1)) != 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Sampled waveform size is not a power of 2: " + std::to_string(numberSamples));
+    }
+    if (sampledWaveform.get_time()) {
+        // The sinc^2 factor holds for uniform samples only; unevenly spaced "samples" could be
+        // knots or samples, and the two give different harmonics.
+        const std::vector<double> time = sampledWaveform.get_time().value();  // get_time() returns by value
+        if (time.size() != numberSamples) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Sampled waveform has " + std::to_string(time.size()) + " time values for " + std::to_string(numberSamples) + " samples");
+        }
+        const double step = (time.back() - time.front()) / static_cast<double>(numberSamples - 1);
+        if (!(step > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Sampled waveform spans no time");
+        }
+        for (size_t i = 1; i < numberSamples; ++i) {
+            if (std::fabs((time[i] - time[i - 1]) - step) > 1e-6 * step) {
+                char detail[160];
+                std::snprintf(detail, sizeof(detail), " (%.6e s vs %.6e s; t0 = %.6e s, t_end = %.6e s)", time[i] - time[i - 1], step, time.front(), time.back());
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "A waveform of " + std::to_string(numberSamples) +
+                    " points is read as uniform samples, but its time step varies at point " + std::to_string(i) +
+                    detail + ": samples or knots is ambiguous");
+            }
+        }
+    }
+    std::vector<std::complex<double>> spectrum(values.begin(), values.end());
+    fft(spectrum);
+    const size_t numberHarmonics = numberSamples / 2;
+    std::vector<std::complex<double>> coefficients(numberHarmonics + 1);
+    const double numberSamplesDouble = static_cast<double>(numberSamples);
+    coefficients[0] = spectrum[0] / numberSamplesDouble;
+    for (size_t k = 1; k <= numberHarmonics; ++k) {
+        double x = kWaveformPi * static_cast<double>(k) / numberSamplesDouble;
+        double sinc = std::sin(x) / x;
+        coefficients[k] = spectrum[k] / numberSamplesDouble * (sinc * sinc);
+    }
+    return coefficients;
+}
+} // namespace
+
 Harmonics WaveformProcessor::calculate_harmonics_data(Waveform waveform, double frequency, bool trimHarmonics, double harmonicAmplitudeThreshold, size_t numberPointsSampledWaveforms) {
     bool isWaveformImported = is_waveform_imported(waveform, numberPointsSampledWaveforms);
     Harmonics harmonics;
 
-    std::vector<std::complex<double>> data;
-    for (std::size_t i = 0; i < waveform.get_data().size(); ++i) {
-        data.emplace_back(waveform.get_data()[i]);
-    }
+    if (!waveform.get_time()) {
+        // Data only: samples with no knots to be exact about, so this keeps the plain DFT of the
+        // samples, harmonics 0..N/2-1. Every MKF path that has knots or a time axis goes through
+        // the exact branches below (ABT #1460).
+        std::vector<std::complex<double>> data;
+        for (std::size_t i = 0; i < waveform.get_data().size(); ++i) {
+            data.emplace_back(waveform.get_data()[i]);
+        }
 
-    if (data.size() > 0 && ((data.size() & (data.size() - 1)) != 0)) {
-        throw std::invalid_argument("Data vector size is not a power of 2: " + std::to_string(data.size()));
-    }
-    fft(data);
+        if (data.size() > 0 && ((data.size() & (data.size() - 1)) != 0)) {
+            throw std::invalid_argument("Data vector size is not a power of 2: " + std::to_string(data.size()));
+        }
+        fft(data);
 
-    harmonics.get_mutable_amplitudes().push_back(abs(data[0] / static_cast<double>(data.size())));
-    for (size_t i = 1; i < data.size() / 2; ++i) {
-        harmonics.get_mutable_amplitudes().push_back(abs(2. * data[i] / static_cast<double>(data.size())));
+        harmonics.get_mutable_amplitudes().push_back(abs(data[0] / static_cast<double>(data.size())));
+        for (size_t i = 1; i < data.size() / 2; ++i) {
+            harmonics.get_mutable_amplitudes().push_back(abs(2. * data[i] / static_cast<double>(data.size())));
+        }
+        for (size_t i = 0; i < data.size() / 2; ++i) {
+            harmonics.get_mutable_frequencies().push_back(frequency * i);
+        }
     }
-    for (size_t i = 0; i < data.size() / 2; ++i) {
-        harmonics.get_mutable_frequencies().push_back(frequency * i);
+    else {
+        std::vector<std::complex<double>> coefficients;
+        // N points count as samples only on a uniform axis. The simulator's 128 samples, resampled
+        // over their own span and compressed, come back as 128 uneven knots (autocomplete's
+        // magnetizing current): those are knots, and their exact series is below.
+        if (is_waveform_sampled(waveform, numberPointsSampledWaveforms) && has_uniform_time_step(waveform.get_time().value())) {
+            coefficients = uniform_samples_exact_coefficients(waveform);
+        }
+        else if (waveform.get_data().size() > numberPointsSampledWaveforms) {
+            // Denser than the sampling grid (imports, 2N+1-sample converter models): the closed
+            // form would cost O(knots x harmonics) with thousands of both, so these are sampled
+            // at their own power-of-2 resolution and the samples' interpolant is used. It
+            // differs from the knots only where a knot falls between two samples.
+            coefficients = uniform_samples_exact_coefficients(calculate_sampled_waveform(waveform, frequency, std::nullopt, numberPointsSampledWaveforms));
+        }
+        else {
+            coefficients = calculate_exact_fourier_coefficients(waveform.get_time().value(), waveform.get_data(), numberPointsSampledWaveforms / 2);
+        }
+        harmonics.get_mutable_amplitudes().push_back(std::abs(coefficients[0]));
+        harmonics.get_mutable_frequencies().push_back(0);
+        for (size_t k = 1; k < coefficients.size(); ++k) {
+            harmonics.get_mutable_amplitudes().push_back(2 * std::abs(coefficients[k]));
+            harmonics.get_mutable_frequencies().push_back(frequency * static_cast<double>(k));
+        }
     }
 
 
@@ -1211,7 +1386,8 @@ ProcessedWaveform WaveformProcessor::calculate_processed_data(Waveform waveform,
     if (!is_size_power_of_2(waveform.get_data())) {
         sampledWaveform = calculate_sampled_waveform(waveform, frequencyValue, std::nullopt, numberPointsSampledWaveforms);
     }
-    auto harmonics = calculate_harmonics_data(sampledWaveform, frequencyValue, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms);
+    // Harmonics from the knots themselves when there is a time axis: exact, no sampling (ABT #1460).
+    auto harmonics = calculate_harmonics_data(waveform.get_time() ? waveform : sampledWaveform, frequencyValue, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms);
     return calculate_processed_data(harmonics, waveform, includeAdvancedData, processed, numberPointsSampledWaveforms);
 }
 
@@ -1321,7 +1497,7 @@ OperatingPointExcitation WaveformProcessor::complete_excitation(Waveform current
     SignalDescriptor current;
     auto currentProcessed = calculate_processed_data(currentWaveform, switchingFrequency, true, std::nullopt, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms);
     auto sampledCurrentWaveform = calculate_sampled_waveform(currentWaveform, switchingFrequency, std::nullopt, numberPointsSampledWaveforms);
-    auto currentHarmonics = calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms);
+    auto currentHarmonics = calculate_harmonics_data(currentWaveform.get_time() ? currentWaveform : sampledCurrentWaveform, switchingFrequency, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms);
     // Store the resampled (power-of-2) waveform so downstream consumers
     // (MagnetizingInductance, harmonics derivation, FFT-based pipelines)
     // get the standardized waveform contract MKF expects. The raw
@@ -1336,7 +1512,7 @@ OperatingPointExcitation WaveformProcessor::complete_excitation(Waveform current
     SignalDescriptor voltage;
     auto voltageProcessed = calculate_processed_data(voltageWaveform, switchingFrequency, true, std::nullopt, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms);
     auto sampledVoltageWaveform = calculate_sampled_waveform(voltageWaveform, switchingFrequency, std::nullopt, numberPointsSampledWaveforms);
-    auto voltageHarmonics = calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms);
+    auto voltageHarmonics = calculate_harmonics_data(voltageWaveform.get_time() ? voltageWaveform : sampledVoltageWaveform, switchingFrequency, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms);
     voltage.set_waveform(sampledVoltageWaveform);
     voltage.set_processed(voltageProcessed);
     voltage.set_harmonics(voltageHarmonics);

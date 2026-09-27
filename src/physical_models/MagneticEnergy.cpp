@@ -162,7 +162,7 @@ DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(Inputs
             auto magnetizingCurrent = excitation.get_magnetizing_current().value();
             auto magnetizingCurrentExcitationWaveform = magnetizingCurrent.get_waveform().value();
             auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrentExcitationWaveform, excitation.get_frequency());
-            magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
+            magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(magnetizingCurrentExcitationWaveform, sampledCurrentWaveform, excitation.get_frequency()));
             magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledCurrentWaveform, true, magnetizingCurrent.get_processed()));
             excitation.set_magnetizing_current(magnetizingCurrent);
             inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0] = excitation;

@@ -434,7 +434,7 @@ static std::optional<double> excitation_dc_current(const OperatingPointExcitatio
         // Same construction as the standard path: a power-of-two resample, its harmonics on the
         // descriptor, then the processed data -- calculate_processed_data reads the harmonics.
         auto sampled = Inputs::calculate_sampled_waveform(signal->get_waveform().value(), excitation.get_frequency());
-        signal->set_harmonics(Inputs::calculate_harmonics_data(sampled, excitation.get_frequency()));
+        signal->set_harmonics(Inputs::calculate_harmonics_data(signal->get_waveform().value(), sampled, excitation.get_frequency()));
         auto processed = Inputs::calculate_processed_data(*signal, sampled, false);
         return processed.get_offset();
     }
@@ -778,7 +778,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                                 }
                                 auto sampled = Inputs::calculate_sampled_waveform(presetWaveform, excitation.get_frequency());
                                 presetMc.set_waveform(sampled);
-                                presetMc.set_harmonics(Inputs::calculate_harmonics_data(sampled, excitation.get_frequency()));
+                                presetMc.set_harmonics(Inputs::calculate_harmonics_data(presetWaveform, sampled, excitation.get_frequency()));
                                 presetMc.set_processed(Inputs::calculate_processed_data(presetMc, sampled, false));
                                 excitation.set_magnetizing_current(presetMc);
                                 operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
@@ -788,7 +788,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                                 // with harmonics:null). Compute them so downstream frequency-domain paths work.
                                 // Also recompute processed to avoid stale fields from the loaded JSON.
                                 auto sampled = Inputs::calculate_sampled_waveform(presetWaveform, excitation.get_frequency());
-                                presetMc.set_harmonics(Inputs::calculate_harmonics_data(sampled, excitation.get_frequency()));
+                                presetMc.set_harmonics(Inputs::calculate_harmonics_data(presetWaveform, sampled, excitation.get_frequency()));
                                 presetMc.set_processed(Inputs::calculate_processed_data(presetMc, sampled, false));
                                 excitation.set_magnetizing_current(presetMc);
                                 operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
@@ -836,7 +836,9 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                         // version so the size-check gate below (and any downstream
                         // FFT pipeline) sees a standardized contract.
                         magnetizingCurrent.set_waveform(sampledMagnetizingCurrentWaveform);
-                        magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
+                        // The harmonics calculate_magnetizing_current set are kept: it computed them
+                        // from the current's knots where it had them (ABT #1460), which this resample
+                        // no longer carries.
                         magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, false));
 
                         excitation.set_magnetizing_current(magnetizingCurrent);
