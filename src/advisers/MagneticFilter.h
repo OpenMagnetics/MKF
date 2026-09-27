@@ -461,6 +461,50 @@ class MagneticFilterFringingFactor : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
+/**
+ * @class MagneticFilterInductorTurnsAndGapByLosses
+ * @brief ABT #1426: moves a gapped inductor candidate from its saturation-floor (N, gap) to
+ * the pair that minimises the estimated core + copper loss, never below the floor.
+ *
+ * Not a gate: evaluate_magnetic always returns valid and rewrites the candidate's turns and
+ * gap in place when a buildable lower-loss pair exists (see MagneticFilterLosses.cpp for
+ * the model and the search). The returned score is the estimated mean total loss (W) of
+ * the pair it settled on, 0 when the candidate is outside its scope.
+ */
+class MagneticFilterInductorTurnsAndGapByLosses : public MagneticFilter {
+    private:
+        std::map<std::string, std::string> _models;
+        MagnetizingInductance _magnetizingInductance;
+        std::shared_ptr<CoreLossesModel> _coreLossesModelSteinmetz;
+        std::shared_ptr<CoreLossesModel> _coreLossesModelProprietary;
+        MagneticFilterFringingFactor _fringingFactorFilter;
+        MagneticFilterMagnetizingInductance _inductanceFilter;
+        MagneticFilterSaturation _saturationFilter;
+        double _targetInductance = 0;
+        std::vector<double> _temperatures;
+        std::vector<double> _primaryReferredCurrentsRms;
+        std::vector<std::vector<double>> _primaryReferredCurrentHarmonicAmplitudes;
+        std::vector<std::vector<double>> _primaryReferredCurrentHarmonicFrequencies;
+        double _maximumEffectiveFrequency = 0;
+        std::vector<double> _turnsRatios;
+        std::vector<std::vector<SignalDescriptor>> _windingCurrents;
+
+        // Mean over the operating points of the core losses at the target inductance and
+        // numberTurns (the flux L i / N the re-solved gap delivers). NaN when the core has
+        // no loss model to evaluate (neither Steinmetz nor a proprietary formula).
+        double calculate_core_losses(const Core& core, double numberTurns, std::vector<OperatingPoint>& preparedOperatingPoints);
+
+    public:
+        MagneticFilterInductorTurnsAndGapByLosses(Inputs inputs, std::map<std::string, std::string> models);
+        // Designs this applies to: energy-storing inductors with an inductance target, not
+        // suppression chokes (sized by impedance).
+        static bool applies_to_design(const Inputs& inputs);
+        // Candidates this applies to: a discrete-gap core (not a toroid, not PQI/UI) with the
+        // adviser's one-winding stand-in coil.
+        static bool applies_to_candidate(const Magnetic& magnetic);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
 class MagneticFilterVolume : public MagneticFilter {
     public:
         MagneticFilterVolume() {};

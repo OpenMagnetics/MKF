@@ -456,6 +456,25 @@ static SignalDescriptor calculate_flux_density_for_family_model(double magnetizi
         !operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
         return magneticFluxDensity;
     }
+    return MagnetizingInductance::calculate_magnetic_flux_density_from_inductance(
+        magnetizingInductance, numberTurns, fluxCarryingArea, operatingPoint);
+}
+
+SignalDescriptor MagnetizingInductance::calculate_magnetic_flux_density_from_inductance(double magnetizingInductance,
+                                                                                       double numberTurns,
+                                                                                       double fluxCarryingArea,
+                                                                                       OperatingPoint* operatingPoint) {
+    if (!operatingPoint || operatingPoint->get_mutable_excitations_per_winding().empty() ||
+        !operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Flux density from inductance: the operating point carries no magnetizing current");
+    }
+    if (!(magnetizingInductance > 0) || !(numberTurns > 0) || !(fluxCarryingArea > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Flux density from inductance: inductance, turns and area must be positive (L=" +
+            std::to_string(magnetizingInductance) + " H, N=" + std::to_string(numberTurns) +
+            ", A=" + std::to_string(fluxCarryingArea) + " m2)");
+    }
     double drivingPointReluctance = pow(numberTurns, 2) / magnetizingInductance;
     auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(
         operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),

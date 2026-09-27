@@ -53,6 +53,17 @@ class MagnetizingInductance {
 
     int calculate_number_turns_from_gapping_and_inductance(Core core, Coil coil, Inputs* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
+    // Flux density a winding of numberTurns imposes when the magnetic has exactly
+    // magnetizingInductance: flux from the operating point's magnetizing current through the
+    // driving-point reluctance N^2 / L, divided by the flux-carrying area. The same
+    // construction every inductance path here returns its flux density with. Throws when the
+    // operating point carries no magnetizing current (call
+    // calculate_inductance_and_magnetic_flux_density on it first to derive one).
+    static SignalDescriptor calculate_magnetic_flux_density_from_inductance(double magnetizingInductance,
+                                                                            double numberTurns,
+                                                                            double fluxCarryingArea,
+                                                                            OperatingPoint* operatingPoint);
+
     // Legacy 3-argument entry point (the pre-coil signature). Kept ONLY for
     // binding backward-compatibility (PyOM / WASM callers that never passed a
     // coil). It synthesizes the single-primary-winding coil the old coil-less

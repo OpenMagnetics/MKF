@@ -873,6 +873,13 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             }
         }
 
+        // ABT #1426: the seeded (N, gap) is the saturation floor; move each surviving
+        // inductor to its loss-optimal pair before the losses rank it. On the pruned pool
+        // only: the step is per-candidate work, and the pool has already been cut on the
+        // criteria the turn count does not change (size, cost, inductance band).
+        select_inductor_turns_and_gap_by_losses(&ferriteCores, inputs);
+        log_stage("Loss-optimal turns (ferrite)", ferriteCores.size());
+
         // Filter by losses
         ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
         log_stage("Losses (ferrite)", ferriteCores.size());

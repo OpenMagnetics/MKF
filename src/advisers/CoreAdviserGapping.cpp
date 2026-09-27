@@ -471,6 +471,30 @@ void CoreAdviser::reject_winding_killing_gaps(std::vector<std::pair<Magnetic, do
     *magneticsWithScoring = std::move(kept);
 }
 
+void CoreAdviser::select_inductor_turns_and_gap_by_losses(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring,
+                                                          Inputs inputs) {
+    // ABT #1426: the seeded (N, gap) of an inductor is its saturation floor; move each
+    // candidate to the (N, gap) that minimises the estimated core + copper loss at or above
+    // that floor. The per-candidate work is MagneticFilterInductorTurnsAndGapByLosses'; this
+    // only runs it over the pool. It is a design move, not a gate: a candidate it cannot
+    // improve keeps its seeded design, and the gates and ranking that follow judge it.
+    if (magneticsWithScoring->empty() || !MagneticFilterInductorTurnsAndGapByLosses::applies_to_design(inputs)) {
+        return;
+    }
+    MagneticFilterInductorTurnsAndGapByLosses filter(inputs, _models);
+    size_t moved = 0;
+    for (auto& [magnetic, scoring] : *magneticsWithScoring) {
+        auto seededNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+        filter.evaluate_magnetic(&magnetic, &inputs);
+        if (magnetic.get_coil().get_functional_description()[0].get_number_turns() != seededNumberTurns) {
+            moved++;
+        }
+    }
+    logEntry("Loss-optimal inductor turns: " + std::to_string(moved) + " of " +
+             std::to_string(magneticsWithScoring->size()) + " candidates moved above their saturation-floor turns",
+             "CoreAdviser");
+}
+
 // ============================================================================
 // Option 2: Binary Search Gap Optimization with Analytical Cost Function
 // ============================================================================

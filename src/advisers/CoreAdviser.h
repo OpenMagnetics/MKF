@@ -297,6 +297,13 @@ class CoreAdviser {
          * @param inputs Operating conditions.
          */
         void reject_winding_killing_gaps(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
+        /**
+         * ABT #1426: move every gapped inductor candidate from its saturation-floor
+         * (N, gap) to the pair with the least estimated core + copper loss at or above
+         * that floor (MagneticFilterInductorTurnsAndGapByLosses). A design step, not a
+         * gate: no candidate is removed. Run it on a pruned pool, before the loss ranking.
+         */
+        void select_inductor_turns_and_gap_by_losses(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
 
 
 

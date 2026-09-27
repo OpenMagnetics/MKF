@@ -413,6 +413,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     filterSaturation.set_filter_configuration(&coreAdviser._filterConfiguration);
     magneticsWithScoring = filterSaturation.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
 
+    // Step 3c (ABT #1426): the (N, gap) set above is the saturation floor; move each
+    // gapped inductor to its loss-optimal pair, as the standard-cores path does before
+    // its loss ranking.
+    coreAdviser.select_inductor_turns_and_gap_by_losses(&magneticsWithScoring, inputs);
+
     // Step 4: Add secondary windings from turns ratios
     correct_windings(&magneticsWithScoring, inputs);
 
