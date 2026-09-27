@@ -8,6 +8,7 @@
 // and shared helpers in advisers/CoreAdviserInternal.h.
 
 #include "advisers/CoreAdviser.h"
+#include "support/StableSortByIndex.h"
 #include "advisers/CoreAdviserInternal.h"
 #include "advisers/CoilAdviser.h"             // ABT #4 proximity re-rank winds a representative coil
 #include "Constants.h"                         // Constants::residualGap for the DMC gap pre-filter
@@ -500,7 +501,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
                 return;
             }
             const size_t before = pool.size();
-            std::stable_sort(pool.begin(), pool.end(),
+            stable_sort_by_index(pool,
                              [](const std::pair<Magnetic, double>& left,
                                 const std::pair<Magnetic, double>& right) {
                                  return left.first.get_core().get_effective_area() >

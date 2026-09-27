@@ -1,4 +1,5 @@
 #include "advisers/CoreAdviser.h"
+#include "support/StableSortByIndex.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
 #include "advisers/MagneticFilter.h"
 #include "advisers/MagneticFilterInternal.h"  // for is_energy_storing_topology()
@@ -123,7 +124,7 @@ std::vector<double> normalize_scoring(std::vector<std::pair<Magnetic, double>>* 
 }
 
 void sort_magnetics_by_scoring(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring) {
-    stable_sort((*magneticsWithScoring).begin(), (*magneticsWithScoring).end(), [](const std::pair<Magnetic, double>& b1, const std::pair<Magnetic, double>& b2) {
+    stable_sort_by_index(*magneticsWithScoring, [](const std::pair<Magnetic, double>& b1, const std::pair<Magnetic, double>& b2) {
         return b1.second > b2.second;
     }); // F12 FIX: stable_sort for reproducible results
 }
@@ -344,7 +345,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         std::move(partialResult.begin(), partialResult.end(), std::back_inserter(results));
     }
 
-    stable_sort(results.begin(), results.end(), [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
+    stable_sort_by_index(results, [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
         return b1.second > b2.second;
     });
 

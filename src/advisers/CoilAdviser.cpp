@@ -1,4 +1,5 @@
 #include "physical_models/MagneticShunt.h"
+#include "support/StableSortByIndex.h"
 #include "processors/Inputs.h"
 #include "advisers/CoilAdviser.h"
 #include "support/LibraryContext.h"
@@ -669,7 +670,7 @@ namespace OpenMagnetics {
         std::vector<std::pair<Mas, double>> invalidMagneticsWithScoring;
         auto masMagneticsWithScoring = score_magnetics(masesWithCoil, _loadedFilterFlow, &invalidMagneticsWithScoring);
 
-        stable_sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
+        stable_sort_by_index(masMagneticsWithScoring, [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
             return b1.second > b2.second;
         });
 
@@ -684,7 +685,7 @@ namespace OpenMagnetics {
             logEntry("WARNING: All " + std::to_string(masesWithCoil.size()) + " designs were filtered out by criteria. " +
                      "Returning best-scored designs marked INVALID as fallback.", "CoilAdviser", 1);
 
-            stable_sort(invalidMagneticsWithScoring.begin(), invalidMagneticsWithScoring.end(), [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
+            stable_sort_by_index(invalidMagneticsWithScoring, [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
                 return b1.second > b2.second;
             });
             size_t numToReturn = std::min(invalidMagneticsWithScoring.size(), maximumNumberResults);

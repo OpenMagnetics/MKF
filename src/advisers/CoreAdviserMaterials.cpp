@@ -7,6 +7,7 @@
 // and shared helpers live in advisers/CoreAdviserInternal.h.
 
 #include "advisers/CoreAdviser.h"
+#include "support/StableSortByIndex.h"
 #include "advisers/CoreAdviserInternal.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
 #include "physical_models/ComplexPermeability.h"
@@ -101,7 +102,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
         evaluations.push_back({coreMaterial, averageVolumetricCoreLosses}); // NEW-BUG-FIX: was pushing 0, discarding computed losses
     }
 
-    stable_sort((evaluations).begin(), (evaluations).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
+    stable_sort_by_index(evaluations, [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
         return b1.second < b2.second;
     });
 
@@ -229,7 +230,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
         evaluations.push_back({coreMaterial, averageVolumetricCoreLosses});
     }
 
-    stable_sort((evaluations).begin(), (evaluations).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
+    stable_sort_by_index(evaluations, [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
         return b1.second < b2.second;
     });
 
@@ -272,7 +273,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
     // Impedance-driven (suppression) applications want the HIGHEST complex
     // permeability at the requirement frequencies, so sort descending (the
     // losses-based sibling sorts ascending because lower losses are better).
-    stable_sort((evaluations).begin(), (evaluations).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
+    stable_sort_by_index(evaluations, [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
         return b1.second > b2.second;
     });
 

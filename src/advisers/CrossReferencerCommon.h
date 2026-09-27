@@ -13,6 +13,7 @@
 // hazard.
 
 #include "Defaults.h"
+#include "support/StableSortByIndex.h"
 #include "support/Utils.h"
 #include <algorithm>
 #include <cmath>
@@ -62,7 +63,7 @@ void normalize_scoring(std::vector<std::pair<Item, double>>* rankedItems,
         for (size_t i = 0; i < rankedItems->size(); ++i) {
             (*rankedItems)[i].second += weight;
         }
-        std::stable_sort(rankedItems->begin(), rankedItems->end(),
+        stable_sort_by_index(*rankedItems,
             [](const std::pair<Item, double>& a, const std::pair<Item, double>& b) { return a.second > b.second; });
         return;
     }
@@ -107,7 +108,7 @@ void normalize_scoring(std::vector<std::pair<Item, double>>* rankedItems,
             (*rankedItems)[i].second = (*rankedItems)[i].second + weight * defaults.crossReferencerNeutralScoreWhenEqual; // XC-6 FIX: neutral score when all equal (was full weight)
         }
     }
-    std::stable_sort((*rankedItems).begin(), (*rankedItems).end(),
+    stable_sort_by_index(*rankedItems,
         [](const std::pair<Item, double>& b1, const std::pair<Item, double>& b2) {
             return b1.second > b2.second;
         }); // F12 FIX: stable_sort for reproducible results
