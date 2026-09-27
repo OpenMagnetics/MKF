@@ -1999,6 +1999,55 @@ TEST_CASE("Test_IGSE_composite_waveform_low_excitation_frequency", "[physical-mo
     REQUIRE(volumetricLosses > 0);
 }
 
+// ABT #1426 follow-up: the dB/dt core-loss models integrate over the segments of a
+// piecewise-linear flux density waveform, and MAS marks an instant with two samples at the same
+// time. A repeated sample (dt = 0, dB = 0) evaluated (0/0)^alpha * 0 = NaN, and a flux step
+// (dt = 0, dB != 0) inf * 0 = NaN; the NaN passed every `< 0` guard and silently turned the
+// loss-optimal turn search off for a whole flyback pool. A repeated sample adds nothing to the
+// integral; a flux step needs infinite volts per turn, and the model must say so.
+TEST_CASE("Core losses of a flux waveform with zero-length segments", "[physical-model][core-losses][smoke-test]") {
+    settings.reset();
+    clear_databases();
+    Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "3C95");
+    double frequency = 100000;
+    double temperature = 25;
+    double peak = 0.1;
+
+    auto makeExcitation = [&](std::vector<double> time, std::vector<double> data) {
+        json excitationJson;
+        excitationJson["frequency"] = frequency;
+        excitationJson["magneticFluxDensity"]["waveform"]["time"] = time;
+        excitationJson["magneticFluxDensity"]["waveform"]["data"] = data;
+        excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::CUSTOM;
+        excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+        excitationJson["magneticFluxDensity"]["processed"]["peak"] = peak;
+        excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 2 * peak;
+        excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+        return OperatingPointExcitation(excitationJson);
+    };
+    double period = 1 / frequency;
+    // Symmetric triangle, and the same triangle with every sample repeated at its instant.
+    auto triangle = makeExcitation({0, period / 2, period}, {-peak, peak, -peak});
+    auto triangleWithRepeatedSamples = makeExcitation({0, 0, period / 2, period / 2, period, period},
+                                                      {-peak, -peak, peak, peak, -peak, -peak});
+    // Sawtooth: ramps up over the whole period and steps back down in zero time.
+    auto sawtoothWithFluxStep = makeExcitation({0, period, period}, {-peak, peak, -peak});
+
+    for (auto modelName : {CoreLossesModels::IGSE, CoreLossesModels::MSE, CoreLossesModels::ALBACH,
+                           CoreLossesModels::NSE, CoreLossesModels::ROSHEN}) {
+        INFO("Model: " << magic_enum::enum_name(modelName));
+        auto model = CoreLossesModel::factory(modelName);
+        double reference = model->get_core_losses(core, triangle, temperature).get_core_losses();
+        double repeated = model->get_core_losses(core, triangleWithRepeatedSamples, temperature).get_core_losses();
+        REQUIRE(std::isfinite(reference));
+        REQUIRE(reference > 0);
+        REQUIRE(std::isfinite(repeated));
+        CHECK_THAT(repeated, Catch::Matchers::WithinRel(reference, 1e-9));
+        CHECK_THROWS_AS(model->get_core_losses(core, sawtoothWithFluxStep, temperature), InvalidInputException);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Voltage_And_Current", "[physical-model][core-losses][smoke-test]") {
     auto models = json::parse("{\"coreLosses\": \"IGSE\", \"gapReluctance\": \"BALAKRISHNAN\"}");
     auto core = Core(json::parse(

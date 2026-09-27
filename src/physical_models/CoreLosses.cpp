@@ -23,7 +23,9 @@
 #include <iostream>
 #include "spline.h"
 #include <numbers>
+#include <sstream>
 #include <streambuf>
+#include <string>
 #include <vector>
 // levmar.h removed - using Eigen LevenbergMarquardt
 
@@ -31,6 +33,55 @@
 CMRC_DECLARE(coreLossesData);
 
 namespace OpenMagnetics {
+
+namespace {
+
+// Duration of segment i of a piecewise-linear flux density waveform, for the core-loss models
+// that integrate a function of dB/dt over the period (iGSE, ciGSE, Albach, MSE, NSE, Roshen).
+// MAS waveforms mark an instant with two samples at the same time (a rectangular voltage's
+// edge is {.., (t, V1), (t, V2), ..}), so zero-length segments are part of the format:
+//   - dt == 0 and dB == 0: a repeated sample. The segment has no length and the integrand is
+//     finite on it, so it contributes exactly nothing; returned as 0 for the caller to skip.
+//     Evaluating it instead gave (0/0)^alpha * 0 = NaN, which then passed every `< 0` guard.
+//   - dt == 0 and dB != 0: a step in the FLUX. That takes infinite volts per turn
+//     (v = N Ae dB/dt), no real magnetic carries one, and every dB/dt loss integral diverges
+//     on it (|dB/dt|^alpha dt with alpha > 1 grows without bound as dt -> 0). The input is
+//     wrong -- typically a winding current that commutates to another winding (a flyback
+//     primary) taken as the magnetizing current -- so say so rather than return inf * 0 = NaN.
+//   - dt < 0: time runs backwards; not a waveform.
+double flux_density_segment_duration(const std::vector<double>& magneticFluxDensityData,
+                                     const std::vector<double>& magneticFluxDensityTime,
+                                     size_t index,
+                                     const std::string& modelName) {
+    if (index + 1 >= magneticFluxDensityData.size() || index + 1 >= magneticFluxDensityTime.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            modelName + " core losses: flux density waveform has " + std::to_string(magneticFluxDensityData.size()) +
+            " samples and " + std::to_string(magneticFluxDensityTime.size()) + " time points; segment " +
+            std::to_string(index) + " does not exist");
+    }
+    double timeDifference = magneticFluxDensityTime[index + 1] - magneticFluxDensityTime[index];
+    double fluxDensityDifference = magneticFluxDensityData[index + 1] - magneticFluxDensityData[index];
+    if (timeDifference > 0) {
+        return timeDifference;
+    }
+    if (timeDifference == 0) {
+        if (fluxDensityDifference == 0) {
+            return 0;
+        }
+        std::ostringstream message;
+        message << modelName << " core losses: the flux density waveform steps by " << fluxDensityDifference
+                << " T in zero time at t = " << magneticFluxDensityTime[index]
+                << " s. A flux step needs infinite volts per turn and makes the dB/dt loss integral diverge; "
+                   "the flux-driving (magnetizing) current must be continuous";
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, message.str());
+    }
+    std::ostringstream message;
+    message << modelName << " core losses: the flux density waveform's time runs backwards at sample " << index
+            << " (t = " << magneticFluxDensityTime[index] << " s, then " << magneticFluxDensityTime[index + 1] << " s)";
+    throw InvalidInputException(ErrorCode::INVALID_INPUT, message.str());
+}
+
+} // namespace
 
 std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNameUnion material) {
     CoreMaterial materialData;
@@ -1154,7 +1205,10 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
 
     for (size_t i = 0; i < numberPoints - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
-            timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
+            timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "iGSE");
+            if (timeDifference == 0) {
+                continue;  // a repeated sample: a zero-length segment adds nothing to the integral
+            }
         }
         else {
             timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
@@ -1410,7 +1464,10 @@ double CoreLossesciGSEModel::get_core_volumetric_losses(CoreMaterial coreMateria
     for (size_t i = 0; i < numberPoints - 1; ++i) {
         double timeDifference;
         if (magneticFluxDensity.get_waveform().value().get_time()) {
-            timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
+            timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "ciGSE");
+            if (timeDifference == 0) {
+                continue;  // a repeated sample: a zero-length segment adds nothing to the integral
+            }
         }
         else {
             timeDifference = period / settings.get_inputs_number_points_sampled_waveforms();
@@ -1544,7 +1601,10 @@ double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMateri
 
     for (size_t i = 0; i < albachNumberPoints - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
-            timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
+            timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "Albach");
+            if (timeDifference == 0) {
+                continue;  // a repeated sample: a zero-length segment adds nothing to the integral
+            }
         }
         else {
             timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
@@ -1657,7 +1717,10 @@ double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
 
     for (size_t i = 0; i < mseNumberPoints - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
-            timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
+            timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "MSE");
+            if (timeDifference == 0) {
+                continue;  // a repeated sample: a zero-length segment adds nothing to the integral
+            }
         }
         else {
             timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
@@ -1774,7 +1837,10 @@ double CoreLossesNSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
 
     for (size_t i = 0; i < magneticFluxDensityWaveform.size() - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
-            timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
+            timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "NSE");
+            if (timeDifference == 0) {
+                continue;  // a repeated sample: a zero-length segment adds nothing to the integral
+            }
         }
         else {
             timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
@@ -2391,7 +2457,10 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
 
     for (size_t i = 0; i < eddyNumberPoints - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
-            timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
+            timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "Roshen eddy-current");
+            if (timeDifference == 0) {
+                continue;  // a repeated sample: a zero-length segment adds nothing to the integral
+            }
         }
         else {
             timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
@@ -2461,7 +2530,10 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPo
 
     for (size_t i = 0; i < excessNumberPoints - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
-            timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
+            timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "Roshen excess eddy-current");
+            if (timeDifference == 0) {
+                continue;  // a repeated sample: a zero-length segment adds nothing to the integral
+            }
         }
         else {
             timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
