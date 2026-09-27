@@ -2705,8 +2705,12 @@ TEST_CASE("Test_Drum_Ring_Fringing_Loss_Omission_Is_Quantified",
     // point). The annular-gap kernel of ABT #368 has still NOT landed; when it does, the
     // functional-typed number should grow well past this sliver and the band below must be
     // revisited against its FEM data.
-    CHECK(omissionRatio >= 1.0);
-    CHECK(omissionRatio < 1.01);
+    // ABT #1463 (2026-09-28): the Roshen gap field now enters with the turns' sign (it was
+    // antiparallel to the gap flux before), so at this point the functional-gap fringing field
+    // slightly CANCELS the turns' field and the ratio moved 1.00019 -> 0.99950. The tripwire
+    // therefore asserts the size of the sliver, not its sign: re-typing the clearances changes
+    // the loss by well under 1% until the annular-gap kernel lands.
+    CHECK(std::abs(omissionRatio - 1.0) < 1e-2);
     settings.reset();
 }
 

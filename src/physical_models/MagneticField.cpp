@@ -1879,13 +1879,34 @@ FieldPoint MagneticFieldStrengthAlbachModel::get_equivalent_inducing_point_for_g
     return fieldPoint;
 }
 
+// SIGN (ABT #1463). The field returned is the gap's fringing field in the frame of the turn
+// kernels, for a POSITIVE magnetizing MMF (into-dot current): flux up (+y) the central leg and
+// down (-y) the lateral legs. Every turn kernel (Albach air coil, Binns-Lawrenson, Lammeraner)
+// gives +y at the central leg for a positive filament current, so a positive MMF must give a gap
+// whose flux runs +y there, and its fringing field is the continuation of that flux.
+// Roshen's conformal expression below, taken as written with H_g > 0 and xi the distance from the
+// leg surface into the window, reads at the gap mouth (xi -> 0+, dy = 0): Hy = -0.9 H_g, i.e.
+// ANTIPARALLEL to the gap's own field; and above the gap centre (dy > 0) its Hx points away from
+// the leg, where the flux of a +y gap bends back into the upper pole face (Hx towards the leg). So
+// as written it is the field of a gap whose flux runs -y: it is negated for a +y gap. With the old
+// sign the fringing field subtracted from the turns' field where the two add, and the cross term
+// had the wrong sign: on a synthetic DCM flyback (ETD29, 0.82 mm gap, magnetizing MMF = the
+// windings' true net MMF) h = 1 R_ac/R_dc read primary 1.48x / secondary 3.16x OMFEM with the old
+// sign and 0.88x / 0.95x with this one.
+// A lateral leg's window lies on its -x side and its flux runs -y: the central-leg field is
+// mirrored (x -> -x flips Hx) and reversed (both components flip), so Hx keeps the central sign
+// and Hy flips. The old code fed the lateral dx < 0 straight into the central expression, whose
+// atan branch (m) is built for dx > 0: its Hy jumped from -1.35 H_g to +0.45 H_g across the circle
+// of radius l_g/2 around the edge.
 ComplexFieldPoint MagneticFieldStrengthRoshenModel::get_magnetic_field_strength_between_gap_and_point(CoreGap gap, double magneticFieldStrengthGap, FieldPoint inducedFieldPoint) {
+    bool centralGap = gap.get_coordinates().value()[0] == 0;
     double distanceFromCenterEdgeGapX;
-    if (gap.get_coordinates().value()[0] == 0) {
+    if (centralGap) {
         distanceFromCenterEdgeGapX = inducedFieldPoint.get_point()[0] - (gap.get_coordinates().value()[0] + gap.get_section_dimensions().value()[0] / 2);
     }
     else {
-        distanceFromCenterEdgeGapX = inducedFieldPoint.get_point()[0] - (gap.get_coordinates().value()[0] - gap.get_section_dimensions().value()[0] / 2);
+        // Measured from the lateral leg's window-side surface INTO the window (towards -x).
+        distanceFromCenterEdgeGapX = (gap.get_coordinates().value()[0] - gap.get_section_dimensions().value()[0] / 2) - inducedFieldPoint.get_point()[0];
     }
     double distanceFromCenterEdgeGapY = inducedFieldPoint.get_point()[1] - gap.get_coordinates().value()[1];
     double halfGapLength = gap.get_length() / 2;
@@ -1904,6 +1925,15 @@ ComplexFieldPoint MagneticFieldStrengthRoshenModel::get_magnetic_field_strength_
 
     double x = distanceFromCenterEdgeGapX * halfGapLength / (pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY, 2) - pow(halfGapLength, 2));
     double Hy = -0.9 * magneticFieldStrengthGap / std::numbers::pi * (atan(x) + m * std::numbers::pi);
+
+    // (Hx, Hy) as written: a gap with flux along -y and its window at +xi (see SIGN above).
+    // Central leg, flux +y, window at +x: the negative, (-Hx, -Hy).
+    // Lateral leg, flux -y, window at -x: the central field mirrored (-Hx, -Hy) -> (Hx, -Hy),
+    // then reversed (flux -y) -> (-Hx, Hy).
+    Hx = -Hx;
+    if (centralGap) {
+        Hy = -Hy;
+    }
 
     ComplexFieldPoint complexFieldPoint;
     complexFieldPoint.set_imaginary(Hy);
@@ -2267,9 +2297,14 @@ ComplexFieldPoint MagneticFieldStrengthSullivanModel::get_magnetic_field_strengt
         }
     }
 
-    // Convert B to H: H = B / mu_0
-    double Hx = attenuationFactor * Bx_total / u0;
-    double Hy = attenuationFactor * By_total / u0;
+    // Convert B to H: H = B / mu_0. SIGN (ABT #1463, see the Roshen model): the field must be that
+    // of a positive magnetizing MMF, whose flux runs -y down a lateral leg. As summed above, the
+    // lateral gap's "cross" (at the leg, x = gapX) and mirrored "dot" (x = -gapX) filaments both
+    // give +y in the window between them for H_g > 0, the opposite; hence the minus. A central
+    // gap's cross and dot filaments both sit at x = 0 and cancel exactly, so this model returns
+    // no field for a central-leg gap (a separate defect, not a sign).
+    double Hx = -attenuationFactor * Bx_total / u0;
+    double Hy = -attenuationFactor * By_total / u0;
 
     if (std::isnan(Hx) || std::isnan(Hy)) {
         throw NaNResultException("NaN found in Sullivan's fringing field model");
