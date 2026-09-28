@@ -1712,14 +1712,36 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 if (columnShape != ColumnShape::RECTANGULAR) {
                     surfaceCurvature = 1.0 / turnX;
                 }
-                const double inSurfaceCurvature2 = 1.0 / (bendRadius * bendRadius) - surfaceCurvature * surfaceCurvature;
+                // What bends alike on every axis -- the declared buildability and the sleeve --
+                // sees the combined curvature. The wire itself only does when it is round.
+                const auto& leadWire = resolve_wire(get_winding_index_by_name(windingName));
+                const double sweptRadius = std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}) / 2;
+                const auto leadSleeve = sleeved ? resolve_lead_sleeve(windingName, isEntrance ? End::START : End::FINISH, parallel)
+                                                : std::optional<ConnectionSleeve>{};
+                const double isotropicRadius = leadWire.get_type() == WireType::RECTANGULAR
+                                                   ? lead_isotropic_bend_radius(leadSleeve, sweptRadius, true)
+                                                   : bendRadius;
+                const double inSurfaceCurvature2 = 1.0 / (isotropicRadius * isotropicRadius) - surfaceCurvature * surfaceCurvature;
                 if (!(inSurfaceCurvature2 > 0)) {
                     throw InvalidInputException(ErrorCode::INVALID_INPUT,
                         "The terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
-                        " must bend no tighter than " + std::to_string(bendRadius * 1e3) + " mm, but its turn's own radius is " +
+                        " must bend no tighter than " + std::to_string(isotropicRadius * 1e3) + " mm, but its turn's own radius is " +
                         std::to_string(turnX * 1e3) + " mm, so no ramp off that turn can climb at all (ABT #1336)");
                 }
-                const double inSurfaceRadius = 1.0 / std::sqrt(inSurfaceCurvature2);
+                double inSurfaceRadius = 1.0 / std::sqrt(inSurfaceCurvature2);
+                // A rectangular wire's limits are per axis (IEC 60317-0-2 Table 6 tests flatwise and
+                // edgewise separately). The column's curvature bends the turn about the AXIAL axis:
+                // that is the turn's own bend, already wound, and the ramp does not add to it (on a
+                // cylinder the normal curvature of any direction is at most 1/rho). The S bends it
+                // about the RADIAL axis, with the axial dimension -- the wire's height in this frame
+                // (the ramp is only planned for non-contiguous layers) -- in the bend plane. So the S
+                // answers to that one axis's minimum alone, not to the tighter of the two (ABT #1481).
+                if (leadWire.get_type() == WireType::RECTANGULAR) {
+                    const auto inSurfaceAxis = WireBend::axis_from_bend_plane_dimension(leadWire, false);
+                    if (auto axisMinimum = WireBend::get_flexibility_bend_radius_if_standardised(leadWire, inSurfaceAxis)) {
+                        inSurfaceRadius = std::max(inSurfaceRadius, axisMinimum.value());
+                    }
+                }
                 // A cosine S, y = h (1 - cos(pi s / S)) / 2 over the extent S: its tangent is along
                 // the turn at both ends and its curvature is continuous, largest at the ends,
                 // h pi^2 / (2 S^2) -- which is 1/Rg when S = pi sqrt(h Rg / 2).

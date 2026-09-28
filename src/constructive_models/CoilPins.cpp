@@ -424,9 +424,7 @@ double segment_box_distance(const std::vector<double>& a, const std::vector<doub
 
 double Coil::lead_bend_radius(const Wire& wire, const std::optional<ConnectionSleeve>& sleeve, double sweptRadius,
                               bool realWinding) {
-    // Buildability: what the consumer drawing the corner declared, on the radius it sweeps.
-    // Throws on a non-positive swept radius.
-    double radius = Settings::resolve_lead_bend_radius(sweptRadius);
+    double radius = lead_isotropic_bend_radius(sleeve, sweptRadius, realWinding);
     if (!realWinding) {
         return radius;   // an ideal winding keeps the geometry it always had (Alf, 2026-09-21)
     }
@@ -441,6 +439,17 @@ double Coil::lead_bend_radius(const Wire& wire, const std::optional<ConnectionSl
         if (auto wireMinimum = WireBend::get_flexibility_bend_radius_if_standardised(wire, axis)) {
             radius = std::max(radius, wireMinimum.value());
         }
+    }
+    return radius;
+}
+
+double Coil::lead_isotropic_bend_radius(const std::optional<ConnectionSleeve>& sleeve, double sweptRadius,
+                                        bool realWinding) {
+    // Buildability: what the consumer drawing the corner declared, on the radius it sweeps.
+    // Throws on a non-positive swept radius.
+    double radius = Settings::resolve_lead_bend_radius(sweptRadius);
+    if (!realWinding) {
+        return radius;
     }
 
     // Physics of the sleeve: the tubing's own rated minimum, when its material sources one.

@@ -1167,6 +1167,12 @@ class Coil : public MAS::Coil {
         /// the declared buildability alone (Settings::resolve_lead_bend_radius), physics untouched.
         static double lead_bend_radius(const Wire& wire, const std::optional<ConnectionSleeve>& sleeve, double sweptRadius,
                                        bool realWinding);
+        /// The part of lead_bend_radius that holds the same in every direction: the declared
+        /// buildability and the sleeve's rating, without the wire's own IEC minimum. A round
+        /// tube bends alike on every axis; a rectangular wire does not, so a caller that knows
+        /// which of the wire's axes a bend is about takes that axis's minimum separately.
+        static double lead_isotropic_bend_radius(const std::optional<ConnectionSleeve>& sleeve, double sweptRadius,
+                                                 bool realWinding);
         /// RFC 0013 R4's wrap turns per wire end, from src/data/dfm_rules.json.
         static int64_t pin_wrap_turns();
         /// How much deeper the front face lies than MKF's radial coordinate: 0 for a round column,
