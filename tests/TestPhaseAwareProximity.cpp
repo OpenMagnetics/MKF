@@ -32,11 +32,14 @@ using namespace OpenMagnetics;
 
 // Golden values of the amplitude-only model, produced by origin/main 38af34a3 (printed by the
 // tests below with %.17g). Single winding and exact antiphase must not move.
-#define GOLDEN_SINGLE_ALBACH 0.071061297472233192
-#define GOLDEN_SINGLE_BINNS 0.09268152574623513
-#define GOLDEN_ANTIPHASE_ALBACH 0.18785344918292851
-#define GOLDEN_ANTIPHASE_BINNS 0.20013109596372328
-#define GOLDEN_ANTIPHASE_PIPELINE 0.37276841004685124
+// ABT #1460: re-pinned to the exact Fourier series of the 256-segment polyline these tests
+// sample the sine onto (previously the 128-point DFT, which read the pure sine; the polyline's
+// fundamental is sinc^2(pi/256) = 5.0e-5 lower, so the losses move -2.5e-5 relative).
+#define GOLDEN_SINGLE_ALBACH 0.071059513874992264
+#define GOLDEN_SINGLE_BINNS 0.092679199493837766
+#define GOLDEN_ANTIPHASE_ALBACH 0.18784873417059961
+#define GOLDEN_ANTIPHASE_BINNS 0.20012607278960068
+#define GOLDEN_ANTIPHASE_PIPELINE 0.37276289103107252
 
 namespace {
 
