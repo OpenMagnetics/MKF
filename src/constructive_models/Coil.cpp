@@ -4,6 +4,7 @@
 #include "constructive_models/MasMigration.h"
 #include <algorithm>
 #include <map>
+#include <unordered_map>
 #include <set>
 #include <filesystem>
 #include <fstream>
@@ -7307,13 +7308,14 @@ const Section Coil::get_section_by_name(std::string name) const {
     throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Not found section with name:" + name);
 }
 
-const Layer Coil::get_layer_by_name(std::string name) const {
-    if (!get_layers_description()) {
+const Layer Coil::get_layer_by_name(const std::string& name) const {
+    // One copy of the layers (the generated getter returns them by value), not two.
+    const auto layersDescription = get_layers_description();
+    if (!layersDescription) {
         throw CoilNotProcessedException("Coil is missing layers description");
     }
 
-    auto layers = get_layers_description().value();
-    for (auto & layer : layers) {
+    for (const auto& layer : layersDescription.value()) {
         if (layer.get_name() == name) {
             return layer;
         }
@@ -11576,9 +11578,31 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 }
 
 
-                // if (currentSectionRadialHeight > availableRadialHeight) {
-                //     return false;
-                // }
+                // ABT #1471: the rings of a round (toroidal) window stack inward from its wall, so a
+                // stack deeper than the window's radial height runs past the bore's centre. The
+                // ring-capacity count does not stop there (get_number_layers_needed_and_number_physical_turns
+                // keeps adding innermost-sized rings), so 118,109 turns in a 0.635 mm bore became a
+                // 31 m section whose ring area came out negative, hence a negative filling factor
+                // that passed every fit check and sent a 23,600-layer plan down the pipeline. Those
+                // turns do not fit this window: say so, as the other no-fit verdicts here do.
+                {
+                    const double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
+                    const double stackStart = windingOrientation == WindingOrientation::OVERLAPPING
+                        ? currentSectionCenterRadialHeight + _marginsPerSection[marginIndex][0]
+                        : currentSectionCenterRadialHeight;
+                    const double stackDepth = windingOrientation == WindingOrientation::OVERLAPPING
+                        ? currentSectionRadialHeight
+                        : numberLayers * wireWidth;
+                    if (stackStart + stackDepth > availableRadialHeight * (1 + 1e-9)) {
+                        std::ostringstream reason;
+                        reason << "winding '" << get_name(windingIndex) << "' does not fit its round winding window: "
+                               << physicalTurnsThisSection << " turns of a " << wireWidth * 1e3 << " mm wire need "
+                               << numberLayers << " rings, " << (stackStart + stackDepth) * 1e3
+                               << " mm deep, in a window of " << availableRadialHeight * 1e3 << " mm radial height";
+                        _lastFitFailure = reason.str();
+                        return false;
+                    }
+                }
                 if (currentSectionAngle < 0) {
                     return false;
                 }
@@ -16686,12 +16710,38 @@ InsulationMaterial Coil::resolve_insulation_layer_insulation_material(std::strin
     return resolve_insulation_layer_insulation_material(layer);
 }
 
-InsulationMaterial Coil::resolve_insulation_layer_insulation_material(Coil coil, std::string layerName) {
+InsulationMaterial Coil::resolve_insulation_layer_insulation_material(const Coil& coil, const std::string& layerName) {
     auto layer = coil.get_layer_by_name(layerName);
     return coil.resolve_insulation_layer_insulation_material(layer);
 }
 
-InsulationMaterial Coil::resolve_insulation_layer_insulation_material(Layer layer) {
+void Coil::resolve_layers_insulation_materials() {
+    // ABT #1471: magnetic_autocomplete used to call the static resolve_insulation_layer_insulation_material(Coil, name)
+    // per layer, which copied the whole Coil and (twice) its layer vector for every layer: quadratic in the
+    // layer count, and a 23,600-layer plan grew a process to 24 GB. A name resolves to the FIRST layer carrying
+    // it, as get_layer_by_name does, and every material is resolved from the layers as they were before any
+    // was rewritten, so the result is the one the per-name loop produced.
+    auto layersDescription = get_layers_description();
+    if (!layersDescription) {
+        throw CoilNotProcessedException("Coil is missing layers description");
+    }
+    auto& layers = layersDescription.value();
+    std::unordered_map<std::string, size_t> firstLayerIndexByName;
+    for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
+        firstLayerIndexByName.emplace(layers[layerIndex].get_name(), layerIndex);
+    }
+    std::vector<InsulationMaterial> insulationMaterials;
+    insulationMaterials.reserve(layers.size());
+    for (const auto& layer : layers) {
+        insulationMaterials.push_back(resolve_insulation_layer_insulation_material(layers[firstLayerIndexByName.at(layer.get_name())]));
+    }
+    for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
+        layers[layerIndex].set_insulation_material(insulationMaterials[layerIndex]);
+    }
+    set_layers_description(layersDescription);
+}
+
+InsulationMaterial Coil::resolve_insulation_layer_insulation_material(Layer layer) const {
     if (!layer.get_insulation_material()) {
         layer.set_insulation_material(defaults.defaultLayerInsulationMaterial);
         // throw std::runtime_error("Layer is missing material information");

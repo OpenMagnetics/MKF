@@ -16271,3 +16271,61 @@ TEST_CASE("Test_Toroid_Side_By_Side_Custom_Multi_Layer_Intersection_Insulation_F
     check_side_by_side_toroid_insulation_walls(coil, 3);
     settings.reset();
 }
+
+// ABT #1471: the rings of a toroid's round window stack inward from its wall, and the ring count did
+// not stop at the bore's centre. 118,109 turns of a 1.316 mm wire in a 0.635 mm bore became one 31 m
+// section with a NEGATIVE filling factor, which passed every fit check, so wind() went on to lay
+// out ~23,600 layers. The turns do not fit: wind() must say so, fast, with the reason.
+TEST_CASE("Test_Wind_Toroid_Rings_Past_The_Bore_Centre_Do_Not_Fit", "[constructive-model][coil][round-winding-window][abt-1471]") {
+    settings.reset();
+    auto windToroid = [](const std::string& shape, int64_t numberTurns, const std::string& wire) {
+        auto core = OpenMagnetics::Core(json{{"name", shape}, {"functionalDescription", {{"type", "toroidal"}, {"shape", shape},
+                                             {"material", "75-Series 26"}, {"gapping", json::array()}, {"numberStacks", 1}}}});
+        json bobbinJson;
+        to_json(bobbinJson, OpenMagnetics::Bobbin::create_quick_bobbin(core));
+        OpenMagnetics::Coil coil(json{{"bobbin", bobbinJson}, {"functionalDescription", {{{"name", "Primary"}, {"numberTurns", numberTurns},
+                                      {"numberParallels", 1}, {"isolationSide", "primary"}, {"wire", wire}}}}}, false);
+        auto start = std::chrono::steady_clock::now();
+        bool fits = coil.wind();
+        double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        return std::make_tuple(fits, coil, seconds);
+    };
+    auto checkNoBogusSection = [](OpenMagnetics::Coil coil) {
+        auto bobbin = coil.resolve_bobbin();
+        double radialHeight = bobbin.get_processed_description()->get_winding_windows()[0].get_radial_height().value();
+        auto sections = coil.get_sections_description();
+        if (!sections) {
+            return;
+        }
+        for (const auto& section : sections.value()) {
+            INFO(section.get_name());
+            CHECK(section.get_dimensions()[0] <= radialHeight * (1 + 1e-9));
+            if (section.get_filling_factor()) {
+                CHECK(section.get_filling_factor().value() >= 0);
+            }
+        }
+    };
+
+    {   // The Ampere input: not even one ring of this wire fits the bore.
+        auto [fits, coil, seconds] = windToroid("T 2.03/1.27/0.64", 118109, "Round 1.25 - Grade 1");
+        CHECK_FALSE(fits);
+        CHECK_FALSE(coil.get_turns_description());
+        CHECK_FALSE(coil.get_layers_description());
+        CHECK(coil.get_last_fit_failure().find("does not fit its round winding window") != std::string::npos);
+        CHECK(seconds < 30);
+        checkNoBogusSection(coil);
+    }
+    {   // Rings that fit the wall but whose stack runs past the centre: too many turns of a wire that fits.
+        auto [fits, coil, seconds] = windToroid("T 21/12/14", 400, "Round 1.00 - Grade 1");
+        CHECK_FALSE(fits);
+        CHECK(coil.get_last_fit_failure().find("does not fit its round winding window") != std::string::npos);
+        checkNoBogusSection(coil);
+    }
+    {   // Control: a count that fits still winds.
+        auto [fits, coil, seconds] = windToroid("T 21/12/14", 30, "Round 1.00 - Grade 1");
+        CHECK(fits);
+        CHECK(coil.get_turns_description());
+        checkNoBogusSection(coil);
+    }
+    settings.reset();
+}

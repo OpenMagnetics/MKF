@@ -3358,12 +3358,7 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     }
 
     if (magnetic.get_mutable_coil().get_layers_description()) {
-        auto layers = magnetic.get_mutable_coil().get_layers_description().value();
-        for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
-            auto insulationMaterial = Coil::resolve_insulation_layer_insulation_material(magnetic.get_mutable_coil(), layers[layerIndex].get_name());
-            layers[layerIndex].set_insulation_material(insulationMaterial);
-        }
-        magnetic.get_mutable_coil().set_layers_description(layers);
+        magnetic.get_mutable_coil().resolve_layers_insulation_materials();
     }
 
     return magnetic;

@@ -1188,7 +1188,7 @@ class Coil : public MAS::Coil {
         std::vector<Layer> get_layers_by_section(std::string sectionName) const;
         const std::vector<Layer> get_layers_by_type(ElectricalType electricalType) const;
         std::vector<Layer> get_layers_by_winding_index(size_t windingIndex);
-        const Layer get_layer_by_name(std::string name) const;
+        const Layer get_layer_by_name(const std::string& name) const;
 
         std::vector<Turn> get_turns_by_layer(std::string layerName) const;
         std::vector<Turn> get_turns_by_section(std::string sectionName) const;
@@ -1293,9 +1293,13 @@ class Coil : public MAS::Coil {
 
         void set_insulation_layers(std::map<std::pair<size_t, size_t>, std::vector<Layer>> insulationLayers);
 
-        static InsulationMaterial resolve_insulation_layer_insulation_material(Coil coil, std::string layerName);
+        static InsulationMaterial resolve_insulation_layer_insulation_material(const Coil& coil, const std::string& layerName);
         InsulationMaterial resolve_insulation_layer_insulation_material(std::string layerName);
-        InsulationMaterial resolve_insulation_layer_insulation_material(Layer layer);
+        InsulationMaterial resolve_insulation_layer_insulation_material(Layer layer) const;
+        // Sets every layer's insulation material to its resolved material, in one pass over the
+        // layers (ABT #1471). Same result as resolving each layer by name with the static overload
+        // above, which copies the whole coil per call and so was quadratic in the layer count.
+        void resolve_layers_insulation_materials();
         double get_insulation_section_thickness(std::string sectionName);
         static double get_insulation_section_thickness(Coil coil, std::string sectionName);
 

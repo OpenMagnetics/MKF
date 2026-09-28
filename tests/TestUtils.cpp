@@ -1,4 +1,5 @@
 #include <source_location>
+#include <chrono>
 #include "support/Painter.h"
 #include "support/Utils.h"
 #include "physical_models/MagnetizingInductance.h"
@@ -1181,4 +1182,98 @@ TEST_CASE("Autocomplete picks the winding orientation from the WINDOW, not the c
 
     // The two-piece case this rule always got right, as a control: it must not have moved.
     CHECK(orientationAfterAutocomplete("E 55/28/21") == WindingOrientation::OVERLAPPING);
+}
+
+// ABT #1471: magnetic_autocomplete resolved every layer's insulation material through the static
+// resolve_insulation_layer_insulation_material(Coil, name), which copied the whole coil (and twice its
+// layer vector) per layer: quadratic in the layer count. A 23,600-layer plan grew a process to 24 GB.
+namespace {
+    OpenMagnetics::Coil coil_with_synthetic_layers(size_t numberLayers) {
+        std::vector<MAS::Layer> layers;
+        layers.reserve(numberLayers);
+        for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
+            MAS::Layer layer;
+            // Every 7th name repeats an earlier one: a name resolves to its FIRST layer.
+            layer.set_name("layer " + std::to_string(layerIndex % 7 == 6 ? layerIndex - 3 : layerIndex));
+            switch (layerIndex % 4) {
+                case 0: break;                                              // no material: the default
+                case 1: layer.set_insulation_material(std::string("FEP")); break;
+                case 2: layer.set_insulation_material(std::string("ETFE")); break;
+                case 3: layer.set_insulation_material(MAS::InsulationMaterial(find_insulation_material_by_name("Kapton HN"))); break;
+            }
+            layer.set_type(ElectricalType::INSULATION);
+            layers.push_back(layer);
+        }
+        OpenMagnetics::Coil coil;
+        coil.set_layers_description(layers);
+        return coil;
+    }
+}
+
+TEST_CASE("Resolving the layers' insulation materials matches the per-name path", "[support][utils][magnetic-autocomplete][abt-1471]") {
+    auto coil = coil_with_synthetic_layers(300);
+    const auto layersBefore = coil.get_layers_description().value();
+    std::vector<json> expected;
+    for (const auto& layer : layersBefore) {
+        json material;
+        to_json(material, OpenMagnetics::Coil::resolve_insulation_layer_insulation_material(coil, layer.get_name()));
+        expected.push_back(material);
+    }
+    coil.resolve_layers_insulation_materials();
+    const auto layersAfter = coil.get_layers_description().value();
+    REQUIRE(layersAfter.size() == layersBefore.size());
+    for (size_t layerIndex = 0; layerIndex < layersAfter.size(); ++layerIndex) {
+        INFO(layersAfter[layerIndex].get_name());
+        REQUIRE(layersAfter[layerIndex].get_insulation_material());
+        json actual;
+        to_json(actual, std::get<MAS::InsulationMaterial>(layersAfter[layerIndex].get_insulation_material().value()));
+        CHECK(actual == expected[layerIndex]);
+    }
+}
+
+TEST_CASE("Resolving the layers' insulation materials is linear in the layer count", "[support][utils][magnetic-autocomplete][abt-1471]") {
+    // 20,000 layers: one pass takes milliseconds; a copy of the coil per layer takes minutes.
+    auto coil = coil_with_synthetic_layers(20000);
+    auto start = std::chrono::steady_clock::now();
+    coil.resolve_layers_insulation_materials();
+    double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    INFO(seconds << " s");
+    CHECK(seconds < 10);
+    CHECK(coil.get_layers_description()->size() == 20000);
+}
+
+TEST_CASE("Autocomplete of a large wound coil keeps the per-name insulation materials", "[support][utils][magnetic-autocomplete][abt-1471]") {
+    settings.reset();
+    // Two interleaved windings of fine wire on an E core: hundreds of conduction and insulation layers.
+    auto core = OpenMagnetics::Core(json{{"name", "E 65/32/27"}, {"functionalDescription", {{"type", "two-piece set"}, {"shape", "E 65/32/27"},
+                                         {"material", "3C95"}, {"gapping", json::array()}, {"numberStacks", 1}}}});
+    json bobbinJson;
+    to_json(bobbinJson, OpenMagnetics::Bobbin::create_quick_bobbin(core));
+    OpenMagnetics::Coil coil(json{{"bobbin", bobbinJson}, {"functionalDescription", {
+        {{"name", "Primary"}, {"numberTurns", 600}, {"numberParallels", 1}, {"isolationSide", "primary"}, {"wire", "Round 0.2 - Grade 1"}},
+        {{"name", "Secondary"}, {"numberTurns", 600}, {"numberParallels", 1}, {"isolationSide", "secondary"}, {"wire", "Round 0.2 - Grade 1"}}}}}, false);
+    REQUIRE(coil.wind(12));
+    std::vector<json> expected;
+    const auto woundLayers = coil.get_layers_description().value();
+    for (const auto& layer : woundLayers) {
+        json material;
+        to_json(material, OpenMagnetics::Coil::resolve_insulation_layer_insulation_material(coil, layer.get_name()));
+        expected.push_back(material);
+    }
+    INFO(expected.size() << " layers");
+    CHECK(expected.size() > 40);
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    auto autocompleted = magnetic_autocomplete(magnetic);
+    auto layers = autocompleted.get_coil().get_layers_description().value();
+    REQUIRE(layers.size() == expected.size());
+    for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
+        INFO(layers[layerIndex].get_name());
+        json actual;
+        to_json(actual, std::get<MAS::InsulationMaterial>(layers[layerIndex].get_insulation_material().value()));
+        CHECK(actual == expected[layerIndex]);
+    }
+    settings.reset();
 }
