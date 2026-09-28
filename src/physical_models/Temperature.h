@@ -342,8 +342,15 @@ private:
         bool isRoundWire = false;
         bool isPlanar = false;
         std::optional<InsulationWireCoating> wireCoating;
+        // The winding's resolved wire, kept so the film on its outer surface can be read from
+        // MAS where a face actually touches something (surfaceFilm, ABT #1454).
+        std::optional<Wire> wire;
     };
     std::map<size_t, WindingWireProperties> _perWindingWireProps;
+    // The film on a conductor's OUTER surface, the one that rests on a bobbin, core or wrap:
+    // {thickness, thermal conductivity}; thickness 0 means bare metal. For litz it is the
+    // serving when there is one and the outer strands' own enamel when there is not (ABT #1454).
+    static std::pair<double, double> surfaceFilm(const WindingWireProperties& properties, const std::string& nodeName);
     
     double getMinimumDistanceForConduction() const {
         // Threshold for conduction: accounts for actual gap between surfaces

@@ -4404,8 +4404,11 @@ namespace {
 OpenMagnetics::Magnetic abt1454Transformer(const std::string& shape, const std::vector<size_t>& pattern,
                                            size_t repetitions, int64_t primaryTurns, int64_t secondaryTurns,
                                            int64_t secondaryParallels, const std::string& primaryWire,
-                                           const std::string& secondaryWire) {
-    auto wires = std::vector<OpenMagnetics::Wire>({find_wire_by_name(primaryWire), find_wire_by_name(secondaryWire)});
+                                           const std::string& secondaryWire);
+
+OpenMagnetics::Magnetic abt1454Transformer(const std::string& shape, const std::vector<size_t>& pattern,
+                                           size_t repetitions, int64_t primaryTurns, int64_t secondaryTurns,
+                                           int64_t secondaryParallels, std::vector<OpenMagnetics::Wire> wires) {
     auto coil = OpenMagneticsTesting::get_quick_coil({primaryTurns, secondaryTurns}, {1, secondaryParallels}, shape, 1,
                                                      WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
                                                      CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires);
@@ -4415,6 +4418,14 @@ OpenMagnetics::Magnetic abt1454Transformer(const std::string& shape, const std::
     magnetic.set_core(core);
     magnetic.set_coil(coil);
     return magnetic;
+}
+
+OpenMagnetics::Magnetic abt1454Transformer(const std::string& shape, const std::vector<size_t>& pattern,
+                                           size_t repetitions, int64_t primaryTurns, int64_t secondaryTurns,
+                                           int64_t secondaryParallels, const std::string& primaryWire,
+                                           const std::string& secondaryWire) {
+    return abt1454Transformer(shape, pattern, repetitions, primaryTurns, secondaryTurns, secondaryParallels,
+                              {find_wire_by_name(primaryWire), find_wire_by_name(secondaryWire)});
 }
 
 double abt1454MaximumTemperatureAtFixedLoss(OpenMagnetics::Magnetic magnetic, double coreLosses, double windingLosses) {
@@ -4503,4 +4514,39 @@ TEST_CASE("Temperature: ABT 1454 a coil that does not fit its window throws unle
     INFO("EI 6.8/3 non-strict Tmax " << maximumTemperature << " C");
     CHECK(std::isfinite(maximumTemperature));
     CHECK(maximumTemperature > 40.0);
+}
+
+TEST_CASE("Temperature: ABT 1454 an unserved litz rests on its enclosure through its strands' enamel", "[temperature][abt-1454][smoke-test]") {
+    // An unserved litz is {coating: bare} around individually enamelled strands. Its outer surface
+    // is strand enamel, not copper, so its line contact with the bobbin goes through that film.
+    // The enclosure sweep read the BUNDLE coating, took the bundle for bare copper and threw
+    // "bare round wire ... line contact ... diverges" on every unserved litz (Ampere: litz
+    // 120x0.071, 150x0.08, 100x0.063 builds that main evaluates).
+    // Bundle diameters from MKF's own litz tables (IEC 60317, grade 1 strands, one serving layer).
+    const double unservedDiameter = OpenMagnetics::Wire::get_outer_diameter_bare_litz(0.063e-3, 100);
+    const double servedDiameter = OpenMagnetics::Wire::get_outer_diameter_served_litz(0.063e-3, 100);
+    auto litz = [](const std::string& coatingJson, double outerDiameter) {
+        auto data = json::parse(R"j({"name": "Litz 100x0.063 (abt-1454 test)", "type": "litz", "material": "copper",
+            "standard": "IEC 60317", "strand": "Round 0.063 - Grade 1", "numberConductors": 100})j");
+        data["coating"] = json::parse(coatingJson);
+        data["outerDiameter"] = {{"nominal", outerDiameter}};
+        return OpenMagnetics::Wire(data);
+    };
+    auto unserved = litz(R"({"type": "bare"})", unservedDiameter);
+    auto served = litz(R"({"type": "served", "numberLayers": 1})", servedDiameter);
+    const std::string shape = "PQ 26/25";
+
+    auto unservedMagnetic = abt1454Transformer(shape, {0, 1}, 1, 12, 6, 1, {unserved, unserved});
+    auto servedMagnetic = abt1454Transformer(shape, {0, 1}, 1, 12, 6, 1, {served, served});
+    double tUnserved = abt1454MaximumTemperatureAtFixedLoss(unservedMagnetic, 0.3, 0.3);
+    double tServed = abt1454MaximumTemperatureAtFixedLoss(servedMagnetic, 0.3, 0.3);
+    INFO("PQ 26/25 litz 100x0.063: unserved Tmax " << tUnserved << " C, single served " << tServed << " C");
+    CHECK(std::isfinite(tUnserved));
+    CHECK(tUnserved > 40.0);
+    // Same strands, same losses; the serving only adds a ~25-30 um textile film over the strand
+    // enamel the unserved bundle already has. The two must agree within the winding's own
+    // internal gradient (0.3 W over ~10 K/W films), and the served one cannot run cooler by more
+    // than that: it has the thicker film between copper and enclosure.
+    CHECK(std::abs(tUnserved - tServed) < 3.0);
+    CHECK(tUnserved <= tServed + 0.5);
 }

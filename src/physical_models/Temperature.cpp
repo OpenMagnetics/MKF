@@ -478,6 +478,7 @@ void Temperature::extractWireProperties() {
             }
 
             wProps.wireCoating = w.resolve_coating();
+            wProps.wire = w;
             _perWindingWireProps[wIdx] = wProps;
         }
     }
@@ -2964,6 +2965,50 @@ double Temperature::inWindowFraction() const {
     return columnDepth / (columnWidth + columnDepth);
 }
 
+std::pair<double, double> Temperature::surfaceFilm(const WindingWireProperties& properties, const std::string& nodeName) {
+    if (!properties.wire) {
+        throw std::runtime_error("Temperature::surfaceFilm: the winding of " + nodeName + " has no resolved wire.");
+    }
+    const Wire& wire = properties.wire.value();
+    auto isBareCoating = [](const std::optional<InsulationWireCoating>& coating) {
+        return !coating || (coating->get_type() && coating->get_type().value() == InsulationWireCoatingType::BARE);
+    };
+    auto checked = [&](double thickness, double conductivity, const std::string& what) {
+        if (thickness <= 0 || conductivity <= 0) {
+            throw std::runtime_error("Temperature::surfaceFilm: " + what + " of " + nodeName +
+                                     " has no positive thickness or thermal conductivity.");
+        }
+        return std::pair<double, double>{thickness, conductivity};
+    };
+
+    const auto& coating = properties.wireCoating;
+    if (wire.get_type() == WireType::LITZ && isBareCoating(coating)) {
+        // An UNSERVED litz bundle is not bare metal: its outer surface is made of the strands,
+        // and every catalogue strand carries its own enamel. That enamel is the film between
+        // the bundle and whatever it rests on, read from the strand's own MAS record.
+        auto strand = Wire::resolve_strand(wire);
+        auto strandCoating = Wire::resolve_coating(strand);
+        if (!strandCoating) {
+            throw std::runtime_error("Temperature::surfaceFilm: " + nodeName + " is an unserved litz whose strand " +
+                                     strand.get_name().value_or("(unnamed)") + " declares no coating; MAS does not say "
+                                     "whether the outer strands are enamelled or bare copper.");
+        }
+        if (isBareCoating(strandCoating)) {
+            return {0.0, 0.0};  // bare strands, bare bundle: the metal itself touches
+        }
+        // Wire::get_coating_* on a litz read the STRAND enamel (IEC 60317 grade table when the
+        // strand gives no explicit thickness).
+        return checked(Wire::get_coating_thickness(wire), Wire::get_coating_thermal_conductivity(wire),
+                       "the strand enamel");
+    }
+    if (isBareCoating(coating)) {
+        return {0.0, 0.0};
+    }
+    // Enamelled / insulated wire, or the serving of a served litz: the outermost layer.
+    return checked(Wire::get_coating_thickness(coating.value()), Wire::get_coating_thermal_conductivity(coating.value()),
+                   "the coating");
+}
+
 double Temperature::faceToSurfaceResistance(size_t nodeIdx, ThermalNodeFace face, double gap, double share) const {
     const auto& node = _nodes[nodeIdx];
     const auto* q = node.getQuadrant(face);
@@ -3003,18 +3048,12 @@ double Temperature::faceToSurfaceResistance(size_t nodeIdx, ThermalNodeFace face
         throw std::runtime_error("Temperature::faceToSurfaceResistance: no wire properties for the winding of " +
                                  node.name + ".");
     }
-    // Enamel, as the air thickness with the same resistance (thin film, heat flows across it).
+    // Surface film (enamel, serving, or the outer strands' enamel of an unserved litz), as the
+    // air thickness with the same resistance (thin film, heat flows across it).
     double enamelAsAir = 0.0;
-    const auto& coating = propsIt->second.wireCoating;
-    const bool isBare = !coating || (coating->get_type() && coating->get_type().value() == InsulationWireCoatingType::BARE);
-    if (!isBare) {
-        double thickness = Wire::get_coating_thickness(coating.value());
-        double k = Wire::get_coating_thermal_conductivity(coating.value());
-        if (thickness <= 0 || k <= 0) {
-            throw std::runtime_error("Temperature::faceToSurfaceResistance: coating of " + node.name +
-                                     " has no positive thickness or thermal conductivity.");
-        }
-        enamelAsAir = thickness * kAir / k;
+    auto [filmThickness, filmConductivity] = surfaceFilm(propsIt->second, node.name);
+    if (filmThickness > 0) {
+        enamelAsAir = filmThickness * kAir / filmConductivity;
     }
 
     if (node.crossSectionalShape == TurnCrossSectionalShape::ROUND) {
