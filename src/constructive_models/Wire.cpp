@@ -2335,7 +2335,8 @@ namespace OpenMagnetics {
                             break;
                         default:
                             double oldConductingArea = oldWire.calculate_conducting_area();
-                            strand = find_wire_by_dimension(strandConductingDiameter, WireType::ROUND, standard); 
+                            // ABT #1473: strands are enamelled, never an insulated TIW.
+                            strand = find_wire_by_dimension(strandConductingDiameter, WireType::ROUND, standard, true, InsulationWireCoatingType::ENAMELLED);
                             numberConductors = round(oldConductingArea / strandConductingArea);
                             break;
                     }
@@ -2527,7 +2528,10 @@ void Wire::set_bare_coating() {
 Wire Wire::create_quick_litz_wire(double conductingDiameter, int64_t numberStrands) {
     OpenMagnetics::Wire wire;
 
-    auto strand = convert_from_wire_to_strand(find_wire_by_dimension(conductingDiameter, WireType::ROUND, std::nullopt, false));
+    // ABT #1473: a litz strand is an enamelled round wire. The nearest catalogue ROUND wire can be an
+    // insulated TIW (e.g. "Round S38A01TX-1.5", 0.101 mm under ETFE), which has no grade, so the litz's
+    // outer diameter could not be computed and simulate() threw.
+    auto strand = convert_from_wire_to_strand(find_wire_by_dimension(conductingDiameter, WireType::ROUND, std::nullopt, false, InsulationWireCoatingType::ENAMELLED));
 
     InsulationWireCoating coating;
     coating.set_type(InsulationWireCoatingType::SERVED);

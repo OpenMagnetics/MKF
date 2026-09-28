@@ -803,6 +803,31 @@ namespace {
         REQUIRE(conductingWidth == 0.0007);
     }
 
+    // ABT #1473: a quick litz takes its strand from the nearest catalogue ROUND wire. At 0.101, 0.403 and
+    // 0.510 mm the nearest one is an insulated TIW (Rubadue "Round S38A01TX-1.5" is 0.101 mm under ETFE),
+    // whose coating has no grade, so the litz's outer diameter could not be computed and simulate() threw.
+    // A strand must be enamelled; 0.100 mm keeps its catalogue strand.
+    TEST_CASE("Test_Quick_Litz_Strand_Is_Enamelled", "[constructive-model][wire][abt-1473]") {
+        for (double strandDiameter : {0.000101, 0.000403, 0.00051}) {
+            auto litz = OpenMagnetics::Wire::create_quick_litz_wire(strandDiameter, 31);
+            auto strand = OpenMagnetics::Wire(litz.resolve_strand());
+            INFO("strand diameter " << strandDiameter << " -> " << strand.get_name().value_or("?"));
+            auto coating = strand.resolve_coating();
+            REQUIRE(coating);
+            CHECK(coating->get_type() == InsulationWireCoatingType::ENAMELLED);
+            REQUIRE(coating->get_grade());
+            CHECK(litz.calculate_outer_diameter() > strandDiameter);
+        }
+        auto litz100 = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 31);
+        CHECK(OpenMagnetics::Wire(litz100.resolve_strand()).get_name().value() == "Round 0.1 - Grade 1");
+
+        auto insulatedOnly = find_wire_by_dimension(0.000101, WireType::ROUND, std::nullopt, false);
+        CHECK(insulatedOnly.get_name().value() == "Round S38A01TX-1.5");
+        auto enamelled = find_wire_by_dimension(0.000101, WireType::ROUND, std::nullopt, false, InsulationWireCoatingType::ENAMELLED);
+        CHECK(enamelled.resolve_coating()->get_type() == InsulationWireCoatingType::ENAMELLED);
+        CHECK_THROWS_AS(find_wire_by_dimension(0.000101, WireType::FOIL, WireStandard::IEC_60317), WireNotFoundException);
+    }
+
     TEST_CASE("Test_Litz_To_Litz_Equivalent", "[constructive-model][wire][smoke-test]") {
         double effectiveFrequency = 1234981;
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));

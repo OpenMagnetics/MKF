@@ -2794,6 +2794,34 @@ TEST_CASE("Test_WireAdviser_HFInductor_SynthesizesLitz", "[adviser][coil-adviser
     settings.reset();
 }
 
+// ABT #1473: the synthesized litz of the test above lands on a 0.101 mm strand under #1460's exact
+// harmonics. The nearest catalogue round wire there is an insulated TIW with no grade, and simulate()
+// threw in Temperature::extractWireProperties. The strand must be enamelled, and the magnetic simulates.
+TEST_CASE("Test_Synthesized_Litz_0101mm_Strand_Simulates", "[coil-adviser][litz][abt-1473]") {
+    clear_databases();
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.0002);
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("PQ 26/25", gapping, {30}, 1, "3C97");
+    auto litz = OpenMagnetics::Wire::create_quick_litz_wire(0.000101, 31);
+    magnetic.set_coil(OpenMagnetics::Coil::create_quick_coil("PQ 26/25", {30}, {1}, {litz}));
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 10, 0.5, 0, {});
+    { auto dr = inputs.get_design_requirements(); dr.set_insulation(std::nullopt); dr.set_isolation_sides(std::nullopt); inputs.set_design_requirements(dr); }
+    inputs.process();
+
+    OpenMagnetics::Mas mas;
+    mas.set_inputs(inputs);
+    mas.set_magnetic(magnetic);
+    auto sim = MagneticSimulator().simulate(mas);
+    REQUIRE(sim.get_outputs()[0].get_winding_losses());
+    double winding = sim.get_outputs()[0].get_winding_losses()->get_winding_losses();
+    CHECK(std::isfinite(winding));
+    CHECK(winding > 0);
+    settings.reset();
+}
+
 TEST_CASE("Test_CoilAdviser_Real_Winding_Adds_Reversed_Patterns", "[adviser][coil-adviser][real-geometry]") {
     // ABT #609: an ideal winding is radially symmetric under pattern reversal, so get_patterns
     // caps the enumeration at n!/2 and a 2-winding transformer gets ONE pattern (order 01). A

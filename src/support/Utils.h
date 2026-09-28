@@ -156,7 +156,10 @@ CoreShape find_core_shape_by_name(std::string name);
 std::optional<CoreShape> try_find_core_shape_by_name(std::string name);
 bool core_shape_exists(std::string name);
 Wire find_wire_by_name(std::string name);
-Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt, bool obfuscate=true);
+// coatingType: only wires whose coating is of that type are candidates (ABT #1473: a litz strand is an
+// enamelled round wire; an insulated TIW of the same copper diameter has no grade and cannot be a strand).
+// Throws WireNotFoundException when no catalogue wire passes the filters.
+Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt, bool obfuscate=true, std::optional<InsulationWireCoatingType> coatingType=std::nullopt);
 Bobbin find_bobbin_by_name(std::string name);
 InsulationMaterial find_insulation_material_by_name(std::string name);
 WireMaterial find_wire_material_by_name(std::string name);

@@ -1310,7 +1310,7 @@ Wire find_wire_by_name(std::string name) {
 }
 
 
-Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, std::optional<WireStandard> wireStandard, bool obfuscate) {
+Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, std::optional<WireStandard> wireStandard, bool obfuscate, std::optional<InsulationWireCoatingType> coatingType) {
     if (wireDatabase.empty()) {
         load_wires();
     }
@@ -1320,6 +1320,7 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
     // call copy-constructed every Wire (large objects with strings/optionals)
     // into a fresh vector on every call. Iterate the database directly.
     double minimumDistance = DBL_MAX;
+    bool found = false;
     Wire chosenWire;
     std::vector<const Wire*> possibleWires;
 
@@ -1334,6 +1335,12 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
         }
         if (wireType && wire.get_type() != wireType) {
             continue;
+        }
+        if (coatingType) {
+            auto coating = Wire::resolve_coating(wire);
+            if (!coating || coating->get_type() != coatingType.value()) {
+                continue;
+            }
         }
 
         double distance = 0;
@@ -1374,6 +1381,7 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
         }
 
         if (distance < minimumDistance) {
+            found = true;
             possibleWires.clear();
             minimumDistance = distance;
             chosenWire = wire;
@@ -1381,6 +1389,11 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
         else if (distance == minimumDistance) {
             possibleWires.push_back(&wire);
         }
+    }
+
+    if (!found) {
+        throw WireNotFoundException("no catalogue wire matches dimension " + std::to_string(dimension) +
+                                    " under the requested type, standard and coating filters");
     }
 
     double minimumOuterDimension = DBL_MAX;
