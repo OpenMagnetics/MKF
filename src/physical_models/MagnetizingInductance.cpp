@@ -9,6 +9,7 @@
 #include "constructive_models/CorePiece.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
+#include <sstream>
 
 #include <cmath>
 #include <filesystem>
@@ -1071,8 +1072,61 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
         }
         numberTurnsPrimary = bestTurns;
     }
+    numberTurnsPrimary = std::max(1, numberTurnsPrimary);
 
-    return std::max(1, numberTurnsPrimary);
+    // ABT #1470: the Newton step above assumes L proportional to N^2 and stops after a fixed
+    // budget; the count it returned was never checked against the model it inverts. Under a DC
+    // bias that rolls a powder core's permeability off, L grows far slower than N^2 (a sendust
+    // 75-Series 26 T 2.03/1.27/0.64 at 10 A dc: L ~ N^0.33 above a few hundred turns), so the
+    // six steps walked to 118,109 turns and returned it while the model's inductance there was
+    // 7.1 uH against a 17.6 uH minimum. Verify the answer: it must be finite, must not need a
+    // core permeability below vacuum's (that is a core driven past saturation, where no turn
+    // count buys inductance), and must actually meet the requirement.
+    auto describeTarget = [&]() {
+        std::ostringstream text;
+        text << "core '" << core.get_name().value_or("unnamed") << "' cannot reach the magnetizing inductance of "
+             << desiredMagnetizingInductance * 1e6 << " uH";
+        return text.str();
+    };
+    double finalInductance = inductanceAtTurns(numberTurnsPrimary);
+    if (!std::isfinite(finalInductance) || finalInductance <= 0) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                   describeTarget() + ": the inductance model returned " + std::to_string(finalInductance) +
+                                   " H at " + std::to_string(numberTurnsPrimary) + " turns");
+    }
+    // The same winding on the core as if its material had relative permeability 1: nothing
+    // magnetic can carry less flux than vacuum, so an operating inductance below it is the
+    // DC-bias roll-off extrapolated past saturation, not a design.
+    double vacuumReluctance = reluctanceModel->get_core_reluctance(core, 1.0).get_core_reluctance();
+    double vacuumInductance = pow(numberTurnsPrimary, 2) / vacuumReluctance;
+    if (finalInductance < vacuumInductance) {
+        std::ostringstream reason;
+        reason << describeTarget() << ": at " << numberTurnsPrimary << " turns the DC bias drives the core past saturation "
+               << "(operating inductance " << finalInductance * 1e6 << " uH is below the " << vacuumInductance * 1e6
+               << " uH the same turns give with a relative permeability of 1)";
+        throw CalculationException(ErrorCode::CALCULATION_DIVERGED, reason.str());
+    }
+    bool meetsRequirement;
+    if (preferredValue == DimensionalValues::MINIMUM) {
+        meetsRequirement = finalInductance >= desiredMagnetizingInductance;
+    }
+    else {
+        // Integer turns bracket the target: the neighbours' inductances straddle it. At one
+        // turn a smaller target is the best any winding can do, and that stays an answer.
+        double lower = numberTurnsPrimary > 1 ? inductanceAtTurns(numberTurnsPrimary - 1) : 0;
+        double upper = inductanceAtTurns(numberTurnsPrimary + 1);
+        meetsRequirement = std::min(lower, upper) <= desiredMagnetizingInductance &&
+                           desiredMagnetizingInductance <= std::max(lower, upper);
+    }
+    if (!meetsRequirement) {
+        std::ostringstream reason;
+        reason << describeTarget() << ": the turns solve stopped at " << numberTurnsPrimary << " turns with "
+               << finalInductance * 1e6 << " uH, and the DC-bias permeability roll-off keeps the inductance "
+               << "from growing with the square of the turns, so more turns do not converge on the target";
+        throw CalculationException(ErrorCode::CALCULATION_DIVERGED, reason.str());
+    }
+
+    return numberTurnsPrimary;
 }
 
 int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Core core, Inputs* inputs, DimensionalValues preferredValue) {

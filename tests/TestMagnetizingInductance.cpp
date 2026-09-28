@@ -13,6 +13,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -2020,4 +2021,62 @@ TEST_CASE("Test_Molded_Per_Region_Inductance", "[physical-model][magnetizing-ind
     CHECK_THAT(rippleOutput.get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinRel(unbiased, 1e-3));
     CHECK_THAT(offsetOutput.get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinRel(biased, 1e-3));
     settings.reset();
+}
+
+// ABT #1470: a DC bias that rolls a powder core's permeability off makes L grow far slower than N^2.
+// The turns solve assumed N^2, stopped after a fixed Newton budget and returned 118,109 turns for
+// 22 uH on a sendust T 2.03/1.27/0.64 at 10 A dc, where the model's inductance was 7.1 uH (below
+// the 17.6 uH minimum). A consumer wound that count and took the machine down (#1471). It must throw.
+TEST_CASE("Test_Number_Turns_From_Inductance_Unreachable_Under_Dc_Bias_Throws", "[physical-model][magnetizing-inductance][abt-1470]") {
+    const double frequency = 100e3;
+    const int samples = 256;
+    json time = json::array(), data = json::array();
+    for (int k = 0; k <= samples; ++k) {   // buck-like triangle: 10 A dc, 4 A peak to peak
+        time.push_back(k / (samples * frequency));
+        data.push_back(10.0 + (k < samples / 2 ? -2.0 + 4.0 * k / (samples / 2) : 2.0 - 4.0 * (k - samples / 2) / (samples / 2)));
+    }
+    OpenMagnetics::Inputs inputs(json{
+        {"designRequirements", {{"magnetizingInductance", {{"nominal", 22e-6}, {"minimum", 17.6e-6}, {"maximum", 26.4e-6}}},
+                                {"turnsRatios", json::array()}, {"isolationSides", {"primary"}}, {"topology", "buckConverter"}}},
+        {"operatingPoints", {{{"name", "op 0"}, {"conditions", {{"ambientTemperature", 25}}},
+                              {"excitationsPerWinding", {{{"name", "Primary"}, {"frequency", frequency},
+                                                          {"current", {{"waveform", {{"time", time}, {"data", data}}}}}}}}}}}});
+    for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
+        for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+            auto current = excitation.get_current().value();
+            current.set_processed(OpenMagnetics::Inputs::calculate_basic_processed_data(current.get_waveform().value()));
+            excitation.set_current(current);
+        }
+    }
+    auto magneticFor = [](const std::string& shape) {
+        return magnetic_autocomplete(OpenMagnetics::Magnetic(json{
+            {"core", {{"name", shape}, {"functionalDescription", {{"type", "toroidal"}, {"shape", shape}, {"material", "75-Series 26"},
+                                                                  {"gapping", json::array()}, {"numberStacks", 1}}}}},
+            {"coil", {{"bobbin", "Basic"}, {"functionalDescription", {{{"name", "Primary"}, {"numberTurns", 1}, {"numberParallels", 1},
+                                                                        {"isolationSide", "primary"}, {"wire", "Round 1.25 - Grade 1"}}}}}}}));
+    };
+    MagnetizingInductance magnetizingInductance(ReluctanceModels::ZHANG);
+
+    for (const std::string shape : {"T 2.03/1.27/0.64", "T 3.94/2.24/1.8"}) {
+        INFO(shape);
+        auto magnetic = magneticFor(shape);
+        auto start = std::chrono::steady_clock::now();
+        CHECK_THROWS_AS(magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &inputs),
+                        CalculationException);
+        CHECK_THROWS_AS(magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &inputs, DimensionalValues::MINIMUM),
+                        CalculationException);
+        CHECK(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < 30);
+    }
+
+    // Control: a core that does reach the target keeps an answer, and that answer meets it.
+    auto magnetic = magneticFor("T 21/12/14");
+    int numberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &inputs);
+    auto coil = magnetic.get_coil();
+    coil.get_mutable_functional_description()[0].set_number_turns(numberTurns);
+    auto operatingPoint = inputs.get_operating_point(0);
+    double inductance = resolve_dimensional_values(
+        magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), coil, &operatingPoint).get_magnetizing_inductance());
+    INFO(numberTurns << " turns, " << inductance * 1e6 << " uH");
+    CHECK(inductance >= 17.6e-6);
+    CHECK(inductance <= 26.4e-6);
 }
