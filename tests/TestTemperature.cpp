@@ -9,6 +9,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -4481,4 +4482,25 @@ TEST_CASE("Temperature: ABT 1454 sandwich and plain interleave agree at fixed lo
     INFO("P-S " << tPs << " C, P-S-P " << tPsp << " C, P-S-P-S " << tPsps << " C");
     CHECK(std::abs(tPsp - tPs) < kLayoutBandK);
     CHECK(std::abs(tPsps - tPs) < kLayoutBandK);
+}
+
+TEST_CASE("Temperature: ABT 1454 a coil that does not fit its window throws unless strict geometry is off", "[temperature][abt-1454][smoke-test]") {
+    // EI 6.8/3 with a 10 + 5 turn Round 0.2 coil: the winder reports it does not fit
+    // (are_sections_and_layers_fitting() is false) and a turn overlaps its enclosure by ~0.58 mm.
+    // Strict (default): the contact path has no real geometry, so the network throws. Non-strict:
+    // that face gets no conduction path, an ERROR is logged, and the rest of the network solves.
+    const std::string shape = "EI 6.8/3/0.8/6.8/1.48/6/3.32";
+    auto magnetic = abt1454Transformer(shape, {0, 1}, 1, 10, 5, 1, "Round 0.2 - Grade 1", "Round 0.2 - Grade 1");
+    REQUIRE_FALSE(magnetic.get_mutable_coil().are_sections_and_layers_fitting());
+
+    REQUIRE(settings.get_thermal_network_strict_geometry());
+    REQUIRE_THROWS_WITH(abt1454MaximumTemperatureAtFixedLoss(magnetic, 0.3, 0.3),
+                        Catch::Matchers::ContainsSubstring("overlaps its enclosure"));
+
+    SettingsGuard<bool> lenient(Settings::GetInstance(), &Settings::get_thermal_network_strict_geometry,
+                                &Settings::set_thermal_network_strict_geometry, false);
+    double maximumTemperature = abt1454MaximumTemperatureAtFixedLoss(magnetic, 0.3, 0.3);
+    INFO("EI 6.8/3 non-strict Tmax " << maximumTemperature << " C");
+    CHECK(std::isfinite(maximumTemperature));
+    CHECK(maximumTemperature > 40.0);
 }

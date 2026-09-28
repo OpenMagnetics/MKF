@@ -3092,9 +3092,15 @@ void Temperature::createWindingToEnclosureConnections() {
         if (share <= 0) return;
         if (connectedQuadrants.count({item.nodeIdx, face})) return;  // already has its conduction path
         if (gap < -kEnclosureGeometryTolerance) {
-            throw std::runtime_error("Temperature::createWindingToEnclosureConnections: " + _nodes[item.nodeIdx].name +
-                                     " overlaps its enclosure by " + std::to_string(-gap * 1e3) + " mm (" +
-                                     std::string(magic_enum::enum_name(face)) + ").");
+            std::string message = "Temperature::createWindingToEnclosureConnections: " + _nodes[item.nodeIdx].name +
+                                  " overlaps its enclosure by " + std::to_string(-gap * 1e3) + " mm (" +
+                                  std::string(magic_enum::enum_name(face)) + ").";
+            if (settings.get_thermal_network_strict_geometry()) {
+                throw std::runtime_error(message);
+            }
+            OM_ERROR(message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " +
+                     _nodes[target].name + ".");
+            return;
         }
         gap = std::max(gap, 0.0);
         const auto* q = _nodes[item.nodeIdx].getQuadrant(face);
@@ -3198,9 +3204,15 @@ void Temperature::createWindingToCoreAcrossWindowConnections(size_t ambientIdx) 
         }
         if (target == npos || sweepShare <= 0) continue;
         if (gap < -kEnclosureGeometryTolerance) {
-            throw std::runtime_error("Temperature::createWindingToCoreAcrossWindowConnections: " +
-                                     _nodes[item.nodeIdx].name + " overlaps the core window edge by " +
-                                     std::to_string(-gap * 1e3) + " mm.");
+            std::string message = "Temperature::createWindingToCoreAcrossWindowConnections: " +
+                                  _nodes[item.nodeIdx].name + " overlaps the core window edge by " +
+                                  std::to_string(-gap * 1e3) + " mm.";
+            if (settings.get_thermal_network_strict_geometry()) {
+                throw std::runtime_error(message);
+            }
+            OM_ERROR(message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " +
+                     _nodes[target].name + ".");
+            continue;
         }
         gap = std::max(gap, 0.0);
         const auto* q = _nodes[item.nodeIdx].getQuadrant(convection.quadrantFrom);

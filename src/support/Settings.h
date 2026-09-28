@@ -213,6 +213,13 @@ class Settings
         // (ABT #13). The evaluation temperature is max(operating, this), so an
         // already-hotter spec is never made cooler. Default 100 C (Maniktala Ch.5).
         double _coreAdviserSaturationDeratingTemperature = 100.0;
+
+        // ABT #1454: what the thermal network does with a wound turn whose drawn geometry
+        // overlaps its enclosure (bobbin column/flange, core window edge) — a coil that does not
+        // fit its window. TRUE (default): throw, because the contact path has no real geometry.
+        // FALSE: skip that turn's conduction path to the enclosure, log an ERROR naming the turn
+        // and the overlap, and solve the rest of the network.
+        bool   _thermalNetworkStrictGeometry = true;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
@@ -575,6 +582,9 @@ class Settings
         void   set_core_adviser_saturation_margin(double value);
         double get_core_adviser_saturation_derating_temperature() const;
         void   set_core_adviser_saturation_derating_temperature(double value);
+
+        bool   get_thermal_network_strict_geometry() const;
+        void   set_thermal_network_strict_geometry(bool value);
 
         GappingOptimizationStrategy get_gapping_strategy() const;
         void set_gapping_strategy(GappingOptimizationStrategy value);

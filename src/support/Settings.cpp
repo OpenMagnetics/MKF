@@ -180,6 +180,8 @@ namespace OpenMagnetics {
         _coreAdviserSaturationMargin = 1.2;
         _coreAdviserSaturationDeratingTemperature = 100.0;
 
+        _thermalNetworkStrictGeometry = true;
+
         _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;
         _wireAdviserIncludeRectangular = true;
@@ -985,6 +987,13 @@ namespace OpenMagnetics {
                 "temperature in C (got " + std::to_string(value) + ").");
         }
         _coreAdviserSaturationDeratingTemperature = value;
+    }
+
+    bool Settings::get_thermal_network_strict_geometry() const {
+        return _thermalNetworkStrictGeometry;
+    }
+    void Settings::set_thermal_network_strict_geometry(bool value) {
+        _thermalNetworkStrictGeometry = value;
     }
 
     GappingOptimizationStrategy Settings::get_gapping_strategy() const {
