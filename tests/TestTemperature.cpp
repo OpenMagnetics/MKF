@@ -3379,7 +3379,10 @@ TEST_CASE("Temperature: concentric_transformer", "[temperature][smoke-test]") {
         // core_0: 63.50°C (from Icepak)
         // core_1: 67.88°C (from Icepak)
         REQUIRE(tempsByType.at("core") <= 84.85); // Max Icepak: 67.88°C + 25% tolerance
-        REQUIRE(tempsByType.at("core") >= 50.91); // Min Icepak: 67.88°C - 25% tolerance
+        // Min Icepak: 67.88°C - 25% tolerance = 50.91. ABT #1454/#1459 (winding->bobbin/core
+        // conduction, real core exterior) gives 48.62, 4.5 % below that band, while the other
+        // Icepak cases moved toward their references; Alf approved 48.0 (2026-09-28).
+        REQUIRE(tempsByType.at("core") >= 48.0);
     }
     
     SECTION("Bobbin temperature validation against Icepak") {
@@ -3984,14 +3987,19 @@ TEST_CASE("Temperature: OMFEM 2D FEM cross-check battery over MAS examples", "[t
                 REQUIRE(mkfMaxRise <= kMinRiseForRatioK * kMaxRiseRatioBand);
             } else {
                 const double maxRatio = mkfMaxRise / femMaxRise;
-                REQUIRE(maxRatio > 1.0 / kMaxRiseRatioBand);
+                // ER 9.5 current sense: OMFEM's 2D planar E-type setup is a half section extruded
+                // by the column depth, with 48.6 mm2 of exterior against the real core's 183 mm2
+                // (3.8x short), so it reads hot (ABT #1475). With ABT #1454/#1459's real exterior
+                // MKF sits at 0.223; Alf approved a 0.20 floor for this case only (2026-09-28).
+                const double minRatio = (name == "13_current_sense_er95_n87.json") ? 0.20 : 1.0 / kMaxRiseRatioBand;
+                REQUIRE(maxRatio > minRatio);
                 REQUIRE(maxRatio < kMaxRiseRatioBand);
                 // Core comparison only where the core carries the heat: on
                 // winding-dominated cases the FEM's island winding starves its core
                 // (measured ~8x apart on the flyback) and the ratio means nothing.
                 if (pCore >= 0.6 * (pCore + pCu) && femCoreRise >= kMinRiseForRatioK) {
                     const double coreRatio = mkfCoreRise / femCoreRise;
-                    REQUIRE(coreRatio > 1.0 / kMaxRiseRatioBand);
+                    REQUIRE(coreRatio > minRatio);  // same per-case floor: ER 9.5 is core-only (0.226)
                     REQUIRE(coreRatio < kMaxRiseRatioBand);
                 }
             }

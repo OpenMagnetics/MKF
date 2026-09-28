@@ -257,7 +257,7 @@ const std::map<std::string, Snapshot> kSnapshots = {
     // LEAKAGE_INDUCTANCE no longer returns DBL_MAX sentinel — the error path
     // is now a throws-contract test below (see TEST_CASE "LEAKAGE_INDUCTANCE
     // throws on missing turns description"). No snapshot entry needed.
-    {"TEMPERATURE",                                     {true,  28.050433964481037}},  // 2026-08-17 ABT #785: +3.3 % — Round 1.00 has more DC resistance than Round 2.00
+    {"TEMPERATURE",                                     {true,  26.425983545124080}},  // 2026-08-17 ABT #785: +3.3 % — Round 1.00 has more DC resistance than Round 2.00. 2026-09-28 ABT #1454/#1459: 28.0504 → 26.4260 (−5.8 %), the winding now conducts to bobbin/core and the core has its real exterior surface
     {"TURN_COUNT",                                      {true,  2.1000000000000001}},
     // FRINGING_FACTOR returns score=1.0 on every non-crashing path
     // (MagneticFilter.cpp:2079, 2082, 2089, 2092). After fix A the factory
