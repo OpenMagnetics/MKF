@@ -744,6 +744,14 @@ target_include_directories(MKF PUBLIC
 # add_executable(magnetic_adviser "src/advisers/MagneticAdviser.cpp")
 # target_link_libraries(magnetic_adviser MKF)
 
+# Magnetic Blade Runner CLI: physics sweep of a MAS core_materials.ndjson (+ advanced file).
+# Exits 1 when any record is IMPOSSIBLE. Not built for WebAssembly.
+if(NOT EMSCRIPTEN)
+    add_executable(mkf_material_validator EXCLUDE_FROM_ALL "tools/MaterialValidatorCli.cpp")
+    target_link_libraries(mkf_material_validator PUBLIC MKF)
+    target_include_directories(mkf_material_validator PUBLIC "${PROJECT_SOURCE_DIR}/src/")
+endif()
+
 if(INCLUDE_MKF_TESTS)
     file(GLOB ALL_TEST_SOURCES CONFIGURE_DEPENDS "tests/*.cpp")
     

@@ -8,6 +8,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/CircuitSimulatorInterface.h"
 #include "physical_models/Reluctance.h"
+#include "support/MaterialValidator.h"
 #include "TestingUtils.h"
 #include "Fixtures.h"
 #include <magic_enum.hpp>
@@ -4129,4 +4130,270 @@ TEST_CASE("Test_Roshen_Eddy_Current_Laminated_Without_Thickness_Throws", "[physi
 
     CHECK_THROWS(CoreLossesRoshenModel().get_eddy_current_losses_density(core, excitation, 1.15e-6));
     settings.reset();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Magnetic Blade Runner: physics validation of MAS core-material records (MaterialValidator).
+// Each must-fire case is proven by the revert harness: running it with
+// MKF_MATERIAL_VALIDATOR_SUPPRESS=<CODE> must turn it red.
+namespace {
+json material_record(const std::string& name) {
+    auto path = std::filesystem::path{__FILE__}.parent_path().parent_path() / "MAS" / "data" / "core_materials.ndjson";
+    std::ifstream in(path);
+    REQUIRE(in.good());
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.find("\"" + name + "\"") == std::string::npos) continue;
+        json record = json::parse(line);
+        if (record["name"] == name) return record;
+    }
+    FAIL("material " << name << " not in " << path);
+    return json();
+}
+
+size_t count_findings(const MaterialVerdict& verdict, const std::string& code, std::optional<MaterialFindingSeverity> severity = std::nullopt) {
+    size_t n = 0;
+    for (const auto& f : verdict.findings) {
+        if (f.code == code && (!severity || f.severity == *severity)) ++n;
+    }
+    return n;
+}
+
+bool has_skip(const MaterialVerdict& verdict, const std::string& prefix) {
+    for (const auto& s : verdict.skipped) {
+        if (s.rfind(prefix, 0) == 0) return true;
+    }
+    return false;
+}
+
+std::string describe(const MaterialVerdict& verdict) {
+    json j = verdict;
+    return j.dump(1);
+}
+} // namespace
+
+TEST_CASE("Test_Material_Validator_Real_Power_Ferrites_Are_Clean", "[material-validator]") {
+    settings.reset();
+    MaterialValidator validator;
+    for (std::string name : {"3C95", "N87", "3F36"}) {
+        auto verdict = validator.validate(material_record(name));
+        INFO(describe(verdict));
+        CHECK(verdict.valid);
+        CHECK(verdict.findings.empty());
+        CHECK(verdict.materialClass == "MnZn power ferrite");
+    }
+}
+
+TEST_CASE("Test_Material_Validator_Abt1456_Out_Of_Range_Grades", "[material-validator]") {
+    // TP5H / DMR52 / DMR51W / P61: Steinmetz fits span 0.5..5 MHz only, so the class point
+    // 100 kHz / 200 mT / 100 C is an extrapolation.
+    settings.reset();
+    MaterialValidator validator;
+    for (std::string name : {"TP5H", "DMR52", "DMR51W", "P61"}) {
+        auto verdict = validator.validate(material_record(name));
+        INFO(name << "\n" << describe(verdict));
+        CHECK(count_findings(verdict, "MAT_LOSS_OUT_OF_RANGE", MaterialFindingSeverity::SUSPICIOUS) == 1);
+    }
+}
+
+TEST_CASE("Test_Material_Validator_Abt1456_P63_Below_Envelope", "[material-validator]") {
+    // P63's first range claims 1 kHz..1 MHz; at 100 kHz / 200 mT / 100 C it gives far less than
+    // the best published MnZn power grade (PC47 250 kW/m3).
+    settings.reset();
+    auto verdict = MaterialValidator().validate(material_record("P63"));
+    INFO(describe(verdict));
+    CHECK(count_findings(verdict, "MAT_LOSS_ENVELOPE", MaterialFindingSeverity::SUSPICIOUS) >= 1);
+}
+
+TEST_CASE("Test_Material_Validator_Abt1456_Temperature_Coefficients_Missing", "[material-validator]") {
+    // KL11F / KL7F / KL9F carry ct0/ct1 but no ct2: MKF drops the temperature dependence.
+    settings.reset();
+    MaterialValidator validator;
+    for (std::string name : {"KL11F", "KL7F", "KL9F"}) {
+        auto verdict = validator.validate(material_record(name));
+        INFO(name << "\n" << describe(verdict));
+        CHECK(count_findings(verdict, "MAT_LOSS_TEMPERATURE", MaterialFindingSeverity::SUSPICIOUS) == 1);
+    }
+}
+
+TEST_CASE("Test_Material_Validator_Hysteresis_Bound_P63_Points", "[material-validator]") {
+    // The advanced P63 points at 1 kHz carry the 1 MHz value (80 kW/m3 at 50 mT): 80 J/m3 per cycle
+    // against 4*Hc*B = 4 * 50.28 * 0.05 = 10 J/m3.
+    settings.reset();
+    std::vector<MaterialLossPoint> points = {{1e3, 0.05, 25, 80e3, "manufacturer"}};
+    auto verdict = MaterialValidator().validate(material_record("P63"), points);
+    INFO(describe(verdict));
+    CHECK(count_findings(verdict, "MAT_LOSS_HYSTERESIS_BOUND", MaterialFindingSeverity::IMPOSSIBLE) == 1);
+    CHECK_FALSE(verdict.valid);
+
+    // A believable 1 kHz point (a fraction of the bound) stays quiet.
+    std::vector<MaterialLossPoint> fine = {{1e3, 0.05, 25, 5.0, "manufacturer"}};
+    auto quiet = MaterialValidator().validate(material_record("P63"), fine);
+    CHECK(count_findings(quiet, "MAT_LOSS_HYSTERESIS_BOUND") == 0);
+}
+
+TEST_CASE("Test_Material_Validator_Points_Inconsistent", "[material-validator]") {
+    // DMR51W's 100 C B-sweep at 1 MHz reaches 1.32 MW/m3 at 58 mT, while its temperature-sweep
+    // points at 1 MHz / 50 mT / ~100 C say ~90 kW/m3.
+    settings.reset();
+    std::vector<MaterialLossPoint> points = {{1e6, 0.030, 100, 300e3, "manufacturer"},
+                                             {1e6, 0.058, 100, 1.32e6, "manufacturer"},
+                                             {1e6, 0.050, 99, 90e3, "manufacturer"}};
+    auto verdict = MaterialValidator().validate(material_record("DMR51W"), points);
+    INFO(describe(verdict));
+    CHECK(count_findings(verdict, "MAT_LOSS_POINTS_INCONSISTENT", MaterialFindingSeverity::IMPOSSIBLE) >= 1);
+
+    std::vector<MaterialLossPoint> consistent = {{1e6, 0.030, 100, 300e3, "manufacturer"},
+                                                 {1e6, 0.058, 100, 1.32e6, "manufacturer"},
+                                                 {1e6, 0.050, 99, 950e3, "manufacturer"}};
+    auto quiet = MaterialValidator().validate(material_record("DMR51W"), consistent);
+    CHECK(count_findings(quiet, "MAT_LOSS_POINTS_INCONSISTENT") == 0);
+}
+
+TEST_CASE("Test_Material_Validator_Synthetic_Loss_Times_1000_Is_Impossible", "[material-validator]") {
+    settings.reset();
+    auto record = material_record("N87");
+    for (auto& method : record["volumetricLosses"]["default"]) {
+        if (method.is_object() && method["method"] == "steinmetz") {
+            for (auto& range : method["ranges"]) range["k"] = range["k"].get<double>() * 1000;
+        }
+    }
+    record["name"] = "N87 k x1000";
+    auto verdict = MaterialValidator().validate(record);
+    INFO(describe(verdict));
+    CHECK(count_findings(verdict, "MAT_LOSS_ENVELOPE", MaterialFindingSeverity::IMPOSSIBLE) >= 1);
+    CHECK_FALSE(verdict.valid);
+}
+
+TEST_CASE("Test_Material_Validator_Monotonic_Frequency", "[material-validator]") {
+    // A negative alpha makes the loss FALL with frequency.
+    settings.reset();
+    auto record = material_record("N87");
+    for (auto& method : record["volumetricLosses"]["default"]) {
+        if (method.is_object() && method["method"] == "steinmetz") {
+            for (auto& range : method["ranges"]) range["alpha"] = -0.5;
+        }
+    }
+    record["name"] = "N87 alpha -0.5";
+    auto verdict = MaterialValidator().validate(record);
+    INFO(describe(verdict));
+    CHECK(count_findings(verdict, "MAT_LOSS_MONOTONIC", MaterialFindingSeverity::IMPOSSIBLE) == 1);
+}
+
+TEST_CASE("Test_Material_Validator_Saturation_Above_Iron_Is_Impossible", "[material-validator]") {
+    settings.reset();
+    auto record = material_record("N87");
+    record["saturation"][0]["magneticFluxDensity"] = 3.0;
+    record["name"] = "N87 Bs 3 T";
+    auto verdict = MaterialValidator().validate(record);
+    INFO(describe(verdict));
+    CHECK(count_findings(verdict, "MAT_BSAT_CEILING", MaterialFindingSeverity::IMPOSSIBLE) == 1);
+    CHECK(count_findings(verdict, "MAT_BSAT_CLASS", MaterialFindingSeverity::SUSPICIOUS) == 1);
+    CHECK_FALSE(verdict.valid);
+}
+
+TEST_CASE("Test_Material_Validator_Curie_And_Permeability", "[material-validator]") {
+    settings.reset();
+    auto record = material_record("N87");
+    record["curieTemperature"] = 60;  // below the class minimum AND below its own 100 C saturation point
+    record["name"] = "N87 Tc 60";
+    auto verdict = MaterialValidator().validate(record);
+    INFO(describe(verdict));
+    CHECK(count_findings(verdict, "MAT_CURIE", MaterialFindingSeverity::SUSPICIOUS) == 1);
+    CHECK(count_findings(verdict, "MAT_CURIE_SATURATION", MaterialFindingSeverity::IMPOSSIBLE) == 1);
+
+    auto lowPermeability = material_record("N87");
+    lowPermeability["permeability"]["initial"] = json::array({json{{"temperature", 25}, {"value", 0.5}}});
+    lowPermeability["name"] = "N87 mu 0.5";
+    auto low = MaterialValidator().validate(lowPermeability);
+    INFO(describe(low));
+    CHECK(count_findings(low, "MAT_PERM", MaterialFindingSeverity::IMPOSSIBLE) == 1);
+
+    auto highPermeability = material_record("N87");
+    highPermeability["permeability"]["initial"] = json::array({json{{"temperature", 25}, {"value", 100000}}});
+    highPermeability["name"] = "N87 mu 100000";
+    auto high = MaterialValidator().validate(highPermeability);
+    INFO(describe(high));
+    CHECK(count_findings(high, "MAT_PERM", MaterialFindingSeverity::SUSPICIOUS) == 1);
+}
+
+TEST_CASE("Test_Material_Validator_Loss_Factor_And_Parse", "[material-validator]") {
+    settings.reset();
+    json broken = json{{"name", "not a material"}, {"type", "commercial"}};
+    MaterialVerdict verdict;
+    REQUIRE_NOTHROW(verdict = MaterialValidator().validate(broken));
+    CHECK(count_findings(verdict, "MAT_PARSE", MaterialFindingSeverity::IMPOSSIBLE) == 1);
+    CHECK_FALSE(verdict.valid);
+
+    auto record = material_record("N87");
+    record["volumetricLosses"]["default"].push_back(json{{"method", "lossFactor"}, {"factors", json::array({json{{"frequency", 1e6}, {"value", -0.01}}})}});
+    record["name"] = "N87 negative loss factor";
+    auto negative = MaterialValidator().validate(record);
+    INFO(describe(negative));
+    CHECK(count_findings(negative, "MAT_LOSS_FACTOR", MaterialFindingSeverity::IMPOSSIBLE) == 1);
+}
+
+TEST_CASE("Test_Material_Validator_Skips_Are_Reported", "[material-validator]") {
+    settings.reset();
+    // A powder of unstated composition cannot be classed: every class-dependent check says so.
+    auto record = material_record("N87");
+    record["material"] = "powder";
+    record["materialComposition"] = "proprietary";
+    record["name"] = "unclassed powder";
+    auto verdict = MaterialValidator().validate(record);
+    INFO(describe(verdict));
+    CHECK(verdict.materialClass.empty());
+    CHECK(has_skip(verdict, "MAT_LOSS_ENVELOPE: unclassified"));
+    CHECK(has_skip(verdict, "MAT_PERM: unclassified"));
+    CHECK(has_skip(verdict, "MAT_BSAT_CLASS: unclassified"));
+    CHECK(has_skip(verdict, "MAT_CURIE: unclassified"));
+
+    // No loss model at all: the loss rules report themselves skipped, not passed.
+    auto noModel = material_record("N87");
+    noModel["volumetricLosses"] = json{{"default", json::array()}};
+    noModel["name"] = "N87 without losses";
+    auto quiet = MaterialValidator().validate(noModel);
+    INFO(describe(quiet));
+    CHECK(has_skip(quiet, "MAT_LOSS_EVAL:"));
+    CHECK(has_skip(quiet, "MAT_LOSS_ENVELOPE:"));
+    CHECK(has_skip(quiet, "MAT_LOSS_MONOTONIC:"));
+}
+
+TEST_CASE("Test_Material_Validator_Provenance_Summary", "[material-validator]") {
+    settings.reset();
+    auto n87 = material_record("N87");
+    auto c95 = material_record("3C95");
+    MaterialValidator validator;
+
+    // Today the schema has no provenance field: one summary line, no per-record warnings.
+    auto verdicts = validator.validate_catalogue_text(n87.dump() + "\n" + c95.dump() + "\n");
+    REQUIRE(verdicts.size() == 2);
+    for (const auto& v : verdicts) CHECK(count_findings(v, "MAT_PROVENANCE") == 0);
+    auto summary = summarize_material_verdicts(verdicts);
+    CHECK(summary["provenance"] == "2/2 materials without provenance; schema has no field, RFC 0011");
+
+    // Once a record carries provenance, the others get a per-record WARNING.
+    json withProvenance = c95;
+    withProvenance["provenance"] = json{{"source", "Ferroxcube 3C95 MDS 2015-10-02"}};
+    auto adopted = validator.validate_catalogue_text(n87.dump() + "\n" + withProvenance.dump() + "\n");
+    REQUIRE(adopted.size() == 2);
+    CHECK(count_findings(adopted[0], "MAT_PROVENANCE", MaterialFindingSeverity::WARNING) == 1);
+    CHECK(count_findings(adopted[1], "MAT_PROVENANCE") == 0);
+    CHECK(adopted[0].valid);
+}
+
+TEST_CASE("Test_Material_Validator_Loss_Not_Positive_Inside_Span", "[material-validator]") {
+    // k = 0 in every range: MKF returns 0 W/m3 inside the fitted span.
+    settings.reset();
+    auto record = material_record("N87");
+    for (auto& method : record["volumetricLosses"]["default"]) {
+        if (method.is_object() && method["method"] == "steinmetz") {
+            for (auto& range : method["ranges"]) range["k"] = 0;
+        }
+    }
+    record["name"] = "N87 k 0";
+    auto verdict = MaterialValidator().validate(record);
+    INFO(describe(verdict));
+    CHECK(count_findings(verdict, "MAT_LOSS_EVAL", MaterialFindingSeverity::IMPOSSIBLE) >= 1);
+    CHECK_FALSE(verdict.valid);
 }
