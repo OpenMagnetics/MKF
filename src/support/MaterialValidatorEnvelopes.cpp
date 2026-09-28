@@ -52,9 +52,10 @@ std::vector<MaterialClassBounds> build_class_table() {
             anchor("Magnetics", "F", 110, "Magnetics 2021 Ferrite Catalog pdf p6 (printed p3), TAB")});
         c.lossReferencePoints.push_back(MaterialLossReferencePoint{
             500e3, 0.050, 100, false,
-            anchor("TDK", "PC200", 60,
-                   "TDK-EPCOS PC200 datasheet (June 2025) p2, TAB; also Ferroxcube 3F37 (MDS 2025-09-22 p1) and ACME "
-                   "P53 (ACME catalogue p12-13)"),
+            anchor("ACME", "P63", 19,
+                   "ACME measurement workbook '40 P63.xlsx' (ACME/USIG e-mail 2025-06-02), sheet 5data, row "
+                   "'500kHz;50mT', 100 C column, TAB; TDG TP5R's manufacturer points in MAS give 19.4. TDK-EPCOS "
+                   "PC200 (datasheet June 2025 p2), Ferroxcube 3F37 and ACME P53 publish about 60"),
             anchor("DMEGC", "DMR55", 200, "DMEGC DMR55 material datasheet p1, TAB (worst MHz-marketed grade)")});
         c.lossReferencePoints.push_back(MaterialLossReferencePoint{
             1e6, 0.050, 100, false,
@@ -96,14 +97,17 @@ std::vector<MaterialClassBounds> build_class_table() {
             5e6, 0.010, 100, true,
             anchor("Fair-Rite", "67", 160, "Fair-Rite 67 Pv vs B at 100 C (fair-rite.com 67PLB100.jpg, 2020), FIG +-15%"),
             anchor("Proterial", "NL12S", 340, "Proterial ferrite catalogue HJ-B3 (2023) pdf p37, TAB")});
-        c.minimumInitialPermeability = 14;
+        c.minimumInitialPermeability = 5;
         c.maximumInitialPermeability = 2500;
-        c.initialPermeabilitySource = "mu_i 14: ACME L6 (ACME catalogue p11); mu_i 2500: ACME K25 (ACME catalogue p11). TAB";
+        c.initialPermeabilitySource =
+            "mu_i 5: Encore N4C (Encore Electronics Ni-Zn material table, encores.com.tw); mu_i 2500: ACME K25 "
+            "(ACME catalogue p11). TAB";
         c.maximumSaturationFluxDensity = 0.500;
         c.saturationSource = "Bs 500 mT: Proterial NB25S at 8 kA/m (HJ-B3 catalogue). TAB";
-        c.minimumCurieTemperature = 90;
+        c.minimumCurieTemperature = 80;
         c.maximumCurieTemperature = 500;
-        c.curieSource = "Tc 90 C: ACME K25, D40 (ACME catalogue p11); Tc 500 C: Fair-Rite 68 (>500, fair-rite.com 68 page). TAB";
+        c.curieSource = "Tc 80 C: TAK L28A (>80 C, takferrite.com/product_detail?id=137); Tc 500 C: Fair-Rite 68 (>500, "
+                        "fair-rite.com 68 page). TAB";
         table.push_back(c);
     }
     {
@@ -163,8 +167,9 @@ std::vector<MaterialClassBounds> build_class_table() {
         c.minimumInitialPermeability = 14;
         c.maximumInitialPermeability = 125;
         c.initialPermeabilitySource = "Magnetics Powder Core Catalog, Kool Mu 14-125 mu. TAB";
-        c.maximumSaturationFluxDensity = 1.0;
-        c.saturationSource = "Magnetics Powder Core Catalog, Kool Mu 1.0 T. TAB";
+        c.maximumSaturationFluxDensity = 1.2;
+        c.saturationSource = "Bs 1.2 T: KDM KPH-HT/HP 12,000 G, listed under Sendust (KDM Alloy Powder Core brochure "
+                             "2026-06, p5 table); Magnetics Kool Mu 1.0 T (Powder Core Catalog). TAB";
         table.push_back(c);
     }
     {
