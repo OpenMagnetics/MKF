@@ -9,6 +9,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <cfloat>
 #include <limits>
@@ -1275,5 +1276,89 @@ TEST_CASE("Autocomplete of a large wound coil keeps the per-name insulation mate
         to_json(actual, std::get<MAS::InsulationMaterial>(layers[layerIndex].get_insulation_material().value()));
         CHECK(actual == expected[layerIndex]);
     }
+    settings.reset();
+}
+
+TEST_CASE("Test_Autocomplete_Keeps_The_Declared_Material_Of_A_Litz_Outer_Coating", "[support][utils][wire][litz][regression]") {
+    // ABT #1483: a litz whose outer jacket is "insulated" with an inline FEP material came back
+    // from magnetic_autocomplete as "insulated / Polyurethane 155". The coating-completion block
+    // resolved the material through the wire-level resolver, which for litz answers with the
+    // STRANDS' enamel (defaulted to Polyurethane 155 when the strand coating names none) and
+    // wrote that onto the outer jacket. The Painter then rejected the jacket ("Unknown
+    // insulated wire material") and every plot of the imported design came back empty.
+    settings.reset();
+    clear_databases();
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/04_forward_xfmr_e3216_n87.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    REQUIRE(windings.size() >= 1);
+
+    // The winding-0 wire of the reported file, verbatim in shape: strands whose enamel names no
+    // material, an outer jacket with an inline FEP record.
+    json litzJson = json::parse(R"({
+        "type": "litz", "material": "copper", "numberConductors": 20, "standard": "IEC 60317",
+        "strand": {"type": "round", "material": "copper", "numberConductors": 1, "standard": "IEC 60317",
+                   "name": "Round 0.1 - Grade 1",
+                   "conductingDiameter": {"nominal": 0.0001, "minimum": 9.7e-05, "maximum": 0.000103},
+                   "outerDiameter": {"minimum": 0.000108, "maximum": 0.000117},
+                   "coating": {"type": "enamelled", "grade": 1, "breakdownVoltage": 500}},
+        "coating": {"type": "insulated", "numberLayers": 1, "thicknessLayers": 5.08e-05, "breakdownVoltage": 3000,
+                    "temperatureRating": 155,
+                    "material": {"name": "FEP", "aliases": ["Teflon FEP"], "composition": "Fluorinated Ethylene Propylene",
+                                 "manufacturerInfo": {"name": "Chemours"}, "meltingPoint": 255, "relativePermittivity": 2,
+                                 "specificHeat": 1172, "temperatureClass": 200, "thermalConductivity": 0.195,
+                                 "dielectricStrength": [{"temperature": 23, "thickness": 2.5e-05, "value": 260000000},
+                                                        {"temperature": 23, "thickness": 0.0005, "value": 70000000}],
+                                 "resistivity": [{"temperature": -40, "value": 1e16}, {"temperature": 240, "value": 1e16}]}}
+    })");
+    OpenMagnetics::Wire litz(litzJson);
+    windings[0].set_wire(litz);
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    auto wire = magnetic.get_mutable_coil().resolve_wire(0);
+    REQUIRE(wire.get_type() == WireType::LITZ);
+    auto coating = wire.resolve_coating();
+    REQUIRE(coating);
+    REQUIRE(coating->get_type() == InsulationWireCoatingType::INSULATED);
+    REQUIRE(coating->get_material());
+    auto material = OpenMagnetics::Wire::resolve_coating_insulation_material(coating.value());
+    CHECK(material.get_name() == "FEP");
+    // The Painter must accept the completed jacket: this threw "Unknown insulated wire material".
+    auto outFile = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output").append("Test_Autocomplete_Litz_FEP_Outer_Coating.svg");
+    std::filesystem::remove(outFile);
+    OpenMagnetics::Painter painter(outFile);
+    CHECK_NOTHROW(painter.paint_wire(wire));
+    settings.reset();
+}
+
+TEST_CASE("Test_Autocomplete_Throws_On_An_Unknown_Litz_Outer_Coating_Material", "[support][utils][wire][litz][regression]") {
+    // The counterpart of the test above: a jacket naming a material the database does not know
+    // must fail loudly, never be completed with another material.
+    settings.reset();
+    clear_databases();
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/04_forward_xfmr_e3216_n87.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    json litzJson = json::parse(R"({
+        "type": "litz", "material": "copper", "numberConductors": 20,
+        "strand": {"type": "round", "material": "copper", "numberConductors": 1,
+                   "conductingDiameter": {"nominal": 0.0001},
+                   "outerDiameter": {"nominal": 0.000112},
+                   "coating": {"type": "enamelled", "grade": 1}},
+        "coating": {"type": "insulated", "numberLayers": 1, "thicknessLayers": 5.08e-05,
+                    "material": "Not A Real Insulation Material"}
+    })");
+    OpenMagnetics::Wire litz(litzJson);
+    windings[0].set_wire(litz);
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    REQUIRE_THROWS_WITH(OpenMagnetics::magnetic_autocomplete(magneticIn),
+                        Catch::Matchers::ContainsSubstring("Not A Real Insulation Material"));
     settings.reset();
 }

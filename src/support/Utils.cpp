@@ -3029,8 +3029,15 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
             }
         }
 
-        wire.set_coating(insulationWireCoating);
-        auto insulationWireCoatingMaterial = wire.resolve_coating_insulation_material();
+        // Resolve THIS coating's own material, not the wire's "insulating" coating. Since
+        // 749296b3 Wire::resolve_coating_insulation_material(wire) answers with the STRAND's
+        // coating for litz (the enamel between strands, correct for thermal/dielectric use).
+        // Writing that answer here replaced a litz's outer jacket material with its strands'
+        // enamel -- an FEP-insulated litz came back as "insulated / Polyurethane 155", which
+        // the Painter then rejected ("Unknown insulated wire material") and every plot of the
+        // imported design went blank (ABT #1483). A named material that is not in the
+        // database still throws from find_insulation_material_by_name.
+        auto insulationWireCoatingMaterial = Wire::resolve_coating_insulation_material(insulationWireCoating);
         insulationWireCoating.set_material(insulationWireCoatingMaterial);
         wire.set_coating(insulationWireCoating);
 
